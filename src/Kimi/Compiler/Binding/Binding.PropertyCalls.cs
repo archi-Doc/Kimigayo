@@ -340,6 +340,8 @@ public sealed partial class Binding
                     Binding = this, Call = call, Binder = function, Origins = origins, Inputs = inputs, DeclaringType = declaringType, Rows = rows.AsSpan(0, count),
                 };
                 this.JudgeSelectedCall(call, solution, operations.AsSpan(0, count + 1), []);
+                this.RequireResultPremises(function, result, call); // SPEC 15.6.1, 15.6.4 step 3: the getter's result premises.
+                this.AddSynthesizedCall(node, call); // SPEC 11.3, 15.6.4 step 3: its Types' formation, judged as every call's, at the use (Check).
                 Complete(call, result);
                 return true;
             }

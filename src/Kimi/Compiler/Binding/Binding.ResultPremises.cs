@@ -20,8 +20,8 @@ public sealed partial class Binding
     private readonly TypeMemo<(BoundType Pattern, BoundType? Argument), BoundType> wellFormedParts = new();
     private readonly TypeMemo<(BoundType Pattern, BoundType? Argument), BoundType> storedParts = new();
 
-    // The callee whose result premise is set aside while a use asks whether its definition proves a relation from its other premises.
-    private FunctionKoto? resultPremiseExcluded;
+    // The definition (Definition) whose result premise is set aside while a use asks whether it proves a relation from its other premises.
+    private Koto? resultPremiseExcluded;
 
     // The first premise an Instance or Prove visit fails (longer, shorter).
     private (BoundOrigin Longer, BoundOrigin Shorter)? failedResultPremise;
@@ -169,8 +169,22 @@ public sealed partial class Binding
         return true;
     }
 
-    private static bool CarriesResultPremises(FunctionKoto function)
-        => !function.IsConstructor && !function.IsAnonymous && function.BoundSymbol?.Type is { StoresOrigin: true };
+    // SPEC 15.3.7, 15.6.1, 11.5 (PLAN G214): the result a definition assumes well formed in its body (R3, ExtractOriginPremises) and each
+    // use proves for its instantiation (RequireResultPremises): a named function's other than a constructor's, and a getter's, since a
+    // custom, computed or Contract `get` produces a function result. A getter is that definition as its accessor syntax, whose result a
+    // computed or requirement Property's header is (HeaderGetter), and as the execution view each read calls (AccessorFunction).
+    private static BoundType? AssumedResult(Koto definition) => definition switch
+    {
+        FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result } => result,
+        PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Get, Parent: PropertyKoto { BoundSymbol.Property.Getter.Result: { } result } } => result,
+        _ => null,
+    };
+
+    // The definition a call's callee stands for: a getter's accessor syntax for its execution view (its inputs and its own clauses are
+    // there), else the function itself.
+    private static Koto Definition(FunctionKoto function) => (Koto?)function.Accessor?.Declaration ?? function;
+
+    private static bool CarriesResultPremises(FunctionKoto function) => AssumedResult(Definition(function)) is { StoresOrigin: true };
 
     // As SolveOriginInference does for a declared relation, a result premise's relation is a bound, and a signature Origin becomes a
     // variable, also a result-only one. An input's relation shortens only Origins that the call already solves (OriginInference.WellFormed).
@@ -691,11 +705,12 @@ public sealed partial class Binding
 
         if (visit.Named is { } function)
         {
+            var definition = Definition(function);
             var excluded = this.resultPremiseExcluded;
-            this.resultPremiseExcluded = function;
+            this.resultPremiseExcluded = definition;
             try
             {
-                if (this.ProvesOriginOutlives(longer, outer, function, condition))
+                if (this.ProvesOriginOutlives(longer, outer, definition, condition))
                 {
                     return true; // The definition proves it without the premise.
                 }

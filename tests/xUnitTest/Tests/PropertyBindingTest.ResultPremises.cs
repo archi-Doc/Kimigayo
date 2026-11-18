@@ -1,0 +1,70 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Xunit;
+
+namespace XunitTest;
+
+/// <summary>A getter's result premise (PLAN G214): assumed by the getter, proven by each read.</summary>
+public partial class PropertyBindingTest
+{
+    private const string TwoHead = "struct Two {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public init(p: ref/i32 during a, q: ref/i32 during b)\n        self.p = p\n        self.q = q\n";
+    private const string TwoW = "struct Two {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public init(p: ref/i32 during a, q: ref/i32 during b)\n        self.p = p\n        self.q = q\n    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>) => (self.q, Option.None)\n";
+    private const string GenW = "struct Gen<E> {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public let e: E\n    public init(p: ref/i32 during a, q: ref/i32 during b, e: E)\n        self.p = p\n        self.q = q\n        self.e = e@move\n    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>) => (self.q, Option.None)\n";
+    private const string RelatedS = "struct Related {first, second}\n    origin first outlives second\n    public let left: ref/i32 during first\n    public let right: ref/i32 during second\n    public init(left: ref/i32 during first, right: ref/i32 during second)\n        self.left = left\n        self.right = right\ncontract C\n    associate Item(a, b) is Related{view}\n        origin view.first == a\n        origin view.second == b\nstruct S\n    Self is C\n";
+    private const string ReceiverW = "struct S2\n    public init() => ()\nstruct W<K>\n    K is Equatable\n    public var v: i32 = 0\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public var qs: i32 = 0\n        set(value: i32) -> () => storage = value\n    public init() => ()\n    public func touch(self: ref/Self) -> i32 => 0\n    public func put(self: uniq/Self, k: i32) => ()\n";
+
+    // SPEC 11.3, 11.4, 11.5, 15.6.1, 15.6.4 (PLAN G214): a getter is a definition with a result, so its body, its written result and a
+    // computed Property's header assume the result well formed, its Types' own clauses included (R3), and each read, the getter's call,
+    // proves it for the instantiated result as a named call does, its constraint verdict recorded at the read as an invocation's is at
+    // the invocation (SPEC 23.1.2: a failed read is a failed node with its Type, so `t.rel.right` reads it with no internal error). Each
+    // row: the program's records, a code and the text at its span. I: reads that cannot prove the premise (a record at the read, the
+    // getter accepted; on dev the getter's own records), reads of a Related{s.a, s.b} whose clause no premise proves (asi, asd2i: dev
+    // also had InternalInvariant_Kd at `t.rel.right`), and a read, an update and a write over the ill-formed W<S2>, each a use of W<S2>
+    // that reports its constraint as its method twin's call does (rcg, rcu, rcs: dev had no record there). V: getters and reads that
+    // prove it (dev rejected each but stg and scv at the getter's records), a header applying a Contract's associated Type (asv, asv0)
+    // and the receiver's valid twin. The valid reads a member call's container-Origin instantiation still rejects (use, gen, rf, nbr, gread,
+    // gcl; an open issue) have no row.
+    [Theory]
+    [InlineData(TwoW + "func leakf(t: ref/Two{s}) -> ref/i32 during s.a\n    return t.w.0\n", "UnprovenOriginRelation_Kd t.w")] // leakf
+    [InlineData(TwoW + "    public func first(self: ref/Self) -> ref/i32 during a\n        return self.w.0\n", "UnprovenOriginRelation_Kd self.w")] // mm
+    [InlineData(TwoW + "    public computed z: ref/i32 during a\n        get() -> ref/i32 during a => self.w.0\n", "UnprovenOriginRelation_Kd self.w")] // chain
+    [InlineData(TwoHead + "    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n            let m = 5\n            return (m@ref, Option.None)\n", "UnsatisfiedOriginRelation_Kd return (m@ref, Option.None); UnsatisfiedOriginRelation_Kd (m@ref, Option.None)")] // lw
+    [InlineData(TwoW + "func leak(p: ref/i32) -> ref/i32 during p\n    let m = 5\n    let t = Two.init(p, m@ref)\n    return t.w.0\n", "ComparisonLoanConflict_Kd let m = 5; UnsatisfiedOriginRelation_Kd t.w")] // leak
+    [InlineData(GenW + "func pick(g: ref/Gen<bool>{s}) -> ref/i32 during s.a\n    return g.w.0\n", "UnprovenOriginRelation_Kd g.w")] // gci
+    [InlineData(TwoW + "struct Outer {a, b}\n    public let two: Two{x}\n        origin x.a == a\n        origin x.b == b\nfunc pick(o: ref/Outer{s}) -> ref/i32 during s.a\n    return o.two.w.0\n", "UnprovenOriginRelation_Kd o.two.w")] // chi
+    [InlineData(TwoW + "func viaClosure(t: ref/Two{s}) -> ref/i32 during s.a\n    let f = func () => t.w.0\n    return f()\n", "UnprovenOriginRelation_Kd t.w")] // cli
+    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public var n: i32 = 0\n    public init(p: ref/i32 during a, q: ref/i32 during b)\n        self.p = p\n        self.q = q\n    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>) => (self.q, Option.None)\n        set(value: i32) -> ()\n            self.n = value\nfunc put(t: uniq/Two{s}) -> ref/i32 during s.a\n    t.w = 3\n    return t.w.0\n", "UnprovenOriginRelation_Kd t.w")] // sei
+    [InlineData(TwoW + "struct Holder {h}\n    public var r: ref/i32 during h\nfunc keep(t: ref/Two{s}, out: uniq/Holder{o}) -> i32\n    origin s.a outlives o.h\n    out.r = t.w.0\n    return 0\n", "UnprovenOriginRelation_Kd t.w")] // kpi
+    [InlineData(TwoW + "func okRead(t: ref/Two{s}) -> ref/i32 during s.a\n    origin s.b outlives s.a\n    return t.w.0\nfunc badRead(t: ref/Two{s}) -> ref/i32 during s.a\n    return t.w.0\n", "UnprovenOriginRelation_Kd t.w")] // mix
+    [InlineData(RelatedS + TwoHead + "    public computed rel: S.Item(a, b)\n        get() -> S.Item(a, b) => Related.init(self.p, self.q)\nfunc rd(t: ref/Two{s}) -> ref/i32 during s.b\n    return t.rel.right\n", "UnprovenConstraint_Kd t.rel")] // asi
+    [InlineData("struct Related {first, second}\n    origin first outlives second\n    public let left: ref/i32 during first\n    public let right: ref/i32 during second\n    public init(left: ref/i32 during first, right: ref/i32 during second)\n        self.left = left\n        self.right = right\nstruct Two {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public init(p: ref/i32 during a, q: ref/i32 during b)\n        self.p = p\n        self.q = q\n    public computed rel: Related{x}\n        origin x.first == a\n        origin x.second == b\n        get() -> Related{y}\n            origin y.first == a\n            origin y.second == b\n            return Related.init(self.p, self.q)\nfunc rd(t: ref/Two{s}) -> ref/i32 during s.b\n    return t.rel.right\n", "UnprovenConstraint_Kd t.rel")] // asd2i
+    [InlineData(ReceiverW + "func f() -> i32\n    var w: W<S2> = W<S2>.init()\n    return w.q\n", "UnsatisfiedConstraint_Kd var w: W<S2> = W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; NoApplicableOverload_Kd W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd w.q")] // rcg
+    [InlineData(ReceiverW + "func f() -> i32\n    var w: W<S2> = W<S2>.init()\n    w.q += 1\n    return 0\n", "UnsatisfiedConstraint_Kd var w: W<S2> = W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; NoApplicableOverload_Kd W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd w.q")] // rcu
+    [InlineData(ReceiverW + "func f() -> i32\n    var w: W<S2> = W<S2>.init()\n    w.qs = 3\n    return 0\n", "UnsatisfiedConstraint_Kd var w: W<S2> = W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; NoApplicableOverload_Kd W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd w.qs")] // rcs
+    [InlineData(TwoW, "")] // f1c
+    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", "")] // g214
+    [InlineData(TwoW + "func rfv(t: ref/Two{s}) -> i32\n    origin s.b outlives s.a\n    let v = t.w\n    return 0\n", "")] // rfv
+    [InlineData(TwoW + "    public func first(self: ref/Self) -> ref/i32 during a\n        origin b outlives a\n        return self.w.0\n", "")] // mmv
+    [InlineData(TwoW + "    public computed z: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>) => self.w\n", "")] // chainv
+    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed n: ref/(ref/i32 during b) during a\n        get() -> ref/(ref/i32 during b) during a\n            $abort(\"n\")\n", "")] // nb
+    [InlineData(GenW + "func greadv<T>(g: ref/Gen<T>{s}) -> i32\n    origin s.b outlives s.a\n    let v = g.w\n    return 0\n", "")] // greadv
+    [InlineData("struct Two {a, b}\n    origin b outlives a\n    public let p: ref/i32 during a\n    public var r: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => storage\n    public init(p: ref/i32 during a)\n        self.p = p\n        self.r = Option.None\nfunc rs(t: ref/Two) -> i32\n    let v = t.r\n    return 0\n", "")] // stg
+    [InlineData(TwoW + "func leakf(t: ref/Two{s}) -> ref/i32 during s.a\n    origin s.b outlives s.a\n    return t.w.0\n", "")] // leakfv
+    [InlineData(GenW + "func pick(g: ref/Gen<bool>{s}) -> ref/i32 during s.a\n    origin s.b outlives s.a\n    return g.w.0\n", "")] // gcv
+    [InlineData(TwoW + "struct Outer {a, b}\n    public let two: Two{x}\n        origin x.a == a\n        origin x.b == b\nfunc pick(o: ref/Outer{s}) -> ref/i32 during s.a\n    origin s.b outlives s.a\n    return o.two.w.0\n", "")] // chv
+    [InlineData(TwoW + "func viaClosure(t: ref/Two{s}) -> ref/i32 during s.a\n    origin s.b outlives s.a\n    let f = func () => t.w.0\n    return f()\n", "")] // clv
+    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public var n: i32 = 0\n    public init(p: ref/i32 during a, q: ref/i32 during b)\n        self.p = p\n        self.q = q\n    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>) => (self.q, Option.None)\n        set(value: i32) -> ()\n            self.n = value\nfunc put(t: uniq/Two{s}) -> i32\n    t.w = 3\n    return 0\n", "")] // sev
+    [InlineData(TwoW + "struct Holder {h}\n    public var r: ref/i32 during h\nfunc keep(t: ref/Two{s}, out: uniq/Holder{o}) -> i32\n    origin s.b outlives s.a\n    origin s.a outlives o.h\n    out.r = t.w.0\n    return 0\n", "")] // kpv
+    [InlineData(TwoHead + "    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n            var r: ref/i32 during a = self.p\n            r = self.q\n            return (r, Option.None)\n", "")] // bsv
+    [InlineData("struct Two {a, b}\n    origin b outlives a\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public init(p: ref/i32 during a, q: ref/i32 during b)\n        self.p = p\n        self.q = q\n    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>) => (self.q, Option.None)\nfunc rd(t: ref/Two{s}) -> ref/i32 during s.a\n    return t.w.0\n", "")] // scv
+    [InlineData(RelatedS + TwoHead + "    public computed rel: S.Item(a, b)\n        get() -> S.Item(a, b) => Related.init(self.p, self.q)\nfunc rd(t: ref/Two{s}) -> ref/i32 during s.b\n    origin s.a outlives s.b\n    return t.rel.right\n", "")] // asv
+    [InlineData("struct Related {first, second}\n    origin first outlives second\n    public let left: ref/i32 during first\n    public let right: ref/i32 during second\ncontract C\n    associate Item(a, b) is Related{view}\n        origin view.first == a\n        origin view.second == b\nstruct S\n    Self is C\nstruct Two {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public init(p: ref/i32 during a, q: ref/i32 during b)\n        self.p = p\n        self.q = q\n    public computed rel: S.Item(a, b)\n        get() -> S.Item(a, b)\n            $abort(\"rel\")\n", "")] // asv0
+    [InlineData(ReceiverW + "func f() -> i32\n    var w: W<i32> = W<i32>.init()\n    let a = w.touch()\n    let b = w.q\n    w.q += 1\n    w.qs = 3\n    w.put(3)\n    return a + b\n", "")] // rcv
+    public void AGetterAssumesItsResultAndEachReadProvesIt(string program, string records)
+    {
+        var source = "public func main() => ()\n" + program;
+        Assert.Equal(
+            records.Length == 0 ? [] : records.Split("; "),
+            DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]));
+    }
+}

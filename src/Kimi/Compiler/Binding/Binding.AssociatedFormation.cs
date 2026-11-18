@@ -82,9 +82,11 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 8.5.4, 15.6.1: an associated formation is judged at its use, its Type's own relations included (CheckTypeOriginRelations), so
+    // a computed or requirement Property's header has its getter's premises there (HeaderGetter).
     private bool CheckAssociatedFormation(BoundType type, Koto use)
     {
-        if (this.CheckTypeOriginRelations(type, this.ConstraintScope(use)) != ConstraintProof.Proven)
+        if (this.CheckTypeOriginRelations(type, use) != ConstraintProof.Proven)
         {
             return false;
         }

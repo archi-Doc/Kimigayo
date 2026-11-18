@@ -43,7 +43,7 @@ public sealed partial class Binding
         => environment.Closure.AddEdge(longer, shorter, rule, condition);
 
     // SPEC 11.4, 11.5, 15.6.1: the getter whose result a computed or requirement Property's header is, reached from that header; a use
-    // in the header has the getter's input premises (R2), which its body assumes too (DECISIONS BU-26).
+    // in the header has the getter's premises as its body does: its inputs' (R2) and its result's (R3, AssumedResult; PLAN G214).
     private static PropertyAccessorKoto? HeaderGetter(Koto node, Koto? previous)
         => node is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement, TypeKoto: { } header } property &&
             ReferenceEquals(header, previous) && property.BoundSymbol?.Property is not null ? property.GetAccessor(PropertyAccessorKind.Get) : null;
@@ -246,8 +246,7 @@ public sealed partial class Binding
 
                 // SPEC 15.3.7, 15.6.1: the result Type's well-formedness, its Types' own clauses included, is a premise of the definition
                 // (Binding.ResultPremises.cs).
-                if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
-                    signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
+                if (!ReferenceEquals(signature, this.resultPremiseExcluded) && AssumedResult(signature) is { } result)
                 {
                     this.AddDefinitionResultPremises(environment, result);
                 }
