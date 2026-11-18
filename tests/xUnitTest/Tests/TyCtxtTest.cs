@@ -281,7 +281,7 @@ public sealed partial class TyCtxtTest
         static int[] Made(Compilation c)
         {
             const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
-            var interned = ((Dictionary<int, List<BoundType>>)typeof(TyCtxt).GetField("types", Private)!.GetValue(c.Types)!).Values.SelectMany(static x => x);
+            var interned = ((Dictionary<int, List<BoundType>>)typeof(TyCtxt).GetField("types", Private)!.GetValue(c.Types)!).Values.Concat(c.Library.Layer.Types.Values).SelectMany(static x => x);
             var own = new List<BoundType?>();
             foreach (var symbol in c.Binding.Semantics.Declarations)
             {

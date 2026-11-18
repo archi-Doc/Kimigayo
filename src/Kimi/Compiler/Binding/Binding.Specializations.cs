@@ -269,26 +269,32 @@ public sealed partial class Binding
             BindingSymbol? original = null;
             var matches = 0;
             var candidates = 0; // SPEC 8.13.1: same Name, kind and generic slots; input structure is matched below.
+            var restated = new FnSig(function);
             for (var candidate = symbol.Scope.Values.GetValueOrDefault(function.Name); candidate is not null; candidate = candidate.Next)
             {
-                if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary ||
-                    ordinary.GenericArguments.Count != arguments.Length || !SameSlotKinds(ordinary, lengths) || candidate.ReceiverIndex != symbol.ReceiverIndex)
+                if (candidate.Declaration is not FunctionKoto { IsSpecialization: false } ordinary)
+                {
+                    continue;
+                }
+
+                var target = new FnSig(ordinary);
+                if (target.GenericCount != arguments.Length || !SameSlotKinds(ordinary, lengths) || target.ReceiverIndex != restated.ReceiverIndex)
                 {
                     continue;
                 }
 
                 candidates++;
-                if (ordinary.Parameters.Count != function.Parameters.Count)
+                if (target.InputCount != restated.InputCount)
                 {
                     continue; // An input-structure mismatch, not a missing target.
                 }
 
                 var equal = true;
-                for (var p = 0; p < function.Parameters.Count; p++)
+                for (var p = 0; p < restated.InputCount; p++)
                 {
-                    equal &= ordinary.Parameters[p].Type.BoundType is { } input &&
-                        this.SubstituteType(input, ordinary, arguments, lengths) is { } substituted && function.Parameters[p].Type.BoundType is { } actual &&
-                        SignatureEquals(substituted, actual, ordinary, function);
+                    equal &= target.Input(p) is { } input &&
+                        this.SubstituteType(input, ordinary, arguments, lengths) is { } substituted && restated.Input(p) is { } actual &&
+                        SignatureEquals(substituted, actual, target.Binder, restated.Binder);
                 }
 
                 if (equal)

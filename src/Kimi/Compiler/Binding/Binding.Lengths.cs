@@ -77,13 +77,15 @@ public sealed partial class Binding
             (left, right) = (right, left);
         }
 
+        // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4).
         var key = (operation, value, parameter, left, right, values);
-        if (!this.lengths.TryGetValue(key, out var result))
+        var levels = PassPart.Interned(this.Library, this.Library.Layer.Lengths, this.lengths);
+        if (PassPart.Find(levels, key, out var result) is null)
         {
-            this.lengths.Add(key, result = new(operation, value, parameter, left, right, values));
+            levels.Open.Add(key, result = new(operation, value, parameter, left, right, values));
         }
 
-        return result;
+        return result!;
     }
 
     // SPEC 4.2: the operation of a length's binary operator, mapped once where a length is bound.

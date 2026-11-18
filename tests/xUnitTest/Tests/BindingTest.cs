@@ -610,11 +610,11 @@ public class BindingTest
     {
         var layer = new Dictionary<int, string> { [1] = "layer" };
         var running = new Dictionary<int, string> { [1] = "program", [2] = "program" };
-        Assert.Same(layer, Binding.PassPart.Find(layer, running, 1, out var value));
+        Assert.Same(layer, Binding.PassPart.Find(Binding.PassPart.Parts(layer, running), 1, out var value));
         Assert.Equal("layer", value);
-        Assert.Same(running, Binding.PassPart.Find(layer, running, 2, out value));
+        Assert.Same(running, Binding.PassPart.Find(Binding.PassPart.Parts(layer, running), 2, out value));
         Assert.Equal("program", value);
-        Assert.Null(Binding.PassPart.Find(layer, running, 3, out _));
+        Assert.Null(Binding.PassPart.Find(Binding.PassPart.Parts(layer, running), 3, out _));
     }
 
     // PLAN G949, the localRegions batch (n55-design 2.3 rules 1-3; DECISIONS BU-220's D-9 line): the local-region graph is a PassPart

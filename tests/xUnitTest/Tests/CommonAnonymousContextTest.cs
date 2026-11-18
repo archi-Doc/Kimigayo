@@ -109,6 +109,21 @@ public class CommonAnonymousContextTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 10.1, 10.5.4 (PLAN G924 AF-2; F's ruling 90): a call that selected nothing is bound again when its result is used, and that
+    // attempt equals the first: the anonymous function of an unselected call stays unbound, so its body never selects (the first is
+    // 10.5.4's own example with its result used). Both were accepted by the check, and stopped by an internal invariant at emission,
+    // while the unselected call's anonymous function was bound on its own.
+    [Theory]
+    [InlineData("func run(action: () -> ()) -> i32 => 0\nfunc run(action: () -> i32) -> i32 => 1\nfunc compute() -> i32 => 3\npublic func main() -> ()\n    let v = run(func () => compute())\n    Console.writeLine(\"\\(v)\")\n", "run(func () => compute())")]
+    [InlineData("func ap(f: (i32) -> i64) -> i32 => 0\nfunc ap(f: (i32) -> i32) -> i32 => 1\npublic func main() -> ()\n    let v = ap(func (x: i32) => x)\n    Console.writeLine(\"\\(v)\")\n", "ap(func (x: i32) => x)")]
+    public void AnUnselectedCallBoundAgainSelectsNothing(string source, string call)
+    {
+        var output = DiagnosticCorpus.Check(source);
+        Assert.False(output.Accepted);
+        var error = Assert.Single(output.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), call), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
     [Fact]
     public void DifferentContextsNeverProbeBodiesToSelect()
     {

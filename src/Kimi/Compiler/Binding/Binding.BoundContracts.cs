@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 //   in the use-site context, its outer arguments from its path or the environment (9.7.1), its Origins, and the completion of its syntax.
 // - Inputs: the reference's syntax, the declaration its lookup selected, the use-site scope. Outputs: the bound reference (the declaration
 //   itself when it has no parameters, or for its own parameters inside it), each level completed with it; null after a located failure.
-// - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax. Its callers: that path, internal
+// - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax; a reference the library layer's
+//   part holds is complete (State 2) from the library's seal and never rebuilt (PLAN G949 Stage 2 U4: the internal-invariant form). Its callers: that path, internal
 //   Type substitution, a compiler-made reference of a library Contract (arithmetic operators), and readers of a formed reference
 //   (ContractReferenceOf).
 // - Prohibitions: no other member forms a Contract's Constructed Type from Type-argument syntax. The path reads no subject, substitutes
@@ -170,9 +171,17 @@ public sealed partial class Binding
             return reference.Symbol;
         }
 
-        if (PassPart.Find(this.Library.Layer.Part.BoundContracts, this.boundContracts, reference, out var cached) is not null && cached!.Contract!.State == 2)
+        var found = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.BoundContracts, this.boundContracts), reference, out var cached);
+        if (found is not null && cached!.Contract!.State == 2)
         {
             return cached;
+        }
+
+        // PLAN G949 Stage 2 U4: a frozen entry is complete (State 2) at the seal and never reset (ResetContracts resets the running part
+        // only), so a rebuild in place of one is a broken contract.
+        if (ReferenceEquals(found, this.Library.Layer.Part.BoundContracts) && this.Library.Frozen)
+        {
+            throw new InvalidOperationException("A frozen bound Contract reference is incomplete after the library's seal (InternalInvariant; PLAN G949 Stage 2 U4).");
         }
 
         var declaration = reference.Symbol!;
