@@ -52,7 +52,9 @@ internal sealed partial class MirBorrows
 
     // A write's verdict at a Place of these facts, `write` what the Place's Type makes of it (SPEC 5.2, 5.7): none where every raw layer
     // there states an Origin other than `static` (Own, Shared or Exclusive: a pun or none, the pointer promises that Origin's storage);
-    // undecided where one has no answer (Unsupported); else the Type's.
+    // undecided where one has no answer (Unsupported), and where the layers are partly stated (PartlyStated: a pointer at a stated layer is
+    // judged by its Origin, one at an unstated layer may reach storage the body does not own, and A5 keeps one state per holder, so it
+    // cannot say which: the located Unsupported_Kd, never a Language record); else the Type's.
     private static PunWrite PunAt(PunWrite write, in PunKey facts)
     {
         if (write == PunWrite.Typed || facts.Stated)
@@ -60,7 +62,7 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
-        return facts.Unsupported ? PunWrite.Undecided : write;
+        return facts.Unsupported || facts.PartlyStated ? PunWrite.Undecided : write;
     }
 
     // The worse of two writes at one Place: a pun, else an undecided write.

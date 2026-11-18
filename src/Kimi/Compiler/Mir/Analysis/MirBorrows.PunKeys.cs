@@ -114,8 +114,9 @@ internal sealed partial class MirBorrows
             ? types.ParameterKey(function, MirCallee.Slot(function, position), input) : PlaceKey.Root(input);
 
     // A key's facts, folded from TyCtxt.OwnLayers once per program version: whether a raw layer (or an abstract part) is at the Place's own
-    // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive); whether any states an Origin,
-    // `static` included (AnyStated, the storing rule's); whether one has no answer (Unsupported); the write Types (the Part past each raw
+    // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive), and whether one does
+    // (SomeStated: with Stated false, the layers are partly stated, PunKey.PartlyStated); whether any states an Origin, `static` included
+    // (AnyStated, the storing rule's); whether one has no answer (Unsupported); the write Types (the Part past each raw
     // layer and each exclusive borrow) and whether an abstract part leaves them unknown. A key at Binding's Limit is unknown.
     // Under `fold` (Fold: an output's Handed list), a hidden layer whose kept Type the list holds is folded as shown.
     private int Key(in PlaceKey key, int fold)
@@ -145,7 +146,7 @@ internal sealed partial class MirBorrows
                 facts = facts with
                 {
                     RawInline = true, Stated = facts.Stated && origin, AnyStated = facts.AnyStated || origin || step == HoldStep.Static,
-                    Unsupported = facts.Unsupported || step == HoldStep.Unsupported,
+                    SomeStated = facts.SomeStated || origin, Unsupported = facts.Unsupported || step == HoldStep.Unsupported,
                 };
             }
             else if (step is HoldStep.Abstract or HoldStep.Erased)
@@ -260,6 +261,12 @@ internal sealed partial class MirBorrows
         internal bool Stated { get; init; }
 
         internal bool AnyStated { get; init; }
+
+        internal bool SomeStated { get; init; } // A raw layer at the key states an Origin other than `static` (Key).
+
+        // Whether a raw layer at the key states an Origin other than `static` while another raw layer or an unknown part there does not: a
+        // punned pointer's verdict differs by the layer it lands at, which one state per holder cannot place (MirBorrows.Puns' PunAt).
+        internal bool PartlyStated => this.SomeStated && !this.Stated;
 
         internal bool Unsupported { get; init; }
 
