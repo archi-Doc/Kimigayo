@@ -14,7 +14,7 @@ public sealed partial class Binding
     public IReadOnlyList<DocumentationComment> GetDocumentation(Koto declaration, bool publicOnly = false, bool implementationNote = false)
     {
         ArgumentNullException.ThrowIfNull(declaration);
-        if (!ReferenceEquals(declaration.CodeContext.Compilation, this.compilation))
+        if (!this.compilation.HoldsModule(declaration.CodeContext.Kotonoha))
         {
             throw new ArgumentException("The declaration belongs to another compilation.", nameof(declaration));
         }

@@ -124,7 +124,7 @@ internal sealed partial class MirBuilder
         }
 
         this.program.LayerWalkWork += type.Height + 1;
-        return MirTypes.Premised(this.body, type);
+        return MirTypes.Premised(compilation.Types, this.body, type);
     }
 
     // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the

@@ -101,7 +101,7 @@ internal sealed partial class MirValidator
                     var resolved = cases.Adapt(site, out var operation);
                     var borrowed = operation is ConversionBinding.Borrow or ConversionBinding.Address && body.TypeOf(resolved.Place) is { } stored
                         ? cases.Type(stored) : null;
-                    if (operation == ConversionBinding.None || (borrowed is not null && !MirTypes.Agrees(body, resolved.Type!.Components[0], borrowed)))
+                    if (operation == ConversionBinding.None || (borrowed is not null && !MirTypes.Agrees(types, body, resolved.Type!.Components[0], borrowed)))
                     {
                         this.Report(MirViolation.Operation);
                         break;
@@ -139,7 +139,7 @@ internal sealed partial class MirValidator
         // SPEC 13.4, 8.2.3: what a comparison BinaryOp's operand compares: its Type as the body's premises make it (MirTypes.Premised, the
         // premising Binding.OperandTerminal applies too), before the walk, so a layer a premise gives is walked too, down to a raw layer,
         // which stops the walk; unknown (null) for the Never value. A check over Binding's decision, never a reader of it.
-        private readonly BoundType? PremisedTerminal(BoundType? type) => type is null ? null : Terminal(MirTypes.Premised(body, type));
+        private readonly BoundType? PremisedTerminal(BoundType? type) => type is null ? null : Terminal(MirTypes.Premised(types, body, type));
 
         // SPEC 13.2-13.4, 5.3, 8.2.3: an operator rvalue's operation takes its operand at its premised terminal (PremisedTerminal; the
         // Backend's column reads the instance's terminal too), the right one's where the left is the Never value, whose unknown Type takes
@@ -163,7 +163,7 @@ internal sealed partial class MirValidator
 
         private readonly void Agree(BoundType? expected, BoundType? actual)
         {
-            if (!MirTypes.Agrees(body, expected, actual))
+            if (!MirTypes.Agrees(types, body, expected, actual))
             {
                 this.Report(MirViolation.Type);
             }
@@ -211,18 +211,18 @@ internal sealed partial class MirValidator
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
                     >= MirBinaryOp.Eq => MirTypes.Agree(this.PremisedTerminal(first), this.PremisedTerminal(second)),
                     MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
-                    _ => MirTypes.Agrees(body, first, second),
+                    _ => MirTypes.Agrees(types, body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
                 // O-92 (a): exactly the built-in range-selection receivers, never through a reference; a raw pointer to their element.
                 MirRvalueKind.Storage => (rvalue.Type, place is null ||
                     (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
                     rvalue.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var element] } &&
-                    MirTypes.Agrees(body, element, place.Components[0]) && this.Keyed(operands, first))),
+                    MirTypes.Agrees(types, body, element, place.Components[0]) && this.Keyed(operands, first))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||
-                    (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && MirTypes.Agrees(body, referent, place) &&
+                    (rvalue.Type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } reference && MirTypes.Agrees(types, body, referent, place) &&
                     (MirRefKind)rvalue.Op switch
                     {
                         MirRefKind.Shared => reference.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef,

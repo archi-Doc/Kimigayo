@@ -132,7 +132,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             return null;
         }
 
-        if (Definition(node, table) is not { } definition || definition.Key != key)
+        if (this.Definition(node, table) is not { } definition || definition.Key != key)
         {
             return null;
         }
@@ -169,7 +169,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // function's Fn body, a #Test function's Test body, a Closure's keyed by its own symbol, a module's top-level statements by the module's
     // ordinal; an accessor's Getter or Setter keyed by the function its calls target (SPEC 11.3); a static's initializer; null for another
     // node.
-    private static (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
+    private (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
     {
         var symbol = HirTables.Symbol(node);
         switch (symbol?.Kind)
@@ -191,7 +191,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 return (new(symbol, kind, symbol is null ? table.Module : 0), symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
             case BindingSymbolKind.PropertyAccessor:
                 var accessor = (PropertyAccessorKoto)node;
-                var executing = CallPlan.Accessor(accessor); // SPEC 11.3: the function its calls target.
+                var executing = CallPlan.Accessor(compilation.Binding, accessor); // SPEC 11.3: the function its calls target.
                 kind = accessor.AccessorKind == PropertyAccessorKind.Get ? MirBodyKind.Getter : MirBodyKind.Setter;
                 return (new(executing, kind), executing, executing.Type ?? BoundType.Unit, accessor.Body!);
             case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
@@ -237,7 +237,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var nodes = table.Nodes;
         for (var id = 1; id < nodes.Length; id++)
         {
-            if (nodes[id] is { } node && ReferenceEquals(node.SyntaxOwner, table) && Published(node) && Definition(node, table) is { } definition)
+            if (nodes[id] is { } node && ReferenceEquals(node.SyntaxOwner, table) && Published(node) && this.Definition(node, table) is { } definition)
             {
                 this.Body(definition.Key, node, definition.Function, definition.Result, definition.Value);
             }
@@ -280,7 +280,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.trees.Clear();
         var parameters = this.OpenScope(block: true);
         PairBinder.Collect(compilation.Binding, declaration, body.Binders);
-        var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
+        var special = template || function is null ? null : CallPlan.Parameter(compilation.Binding, function, -1); // A constructor's or destructor's self.
         var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType(compilation.Binding, (FunctionKoto)declaration) : null;
         this.entry = this.Info(declaration, local: true);
         body.AddLocal(self is null
@@ -305,7 +305,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         for (var i = 0; template && i < key.Index; i++)
         {
-            var parameter = CallPlan.Parameter(function!, i)!;
+            var parameter = CallPlan.Parameter(compilation.Binding, function!, i)!;
             this.locals[parameter] = this.Argument(
                 compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
                 parameter.Name,
@@ -338,7 +338,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         for (var position = 0; !template && function is not null && position < this.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
-            var parameter = CallPlan.Parameter(function, slot)!;
+            var parameter = CallPlan.Parameter(compilation.Binding, function, slot)!;
             this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, TyCtxt.SignatureSite(declaration, slot), parameters);
         }
 

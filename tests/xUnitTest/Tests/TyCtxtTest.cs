@@ -366,15 +366,16 @@ public sealed partial class TyCtxtTest
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
         var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).First(static x => x?.Target.Name == "identity")!;
-        var substs = new[] { BoundType.Boolean, BoundType.I32 }.Select(self => c.Types.SubstOf(Conforming(call, self))!).ToArray();
+        var substs = new[] { BoundType.Boolean, BoundType.I32 }.Select(self => c.Types.SubstOf(Conforming(c.Binding, call, self))!).ToArray();
         var closed = substs.Select(x => c.Types.Apply(closure.EnvironmentType!, x)!).ToArray();
         Assert.Equal(substs, closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(closed[0], closed[1]);
 
-        static CallPlan Conforming(CallPlan call, BoundType self)
+        static CallPlan Conforming(Binding binding, CallPlan call, BoundType self)
         {
             var synthesized = new CallPlan();
             synthesized.Set(
+                binding,
                 call.Target,
                 call.ReturnType,
                 null,
@@ -1451,7 +1452,7 @@ public sealed partial class TyCtxtTest
         }
 
         var call = new CallPlan();
-        call.Set(inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
+        call.Set(c.Binding, inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
         Assert.Equal(RequirementTargetKind.Limit, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!).Kind);
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
@@ -1465,7 +1466,7 @@ public sealed partial class TyCtxtTest
         }
 
         var instance = new CallPlan();
-        instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
+        instance.Set(c.Binding, outer.Target, outer.ReturnType, null, [], [nested]);
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
         Assert.Equal((null, Binding.StorageOutcome.Limit), (composed.Subst, composed.Storage));
         Assert.Same(nested, composed.Part);
@@ -1539,7 +1540,7 @@ public sealed partial class TyCtxtTest
         Assert.True(complete.Binding.Result.IsComplete);
         var target = KotoTree.Walk(complete.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).Single(static x => x.Target.Name == "f");
         var call = new CallPlan();
-        call.Set(target.Target, target.ReturnType, null, [], [c.Types.SubstOf(calls[1])!.Types[0]]);
+        call.Set(complete.Binding, target.Target, target.ReturnType, null, [], [c.Types.SubstOf(calls[1])!.Types[0]]);
         var parameter = ((FunctionKoto)target.Target.Declaration).Parameters[0].Type.TypeOf()!;
         Assert.Throws<InvalidOperationException>(() => complete.Types.ReadableInstance(parameter, complete.Types.SubstOf(call)!));
     }

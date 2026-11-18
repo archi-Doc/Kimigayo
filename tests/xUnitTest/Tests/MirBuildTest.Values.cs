@@ -405,7 +405,7 @@ public sealed partial class MirBuildTest
         var tuple = CallPlan.Of(c.Binding, order)!;
         Assert.True(tuple.TupleOperator);
         var (mapping, types, operations) = (tuple.ArgumentToParameter.ToArray(), tuple.TypeArguments.ToArray(), tuple.ArgumentOperations.ToArray());
-        tuple.Set(tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
+        tuple.Set(c.Binding, tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
         tuple.TupleOperator = true; // Its conforming Type is gone.
         c.Binding.CheckBound(); // A Final pass publishes in its Check (DECISIONS BU-81), so the end of the pass runs again over the gaps.
         var program = c.BuildMir();

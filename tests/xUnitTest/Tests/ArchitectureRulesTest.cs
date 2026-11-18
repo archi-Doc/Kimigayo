@@ -268,8 +268,8 @@ public class ArchitectureRulesTest
     [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
     // PLAN G949 Stage 2 (R8-L1 under O-381 (b)): a reader reaches its Binding's facts through its own Binding, never through a node's
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
-    // by file: the route units lower them (U0b-6) to CodeContext's and the parser's, which R7 owns.
-    [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Binding/Binding.Documentation.cs=1;Compiler/Binding/Binding.Retention.cs=1;Compiler/Binding/CallPlan.cs=3;Compiler/Binding/TyCtxt.cs=1;Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
+    // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
+    [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

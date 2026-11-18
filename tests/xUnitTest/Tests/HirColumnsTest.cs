@@ -319,7 +319,7 @@ public sealed class HirColumnsTest
                 var disposition = call.Kind == CalleeKind.Value ? default : call.Target.Definition;
                 if ((call.Kind == CalleeKind.Requirement && call.RequirementContract is null && disposition.Kind != DispositionKind.Shim) ||
                     (disposition.Id is IntrinsicId.Abort or IntrinsicId.Fail && !ReferenceEquals(call.ReturnType, BoundType.Never)) ||
-                    (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Accessor.Declaration: { Body: not null } accessor } && !ReferenceEquals(call.Target, CallPlan.Accessor(accessor))))
+                    (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Accessor.Declaration: { Body: not null } accessor } && !ReferenceEquals(call.Target, CallPlan.Accessor(binding, accessor))))
                 {
                     problems.Add($"{where} calls {call.Target.Name} without its Contract, as {disposition} or not as its accessor");
                 }
@@ -444,11 +444,11 @@ public sealed class HirColumnsTest
             }
 
             found += (BoundEnumConstruction.Of(binding, node) is null ? 0 : 1) + (int)Binding.FormOf(node);
-            var function = node is PropertyAccessorKoto accessor && HirTables.Op(node) == HirOp.Body ? CallPlan.Accessor(accessor)
+            var function = node is PropertyAccessorKoto accessor && HirTables.Op(node) == HirOp.Body ? CallPlan.Accessor(binding, accessor)
                 : node is FunctionKoto && HirTables.Op(node) is HirOp.Body or HirOp.Closure ? HirTables.Symbol(node) : null;
             for (var i = -1; function is not null && i < ((FunctionKoto)function.Declaration).Parameters.Count; i++)
             {
-                found += CallPlan.Parameter(function, i) is null ? 0 : 1;
+                found += CallPlan.Parameter(binding, function, i) is null ? 0 : 1;
             }
         }
 
@@ -526,23 +526,23 @@ public sealed class HirColumnsTest
                 callable = callable.Parent;
             }
 
-            var function = callable is PropertyAccessorKoto accessor ? CallPlan.Accessor(accessor) : callable?.SymbolOf();
-            agree &= function is not null && Enumerable.Range(-1, ((FunctionKoto)function.Declaration).Parameters.Count + 1).Any(x => ReferenceEquals(CallPlan.Parameter(function, x), node.SymbolOf()));
+            var function = callable is PropertyAccessorKoto accessor ? CallPlan.Accessor(binding, accessor) : callable?.SymbolOf();
+            agree &= function is not null && Enumerable.Range(-1, ((FunctionKoto)function.Declaration).Parameters.Count + 1).Any(x => ReferenceEquals(CallPlan.Parameter(binding, function, x), node.SymbolOf()));
         }
 
         if (node is PropertyAccessorKoto { } syntax && op == HirOp.Body)
         {
-            var executing = CallPlan.Accessor(syntax);
+            var executing = CallPlan.Accessor(binding, syntax);
             var bound = Binding.Accessor(syntax);
             var parameters = new[] { bound.Receiver, bound.Input }.Where(static x => x is not null).ToArray();
             agree &= ReferenceEquals(executing.Type, bound.Result) && ((FunctionKoto)executing.Declaration).Parameters.Count == parameters.Length &&
-                parameters.Select((x, i) => ReferenceEquals(CallPlan.Parameter(executing, i)?.Type, x)).All(static x => x);
+                parameters.Select((x, i) => ReferenceEquals(CallPlan.Parameter(binding, executing, i)?.Type, x)).All(static x => x);
         }
 
         if (node is FunctionKoto { IsConstructor: true } constructor && op == HirOp.Body)
         {
             var self = AdtDef.ReceiverType(binding, constructor);
-            agree &= self is not null && ReferenceEquals(CallPlan.Parameter(constructor.SymbolOf()!, -1)?.Type, self);
+            agree &= self is not null && ReferenceEquals(CallPlan.Parameter(binding, constructor.SymbolOf()!, -1)?.Type, self);
             agree &= !constructor.IsImplicitConstructor || (constructor.Parameters.Count == 0 && (AdtDef.Base(binding.Types, self!) is null) == (constructor.BaseInitializer is null) &&
                 (constructor.BaseInitializer is null || CallPlan.Of(binding, constructor.BaseInitializer) is not null) &&
                 Enumerable.Range(0, AdtDef.Count(self!)).All(x => AdtDef.Field(self!, x).InitializerKoto is { } initializer && HirTables.Op(initializer) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error)));

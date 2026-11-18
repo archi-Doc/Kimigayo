@@ -706,7 +706,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         {
             var disposition = call.Kind == CalleeKind.Value ? default : call.Target.Definition;
             key += "." + (call.Kind != CalleeKind.Function ? call.Kind.ToString() : disposition.Kind != DispositionKind.Body ? disposition.Kind.ToString()
-                : CallPlan.Of(binding, node, 1) is not null ? "Expansion" : !call.DefaultArguments.IsEmpty ? "Default" : CallPlan.Parameter(call.Target, -1) is not null ? "Constructor" : "Receiver");
+                : CallPlan.Of(binding, node, 1) is not null ? "Expansion" : !call.DefaultArguments.IsEmpty ? "Default" : CallPlan.Parameter(binding, call.Target, -1) is not null ? "Constructor" : "Receiver");
         }
 
         var adjust = HirTables.AdjustOf(node);

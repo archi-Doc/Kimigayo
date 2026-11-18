@@ -210,10 +210,11 @@ public sealed class CallPlan
 
     /// <summary>Gets the function that executes a custom accessor (SPEC 11.3), which its calls target: its Type is the accessor's result,
     /// and its parameters (<see cref="Parameter"/>) are the receiver <c>self</c>, then the input <c>value</c>.</summary>
+    /// <param name="binding">The reader's Binding, whose executing functions are read.</param>
     /// <param name="accessor">An accessor with a body.</param>
     /// <returns>The executing function's symbol.</returns>
-    internal static BindingSymbol Accessor(PropertyAccessorKoto accessor)
-        => accessor.CodeContext.Compilation.Binding.AccessorFunction(Binding.Accessor(accessor)).BoundSymbol!;
+    internal static BindingSymbol Accessor(Binding binding, PropertyAccessorKoto accessor)
+        => binding.AccessorFunction(Binding.Accessor(accessor)).BoundSymbol!;
 
     /// <summary>Gets how a call of a function is selected (SPEC 6.4.6, 8.4): a virtual slot dispatches on its receiver's Type, a requirement
     /// to its conforming Type's witness, any other function is called directly.</summary>
@@ -228,13 +229,13 @@ public sealed class CallPlan
 
     /// <summary>Gets a function's parameter as its body reads it: slot <paramref name="index"/>, an accessor's <c>self</c> and <c>value</c>
     /// included, or at -1 the receiver <c>self</c> a constructor initializes or a destructor destroys (SPEC 6.3).</summary>
+    /// <param name="binding">The reader's Binding, whose parameter symbols are read.</param>
     /// <param name="function">A function, a closure or an accessor's executing function.</param>
     /// <param name="index">The parameter slot, or -1.</param>
     /// <returns>The parameter, or null at -1 of another function.</returns>
-    internal static BindingSymbol? Parameter(BindingSymbol function, int index)
+    internal static BindingSymbol? Parameter(Binding binding, BindingSymbol function, int index)
     {
         var declaration = (FunctionKoto)function.Declaration;
-        var binding = declaration.CodeContext.Compilation.Binding;
         return index < 0 ? binding.SpecialReceiver(declaration) : binding.ParameterSymbol(declaration, index);
     }
 
@@ -287,7 +288,7 @@ public sealed class CallPlan
         this.inputOriginCount = 0;
     }
 
-    internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    internal void Set(Binding binding, BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         this.Kind = KindOf(target);
         this.AdaptationSource = null;
@@ -349,7 +350,7 @@ public sealed class CallPlan
         lengthArguments.CopyTo(this.lengthArguments);
         if (target.Declaration is FunctionKoto { IsVirtual: true } original)
         {
-            original.CodeContext.Compilation.Binding.SelectVirtualCall(this, original); // The virtual fields are read only for this kind.
+            binding.SelectVirtualCall(this, original); // The virtual fields are read only for this kind.
         }
     }
 

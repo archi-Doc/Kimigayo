@@ -816,8 +816,8 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var nodes = Reachable(c.Kotonoha);
-        var accessors = nodes.OfType<PropertyAccessorKoto>().Where(static x => HirTables.Op(x) == HirOp.Body).Select(static x => CallPlan.Accessor(x))
-            .Select(static x => x.Name + ":" + string.Join(',', ((FunctionKoto)x.Declaration).Parameters.Select((_, i) => CallPlan.Parameter(x, i)!.Name)));
+        var accessors = nodes.OfType<PropertyAccessorKoto>().Where(static x => HirTables.Op(x) == HirOp.Body).Select(x => CallPlan.Accessor(c.Binding, x))
+            .Select(x => x.Name + ":" + string.Join(',', ((FunctionKoto)x.Declaration).Parameters.Select((_, i) => CallPlan.Parameter(c.Binding, x, i)!.Name)));
         Assert.Equal(["item.Get:", "item.Set:value", "level.Get:self", "level.Set:self,value", "doubled.Get:self", "doubled.Set:self,value"], accessors);
         var tally = nodes.OfType<FunctionKoto>().Single(static x => x.IsImplicitConstructor);
         Assert.Equal(("Counter", 1), (CallPlan.Of(c.Binding, tally.BaseInitializer!)!.Target.Scope.Owner.SymbolOf()!.Name, AdtDef.Count(AdtDef.ReceiverType(c.Binding, tally)!)));

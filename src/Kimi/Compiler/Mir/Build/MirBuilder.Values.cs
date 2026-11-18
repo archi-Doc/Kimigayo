@@ -446,7 +446,7 @@ internal sealed partial class MirBuilder
     private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // Whether a Place is of Type Never: the Never value or a named Place, neither of which has a referent to borrow or view.
-    private bool IsNever(MirPlace place) => MirTypes.IsNever(this.body, this.body.TypeOf(place));
+    private bool IsNever(MirPlace place) => MirTypes.IsNever(compilation.Types, this.body, this.body.TypeOf(place));
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
     private void Use(MirPlace destination, in MirOperand operand, Koto node)
