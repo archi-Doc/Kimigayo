@@ -191,7 +191,7 @@ internal sealed partial class FunctionCodegen
     {
         var component = this.module.Layout.Component(handle)!;
         var field = AdtDef.IndexOf(component, name);
-        return (record.Layout.FieldOffsets.Span[field], Layout.Row(AdtDef.FieldType(component, field)!).Layout);
+        return (record.Layout.FieldOffsets.Span[field], Layout.Row(AdtDef.FieldType(this.typeContext, component, field)!).Layout);
     }
 
     // An address a constant number of bytes past another: the same address for none.

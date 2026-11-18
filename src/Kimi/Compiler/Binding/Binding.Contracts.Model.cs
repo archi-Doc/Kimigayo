@@ -135,6 +135,15 @@ public sealed class BoundConformance
 
     internal List<BoundConformancePath> PathStorage { get; } = new();
 
+    // Rule (a) (ImplTable): the point of the identity's first path and of its last, and, for a base identity, its paths before the last
+    // later point's join (its paths at point 1 while every base row registers at point 1 or 2: ImplTable's premise); written by the pass
+    // that registers it.
+    internal ImplTable.AdmissionPoint Point { get; private set; }
+
+    internal ImplTable.AdmissionPoint LastPoint { get; private set; }
+
+    internal List<BoundConformancePath>? PointOnePaths { get; private set; }
+
     internal IsKoto? DirectClause { get; set; }
 
     internal bool Invalid { get; set; }
@@ -169,6 +178,9 @@ public sealed class BoundConformance
 
     public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind) => this.UnconditionalPath?.GetPropertyWitness(requirement, kind);
 
+    // The base store's freeze (ImplTable.Freeze): the identity's state is current in every later pass.
+    internal void Freeze() => this.Stamp = Binding.Frozen;
+
     // The identity's state at the start of a pass, made current for it.
     internal void ResetPass(ulong pass)
     {
@@ -178,6 +190,25 @@ public sealed class BoundConformance
         this.DirectClause = null;
         this.PathStorage.Clear();
         this.Listed = false;
+        (this.Point, this.LastPoint) = (ImplTable.AdmissionPoint.PassStart, ImplTable.AdmissionPoint.PassStart);
+        this.PointOnePaths?.Clear();
+    }
+
+    // A path joins the identity at its registration (ImplTable.Register), at its registrar step's point (rule (a)).
+    internal void AddPath(BoundConformancePath path, ImplTable.AdmissionPoint point)
+    {
+        if (this.PathStorage.Count == 0)
+        {
+            this.Point = point;
+        }
+        else if (point > this.LastPoint && this.store.IsBase)
+        {
+            (this.PointOnePaths ??= new()).Clear(); // Only a pass without the library reads it (ImplTable.PathsOf), and only for a base row.
+            this.PointOnePaths.AddRange(this.PathStorage);
+        }
+
+        this.LastPoint = point;
+        this.PathStorage.Add(path);
     }
 
     // A pooled identity taken for a new key; stale, so its first access resets the rest.
@@ -298,6 +329,9 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal bool Active { get; set; }
 
+    // Rule (a) (ImplTable): the registrar step's point at the path's registration.
+    internal ImplTable.AdmissionPoint Point { get; set; }
+
     internal bool Checking { get; set; }
 
     // The requests that reached it while it is being verified (Binding.ReentryRead), until its verification ends. Temporary carrier
@@ -364,6 +398,9 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
 
+    // The base store's freeze (ImplTable.Freeze): the path's state is current in every later pass.
+    internal void Freeze() => this.Stamp = Binding.Frozen;
+
     // The path's state at the start of a pass, made current for it: the verification flags, witnesses and their maps, associated and
     // inference storage, the per-pass satellites (requirement matches, published inference, the associated bindings' state) and the
     // scope; what the registration writes and the kept satellites stay.
@@ -395,6 +432,7 @@ public sealed class BoundConformancePath : ICheckCause
         }
 
         this.Scope.Reset();
+        this.Point = ImplTable.AdmissionPoint.PassStart;
     }
 
     // The Front's RR2: a pooled path taken for a new key, emptied of every fact of its earlier conformance (the kept satellites, the

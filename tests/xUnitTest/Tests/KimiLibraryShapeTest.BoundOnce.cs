@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Reflection;
+using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -10,23 +11,190 @@ using Printer = XunitTest.SemanticSnapshotTest.SemanticPrinter;
 namespace XunitTest;
 
 // PLAN G949 Stage 1 (the design's coverage rows c13 and c17): the library pass binds the Kimi library once per compilation, and every
-// later Bind is a program pass over the source modules. c13 fails at dev a63b1598b and is Explicit until G949 S1-1 lands the library
-// pass; c17 passes since S1-e (S1-1's SyntaxTable refusal lands only after it), its corpus row Explicit as the library-layer corpus row is.
+// later Bind is a program pass over the source modules. c13's node half passes from G949 S1-r1b's split (the library pass binds the
+// library's nodes into the layer's part), its version half from S1-1's freeze; c17 passes since S1-e (S1-1's SyntaxTable refusal lands
+// only after it), its corpus row Explicit as the library-layer corpus row is.
 public partial class KimiLibraryShapeTest
 {
     // c13 (bound once): after the first Bind, a second Bind's node table holds the program's nodes only, while its Result keeps the
-    // library layer's counts (design R1.1, c15). S1-1 adds the library's publication version (R1.3), unchanged by the second pass.
-    [Fact(Explicit = true)] // Until G949 S1-1.
+    // library layer's counts (design R1.1, c15). PLAN G949 S1-1 (R1.3, s11-design 1.4): the library's publication version, set by the
+    // first Bind's freeze, is nonzero and unchanged, with the library table's count and the layer's counts, after a second Bind,
+    // Analyze, CheckBound, a Provisional then Final Bind and an edit then a Bind; and it is per compilation (G949 ruling 174, the
+    // Middle's MR-3): a second compilation's comes from its own Binding's runs, whatever the first's. Before S1-1 each run's library
+    // pass published it anew.
+    [Fact]
     public void ASecondBindBindsNoLibraryNode()
+    {
+        var c = Hello();
+        var first = c.Bind();
+        Assert.True(first.IsComplete);
+        var (version, count, counts) = (HirTables.LibraryVersion(c), c.Library.Kotonoha.Syntax.Count, c.Library.Layer.Part.Counts);
+        Assert.NotEqual(0ul, version);
+        var second = c.Bind();
+        Assert.Equal(first, second);
+        Assert.DoesNotContain(c.Binding.Semantics.BoundNodes, x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+        Unchanged();
+        c.Analyze();
+        Unchanged();
+        Assert.True(c.Binding.CheckBound().IsComplete);
+        Unchanged();
+        c.Binding.Bind(BindingMode.Provisional);
+        Assert.True(c.Bind().IsComplete);
+        Unchanged();
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        Assert.True(c.Bind().IsComplete);
+        Unchanged();
+        var other = Hello();
+        Assert.True(other.Bind().IsComplete);
+        Assert.Equal(version, HirTables.LibraryVersion(other));
+        Unchanged();
+
+        void Unchanged()
+        {
+            Assert.Equal(version, HirTables.LibraryVersion(c));
+            Assert.Equal(count, c.Library.Kotonoha.Syntax.Count);
+            Assert.Equal(counts, c.Library.Layer.Part.Counts);
+        }
+
+        static Compilation Hello()
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            return c;
+        }
+    }
+
+    // c4/c15 (PLAN G949 S1-1, B2; s11-design 1.2 "Mode", E2): the library pass runs Final whatever the Bind's mode, so no library fact S1-1
+    // freezes is a Provisional pass's. After a Provisional first Bind of Hello the layer's part holds a Final first Bind's counts and
+    // obligations, and the Bind's Result composes them with the program part's Provisional counts (c15's declared Provisional
+    // difference: before B2 the layer's counts were the Provisional pass's). The library pass's publication is the library module's
+    // (LibraryVersion), never the program's, so the program's modules are published after the Provisional Bind (PublishHir) and their
+    // MIR is a Final Bind's.
+    [Fact]
+    public void AProvisionalBindComposesTheLibrarysFinalCounts()
+    {
+        var (final, provisional) = (Hello(BindingMode.Final), Hello(BindingMode.Provisional));
+        var layer = provisional.Library.Layer.Part;
+        Assert.Equal(final.Library.Layer.Part.Counts, layer.Counts);
+        Assert.Equal(final.Library.Layer.Part.Obligations.Select(static x => (x.Kind, x.Use.SyntaxId, x.Deadline)), layer.Obligations.Select(static x => (x.Kind, x.Use.SyntaxId, x.Deadline)));
+        var program = ((Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(provisional.Binding)!).Counts;
+        var (resolved, unresolved, invalid) = (layer.Counts.ResolvedCount + program.ResolvedCount, layer.Counts.UnresolvedCount + program.UnresolvedCount, layer.Counts.InvalidCount + program.InvalidCount);
+        Assert.Equal(new BindingResult(BindingMode.Provisional, resolved, unresolved, invalid), provisional.Binding.Result);
+        Assert.Equal(ProgramMir(final), ProgramMir(provisional));
+
+        static Compilation Hello(BindingMode mode)
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            Assert.Equal(mode, c.Binding.Bind(mode).Mode);
+            return c;
+        }
+
+        static string ProgramMir(Compilation c)
+        {
+            var mir = new StringBuilder();
+            MirDump.Write(c.ConstructMir(), 0, mir);
+            Assert.NotEqual(0, mir.Length);
+            return mir.ToString();
+        }
+    }
+
+    // PLAN G949 S1-r1b (r1b-5; review-s1r1 Re-check 3, RC-a): the import declarations are a part of each pass (PassPart), read after a
+    // Bind as one composed list, so the library's imports (Windows.kimi's two kernel32 functions), which the Backend lays out through
+    // TyCtxt.Imports, are listed after a first and a second Bind, and from the split after a program pass that declares none.
+    [Fact]
+    public void TheLibrarysImportsAreListedAfterEachBind()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
-        var first = c.Bind();
-        Assert.True(first.IsComplete);
-        var second = c.Bind();
-        Assert.Equal(first, second);
-        Assert.DoesNotContain(c.Binding.Semantics.BoundNodes, x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            Assert.Equal(
+                ["queryPerformanceCounter", "queryPerformanceFrequency"],
+                c.Types.Imports.Where(x => ReferenceEquals(x.Declaration.Kotonoha, c.Library.Kotonoha)).Select(static x => x.Name));
+        }
+    }
+
+    // PLAN G949 S1-r1b (s1r1-design 8.1, v9, at the layer below MIR's holding check: no existing row observes a library slot's keepers,
+    // r1b/plan.md 11.3): a library slot's keepers are current after each Bind. A slot's list is found by the parts' one find (the
+    // library layer's part first) and is current when its Pass is the RequirementCall of the part that holds it, the requirement
+    // counter's value at that part's latest call. On the trial split without the parts the program pass's calls advanced the one
+    // counter, and every read of a library slot's keepers after the Bind was stale (357,327 reads over 28 classes). The library keeps
+    // 59 slots today (BorrowingIterator's `source` among them); the same slots are current after a second Bind.
+    [Fact]
+    public void ALibrarySlotsKeepersAreCurrentAfterEachBind()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var layer = c.Library.Layer.Part;
+        var first = -1;
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            var kept = own.Keepers.Concat(layer.Keepers)
+                .Where(x => x.Value.Count != 0 && x.Key.Origin.Binder is { } binder && ReferenceEquals(binder.Kotonoha, c.Library.Kotonoha)).ToArray();
+            Assert.NotEmpty(kept);
+            foreach (var (slot, list) in kept)
+            {
+                var holder = Binding.PassPart.Find(layer.Keepers, own.Keepers, slot, out var found);
+                Assert.Same(list, found);
+                Assert.Equal(ReferenceEquals(holder, layer.Keepers) ? layer.RequirementCall : own.RequirementCall, list.Pass);
+            }
+
+            first = first < 0 ? kept.Length : first;
+            Assert.Equal(first, kept.Length);
+
+            // Disjointness (v9): a slot is kept only by its declaration's pass, so Binding's own part holds no library slot and the
+            // layer's no program slot (Keep writes the running part without the find).
+            Assert.DoesNotContain(own.Keepers.Keys, x => x.Origin.Binder is { } binder && ReferenceEquals(binder.Kotonoha, c.Library.Kotonoha));
+            Assert.DoesNotContain(layer.Keepers.Keys, x => x.Origin.Binder is { } binder && !ReferenceEquals(binder.Kotonoha, c.Library.Kotonoha));
+        }
+    }
+
+    // PLAN G949 S1-r1b (s1r1-design 8.2, v10): the Contract shapes are a part of each pass, and RecursiveContracts reads every pass's
+    // shapes after a Bind. No library Contract is recursive today (SPEC 8.3.3: none of the library's 24 Contracts constrains an
+    // associated Type of its own to itself), so no program can show a lost library shape: on the trial split without the part, 54
+    // walks after the Bind saw no library shape and no answer moved. The unit that declares the first recursive library Contract
+    // removes this Fact and adds the RecursiveBase row over it (RecursiveContractTest.AProjectionHasARecursiveBase).
+    [Fact]
+    public void TheLibraryDeclaresNoRecursiveContract()
+    {
+        var c = Bound(string.Empty);
+        var recursive = (List<BindingSymbol>)typeof(Binding).GetMethod("RecursiveContracts", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, null)!;
+        Assert.Empty(recursive.Select(static x => x.Name));
+    }
+
+    // PLAN G949 S1-r1b (review-s1r1b Part 2, C1; F's ruling 176): rule (a)'s premise (ImplTable). The base keeps one earlier snapshot per
+    // identity and per Type list, exact while every base row registers at point 1 (the Self-clause registrar) or 2 (the conditional
+    // registrar). The inherited registrar registers after point 2 (point 3, and again after BindConstraints and at ConformancesOf's
+    // demand, past every point), so a library struct with a base (SPEC 6.2.2) would give base rows that a pass without the library reads
+    // wrongly at step 1 and never admits after its last point. No library struct names a base today: a tripwire, true today.
+    [Fact]
+    public void TheLibraryDeclaresNoStructWithABase()
+    {
+        var bases = KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<StructKoto>().Where(static x => x.BaseClause is not null).Select(static x => Line(x)).ToArray();
+        var build = "A library struct names a base, so rule (a)'s base rows of the inherited registrar register past point 2: before it " +
+            "lands, ImplTable keeps per-point prefixes (an identity's paths, a Type's list and the composed lists' prefix at each point, " +
+            "the inherited registrar's points admitted) in place of the one point-1 snapshot (PointOnePaths, pointOneLists): ";
+        Assert.True(bases.Length == 0, build + string.Join(", ", bases));
+    }
+
+    // PLAN G949 S1-r1b (commit 9's premise; review-s1r1b Part 3, F's ruling 179): the documents' unnamed aliases are a per-pass map
+    // (PassPart.AliasesByDocument), and the library declares no unnamed alias, so the library pass's PrepareAliases prunes no entry a
+    // program document needs and the layer's map stays empty. A tripwire, true today: the unit that gives the library its first unnamed
+    // alias checks that each pass keeps and prunes its own documents' entries only.
+    [Fact]
+    public void TheLibraryDeclaresNoUnnamedAlias()
+    {
+        var c = Bound(string.Empty);
+        Assert.Empty(KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<AliasKoto>().Where(static x => x.Name is null).Select(static x => Line(x)));
+        Assert.Empty(c.Library.Layer.Part.AliasesByDocument);
     }
 
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).
@@ -69,6 +237,39 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheLibraryDeclaresNoBoundedCallableClause()
         => Assert.Empty(KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<IsKoto>().Where(static x => x.EffectBounds.Count != 0).Select(static x => Line(x)));
+
+    // PLAN G949 S1-r1b (v7; s1r1-design M6): the library binds in one run. The empty program's Final Bind leaves no known base and no
+    // second run, so a restart's second run of the library pass (secondRun true) repeats the library's one run (v2's r1b clause:
+    // TheLibraryLayerAfterARestartIsTheEmptyPrograms). A precondition, true today; a library base clause that names a projection fails
+    // here first.
+    [Fact]
+    public void TheLibraryBindsInOneRun()
+    {
+        var c = Bound(string.Empty);
+        Assert.False((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        var known = (System.Collections.ICollection?)typeof(Binding).GetField("knownBases", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding);
+        Assert.True(known is null or { Count: 0 });
+    }
+
+    // PLAN G949 S1-r1b (r1b plan section 1, step 0; s1r1-design 8.10's first branch): the library declares no shape contract and no
+    // library pair is a parameter-shape conflict, so the shape lists hold no library row a program pass's reset drops, and they stay per
+    // pass (ResetParameterShapes). A tripwire, true today: the unit that gives a library function its first shape contract fails here
+    // and makes 8.10's keyed PassPart store.
+    [Fact]
+    public void TheLibraryDeclaresNoShapeContract()
+    {
+        var c = Bound(string.Empty);
+        var heads = 0;
+        foreach (var head in c.Library.Kotonoha.Syntax.Hir.Families.ShapeContractHeads.Enumerate(c.Binding))
+        {
+            heads += head == 0 ? 0 : 1; // A row is its first shape contract's index + 1.
+        }
+
+        Assert.Equal(0, heads);
+        Assert.Empty((System.Collections.ICollection)typeof(Binding).GetField("shapeContracts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        var conflicts = (System.Collections.IDictionary)typeof(Binding).GetField("parameterShapeConflicts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.DoesNotContain(conflicts.Keys.Cast<Koto>(), x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+    }
 
     // G949 D2b-d's d12 (N5-3): the library's explicit specializations (SPEC 8.13: tryResolve's, writer's and format's) are their
     // originals' after a second Bind of a program that runs one (an i128 formatted), as MIR's Implementation reads them through

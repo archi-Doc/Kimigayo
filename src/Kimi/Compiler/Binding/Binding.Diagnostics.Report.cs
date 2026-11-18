@@ -38,7 +38,7 @@ public sealed partial class Binding
 
         foreach (var node in this.derivedIssuesView)
         {
-            node.ReportDerived(DiagnosticRequirement.Binding(node.BindingFailure), this.PrerequisiteKeys(node));
+            node.ReportDerived(DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
         }
 
         if (this.Result.Mode == BindingMode.Final)
@@ -50,7 +50,8 @@ public sealed partial class Binding
             // first incomplete node. It marks a missing report, a compiler defect to repair where it occurs.
             if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) && this.FirstIncompleteNode() is { } first)
             {
-                first.ReportDerived(DiagnosticRequirement.Binding(first.BindingFailure == BindingFailure.None ? BindingFailure.MissingType : first.BindingFailure), [DiagnosticKey.Unresolved]);
+                var failure = this.RecordedFailure(first);
+                first.ReportDerived(DiagnosticRequirement.Binding(failure == BindingFailure.None ? BindingFailure.MissingType : failure), [DiagnosticKey.Unresolved]);
             }
         }
     }
@@ -83,12 +84,13 @@ public sealed partial class Binding
     private static long? ImplementationLimit(BindingFailure failure)
         => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
 
-    // SPEC 23.2.2's fallback site: the first node not Resolved, the program part's nodes first, then the library layer's.
+    // SPEC 23.2.2's fallback site: the first node whose recorded state is not Resolved, the program part's nodes first, then the library
+    // layer's.
     private Koto? FirstIncompleteNode()
     {
         foreach (var node in this.nodesView)
         {
-            if (node.BindingState != BindingState.Resolved)
+            if (this.RecordedState(node) != BindingState.Resolved)
             {
                 return node;
             }

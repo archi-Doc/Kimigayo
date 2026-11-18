@@ -345,10 +345,12 @@ public partial class TypeIdentityTest
     // PLAN G881 with G881b (the owner's O-321 (b); SPEC 8.3.3 Limits, 23.1.1): a request whose extension rounds pass
     // Binding.PremiseClosureLimit is refused, and a judgment that rests on it is a resource failure, never Unknown or Refuted. Pq's
     // path equation to a deeper projection (allowed) supplies one deeper identity a round, so `T.(Pq).Up is Inner` never ends by
-    // itself (pathqn above; before the bound it did not finish). Each row is a whole program after CyclePrelude. Each use whose
-    // request is refused has the limit's record, PremiseClosureLimit_Kd, alone (pq2, pqmix beside a proven use, pqorn, pqand,
-    // pqdn, pqodd); a request refused where no check's frame is open (a bare acquisition's Copy, judged at HIR publication) has it
-    // once, at the function whose premises it read (pqcopy, pqcopy2); a judgment other evidence proves stands and nothing is
+    // itself (pathqn above; before the bound it did not finish). Each row is a whole program after CyclePrelude. A declaration
+    // whose requests are refused has the limit's record, PremiseClosureLimit_Kd, once (SPEC 8.3.3 Limits: "reported once ... at
+    // the declaration that reaches it"), at its first refused use, and a later refused use rests on it (pq2: two uses, one record;
+    // F's ruling 206), alone (pqmix beside a proven use, pqorn, pqand, pqdn, pqodd); a request refused where no check's frame is
+    // open (a bare acquisition's Copy, judged at HIR publication) has it at the function whose premises it read (pqcopy, pqcopy2);
+    // a judgment other evidence proves stands and nothing is
     // recorded (pqor, pqoro: a disjunction's Proven operand; before the bound they did not finish); a request proven within the
     // bound is proven (pqd1, pqd2, pqcopyv); a value that is moved needs no such judgment (pqmovev, pqletv, pqrefv ask none;
     // pqcallv's is MIR's Copy question after the pass, which keeps Unknown and fails no node; before the bound it did not finish).
@@ -368,7 +370,7 @@ public partial class TypeIdentityTest
         { "xstructv", Pq + "struct Box<X>\n    X is Inner\n    var v: X\nfunc f<T>(x: ref/Box<T.(Pq).Up>)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    return\n", string.Empty },
         { "xcond", Pq + "contract Flag\nfunc needF<X>(x: ref/X)\n    X is Flag\n    return\nstruct Wrap<X>\n    var v: X\n    Self is Flag when X is Inner\nfunc f<T>(w: ref/Wrap<T.(Pq).Up>)\n    T is Pq\n    needF(w)\n", "PremiseClosureLimit_Kd" },
         { "xcondv", Pq + "contract Flag\nfunc needF<X>(x: ref/X)\n    X is Flag\n    return\nstruct Wrap<X>\n    var v: X\n    Self is Flag when X is Inner\nfunc f<T>(w: ref/Wrap<T.(Pq).Up>)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    needF(w)\n", string.Empty },
-        { "pq2", Pq + "func f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    need(x)\n    need(x)\n", "PremiseClosureLimit_Kd PremiseClosureLimit_Kd" },
+        { "pq2", Pq + "func f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    need(x)\n    need(x)\n", "PremiseClosureLimit_Kd" },
         { "pqmix", Pq + "func f<T, V>(x: ref/T.(Pq).Up, o: ref/V)\n    T is Pq\n    V is Other\n    needO(o)\n    need(x)\n", "PremiseClosureLimit_Kd" },
         { "pqcopy", Pq + "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    return x\n", "PremiseClosureLimit_Kd" },
         { "pqcopyv", Pq + "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Up is Copy\n    return x\n", string.Empty },
@@ -417,11 +419,14 @@ public partial class TypeIdentityTest
     // The Middle's C-335 re-check, whole programs (no prelude; pinned as this head gives them). F1, the owner's open O-345 (SPEC
     // 8.3.3 Limits' last sentence; a STATUS limit and a PLAN row to come): whether the bound is reached depends on how the asked Type
     // is spelled: x at `T.(Pq).Up` reaches it (spm-a, the limit's record at `need(x)`), the same Type spelled `T.Next^2.Up` or
-    // `T.Next^4.Up` does not (spm-b, spm-c: accepted); dev rejects all three (UnprovenConstraint_Kd). F2 (a PLAN open issue to
+    // `T.Next^4.Up` does not (spm-b, spm-c: accepted); dev rejects all three (UnprovenConstraint_Kd). spm-a2 (c2-4b's dr.a2, F's
+    // ruling 206): spm-a asking `need(x)` twice has the declaration's one record (SPEC 8.3.3; dev 617c3db04 gives
+    // UnprovenConstraint_Kd at each use, G881b before ruling 206 the limit's record at each). F2 (a PLAN open issue to
     // come): the dg and dm forms without another Contract declaring the member (-solo) are refused at the call as with the prelude.
     public static TheoryData<string, string, string> RoundBoundProgramRows => new()
     {
         { "spm-a", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    need(x)\npublic func main() => ()\n", "PremiseClosureLimit_Kd" },
+        { "spm-a2", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    need(x)\n    need(x)\npublic func main() => ()\n", "PremiseClosureLimit_Kd" },
         { "spm-b", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Next.(Pq).Next.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    need(x)\npublic func main() => ()\n", string.Empty },
         { "spm-c", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    need(x)\npublic func main() => ()\n", string.Empty },
         { "dg-2-solo", "contract Inner\n    associate F\n    Self.(Inner).F is Callable<(raw/u8) -> Self>\n    func get(self: ref/Self) -> ref/Self.(Inner).F\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    let g = x.get()\n    return\npublic func main() => ()\n", "PremiseClosureLimit_Kd" },
@@ -440,6 +445,72 @@ public partial class TypeIdentityTest
         var found = string.Join(" ", CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
         Assert.True(codes == found, row + ": " + found);
     }
+
+    private const string PqUses = "func f<T>(x: ref/T.(Pq).Up, y: ref/T.(Pq).Up)\n    T is Pq\n";
+
+    private const string HasItems = "contract Has1\n    associate Item is Inner\ncontract Has2\n    associate Item is Inner\ncontract Has3\n    associate Item is Inner\n";
+
+    private const string BoxWhen = HasItems + "struct Box<T>\n    var v: i32\n    Self is Has1 when T is Pq\n        associate Has1.Item is T.(Pq).Up\n" +
+        "    Self is Has2 when T is Pq\n        associate Has2.Item is T.(Pq).Up\n";
+
+    // The delta re-check's ov3, line for line: two paths to one conformance (D: C), C's under `T.Next^68.Up is Inner`, D's under that,
+    // `T.Next^69.Up is Inner` and `T is Copy`; D's premise closure reaches the bound.
+    private static readonly string Ov3SelfD = "    Self is D when T is Pq, T" + string.Concat(Enumerable.Repeat(".(Pq).Next", 68)) + ".(Pq).Up is Inner, T" +
+        string.Concat(Enumerable.Repeat(".(Pq).Next", 69)) + ".(Pq).Up is Inner, T is Copy";
+
+    private static readonly string Ov3 = "contract Inner\n    associate Z\n" + Pq + "contract C\n    associate Item\ncontract D: C\nstruct Box<T>\n    var v: i32\n" +
+        "    Self is C when T is Pq, T" + string.Concat(Enumerable.Repeat(".(Pq).Next", 68)) + ".(Pq).Up is Inner\n" +
+        "        associate C.Item is T.(Pq).Up.(Inner).Z\n" + Ov3SelfD + "\n        associate C.Item is T.(Pq).Next.(Pq).Up.(Inner).Z\npublic func main() => ()\n";
+
+    // PLAN G881b, F's ruling 216 (SPEC 8.3.3 Limits: the limit "is reported once ... at the declaration that reaches it"; 8.2.1,
+    // 7.5): the declaration whose premise closure reaches the bound is the nearest one with a Constraint region, so a refused use in
+    // an `if`, `do`, `while` or `for` body, a match arm or a Closure (none states premises: a Closure's body is an ExecutableBody,
+    // F.9.1) is its definition's and rests on the definition's one record, at its first refused use (the review's tw-blk, tw-blk2,
+    // tw-do, tw-while with the nested use on `y`, so the record's line names the use: N1); a named function written in the body is
+    // its own declaration (tw-local: two records); a Copy judged with no check frame open records at the declaration (tw-copyblk).
+    // Each row is a whole declaration after CyclePrelude and Pq; b0cec6e90 gave the block's, arm's or Closure's own record too.
+    // F's ruling 220 (SPEC 8.2.3, 8.8.1: a conditional conformance's scope is a constrained declaration of its own): a conformance
+    // path's requests extend the closure of the declaration whose premises it extends, so each conditional conformance has its own
+    // record (tw-cc2, tw-cc3; de975db32 gave the Type's one) and a direct conformance's are its Type's (tw-ccdir: one record).
+    public static TheoryData<string, string, string> RoundBoundDeclarationRows => new()
+    {
+        { "tw-blk", PqUses + "    need(x)\n    if true\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-blk2", PqUses + "    if true\n        need(y)\n    need(x)\n", "PremiseClosureLimit_Kd: need(y)" },
+        { "tw-do", PqUses + "    need(x)\n    do\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-while", PqUses + "    need(x)\n    while true\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-for", PqUses + "    need(x)\n    for _ in 0..2\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-arm", PqUses + "    need(x)\n    match 1\n        1 => need(y)\n        _ => ()\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-closure", PqUses + "    need(x)\n    let g = func () => need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-local", PqUses + "    need(x)\n    func g<U>(z: ref/U.(Pq).Up)\n        U is Pq\n        need(z)\n", "PremiseClosureLimit_Kd: need(x) | PremiseClosureLimit_Kd: need(z)" },
+        { "tw-copyblk", "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    if true\n        return x\n    return x\n", "PremiseClosureLimit_Kd: func f<T>(x: T.(Pq).Up) -> T.(Pq).Up" },
+        { "tw-cc2", BoxWhen, "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq" },
+        { "tw-cc3", BoxWhen + "    Self is Has3 when T is Pq\n        associate Has3.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq | PremiseClosureLimit_Kd: Self is Has3 when T is Pq" },
+        { "tw-ccdir", HasItems + "struct Box<T>\n    T is Pq\n    var v: i32\n    Self is Has1\n    associate Has1.Item is T.(Pq).Up\n    Self is Has2\n    associate Has2.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1" },
+    };
+
+    [Theory]
+    [MemberData(nameof(RoundBoundDeclarationRows))]
+    public void ADeclarationsLimitIsRecordedOnceAtItsFirstRefusedUse(string row, string source, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(row, CyclePrelude + Pq + source + "public func main() => ()\n", records);
+
+    // F's ruling 222 (SPEC 8.3.3 Limits, 23.1.2): a check that reads a declaration the premise-closure limit refused rests on the
+    // limit's record and keeps none of its own: in ov3 the agreement of C's two paths (at `Self is C`) and the use check of `Self is D`
+    // read D's conditional conformance, whose closure reached the bound (8d4e74206 gave each an InvalidConstraint_Kd beside the limit).
+    // ov3-own: C's specification names no associate of Inner, an independent failure whose records stay (23.1.2).
+    public static TheoryData<string, string, string> RefusedDeclarationReadRows => new()
+    {
+        { "ov3", Ov3, "PremiseClosureLimit_Kd: " + Ov3SelfD.Trim() },
+        {
+            "ov3-own", Ov3.Replace("(Inner).Z\n    Self is D", "(Inner).Zz\n    Self is D", StringComparison.Ordinal),
+            "InvalidAssociatedType_Kd: " + Ov3.Split('\n')[11].Trim() + " | PremiseClosureLimit_Kd: " + Ov3SelfD.Trim() +
+            " | UnresolvedBinding_Kd: associate C.Item is T.(Pq).Up.(Inner).Zz"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(RefusedDeclarationReadRows))]
+    public void ACheckReadingARefusedDeclarationRestsOnItsLimit(string row, string source, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(row, source, records);
 
     // PLAN G881 with G881b: a query made after the pass has counted its failures fails no node. MIR's destruction analysis asks Copy
     // of `T.(Pq).Up` (pqcallv, valid), a request that reaches the round bound: it keeps Unknown, as before the bound's rounds, and a

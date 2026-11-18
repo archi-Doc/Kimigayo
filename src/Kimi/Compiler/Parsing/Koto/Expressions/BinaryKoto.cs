@@ -252,17 +252,11 @@ public sealed class ConversionKoto : BinaryKoto
     }
 
     [Transitional("R7", Reason = "Semantic forwarding into HIR plan rows; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
-    internal InvocationKoto? CreationCall => this.HasCurrentBinding && this.ConversionBinding == ConversionBinding.ObjectCreation ? this.CreationStorage : null;
-
-    [Transitional("R7", Reason = "Semantic forwarding into HIR plan rows; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal ExplicitAdaptationPlan? AdaptationStorage
     {
         get => HirTables.PlanOf(this).Plan as ExplicitAdaptationPlan;
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
-
-    [Transitional("R7", Reason = "Semantic forwarding into HIR plan rows; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
-    internal ExplicitAdaptationPlan? Adaptation => this.HasCurrentBinding && this.ConversionBinding == ConversionBinding.CaseAdaptation ? this.AdaptationStorage : null;
 
     /// <summary>Gets or sets the result of a direct-literal conversion folded at compile time (SPEC 13.5.4), as the
     /// sign-extended N-bit payload of the target Type, or null when the conversion runs on a value.</summary>

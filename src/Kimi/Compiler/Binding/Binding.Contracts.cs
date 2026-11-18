@@ -24,7 +24,7 @@ public sealed partial class Binding
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && this.impls.PathsOf(result).Count != 0 ? result : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -114,7 +114,7 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration) || identity.Paths.Count == 0)
+            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration) || this.impls.PathsOf(identity).Count == 0)
             {
                 continue;
             }
@@ -135,7 +135,7 @@ public sealed partial class Binding
     {
         foreach (var bound in this.boundContracts.Values)
         {
-            bound.Contract!.State = 0;
+            bound.Contract!.State = 0; // The running pass's own entries (PassPart.BoundContracts): a pass never resets another's.
         }
 
         this.ResetAssociatedInference();
@@ -143,8 +143,7 @@ public sealed partial class Binding
         this.reentryReads = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view is the pass's.
-        this.conformancesRegistered = false;
+        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view and step are the pass's.
 
         this.projectionUses.Clear();
         this.userIterations.Clear();
@@ -498,22 +497,22 @@ public sealed partial class Binding
             this.InvalidateAssociatedEvidence();
             foreach (var identity in this.impls.InPass.Identities)
             {
-                if (identity.PathStorage.Count != 0)
+                if (this.impls.PathsOf(identity).Count != 0)
                 {
                     this.failedCause = null;
                     this.conformanceChecks++;
-                    var frame = this.BeginConsultation(identity.PathStorage[0].Use); // The agreement's judgment is at its first path's use.
+                    var frame = this.BeginConsultation(this.impls.PathsOf(identity)[0].Use); // The agreement's judgment is at its first path's use.
                     var agreement = this.VerifyConformanceAgreement(identity);
                     this.conformanceChecks--;
                     var explicitPath = false;
-                    foreach (var path in identity.PathStorage)
+                    foreach (var path in this.impls.PathsOf(identity))
                     {
                         explicitPath |= path.InheritedFrom is null;
                     }
 
                     if (explicitPath || agreement == ConstraintProof.Error)
                     {
-                        this.RequireConstraintInFrame(identity.PathStorage[0].Use, agreement, mode, frame);
+                        this.RequireConstraintInFrame(this.impls.PathsOf(identity)[0].Use, agreement, mode, frame);
                     }
                     else
                     {

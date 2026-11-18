@@ -25,11 +25,11 @@ namespace Kimi.Compiler;
 internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? First = null, CallPlan? Second = null, int Evaluated = -1, bool Direct = false)
 {
     /// <summary>Gets the expansion of a published node, or null when its Op is none.</summary>
+    /// <param name="binding">The reader's Binding, whose current pass's plans are read.</param>
     /// <param name="node">The node.</param>
     /// <returns>The plan.</returns>
-    internal static ExpansionPlan? Of(Koto node)
+    internal static ExpansionPlan? Of(Binding binding, Koto node)
     {
-        var binding = node.CodeContext.Compilation.Binding;
         switch (HirTables.Op(node))
         {
             case HirOp.For:
@@ -38,7 +38,7 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
                 return new(ExpansionKind.Try);
             case HirOp.Interpolation:
                 var output = node.Parent as InvocationKoto;
-                return new(ExpansionKind.Format, Direct: node is InterpolatedStringKoto && output is { ArgumentNodes: [var text], BoundCall.Target.LibraryDeclaration: KimiDeclarationId.WriteLine } && ReferenceEquals(text, node));
+                return new(ExpansionKind.Format, Direct: node is InterpolatedStringKoto && output is { ArgumentNodes: [var text] } && binding.CallOf(output) is { Target.LibraryDeclaration: KimiDeclarationId.WriteLine } && ReferenceEquals(text, node));
             case HirOp.DictionaryLiteral:
                 return new(ExpansionKind.DictionaryLiteral);
             case HirOp.CompoundAssign:

@@ -82,7 +82,7 @@ public class VirtualCallSelectionTest
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride && x.SymbolOf()!.Scope.Owner is StructKoto { Name: "C" });
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "use");
         var outer = new CallPlan();
-        outer.Set(implementation.SymbolOf()!, BoundType.I32, null, [], [], declaringType: use.Parameters[0].Type.TypeOf()!.Components[0]);
+        outer.Set(c.Binding, implementation.SymbolOf()!, BoundType.I32, null, [], [], declaringType: use.Parameters[0].Type.TypeOf()!.Components[0]);
         var inner = syntax.CallOf()!;
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst!;
         Assert.Same(inner.VirtualImplementation, composed.Binder);

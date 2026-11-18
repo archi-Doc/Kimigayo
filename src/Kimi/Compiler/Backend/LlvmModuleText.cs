@@ -14,7 +14,7 @@
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
 // floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records and constants (RuntimeAbi), the abort reasons (AbortReasons)
 // and the target profile (WindowsProfile).
-// Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling; an expanded
+// Output: LLVM text written to the writer; a symbol's spelling after @; an expanded
 // runtime template; a floating constant's hexadecimal spelling bits.
 // Invariants: warm writes allocate nothing; a template is expanded in one ordered scan into one builder; each runtime ABI
 // definition marker of a template is spliced exactly once, every `{{` opens a marker and none is left unexpanded, or the template
@@ -30,8 +30,9 @@ using System.Text;
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.4).</summary>
-internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);
+/// <summary>A foreign function declaration: its C signature named by the symbol's spelling (ExternalName), the external symbol itself,
+/// which the generation result publishes for the link (R9-B1), and DllImport, the import-library form (SPEC 20.4, 22.6).</summary>
+internal readonly record struct ExternalFunction(FunctionAbi Abi, string Symbol, bool DllImport);
 
 /// <summary>Writes the syntax-free module frame of the LLVM text.</summary>
 internal static partial class LlvmModuleText

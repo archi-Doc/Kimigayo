@@ -152,7 +152,7 @@ public sealed partial class Binding
             }
 
             var result = destination ?? new CallPlan();
-            result.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: storage ? self : declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
+            result.Set(this, function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: storage ? self : declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
             if (!storage)
             {
                 this.ProjectWitnessCall(result, witness.BasePath, declaring);

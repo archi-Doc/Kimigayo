@@ -23,6 +23,9 @@ public class ForeignEmissionTest
             Console.writeLine("same")
         """;
 
+    private const string Encode = "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
+        "public func main()\n    var v: i32 = 0\n    unsafe => v = Native.encode(1)";
+
     [Fact]
     public void KernelImportCallsShareTheRuntimeDeclaration()
     {
@@ -125,10 +128,140 @@ public class ForeignEmissionTest
     [InlineData("?value@@YAHXZ", "\"?value@@YAHXZ\"")]
     [InlineData("a\"b\\c d", "\"a\\22b\\5Cc d\"")]
     [InlineData("é\t", "\"\\C3\\A9\\09\"")]
-    public void ExternalNamesRoundTrip(string symbol, string name)
+    public void ExternalNamesAreSpelled(string symbol, string name)
+        => Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
+
+    // R9-B1: the generation result states what the written module declares and requires for its link: each called import's external
+    // symbol, unspelled, with its dllimport form, one per symbol in declaration order (a kernel32 one the runtime declares included), the
+    // library and Kind of every validated import, called or not (SPEC 22.6: resolved when the program is built), and the output kind.
+    [Theory]
+    [InlineData(OutputKind.Application, "static")]
+    [InlineData(OutputKind.Library, "import")]
+    public void TheGenerationResultStatesTheModulesLinkFacts(OutputKind output, string kind)
     {
-        Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
-        Assert.Equal(symbol, LlvmModuleText.SymbolFromName(name));
+        var c = AnalyzeAs(
+            "group Native\n    #LibraryImport(\"codec\", \"?value@@YAHXZ\")\n    public unsafe func value() -> i32\n" +
+            "    #LibraryImport(\"codec\", \"unused\")\n    public unsafe func unused() -> i32\n" +
+            "    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+            "public func main()\n    var v: i32 = 0\n    var e: u32 = 0\n    unsafe => v = Native.value()\n    unsafe => e = Native.lastError()",
+            kind,
+            output);
+        using var writer = new StringWriter();
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
+        var module = c.Generated;
+        Assert.Equal(output, module.OutputKind);
+        Assert.Equal([("?value@@YAHXZ", kind == "import"), ("GetLastError", true)], module.Externals.Select(static x => (x.Symbol, x.DllImport)));
+        Assert.Equal(("codec", kind), Assert.Single(module.Libraries, static x => x.Library == "codec"));
+        Assert.Contains(("kernel32", "import"), module.Libraries);
+    }
+
+    // R9-B1: a symbol outside LLVM identifiers is published unspelled through a whole generation (SPEC 22.6: "the exact external symbol"),
+    // each declared under its spelling (LlvmModuleText.ExternalName), one per symbol in the order the calls request them.
+    [Fact]
+    public void EscapedSymbolsArePublishedUnspelled()
+    {
+        (string Literal, string Symbol)[] imports =
+            [("plain_name.$-1", "plain_name.$-1"), ("1digit", "1digit"), ("a\\\"b\\\\c d", "a\"b\\c d"), ("é\\t", "é\t"), ("\\u(1F600)", "\U0001F600")];
+        var source = "group Native\n" +
+            string.Concat(imports.Select(static (x, i) => $"    #LibraryImport(\"codec\", \"{x.Literal}\")\n    public unsafe func f{i}() -> i32\n")) +
+            "public func main()\n    var v: i32 = 0\n" + string.Concat(imports.Select(static (_, i) => $"    unsafe => v = Native.f{i}()\n"));
+        var c = Analyze(source, "import");
+        using var writer = new StringWriter();
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
+        Assert.Equal(imports.Select(static x => x.Symbol), c.Generated.Externals.Select(static x => x.Symbol));
+        foreach (var external in c.Generated.Externals)
+        {
+            Assert.True(external.DllImport);
+            Assert.Equal(LlvmModuleText.ExternalName(external.Symbol), external.Abi.Name);
+            Assert.Contains("declare dllimport i32 @" + external.Abi.Name + "()\n", writer.ToString());
+        }
+    }
+
+    // R9-B1: a test build's module is an Application whatever the project's output kind (Binding.Testing: the test runtime's entry), and
+    // it declares the imports its tests call.
+    [Fact]
+    public void ALibraryTestBuildPublishesAnApplication()
+    {
+        var c = Compilation.CreateForTest();
+        c.IsTestBuild = true;
+        c.Project.ProjectFile.OutputKind = OutputKind.Library;
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var source = "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
+            "#Test\nfunc encodes()\n    var v: i32 = 0\n    unsafe => v = Native.encode(1)\n";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        Assert.True(c.Check(), MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal(OutputKind.Application, c.Generated.OutputKind);
+        Assert.Equal([("encode", true)], c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)));
+    }
+
+    // R9-B1 (the generation entry's contract): the result exists only for the generation request that wrote the module, until the next
+    // generation request or analysis; a read without one is a broken contract, never a stale or partial list.
+    [Fact]
+    public void GeneratedBeforeAnyGeneration()
+        => Assert.Throws<InvalidOperationException>(() => Analyze(Encode, "static").Generated);
+
+    [Fact]
+    public void GeneratedAfterAFailedGeneration()
+    {
+        var c = Analyze(Encode, "static");
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal("encode", Assert.Single(c.Generated.Externals).Symbol);
+        var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Native").Members.OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single();
+        Assert.True(function.RemoveAttribute(function.AttributeChain!)); // A bodyless function without an import: check rejects it.
+        c.Bind();
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Throws<InvalidOperationException>(() => c.Generated);
+    }
+
+    [Fact]
+    public void GeneratedEndsWithTheNextAnalysis()
+    {
+        var c = Analyze(Encode, "static");
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal("encode", Assert.Single(c.Generated.Externals).Symbol);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Throws<InvalidOperationException>(() => c.Generated);
+    }
+
+    // R9-B1 (the Back's C-389 (c)): a warm analysis and generation calling a root module's import, a kernel32 one the runtime declares and
+    // a dependency's (Kimi.Time's Windows counter functions), and the read of every external's symbol and every library through the
+    // result, allocate nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("static")]
+    [InlineData("import")]
+    public void WarmGenerationWithImportsAndItsResultAllocateNothing(string kind)
+    {
+        var c = Analyze(
+            "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
+            "    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+            "public func main()\n    var v: i32 = 0\n    var e: u32 = 0\n    unsafe => v = Native.encode(1)\n    unsafe => e = Native.lastError()\n" +
+            "    var watch = Kimi.Time.Stopwatch.init()\n    watch.start()\n    watch.stop()",
+            kind);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal(4, c.Generated.Externals.Count); // encode, GetLastError, QueryPerformanceCounter and QueryPerformanceFrequency.
+
+        var (success, read) = (true, 0);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.Generate(TextWriter.Null);
+            var module = c.Generated;
+            for (var i = 0; i < module.Externals.Count; i++)
+            {
+                read += module.Externals[i].Symbol.Length;
+            }
+
+            for (var i = 0; i < module.Libraries.Count; i++)
+            {
+                read += module.Libraries[i].Library.Length;
+            }
+        });
+        Assert.True(success);
+        Assert.NotEqual(0, read);
+        Assert.Equal(0, bytes);
     }
 
     [Fact]
@@ -1591,13 +1724,16 @@ public class ForeignEmissionTest
     }
 
     private static Compilation Analyze(string source, string kind)
+        => AnalyzeAs(source, kind, OutputKind.Application);
+
+    private static Compilation AnalyzeAs(string source, string kind, OutputKind output)
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        c.Binding.CheckStartup(output);
         c.Analyze();
         return c;
     }

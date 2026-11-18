@@ -266,7 +266,7 @@ public sealed partial class Binding
     private BoundType? BindEntryRequirement(ForKoto source, BindingScope scope, BoundType subject, BindingSymbol entry)
     {
         var call = source.EntryCall = this.BindSelectedRequirement(source, source.EntryCall, [source.Iterable], subject, entry, entry.Contract!.OwnRequirement()!, scope);
-        return call.BindingFailure == BindingFailure.None && call.BoundCall is { } plan ? plan.ReturnType : null;
+        return call.BindingFailure == BindingFailure.None && this.CallOf(call) is { } plan ? plan.ReturnType : null;
     }
 
     // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. A declared or abstract entry is the ordinary member call,
@@ -296,7 +296,8 @@ public sealed partial class Binding
         for (var i = 0; i < this.userIterations.Count; i++)
         {
             var (loop, subject, iterator, entry) = this.userIterations[i];
-            if (loop.EntryCall?.BoundCall is { } call && loop.Iteration?.Next.BoundCall is { } next &&
+            if (loop.EntryCall is { } entryCall && this.CallOf(entryCall) is { } call && loop.Iteration is { } iteration &&
+                this.CallOf(iteration.Next) is { } next &&
                 !(this.SelectsWitness(call.Target, subject, entry) && this.SelectsWitness(next.Target, iterator, this.Library.LendingIterator)))
             {
                 this.Fail(loop, BindingFailure.Ambiguous);
@@ -341,9 +342,9 @@ public sealed partial class Binding
         var unverified = false;
         for (var i = 0; i < identities.Count; i++)
         {
-            for (var p = 0; p < identities[i].PathStorage.Count; p++)
+            for (var p = 0; p < this.impls.PathsOf(identities[i]).Count; p++)
             {
-                var path = identities[i].PathStorage[p];
+                var path = this.impls.PathsOf(identities[i])[p];
                 if (!path.IsVerified)
                 {
                     unverified = true; // The conformance reports its own failure.

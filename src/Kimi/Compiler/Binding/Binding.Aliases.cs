@@ -11,18 +11,18 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<AliasKoto> aliases = new();
-    private readonly Dictionary<SourceDocument, List<AliasImport>> aliasesByDocument = new();
     private readonly Dictionary<AliasKoto, BindingScope?> aliasTargets = new();
     private readonly Dictionary<(SourceDocument Document, string Name), AliasImport> namedAliases = new();
     private readonly List<AliasKoto> aliasWarnings = new();
     private readonly Dictionary<Koto, AliasImport> importedContainers = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<SourceDocument, List<AliasImport>> aliasesByDocument; // The running pass's part's (PassPart.AliasesByDocument).
     private int aliasResolutionDepth;
     private ImportedOriginVisitor? importedOriginVisitor;
 
     // A pass-local selected import: AliasTarget completed before construction, so Declaration.BoundType is its stable environment.
     // Same-candidate/environment merges retain the first actual witness; replacement candidates replace provenance as well.
     // ResetAliases clears every consumer before the next pass or source invalidation. Normalized Type identity carries no syntax.
-    private readonly record struct AliasImport(AliasKoto? Declaration, Koto? WrittenOrigin)
+    internal readonly record struct AliasImport(AliasKoto? Declaration, Koto? WrittenOrigin)
     {
         internal BoundType? Environment => this.Declaration?.BoundType;
 

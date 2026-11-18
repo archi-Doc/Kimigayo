@@ -54,6 +54,8 @@ public class ConstructorInferenceReuseTest
         Assert.Contains(c.Binding.Issues, x => x.Failure.ToString() == expected);
     }
 
+    // A warm Bind repeats the previous warm Bind's inference work and allocates nothing. PLAN G949 S1-1 (c12): the first Bind's work
+    // includes the library pass, which no later Bind runs, so the work is read from the second Bind on.
     [Theory]
     [InlineData("candidates", 16)]
     [InlineData("slots", 65)]
@@ -64,6 +66,7 @@ public class ConstructorInferenceReuseTest
     {
         var c = CompilationTestHelper.Parse(ConstructorInferenceWorkloads.Create(axis, count));
         c.Binding.MeasureCallInference = true;
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var before = c.Binding.InferenceMetrics;
         var complete = true;
