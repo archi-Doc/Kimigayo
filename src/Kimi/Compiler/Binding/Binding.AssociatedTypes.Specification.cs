@@ -65,9 +65,9 @@ public sealed partial class Binding
         }
 
         BoundType? found = null;
-        for (var i = 0; i < identity.PathStorage.Count; i++)
+        for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
-            var path = identity.PathStorage[i];
+            var path = this.impls.PathsOf(identity)[i];
             if (path.InheritedFrom is not null || path.Premises is not null || this.AssociatedInPath(path, member, associated, qualifier, path.Scope) is not { } selected)
             {
                 continue;
