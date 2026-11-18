@@ -23275,6 +23275,15 @@ R8-M* and R9-M* by the stage of the recording unit.
     `SemanticQuery`'s published names and live beside their storage's writers (`Binding.Calls.cs`, `Binding.ValueCalls.cs`,
     `Binding.ObjectCreation.cs`, `Binding.ExplicitAdaptations.cs`; ruling P3-3). `StructuralCompletion` takes the Binding that makes
     it. One behaviour-preserving commit; the route row 24 -> 18.
+  - **U0b-6 (PLAN G949 Stage 2, the Back, 2026-11-18; W-259; the owner's O-414 (b), verbatim 「すべて推奨通りでお願いします」, K's dialog, 11-18
+    12:4x).** `TyCtxt.Premised` reads its own Binding (an instance member), and MIR's premise readers `MirTypes.Premised`, `IsNever`
+    and `Agrees` take the compilation's `TyCtxt` (U0b-1's form); `CallPlan.Accessor` and `CallPlan.Parameter` take the reader's
+    Binding (MIR passes `compilation.Binding`, `TyCtxt` its own); the common call-plan setter `CallPlan.Set` takes the Binding its
+    writer passes (a 15th parameter, the larger structure-limit exception the owner approved, O-414 (b), recorded in the commit),
+    and its virtual selection reads it; a local region's meet reads `this`; `GetDocumentation`'s guard tests the declaration's
+    module (`declaration.CodeContext.Kotonoha`) through Core's published module-set read `Compilation.HoldsModule(Kotonoha)` (the
+    source modules and this compilation's library module, until U3). With U0b-P3 the route row reaches its 12 sites outside Binding,
+    R7's (U3's end state).
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
