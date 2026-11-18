@@ -4960,11 +4960,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `BoundAccessor.Binder` (its declaration, else its Property's), the `use` Binding.Retains takes; `ErasedCallee` had given the
     accessor's `FunctionKoto`, so since 4b58be003 (rule 3) a Property requirement setter's own Origins read as fixed and `s.item = 9;
     return s.item` erred at `s`. A carrier has, besides its own node (a value of T, R4-M36), its reached node (Revision 3,
-    `ReachedNode`): only a relation whose output is a writable carrier position (an erased writer's `uniq/Self` or `uniq/T` input)
-    reaches it, and it fills `Abstract`; a result builder's relation fills the carrier's own node.
+    `ReachedNode`): only a relation whose output is a carrier occurrence whose hidden storage is writable reaches it (an
+    erased writer's `uniq/Self`, `uniq/T` or by-value `T` input: `RetentionAtom.HiddenWritable`; superseded in part by BU-225
+    (PLAN G963): the earlier "writable carrier position" read the carrier's own position, which route 2 does not ask, since
+    SPEC 15.6.4's route 2 gives a by-value T the same hidden storage), and it fills `Abstract`; a result builder's relation fills the carrier's own node.
   - Made precise by rows during implementation (Revisions 3–5): a `during self` layer of a stored part admits the holding instance's
     Type arguments by their actual Types, or with an Origin argument any value at that argument's node in its own and the Abstract
-    storage (SPEC 5.7 Calls, the owner's Q2 (a); `Binding.SelfAdmitted`, the one reading, which A5's `MirTypes.Holding` reads through
+    storage (the Abstract half wherever an input's walk meets the layer, a by-value holder's included; the own half where its
+    storage is written: BU-225) (SPEC 5.7 Calls, the owner's Q2 (a); `Binding.SelfAdmitted`, the one reading, which A5's `MirTypes.Holding` reads through
     TyCtxt); at a referent store whose referent does not destroy shallowly (R4-M143) each holder past refs(S) also takes `Own_j`, the
     interim until A5 composes the destruction (PLAN G264); a holder whose Place no `Reached` entry names takes `All` (Revision 8;
     Revision 1's `Beyond` stays withdrawn). A borrow formed through an argument is identified by its path (Revision 10; Revision 7's
@@ -14429,6 +14432,50 @@ resumed by R4-M86 (2026-10-20).
   - Closes PLAN G936. Open: G942-G944 (above); a Closure's value call never proves its result's clauses, since
     `CarriesResultPremises` excludes anonymous functions (PLAN G962, to reuse this judge); pre-existing on G913 and found by the
     Middle's consent re-check: PLAN G966, G967 and the G710 and G870 additions.
+- **BU-225 What an abstract part hides is writable wherever an input's walk meets it (PLAN G963)** (2026-11-18; Front, Binding; Q17
+  class 1; Major, an acceptance mover; design review REVISE (B1), re-check ACCEPT (F's G963 ruling 6); implementation review ACCEPT;
+  the Middle's RP17 consent C-386 after F2's fix; W-256) SPEC 15.6.4 (the abstract-Type sentence, route 2), 5.7 Calls. Supersedes
+  one sentence of R4-M154 (Revision 9's "writable carrier position"); amends R4-M154 Revision 3's emission of the Abstract storage
+  and the Revisions 3-5 write fact of a `during self` layer.
+  - Rule: what a part hides (an abstract part's storage: what its binding's exclusive references reach; what a value an AnyOf
+    content holds may refer to) is storage the call may write wherever an input's output walk meets the part, which is through no
+    shared layer and outside a callable, whether the part's own value is a position (written in place) or the callee's own (a
+    by-value input's part: the root `T`, a Field, a Tuple element, an Option payload, a Type argument, a Closure's environment
+    binding). Route 2's "a parameter or a capture ... since its binding may hold an exclusive reference with Origins of its own"
+    does not ask whether the part's own value is writable. It applies two dev readings at by-value parts (the Middle's N6): route 2
+    for a Copy abstract Type, and a writer of a projection's base or Contract argument writes what the projection hides.
+  - One predicate, read at three sites: the storage walk's state (`StorageAt.HiddenWritable`: every state of an input's output walk,
+    never the result's walk or an input fold's) gates `AbstractPositions` at an abstract part (`StorageWalk`; no longer inside
+    `Position`) and, at a part that is no position, rule 3's fill (`storageHidden`) and the Abstract half of `Admitted`'s AnyOf
+    write fact (its own-storage half stays where the state is writable); the atom walk's flag `RetentionAtom.HiddenWritable`, "met
+    through no shared layer and outside a callable": false past a shared borrow or shared handle (ref, objref, rc, arc, a Slice),
+    past a raw layer whose step is Shared, past a pair layer whose binder admits no exclusive Semantics, and inside a callable Type;
+    true at a by-value input, an exclusive borrow's referent, a raw input's pointee and a raw layer's members. It is the condition
+    under which the storage walk enters a state at all, so the two walks state one rule. A carrier atom inherits it; it gates
+    `AddErasedRelations`' ReachedNode edge and `ErasedFills`, so a handed or erased callable that takes the T by value
+    (`set: (T, E)`) writes what T hides, and one that reaches the T only through a shared layer
+    (`set: (uniq/(ref/T during a) during u, E)`) does not. `Writable` keeps BU-1's meaning (the carrier's own position), which the
+    carrier-node edge reads.
+  - No writer test is added: the positions exist for every part met, and the existing fills (the erased writers' ReachedNode edges,
+    rule 3's fills) decide what fills them.
+  - What fills it (F2's revision, C-386): at a position the hold as before (rule A's hold walk). At a part that is no position (a
+    by-value input's part, a `let` capture) its own value is the callee's and is not written, so only rule 3's fill reaches what it
+    hides (`storageHidden`, `HiddenFills`: each raw source but the output keeps its own value where HoldsRaw, BU-66); rule A never
+    starts there (SPEC 15.6.4: "a raw layer that the abstract Type's binding may hold and the abstract Type does not show adds no
+    reach of its own").
+  - Rows (60 programs, 30 invalid and 30 valid, and 22 contracts; the Middle's N5): RetentionTest
+    `WhatAPartHidesIsWrittenWhereverAnInputsWalkMeetsIt` and `ACapturedAbstractPartHidesStorageTheCallMayWrite` (Binding's record);
+    MirBorrowsTest `AWriterOfWhatAPartHidesKeepsTheArgumentThere` (the invalid programs with A5's one record each, the valid ones
+    with none, the shared-layer boundary byVUniqRefFnOk and byVUniqUniqFnBad among them); F2's four valid by-value projection
+    programs (projRawArgOk, projRawArgRawOk, projRawArgCopyOk, projPlainArgOk) and their invalid twins with a handed writer. Six
+    RetentionTest pins move by the rule (PremisesAndInputsHandTheirCallables x4, CallableBoundsRelateTheirFixedOrigins,
+    ErasedCarriersAreFixedOrigins; each 15.6.4 reading in d4415c22e's message).
+  - Name: `HiddenWritable`, not `Hides`: `Binding.Hides(BoundType)` (BU-202) already names another fact.
+  - Rejected: a writer test at the by-value input (a second copy of the erased relations' decision, and a `set: (T, E)` writer would
+    still be missed); emitting the Abstract positions only where a handed writer exists (a gate per form; the fills already decide);
+    making the carrier atom's `Writable` true for a by-value T (it would relate E to the carrier's own node: an over-report);
+    narrowing `AddErasedRelations`' carrier-node edge at every shared layer (prototype p5 accepted the invalid uniqTUniqRcFnBad;
+    that edge is PLAN G993's).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -22878,6 +22925,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     bytes move which of the 8 cold rounds take a gen2 collection, so the median steps by about half a gen2 pause. The owner's O-387
     (a) (verbatim 「質問の回答は、すべて推奨通り」, 2026-11-17) puts it under the same acceptance, with no recovery unit and no harness
     change. Removal: G949 Stage 2 (R8-L1), the per-process freeze of the library's Binding and HIR.
+  - Extended by PLAN G71 (W-256, the Back, 2026-11-18): 23 more library declarations carry `#CallerLocation` (SPEC 22.5.1); a direct
+    lowered check inside a `#CallerLocation` body already reports the received location (`FunctionCodegen.Location`), so no
+    forwarded-location operand is needed. `KimiLibraryShapeTest`: `#CallerLocation` declarations 82 -> 105, unnamed registrations 63
+    -> 79.
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
