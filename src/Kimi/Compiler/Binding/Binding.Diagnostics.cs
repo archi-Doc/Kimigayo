@@ -348,19 +348,22 @@ public sealed partial class Binding
     private static bool IsMissingInformation(Koto? node)
         => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
 
+    // ReportIssue's one helper that takes no store (PLAN G949 Stage 2 U3-3; B's U3 ruling 33): the store would be its seventh parameter, so it
+    // reads Core's store decision for its subject itself, the same decision ReportIssue passes its siblings for the same node.
     private void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
     {
+        var store = this.compilation.StoreOf(node);
         var (evidence, related) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
         if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
         {
             // SPEC 23.1: a closure end is related at the anonymous function's header, from `func` through the parameter list.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
             var at = relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
-            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
+            node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
             return;
         }
 
-        node.Report(requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
+        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
     }
 
     // The call signature of a Function Item, closure or Function value.
