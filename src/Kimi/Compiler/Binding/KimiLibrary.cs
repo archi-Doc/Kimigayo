@@ -16,10 +16,12 @@ namespace Kimi.Compiler;
 //   FreezeLibrary decides).
 // - Inputs: the embedded sources; the compilation the library is parsed in (its target's conditions, its documentation flags); for the
 //   freeze, the target and the preparation (a Kimigayo and its Project).
-// - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal).
+// - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal and the interners' frozen
+//   levels); Frozen, whether the layer's interner levels are sealed (PLAN G949 Stage 2 U4): the library table's freeze, the seal.
 // - Invariants: one library per target per process, a frozen library or a refused one, cached by the store; only a compiler defect is
 //   cached as an exception (ExecutionAndPublication: one freeze per target; the build constant reproduces it). After Freeze no step
-//   writes a frozen object (S1-1's refusals; the eager steps run in the library pass); every stamp a frozen object holds is Frozen. A
+//   writes a frozen object (S1-1's refusals; the eager steps run in the library pass); every stamp a frozen object holds is Frozen; the
+//   layer's interner levels are sealed at the library's freeze, after which no insert reaches them (U4). A
 //   refused library exposes only its refusal; a compilation given one (U3) runs no program pass and publishes the refusal. Each library
 //   record has one owner: a Binding-side one the refusal (published as InternalInvariant_Kd at its library location), a syntax one the
 //   library module's syntax list (published under its own code by the DiagnosticOwner that holds the list); the refusal refers to that
@@ -527,6 +529,7 @@ public sealed partial class KimiLibrary
         // Build ordinary declaration syntax once. Its implementation identity, not a fake
         // executable body or a spelling check at calls, supplies the later lowering hook.
         var source = new SourceDocument("compiler://builtins/abort", "string");
+        _ = this.Kotonoha.LogicalName(source); // D-C1 (PLAN G949 Stage 2 U2b), as LoadSources forms each source's.
         var context = new CodeContext(this.Kotonoha, sourceDocument: source);
         var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
         try

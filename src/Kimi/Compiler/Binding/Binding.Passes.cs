@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 //   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations, the prune steps' sets, the contract
 //   solver's Closure(view) entries and the documents' unnamed aliases), handed over as the fields every step writes (EnterPass);
 //   R1.1's one composition point per aggregate: the composed views, the program part then the library layer's, and the Bind's Result
-//   (ComposeResult); a keyed collection's one find (PassPart.Find).
+//   (ComposeResult); a keyed collection's one find (PassPart.Find) and the one level order of the keyed parts and the interners
+//   (PassPart.Levels: Parts, Interned; PLAN G949 Stage 2 U4), whose seal is the freeze's library table freeze (Syntax.Freeze()).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
 // - Invariants: one counter value per run; a restart starts a new run of the program pass, never a new Bind (StartRuns runs once per
@@ -191,7 +192,8 @@ public sealed partial class Binding
             this.ReportFailures(this.issues, this.derivedIssues);
             this.ReportDuplicateDeclarations();
             this.ReportNonFailingRecords();
-            this.Library.Layer.Refusal = new(diagnostics.TakeLocated(DiagnosticPartition.Binding), syntax);
+            var records = diagnostics.TakeLocated(DiagnosticPartition.Binding);
+            this.Library.Layer.Refusal = new(records, diagnostics.FirstSyntaxRecord(this.Library.Kotonoha) ?? records[0]);
             return false;
         }
 
@@ -244,6 +246,7 @@ public sealed partial class Binding
             this.CompleteEffectBounds();
             this.SettleViewSerials();
             this.CompleteLocalRegions();
+            this.CompleteNegations(); // D-4 (PLAN G949 Stage 2 U2b): every library constraint's negation.
             this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
         }
 

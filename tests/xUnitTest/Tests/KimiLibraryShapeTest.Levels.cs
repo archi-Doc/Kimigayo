@@ -65,6 +65,23 @@ public partial class KimiLibraryShapeTest
         Assert.Empty(layer.Part.BoundContracts.Values.Where(static x => x.Contract!.State != 2).Select(static x => x.Type!.ToString()));
     }
 
+    // C-380 22:00 C1 (B's ruling 19): a program that proves a frozen constraint the library pass never proved (`Duration is Copy`, the
+    // library's own `Self is Copy` in Kimi.Time) forms its negation through FormNegation, which must find it formed at the seal (D-4 over
+    // the layer's level). Labels from SPEC before the first run: both valid (SPEC 8.6, Duration conforms to Copy by its declaration; 8.2, a
+    // call's clause `T is Copy` holds for Duration; a Copy value is copied by `let`), so Check accepts with no record. Before (7a221d6f6..
+    // def7db882, U4 without D-4 over the layer) both threw the refusal's internal-invariant form.
+    [Theory]
+    [InlineData("let duration = Kimi.Time.Duration.init(microseconds: 5)\nlet copied = duration\nlet again = duration\n")]
+    [InlineData("func twice<T>(x: T) -> T\n    T is Copy\n    return x\n\nlet duration = Kimi.Time.Duration.init(microseconds: 5)\nlet other = twice(duration)\n")]
+    public void AProgramProvingAFrozenConstraintIsAccepted(string program)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, program);
+        Assert.True(c.Check());
+        Assert.Empty(TestDiagnostics.Of(c));
+    }
+
     // u12 (the seal's refusals; an internal contract, probed by reflection): after the seal, a frozen constraint without its negation and
     // a frozen bound Contract reference that is not complete are broken contracts: negating or re-forming one throws the
     // internal-invariant form and writes nothing onto the frozen object. Before U4 the first wrote a compilation-level `Not` onto the
