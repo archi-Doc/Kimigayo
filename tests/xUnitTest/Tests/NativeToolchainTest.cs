@@ -310,10 +310,11 @@ public sealed class NativeToolchainTest : IDisposable
 
     // The toolchain boundary's known limit closes (R9-M10, PLAN G983): inside the toolchain's call, an exception the toolchain does not
     // raise as its failure, here the host's console throwing InvalidOperationException at the native build's "Built: " report, ends the
-    // build's own result as Faulted (one CheckFaulted_Kd at the project file), never the toolchain's message. The build uses the
-    // installed toolchain.
+    // build's own result as Faulted (one CheckFaulted_Kd at the project file), never the toolchain's message. The failed attempt leaves
+    // no successful record (IMPL 20.3.2; PLAN G985: the record was linked before the report), so run --no-build refuses its executable.
+    // The build uses the installed toolchain.
     [Fact]
-    public async Task AFailingBuiltReportIsTheBuildsFault()
+    public async Task AFailingBuiltReportFaultsTheBuildAndLeavesNoSuccessfulRecord()
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
         File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
@@ -325,6 +326,14 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
         Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+        var paths = ArtifactPaths.Create(project);
+        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        {
+            Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        }
+
+        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken));
+        Assert.Contains("The latest build failed or the binary was changed. Run 'kimi build' first.", console.Text, StringComparison.Ordinal);
     }
 
     [Fact]
