@@ -59,6 +59,13 @@ public sealed partial class Binding
         {
             group = this.InferredCase(inferred, scope, expected);
         }
+        else if (callee is SyntheticKoto or FormattingKoto { Operation: FormattingOperation.Callee })
+        {
+            // A compiler-only callee is resolved by its creator (Ranges, Views, ObjectCreation, Interpolation): its group is the
+            // pinned symbol. It is never bound as an expression: its parent is the source root, so binding it would read it as a
+            // value use and form a function item that the call never keeps.
+            group = callee.BoundSymbol;
+        }
         else
         {
             this.BindNode(callee, scope);
