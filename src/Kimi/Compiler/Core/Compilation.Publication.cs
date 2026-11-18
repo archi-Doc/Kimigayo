@@ -101,6 +101,9 @@ public partial class Compilation
             }
         }
 
+        // Reported through the node, into its collection: Core's store decision (StoreOf) takes these over in U3's first commit (PLAN
+        // G949 Stage 2, B's ruling 32: routing Koto.Report needs a larger parameter exception); until then no MIR record has a library
+        // subject in any program the suite checks.
         var node = this.SyntaxOf(problem.Subject);
         if (causes is not null)
         {
@@ -118,6 +121,26 @@ public partial class Compilation
             evidence: evidence ?? Binding.CaseEvidence(problem.Code, null, found),
             related: Binding.WithCaseDeclarations(related?.ToArray(), this.caseBinders, found),
             condition: (ushort)problem.Ordinal);
+    }
+
+    /// <summary>Publishes a refused library's records (PLAN G949 Stage 2 U2a; design 5.3, R3; C2 (4)): each as InternalInvariant_Kd at its
+    /// library location in this compilation's store for a library subject (StoreOf), under its own requirement; one about an input
+    /// without a document at the project file, as Binding reports it. A syntax record is never here: it stays the library module's
+    /// syntax list's, which that list's owner publishes (form (R)).</summary>
+    /// <param name="records">The refusal's records (LibraryLayer.Refusal).</param>
+    internal void PublishRefusal(LocatedRecord[] records)
+    {
+        foreach (var record in records)
+        {
+            if (record is { Document: { } document, Span: { } span })
+            {
+                this.Kotonoha.DiagnosticCollection.ReportLocation(record.Requirement, span, DiagnosticCode.InternalInvariant_Kd, document);
+            }
+            else
+            {
+                this.Diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+            }
+        }
     }
 
     // The related location of a fact naming a site (design 3.3; DIAGNOSTICS' A6 fact tables): its role and wording.
@@ -225,8 +248,15 @@ public partial class Compilation
     private void Locate(DiagnosticRequirement requirement, DiagnosticCode code, SourceRef subject)
     {
         var node = this.SyntaxOf(subject);
-        node.DiagnosticCollection?.ReportLocation(requirement, node.Span, code, node.CodeContext.SourceDocument);
+        this.StoreOf(subject)?.ReportLocation(requirement, node.Span, code, node.CodeContext.SourceDocument);
     }
+
+    // Core's one store decision for a record (PLAN G949 Stage 2 U2a; design 5.3, M-R2-B1): a library subject's record goes to this
+    // compilation's root collection, at the subject's own span and document (the library's collections are the freeze's, detached at
+    // U2b); any other subject's to its node's collection. Locate and PublishRefusal go through it; Publish still reports through the
+    // node until U3's first commit (B's ruling 32: routing Koto.Report would need a larger parameter exception).
+    private DiagnosticCollection? StoreOf(SourceRef subject)
+        => subject.IsLibrary ? this.Kotonoha.DiagnosticCollection : this.SyntaxOf(subject).DiagnosticCollection;
 
     // The key a merged problem is published under, by Publish's form, so a derived problem names it as its cause (design 3.2).
     private DiagnosticKey KeyOf(Mir.MirProgram program, int merged)

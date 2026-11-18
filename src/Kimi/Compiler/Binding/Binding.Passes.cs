@@ -2,6 +2,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -24,7 +25,9 @@ namespace Kimi.Compiler;
 //   in the first run of a Bind, and its freeze publishes that version last, so a library pass that throws leaves no Frozen stamp and
 //   the next Bind runs it again; after the freeze the library's stamps are Frozen and its facts the library pass's, the same in every
 //   Bind of the compilation, and the library HIR identical in each (C-379, G949 ruling 174); a step walks the running pass's modules,
-//   in their order, and writes its part;
+//   in their order, and writes its part; a library pass with a record of any kind is refused, not frozen (PLAN G949 Stage 2 U2a; design
+//   u2-design 2.4, C2): its records are kept as the layer's refusal while its tables stand, the library part and Binding's own part are
+//   reset, no program pass runs and the Bind leaves no Result, so the next Bind runs the library pass again and refuses identically;
 //   between Binds, and after a throw, the running pass is the program pass with Binding's own part, and a reader outside a pass reads
 //   the views, never a field a pass writes; the library pass runs Final whatever the Bind's mode (PLAN G949 S1-1, B2: no library fact
 //   is a Provisional pass's), so its Check publishes the library module, and its end sets the library's size (LibraryLayer.Size); a
@@ -140,18 +143,23 @@ public sealed partial class Binding
 
     // The runs: the library pass while the library is not frozen (its publication version 0), Final whatever the Bind's mode (no
     // Provisional answer on a library object; a Provisional Bind's program pass reads Final library facts), and its freeze; then the
-    // program pass, whose request for a rerun starts a new run of the program pass alone.
-    private void Run(BindingMode mode)
+    // program pass, whose request for a rerun starts a new run of the program pass alone. False: the library pass was refused (its
+    // refusal kept, FreezeLibrary), so the library part is reset, Binding's own part entered and reset, and no program pass runs.
+    private bool Run(BindingMode mode)
     {
         do
         {
             this.BeginRun();
-            if (this.libraryVersion == 0)
+            if (this.libraryVersion == 0 && !this.FreezeLibrary(this.RunPass(this.LibraryPass, BindingMode.Final)))
             {
-                this.FreezeLibrary(this.RunPass(this.LibraryPass, BindingMode.Final));
+                this.ResetPass(BindingMode.Final); // The refused library part emptied, so no reader sees a partial layer (C2 (2)).
+                this.EnterPass(this.ProgramPass);
+                this.ResetPass(mode);
+                return false;
             }
         }
         while (!this.RunPass(this.ProgramPass, mode));
+        return true;
     }
 
     // PLAN G949 S1-1 (s11-design 2.3; DECISIONS BU-105 as BU-219 amends it): the library's freeze at the end of its pass, in three phases.
@@ -162,20 +170,39 @@ public sealed partial class Binding
     // at-once report does not survive ReportDiagnostics, which invalidates the Binding partition and re-reports it only while the flag
     // holds, and the program pass's ResetPass clears the flag, so a library one would be dropped silently; the term goes with the flag's
     // Transitional, G651 a1. A startup record is never the library pass's: CheckStartup runs after a Final Bind, outside every pass,
-    // over the source modules only), and its query states are complete (LibraryQueryFault). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns Frozen, so it
+    // over the source modules only; and, from PLAN G949 Stage 2 U2a (C1 (x)), no record in the library module's syntax list), else it
+    // is refused: its records are reported by the per-record steps while its tables stand and kept as typed facts in the layer's
+    // refusal (LibraryLayer.Refusal; a syntax record stays its module's list's, which the refusal only notes: form (R)), false
+    // returned and nothing stamped; and its query states are complete (LibraryQueryFault). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns Frozen, so it
     // reads current in every later pass; a stamp of an earlier run stays stale and reads absent, as the library pass left it. Publish,
     // last: L (LibraryLayer.TypeCount, the ids of the Types the library pass made) and the library's publication version, constant
     // from here for the compilation (HirTables.LibraryVersion), which the driver's skip reads.
-    private void FreezeLibrary(bool completed)
+    private bool FreezeLibrary(bool completed)
     {
-        var symbols = this.LibraryQuerySymbols();
-        var fault = !completed ? "asked for a rerun"
-            : this.issues.Count + this.derivedIssues.Count != 0 || this.HasNonFailingRecords || this.sitelessHeightRefusal ? "has records"
-            : this.LibraryQueryFault(symbols) is { } incomplete ? $"left the query states of `{incomplete.Name}` incomplete" : null;
-        if (fault is not null)
+        if (!completed)
         {
-            throw new InvalidOperationException($"The library pass {fault} (InternalInvariant; PLAN G949 S1-1).");
+            throw new InvalidOperationException("The library pass asked for a rerun (InternalInvariant; PLAN G949 S1-1).");
         }
+
+        var diagnostics = this.compilation.Diagnostics;
+        var syntax = diagnostics.HasSyntaxRecords(this.Library.Kotonoha);
+        if (this.issues.Count + this.derivedIssues.Count != 0 || this.HasNonFailingRecords || this.sitelessHeightRefusal || syntax)
+        {
+            // The Binding partition holds only this pass's records (BeginBind discarded the semantic ones), so it is the refusal.
+            this.ReportFailures(this.issues, this.derivedIssues);
+            this.ReportDuplicateDeclarations();
+            this.ReportNonFailingRecords();
+            this.Library.Layer.Refusal = new(diagnostics.TakeLocated(DiagnosticPartition.Binding), syntax);
+            return false;
+        }
+
+        var symbols = this.LibraryQuerySymbols();
+        if (this.LibraryQueryFault(symbols) is { } incomplete)
+        {
+            throw new InvalidOperationException($"The library pass left the query states of `{incomplete.Name}` incomplete (InternalInvariant; PLAN G949 S1-1).");
+        }
+
+        this.Library.Layer.Refusal = null;
 
         FreezeQueries(symbols);
         foreach (var symbol in this.symbols.Values.In(this.pass))
@@ -191,6 +218,7 @@ public sealed partial class Binding
         this.FreezeKeepers();
         this.Library.Layer.TypeCount = this.types.TypeCount;
         this.libraryVersion = this.storageVersion;
+        return true;
     }
 
     // One pass over its modules: its reset, indexing, declarations, bodies, the bound-declaration validations and Check. False: its
