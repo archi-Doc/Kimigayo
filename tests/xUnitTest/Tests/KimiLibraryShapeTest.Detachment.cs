@@ -56,16 +56,19 @@ public partial class KimiLibraryShapeTest
     }
 
     // s15b: the eager list's objects are read after the freeze, never written: a library constraint's negation (of the layer's level, PLAN
-    // G949 Stage 2 U4) is the one the library pass made, and the module's name memo holds a name for every document a library node names.
+    // G949 Stage 2 U4) is the one the library pass made, read when that pass ends (the freeze compilation's first Bind) and again after
+    // Freeze (its later pass and the detachment), and the module's name memo holds a name for every document a library node names.
     [Fact]
     public void TheFrozenLibrarysEagerFactsAreOnlyRead()
     {
         var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
-        var library = KimiLibrary.Freeze(freeze);
-        var constraints = library.Layer.Constraints.Values.Where(static x => x.Kind != ConstraintKind.Not).ToArray();
+        freeze.Bind();
+        var constraints = freeze.Library.Layer.Constraints.Values.Where(static x => x.Kind != ConstraintKind.Not).ToArray();
         Assert.NotEmpty(constraints);
         var negations = constraints.Select(static x => x.Negation).ToArray();
         Assert.All(negations, Assert.NotNull);
+        var library = KimiLibrary.Freeze(freeze);
+        Assert.Same(freeze.Library, library);
         var names = (System.Collections.IDictionary)typeof(Kotonoha).GetField("names", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(library.Kotonoha)!;
         var count = names.Count;
         foreach (var node in library.Kotonoha.Syntax.Nodes)
