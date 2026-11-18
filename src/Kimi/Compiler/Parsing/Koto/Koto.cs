@@ -485,9 +485,6 @@ public abstract partial class Koto
     }
 
     [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
-    internal bool HasCurrentBinding => HirTables.HasCurrentBinding(this);
-
-    [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundType? ErasedFunctionType
     {
         get => HirTables.ErasedType(this);

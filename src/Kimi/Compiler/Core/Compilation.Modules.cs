@@ -60,6 +60,10 @@ public partial class Compilation
         return this.Prepare(target);
     }
 
+    // Whether a module is one of this compilation's: a source module or its library's (one per compilation until PLAN G949 U3), the
+    // module set its Binding binds. Binding.GetDocumentation documents only a declaration of such a module.
+    internal bool HoldsModule(Kotonoha module) => ReferenceEquals(module, this.Library.Kotonoha) || Array.IndexOf(this.SourceModules, module) >= 0;
+
     internal Kotonoha? FindReference(Kotonoha module, string name)
         => this.moduleReferences?.GetValueOrDefault(module)?.GetValueOrDefault(name);
 

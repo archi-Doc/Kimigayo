@@ -15,11 +15,17 @@ public sealed partial class Binding
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
         => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
 
-    // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
-    private static bool SameCallableSignature(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (IsSubtype(a, b, a.Binder) && IsSubtype(b, a, b.Binder));
+    private static SemanticsKind CallableReceiver(SemanticsMask mask)
+        => mask == SemanticsMask.Ref ? SemanticsKind.Ref : mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
 
-    private static bool SameProofPremise(BoundConstraint a, BoundConstraint b)
+    private static SemanticsKind WeakestReceiver(SemanticsKind a, SemanticsKind b)
+        => a == SemanticsKind.Ref || b == SemanticsKind.Ref ? SemanticsKind.Ref : a == SemanticsKind.Uniq || b == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
+
+    // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
+    private bool SameCallableSignature(BoundType a, BoundType b)
+        => ReferenceEquals(a, b) || (this.IsSubtype(a, b, a.Binder) && this.IsSubtype(b, a, b.Binder));
+
+    private bool SameProofPremise(BoundConstraint a, BoundConstraint b)
     {
         if (ReferenceEquals(a, b))
         {
@@ -28,17 +34,11 @@ public sealed partial class Binding
 
         if (a.Kind == ConstraintKind.Not && b.Kind == ConstraintKind.Not)
         {
-            return SameProofPremise(a.Left!, b.Left!);
+            return this.SameProofPremise(a.Left!, b.Left!);
         }
 
-        return a.Kind == ConstraintKind.Callable && b.Kind == ConstraintKind.Callable && a.Mask == b.Mask && ReferenceEquals(a.Subject, b.Subject) && SameCallableSignature(a.RequiredType!, b.RequiredType!);
+        return a.Kind == ConstraintKind.Callable && b.Kind == ConstraintKind.Callable && a.Mask == b.Mask && ReferenceEquals(a.Subject, b.Subject) && this.SameCallableSignature(a.RequiredType!, b.RequiredType!);
     }
-
-    private static SemanticsKind CallableReceiver(SemanticsMask mask)
-        => mask == SemanticsMask.Ref ? SemanticsKind.Ref : mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
-
-    private static SemanticsKind WeakestReceiver(SemanticsKind a, SemanticsKind b)
-        => a == SemanticsKind.Ref || b == SemanticsKind.Ref ? SemanticsKind.Ref : a == SemanticsKind.Uniq || b == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
 
     private BoundType? SelectValueCall(InvocationKoto call, BindingScope scope, BoundType type, BoundType? expected)
     {
@@ -63,7 +63,7 @@ public sealed partial class Binding
                 var signature = this.CallableContractType(fact.RequiredType!, scope);
                 var receiver = CallableReceiver(fact.Mask);
                 var index = 0;
-                while (index < count && !SameCallableSignature(candidates[index].Signature, signature))
+                while (index < count && !this.SameCallableSignature(candidates[index].Signature, signature))
                 {
                     index++;
                 }

@@ -118,7 +118,7 @@ public sealed partial class Binding
 
                 ops[node.SyntaxId] = op;
                 completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
-                    : (this.completion ??= new(binding.ResultNeverEvidence)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
+                    : (this.completion ??= new(binding, binding.ResultNeverEvidence)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
                 BoundType? discardedType = null;
                 if (completions[node.SyntaxId] != HirCompletion.Unset)
                 {
@@ -140,7 +140,7 @@ public sealed partial class Binding
 
             // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).
             this.exclusive = claimed || this.ExclusiveUse(node, parent, parentOp, exclusive);
-            Fold(node, op);
+            this.Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
@@ -199,7 +199,7 @@ public sealed partial class Binding
         // a literal its Type does not hold, the operand of a folded wrap conversion or the number under a direct literal's sign, keeps
         // its value modulo 2^N, and a generic literal its value); a fixed-array element's literal position, beside its PlaceShape
         // (SPEC 15.1.3); a Tuple element's position (SPEC 3.2), the integer its Field names.
-        private static void Fold(Koto node, HirOp op)
+        private void Fold(Koto node, HirOp op)
         {
             if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
             {
@@ -210,7 +210,7 @@ public sealed partial class Binding
             }
             else if (node is IndexKoto index && HirTables.PlaceOf(node).Kind == HirPlaceKind.ConstIndex)
             {
-                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(index);
+                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(binding, index);
             }
             else if (op == HirOp.Field && node is MemberAccessKoto { Right: NumberLiteralKoto element } && element.TryGetIntegerMagnitude(out var position))
             {
@@ -251,7 +251,7 @@ public sealed partial class Binding
             },
             HirOp.Field => HirPlaceKind.Field,
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
-            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
+            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector(binding, (IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
             HirOp.Call => ElementAccess.IsUserIndex(binding, node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
             HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, binding.OpOf(inner)),
             _ => HirPlaceKind.Value,

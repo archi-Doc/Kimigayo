@@ -163,9 +163,9 @@ public sealed partial class Binding
     }
 
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
-    private static Koto? CallableArgument(Koto use, IsKoto clause)
+    private Koto? CallableArgument(Koto use, IsKoto clause)
     {
-        if (use is not InvocationKoto { BoundCall: { Target.Declaration: FunctionKoto function } plan } ||
+        if (use is not InvocationKoto invocation || this.CallOf(invocation) is not { Target.Declaration: FunctionKoto function } plan ||
             clause.BoundConstraint?.Subject is not { Kind: BoundTypeKind.Parameter, Symbol: { } slot })
         {
             return null;
@@ -609,7 +609,7 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.UnprovenConstraint, unresolved);
         }
 
-        var at = CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
+        var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
         var record = new CallableConstraintFact(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, use));
         return this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }

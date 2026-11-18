@@ -259,6 +259,50 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    // s23 (PLAN G949 Stage 2, U0b-C2): a reader of a per-pass table, which the pass reset empties, given a node of the frozen library
+    // refuses it as the internal-invariant form: the node's row was the library pass's and is gone, so its "none" would be silent. Each
+    // row reads one such reader after the empty program's Bind with a library node found through the frozen library module's syntax: c1
+    // IsResolvedSlice a slice selection (a range-value key first), c2 PairAdmitted an @follow (a pair follow first), c3
+    // HasExclusiveIndexer a user index (the first that selects an index call), c3b ImplicitPairAdmitted a receiver operand and c3c
+    // TryGetReceiverOperation a member access; the refusal is decided by the node's table, not by a row. c4: the same readers given a
+    // program's nodes after its Bind answer (SPEC 4.7.1, 13.5.5; DynamicArraySliceTest's exclusive slice program). Before U0b-C2 every
+    // library read answered "none".
+    [Fact]
+    public void EveryPassReadOfAFrozenLibraryNodeIsRefused()
+    {
+        var c = Bound(string.Empty);
+        var table = c.Library.Kotonoha.Syntax;
+        Assert.True(table.Frozen);
+        var nodes = table.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
+        var indexes = nodes.OfType<IndexKoto>().ToArray();
+        var slice = indexes.Where(static x => x.TypeOf()?.Kind == BoundTypeKind.Slice).OrderBy(static x => x.Right is RangeKoto).First();
+        var follows = nodes.OfType<ConversionKoto>().Where(static x => x.ConversionOf().Kind is ConversionBinding.PairFollow or ConversionBinding.Follow).ToArray();
+        var follow = follows.FirstOrDefault(static x => x.ConversionOf().Kind == ConversionBinding.PairFollow) ?? follows.First();
+        var index = indexes.FirstOrDefault(x => c.Binding.SelectedIndexCall(x, exclusive: false) is not null) ?? indexes.First();
+        var member = nodes.OfType<MemberAccessKoto>().First();
+        Refused(nameof(Binding.IsResolvedSlice), () => c.Binding.IsResolvedSlice(slice));
+        Refused(nameof(Binding.PairAdmitted), () => c.Binding.PairAdmitted(follow));
+        Refused(nameof(Binding.HasExclusiveIndexer), () => c.Binding.HasExclusiveIndexer(index));
+        Refused(nameof(Binding.ImplicitPairAdmitted), () => c.Binding.ImplicitPairAdmitted(member.Left));
+        Refused(nameof(Binding.TryGetReceiverOperation), () => c.Binding.TryGetReceiverOperation(member, out _));
+
+        var p = CompilationTestHelper.BindSuccess("var values: Array<i32> = [20, 22]\nlet handle = values@uniq\nlet view = handle[..]\nrequire view[0] + view[1] == 42 else => $abort(\"exclusive\")\nhandle@follow@uniq.clear()");
+        var walked = KotoTree.Walk(p.Kotonoha.RootKoto).ToArray();
+        Assert.Contains(walked, static x => x is IndexKoto);
+        foreach (var node in walked)
+        {
+            _ = (p.Binding.IsResolvedSlice(node), p.Binding.PairAdmitted(node), p.Binding.HasExclusiveIndexer(node), p.Binding.ImplicitPairAdmitted(node));
+            _ = p.Binding.TryGetReceiverOperation(node, out _);
+        }
+
+        static void Refused(string reader, Action read)
+        {
+            var message = Assert.IsType<InvalidOperationException>(Xunit.Record.Exception(read)).Message;
+            Assert.Contains(reader, message, StringComparison.Ordinal);
+            Assert.Contains("(InternalInvariant; PLAN G949 U0b-C2)", message, StringComparison.Ordinal);
+        }
+    }
+
     // e2 (s11-design 5, 6.3; G375; G949 ruling 187 (c)): a frozen library verdict is read, never written, so a program's per-use check
     // over a library function leaves the frozen verdict and the records as the library pass made them; one the freeze left not Done is
     // formed at each use in the user's scope. None is today (EveryLibrarySignatureVerdictIsProven), so the row clears every library
