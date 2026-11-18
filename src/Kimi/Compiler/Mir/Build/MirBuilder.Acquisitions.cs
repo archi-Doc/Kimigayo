@@ -148,12 +148,12 @@ internal sealed partial class MirBuilder
         var depth = 0;
         place = referent is null ? place : this.FollowTo(place, referent);
         for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agrees(this.body, referent, layer);
-            layer = AdtDef.Base(layer))
+            layer = AdtDef.Base(compilation.Types, layer))
         {
-            depth = AdtDef.Base(layer) is null ? 0 : depth + 1;
+            depth = AdtDef.Base(compilation.Types, layer) is null ? 0 : depth + 1;
         }
 
-        return depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth);
+        return depth == 0 ? place : this.body.Project(compilation.Types, place, MirProjectionKind.Base, depth);
     }
 
     // An rvalue in a new temp of its Type, or in the place given where that has its Type, moved.

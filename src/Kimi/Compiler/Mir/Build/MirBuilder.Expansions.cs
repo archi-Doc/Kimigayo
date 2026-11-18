@@ -192,7 +192,7 @@ internal sealed partial class MirBuilder
         var reference = compilation.Types.Reference(SemanticsKind.Uniq, this.body.TypeOf(destination) ?? BoundType.Unit);
         var reservation = this.Temp(reference, node);
         this.Set(reservation, this.Ref(destination, reference, input: true), node);
-        return this.body.Project(reservation, MirProjectionKind.Deref, 0);
+        return this.body.Project(compilation.Types, reservation, MirProjectionKind.Deref, 0);
     }
 
     // A check's comparison into a bool: building goes on where it holds, else at the failure.

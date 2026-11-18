@@ -334,11 +334,11 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
     [Fact]
     public void RawAuthorityWalksEachTypeOnce()
     {
-        var body = Probe("func probe(tree: Tree, table: Table, chain: Chain, logged: Logged, raw: raw/i32, nest: Nest<i32>)\n    return\n").Body;
+        var (body, c) = Probe("func probe(tree: Tree, table: Table, chain: Chain, logged: Logged, raw: raw/i32, nest: Nest<i32>)\n    return\n");
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             [("tree", false), ("table", false), ("chain", false), ("logged", false), ("raw", true), ("nest", true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsRaw(x.Type, seen))).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsRaw(c.Types, x.Type, seen))).ToArray());
     }
 
     // SPEC 15.6.4, 8.10 (β′; DECISIONS R4-M154): the callables a value hands a callee's body that holds it (TyCtxt.HandedCallables) are its
@@ -371,11 +371,11 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         var pairs = Parameters(body).Single().Type;
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
         var walk = new Walk(seen);
-        Assert.False(MirTypes.Destruction(pairs, ref walk));
+        Assert.False(MirTypes.Destruction(c.Types, pairs, ref walk));
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
-        Assert.False(MirTypes.MayNeedDrop(pairs, seen));
+        Assert.False(MirTypes.MayNeedDrop(c.Types, pairs, seen));
         Assert.True(MirTypes.Observation(pairs, c.Types, body.Key.Decl, new(ReferenceEqualityComparer.Instance)).IsNone);
-        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(), [], [], out _));
+        Assert.False(MirTypes.HoldsRaw(c.Types, pairs, seen) || MirTypes.HoldsLoans(pairs, c.Types, new(), [], [], out _));
     }
 
     // V16 (DECISIONS R4-M153's revision 3): an outcome walk enters a Type again only where it meets it shallower than before (MirDepths),
@@ -395,7 +395,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         var f = Parameters(body).Single().Type;
         var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         var walk = new DepthWalk(entered);
-        Assert.False(MirTypes.Destruction(f, ref walk));
+        Assert.False(MirTypes.Destruction(c.Types, f, ref walk));
         output.WriteLine($"entered {walk.Entered} times over {entered.Count} Types");
         Assert.Equal((62, false), (entered.Count, walk.Past)); // F60..F0 and i32.
         Assert.InRange(walk.Entered, 62, 33 * 62);

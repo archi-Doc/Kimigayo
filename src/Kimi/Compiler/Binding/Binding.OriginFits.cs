@@ -194,7 +194,7 @@ public sealed partial class Binding
 
             // SPEC 8.1.2, 15.6.5: the outer Origins as the fit relates them; a pair layer's slot exists only in its binder's borrow cases,
             // whose premises the relation may use.
-            if (FitOuterOrigins(actual, expected, binding, use, out var outer, out var required) == OuterOriginFit.Relation &&
+            if (binding.FitOuterOrigins(actual, expected, binding, use, out var outer, out var required) == OuterOriginFit.Relation &&
                 this.FailedOriginPart(outer, required, polarity, SlotCondition(actual, binding, use)) is { } layer)
             {
                 if (all is null)
@@ -230,7 +230,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < actual.OriginArguments.Count && i < expected.OriginArguments.Count; i++)
             {
-                var variance = ComposeVariance(polarity, OriginArgumentVariance(expected, i, binding));
+                var variance = ComposeVariance(polarity, binding.OriginArgumentVariance(expected, i, binding));
                 if (this.FailedOriginPart(actual.OriginArguments[i], expected.OriginArguments[i], variance) is { } slot)
                 {
                     if (all is null)

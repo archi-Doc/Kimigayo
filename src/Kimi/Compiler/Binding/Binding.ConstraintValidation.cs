@@ -541,7 +541,7 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Error)
         {
             var cause = diagnosticCause ?? this.TakeFailedCause().Use;
-            if (cause is not null && use.BindingFailure == BindingFailure.None)
+            if (cause is not null && this.RecordedFailure(use) == BindingFailure.None)
             {
                 this.Consulted(cause); // SPEC 23.1.2: the proof's evidence explains its outcome, never a record the use's own check owns.
             }
@@ -567,7 +567,7 @@ public sealed partial class Binding
     // owns (the conformance's verdict, or a failure it held before the outcome) never derives from the frame, which is dropped.
     private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame, Koto? diagnosticCause = null)
     {
-        var owned = use.BindingFailure != BindingFailure.None;
+        var owned = this.RecordedFailure(use) != BindingFailure.None;
         this.RequireConstraint(use, proof, mode, diagnosticCause);
         if (owned)
         {

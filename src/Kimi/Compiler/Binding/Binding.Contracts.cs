@@ -135,7 +135,7 @@ public sealed partial class Binding
     {
         foreach (var bound in this.boundContracts.Values)
         {
-            bound.Contract!.State = 0;
+            bound.Contract!.State = 0; // The running pass's own entries (PassPart.BoundContracts): a pass never resets another's.
         }
 
         this.ResetAssociatedInference();

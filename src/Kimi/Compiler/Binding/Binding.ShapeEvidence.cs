@@ -8,9 +8,6 @@ public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, int> shapeCallCandidates = new(ReferenceEqualityComparer.Instance);
 
-    private static bool SameShapeBinding(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (IsSubtype(a, b) && IsSubtype(b, a));
-
     // SPEC 10.8, 10.3: whether CollectTypes enters a pattern node against a Type, an argument's or the expected result's: the same head
     // and arity; neither projections nor adaptations are inverted. SameArgumentEvidence's Reached follows the same rule.
     private static bool CollectionEnters(BoundType pattern, BoundType actual)
@@ -18,7 +15,10 @@ public sealed partial class Binding
             pattern.Kind == actual.Kind && pattern.Symbol == actual.Symbol && pattern.Semantics == actual.Semantics &&
             pattern.Components.Count == actual.Components.Count;
 
-    private static bool MatchingConstructionExpectation(BoundType pattern, BoundType expected, int own)
+    private bool SameShapeBinding(BoundType a, BoundType b)
+        => ReferenceEquals(a, b) || (this.IsSubtype(a, b) && this.IsSubtype(b, a));
+
+    private bool MatchingConstructionExpectation(BoundType pattern, BoundType expected, int own)
     {
         if (pattern.Symbol != expected.Symbol || expected.Semantics != SemanticsKind.Owner || pattern.Components.Count != expected.Components.Count)
         {
@@ -27,7 +27,7 @@ public sealed partial class Binding
 
         for (var i = own; i < pattern.Components.Count; i++)
         {
-            if (!SameShapeBinding(pattern.Components[i], expected.Components[i]))
+            if (!this.SameShapeBinding(pattern.Components[i], expected.Components[i]))
             {
                 return false;
             }
@@ -340,7 +340,7 @@ public sealed partial class Binding
                 }
 
                 var result = function.IsConstructor ? declaring : function.BoundSymbol!.Type;
-                if (expected is not null && result is not null && (!function.IsConstructor || MatchingConstructionExpectation(result, expected, CallOwnSlots(function).Count)))
+                if (expected is not null && result is not null && (!function.IsConstructor || this.MatchingConstructionExpectation(result, expected, CallOwnSlots(function).Count)))
                 {
                     CollectTypes(result, expected, fillOnly: true);
                 }
@@ -434,7 +434,7 @@ public sealed partial class Binding
                         {
                             bindings.SetType(slot, actual);
                         }
-                        else if (bindings.Types[slot] is not { } previous || !SameShapeBinding(previous, actual))
+                        else if (bindings.Types[slot] is not { } previous || !this.SameShapeBinding(previous, actual))
                         {
                             bindings.SetType(slot, null);
                             mode |= 8; // Keep differing witnesses; equal acquisition modes may still suffice.
@@ -493,7 +493,7 @@ public sealed partial class Binding
                                 allMaps.AsSpan(c * call.ArgumentNodes.Count, call.ArgumentNodes.Count),
                                 ((modes[a] | modes[b]) & 16) != 0 ? expected : null)) is { } occurs &&
                             ((contract.ModeOnly && ma == mb && IsSingleMode(ma)) ||
-                            (types[a] is { } ta && types[b] is { } tb && SameShapeBinding(ta, tb)) ||
+                            (types[a] is { } ta && types[b] is { } tb && this.SameShapeBinding(ta, tb)) ||
                             (modes[a] == 0 && modes[b] == 0 && occurs)))
                         {
                             continue;

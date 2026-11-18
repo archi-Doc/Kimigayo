@@ -156,7 +156,7 @@ internal sealed partial class ModuleCodegen
     // an item's instance (InstanceOf); null, recorded at the item's site, where the instance does not make one.
     private BoundType? Declared(BindingSymbol function, Subst? subst, int item, out int count)
     {
-        _ = TyCtxt.Signature(function, null, int.MaxValue, out count);
+        _ = this.types.Signature(function, null, int.MaxValue, out count);
         this.Reserve(count);
         var result = this.InstanceOf(function, subst, -1, item);
         for (var slot = 0; result is not null && slot < count; slot++)
@@ -273,7 +273,7 @@ internal sealed partial class ModuleCodegen
     // item's site, where the instance does not make it.
     private BoundType? InstanceOf(BindingSymbol function, Subst? subst, int slot, int item)
     {
-        if (TyCtxt.Signature(function, subst, slot, out _) is { } declared && this.collector.TypeOf(item, declared) is { } type)
+        if (this.types.Signature(function, subst, slot, out _) is { } declared && this.collector.TypeOf(item, declared) is { } type)
         {
             return type;
         }

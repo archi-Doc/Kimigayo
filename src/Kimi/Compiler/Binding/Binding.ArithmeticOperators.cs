@@ -230,7 +230,7 @@ public sealed partial class Binding
             if (other is not null)
             {
                 var expected = candidate.Type!.Components[0];
-                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !FitsStructuralPart(counterpart, expected))
+                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !this.FitsStructuralPart(counterpart, expected))
                 {
                     continue;
                 }

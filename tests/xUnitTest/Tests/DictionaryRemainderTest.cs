@@ -234,18 +234,17 @@ public class DictionaryRemainderTest
         Assert.Equal(valid, c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
-    // The remainder keeps the shared Loan of the Dictionary: an exclusive use of the source before a later step is rejected.
+    // The remainder keeps the shared Loan of the Dictionary: an exclusive use of the source before a later step is rejected. The
+    // remainder is the shared iterator's state (Storage.DictionaryRefRemainder, formed by borrowStorage and stepped by splitFirst in
+    // DictionaryIterator.next) over a Dictionary a uniq parameter reaches, in a program: from PLAN G949 S1-1's freeze a library with a
+    // record is a broken build (DECISIONS BU-219: the freeze's internal invariant), so the rejected use cannot be a library probe's.
     [Theory]
     [InlineData("values@uniq.clear()", false)]
     [InlineData("_ = values.length", true)]
     public void TheRemainderKeepsTheSourceLoan(string use, bool valid)
     {
-        var c = CompilationTestHelper.ParseSuccess("""
-            var map: Dictionary<i32, i32> = [:]
-            _ = map.tryInsert(1, 10)
-            Kimi.StorageProbe.touch(map@uniq)
-            """);
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public group StorageProbe\n    public func touch(values: uniq/Dictionary<i32, i32>)\n        var state = Storage.borrowStorage(values@follow@ref)\n        " + use + "\n        _ = Storage.splitFirst(state@uniq)\n");
+        var c = CompilationTestHelper.ParseSuccess("func touch(values: uniq/Dictionary<i32, i32>)\n    var state = values@follow@ref.iterate()\n    " + use +
+            "\n    _ = state.next()\nvar map: Dictionary<i32, i32> = [:]\n_ = map.tryInsert(1, 10)\ntouch(map@uniq)\n");
         var bound = c.Bind().IsComplete;
         Assert.Equal(valid, bound && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze().IsVerified);
     }
