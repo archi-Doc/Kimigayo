@@ -398,12 +398,12 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
 
-    // The path's state at the start of a pass, made current for it: the verification flags, witnesses and their maps, associated and
-    // inference storage, the per-pass satellites (requirement matches, published inference, the associated bindings' state) and the
-    // scope; what the registration writes and the kept satellites stay.
     // The base store's freeze (ImplTable.Freeze): the path's state is current in every later pass.
     internal void Freeze() => this.Stamp = Binding.Frozen;
 
+    // The path's state at the start of a pass, made current for it: the verification flags, witnesses and their maps, associated and
+    // inference storage, the per-pass satellites (requirement matches, published inference, the associated bindings' state) and the
+    // scope; what the registration writes and the kept satellites stay.
     internal void ResetPass(ulong pass)
     {
         this.Stamp = pass;

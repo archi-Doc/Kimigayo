@@ -6,6 +6,8 @@
 // A module's ordinal is its position among the source modules; the Kimi library's is LibraryModule in every compilation, above them all,
 // given when its table is created (ForLibrary), so its sources parse under the library mark (IsLibrary).
 // A compilation has at most LibraryModule source modules (IMPL A.4): Compilation.PrepareModules refuses more before one is numbered.
+// A frozen table (the library's from its freeze, PLAN G949 S1-1: Frozen) is never written again: every writer of its ids, numbering
+// and HIR rows checks EnsureWritable at its entry and throws the internal-invariant form (InternalInvariant_Kd).
 // Must not decide Binding facts or let consumers assign independent ids.
 
 using System.Buffers;

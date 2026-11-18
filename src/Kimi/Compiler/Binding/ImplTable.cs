@@ -16,17 +16,18 @@ using Kimi.Compiler.Parsing;
 // - Outputs: Paths, Identities and ByType (LayerList: the overlay's part, then the base's), InPass (the same lists of the running
 //   pass's stores only, PLAN G949 S1-r2), OfType(type), Find(type, contract),
 //   Path(key) and TryPath(key); PathsOf(identity), the one read of an identity's paths inside a pass.
-// - Invariants: the overlay never holds a library Type, by construction: StoreOf routes each key by its Type's module, so no write is
-//   refused here (refusing program writes to the base is S1-1's); an identity or path carries the pass of its last reset (Stamp) and
+// - Invariants: the overlay never holds a library Type, by construction: StoreOf routes each key by its Type's module; from the library's
+//   freeze (Freeze, PLAN G949 S1-1) the base is never begun or registered into again: its Begin and a Register routed to it throw the
+//   internal-invariant form (EnsureWritable, InternalInvariant_Kd); an identity or path carries the pass of its last reset (Stamp) and
 //   reads as unregistered while stale (Current); the table resets it at its first access through the table in a pass (Find, Path,
 //   TryPath, Register), so no reader sees an earlier pass's state; a path is Active from its registration in the pass to the end of the
-//   pass, a per-pass flag the reset clears (not "Stamp current": a lookup can reach a path before the pass registers it); a store's
-//   lists are emptied at its first access in a pass; a path joins Paths and its identity's paths only at its first registration in a
-//   pass, so both follow the registrars' order and a derived Type's follow its base's; Identities lists the pass's identities in the
-//   order the pass first names them; Register names the root path and the root's own call registers it; each key keeps one object
-//   while each pass registers it, with the facts other components keep by a path and a second key (its satellite lists); at the end of
-//   each Bind the overlay drops every identity and path the pass did not register into its pool (Sweep), from which Named takes,
-//   emptied, before allocating. The lists are the table's own: no reader adds to or removes from them.
+//   pass, a per-pass flag the reset clears (not "Stamp current": a lookup can reach a path before the pass registers it); a store's lists
+//   are emptied at its first access in a pass; a path joins Paths and its identity's paths only at its first registration in a pass, so
+//   both follow the registrars' order and a derived Type's follow its base's; Identities lists the pass's identities in the order the
+//   pass first names them; Register names the root path and the root's own call registers it; each key keeps one object while each pass
+//   registers it, with the facts other components keep by a path and a second key (its satellite lists); at the end of each Bind the
+//   overlay drops every identity and path the pass did not register into its pool (Sweep), from which Named takes, emptied, before
+//   allocating. The lists are the table's own: no reader adds to or removes from them.
 // - Rule (a) (PLAN G949 S1-r1b; DECISIONS BU-220 as amended by BU-219): a pass that does not bind the library reads a base row as
 //   registered only from its own registrar step that registers it: a path and its identity from the Self-clause registrar
 //   (AdmissionPoint.SelfClauses) or the conditional registrar (ConditionalClauses), a path's associated bindings from
