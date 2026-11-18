@@ -72,7 +72,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
-    private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while its library version holds.
+    private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while the segment holds.
     private readonly Locals programLocals = new(); // The program segment's, cleared per program version.
     private Locals writing = null!; // The segment Local records into, which a begin call names.
     private byte found; // The classes the current evaluation or local walk found.
@@ -91,7 +91,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // The number of nodes recorded: the library segment's, then the program's.
     private int NodeCount => this.writing.End;
 
-    /// <summary>Begins the library segment's local facts for a new library version (driver step 0): both segments' facts and every Field
+    /// <summary>Begins the library segment's local facts for a new library segment (driver step 0): both segments' facts and every Field
     /// number cleared; <see cref="Local"/> records into the library's store until <see cref="BeginProgram"/>.</summary>
     internal void BeginLibrary()
     {
@@ -421,8 +421,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // in the store.
     private readonly record struct NodeFacts(int Owner, byte Classes, int Items, int Edges, int Keys);
 
-    // A segment's local facts in record order (PLAN G950, the Back's C-378 (1)(a)), data only, so the library segment's are kept while its
-    // library version holds: its nodes' entries by node id and its bodies' first nodes by ordinal, each the id or ordinal itself (the
+    // A segment's local facts in record order (PLAN G950, the Back's C-378 (1)(a)), data only, so the library segment's are kept while the
+    // segment holds: its nodes' entries by node id and its bodies' first nodes by ordinal, each the id or ordinal itself (the
     // program's after the library's, no offset), its nodes' local inputs, calls and keys, and the Fields it numbered (BeginProgram removes
     // the program's numbers).
     private sealed class Locals

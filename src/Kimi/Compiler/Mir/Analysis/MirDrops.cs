@@ -109,7 +109,7 @@ internal sealed partial class MirDropTable
     /// <returns>Whether the library store holds it.</returns>
     internal bool LibraryHolds(int body) => this.library.Closed(body);
 
-    /// <summary>Gets whether the table holds a body: the driver's library step has closed its entry in its library version
+    /// <summary>Gets whether the table holds a body: the driver's library step has closed its entry in its library segment
     /// (<see cref="LibraryHolds"/>), or its one stepping path (<see cref="MirAnalysis.Step"/>) in this version (the program store), so step
     /// 2 has run on it (A4's local facts follow its entry in the same step); a round that reads a body the table does not hold misses
     /// (PLAN G951).</summary>
