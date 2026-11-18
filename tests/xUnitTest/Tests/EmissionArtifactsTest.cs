@@ -43,7 +43,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
-        Assert.Equal(3, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(4, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("llvm-dlltool", libraries[0].GetProperty("generator").GetString());
         Assert.Equal(Kernel32Imports.DefinitionSha256, libraries[0].GetProperty("definitionSha256").GetString());
         Assert.False(libraries[0].TryGetProperty("input", out _));
@@ -131,8 +131,8 @@ public sealed class EmissionArtifactsTest : IDisposable
         using var manifest = JsonDocument.Parse(json);
         Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
         NativeToolchain.ValidateManifest(manifest.RootElement);
-        using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 3", "\"schemaVersion\": 2", StringComparison.Ordinal));
-        Assert.Contains("schema 3", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
+        using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 4", "\"schemaVersion\": 3", StringComparison.Ordinal));
+        Assert.Contains("'schemaVersion' is not this compiler's", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
     }
 
     [Fact]
@@ -444,6 +444,63 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal(new string('a', 64), libraries[0].GetProperty("sha256").GetString());
         Assert.False(libraries[3].TryGetProperty("sha256", out _));
         Assert.Contains("declare dllimport i32 @inflate(i32)\n", File.ReadAllText(path!));
+    }
+
+    // R9-B1: the manifest states the generation result's external declarations, which the native build's object inspection reads in
+    // place of the IR (SPEC 22.6: an import is referenced through __imp_ when dllimport), in declaration order; an uncalled import's
+    // library is still required and listed (SPEC 22.6, IMPL 20.4; RequiredNameWithoutSupplyCannotPublish: it needs its supply).
+    [Fact]
+    public void TheManifestStatesTheModulesExternalDeclarations()
+    {
+        var c = this.CreateForeign(
+            "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
+            "    #LibraryImport(\"zlib\", \"inflate\")\n    public unsafe func inflate(value: i32) -> i32\n" +
+            "    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+            "public func main()\n    var v: i32 = 0\n    var e: u32 = 0\n    unsafe => v = Native.encode(1)\n    unsafe => e = Native.lastError()",
+            settings => settings.NativeLibraries[WindowsProfile.Target] = new()
+            {
+                ["codec"] = new() { Kind = "static", Input = "codec.lib" },
+                ["zlib"] = new() { Kind = "import", Input = "zlib.lib" },
+            });
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        var root = manifest.RootElement;
+        Assert.Equal(
+            [("encode", false), ("GetLastError", true)],
+            root.GetProperty("externalDeclarations").EnumerateArray().Select(static x => (x.GetProperty("symbol").GetString(), x.GetProperty("dllimport").GetBoolean())));
+        Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], root.GetProperty("libraries").EnumerateArray().Select(static x => x.GetProperty("name").GetString()));
+        NativeToolchain.ValidateManifest(root);
+    }
+
+    // R9-B1: a dependency module's called import (Kimi.Time's Windows counter functions, SPEC 22.8.3) is one of the generation result's
+    // external declarations and the manifest's, so the object inspection allows its __imp_ reference.
+    [Fact]
+    public void ADependencysCalledImportIsDeclared()
+    {
+        var c = this.Create("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()");
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        var declared = manifest.RootElement.GetProperty("externalDeclarations").EnumerateArray()
+            .Select(static x => (x.GetProperty("symbol").GetString()!, x.GetProperty("dllimport").GetBoolean())).ToArray();
+        Assert.Equal(c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)), declared);
+        Assert.Contains(("QueryPerformanceCounter", true), declared);
+        Assert.Contains(("QueryPerformanceFrequency", true), declared);
+    }
+
+    // R9-B1: a manifest whose external declarations are not each a nonempty symbol, declared once, with a boolean dllimport form is
+    // rejected before any tool.
+    [Theory]
+    [InlineData("[{\"symbol\": \"\", \"dllimport\": true}]", "Invalid external declaration")]
+    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": \"yes\"}]", "'externalDeclarations.dllimport' is missing or not a JSON Boolean")]
+    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": true}, {\"symbol\": \"encode\", \"dllimport\": false}]", "Duplicate external declaration")]
+    public void AMalformedExternalDeclarationIsRejected(string declarations, string failure)
+    {
+        var c = this.Create();
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
+        var json = File.ReadAllText(Path.ChangeExtension(path!, ".link.json"));
+        Assert.Contains("\"externalDeclarations\": []", json, StringComparison.Ordinal);
+        using var malformed = JsonDocument.Parse(json.Replace("\"externalDeclarations\": []", "\"externalDeclarations\": " + declarations, StringComparison.Ordinal));
+        Assert.Contains(failure, Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(malformed.RootElement)).Message);
     }
 
     [Fact]
