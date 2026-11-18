@@ -134,6 +134,13 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData(OwnTypeDeclarations + "let r = mkT(1@i32, mkNone<i64>())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "mkT(1@i32, mkNone<i64>())")]
     [InlineData(OwnTypeDeclarations + "let s = identity(stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity(stop())")]
     [InlineData(OwnTypeDeclarations + "let o = make(func () => 2)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make(func () => 2)")]
+
+    // SPEC 10.5.1, 23.1.2 (PLAN G924, ruling 113 B1): nested calls take their own Types in one step, and the one that fails records the
+    // error; the selected candidate's re-check and completion read that failed leaf (PartFailed: rule W) and add no record of their own.
+    [InlineData(OwnTypeDeclarations + "let r = mkT(identity(1), mkNone())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(identity(1), Option.None)", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.None")]
+    [InlineData(OwnTypeDeclarations + "let w = W.Make(identity(1), mkNone())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet r = mkT2(identity(1), (mkNone(), 2))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
     public void NestedInferenceHasOneBoundary(string source, string code, string at)
     {
         var check = DiagnosticCorpus.Check(source);
@@ -180,6 +187,16 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData(OwnTypeDeclarations + "let r = f(identity(1), [])")]
     public void LiteralDefaultsBindBeforeANestedCallTakesItsOwnType(string source)
         => Assert.True(DiagnosticCorpus.Check(source).Accepted);
+
+    // SPEC 10.5.1 (PLAN G924, ruling 113 B1): the valid twins of NestedInferenceHasOneBoundary's B1 rows generate: a nested call or Case
+    // checked at the Type the defaults or an own Type fixed is completed there; completion skips only a part that failed.
+    [Fact]
+    public void ANestedPartCheckedAtTheFixedTypeGenerates()
+        => ScalarEmissionTest.EmitFixture(
+            "ApplicabilityChainOwnTypes",
+            OwnTypeDeclarations + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet w = W.Make(1, mkNone())\n" +
+                "require mkT(1, mkNone()) + mkT(identity(1), .None) + mkT2(1, (mkNone(), 2)) == 0 else => $abort(\"own\")",
+            string.Empty);
 
     // SPEC 10.5.1, 14.9.2 (owner decision (1)): a control-flow argument that is no Literal is bound under the argument probe, which
     // reaches its result sources: literals beside only Never or waiting sources, or a waiting source call, make it Waiting, checked
