@@ -63,6 +63,10 @@ public sealed class SyntaxTable
     /// (SPEC 6.7: the implementation Attributes are recognized only there). A source module's table never is.</summary>
     internal bool IsLibrary => this.Module == LibraryModule;
 
+    /// <summary>Gets a value indicating whether the table is frozen: the library's from its freeze (PLAN G949 S1-1, FreezeLibrary), after
+    /// which no step writes it; a fact a later pass makes at one of its nodes is that pass's (Binding's OriginAtomRows).</summary>
+    internal bool Frozen { get; private set; }
+
     /// <summary>Creates the Kimi library's table, numbered <see cref="LibraryModule"/> before its sources are parsed
     /// (<see cref="Kotonoha.ForKimiLibrary"/>).</summary>
     /// <returns>The table.</returns>
@@ -81,6 +85,9 @@ public sealed class SyntaxTable
 
         return node.SyntaxId;
     }
+
+    /// <summary>Freezes the table (PLAN G949 S1-1: the library's, at its freeze).</summary>
+    internal void Freeze() => this.Frozen = true;
 
     /// <summary>Records that the module's syntax changed, so the next pass renumbers it.</summary>
     internal void Edit() => this.Version++;

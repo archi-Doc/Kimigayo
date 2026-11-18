@@ -181,6 +181,7 @@ public sealed partial class Binding
 
         this.Library.Layer.Impls.Freeze();
         this.Library.Kotonoha.Syntax.Hir.Families.Freeze(this);
+        this.Library.Kotonoha.Syntax.Freeze();
         this.FreezeLocalRegions();
         this.FreezeRequirementWorks();
         this.FreezeKeepers();

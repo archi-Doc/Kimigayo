@@ -408,6 +408,7 @@ public partial class KimiLibraryShapeTest
             // A run's view, a per-run cache and a walk's reused scratch the reads after a Bind (MIR's) use too (PLAN G949 S1-1, ruling 199 w1
             // (ii)): rebuilt at the run's first read, current in one run, or cleared at the walk's start, so after a step it holds what the
             // program's last read left.
+            ["Binding.programAtoms"] = Rule.Program, // Atoms a step after the freeze interns at library binders (ruling 203 (4)), reset with the pass.
             ["Binding.originUnitIndex"] = Rule.Program, // The C1-F4 view's units of the run's obligations, rebuilt at its first read (PrepareOriginRows).
             ["Binding.originUnits"] = Rule.Program, // Their rows, in the units' reused lists.
             ["Binding.comparisonPlans"] = Rule.Program, // The legacy comparison plans, each current in the run that formed it (n7).

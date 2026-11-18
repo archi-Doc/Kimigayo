@@ -134,6 +134,43 @@ public partial class KimiLibraryShapeTest
             => [.. LibraryLayer.Families().Where(static x => x.Name == "AssociatedOrigins").SelectMany(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!, c.Binding))];
     }
 
+    // Ruling 203 (4) (B6): an Item of a library requirement member (`P.tryResolve`, in two bodies) gets its call context at MIR time
+    // (RequirementItemContext), which interns the member's Input atoms; from the freeze such an atom is a row of the program pass's
+    // (programAtoms, reset with the pass), never one of the library's OriginAtoms column, which gained the member's row at Analyze
+    // before. SPEC 8.11.3, 7.7.4: the program is valid (MirEffectsTest's atItem row), without records.
+    [Fact]
+    public void ARequirementItemsAtomsAreTheProgramPasss()
+    {
+        var c = CompilationTestHelper.Parse("group H\n    public func atItem<P>(p: P, length: isize) -> Option<isize>\n        P is Position\n" +
+            "        let resolve = P.tryResolve\n        return resolve(p, length)\n    public func atItem2<P>(p: P, length: isize) -> Option<isize>\n" +
+            "        P is Position\n        let resolve = P.tryResolve\n        return resolve(p, length)\npublic func main()\n    _ = H.atItem(3, 10)\n" +
+            "    _ = H.atItem2(5@i64, 10)\n");
+        Assert.True(c.Bind().IsComplete);
+        var atoms = LibraryAtoms(c);
+        c.Analyze();
+        Assert.Empty(TestDiagnostics.Of(c));
+        Assert.Equal(atoms, LibraryAtoms(c));
+        var program = (IDictionary)typeof(Binding).GetField("programAtoms", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal(2, program.Count); // tryResolve's two inputs, interned once for both bodies.
+        Assert.All(program.Keys.Cast<ITuple>(), static x => Assert.True(((Koto)x[0]!).SyntaxOwner!.IsLibrary));
+        Assert.True(c.Bind().IsComplete);
+        Assert.Empty(program);
+        c.Analyze();
+        Assert.Equal(atoms, LibraryAtoms(c));
+
+        static List<BoundOrigin> LibraryAtoms(Compilation c)
+        {
+            var table = c.Library.Kotonoha.Syntax;
+            var atoms = new List<BoundOrigin>();
+            for (var id = 1; id <= table.Count; id++)
+            {
+                atoms.AddRange((table.Hir.Families.OriginAtoms.Get(id) ?? []).OfType<BoundOrigin>());
+            }
+
+            return atoms;
+        }
+    }
+
     // e2 (s11-design 5, 6.3; G375; G949 ruling 187 (c)): a frozen library verdict is read, never written, so a program's per-use check
     // over a library function leaves the frozen verdict and the records as the library pass made them; one the freeze left not Done is
     // formed at each use in the user's scope. None is today (EveryLibrarySignatureVerdictIsProven), so the row clears every library

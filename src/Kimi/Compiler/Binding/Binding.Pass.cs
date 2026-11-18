@@ -27,6 +27,7 @@ public sealed partial class Binding
         this.storageStack.Clear();
         this.issues.Clear();
         this.foreignFailures.Clear();
+        this.programAtoms.Clear();
         this.sitelessHeightRefusal = false;
         this.lints.Clear();
         this.callableSelectionFailures.Clear();
