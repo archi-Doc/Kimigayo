@@ -68,7 +68,7 @@ public class PatternLayerOriginTest
     {
         var c = MinimalEmissionTest.Analyze(Declarations + source + "\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var symbol = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => BoundMatch.Of(x)).OfType<BoundMatch>()
+        var symbol = KotoTree.Walk(c.Kotonoha.RootKoto).Select(x => BoundMatch.Of(c.Binding, x)).OfType<BoundMatch>()
             .SelectMany(static x => x.Positions).Select(static x => x.BodySymbol).First(static x => x?.Name is "x" or "$try.value")!;
         Assert.Equal(type, Binding.HoverTypeName(symbol.Type!).Split(" during ")[0]);
     }

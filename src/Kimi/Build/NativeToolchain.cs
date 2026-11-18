@@ -11,12 +11,13 @@
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
 // Compilation.Diagnostics; Binding.Startup.OutputKind and Binding.LibraryImports (an import's Library and Kind); the enum OutputKind,
 // which project configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease;
-// CompilationBuildMetadata, through Project.BuildMetadata; the Backend's LlvmModuleText.SymbolFromName; and of Kimi.Diagnostics the
+// CompilationBuildMetadata, which Project.Build reads and passes; the Backend's LlvmModuleText.SymbolFromName; and of Kimi.Diagnostics the
 // record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
 // Output: the pair, the build record, the staged libraries, the object with its inspection and the executable, each published by
 // replacement; and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
-// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception its host renders (IsToolchainFailure).
+// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception: one IsToolchainFailure classifies is
+// the toolchain's, which its host renders as a message; under Project.Build any other ends the build as Faulted (CheckFaulted_Kd, R9-B2).
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
@@ -24,6 +25,10 @@
 // Temporary: the two reads of Binding (Startup.OutputKind, LibraryImports) and SymbolFromName (ReadExternalDeclarations' IR re-parse)
 // end with the plan's unit R9-B1, when the generation result carries the output kind, the required libraries and the external
 // declarations. The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
+// IsToolchainFailure's KeyNotFoundException and InvalidOperationException (JsonElement's accessors over the manifest, the build record
+// and the installation and kernel32 records) end when those readers turn their accessors' failures into InvalidDataException (a PLAN
+// row); until then a listed type raised inside a toolchain call, by the host's report or a defect here, prints as the toolchain's
+// failure (R9-B2's known limit). Publication's kinds stay (R5-M165).
 
 using System.ComponentModel;
 using System.Diagnostics;
@@ -43,8 +48,11 @@ internal static partial class NativeToolchain
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    // A failure of the native build or of a toolchain command: publication's kinds (an output, a configuration or a supply), a tool that
-    // does not start, or a manifest, record or installation file that is not the JSON its reader expects.
+    // A failure of a toolchain step (the native build, a Library's record, a run or a toolchain command): publication's kinds (an output,
+    // a configuration or a supply), a tool that does not start, or a manifest, record or installation file that is not the JSON its
+    // reader expects (KeyNotFoundException and InvalidOperationException are JsonElement's accessors'). Project.Build applies it only
+    // around the toolchain's own calls (a compiler step's exception is its result's fault, R9-B2); CommandExecution applies it to every
+    // command's exception and TestCommand around its native build, which spans compiler steps too (a PLAN open issue).
     internal static bool IsToolchainFailure(Exception ex)
         => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
 
@@ -54,9 +62,9 @@ internal static partial class NativeToolchain
         WriteRecord(paths.Record, CreateBuildRecord());
     }
 
-    internal static void RecordLibrary(Project project, ArtifactPaths paths, CancellationToken cancellationToken)
+    // A checked Library's record, with the front end's metadata of its one target, which the project reads (a compiler step's read).
+    internal static void RecordLibrary(Project project, CompilationBuildMetadata metadata, ArtifactPaths paths, CancellationToken cancellationToken)
     {
-        var metadata = project.BuildMetadata.Single();
         var record = new JsonObject
         {
             ["status"] = "checked", ["outputKind"] = "Library", ["input"] = project.FilePath,
