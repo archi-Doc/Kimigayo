@@ -230,13 +230,14 @@ PLAN's open issues hold one row per cause (DECISIONS Q17).
 
 A window merges queued units onto dev, verifies them once and lands them together (DECISIONS Q15).
 
-- **Entry.** A unit enters when its review is ACCEPT, its unit checks passed on a base at most two windows old, and its queue row
+- **Entry.** A unit enters when its review is ACCEPT, its unit checks (Unit verification, no Session of its own: DECISIONS Q20) passed on a base at most two windows old, and its queue row
   names its branch head (the Coordinator's docs commit included) and its expected record and acceptance moves.
 - **Moves.** A unit moves acceptance when a program it changes goes from rejected to accepted or back; it moves records when only
   the records of programs that stay rejected change.
 - **Size.** At most five units that move records or acceptance, and at most one unit that moves acceptance per area (Front, Middle,
   Back), or two when they share no file and each names its expected moves (DECISIONS Q18). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
-- **Files.** Units of one window share no file except PLAN's table end and separate DECISIONS entries. An overlap waits for the
+- **Files.** Units of one window share no file except PLAN's table end, separate DECISIONS entries and separate named constants or rows of a ratchet or pin
+  test (`ArchitectureRulesTest`, `KimiLibraryShapeTest`) that `git merge-tree` merges cleanly (DECISIONS Q20). An overlap waits for the
   next window, in order of readiness.
 - **Run.** The Coordinator merges the units onto dev, builds the solution with warnings as errors and runs the heavy set once: the
   default Session with the diagnostic snapshot against the shared base and every native fixture (a fixture whose inputs match the
