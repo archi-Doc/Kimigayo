@@ -131,10 +131,17 @@ internal struct HirTables
     /// <returns>Whether it destroys in place, transferring nothing.</returns>
     internal static bool DestroysInPlace(DiscardKoto discard) => PlanOf(discard).Flag;
 
-    /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
+    /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of the source modules from the latest completed Binding pass,
+    /// once per pass; the library module's are published by the library pass (<see cref="LibraryVersion"/>).</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>The pass the columns describe, 0 before the first.</returns>
     internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
+
+    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1): the run whose library pass published
+    /// it, in every mode, 0 before the first. Until S1-1 freezes the library each run's library pass publishes it anew.</summary>
+    /// <param name="compilation">The compilation.</param>
+    /// <returns>The version.</returns>
+    internal static ulong LibraryVersion(Compilation compilation) => compilation.Binding.LibraryVersion;
 
     /// <summary>Gets a node's plan row, or the default row when it has none.</summary>
     /// <param name="node">The node.</param>

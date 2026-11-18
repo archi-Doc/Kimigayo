@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // The end of a Binding pass (Check; DECISIONS BU-81, refining R2b-D2).
 // - Responsibility: the pass's failure producers (the definition obligations, the needed conformance paths and capability sites, the
 //   call and runtime-test Constraint checks, the part prerequisites, Unvisited to Unresolved); in a Final pass, then, the HIR of the
-//   pass's modules (PublishPass; until PLAN G949 S1-r1b every module, the library included) and H1's TransferRequired judgment over it
+//   pass's modules (PublishPass: the library pass's the library module, the program pass's the source modules) and H1's TransferRequired judgment over it
 //   (CheckTransfers, DECISIONS BU-84), with one republication when it failed a node; then the counting of the node states and the
 //   collection of the issues, which ends the pass's failure production (producing: a refusal after it fails no node, Binding.RefuseProof).
 // - Inputs: the bound nodes, the obligations, the needed sites and paths, the facts the pass recorded.
@@ -21,13 +21,14 @@ public sealed partial class Binding
     // Each call Binding synthesized in this pass, with its consumer (BindSynthesizedCall).
     private Dictionary<InvocationKoto, Koto>? synthesizedCalls;
 
-    // Whether a node failed now is this pass's failure: from a pass's start (Bind) or a re-check's (CheckBound) until Check has
-    // counted the node states. After it the pass is published: its lints, MIR, emission and the editor's queries fail no node.
+    // Whether a node failed now is this pass's failure: from a pass's start (RunPass: the library pass's and the program pass's) or a
+    // re-check's (CheckBound) until Check has counted the node states. After it the pass is published: its lints, MIR, emission and the
+    // editor's queries fail no node.
     private bool producing;
 
     private void Check(BindingMode mode)
     {
-        this.producing = true; // A re-check's start (CheckBound); a Bind raised it at its own.
+        this.producing = true; // A re-check's start (CheckBound); a pass raised it at its own (RunPass).
         try
         {
             this.ProduceFailures(mode);
@@ -139,43 +140,54 @@ public sealed partial class Binding
     }
 
     // The pass's part of the summary (PassPart.Counts): each node's state, counted once the failures are decided, and each failed node's
-    // issue, or its derived issue.
+    // issue, or its derived issue: the pass's own nodes, then the nodes of other modules it failed (PassPart.ForeignFailures), in the
+    // order it failed them. Such a node was counted by its own pass in its earlier state, so the pass adds its final state and takes
+    // the earlier one off: the Bind's Result counts every node once, by its final state. A CheckBound rerun keeps the list (its Fail
+    // calls return at the existing failures), so the record is published once again, not twice.
     private void CountStates(BindingMode mode)
     {
-        var resolved = 0;
-        var unresolved = 0;
-        var invalid = 0;
+        Span<int> counts = stackalloc int[3]; // Resolved, Unresolved, Invalid.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            var node = this.nodes[i];
-            switch (node.BindingState)
-            {
-                case BindingState.Resolved:
-                    resolved++;
-                    break;
-                case BindingState.Invalid:
-                    invalid++;
-                    break;
-                default:
-                    unresolved++;
-                    break;
-            }
-
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
-            {
-                if (this.IsDerived(node))
-                {
-                    this.derivedIssues.Add(node);
-                }
-                else
-                {
-                    this.issues.Add(new(node, this.CodeOf(node, node.BindingFailure)) { Failure = node.BindingFailure, Problem = this.SlotProblem(node) });
-                }
-
-                this.CollectProblems(node);
-            }
+            counts[Tally(this.nodes[i].BindingState)]++;
+            this.CollectIssue(this.nodes[i], mode);
         }
 
-        this.pass.Part.Counts = new(mode, resolved, unresolved, invalid);
+        for (var i = 0; i < this.foreignFailures.Count; i++)
+        {
+            var (node, before) = this.foreignFailures[i];
+            counts[Tally(node.BindingState)]++;
+            counts[Tally(before)]--;
+            this.CollectIssue(node, mode);
+        }
+
+        this.pass.Part.Counts = new(mode, counts[0], counts[1], counts[2]);
+
+        static int Tally(BindingState state) => state switch
+        {
+            BindingState.Resolved => 0,
+            BindingState.Invalid => 2,
+            _ => 1,
+        };
+    }
+
+    // A failed node's issue of a Final pass, or its derived issue, with its problems.
+    private void CollectIssue(Koto node, BindingMode mode)
+    {
+        if (mode != BindingMode.Final || node.BindingState == BindingState.Resolved || node.BindingFailure == BindingFailure.None)
+        {
+            return;
+        }
+
+        if (this.IsDerived(node))
+        {
+            this.derivedIssues.Add(node);
+        }
+        else
+        {
+            this.issues.Add(new(node, this.CodeOf(node, node.BindingFailure)) { Failure = node.BindingFailure, Problem = this.SlotProblem(node) });
+        }
+
+        this.CollectProblems(node);
     }
 }

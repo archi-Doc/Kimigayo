@@ -215,7 +215,7 @@ public sealed partial class Binding
 
     // The premises a request reads: the scope its consumer holds. C3 adds the definition whose collection is active and the
     // inadmissible bindings here, in ViewOf (BU-29); a source's state and its check under way stay on the source (SourceStates, BU-59).
-    private readonly record struct EvidenceView(BindingScope Premises);
+    internal readonly record struct EvidenceView(BindingScope Premises);
 
     // One of Enumerate's rows: a Contract the premises supply for the subject (Symbol), or the proposition of another kind they
     // supply for it (Clause, a leaf row: Symbol is null), and whether its derivation is available (the strongest of its
