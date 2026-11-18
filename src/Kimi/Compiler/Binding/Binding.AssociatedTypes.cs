@@ -277,8 +277,14 @@ public sealed partial class Binding
             // SPEC 9.6, 8.5.2 (PLAN G724 (b)): a Name after a projection that names a member Type of the projection's normal form selects
             // it, formed in that normal form (BindContainerReference reads the projection qualifier's formed Type as its environment).
             // One the normal form does not declare stays missing.
-            if (receiverPath.End != PathEnd.Projection || this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is not { } nested)
+            var member = receiverPath.End == PathEnd.Projection ? this.LookupMember(type, name, scope, LookupRole.Qualifier) : default;
+            if (member.Member is not { } nested)
             {
+                if (member.Hidden is { } hidden)
+                {
+                    this.PublishHiddenMember(syntax, hidden); // SPEC 9.4: a member Type of the normal form inaccessible from the use.
+                }
+
                 return null;
             }
 

@@ -351,8 +351,7 @@ public sealed partial class Binding
         {
             if ((typeSide.Selection.Hidden ?? valueSide.Selection.Hidden) is { } hidden)
             {
-                member.BoundSymbol = hidden;
-                this.Fail(member, BindingFailure.Access);
+                this.PublishHiddenMember(member, hidden);
             }
 
             return null;

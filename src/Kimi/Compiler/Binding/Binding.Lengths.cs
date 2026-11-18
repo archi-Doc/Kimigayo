@@ -713,6 +713,12 @@ public sealed partial class Binding
                 return null;
             }
 
+            if (!this.Accessible(symbol, scope))
+            {
+                this.PublishHiddenMember(member, symbol); // SPEC 9.4: the group's member is inaccessible from the use.
+                return null;
+            }
+
             var result = this.BindReference(member, symbol, scope);
             this.PublishMemberAccess(member, symbol, null, LookupRole.Qualifier, null); // The group's member; its qualifier published at its read.
             Complete(member.Right, result);
@@ -730,15 +736,10 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 9.6, 9.4: the group's member in the Value role, accessible from the use (LookupMember); an inaccessible one is its record.
+        // SPEC 9.6, 9.4: the group's member in the Value role (LookupMember): accessible from the use, or the inaccessible one it met (its
+        // former's record; this question records nothing).
         PublishQualifier(member.Left, qualifier);
         var selection = this.LookupMember(this.OwnType(qualifier)!, name, scope, LookupRole.Value);
-        if (selection.Member is null && selection.Hidden is { } hidden)
-        {
-            member.BoundSymbol = hidden;
-            this.Fail(member, BindingFailure.Access);
-        }
-
-        return selection.Member;
+        return selection.Member ?? selection.Hidden;
     }
 }
