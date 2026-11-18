@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
 // CompleteValueCallPart completes a value call's part at its one candidate's parameter Type, a waiting one (WaitsForValueCallSolve) at
-// the instantiated parameter; CompleteUnselected binds on its own each
+// the instantiated parameter, an anonymous function on the split at the canonical case's with its open parts (CompleteOpenClosure);
+// CompleteUnselected binds on its own each
 // part of a call that completes none, outside its consultation. The selection, its defaults and their re-check (SolveSelected,
 // CheckDefaulted) stay in Binding.ArgumentKinds.cs.
 public sealed partial class Binding
@@ -142,10 +143,16 @@ public sealed partial class Binding
     // SPEC 12.5.2, 10.5.1, 10.1.1 (D1): a value call's part, classified as a named call's is (PrepareArgument, by its caller, which
     // composes its rows in between) and completed at its known parameter Type with no selection probe, since a value call has one
     // candidate: a Typed part keeps its own Type, which the call adapts; every other part is bound at the parameter Type, a Literal at
-    // its literal input Type. A part that waits for the solve (WaitsForValueCallSolve) is completed at its instantiated parameter. Null
+    // its literal input Type. A part that waits for the solve (WaitsForValueCallSolve) is completed at its instantiated parameter, an
+    // anonymous function at one with parts a split layer decides at the others (`open`, CompleteOpenClosure; G812 ruling 134). Null
     // when it fails.
-    private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
+    private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope, OpenParts open = default)
     {
+        if (open != default && KotoHelper.UnwrapParentheses(part) is FunctionKoto closure)
+        {
+            return this.CompleteOpenClosure(part, closure, parameter, open, scope);
+        }
+
         var literal = IsUnfittedLiteral(part);
         if (this.KindOf(part) != PartKind.Typed || part.BoundType is not { } typed)
         {
@@ -164,6 +171,15 @@ public sealed partial class Binding
         part.ErasedFunctionType = parameter;
         return parameter;
     }
+
+    // SPEC 10.5, 7.7.4, 23.1.2 (DECISIONS D3 with rule W, temporary with it; G812 ruling 134): an anonymous function awaiting a call on
+    // the split, at the Function Type the canonical case formed for its parameter (CanonicalForm), with the parts a split binding
+    // decides open (OpenParts): its body is bound there, so its failures that read no split binding keep their records and a check
+    // reading an open part rests on the split (O-332 (a)). Its erasure's signature part reads the split, so only its Owned part is
+    // judged (FailErasedOwned, as FailUnformedCall judges a Function Item's). Null when that fails or the header fails: the call rests on
+    // it. Both D3 paths complete it here (BindValueCallOnSplit, FailUnformedCall).
+    private BoundType? CompleteOpenClosure(Koto part, FunctionKoto closure, BoundType canonical, OpenParts open, BindingScope scope)
+        => this.BindClosureArgument(part, closure, scope, canonical, open) is { } actual && !this.FailErasedOwned(part, actual, canonical) ? actual : null;
 
     // SPEC 23.1.2, 10.1 (DECISIONS U4b): a call that ends unresolved, with no selected candidate or one that failed before completing
     // its arguments, binds each argument part still unbound on its own under the argument probe, so that the part's own problems are

@@ -397,13 +397,21 @@ public sealed partial class Binding
     // Unsupported_Kd. A Function Item or reference part that every candidate a case can still select declares at a common Function Type
     // (ErasedByEveryCandidate) is erased whichever of them a case selects, so its environment is still judged, once, as a conversion's
     // is (FailErasedOwned; a reference part by its written arguments, FailUnformedOwned): the erasure comes after a selection that
-    // the split leaves open, and its Owned proof reads no unformed Type.
+    // the split leaves open, and its Owned proof reads no unformed Type. An anonymous function awaiting the call is completed as a value
+    // call's part on the split is (CompleteValueCallPart, G812 ruling 134), at the Function Type the canonical case forms for it
+    // (CandidateParameter).
     private BoundType? FailUnformedCall(ref CallEvaluation evaluation)
     {
         var call = evaluation.Call;
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
             var part = call.ArgumentNodes[a];
+            if (this.KindOf(part) == PartKind.Function && this.CandidateParameter(ref evaluation, a) is ({ } canonical, var open))
+            {
+                this.CompleteValueCallPart(part, canonical, evaluation.Scope, open);
+                continue;
+            }
+
             if (ErasedByEveryCandidate(ref evaluation, a) is not { } erased)
             {
                 continue;
@@ -420,6 +428,23 @@ public sealed partial class Binding
         }
 
         return this.Fail(call, BindingFailure.Unsupported, true);
+    }
+
+    // DECISIONS D3 (G812 ruling 134): the Function Type the trial of a call's one candidate forms for argument `a` in the canonical case
+    // (CanonicalForm, formed as SlotSolution.Type forms a parameter), with its open parts. None for a group of several, whose selection
+    // the split leaves open (the evaluation keeps no resting trial's frame), or a parameter that forms no Function Type.
+    private (BoundType? Type, OpenParts Open) CandidateParameter(ref CallEvaluation evaluation, int a)
+    {
+        if (evaluation.Count != 1 || evaluation.Evaluated[0] is not { Symbol.Declaration: FunctionKoto function } candidate ||
+            function.Parameters[evaluation.Mapping[a]].Type.BoundType is not { } declared)
+        {
+            return default;
+        }
+
+        var trial = (function, evaluation.Frame, evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType);
+        var formed = this.CanonicalForm(declared, trial, static (binding, s, type) =>
+            binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths));
+        return formed.Type is { Kind: BoundTypeKind.Function } ? formed : default;
     }
 
     private struct CandidateShape

@@ -198,7 +198,7 @@ public sealed partial class Binding
                         if (parameters is not null)
                         {
                             // SPEC 10.5: the closed parts of S guide the body; its inferred result is never evidence for the slot.
-                            this.BindClosureArgument(argument, closure, scope, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit], binder: signature!.Binder), openResult: result is null);
+                            this.BindClosureArgument(argument, closure, scope, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit], binder: signature!.Binder), new(result is null, 0));
                         }
                         else
                         {

@@ -245,8 +245,8 @@ public sealed partial class Binding
                     this.CompleteFailedPart(waiting, part.Type!, scope);
                     failed ??= waiting;
                 }
-                else if (part is { Fails: false, Prepared: true, Split: false, Parameter: { } parameter } &&
-                    this.CompleteValueCallPart(call.ArgumentNodes[i], parameter, scope) is null)
+                else if (part is { Fails: false, Prepared: true } && this.CompletedParameter(call.ArgumentNodes[i], part, item, scope, i) is ({ } parameter, var open) &&
+                    this.CompleteValueCallPart(call.ArgumentNodes[i], parameter, scope, open) is null)
                 {
                     failed ??= call.ArgumentNodes[i];
                 }
@@ -262,6 +262,16 @@ public sealed partial class Binding
             this.splitFailure = enclosing;
         }
     }
+
+    // G812 rulings 132, 134: the parameter a part of a value call on the split that fails in no case is completed at, with its open
+    // parts: one whose run read no split layer at the parameter that run formed (H2); an anonymous function awaiting the call at the
+    // Function Type the canonical case forms for it, the parts the split decides open (CanonicalForm, J1). Any other part's check reads
+    // the whole split parameter, so it rests and is bound on its own (CompleteUnselected).
+    private (BoundType? Parameter, OpenParts Open) CompletedParameter(Koto argument, in SplitPart part, BoundType item, BindingScope scope, int i)
+        => !part.Split ? (part.Parameter, default)
+            : this.KindOf(argument) == PartKind.Function && ((FunctionKoto)item.Symbol!.Declaration).Parameters[i].Type.BoundType is { } declared
+                ? this.CanonicalForm(declared, (item, scope), static (binding, state, type) => binding.ItemPart(type, state.item, (FunctionKoto)state.item.Symbol!.Declaration, state.scope))
+                : default;
 
     // G812 ruling 132: whether one part of a value call's split check (an argument, or the result after them) fails in every case of
     // the bindings it reads, by its own search, and the waiting part it fails at with the canonical case's Type where every failing

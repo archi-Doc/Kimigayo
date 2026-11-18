@@ -40,6 +40,9 @@ public sealed partial class Binding
 
     private ulong splitCarried;
 
+    // DECISIONS D3 (G812 ruling 134): what CanonicalForm's run formed.
+    private (BoundType? Type, OpenParts Open) canonicalForm;
+
     // A finite Type family stores complete case Types in SemanticsOrder, packed by its Length mask.
     // Only the selecting binder is a dependency; no source expression or operation plan is retained.
     private enum FamilyTransform : byte
@@ -307,6 +310,43 @@ public sealed partial class Binding
         }
 
         return rests;
+    }
+
+    // DECISIONS D3 (temporary with it; G812 ruling 134): the Type `form` gives a declared Type in the canonical case, each binding at
+    // its first admitted Semantics (a search's first run, RestsOnSplitCases), and of a Function Type its parts whose own formation read a
+    // split binding (OpenParts); none where its formation read one that no part accounts for (the Type is open as a whole).
+    private (BoundType? Type, OpenParts Open) CanonicalForm<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
+    {
+        this.canonicalForm = default;
+        _ = this.RestsOnSplitCases(this.unformedWrites, (declared, state, form), static (binding, check) =>
+        {
+            var type = binding.FormReadsSplit(check.declared, check.state, check.form, out var split);
+            var open = default(OpenParts);
+            if (check.declared is { Kind: BoundTypeKind.Function, Components: [var inputs, var result] } && type is { Kind: BoundTypeKind.Function })
+            {
+                for (var i = 0; i < Math.Min(inputs.Components.Count, 64); i++)
+                {
+                    _ = binding.FormReadsSplit(inputs.Components[i], check.state, check.form, out var input);
+                    open = input ? open with { Inputs = open.Inputs | (1UL << i) } : open;
+                }
+
+                _ = binding.FormReadsSplit(result, check.state, check.form, out var formed);
+                open = open with { Result = formed };
+            }
+
+            binding.canonicalForm = split && open == default ? default : (type, open);
+            return false;
+        });
+        return this.canonicalForm;
+    }
+
+    // DECISIONS D3: `form` of a declared Type in a run, with whether it read a split binding or formed none.
+    private BoundType? FormReadsSplit<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form, out bool split)
+    {
+        var (stamp, mark) = (this.splitReads, this.unformedWrites);
+        var type = form(this, state, declared);
+        split = this.splitReads != stamp || this.UnformedSince(mark);
+        return type;
     }
 
     // DECISIONS D3: a part of a check judged in split cases starts (RestsOnSplitCases): its writes and reads count from here.
