@@ -135,8 +135,9 @@ internal static partial class NativeToolchain
     /// <summary>One native build of a checked IR/manifest pair: its inputs, its record and its tools. The constructor takes the build's
     /// fixed inputs: the project whose supplies it checks (none for a standalone manifest), the pair, the root its records redact, the
     /// optimization and the host's report and cancellation. <see cref="Run"/> takes the toolchain selection, which it resolves after the
-    /// pair's check, and runs the steps once, in order: the pair's identity, the tools, the libraries, the object, its inspection and the
-    /// link; a step that fails throws and leaves the record at the last state written.</summary>
+    /// pair's check, and runs the steps once, in order: the pair's identity, the tools, the libraries, the object, its inspection, the
+    /// link and the report; the steps fill the record and <see cref="Run"/> writes each of its states, the success last, so a step that
+    /// fails, the report included, throws and leaves the record at the last incomplete state written (IMPL 20.3.2).</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -185,6 +186,7 @@ internal static partial class NativeToolchain
             var undefined = await this.Inspect(obj);
             await this.Link(obj, libraries, undefined);
             this.report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
+            WriteRecord(this.paths.Record, this.record);
         }
 
         // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
@@ -385,7 +387,8 @@ internal static partial class NativeToolchain
             return undefined;
         }
 
-        // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked state.
+        // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked
+        // state, which Run publishes last.
         private async Task Link(string obj, List<string> libraries, string undefined)
         {
             var temporary = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
@@ -406,7 +409,6 @@ internal static partial class NativeToolchain
                 this.record["executable"] = Path.GetFileName(this.paths.Executable);
                 this.record["executableSha256"] = Hash(this.paths.Executable);
                 this.record["objectUndefinedSymbols"] = undefined.Trim();
-                WriteRecord(this.paths.Record, this.record);
             }
             finally
             {

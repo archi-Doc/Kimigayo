@@ -7,7 +7,10 @@ using System.Text.Json;
 namespace Kimi.Build;
 
 /// <summary>Shared artifact identity and path validation for emission and native builds: an artifact file's replacement, hash and path,
-/// and whether a manifest's or record's JSON restates the strings its reader expects.</summary>
+/// and the toolchain files' JSON reads: one member lookup and the total value readers (<see cref="Member"/>, <see cref="Text"/>,
+/// <see cref="Number"/>), which read a member that is missing, of another kind or not an Int32 as absent, so no JSON accessor's exception
+/// leaves a read and each reader fails with its own InvalidDataException (PLAN G983); and whether a record's JSON restates the strings its
+/// reader expects.</summary>
 internal static class ArtifactFiles
 {
     // The encoding of every text artifact and record: UTF-8 without a byte order mark.
@@ -49,15 +52,33 @@ internal static class ArtifactFiles
         return Path.GetFullPath(value, directory);
     }
 
-    /// <summary>Whether a JSON object states each named string with its value, read in the rows' order up to the first difference.</summary>
-    /// <param name="element">The object.</param>
+    /// <summary>A JSON object's member by name.</summary>
+    /// <param name="element">The element, of any kind.</param>
+    /// <param name="name">The member's name.</param>
+    /// <returns>The member, or the undefined element when the element is not an object or has no such member.</returns>
+    internal static JsonElement Member(JsonElement element, ReadOnlySpan<char> name)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var member) ? member : default;
+
+    /// <summary>The string a JSON value is.</summary>
+    /// <param name="value">The value, of any kind (undefined for a missing member).</param>
+    /// <returns>The string, or null for another kind.</returns>
+    internal static string? Text(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    /// <summary>The Int32 a JSON value is.</summary>
+    /// <param name="value">The value, of any kind (undefined for a missing member).</param>
+    /// <returns>The number, or null for another kind or a number that is not an Int32.</returns>
+    internal static int? Number(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : null;
+
+    /// <summary>Whether a JSON element is an object stating each named string with its value, read in the rows' order up to the first
+    /// difference.</summary>
+    /// <param name="element">The element.</param>
     /// <param name="rows">The names and their expected values.</param>
     /// <returns>Whether every row matches.</returns>
     internal static bool States(JsonElement element, params ReadOnlySpan<(string Name, string Value)> rows)
     {
         foreach (var (name, value) in rows)
         {
-            if (element.GetProperty(name).GetString() != value)
+            if (Text(Member(element, name)) != value)
             {
                 return false;
             }

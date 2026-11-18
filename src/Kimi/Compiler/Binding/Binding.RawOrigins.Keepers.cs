@@ -90,7 +90,7 @@ public sealed partial class Binding
     private ReadOnlySpan<Keeper> Keepers(OriginParameter slot)
     {
         var layer = this.Library.Layer.Part;
-        var found = PassPart.Find(layer.Keepers, this.keepers, slot, out var list);
+        var found = PassPart.Find(PassPart.Parts(layer.Keepers, this.keepers), slot, out var list);
         var call = ReferenceEquals(found, layer.Keepers) ? layer.RequirementCall : this.pass.Part.RequirementCall;
         return found is not null && Current(list!.Pass, call) ? list.Items : default;
     }
