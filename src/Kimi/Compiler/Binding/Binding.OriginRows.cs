@@ -155,31 +155,30 @@ public sealed partial class Binding
                 var mask = this.BodyCaseMask(obligation);
                 var unit = this.OriginUnit(obligation.Body);
                 unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask));
-                if (obligation.Compared)
-                {
-                    this.AddRegionValueRows(unit, longer, obligation.Use, mask);
-                    this.AddRegionValueRows(unit, shorter, obligation.Use, mask);
-                }
+                this.AddRegionValueRows(unit, longer, obligation, mask);
+                this.AddRegionValueRows(unit, shorter, obligation, mask);
             }
         }
 
         this.originRowsVersion = this.storageVersion; // Once the walk passed its checks (BU-102).
     }
 
-    // PLAN G492-a (ii), the owner's O-363 (a): a comparison's row names a `let` region of its body as the region, an inference variable no
-    // other row of the body names (they read its value). Its value, which the declaration fixes, is its bound: the row `value outlives
-    // region` beside it, under its condition, so A5 solves the region from the value and the comparison alone. The value is read as every
-    // reader reads it (OriginAtUse, RegionValueAtUse); an end that is not a `let` region reads as itself and forms no row.
-    private void AddRegionValueRows(List<OriginRowDraft> unit, BoundOrigin end, Koto use, ulong mask)
+    // PLAN G492-a (ii), the owner's O-363 (a): a row that names a `let` region of its own body as the region (a comparison's row; the
+    // owner's O-397 (A): a nested signature's written result formed where written, whose occurrence lies in the nested signature, so
+    // its clause names the region, PLAN G962) names an inference variable no other row of the body names (they read its value). Its
+    // value, which the declaration fixes, is its bound: the row `value outlives region` beside it, under its condition, so A5 solves
+    // the region from the value and the row alone (the region stays the region; SPEC 15.3.4). The value is the published one
+    // (Binding.LocalRegions.cs), its receivers resolved at the row's use; a region of another body (an enclosing one, fixed in a
+    // nested body, DECISIONS BU-28) and any other end form no row.
+    private void AddRegionValueRows(List<OriginRowDraft> unit, BoundOrigin end, in BindingObligation obligation, ulong mask)
     {
         var parts = end.Kind == OriginKind.Intersection ? end.Operands.Count : 1;
         for (var i = 0; i < parts; i++)
         {
             var region = parts == 1 ? end : end.Operands[i];
-            var value = this.CanonicalOrigin(this.OriginAtUse(region, use));
-            if (!ReferenceEquals(value, region))
+            if (region.Body == obligation.Body && this.Region(region) is { Value: { } value })
             {
-                unit.Add(new(use, value, region, false, OriginRowSource.Fit, null, null, mask));
+                unit.Add(new(obligation.Use, this.CanonicalOrigin(this.ReceiverAtUse(value, obligation.Use)), region, false, OriginRowSource.Fit, null, null, mask));
             }
         }
     }
