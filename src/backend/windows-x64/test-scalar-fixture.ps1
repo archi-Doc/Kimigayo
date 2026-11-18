@@ -59,14 +59,24 @@ try {
                 '-relocation-model=pic', '-code-model=small', $ir, '-o', "$target.obj")
             if (-not (Invoke-Tool $tools.llc $arguments)) { return }
         }
-        # One llvm-nm reads both objects; --print-file-name prefixes each line with its object's path.
+        # One llvm-nm reads both objects; --print-file-name prefixes each line with its object's path. Every line must name exactly
+        # one of them: a line that names neither (a path the console decoded differently) is missing evidence, never dropped.
         $objects = @(foreach ($level in $levels) { "$($targets[$level]).obj" })
         if (-not (Invoke-Tool $tools['llvm-nm'] (@('--undefined-only', '--format=posix', '--print-file-name') + $objects))) { return }
-        $listed = $result.tools[-1].output
+        $undefinedBy = @{}
+        foreach ($level in $levels) { $undefinedBy[$level] = [Collections.Generic.List[string]]::new() }
+        foreach ($line in @($result.tools[-1].output)) {
+            $text = [string]$line
+            $owners = @($levels | Where-Object { $text.StartsWith("$($targets[$_]).obj: ", [StringComparison]::Ordinal) })
+            if ($owners.Count -ne 1) {
+                Add-KimiFixtureProblem $result 'tool.output' ([InvalidOperationException]::new("llvm-nm line names no object of this fixture: $text"))
+                return
+            }
+            $undefinedBy[$owners[0]].Add($text.Substring("$($targets[$owners[0]]).obj: ".Length))
+        }
         foreach ($level in $levels) {
             $target = $targets[$level]
-            $prefix = "$target.obj: "
-            $undefined = @($listed | Where-Object { $_.StartsWith($prefix, [StringComparison]::Ordinal) } | ForEach-Object { $_.Substring($prefix.Length) })
+            $undefined = $undefinedBy[$level]
             $undefined | Set-Content -LiteralPath "$target.undefined.txt" -Encoding utf8
             foreach ($line in $undefined) {
                 $symbol = ($line -split '\s+', 2)[0]
@@ -75,9 +85,6 @@ try {
                     return
                 }
             }
-        }
-        foreach ($level in $levels) {
-            $target = $targets[$level]
             $arguments = @("$target.obj", $archive, $kernel.path, '/entry:__kimi_start', '/subsystem:console',
                 '/nodefaultlib', '/Brepro', "/out:$target.exe")
             if (-not (Invoke-Tool $tools['lld-link'] $arguments)) { return }
