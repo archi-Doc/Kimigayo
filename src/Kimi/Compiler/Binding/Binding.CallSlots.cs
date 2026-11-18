@@ -344,8 +344,10 @@ public sealed partial class Binding
     // of a slot nothing has fixed becomes the slot's selector evidence, and every other one must agree with it, whichever comes first:
     // both form the same layer over one `target` under the premises at the solve's node (ApplySemantics, EnterEvidence: a conditional
     // member's premise included; an owner source forms the target itself, so owner evidence is
-    // compared as any other is; a binding that forms none, a pair target alone, agrees only with itself: a Language verdict, no
-    // Unformed fact). A slot bound with no selector evidence was fixed before any evidence (explicit Type arguments, a construction's
+    // compared as any other is; a binding that forms none, a pair target alone, agrees only with itself outside a split's run: a
+    // Language verdict, no Unformed fact (F's O1 (a)), which only refuses the candidate (refusedOnSplit: never dropped so that another
+    // wins, SPEC 10.1, G812 ruling 141, ClassifySelection); a run of a split check compares its case's layer). A slot bound with no
+    // selector evidence was fixed before any evidence (explicit Type arguments, a construction's
     // fixed slots): its binder is not inferred, so nothing is compared. Never supplies no evidence.
     private bool IsSource(SlotFrame frame, int slot, BoundType actual, BoundType target)
     {
@@ -370,8 +372,10 @@ public sealed partial class Binding
         }
 
         var saved = this.EnterEvidence(frame);
-        var agrees = this.FormsUnder(evidence) && this.FormsUnder(actual) &&
+        var formsUnder = this.FormsUnder(evidence) && this.FormsUnder(actual);
+        var agrees = (formsUnder || this.splitOpen) &&
             this.ApplySemantics(evidence, target, null) is { } formed && ReferenceEquals(formed, this.ApplySemantics(actual, target, null));
+        this.refusedOnSplit |= !formsUnder && !this.splitOpen;
         this.premiseUse = saved;
         return agrees;
     }

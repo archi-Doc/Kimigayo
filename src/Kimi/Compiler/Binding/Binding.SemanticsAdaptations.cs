@@ -16,6 +16,14 @@ public sealed partial class Binding
     // evidence Type (PremiseScope); null otherwise.
     private BindingScope? premiseUse;
 
+    // DECISIONS D3 (G812 ruling 141, L2): whether the current candidate trial's Unknown proof read a pair slot that a binding forming no
+    // Type sources (SelectsUnformed): its premise reads the split, which no premise of the split's case names.
+    private bool premiseReadsSplit;
+
+    // DECISIONS D3 (G812 ruling 141, L1): whether the current candidate trial's source comparison refused a binding that forms no Type
+    // outside a split's run (IsSource): the candidate is refused only through the split.
+    private bool refusedOnSplit;
+
     // DECISIONS D3: the formations so far that formed no Type (Unformed); a check compares it with its mark (UnformedSince).
     private int unformedWrites;
 
@@ -241,6 +249,20 @@ public sealed partial class Binding
     // with a selector of its own, a family case by case. A selector-less abstract binding (a pair target alone or an unresolved
     // projection no premise proves owner) forms none (Unformed; PLAN G886).
     private bool FormsUnder(BoundType binding) => !this.IsAbstractBinding(binding) || HasOwnSelector(binding);
+
+    // DECISIONS D3: whether a call's pair slots take a source that forms no Type (FormsUnder): a binding the split decides.
+    private bool SelectsUnformed(ReadOnlySpan<BoundType?> selectors)
+    {
+        foreach (var selector in selectors)
+        {
+            if (selector is not null && !this.FormsUnder(selector))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // DECISIONS D3 (temporary; removed with the representation of a selector-less binding's split, PLAN G886): a formation under a binding
     // that forms none (FormsUnder) forms nothing (null) and counts one write (unformedWrites), the one record of it; its readers compare

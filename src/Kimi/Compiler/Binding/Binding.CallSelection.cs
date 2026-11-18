@@ -79,6 +79,33 @@ public sealed partial class Binding
     // BindCall rests (WaitingFails, SelectionOnSplit).
     private static bool SelectionFails(CallSelection kind) => kind is CallSelection.NoneApplicable or CallSelection.Ambiguous or CallSelection.Unproven;
 
+    // SPEC 10.4: the candidates of an evaluation that applied (Applicable or Waiting), as bits of their indices (the first 64).
+    private static ulong AppliedCandidates(in CallEvaluation evaluation)
+    {
+        var applied = 0UL;
+        for (var i = 0; i < Math.Min(evaluation.Count, 64); i++)
+        {
+            applied |= evaluation.Evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting ? 1UL << i : 0;
+        }
+
+        return applied;
+    }
+
+    // SPEC 7.4, 23.1.2 (rule W; G812 ruling 141): a candidate whose group failed its shape (KeepsSignature's ParameterShapeMismatch or
+    // ReceiverShapeMismatch), on which a selection the split leaves open rests: that rest reads the failed group, so it is dependent.
+    private static Koto? FailedShapeMember(in CallEvaluation evaluation)
+    {
+        for (var i = 0; i < evaluation.Count; i++)
+        {
+            if (evaluation.Evaluated[i].Symbol?.Declaration is FunctionKoto { BindingFailure: BindingFailure.ParameterShapeMismatch or BindingFailure.ReceiverShapeMismatch } failed)
+            {
+                return failed;
+            }
+        }
+
+        return null;
+    }
+
     // SPEC 10.1-10.4: a call's selection at its evaluation's expected Type: every candidate evaluated, from no acquisition or cause fact
     // of an earlier selection, and the selection classified. The one evaluation and classification of a named call (BindCall), of an
     // omitted base clause and of a part that awaits its call; a query that must not publish brackets it (BeginSelectionQuery).
@@ -114,15 +141,16 @@ public sealed partial class Binding
     // SPEC 10.1, 10.4, 10.5.1, 8.3 (G812 rulings 122, 123, 126, 139): a named call's own selection at `expected`, judged in full as
     // BindCall judges it, as a query that does not publish (BeginSelectionQuery): the evaluation BindCall makes (NewEvaluation,
     // RentEvaluation, BindExplicitArguments, EvaluateSelection), its classification (ClassifySelection's outcome, which BindCall
-    // dispatches on) and winner. A callee that names no function group, or explicit arguments it does not choose, select nothing to
-    // judge (Selected, -1).
-    private (CallSelection Kind, int Winner) ProbeSelection(InvocationKoto call, BindingScope scope, BoundType? expected)
+    // dispatches on) and winner, the candidates that applied (bits of their indices: an ambiguity's, CompleteAmbiguous) and whether a
+    // pending candidate's Unknown premise reads the split (PremiseReadsSplit). A callee that names no function group, or explicit
+    // arguments it does not choose, select nothing to judge (Selected, -1).
+    private ProbedSelection ProbeSelection(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         var method = KotoHelper.UnwrapParentheses(call.Method);
         var callee = method is GenericsKoto { Identifier: { } identifier } ? identifier : method;
         if (callee.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
-            return (CallSelection.Selected, -1);
+            return new(CallSelection.Selected, -1, 0, false);
         }
 
         var candidates = this.GroupOf(callee, group);
@@ -131,7 +159,13 @@ public sealed partial class Binding
         this.RentEvaluation(ref evaluation, shape);
         try
         {
-            return this.BindExplicitArguments(ref evaluation, candidates) ? this.EvaluateSelection(ref evaluation, candidates) : (CallSelection.Selected, -1);
+            if (!this.BindExplicitArguments(ref evaluation, candidates))
+            {
+                return new(CallSelection.Selected, -1, 0, false);
+            }
+
+            var (kind, winner) = this.EvaluateSelection(ref evaluation, candidates);
+            return new(kind, winner, AppliedCandidates(in evaluation), evaluation.PremiseReadsSplit);
         }
         finally
         {
@@ -258,6 +292,7 @@ public sealed partial class Binding
         evaluation.ChildSlices[(index * 2) + 1] = -1; // R3: composed at the candidate's first solve.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
+        (this.premiseReadsSplit, this.refusedOnSplit) = (false, false);
         evaluation.Frame.ClearTypes(CallSlotCount(function));
         if (this.MeasureCallInference)
         {
@@ -314,6 +349,8 @@ public sealed partial class Binding
         // rests on it (Pending; TryCandidate's verdict), as an environment result.
         var judgment = this.TakeTrialPending(call);
         evaluation.Unformed |= state == CandidateApplicability.Pending && judgment is { Kind: PendingJudgmentKind.UnformedSplit };
+        evaluation.PremiseReadsSplit |= state == CandidateApplicability.Pending && this.premiseReadsSplit;
+        evaluation.RefusedOnSplit |= state == CandidateApplicability.Inapplicable && this.refusedOnSplit;
         evaluation.Pending |= state == CandidateApplicability.Pending;
         if (state == CandidateApplicability.Pending)
         {
@@ -368,6 +405,11 @@ public sealed partial class Binding
                 : evaluation.Unformed ? CallSelection.UnformedSplit : CallSelection.Unproven, -1);
         }
 
+        if (evaluation.RefusedOnSplit && evaluation.Applicable != 0)
+        {
+            return (CallSelection.UnformedSplit, -1); // SPEC 10.1 (G812 ruling 141, L1): never dropped so that another wins; judged case by case.
+        }
+
         if (evaluation.Applicable == 0)
         {
             return (evaluation.IncompleteSignature is null ? CallSelection.NoneApplicable : CallSelection.IncompleteSignature, -1);
@@ -406,15 +448,13 @@ public sealed partial class Binding
     // the call in a part's tree is completed as a value call's part on the split completes it (CompleteSplitPart, G812 rulings 134,
     // 136), at the Type the trial of the candidate the canonical run selects (SelectedCandidate) forms for its position in the
     // canonical case, as SlotSolution.Type forms a parameter.
-    private BoundType? FailUnformedCall(ref CallEvaluation evaluation)
+    private BoundType? FailUnformedCall(ref CallEvaluation evaluation, bool fails, ProbedSelection canonical)
     {
         var call = evaluation.Call;
-        var (fails, canonical) = this.SelectionOnSplit(in evaluation);
         if (fails)
         {
-            var failure = canonical.Kind == CallSelection.Ambiguous ? BindingFailure.Ambiguous
-                : canonical.Kind == CallSelection.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate;
-            return this.FailWaitingSelection(call, failure);
+            return canonical.Kind == CallSelection.Ambiguous ? this.FailAmbiguous(in evaluation, canonical.Applied)
+                : this.FailWaitingSelection(call, canonical.Kind == CallSelection.Unproven ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
         }
 
         var shaped = canonical.Kind == CallSelection.Selected ? this.SelectedCandidate(ref evaluation, canonical.Winner) : -1;
@@ -448,14 +488,17 @@ public sealed partial class Binding
             }
         }
 
-        return this.Fail(call, BindingFailure.Unsupported, true);
+        return FailedShapeMember(in evaluation) is { } failed ? this.CompleteDependent(call, failed) : this.Fail(call, BindingFailure.Unsupported, true);
     }
 
     // DECISIONS D3 with rule W (G812 ruling 139; temporary with it): a named call's selection judged in each combination of split
     // cases (RestsOnSplitCases), each run a query (ProbeSelection), the whole selection one part: whether it fails in every combination
-    // (no candidate, an ambiguity or an unproven premise: where BindCall records the call's own failure), and the canonical run's
-    // classification and winner (the first run's, each binding at its first admitted Semantics; ruling 130).
-    private (bool Fails, (CallSelection Kind, int Winner) Canonical) SelectionOnSplit(in CallEvaluation evaluation)
+    // (no candidate, an ambiguity or an unproven premise: where BindCall records the call's own failure; an unproven premise that reads
+    // the split rests on it, O-332 (a), G812 ruling 141), and the canonical run's selection (the first run's, each binding at its first
+    // admitted Semantics; ruling 130). Where the canonical run selects a candidate whose own trial reads no split (Applicable or Waiting
+    // outside the runs), a second search asks whether every combination selects it (Selected): the split then decides nothing of the
+    // selection, and an unproven candidate kept in it (SPEC 10.1) is inapplicable in every case (G812 ruling 141, L1).
+    private (bool Fails, ProbedSelection Canonical, int Selected) SelectionOnSplit(in CallEvaluation evaluation)
     {
         var enclosing = this.canonicalSelection;
         this.canonicalSelection = null;
@@ -463,11 +506,16 @@ public sealed partial class Binding
         {
             var selection = binding.ProbeSelection(check.Call, check.Scope, check.Expected);
             binding.canonicalSelection ??= selection;
-            return SelectionFails(selection.Kind);
+            return SelectionFails(selection.Kind) && !(selection.Kind == CallSelection.Unproven && selection.PremiseReadsSplit);
         });
-        var canonical = this.canonicalSelection ?? (CallSelection.UnformedSplit, -1);
+        var canonical = this.canonicalSelection ?? new(CallSelection.UnformedSplit, -1, 0, false);
         this.canonicalSelection = enclosing;
-        return (!rests, canonical);
+        var only = !rests || canonical is not { Kind: CallSelection.Selected, Winner: >= 0 and var winner } ||
+            evaluation.Evaluated[winner].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting) ||
+            this.RestsOnSplitCases(this.unformedWrites, (evaluation.Call, evaluation.Scope, evaluation.Expected, winner), static (binding, check) =>
+                binding.ProbeSelection(check.Call, check.Scope, check.Expected) is { Kind: CallSelection.Selected } selection && selection.Winner == check.winner)
+            ? -1 : canonical.Winner;
+        return (!rests, canonical, only);
     }
 
     // DECISIONS D3 (G812 rulings 134, 139): candidate `index` (the canonical run's winner), whose trial's frame and mapping the
@@ -496,6 +544,10 @@ public sealed partial class Binding
             evaluation = saved; // The rented frame, mapping and rows keep the trial's contents.
         }
     }
+
+    // A named call's selection probed as a query (ProbeSelection): its classification and winner, the candidates that applied, and
+    // whether a pending candidate's Unknown premise reads the split.
+    private readonly record struct ProbedSelection(CallSelection Kind, int Winner, ulong Applied, bool PremiseReadsSplit);
 
     private struct CandidateShape
     {
@@ -557,6 +609,8 @@ public sealed partial class Binding
         internal bool PremisesOnly;
         internal bool Error;
         internal bool Unformed; // DECISIONS D3: a candidate rests on a Type formed under an unrepresented split (PendingJudgmentKind.UnformedSplit).
+        internal bool PremiseReadsSplit; // DECISIONS D3 (G812 ruling 141, L2): a Pending candidate's Unknown premise reads the split.
+        internal bool RefusedOnSplit; // DECISIONS D3 (G812 ruling 141, L1): a candidate refused only through the split (IsSource).
         internal CallableConstraintFact? CallableFailure;
         internal ReferenceConstraintFailure? ConstraintFailure;
         internal PendingJudgment? PendingJudgment;

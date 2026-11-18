@@ -259,7 +259,15 @@ public sealed partial class Binding
 
             if (selection == CallSelection.UnformedSplit)
             {
-                return this.FailUnformedCall(ref evaluation); // DECISIONS D3 (temporary, PLAN G886; ClassifySelection).
+                // DECISIONS D3 (temporary, PLAN G886; ClassifySelection; G812 rulings 139, 141): judged case by case; a candidate every
+                // case selects, whose own trial reads no split, is the selection (SelectionOnSplit), else the call rests or fails there.
+                var split = this.SelectionOnSplit(in evaluation);
+                if (split.Selected < 0)
+                {
+                    return this.FailUnformedCall(ref evaluation, split.Fails, split.Canonical);
+                }
+
+                winnerIndex = split.Selected;
             }
 
             if (selection == CallSelection.Unproven)
@@ -553,12 +561,18 @@ public sealed partial class Binding
             return Complete(call, null);
         }
 
-        var evaluated = evaluation.Evaluated;
-        var start = this.rejectedRows.Count;
+        return this.FailAmbiguous(in evaluation, AppliedCandidates(in evaluation));
+    }
+
+    // SPEC 10.4, 23.1.2: a call ambiguous between the candidates `applied` names (bits of their indices in the evaluation), each a row
+    // that explains the record (RecordRejected); a split check's call gives its canonical run's (FailUnformedCall, G812 ruling 141).
+    private BoundType? FailAmbiguous(in CallEvaluation evaluation, ulong applied)
+    {
+        var (call, evaluated, start) = (evaluation.Call, evaluation.Evaluated, this.rejectedRows.Count);
         var erasure = ErasureIncomparable(evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride, call.ArgumentNodes.Count);
-        for (var i = 0; i < evaluation.Count; i++)
+        for (var i = 0; i < Math.Min(evaluation.Count, 64); i++)
         {
-            if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+            if ((applied & (1UL << i)) != 0)
             {
                 this.rejectedRows.Add(new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure));
             }

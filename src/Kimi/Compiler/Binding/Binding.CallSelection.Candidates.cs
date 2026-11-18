@@ -804,6 +804,9 @@ public sealed partial class Binding
                 proof = ConstraintProof.Unknown; // D3: a proof that read a Type no binding represents (dt2) is Unknown through the split.
             }
 
+            // D3 (G812 ruling 141, L2): an Unknown proof over pair slots a binding that forms none sources reads the split without its case.
+            this.premiseReadsSplit = proof == ConstraintProof.Unknown && this.SelectsUnformed(frame.Selectors[..CallSlotCount(function)]);
+
             var failure = ClauseFailure(this.TakeTrialClause(call), function.BoundSymbol); // The trial's clause fact, before a later proof's.
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {

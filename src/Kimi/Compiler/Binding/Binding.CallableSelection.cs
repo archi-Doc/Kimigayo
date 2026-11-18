@@ -29,7 +29,7 @@ public sealed partial class Binding
     private (int Part, Koto? Waiting, BoundType? Type, bool Same)? splitFailure;
 
     // DECISIONS D3 (G812 ruling 139): the first run's selection of a named call's split check (SelectionOnSplit; null before it).
-    private (CallSelection Kind, int Winner)? canonicalSelection;
+    private ProbedSelection? canonicalSelection;
 
     // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
