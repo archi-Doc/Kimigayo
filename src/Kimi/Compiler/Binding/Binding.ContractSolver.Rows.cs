@@ -144,8 +144,8 @@ public sealed partial class Binding
                 // the Type it keys) and of row (5)'s mates, which may be deeper than the link they are identical with. Under a path
                 // equation to a deeper projection (SPEC 8.3.3 Limits: allowed; `Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`)
                 // each round's mate supplies a deeper identity and the link Types have no end, so the rounds are bounded
-                // (PremiseClosureLimit): a request still unproven after them is refused (RefuseProof: PremiseClosureLimit, a Resource
-                // record at its use, or at its scope's owner where no check's frame is open; the owner's O-321 (b)), never Unknown by
+                // (PremiseClosureLimit): a request still unproven after them is refused (RefuseProof: PremiseClosureLimit, the Resource
+                // record of the scope's owner, once: at its first refused use, else at the owner; O-321 (b), SPEC 8.3.3), never Unknown by
                 // exhaustion while the pass produces its failures (a query after the pass keeps Unknown: RefuseProof). Whether a
                 // request reaches the bound is a function of (subject, Contract, view): a kept answer never stands for a request
                 // that would extend (the class header).
@@ -153,7 +153,7 @@ public sealed partial class Binding
                 {
                     if (rounds == PremiseClosureLimit)
                     {
-                        this.RefuseProof(this.consultationNode ?? scope.Owner, BindingFailure.PremiseClosureLimit);
+                        this.RefuseProof(scope.Owner, BindingFailure.PremiseClosureLimit);
                         break;
                     }
 
