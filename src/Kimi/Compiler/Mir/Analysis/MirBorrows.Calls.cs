@@ -268,6 +268,7 @@ internal sealed partial class MirBorrows
         var own = (via & ViaRoot) != 0 ? written.Own : null;
         var past = target == Escaped || (via & ViaPast) != 0 ? this.PastEntry(written, target) : null;
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
+        value = (via & ViaCarried) != 0 && this.Composes && !R6NoCarriedOwn ? this.sets.Union(value, this.escapedSet) : value; // Revision 6, T1: route 1's holder may take the call's own pointer (SPEC 15.6.4)
         return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
     }
 

@@ -111,7 +111,13 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var index = this.Key(this.InputKey(call, position, input), this.Fold(this.OutputAt(position))); // PROTOTYPE R5 (R3): Keep's fold.
+        var output = this.OutputAt(position);
+        var index = this.Key(this.InputKey(call, position, input), this.Fold(output)); // PROTOTYPE R5 (R3): Keep's fold.
+        if (output is null && !R6NoCarriedInput)
+        {
+            this.CarriedInput(state, value, index); // Revision 6, T1 (ii): route 1 where the plan has no output (MirBorrows.Reach).
+        }
+
         if (!this.Below(index))
         {
             return;

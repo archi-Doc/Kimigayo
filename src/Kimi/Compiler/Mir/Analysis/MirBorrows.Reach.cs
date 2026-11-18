@@ -43,8 +43,13 @@ internal sealed partial class MirBorrows
     private const byte ViaPast = 2;
     private const byte ViaPun = 4;
     private const byte ViaDeep = 8;
+    private const byte ViaCarried = 16; // Revision 6, T1: a holder route 1 reaches (HiddenCarried); it receives the call's own pointer (Received).
     private static readonly bool R3NoStated = System.Environment.GetEnvironmentVariable("R3_NOSTATED") == "1"; // TRACE-TEMP: p5's Φ_E key condition (stated Origins not excepted)
     internal static readonly bool R4NoHandedFold = System.Environment.GetEnvironmentVariable("R4_NOHANDEDFOLD") == "1"; // TRACE-TEMP: PunKeys' hidden fold without Handed
+    private static readonly bool R6StatedCarried = System.Environment.GetEnvironmentVariable("R6_STATEDCARRIED") == "1"; // TRACE-TEMP: route 1 at a stated operation's hidden key too (p16b)
+    private static readonly bool R6NoCarriedOwn =System.Environment.GetEnvironmentVariable("R6_NOCARRIEDOWN") == "1"; // TRACE-TEMP: route 1's holder takes only the record (p16a)
+    private static readonly bool R6NoCarriedInput =System.Environment.GetEnvironmentVariable("R6_NOCARRIEDINPUT") == "1"; // TRACE-TEMP: no route 1 at an input without an output
+    private static readonly bool R6GuardFirst =System.Environment.GetEnvironmentVariable("R6_GUARDFIRST") == "1"; // TRACE-TEMP: p14's site 4 (route 1 only past a Through or Named guard)
 
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
     private readonly List<int> targetRoots = []; // The targets' root locals, -1 for E: Refs', and W's (the Type a holder's state is read at).
@@ -698,19 +703,27 @@ internal sealed partial class MirBorrows
         {
             TraceOut!.WriteLine($"    RA {this.SlotName(node.Slot)} type {Ty(node.Type)} hidden {facts.Hidden} first {facts.FirstCount} guard {g0} -> {guard} |P| {this.sets.Count(Placed(state[node.Slot]))} |S| {this.sets.Count(Shared(state[node.Slot]))}");
         }
+        // A hidden part adds no reach of its own, but the abstract value reaches the holders its Loans and addresses name (SPEC
+        // 15.6.4: the named step, R4-M147's; O-312 (a)), never storage the body does not own (PROTOTYPE R1: the Φ_E exclusion): route 1
+        // at every hidden key, whatever the key Type's guard (Revision 6, T1); the guard decides only the read-on past the key's own layers.
+        // A call whose writes SPEC states (Composes false: `replace`, `exchange`, `swap`, `Raw.initialize`, 4.6 to 4.9) writes only them.
+        if (facts.Hidden && R1NoCarried)
+        {
+            this.ReadHolder(state[node.Slot], MirWrites.Named);
+        }
+        else if (facts.Hidden && !R6GuardFirst && (this.Composes || R6StatedCarried))
+        {
+            this.HiddenCarried(Placed(state[node.Slot]), node.Key);
+            this.HiddenCarried(Shared(state[node.Slot]), node.Key);
+        }
+
         if (guard is not (MirWrites.Through or MirWrites.Named))
         {
             this.writingVia[node.Slot] |= guard == MirWrites.Deep ? ViaDeep : (byte)0;
             return guard;
         }
 
-        // A hidden part adds no reach of its own, but the abstract value reaches the holders its Loans and addresses name (SPEC
-        // 15.6.4: the named step, R4-M147's; O-312 (a)), never storage the body does not own (PROTOTYPE R1: the Φ_E exclusion).
-        if (facts.Hidden && R1NoCarried)
-        {
-            this.ReadHolder(state[node.Slot], MirWrites.Named);
-        }
-        else if (facts.Hidden)
+        if (facts.Hidden && R6GuardFirst && !R1NoCarried)
         {
             this.HiddenCarried(Placed(state[node.Slot]), node.Key);
             this.HiddenCarried(Shared(state[node.Slot]), node.Key);
@@ -792,8 +805,60 @@ internal sealed partial class MirBorrows
             if (element >= this.loanBase &&
                 this.loans[element - this.loanBase] is { Direct: true, Named: > Escaped, Mode: not MirRefKind.Shared } loan)
             {
-                this.Written(loan.Named, GuardRoot(loan), ViaPast, this.PlaceType(loan));
+                this.Written(loan.Named, GuardRoot(loan), ViaPast | ViaCarried, this.PlaceType(loan));
             }
+        }
+    }
+
+    // Revision 6, T1 (ii) (the Middle's decision): route 1 at an input the call's plan has no output for, read where the pun rule reads
+    // the input (PunCall: the contract may store through it, TyCtxt.NoStore). The call retains no input there (Binding's plan has no
+    // OutputRetention), but an abstract value at a hidden key of the input reaches the holders its Loans and addresses name (SPEC 15.6.4;
+    // O-312 (a): a call may replace a carried holder although it retains no input there): the argument's own value at a hidden input key,
+    // and the state of each holder its first step names at a hidden key past the input key's layers. Each holder reached receives the
+    // call's own pointer where the call composes (rule 4's condition, stated operations excluded), nothing an input holds. Where the plan
+    // has an output, Keep's walk takes route 1 at every hidden key (ReadAt).
+    private void CarriedInput(ulong[] state, int value, int index)
+    {
+        if (this.planned is not { Composes: true })
+        {
+            return;
+        }
+
+        this.BeginWalk();
+        var facts = this.punKeys[index];
+        if (facts.Hidden)
+        {
+            this.HiddenCarried(value, index);
+        }
+
+        for (var j = 0; j < facts.FirstCount; j++)
+        {
+            var past = this.Key(this.punPastKeys[facts.PastStart + j], facts.Fold);
+            if (!this.punKeys[past].Hidden)
+            {
+                continue;
+            }
+
+            foreach (var element in this.sets.Elements(value))
+            {
+                if (element >= this.loanBase &&
+                    this.loans[element - this.loanBase] is { Direct: true, Named: > Escaped, Mode: not MirRefKind.Shared } loan)
+                {
+                    this.HiddenCarried(Placed(state[loan.Named]), past);
+                    this.HiddenCarried(Shared(state[loan.Named]), past);
+                }
+            }
+        }
+
+        for (var t = 0; t < this.targets.Count; t++)
+        {
+            if (this.Tracing)
+            {
+                TraceOut!.WriteLine($"  CI {this.SlotName(this.targets[t])} via {this.writingVia[this.targets[t]]}"); // TRACE-TEMP
+            }
+
+            var received = this.Arrive(this.targets[t], null, false, value, this.escapedSet);
+            this.AddSlot(this.targets[t], this.sets.Union(received, this.unformedSet), 0, JoinedThrough, issue: false);
         }
     }
 
