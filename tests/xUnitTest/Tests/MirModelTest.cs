@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -86,7 +87,7 @@ public sealed class MirModelTest
         Assert.Null(body.TypeOf(body.Project(Local(body, BoundType.I32), MirProjectionKind.PairLayer, 0)));
         var pair = Local(body, types.Pair);
         Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         _ = TyCtxt.Layer(types.Pair, out var target, out _);
         Assert.Same(target, body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
         Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 1)));
@@ -187,7 +188,7 @@ public sealed class MirModelTest
         Assert.Same(second, program[closure]);
         Assert.Equal((0, 1), (first.Ordinal, second.Ordinal));
         Assert.Null(program[closure with { Index = 2 }]);
-        program.EndLibrary();
+        program.EndLibrary(1);
         Assert.NotSame(built, program.Begin(fn, default));
         Assert.Throws<ArgumentException>(program.End);
         program.Clear();
@@ -196,6 +197,44 @@ public sealed class MirModelTest
         Assert.Same(first, program.End());
         Assert.Equal(new[] { first }, program.Bodies.ToArray());
         Assert.Equal(closure, first.Key);
+    }
+
+    // PLAN G950: a program version over a kept library segment (ClearProgram) returns the version's bodies to the pool and removes their
+    // keys only: the library list's bodies, keys, version, segment count, findings and construction records stay, the records first in
+    // the report again, and the next body is stored in its ordinal's pooled body. A read by ordinal (Body) fails for a returned body's
+    // ordinal (PLAN G951 U2-K, the design review's N5): never null or the earlier version's body.
+    [Fact]
+    public void ClearProgramKeepsTheLibrarySegment()
+    {
+        var (_, types) = Fixture();
+        var program = new MirProgram();
+        var (fn, closure) = (new MirDefKey(types.Function, MirBodyKind.Fn), new MirDefKey(types.Function, MirBodyKind.Closure, 1));
+        var (librarySite, programSite) = (new SourceRef(0, 1), new SourceRef(0, 2));
+        program.Begin(fn, librarySite);
+        var library = program.End();
+        program.Report(librarySite);
+        program.Findings.Add(new(MirViolation.Callee, librarySite));
+        program.EndLibrary(7);
+        program.Begin(closure, programSite);
+        var made = program.End();
+        program.Report(programSite);
+        program.Findings.Add(new(MirViolation.Callee, programSite));
+        program.ClearProgram();
+        Assert.Equal((7UL, 1), (program.LibraryVersion, program.LibraryCount));
+        Assert.Equal(new[] { library }, program.Bodies.ToArray());
+        Assert.Equal(0, program.VersionBodies.Length);
+        Assert.Equal((1, 1), (program.LibrarySegment, program.LibraryBodies.Length));
+        Assert.Same(library, program.Body(0));
+        Assert.Throws<InvalidOperationException>(() => program.Body(1));
+        Assert.Same(library, program[fn]);
+        Assert.Null(program[closure]);
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, librarySite) }, program.Records(MirRecordClass.Construction));
+        Assert.Equal([new MirFinding(MirViolation.Callee, librarySite)], program.Findings);
+        program.Begin(closure, programSite);
+        Assert.Same(made, program.End());
+        Assert.Same(made, program[closure]);
+        Assert.Equal(new[] { library, made }, program.Bodies.ToArray());
+        Assert.Same(made, program.Body(1));
     }
 
     // V11: rebuilding a pooled body of the same shape allocates nothing.

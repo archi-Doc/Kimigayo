@@ -12,8 +12,12 @@ namespace XunitTest;
 
 /// <summary>PLAN G950's kept path (design §R1, coverage rows g7, g8, M1, M2 and the focused re-review's M4): a later version of one compilation gives what a fresh
 /// MIR pipeline gives over the same compilation state, and the code its first version generated, whether the library's MIR segment is
-/// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them. M3, the library
-/// check over two versions, is <see cref="MirAnalysisTest.TheLibraryHasNoAnalysisProblem"/>. Labels (SPEC, before any output): the
+/// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them, and M2's premise
+/// (a library body in Compilation's library segment) waits for G951 U2-K too. The fresh pipeline
+/// is built in Compilation's configuration (PLAN G951 U2: the source modules' root range, collected through Compilation.Collect's loop). M3, the library
+/// check over two versions, is <see cref="MirAnalysisTest.TheLibraryHasNoAnalysisProblem"/> and, for the collector's A3b with a record,
+/// <see cref="InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion"/>; the analysis's replay of the library step's
+/// problems is <see cref="MirAnalysisTest.ALibraryStepProblemIsInEveryVersion"/>. Labels (SPEC, before any output): the
 /// corpora's own, tests/mir's MirDumpTest's (valid but the three syntax-recovery witnesses), the diagnostic snapshot's cases their
 /// corpora's (milestones and examples valid; mutation and syntax cases as tests/diagnostics records them); Bad invalid (SPEC 23.1.2's
 /// example: `1` does not fit string, one independent Language Error), and Hello, Milestones 26, 27, 30 and 31 valid. M4's: Confined
@@ -22,12 +26,19 @@ namespace XunitTest;
 /// nothing, valid.</summary>
 public sealed class G950KeptPathTest
 {
-    // The programs the class writes: Bad, and row M4's (the focused re-review), whose record rests on a library callee's A4 summary.
+    // The library's generic swap erased at a declared Function Type (SPEC 10.5.3, 7.7.4) over a Type: the Back's program for row K1-K.
+    private const string Swap = "let action: (uniq/{0}, uniq/{0}) -> () = ::Kimi.Intrinsics.swap\n";
+
+    // The programs the class writes: Bad, row M4's (the focused re-review), whose record rests on a library callee's A4 summary, and
+    // PLAN G951 U2-K's: X3 (MirBuildTest's) and swap at u8 and at 70 nested arrays.
     private static readonly Dictionary<string, string> Own = new(StringComparer.Ordinal)
     {
         ["bad"] = "let text: string = 1\n::Kimi.Console.writeLine(\"Hello, world!\")\n",
         ["confined"] = MirEffectsTest.Transitive("    public func c() => Console.writeLine(\"c\")\n") + "public func main() => ()\n",
         ["pure"] = MirEffectsTest.Transitive("    public func c() => ()\n") + "public func main() => ()\n",
+        ["x3"] = MirBuildTest.StopwatchAction,
+        ["swap"] = string.Format(Swap, "u8"),
+        ["swap70"] = string.Format(Swap, string.Concat(Enumerable.Repeat("[1 of ", 70)) + "u8" + new string(']', 70)),
     };
 
     // g7's sequences: each tests/mir program after a warm rebind and after Provisional then Final; the design review's six edits into
@@ -78,6 +89,66 @@ public sealed class G950KeptPathTest
         Assert.Equal(fresh, own);
     }
 
+    // PLAN G951 U2-K (the design review's N1 rows on the product path; their kept-path twins are U2-K-b's): every version of a longer
+    // sequence equals a fresh pipeline: (a) a library body demanded in one version and not in the next ones, then again; (c) the library's
+    // generic instances across versions, and a library generic function refused at one Type and collected at another; (d) an edit that
+    // removes the caller that demanded library bodies. Labels (SPEC, before any output): Hello, X3, the milestones and swap at u8 valid;
+    // swap at 70 nested [1 of ...] valid (SPEC 10.5.3, 7.7.4; no rule bounds a Type's nesting), rejected by the implementation's storage
+    // bound with one located Unsupported_Kd (PLAN G128).
+    [Theory]
+    [InlineData("example/Hello x3 example/Hello warm x3")]
+    [InlineData("milestone/Milestone26 milestone/Milestone31 milestone/Milestone26 warm")]
+    [InlineData("swap70 swap swap70 swap")]
+    [InlineData("milestone/Milestone27 example/Hello milestone/Milestone27")]
+    public void EveryVersionOfASequenceEqualsAFreshPipeline(string sequence)
+    {
+        var steps = sequence.Split(' ');
+        var c = Compile(steps[0]);
+        _ = c.Analyze();
+        foreach (var then in steps[1..])
+        {
+            var (own, fresh) = Next(c, then);
+            Assert.Equal(fresh, own);
+        }
+    }
+
+    // N1 (b): two compilations in one process, each warm and then edited into the other's program alternately: every version equals a
+    // fresh pipeline (a keeper of library facts is keyed on its own program, never on a stamp two compilations may share). Hello and X3
+    // valid.
+    [Fact]
+    public void TwoCompilationsVersionsEachEqualAFreshPipeline()
+    {
+        var (first, second) = (Compile("example/Hello"), Compile("x3"));
+        _ = (first.Analyze(), second.Analyze());
+        foreach (var (c, then) in new[] { (first, "warm"), (second, "warm"), (first, "x3"), (second, "example/Hello"), (first, "example/Hello"), (second, "x3") })
+        {
+            var (own, fresh) = Next(c, then);
+            Assert.Equal(fresh, own);
+        }
+    }
+
+    // Row K1-K on the product path (the Back's C1 on C-378; U2-K-b's kept twin rests on it): a library body its version built and no
+    // step stepped. swap erased at 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected by the implementation's storage
+    // bound (PLAN G128: one located Unsupported_Kd, made where the collector refuses the instance after its lookup built swap's body),
+    // so the version ends with swap built and not held by A2's table: the premise, asserted, and Transitional: it holds until R7 removes
+    // the bound, and the row then needs another refusal. The next version, the same erasure at u8 (valid), equals a fresh pipeline and
+    // steps swap. (Its ordinal is the library check's from U2-K-b's slots on.)
+    [Fact]
+    public void ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped()
+    {
+        var c = Compile("swap70");
+        _ = c.Analyze();
+        Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
+        var program = c.BuildMir();
+        var swap = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+        Assert.Equal(("swap", false), (swap.Key.Decl?.Name, program.Drops.Holds(swap.Ordinal)));
+        var (own, fresh) = Next(c, "swap");
+        Assert.Equal(fresh, own);
+        Assert.Empty(c.Problems);
+        var later = c.BuildMir();
+        Assert.True(later.Drops.Holds(Assert.Single(later.Bodies.ToArray(), static x => x.Source.IsLibrary).Ordinal));
+    }
+
     // g7 (a) over every case of the diagnostic snapshot (N11), a warm rebind each, in parallel as SemanticSnapshotTest's corpus run, so
     // the class stays short: a failure gives the count and each case whose later version differs from the fresh pipeline, with its first
     // differing line (fresh -> own, as the semantic snapshot reports one), or throws.
@@ -120,30 +191,52 @@ public sealed class G950KeptPathTest
 
     // g8 (design §4; explicit until G950-K, the base builds the segment again): a later version keeps the library's bodies, the same objects
     // at the same ordinals, none begun again, so a body's validator verdict set after the first version (the seam
-    // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses) stays.
+    // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses) stays. A builder with the library check's root range, whose library
+    // segment holds every library body (PLAN G951 U2; the review's N5): Compilation's build holds the library's templates only until
+    // U2-K, so its row (a later version keeps the library bodies the compilation demanded) is U2-K's completion row and G950-K's
+    // prerequisite.
     [Fact(Explicit = true)]
     public void ALaterVersionKeepsTheLibrarysBodies()
     {
         var c = Compile("milestone/Milestone27");
-        var program = c.BuildMir();
+        var builder = new MirBuilder(c);
+        var program = builder.Build(SyntaxTable.LibraryModule + 1);
         MirBody[] library = [.. program.Bodies[..program.LibraryCount]];
         library[0].HasFinding = true;
         Finish(c, OutputKind.Application);
-        var later = c.BuildMir();
+        var later = builder.Build(SyntaxTable.LibraryModule + 1);
         Assert.Equal(library, later.Bodies[..later.LibraryCount].ToArray());
         Assert.True(library[0].HasFinding);
     }
 
+    // g8 for the collector (the Back's C-378 (2); explicit until G950-K, the base templates every body again): a later version walks only
+    // the program segment's bodies into templates, the library segment's template store kept.
+    [Fact(Explicit = true)]
+    public void ALaterVersionKeepsTheLibrarysTemplates()
+    {
+        var c = Compile("milestone/Milestone27");
+        var (builder, analysis, collector) = (new MirBuilder(c), new MirAnalysis(c.Types), new InstanceCollector(c.Types, c.Layout));
+        _ = collector.Run(analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1), c.SourceModules.Length); // Stepped (PLAN G951).
+        Finish(c, OutputKind.Application);
+        var later = analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1);
+        _ = collector.Run(later, c.SourceModules.Length);
+        Assert.Equal(later.VersionBodies.Length, collector.Templated);
+    }
+
     // M2 (design §R1.4; explicit until G950-K, the base's rebuild drops the injection): a kept library row is published in every version:
-    // a validator finding of a library body (the seam MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses; G950-K gives it at
-    // the validator's library step) is published by the second version again, at the same index.
+    // a validator finding of a library body in Compilation's library segment (the seam MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems
+    // uses; G950-K gives it at the validator's library step) is published by the second version again, at the same index. Its premise,
+    // asserted first, waits for U2-K as g8's Compilation form does (PLAN G951 U2): until then Compilation's library segment holds the
+    // library's templates only, and the library body Hello reaches (Console.writeLine's) takes a program ordinal, built again in every
+    // version; publication is Compilation's, so no explicit builder can carry the row.
     [Fact(Explicit = true)]
     public void AKeptLibraryRowIsPublishedInEveryVersion()
     {
         var c = Compile("example/Hello");
         _ = c.Analyze();
         var program = c.BuildMir();
-        var body = program.Body(0);
+        var body = program.Bodies.ToArray().First(static x => x.Source.IsLibrary); // The first library body Hello reaches.
+        Assert.True(body.Ordinal < program.LibraryCount, $"{body.Key.Kind} {body.Key.Decl?.Name} is at ordinal {body.Ordinal}, after the library segment's {program.LibraryCount}");
         program.Findings.Add(new(MirViolation.Callee, body.Source));
         body.HasFinding = true;
         Problem[] first = [.. c.Problems];
@@ -160,11 +253,19 @@ public sealed class G950KeptPathTest
             : program.StartsWith("mir/", StringComparison.Ordinal) ? MirDumpTest.Compile(program[4..]) : SemanticSnapshotTest.Bind(program).Compilation;
 
     // g7's two snapshots of a program's later version (a warm rebind, Provisional then Final, or an edit into another program): the
-    // compilation's own MIR and a fresh builder's, analysis's and collector's over the same compilation state.
+    // compilation's own MIR and a fresh builder's, analysis's and collector's over the same compilation state, in Compilation's
+    // configuration (the source modules' root range, collected through Compilation.Collect's loop; PLAN G951 U2).
     private static (string Own, string Fresh) Later(string program, string then)
     {
         var c = Compile(program);
         _ = c.Analyze();
+        return Next(c, then);
+    }
+
+    // The next version of an analyzed compilation (a warm rebind, Provisional then Final, or an edit into another program) and its two
+    // snapshots (Later).
+    private static (string Own, string Fresh) Next(Compilation c, string then)
+    {
         if (then == "provisional")
         {
             c.Binding.Bind(BindingMode.Provisional);
@@ -178,9 +279,9 @@ public sealed class G950KeptPathTest
         Finish(c, OutputKind.Application);
         _ = c.Analyze();
         var own = Snapshot(c.Types, c.BuildMir(), c.Instances!);
-        var fresh = new MirBuilder(c).Build();
-        new MirAnalysis(c.Types).Run(fresh, c.SourceModules.Length);
-        return (own, Snapshot(c.Types, fresh, new InstanceCollector(c.Types, c.Layout).Run(fresh, c.SourceModules.Length)));
+        var analysis = new MirAnalysis(c.Types);
+        var fresh = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
+        return (own, Snapshot(c.Types, fresh, Compilation.Collect(analysis, new InstanceCollector(c.Types, c.Layout), fresh, c.SourceModules.Length)));
     }
 
     // A later version: a final pass and the startup check of the output kind (a test build's test startup).

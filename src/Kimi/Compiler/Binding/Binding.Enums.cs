@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -61,7 +62,7 @@ public sealed class BoundEnumConstruction
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, BoundEnumConstruction> enumConstructions = new(ReferenceEqualityComparer.Instance);
+    private readonly EnumConstructionRows enumConstructions;
 
     /// <summary>Gets this pass's construction plan; failed, resting and replaced uses never expose a plan (the Resolved gate).</summary>
     /// <param name="use">The construction expression.</param>
@@ -350,7 +351,7 @@ public sealed partial class Binding
 
             if (!this.enumConstructions.TryGetValue(use, out var plan))
             {
-                this.enumConstructions.Add(use, plan = new());
+                EnumConstructionRows.Slot(use) = plan = new();
             }
 
             // A resting construction's plan holds its completed payloads: its formation (the Origin clauses) and their acquisitions are
@@ -616,25 +617,26 @@ public sealed partial class Binding
 
     private void CompleteEnumAcquisitions()
     {
-        foreach (var entry in this.enumConstructions)
+        // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
+        for (var rows = this.enumConstructions.Values.In(this.pass); rows.MoveNext();)
         {
-            var plan = entry.Value;
+            var (use, plan) = (rows.Node, rows.Current!);
             if (!plan.IsValid)
             {
                 continue;
             }
 
-            this.CompleteEnumOrigins(entry.Key, plan);
+            this.CompleteEnumOrigins(use, plan);
 
             if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved ||
                 plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || this.InvalidDeclarationContext(plan.Case.Owner.Declaration))
             {
                 plan.IsValid = false;
-                this.Fail(entry.Key, BindingFailure.InvalidTypeFormation);
+                this.Fail(use, BindingFailure.InvalidTypeFormation);
                 continue;
             }
 
-            var scope = this.ConstraintScope(entry.Key);
+            var scope = this.ConstraintScope(use);
             var formation = this.CheckTypeConstraints(plan.Type, scope);
             for (var i = 0; i < plan.PayloadOperations.Length; i++)
             {
@@ -644,26 +646,26 @@ public sealed partial class Binding
             if (formation != ConstraintProof.Proven)
             {
                 plan.IsValid = false;
-                this.Fail(entry.Key, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
+                this.Fail(use, formation == ConstraintProof.Error ? BindingFailure.InvalidConstraint : formation == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, formation == ConstraintProof.Unknown);
                 continue;
             }
 
             for (var i = 0; i < plan.PayloadOperations.Length; i++)
             {
                 var operation = plan.PayloadOperations[i];
-                var proof = this.ProveCopy(operation.ParameterType!, entry.Key);
+                var proof = this.ProveCopy(operation.ParameterType!, use);
                 if (proof == ConstraintProof.Error)
                 {
                     plan.IsValid = false;
-                    this.Fail(entry.Key, BindingFailure.InvalidConstraint);
+                    this.Fail(use, BindingFailure.InvalidConstraint);
                 }
-                else if (operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource) &&
+                else if (operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && this.IsBarePlace(payloadSource) &&
                     this.BareAcquire(operation.SourceType!, payloadSource, out _) == HirAcquire.Move)
                 {
                     // SPEC 6.5.2, 3.5, 8.14: a payload Place is acquired by its bare acquisition, by case for a pair layer; one without a
                     // plan never Moves into a payload; write value@move.
                     plan.IsValid = false;
-                    this.FailAcquisition(entry.Key, BindingFailure.TransferRequired, payloadSource);
+                    this.FailAcquisition(use, BindingFailure.TransferRequired, payloadSource);
                 }
             }
         }
@@ -717,5 +719,18 @@ public sealed partial class Binding
                 this.argumentOperationScratch.Return(operations, clearArray: true);
             }
         }
+    }
+
+    /// <summary>The `enumConstructions` family's one accessor (DECISIONS BU-220): a kept family, a construction expression's plan kept in its
+    /// node's module's NodeColumns at its SyntaxId, made once and reset in place by each pass (ResetPass's IsValid). Its members keep the
+    /// names its readers use.</summary>
+    private readonly struct EnumConstructionRows(Binding binding)
+    {
+        internal FamilyRows<BoundEnumConstruction?> Values => new(binding, static (table, _) => table.Hir.Families.EnumConstructions.Enumerate());
+
+        internal static ref BoundEnumConstruction? Slot(Koto use) => ref HirTables.Of(use).Families.EnumConstructions.Ref(use.SyntaxId);
+
+        internal bool TryGetValue(Koto use, [NotNullWhen(true)] out BoundEnumConstruction? plan)
+            => (plan = use.SyntaxOwner is { } table ? table.Hir.Families.EnumConstructions.Get(use.SyntaxId) : null) is not null;
     }
 }

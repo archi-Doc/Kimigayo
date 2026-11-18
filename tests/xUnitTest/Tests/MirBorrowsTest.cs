@@ -1149,6 +1149,105 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     value = 99
                 """));
 
+    // SPEC 13.7.1, 14.10.3, 15.6 (DECISIONS R4-M62, per value and so per path; the owner's O-371 (a)): on a path on which an assignment's
+    // right side has no value nothing is destroyed and nothing is written, as for the static `x = fail()` (n1s), so the builder sends
+    // that path around the overwrite's Drop and Use and A5 sees neither there. A Loan of the target that is live after the assignment
+    // conflicts only on the paths that hold the value: where the value path first points the reference elsewhere, the program is valid
+    // (n1, an i32 target; n2, an Array target, with its Drop; fail-before: a conflict at the assignment), and where the value path
+    // writes the borrowed target the conflict stays (n1c, n2c). A reference the assignment replaces on the value path keeps its Loan on
+    // the value-less path, so a write of its referent while it is used afterwards conflicts (k1; fail-before: accepted), not where the
+    // use comes first (k1v). At run time, where the path without a value is no incoming path of the code after (SPEC 14.10.3), n1r and
+    // k1r stay valid.
+    [Fact]
+    public void AnOverwriteWritesOnlyOnThePathsThatHoldItsValue()
+        => Assert.Equal(
+            ["n1c: x = if c => 2", "n2c: a = (", "k1: a = 3"],
+            Problems("""
+                func fail() -> Never => $abort("no")
+                func peekI(r: ref/i32) => ()
+                func peekA(a: ref/Array<i32>) => ()
+                func n1(c: bool)
+                    var x: i32 = 1
+                    var z: i32 = 3
+                    var r: ref/i32 = x@ref
+                    return
+                    x = (label w: do
+                        if c
+                            r = z@ref
+                            exit to w 2
+                        exit to w fail()
+                    )
+                    peekI(r)
+                func n1s(c: bool)
+                    var x: i32 = 1
+                    var r: ref/i32 = x@ref
+                    return
+                    x = fail()
+                    peekI(r)
+                func n1c(c: bool)
+                    var x: i32 = 1
+                    var r: ref/i32 = x@ref
+                    return
+                    x = if c => 2 else => fail()
+                    peekI(r)
+                func n1r(c: bool)
+                    var x: i32 = 1
+                    var z: i32 = 3
+                    var r: ref/i32 = x@ref
+                    x = (label w: do
+                        if c
+                            r = z@ref
+                            exit to w 2
+                        exit to w fail()
+                    )
+                    peekI(r)
+                func n2(c: bool, y: i32)
+                    var a: Array<i32> = [y]
+                    var z: Array<i32> = [y]
+                    var r: ref/Array<i32> = a@ref
+                    return
+                    a = (label w: do
+                        if c
+                            r = z@ref
+                            exit to w [y]
+                        exit to w fail()
+                    )
+                    peekA(r)
+                func n2c(c: bool, y: i32)
+                    var a: Array<i32> = [y]
+                    var r: ref/Array<i32> = a@ref
+                    return
+                    a = (label w: do
+                        if c
+                            exit to w [y]
+                        exit to w fail()
+                    )
+                    peekA(r)
+                func k1(c: bool)
+                    var a: i32 = 1
+                    var b: i32 = 2
+                    var x: ref/i32 = a@ref
+                    return
+                    x = if c => b@ref else => fail()
+                    a = 3
+                    peekI(x)
+                func k1v(c: bool)
+                    var a: i32 = 1
+                    var b: i32 = 2
+                    var x: ref/i32 = a@ref
+                    return
+                    x = if c => b@ref else => fail()
+                    peekI(x)
+                    a = 3
+                func k1r(c: bool)
+                    var a: i32 = 1
+                    var b: i32 = 2
+                    var x: ref/i32 = a@ref
+                    x = if c => b@ref else => fail()
+                    a = 3
+                    peekI(x)
+                """));
+
     // PLAN G255 (C2) (SPEC 4.9.6, 12.4.3, 15.6.4; DECISIONS R8-K1b-2): from the second entry on, a literal's placement is the same one
     // call, so a raw layer beside an entry's Loan reaches no earlier entry's holder: a write after the Dictionary is dead and two `uniq`
     // Loans of distinct locals are valid (fail-before: ComparisonLoanConflict_Kd at the writes, and at the locals' declarations), while a
@@ -2833,8 +2932,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
-    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
-    // nothing.
+    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program, the library bodies it
+    // reaches included (its compilation's build, PLAN G951 U2), allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ARebindRefillsTheHoldingMemoWithoutAllocating()
@@ -3039,7 +3138,18 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             }
 
             this.version = program.Version;
-            foreach (var body in program.Bodies)
+            this.effects.BeginLibrary();
+            this.Local(program, program.LibraryBodies);
+            this.effects.BeginProgram();
+            this.Local(program, program.VersionBodies);
+            this.obligations.Clear();
+            Assert.True(this.effects.Run(program, this.obligations, SyntaxTable.LibraryModule + 1));
+        }
+
+        // A segment's bodies' views' local facts.
+        private void Local(MirProgram program, ReadOnlySpan<MirBody> bodies)
+        {
+            foreach (var body in bodies)
             {
                 this.flow.Begin(body);
                 for (var view = 0L; view < MirCases.Count(body); view++)
@@ -3048,9 +3158,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     this.effects.Local(program, body, view);
                 }
             }
-
-            this.obligations.Clear();
-            this.effects.Run(program, this.obligations);
         }
     }
 }

@@ -463,6 +463,11 @@ public partial class CallableOriginForwardingTest
     [InlineData("guard", "inv3", InvariantSlots + "    origin a outlives b\n    origin b outlives a\n    return two(p, q)\n", "")]
     [InlineData("guard", "inv3n", InvariantSlots + "    origin a outlives b\n    return two(p, q)\n", "*: return two(p, q) | ...")]
     [InlineData("guard", "inv4", InvariantSlots + "    return two(p, n)\n", "NoApplicableOverload_Kd: return two(p, n)")]
+
+    // SPEC 15.3.6, 15.6.2 (PLAN G913, the owner's O-350 (a)): a call's variable at both covariant and contravariant positions takes the
+    // meet of its upper bounds, so the result keeps both inputs' Loans, as in the direct twin m4xd, whose variable has the principal meet.
+    [InlineData("guard", "m4x", "func add1(a: ref/i32) -> i32 => a@follow + 1\nfunc h(x: ref/i32 during b, y: ref/i32 during b, u: (ref/i32 during b) -> i32) -> ref/i32 during b => x\nfunc g(p: ref/i32, q: ref/i32, c: ref/i32, w: (ref/i32 during c) -> i32) -> ref/i32 during (p and q)\n    origin p outlives c\n    origin q outlives c\n    return h(p, q, w@move)\nfunc run()\n    let n: i32 = 40\n    var m: i32 = 2\n    let z: i32 = 0\n    let r = g(n@ref, m@ref, z@ref, add1)\n    m = 5\n    require r@follow == 40 else => $abort(\"g\")\npublic func main() => ", "ComparisonLoanConflict_Kd: m = 5")]
+    [InlineData("guard", "m4xd", "func add1(a: ref/i32) -> i32 => a@follow + 1\nfunc h2(x: ref/i32 during b, y: ref/i32 during b) -> ref/i32 during b => x\nfunc g(p: ref/i32, q: ref/i32, c: ref/i32, w: (ref/i32 during c) -> i32) -> ref/i32 during (p and q)\n    origin p outlives c\n    origin q outlives c\n    return h2(p, q)\nfunc run()\n    let n: i32 = 40\n    var m: i32 = 2\n    let z: i32 = 0\n    let r = g(n@ref, m@ref, z@ref, add1)\n    m = 5\n    require r@follow == 40 else => $abort(\"g\")\npublic func main() => ", "ComparisonLoanConflict_Kd: m = 5")]
     public void ASlotsSolutionIsIndependentOfArgumentOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 

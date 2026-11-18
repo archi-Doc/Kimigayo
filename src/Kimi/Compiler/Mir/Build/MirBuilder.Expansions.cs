@@ -19,7 +19,7 @@ internal sealed partial class MirBuilder
     // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject.
     private void For(MirPlace destination, ForKoto loop)
     {
-        var plan = BoundMatch.Of(loop)!;
+        var plan = BoundMatch.Of(compilation.Binding, loop)!;
         var entry = CallPlan.Of(loop)!;
         var step = CallPlan.Of(loop, 1)!;
         var iterator = this.Hold(entry.ReturnType, loop);

@@ -19,7 +19,7 @@ fn keep @4
   _4: s/T var local @24 s1
   _5: s/T temp @28 s1
   _6: () temp @29 s1
-  _7: T temp @30 s1
+  _7: T temp (Assigned) @30 s1
   _8: T temp @35 s1
   _9: T temp (Result) @4
   _10: T temp @35 s1
@@ -99,7 +99,7 @@ fn both @38
   _3: T arg x @61
   _4: s/T var mut p @64 s1
   _5: () temp @69 s1
-  _6: T temp @70 s1
+  _6: T temp (Assigned) @70 s1
   _7: t/U var q @74 s1
   _8: closure () -> U var read @77 s1
   _9: t/U temp @79 s1

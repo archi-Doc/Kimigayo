@@ -465,7 +465,7 @@ public sealed partial class HirFormsTest
         ];
         Assert.Equal(expected, plans);
         var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
-        Assert.NotNull(BoundMatch.Of(loop));
+        Assert.NotNull(BoundMatch.Of(c.Binding, loop));
         Assert.Equal(("intoIterator", "next"), (CallPlan.Of(loop)!.Target.Name, CallPlan.Of(loop, 1)!.Target.Name));
     }
 
@@ -488,7 +488,7 @@ public sealed partial class HirFormsTest
         var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
         var subject = HirTables.AdjustOf(loop.Iterable);
         Assert.Equal(expected, $"{CallPlan.Of(loop)?.Target.Name} {CallPlan.Of(loop, 1)?.Target.Name} {c.Binding.ReadsReferent(loop.Iterable)} {subject.Acquire}/{subject.Adaptation}");
-        Assert.NotNull(BoundMatch.Of(loop));
+        Assert.NotNull(BoundMatch.Of(c.Binding, loop));
     }
 
     // SPEC 4.7.1, 4.7.2, 5.2, 7.3, 10.2, 13.5.5, 15.6.2 (DECISIONS BU-8): a user index whose element Place's use needs write or exclusive

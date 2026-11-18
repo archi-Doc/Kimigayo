@@ -164,7 +164,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var pointer = MirModelTest.Local(body, c.Types.Pointer(BoundType.I32));
         _ = TyCtxt.Layer(types.Pair, out var payload, out _);
         var value = MirModelTest.Local(body, payload!);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var shared = body.Static(new(types.Function, BoundType.I32, false, true));
         var (ensure, entry, abort, drop, exit) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock()); // The ensure first.
         var result = new MirPlace(0);
@@ -476,7 +476,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var py = KotoTree.Walk(function).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y").SymbolOf()!.Type!;
         Assert.Equal(BoundTypeKind.SemanticsAdaptation, py.Kind);
         var y = MirModelTest.Local(body, py);
-        PairBinder.Collect(function, body.Binders);
+        PairBinder.Collect(c.Binding, function, body.Binders);
         var block = body.AddBlock();
         void Read(MirOperand operand, BoundType type, SourceInfo source) => body.Push(block, MirStatement.Assign(
             MirModelTest.Local(body, type),
@@ -522,7 +522,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
         var (pa, pb) = (function.Parameters[0].Type.TypeOf()!, function.Parameters[1].Type.TypeOf()!);
         var (a, b) = (MirModelTest.Local(body, pa, MirLocalKind.Arg), MirModelTest.Local(body, pb, MirLocalKind.Arg));
-        PairBinder.Collect(function, body.Binders);
+        PairBinder.Collect(c.Binding, function, body.Binders);
         var (first, second) = (MirModelTest.Local(body, pa, MirLocalKind.Temp), MirModelTest.Local(body, pb, MirLocalKind.Temp));
         var (tuple, number) = (MirModelTest.Local(body, c.Types.Tuple([pa, BoundType.I32])), MirModelTest.Local(body, BoundType.I32));
         var (block, next) = (body.AddBlock(), body.AddBlock());
@@ -761,7 +761,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             use.Terminate(block, use.Blocks[block].Terminator with { Start = operand });
         }
 
-        new MirValidator(c.Types).Validate(program);
+        new MirValidator(c.Types).Validate(program, use); // The program pass of the body (PLAN G951 M1).
         Assert.Equal(broken ? [(MirViolation.StaticSlot, "Registry.total")] : [], program.Findings.Select(x => (x.Rule, c.SyntaxOf(x.Subject).ToString())));
         Assert.Equal(broken, use.HasFinding); // The ensuring body's verdict (DECISIONS R5-M183).
     }
@@ -796,7 +796,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             Unsafe.AsRef(in use.Statements[assign]) = use.Statements[assign] with { Rvalue = new(MirRvalueKind.Aggregate, (byte)MirAggregateKind.Closure, Type: closure) };
         }
 
-        new MirValidator(c.Types).Validate(program);
+        new MirValidator(c.Types).Validate(program, use); // The program pass of the body (PLAN G951 M1).
         Assert.Equal(broken is null ? [] : [(MirViolation.Callee, use.Subject(at))], program.Findings.Select(static x => (x.Rule, x.Subject)));
         Assert.Equal(broken is not null, use.HasFinding);
     }
@@ -988,7 +988,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
         var prepared = new MirPlace(body.AddLocal(new(
             Layer(SemanticsKind.Ref, form == "slot ref" ? Layer(SemanticsKind.Ref, tuple) : BoundType.I32), MirLocalKind.Arg, At, Role: MirLocalRole.PreparedInput)));
-        PairBinder.Collect(types.Generic, body.Binders); // Its binder admits owner or uniq.
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders); // Its binder admits owner or uniq.
         if (form == "pair ref")
         {
             body.Binders[0] = body.Binders[0] with { Admitted = SemanticsMask.Ref | SemanticsMask.Uniq };
@@ -1068,7 +1068,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
         var pair = MirModelTest.Local(body, types.Pair, MirLocalKind.Arg);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
         var copied = form == "owned" ? MirModelTest.Local(body, types.Point) : MirModelTest.Local(body, BoundType.I32);
         var (entry, exit) = (body.AddBlock(), body.AddBlock());
@@ -1125,7 +1125,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var admitted = form switch
         {
             "acquire copy" => SemanticsMask.Ref,
@@ -1646,7 +1646,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     public void ViewsOutsideTheCaseBoundAreAFinding()
     {
         var binders = new List<PairBinder>();
-        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
         var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
         var body = new MirBody();
         body.Reset(new(null, MirBodyKind.Fn), default);
@@ -1675,7 +1675,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var validator = new MirValidator(Fixture.Value.Compilation.Types);
         var findings = new List<MirFinding>();
         var binders = new List<PairBinder>();
-        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
         var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
         Assert.True(Verdict(Typed("assign")));
         var unordered = Build(null);
@@ -1822,12 +1822,16 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // PLAN G442 (the owner's O-97 (a)): Places marks a Dictionary literal entry's placeEntry Call, the construction's insertion: a Fn callee
-    // each of whose operands is a Move of a whole Temp. The builder's is valid; a copied operand, an operand moving a Var, and the attribute
-    // on a Goto are Operation findings.
+    // each of whose operands is a Move of a whole Temp, the first the construction's exclusive borrow, formed in the Call's block
+    // (MirBody.Construction, which MirMoveData reads). The builder's is valid; a copied operand, an operand moving a Var, a first operand
+    // whose borrow the Call's block does not form, a value operand that is the construction's temp (MirMoveData carries each value into
+    // the construction, apart from it; its Type is a Type finding too) and the attribute on a Goto are Operation findings.
     [Theory]
     [InlineData(null)]
     [InlineData("copy")]
     [InlineData("var")]
+    [InlineData("elsewhere")]
+    [InlineData("construction")]
     [InlineData("goto")]
     public void APlacesCallMovesWholeTemps(string? broken)
     {
@@ -1842,9 +1846,17 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             case "copy":
                 Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Kind = MirOperandKind.Copy };
                 break;
+            case "construction":
+                Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Place = body.Construction(call)!.Value };
+                break;
             case "var":
                 var local = Array.FindIndex(body.Locals.ToArray(), static x => x.Kind == MirLocalKind.Var);
                 Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Place = new(local) };
+                break;
+            case "elsewhere": // The block's borrow goes to another temp of its Type, so the Call's first operand has none.
+                var borrow = Array.FindLastIndex(body.Statements.ToArray(), blocks[call].Start + blocks[call].Count - 1, static x => x.Rvalue.Kind == MirRvalueKind.Ref);
+                var fresh = body.AddLocal(body.Locals[body.Statements[borrow].Place.Root]);
+                Unsafe.AsRef(in body.Statements[borrow]) = body.Statements[borrow] with { Place = new(fresh) };
                 break;
             case "goto":
                 var other = Array.FindIndex(blocks, static x => x.Terminator.Kind == MirTerminatorKind.Goto);
@@ -1852,7 +1864,37 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
                 break;
         }
 
-        Assert.Equal(broken is null ? [] : [MirViolation.Operation], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+        MirViolation[] expected = broken switch
+        {
+            null => [],
+            "construction" => [MirViolation.Type, MirViolation.Operation], // The value's Type is the construction's too.
+            _ => [MirViolation.Operation],
+        };
+        Assert.Equal(expected, Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+    }
+
+    // The redesign's closure (MirMoveData; the C3 check's C3-N1): a placing Assign, a Use or an aggregate, into a temp takes no operand
+    // of that temp, as MirMoveData carries what each operand takes into its component, apart from it. The builder's is valid; the Use
+    // that takes a Dictionary literal's construction, redirected into the construction itself, is an Operation finding.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void APlacingAssignTakesNoOperandOfItsDestinationTemp(bool broken)
+    {
+        var c = MirBuildTest.Compile("func takeD(d: Dictionary<i32, i32>) => ()\nfunc f(y: i32)\n    takeD([1: y])\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator.Places);
+        var construction = body.Construction(call)!.Value;
+        var statements = body.Statements.ToArray();
+        var take = Array.FindIndex(statements, x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Use &&
+            body.Operands[x.Rvalue.Start].Place == construction);
+        Assert.True(take >= 0);
+        if (broken)
+        {
+            Unsafe.AsRef(in body.Statements[take]) = statements[take] with { Place = construction };
+        }
+
+        Assert.Equal(broken ? [MirViolation.Operation] : [], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
     // DECISIONS BU-48 (amended by G283, SPEC 16.3.1): MirLocalRole.Receiver marks exactly a constructor's _0, its construction receiver, and
@@ -2072,7 +2114,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
         var parent = MirModelTest.Local(body, types.Base);
 
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var scope = body.AddScope(0, MirScopeKind.Unsafe, default);
         var shared = body.Static(new(types.Function, BoundType.I32, false, false));
         if (broken == MirViolation.NoBlocks)
