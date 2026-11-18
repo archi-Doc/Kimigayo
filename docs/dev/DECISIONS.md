@@ -23578,3 +23578,49 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends R9-M6 (the dependency rule's "`CompilationBuildMetadata`, through `Project.BuildMetadata`": Build reads the value
     `Project.Build` passes) and R5-M169 (the results with a fault path: the project's own and the build's, beside the front end's
     and the Emission result; DIAGNOSTICS §7).
+- **R9-M11 The generation result carries the link facts; the link manifest is one table with its readers (R9-B1)** (Middle,
+  2026-11-18; the R7-R9 plan's §5.3 unit B1, parts 1 and 2; Major; under R9-M6 and R9-M10; design review REVISE then ACCEPT WITH
+  NOTES; the Back's consent on its codegen half, C-389; W-256)
+  - Rule (part 1): the generation entry publishes, beside its `bool`, what the written module states for its link:
+    `Compilation.Generated` (`GeneratedModule`): the output kind (the startup selection's, which chose the output roots; a test
+    build's is an Application), the required libraries (`ModuleCodegen.Libraries`: the Library and Kind of every validated
+    `#LibraryImport`, called or not, one per library; SPEC 22.6 resolves the name "when the program is built", per declaration) and
+    the external declarations (`ModuleCodegen.Externals`: the `ExternalFunction` records code generation declares, one per symbol in
+    declaration order). Build reads `ExternalFunction`'s `Symbol` and `DllImport` only; the record stays one (the writer's input and
+    the published fact). The result exists only for the generation request that wrote the module, until the next generation request
+    or analysis: the generation entry keeps one field, set only when `Generate` returns true (the output kind snapshotted at the
+    write, code generation's two lists by reference), cleared at the start of every generation request and when `Analyze` begins,
+    before it builds the MIR program (so an analysis that throws leaves none either); a request that writes nothing leaves none, and
+    a read without one throws (`InvalidOperationException`), a broken contract the command renders as the fault, never a stale or
+    partial list. Publication reads the result after generation, so the foreign supplies follow generation: an
+    `InternalInvariant_Kd` in generation is a broken contract without recovery, and publication and its supply check do not run
+    after it (Q13). The manifest's output section states the declarations (`externalDeclarations`, `{symbol, dllimport}`); the
+    native build's object inspection reads them from the manifest.
+  - Rule (part 2): `LinkManifest` (`src/Kimi/Build/LinkManifest.cs`) owns the manifest's fixed fields and its readers, schema 4
+    (IMPL 20.3.2: the format is implementation-defined): one row table of the fixed fields by path (schemaVersion, target, the
+    codegen and backendSupport sections; a string, an Int32 or a string list each) that publication writes and the native build
+    checks in one order; the variable fields follow it (optimization, now top-level; the output section; the libraries; the optional
+    toolchain.llvmBin), written by `EmissionArtifacts` and read by `NativeToolchain.Build`, `Kernel32Imports` and
+    `ToolchainResolver`. Every manifest read goes through its readers (`Field`, `Text`, `OptionalText`, `Items`, `Flag`), which name
+    the field by its path (`codegen.features`, `libraries.kind`) and turn a missing field or another JSON kind into "'<path>' is
+    missing or not a JSON <kind>" and a fixed field's other value (another number included) into "'<path>' is not this compiler's",
+    `InvalidDataException` at the read (form J for the manifest: PLAN G983's manifest share; R9-B2's O3 for `build --Manifest`).
+    `ValidateManifest` states the external declarations' one rule before any tool: each a nonempty symbol, declared once, with its
+    dllimport form.
+  - Deleted: `NativeToolchain.ReadExternalDeclarations`' IR re-parse, `LlvmModuleText.SymbolFromName`, Build's reads of
+    `Binding.Startup.OutputKind` and `Binding.LibraryImports` (R9-M6's Temporary clause ends), `WriteProfile`, `WriteLinkInputs`,
+    `WriteStrings`, `StatesCodegen`, `StatesSupport`, the fixed fields' second copy and the manifest's `providedRuntimeSymbols` and
+    `expectedUndefinedSymbols` (constants nothing read but their check).
+  - Tests: ForeignEmissionTest (the generation result's link facts, unspelled escaped symbols, a library test build's Application,
+    `Generated` before any generation, after a failed generation and after the next analysis, warm generation with imports
+    allocating nothing, Purpose=Allocation); EmissionArtifactsTest (the manifest's external declarations, a dependency's called
+    import, a malformed or duplicate external declaration, the schema row); NativeToolchainTest.AManifestFieldFailsAtItsRead (10
+    rows: missing, another kind, a non-Int32 number, a fixed value); test-manual-build.ps1's and test-cli.ps1's manifest rows.
+  - Rejected: the called imports' libraries (option (b): the supply set would follow the generated closure, differing between build,
+    Library and test); `Generate` returning the result (about 1,000 test calls read its `bool`); a narrower published record beside
+    `ExternalFunction` (a second representation); keeping the IR re-parse as a check (a second derivation of codegen's decision); a
+    schema-3 manifest accepted with a fallback to the IR; a JSON-node template for the fixed head (the reflection serializer, and a
+    second representation of three value kinds); converting the build record's, installation's and catalog's readers in this unit
+    (G983's remainder, not the manifest).
+  - Amends R9-M6 (the dependency rule; the Temporary clause ends), R5-M181 (the foreign supplies follow generation) and R9-M10 (its
+    known limit narrows: no manifest read raises a listed contract type).
