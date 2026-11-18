@@ -23,6 +23,10 @@ public sealed partial class Binding
         Signature,
     }
 
+    // SPEC 10.8 (PLAN G492-a (ii) revision 2): an argument part's Type as its call's evidence reads it, read at the part: a `let` region
+    // of the part's body as its value (RegionValuesAt).
+    private BoundType? ArgumentTypeAt(Koto part) => part.BoundType is { } type ? this.RegionValuesAt(type, part) : null;
+
     // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
     // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
     // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2, the child
@@ -139,7 +143,7 @@ public sealed partial class Binding
                 var source = arguments[i];
                 if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
                     binding.KindOf(source) == PartKind.Function || binding.WasDeferred(source) ||
-                    this.EvidenceType(source) is not { } actual ||
+                    this.Binding.ArgumentTypeAt(source) is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     !binding.TryCallable(actual, this.Scope, out var actualSignature, out _))
                 {
@@ -253,7 +257,7 @@ public sealed partial class Binding
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, node, late);
                 default:
-                    if (this.EvidenceType(node) is not { } actual || ReferenceEquals(actual, BoundType.Never))
+                    if (this.Binding.ArgumentTypeAt(node) is not { } actual || ReferenceEquals(actual, BoundType.Never))
                     {
                         return true;
                     }
@@ -269,9 +273,6 @@ public sealed partial class Binding
 
         // An anonymous function: once bound, its Type at any pattern but a Function Type (where its signature meets the pattern after
         // selection); always the Types its header writes, at a pattern with a call signature.
-        // An argument part's Type as evidence, read at the part (PLAN G492-a (ii) revision 2: a `let` region of its body as its value).
-        private readonly BoundType? EvidenceType(Koto part) => part.BoundType is { } type ? this.Binding.RegionValuesAt(type, part) : null;
-
         private bool InferAnonymous(BoundType pattern, Koto part, FunctionKoto closure)
             => (closure.BoundType is not { } actual || pattern.Kind == BoundTypeKind.Function || this.InferAdapted(pattern, actual, part)) &&
                 (!this.Binding.TryCallable(pattern, this.Binding.ConstraintScope(this.Binder), out var header, out _) ||
@@ -526,7 +527,7 @@ public sealed partial class Binding
         {
             var binding = this.Binding;
             var source = KotoHelper.UnwrapParentheses(boundary);
-            if (this.EvidenceType(source) is not { } actual || ReferenceEquals(actual, BoundType.Never))
+            if (this.Binding.ArgumentTypeAt(source) is not { } actual || ReferenceEquals(actual, BoundType.Never))
             {
                 return true; // SPEC 10.8: a Never-typed boundary is no evidence.
             }
