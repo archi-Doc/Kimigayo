@@ -336,7 +336,7 @@ public sealed partial class Binding
         {
             var bound = item is not null ? this.ItemType(type, item, function)
                 : frame is not { } slots ? this.MemberType(type, container) : this.Substitute(type, SubstitutionOf(function, container, slots.Types[..generic], slots.Lengths[..generic]));
-            return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
+            return bound is null ? null : this.CallableContractType(bound, this.ConstraintScope(use)); // R7-C3 C-f1: the judge's form in the use's view
         }
 
         // The solution's images; null where an atom of the function has none (LacksImage).
