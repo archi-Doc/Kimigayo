@@ -41,19 +41,26 @@ public sealed partial class Binding
         _ => node.Akind is KotoKind.EnumCase or KotoKind.AssociatedType,
     };
 
+    // SPEC 15.3.4, 8.10 (PLAN G972, the owner's O-403 (b)): where a written Origin may name a nested signature's per-call Origin, a
+    // Function Type's or an anonymous function's (the omitted Origin of a direct borrowed input): inside its binder only (inner per-call
+    // Origins cannot escape their binder), and there not in its inputs, whose every slot and borrow layer is fixed by a complete Type or
+    // an outer Origin expression (nested Origins stay fixed), so in its result and body.
     private static bool OriginVisible(BoundOrigin origin, Koto use)
     {
-        if (origin.Binder is FunctionTypeKoto binder)
+        if (origin.Binder is FunctionTypeKoto || origin is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } })
         {
-            var inside = false;
-            for (var node = use; node is not null; node = node.Parent)
-            {
-                inside |= ReferenceEquals(node, binder);
-            }
-
-            if (!inside)
+            var binder = origin.Binder;
+            if (!IsWithin(use, binder))
             {
                 return false;
+            }
+
+            for (var i = 0; i < InputCount(binder); i++)
+            {
+                if (InputType(binder, i) is { } input && IsWithin(use, input))
+                {
+                    return false;
+                }
             }
         }
 
