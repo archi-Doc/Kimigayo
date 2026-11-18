@@ -26,8 +26,10 @@
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
 // The link manifest's fixed fields (one table) and its readers are LinkManifest's: no manifest read raises an accessor's exception (R9-B1).
 // The build record's, the installation's and kernel32's readers compare ArtifactFiles' total reads (Member, Text, Number) with what they
-// expect, so a malformed record fails as their InvalidDataException (PLAN G983); IsToolchainFailure lists no contract type, and an
-// exception the toolchain does not raise as its failure (the host's report, a defect here) is a fault. Publication's kinds stay (R5-M165).
+// expect, so a malformed record fails as their InvalidDataException (PLAN G983), and IsToolchainFailure lists no JSON accessor's type
+// (KeyNotFoundException, InvalidOperationException). Known limit (R9-M10's, narrowed): inside the toolchain's calls the set still
+// classifies by type whatever raised the exception, so one of its remaining kinds (publication's, R5-M165; Win32Exception;
+// JsonException) raised by the host's report or a defect here prints as the toolchain's failure; any other type is a fault.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
 
 using System.ComponentModel;
