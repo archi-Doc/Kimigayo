@@ -954,9 +954,10 @@ public sealed partial class Binding
         {
             // SPEC 8.15.2, 8.3.4, 15.6.1 (the owner's O-417 (a)): a pair layer is judged once over every case its binder admits here,
             // each case's complete Type (CaseType) a part, member its Semantics' order (read by no explanation: a pair layer's work is
-            // never an erasure's subject). The verdict common to every case (CommonVerdict, a family's rule) is evidence beside the
-            // premises'; cases that differ give none: Unknown Copy is never Non-Copy (SPEC 8.14), and Owned's refuted case reaches the
-            // erasure through its part (OwnedMember). So Copy in every case is the engine's Proven.
+            // never an erasure's subject). The verdict common to every case (CommonVerdict, a family's rule) is the layer's one
+            // Semantics evidence (no premise row reads a Semantics fact's mask); cases that differ give none: Unknown Copy is never
+            // Non-Copy (SPEC 8.14), and Owned's refuted case reaches the erasure through its part (OwnedMember). So Copy in every case
+            // is the engine's Proven. A binder that admits no case has a failed environment, whose Error the premise loop returns.
             ConstraintProof? cases = null;
             for (var i = 0; i < SemanticsOrder.Length; i++)
             {
@@ -1004,8 +1005,7 @@ public sealed partial class Binding
 
                 int? serial = null; // The loop's judgments may write the chain: a serial per fact.
                 var fact = parameterIdentity ? this.Reading(available, work.Scope, ref serial) : available;
-                var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
-                if (!this.FactStates(fact, subject, out var stated) && !appliedSemantics)
+                if (!this.FactStates(fact, subject, out var stated))
                 {
                     continue;
                 }
@@ -1017,35 +1017,6 @@ public sealed partial class Binding
                 if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
                 {
                     evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part = required, contract: work.Intrinsic)), work.Scope);
-                }
-                else if (fact.Kind == ConstraintKind.Semantics)
-                {
-                    const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
-                    const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
-                    if (fact.Mask == SemanticsMask.Owner)
-                    {
-                        var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
-                        if (target is not null && !ReferenceEquals(target, work.Type))
-                        {
-                            evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part = target, contract: work.Intrinsic)), work.Scope);
-                        }
-                    }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy)
-                    {
-                        evidence = (fact.Mask & ~copy) == 0 ? ConstraintProof.Proven : (fact.Mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
-                    }
-                    else if (work.Intrinsic.Intrinsic is IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload && (fact.Mask & SemanticsMask.Owner) == 0)
-                    {
-                        evidence = ConstraintProof.Refuted;
-                    }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Raw)
-                    {
-                        var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
-                        if (target is not null && !ReferenceEquals(target, work.Type))
-                        {
-                            evidence = this.RequestCapability(part = target, work.Intrinsic, work.Scope);
-                        }
-                    }
                 }
 
                 this.ScopeReads.Origin = work.Part(0, part is null ? ConstraintProof.Proven : evidence, this.ScopeReads.Origin, saved, part);
