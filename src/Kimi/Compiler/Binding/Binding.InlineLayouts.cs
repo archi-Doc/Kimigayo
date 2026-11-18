@@ -61,9 +61,9 @@ public sealed partial class Binding
 
         foreach (var conformance in this.impls.InPass.Identities)
         {
-            for (var p = 0; p < conformance.PathStorage.Count; p++)
+            for (var p = 0; p < this.impls.PathsOf(conformance).Count; p++)
             {
-                var path = conformance.PathStorage[p];
+                var path = this.impls.PathsOf(conformance)[p];
                 var shape = path.Contract.Contract!;
                 for (var i = 0; i < shape.AssociatedTypes.Count; i++)
                 {
