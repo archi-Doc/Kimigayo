@@ -46,20 +46,27 @@ try {
             Add-KimiFixtureProblem $result 'fixture.input' $_.Exception
             return
         }
-        if (-not (Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $Fixture.FullName))) { return }
-        foreach ($level in @('O0', 'O2')) {
-            $target = Join-Path $out ($Fixture.BaseName + '.' + $level)
-            $ir = $Fixture.FullName
-            if ($level -eq 'O2') {
-                if (-not (Invoke-Tool $tools.opt @('-S', '-passes=default<O2>', $ir, '-o', "$target.ll"))) { return }
-                $ir = "$target.ll"
-                if (-not (Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $ir))) { return }
-            }
+        # opt verifies its input module and, without -disable-verify, the optimized one, so the O2 pipeline is the input's and
+        # the optimized IR's verification (no separate verify launch); llc verifies each input again.
+        $levels = @('O0', 'O2')
+        $targets = @{}
+        foreach ($level in $levels) { $targets[$level] = Join-Path $out ($Fixture.BaseName + '.' + $level) }
+        if (-not (Invoke-Tool $tools.opt @('-S', '-passes=default<O2>', $Fixture.FullName, '-o', "$($targets.O2).ll"))) { return }
+        foreach ($level in $levels) {
+            $target = $targets[$level]
+            $ir = if ($level -eq 'O2') { "$target.ll" } else { $Fixture.FullName }
             $arguments = @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2',
                 '-relocation-model=pic', '-code-model=small', $ir, '-o', "$target.obj")
             if (-not (Invoke-Tool $tools.llc $arguments)) { return }
-            if (-not (Invoke-Tool $tools['llvm-nm'] @('--undefined-only', '--format=posix', "$target.obj"))) { return }
-            $undefined = $result.tools[-1].output
+        }
+        # One llvm-nm reads both objects; --print-file-name prefixes each line with its object's path.
+        $objects = @(foreach ($level in $levels) { "$($targets[$level]).obj" })
+        if (-not (Invoke-Tool $tools['llvm-nm'] (@('--undefined-only', '--format=posix', '--print-file-name') + $objects))) { return }
+        $listed = $result.tools[-1].output
+        foreach ($level in $levels) {
+            $target = $targets[$level]
+            $prefix = "$target.obj: "
+            $undefined = @($listed | Where-Object { $_.StartsWith($prefix, [StringComparison]::Ordinal) } | ForEach-Object { $_.Substring($prefix.Length) })
             $undefined | Set-Content -LiteralPath "$target.undefined.txt" -Encoding utf8
             foreach ($line in $undefined) {
                 $symbol = ($line -split '\s+', 2)[0]
@@ -68,6 +75,9 @@ try {
                     return
                 }
             }
+        }
+        foreach ($level in $levels) {
+            $target = $targets[$level]
             $arguments = @("$target.obj", $archive, $kernel.path, '/entry:__kimi_start', '/subsystem:console',
                 '/nodefaultlib', '/Brepro', "/out:$target.exe")
             if (-not (Invoke-Tool $tools['lld-link'] $arguments)) { return }
