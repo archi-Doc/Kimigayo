@@ -294,6 +294,34 @@ public sealed partial class TyCtxtTest
         }
     }
 
+    // PLAN G949 (the flaky TableCounts row of BindingTest.AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass): Binding.TableCounts'
+    // TypeKeys is the Types the compilation interned, whatever the hashes of their parts. A part's hash is its identity hash, which the
+    // thread's earlier objects move: two Tuples over two Types whose identity hashes are equal share one key of the interned Types' table
+    // and are still two Types (a count of the keys counted them as one, so a twin compilation counted one Type fewer).
+    [Fact]
+    public void TypesWhosePartsShareAnIdentityHashAreCountedApart()
+    {
+        var c = CompilationTestHelper.BindSuccess("()");
+        var symbol = c.Binding.Library.DynamicArray;
+        var made = new Dictionary<int, BoundType>();
+        BoundType? first = null;
+        BoundType? second = null;
+        while (second is null && made.Count < 1_000_000)
+        {
+            // An identity hash has 26 bits: two of about 10,000 fresh Types share one at even odds, two of 1,000,000 at certainty.
+            var type = c.Types.Parameter("T", BoundTypeKind.Parameter, symbol);
+            if (!made.TryAdd(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(type), type))
+            {
+                (first, second) = (made[System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(type)], type);
+            }
+        }
+
+        Assert.NotNull(second);
+        var before = c.Binding.TableCounts.TypeKeys;
+        Assert.NotSame(c.Types.Tuple([first!]), c.Types.Tuple([second]));
+        Assert.Equal(before + 2, c.Binding.TableCounts.TypeKeys);
+    }
+
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
