@@ -76,6 +76,10 @@ internal sealed partial class MirBorrows
     private int[] keyedBy = []; // By slot: the W walk that reads it on at a reading key, not by the declared step.
     private int walks; // The W walks made.
     private bool walkResting; // Whether the W walk read a set that rests on an undecided write (Φ_M, Φ_U; MirBorrows.Puns).
+    // Whether the W walk's call composes (SPEC 15.6.4: every call but those whose writes SPEC states): CallRetention.Composes of the plan
+    // whose output the walk stores through, a Call's or a drop row's (Keep), or the Call's own (CarriedInput), set where the walk begins;
+    // read by the call's own pointer (OwnPointer, HiddenCarried), the punned read (Unowned) and route 1 at a None guard (ReadAt).
+    private bool walkComposes;
     private ulong holdingVersion; // The program version whose case Types the holding memo answers (0: none).
 
     // Whether a direct Loan's Place is its holder's whole value, through which rule W's read-through clause reads a Copy (Parts).
@@ -527,7 +531,7 @@ internal sealed partial class MirBorrows
     // else the holder carries; at the first step (Punned) and past a holder (ReadPart) alike.
     private void Unowned((MirWrites Guard, BoundType? Record) rows, BoundType place)
     {
-        if (this.Composes && rows.Guard is MirWrites.Through or MirWrites.Named && (this.PlaceBytes(place).Fixed != Extent.None || this.Scalared(place)))
+        if (this.walkComposes && rows.Guard is MirWrites.Through or MirWrites.Named && (this.PlaceBytes(place).Fixed != Extent.None || this.Scalared(place)))
         {
             this.Written(Escaped, -1, ViaPast, rows.Record);
         }
@@ -708,7 +712,7 @@ internal sealed partial class MirBorrows
         // holds nothing the call stores, so only the call's own write through the hidden layer reaches a carried holder, which a call
         // whose writes SPEC states never makes (Composes false: `replace`, `exchange`, `swap`, `Raw.initialize`, 4.6 to 4.9). A Deep or
         // Limit guard leaves the step undecided (ViaDeep, the Limit).
-        if (facts.Hidden && (guard is MirWrites.Through or MirWrites.Named || (guard == MirWrites.None && this.Composes)))
+        if (facts.Hidden && (guard is MirWrites.Through or MirWrites.Named || (guard == MirWrites.None && this.walkComposes)))
         {
             this.HiddenCarried(Placed(state[node.Slot]), node.Key);
             this.HiddenCarried(Shared(state[node.Slot]), node.Key);
@@ -726,19 +730,13 @@ internal sealed partial class MirBorrows
             this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
         }
 
-        if (guard == MirWrites.Through && this.Composes)
+        if (guard == MirWrites.Through && this.walkComposes)
         {
             this.OwnPointer(node.Key, output);
         }
 
         return guard;
     }
-
-    // Whether the call's writes and reads compose within it (SPEC 15.6.4: every call but those whose writes SPEC states; Binding's
-    // CallRetention.Composes, false only for those by declaring identity, so an unplanned call composes), the one reading of it: read by
-    // the call's own pointer (OwnPointer, HiddenCarried), the punned read (Unowned) and route 1 at a None guard and at an input without
-    // an output (ReadAt, CarriedInput).
-    private bool Composes => this.planned is not { Composes: false };
 
     // (b2): whether the declared step from a holder steps by the record: its root Type's guard does not step, but the walk output's entry
     // for the storage past one of its root Type's layers, the entry Binding names it by, retains an input (NamedRetains at the root Type's
@@ -800,7 +798,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Write(part, ViaPast, MirWrites.Named);
-        if (!this.Composes)
+        if (!this.walkComposes)
         {
             return;
         }
@@ -822,12 +820,14 @@ internal sealed partial class MirBorrows
     // and addresses name (SPEC 15.6.4; O-312 (a): a call may replace a carried holder although it retains no input there): HiddenCarried
     // over the argument's own value at a hidden input key and over the state of each holder its non-shared direct Loans name at a hidden
     // key past the input key's layers. A holder reached receives nothing an input holds, only the call's own pointer (HiddenCarried) and
-    // the bytes it may write (Φ_N, as Keep's targets). A call whose writes SPEC states takes no route 1 here (Composes), and an unplanned
-    // call none: A5 follows no store of it (no CallRetention, or the Limit), as Keep runs only over a plan's outputs. Where the plan has an
-    // output, Keep's walk takes route 1 at every hidden key (ReadAt).
+    // the bytes it may write (Φ_N, as Keep's targets). Only a call whose plan composes takes route 1 here (CallRetention.Composes, read
+    // in the Call that planned it): one whose writes SPEC states writes only them, and an unplanned call none A5 follows (no
+    // CallRetention, or the Limit), as Keep runs only over a plan's outputs. Where the plan has an output, Keep's walk takes route 1 at
+    // every hidden key (ReadAt).
     private void CarriedInput(ulong[] state, int value, int index)
     {
-        if (this.planned is null || !this.Composes)
+        this.walkComposes = this.planned is { Composes: true };
+        if (!this.walkComposes)
         {
             return;
         }

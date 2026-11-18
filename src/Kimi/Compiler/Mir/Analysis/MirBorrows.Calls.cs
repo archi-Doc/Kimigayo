@@ -109,7 +109,7 @@ internal sealed partial class MirBorrows
         foreach (var written in this.planned is null ? default : this.planned.Writes)
         {
             this.Cover(call, written.Output, this.planned!.Result.Kinds.Length);
-            this.Keep(state, call, written, checks);
+            this.Keep(state, call, this.planned, written, checks);
         }
 
         this.covering.Clear();
@@ -141,9 +141,11 @@ internal sealed partial class MirBorrows
     // storage's record (Received). With covering inputs (Cover), W from theirs too; an argument whose value is the empty set then has no
     // first step of its own (PLAN G338): it is null on every path (PLAN G598, A5's must-null fact), since every pointer A5 sees formed
     // names a Loan, an address or E, and Φ_N marks the bytes of an exposed holder and every call result, the only values a pointer A5
-    // does not see formed can reach (MirBorrows.Flow). A Drop's drops store through the same path (MirBorrows.Destructions).
-    private void Keep(ulong[] state, in MirTerminator call, OutputRetention written, bool checks)
+    // does not see formed can reach (MirBorrows.Flow). A Drop's drops store through the same path (MirBorrows.Destructions). `plan` is
+    // the retention `written` belongs to, a Call's or a drop row's: the walk composes as it does (walkComposes).
+    private void Keep(ulong[] state, in MirTerminator call, CallRetention plan, OutputRetention written, bool checks)
     {
+        this.walkComposes = plan.Composes;
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
         // The input's layer and its pointee or referent, the Type the store writes through it at: W's first step reads the Places the
