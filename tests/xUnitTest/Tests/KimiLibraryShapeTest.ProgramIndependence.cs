@@ -104,7 +104,7 @@ public partial class KimiLibraryShapeTest
 
     // PLAN G951 U2, row LM (R8-M32's "library MIR" fact under demand; the design's §1.2): a compilation's check builds the library bodies
     // its program reaches (the source modules' root range, DECISIONS R9-M9), each equal to that body in the library check's build, its
-    // A2 table included, and the empty program builds none. With the library MIR the rows above compare (every library body, the library
+    // A2 table included, at the same ordinal within the same library range (PLAN G951 U2-K), and the empty program builds none. With the library MIR the rows above compare (every library body, the library
     // check's build per program) it is the fact that the library's MIR is the same in every program. Fail-before: Compilation built
     // every library body, so the empty program built them all.
     [Theory]
@@ -118,6 +118,8 @@ public partial class KimiLibraryShapeTest
         var built = own.Bodies.ToArray().Where(static x => x.Source.IsLibrary).ToArray();
         Assert.Equal(program.Length == 0, built.Length == 0);
         Assert.All(built, x => Assert.Equal(MirDumpTest.Unsited(library, library[x.Key]!), MirDumpTest.Unsited(own, x)));
+        Assert.All(built, x => Assert.Equal(library[x.Key]!.Ordinal, x.Ordinal));
+        Assert.Equal(library.LibraryCount, own.LibraryCount);
     }
 
     // M-N4, R2-N5: the library declares no parameter default, for a function or an `init`, so after its Final Bind its published HIR holds
@@ -132,6 +134,19 @@ public partial class KimiLibraryShapeTest
         Assert.Empty(functions.Where(static x => x.Parameters.Any(static y => y.DefaultValue is not null)).Select(Line));
         Assert.Empty(c.Library.Kotonoha.Syntax.Hir.Defaults!);
         Assert.DoesNotContain(c.ConstructMir().Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Kind == MirBodyKind.DefaultTemplate);
+    }
+
+    // Row M3-T (C-381 M3; PLAN G950-K): the library declares no reassignable static (a group's `var` Property), so a library body kept
+    // across a compilation's versions (PLAN G951 U2-K-b) reads no library state a program changes: its facts are a function of the library
+    // alone (DECISIONS R5-M168, R8-M50). The premise: the library declares statics (Time.counterFrequency). Beside R8-M32's Temporary 2
+    // tripwire TheLibraryDeclaresNoParameterDefault; a change that adds one reopens the kept list's premise.
+    [Fact]
+    public void TheLibraryDeclaresNoMutableStaticField()
+    {
+        var properties = KotoTree.Walk(EmptyProgram.Value.Library.Kotonoha.RootKoto).OfType<PropertyKoto>();
+        BindingSymbol[] statics = [.. properties.Select(static x => HirTables.Symbol(x)).OfType<BindingSymbol>().Where(static x => Binding.IsStatic(x))];
+        Assert.NotEmpty(statics);
+        Assert.Empty(statics.Where(static x => Binding.Reassignable(x)).Select(static x => x.Name));
     }
 
     // A program read from the repository, checked.

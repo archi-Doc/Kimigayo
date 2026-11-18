@@ -41,7 +41,7 @@ public sealed partial class Binding
             return;
         }
 
-        var selection = this.LookupTypeMember(baseType, function.Name, scope, self);
+        var selection = this.LookupMember(baseType, function.Name, scope, LookupRole.Value, self);
         if (selection.Pending || selection.DeclaringType?.Symbol is null)
         {
             return;
@@ -257,7 +257,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var selection = baseType is null ? default : this.LookupTypeMember(baseType, function.Name, this.scopes[function], self, this.MemberPath(null, structure.BaseClause!, baseType));
+            var selection = baseType is null ? default : this.LookupMember(baseType, function.Name, this.scopes[function], LookupRole.Value, self, this.MemberPath(null, structure.BaseClause!, baseType));
             FunctionKoto? first = null;
             FunctionKoto? second = null;
             var count = 0;
@@ -515,21 +515,23 @@ public sealed partial class Binding
     // Selection deliberately ignores results, external labels, Origins, conditions and body facts.
     private bool VirtualInputsMatch(FunctionKoto original, FunctionKoto implementation, BoundType declaring)
     {
-        if (original.Parameters.Count != implementation.Parameters.Count || original.BoundSymbol!.ReceiverIndex != implementation.BoundSymbol!.ReceiverIndex)
+        var overridden = new FnSig(original);
+        var declared = new FnSig(implementation);
+        if (overridden.InputCount != declared.InputCount || overridden.ReceiverIndex != declared.ReceiverIndex)
         {
             return false;
         }
 
-        for (var i = 0; i < original.Parameters.Count; i++)
+        for (var i = 0; i < overridden.InputCount; i++)
         {
-            var required = original.Parameters[i].Type.BoundType;
-            var actual = implementation.Parameters[i].Type.BoundType;
+            var required = overridden.Input(i);
+            var actual = declared.Input(i);
             if (required is null || actual is null)
             {
                 return false;
             }
 
-            if (i == original.BoundSymbol.ReceiverIndex)
+            if (i == overridden.ReceiverIndex)
             {
                 if (required.Semantics != actual.Semantics)
                 {
@@ -537,7 +539,7 @@ public sealed partial class Binding
                 }
             }
             else if (this.MemberType(required, declaring) is not { } bound ||
-                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
+                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
             {
                 return false;
             }
@@ -564,8 +566,10 @@ public sealed partial class Binding
             }
         }
 
-        if (original.BoundSymbol!.Type is { } required && implementation.BoundSymbol!.Type is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
-            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
+        var overridden = new FnSig(original);
+        var declared = new FnSig(implementation);
+        if (overridden.Result is { } required && declared.Result is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
+            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
         {
             this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ResultType, original)
             {

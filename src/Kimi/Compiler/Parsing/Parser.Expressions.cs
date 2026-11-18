@@ -355,13 +355,14 @@ ProcessPrefix:
 
     /// <summary>
     /// Determines whether the token after <c>@</c> is the keyword <c>wrap</c> or <c>bits</c> (SPEC F.3.2): the word directly followed by
-    /// the <c>&lt;</c> of its Type arguments (SPEC 12.5.2). Any other <c>wrap</c> or <c>bits</c> is an ordinary Name.
+    /// <c>&lt;</c>, adjacency alone; its <c>&lt;</c> always begins Type arguments (SPEC F.9.3), so a list without its <c>&gt;</c> is the
+    /// list's syntax error, never a comparison. Any other <c>wrap</c> or <c>bits</c> is an ordinary Name.
     /// </summary>
     private static bool IsConversionOperationTarget(ref TokenReader reader)
     {
         var token = reader.CurrentToken;
         var next = reader.PeekToken(1);
-        if (!token.Kind.IsIdentifierOrContextualKeyword() || next.Kind != TokenKind.LessThan || !next.OpensTypeArguments || next.Span.Start != token.Span.End)
+        if (!token.Kind.IsIdentifierOrContextualKeyword() || next.Kind != TokenKind.LessThan || next.Span.Start != token.Span.End)
         {
             return false;
         }
@@ -378,7 +379,8 @@ ProcessPrefix:
     {
         var word = reader.Read();
         var generic = ParseGenericsPostfix(ref reader, new TypeSemanticsKoto(ref reader, word));
-        if (generic.TypeArguments.Count != 1)
+        // The count reads the list; a list whose closer failed is the parser's guess, its last item a recovery (SPEC 23.1.2).
+        if (generic.TypeArguments.Count != 1 && !IsRecoveredType(ref reader, generic.TypeArguments[^1]))
         {
             generic.Expected(SyntaxForm.ConversionTypeArgument);
         }
@@ -422,14 +424,21 @@ ProcessPrefix:
                     var operatorRange = reader.CurrentTokenRange;
                     reader.Advance();
 
+                    // SPEC F.9.1: PostfixSuffix "." "(" ContractReference ")" "." Name (also a BoundContainerExpression's), the grouped
+                    // Contract's one reader and F.5's one ".(C).Name" rule: a grouped Contract carries its ". Name".
                     var accessor = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                        ? ParseType(ref reader, TypeContext.Qualifier)
+                        ? ParseContractGroup(ref reader)
                         : ParseMemberName(ref reader);
                     left = new MemberAccessKoto(
                         ref reader,
                         SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
                         left,
                         accessor);
+                    if (accessor is ParenthesizedTypeKoto && ContractMemberCause(ref reader, accessor) is { } cause)
+                    {
+                        left = RecoverWrittenType(ref reader, left, cause);
+                    }
+
                     return true;
                 }
 

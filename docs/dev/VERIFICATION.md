@@ -73,7 +73,8 @@ The build uses parallel project builds and the shared compiler server; the scrip
 Unit Verify adds the common compiler check `ArchitectureRulesTest` to every class or
 method selection, once; the purpose filter applies to them too. Purpose-filtered runs such as the allocation example
 supplement, rather than replace, the remaining required checks. Commit each unit after its checks pass, associate the
-evidence (below) and push; run the final Session at the end of the working session. Ordinary Verify does not check
+evidence (below) and push; run the final Session at the end of the working session. A unit that lands in a window runs no Session of its own: the
+window's Session is its final Session (DECISIONS Q20). Ordinary Verify does not check
 native-toolchain identity: check it at setup/update or with `-VerifyToolchain`. CLI tests use `run --no-build` for
 built CLI artifacts, except when testing automatic builds.
 

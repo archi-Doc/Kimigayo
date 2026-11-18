@@ -124,7 +124,7 @@ internal static class CheckJsonOutput
 
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             // Input discovery belongs to the same Blocked outcome as a failed project read. Cancellation and
             // internal failures still escape; neither is a claim that a user input is unreadable.
