@@ -32,10 +32,12 @@ public sealed partial class Binding
     private Koto? InvalidDeclarationContextCause(Koto declaration)
         => this.FailedDeclarationContext(declaration) is { } context ? this.ReadFailedDeclaration(context) : null;
 
-    // SPEC 23.1.2, 8.3.3: the one place a check that records a failed declaration's (or conditional conformance's) cause reads it:
-    // the check rests on the node its failure is recorded at, whose record explains the check's outcome (IsDerived), a refused
+    // SPEC 23.1.2, 8.3.3: the read by which a check consults a failed declaration (or conditional conformance) that its outcome rests
+    // on: the check rests on the node its failure is recorded at, whose record explains the check's outcome (IsDerived), a refused
     // premise closure's limit included (Refusal: reported once, at the declaration's first refused site), so a check reading it
-    // keeps no record of its own.
+    // keeps no record of its own. A check that names the failed node as its cause directly (CompleteDependent with the struct,
+    // FailDerived through InvalidOperandContext, VerifyConformance's failedCause, InvalidEnvironment) records it in that channel, and
+    // the raw-state readers of PLAN G1026 record no cause yet.
     private Koto? ReadFailedDeclaration(Koto declaration)
     {
         var cause = this.InvalidDeclarationCause(declaration);
