@@ -86,8 +86,8 @@ public partial class Compilation
 
         this.Diagnostics.Invalidate(DiagnosticPartition.ControlFlow);
         this.Diagnostics.Invalidate(DiagnosticPartition.Ownership);
+        this.generated = null; // A written module's result ends when the next analysis begins, a throwing one too (Generated; R9-B1).
         this.mir = this.BuildMir();
-        this.generated = null; // A written module's result ends with the analysis it was generated from (Generated; R9-B1).
         return this.Analysis;
     }
 
