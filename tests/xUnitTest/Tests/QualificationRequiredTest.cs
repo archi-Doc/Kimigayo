@@ -254,14 +254,16 @@ public class QualificationRequiredTest
     }
 
     // SPEC 9.6, 9.5 (R7-N1 c2): a stop under 9.5 fails the value path of `X.m`, so the Type path is the sole success, at an import stage
-    // as at a scope stage. Before, the value path selected the opened member or Case and BU-117's found-both interim rejected the access
-    // with Unsupported_Kd; the invalid twin (neither path finds `Nope`) keeps the stop's record at `Message`, as at stage 2.
+    // as at a scope stage, wherever the Type path finds `X` (stage 6's default alias in the last row). Before, the value path selected the
+    // opened member or Case and BU-117's found-both interim rejected the access with Unsupported_Kd; the invalid twin (neither path finds
+    // `Nope`) keeps the stop's record at `Message`, as at stage 2.
     [Theory]
     [InlineData("alias Counter\nstruct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "")]
     [InlineData("alias Kinds\nenum Kinds\n    Message\n    Other\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "")]
     [InlineData("struct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "Alias=\n  \"Counter\"")]
     [InlineData("enum Message\n    Quit\n    Write(string)\nstruct Counter\n    var Message: i32 = 0\n    func f() -> Message => Message.Quit", "")]
     [InlineData("alias Counter\nstruct Counter\n    public var Tools: i32 = 0\n    public init() => ()\ngroup Tools\n    public func make() -> i32 => 1\nfunc g() -> i32 => Tools.make()", "")]
+    [InlineData("alias Counter\nstruct Counter\n    public var Tools: i32 = 0\n    public init() => ()\ngroup Lib\n    public group Tools\n        public func make() -> i32 => 1\nfunc g() -> i32 => Tools.make()", "Alias=\n  \"Lib\"")]
     public void AValuePathStoppedAtAnImportStageLeavesTheTypePath(string source, string settings)
         => Assert.Empty(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
 
