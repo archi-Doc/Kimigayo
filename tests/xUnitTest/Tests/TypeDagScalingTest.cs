@@ -156,6 +156,8 @@ public partial class TypeDagScalingTest
                 string.Concat(Enumerable.Range(0, d).Select(static i => $"    s{i} is owner or ref\n")) + string.Concat(pairs.Select(static j => $"    U{j} is Copy\n")) +
                 $"    let t = ({string.Join(", ", pairs.Select(static j => $"x{j}"))})\n    return needCopy(t)\n";
         }
+    }
+
     // SPEC 8.3.3 Recursion and Finality (R7-M33; basewalk): with Z's clause, `S<D> is C` rests on `S<D>`'s formation, `D is Owned`,
     // whose storage writes `Z<S<D>>`, formed only when `S<D> is C`: the conformance rests on itself, so the coinductive step's assumption
     // of `D is Owned` is not read through the newer `(S<D>, C)` obligation, also where the walk forming `Z<S<D>>` decided `S<D>` under
