@@ -206,6 +206,9 @@ public partial class CallableOriginForwardingTest
 
     private const string RcvQ = "    let c = func [var n] (x: ref/i32 during q) -> i32\n        n = n + 1\n        return n\n";
 
+    // tw5-refc2's candidates: the first refuted by its own clause for an `i32` argument, beside a generic one; a `var` over a parameter.
+    private const string RunRefuted = "func run<T>(q: ref/i32, f: (ref/i32 during q) -> i32, t: T) -> i32\n    T is i64\n    return 0\nfunc run<F, T>(q: ref/i32, f: F, t: T) -> i32 => 1\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    var v = p\n";
+
     private const string HOsel2 = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: i32) -> i32 => 0\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: T) -> i32 => 1\n";
 
     private const string LetCOsel2 = "    let c = func [] (z: ref/i32 during b) -> i32 => z@follow\n    let v: i32 = 1\n";
@@ -729,6 +732,13 @@ public partial class CallableOriginForwardingTest
     [InlineData("reg1-q", "struct Two {u, w}\n    public let x: ref/i32 during u\n    public let y: ref/i32 during w\n    public init(x: ref/i32 during u, y: ref/i32 during w)\n        self.x = x\n        self.y = y\nfunc run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\nfunc run<F>(q: ref/i32, f: F) -> i32 => 1\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    var v = a@ref\n    let t = Two.init(p, v)\n    let c = func [t@move] (x: ref/i32 during q) -> i32 => 0\n    return run(q, c@move)\n", "")]
     [InlineData("x2-fr-lone", "func run2(q: ref/i32, f: (ref/i32 during q) -> i32, g: (ref/i32 during q) -> i32) -> i32 => 0\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    let r = a@ref\n    var v = p\n    let f = func [v] (x: ref/i32 during q) -> i32 => 0\n    let g = func [r] (x: ref/i32 during q) -> i32 => 0\n    return run2(q, f@move, g@move)\n", "NoApplicableOverload_Kd run2(q, f@move, g@move)")]
     [InlineData("x2-fr", "func run2(q: ref/i32, f: (ref/i32 during q) -> i32, g: (ref/i32 during q) -> i32) -> i32 => 0\nfunc run2<F, G>(q: ref/i32, f: F, g: G) -> i32 => 1\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    let r = a@ref\n    var v = p\n    let f = func [v] (x: ref/i32 during q) -> i32 => 0\n    let g = func [r] (x: ref/i32 during q) -> i32 => 0\n    return run2(q, f@move, g@move)\n", "")]
+    // SPEC 10.1 step 5, 8.2.3 (the Front's review of G379 (a) R5, B1; B's rulings-j 1): step 5 decides with one ordering, so a candidate
+    // its own Constraint refutes (`i32 is i64`) is inapplicable whatever an erased argument's `Final` part says and run<F, T> is selected
+    // (tw5-refc2; dev accepted it, 780e4d16a gave the located limit; tw5-refc2-ok, the control with no `Final` part); the located limit
+    // only where nothing refutes the candidate (tw5-refc2-i, invalid and ambiguous, O-406 (a)).
+    [InlineData("tw5-refc2", RunRefuted + "    let c = func [v] (x: ref/i32 during q) -> i32 => 0\n    let n: i32 = 3\n    return run(q, c@move, n)\n", "")]
+    [InlineData("tw5-refc2-ok", RunRefuted + "    let c = func [] (x: ref/i32 during q) -> i32 => 0\n    let n: i32 = 3\n    return run(q, c@move, n)\n", "")]
+    [InlineData("tw5-refc2-i", RunRefuted + "    let c = func [v] (x: ref/i32 during q) -> i32 => 0\n    let n: i64 = 3\n    return run(q, c@move, n)\n", "Unsupported_Kd c@move")]
     public void ApplicabilityJudgesTheErasureRowsConditions(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

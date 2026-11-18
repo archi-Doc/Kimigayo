@@ -539,7 +539,14 @@ public sealed partial class Binding
                 proof = ConstraintProof.Proven;
             }
 
-            proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true); // SPEC 10.1 step 5, 7.7.4: an erasure's environment.
+            // SPEC 10.1 step 5, 7.7.4: one ordering for the step: a candidate its own Constraints or premises refute is inapplicable whatever
+            // an erased argument's limit says, so the erasures' environment (which orders its own arguments so) is read only when nothing
+            // has refuted the candidate; the located limit only where nothing does.
+            if (proof != ConstraintProof.Refuted)
+            {
+                proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true);
+            }
+
             constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
