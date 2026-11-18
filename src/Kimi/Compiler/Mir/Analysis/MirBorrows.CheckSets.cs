@@ -124,18 +124,10 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += stores;
-        var g0 = this.Work; // TRACE-TEMP
         this.BasePass(state);
-        var g1 = this.Work;
         this.StoredPass(state, Stored);
-        var g2 = this.Work;
         this.TakenValues(state, at);
-        var g3 = this.Work;
         this.DropPasses(state);
-        if (this.Tracing)
-        {
-            TraceOut!.WriteLine($"G at {at.Block}:{at.Index} stores {stores} base {g1 - g0} stored {g2 - g1} taken {g3 - g2} drop {this.Work - g3} cands {this.candidateCount}");
-        }
     }
 
     // A Stored pass (plain or of the drop tier): the stores into each holder an earlier pass of the gather reached and has not yet read

@@ -27,6 +27,35 @@ internal sealed partial class MirBorrows
     private ulong punVersion; // The program version whose keys punKeys answers.
     private int punStamp; // Below's walks, which mark the keys they reach.
 
+    // PROTOTYPE R5: whether a fold's list holds `kept`: OwnLayer.Kept and OutputRetention.Handed name a kept Type by the one interned
+    // erased Type (TyCtxt.Erase), compared by identity.
+    private static bool Lists(ReadOnlySpan<BoundType> list, BoundType kept)
+    {
+        foreach (var type in list)
+        {
+            if (ReferenceEquals(type, kept))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // PROTOTYPE R5: whether two Handed lists are one (Fold), by identity.
+    private static bool Same(ReadOnlySpan<BoundType> list, ReadOnlySpan<BoundType> other)
+    {
+        for (var i = 0; list.Length == other.Length && i < list.Length; i++)
+        {
+            if (!ReferenceEquals(list[i], other[i]))
+            {
+                return false;
+            }
+        }
+
+        return list.Length == other.Length;
+    }
+
     // The per-run tables: scans and entry keys belong to one run; keys to one program version.
     private void PunRun()
     {
@@ -130,8 +159,9 @@ internal sealed partial class MirBorrows
             // its writes"): then the layer is read as shown (hidRawWTwoBad, handedSameBad, hidPunWBad), and another kept Type's stays hidden
             // (handedOtherOk).
             var hidden = own.Hidden && !Lists(this.punFolds[fold], own.Kept!);
-            facts = hidden ? facts with { Hidden = true } : facts with { Shown = true };
-            if ((layer is not null || step == HoldStep.Exclusive) && past.Type is { } to && !hidden && (R2NoLoan || !own.Loan)) // PROTOTYPE R2 (b2)
+            facts = hidden ? facts with { Hidden = true, HiddenUniq = facts.HiddenUniq || (layer is null && step == HoldStep.Exclusive) }
+                : facts with { Shown = true };
+            if ((layer is not null || step == HoldStep.Exclusive) && past.Type is { } to && !hidden && !own.Loan)
             {
                 this.punViewTypes.Add(cases.Type(to));
                 this.punPastKeys.Add(past);
@@ -155,7 +185,7 @@ internal sealed partial class MirBorrows
     private int Fold(OutputRetention? output)
     {
         this.PunRun();
-        var handed = R4NoHandedFold || output is null ? default : output.Handed;
+        var handed = output is null ? default : output.Handed;
         if (handed.IsEmpty)
         {
             return 0;
@@ -171,35 +201,6 @@ internal sealed partial class MirBorrows
 
         this.punFolds.Add(handed.ToArray());
         return this.punFolds.Count - 1;
-    }
-
-    // PROTOTYPE R5: whether a fold's list holds `kept`: OwnLayer.Kept and OutputRetention.Handed name a kept Type by the one interned
-    // erased Type (TyCtxt.Erase), compared by identity.
-    private static bool Lists(ReadOnlySpan<BoundType> list, BoundType kept)
-    {
-        foreach (var type in list)
-        {
-            if (ReferenceEquals(type, kept))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // PROTOTYPE R5: whether two Handed lists are one (Fold), by identity.
-    private static bool Same(ReadOnlySpan<BoundType> list, ReadOnlySpan<BoundType> other)
-    {
-        for (var i = 0; list.Length == other.Length && i < list.Length; i++)
-        {
-            if (!ReferenceEquals(list[i], other[i]))
-            {
-                return false;
-            }
-        }
-
-        return list.Length == other.Length;
     }
 
     // A key's write Types (its first step's).
@@ -270,6 +271,10 @@ internal sealed partial class MirBorrows
         internal bool FirstUnknown { get; init; }
 
         internal bool Hidden { get; init; } // A part hidden in a called function's own Type parameter's binding (OwnLayer.Hidden).
+
+        // Whether a hidden part is a safe exclusive reference (OwnLayer.Hidden marks one as well as a raw layer): it is no layer that "adds
+        // no reach of its own", and SPEC 15.6.4's routes apply to it (R5.4's safe-reference half; route 2 reaches E through it).
+        internal bool HiddenUniq { get; init; }
 
         internal bool Shown { get; init; } // A part not hidden there, or a part not known (the layers not all known).
 

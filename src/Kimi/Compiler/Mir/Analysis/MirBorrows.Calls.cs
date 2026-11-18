@@ -38,48 +38,6 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private readonly Dictionary<(OutputRetention Written, BoundType Type, long View), StorageRetention?> reachedEntries = new();
-    internal static readonly bool R1NoRoot = System.Environment.GetEnvironmentVariable("R1_NOROOT") == "1"; // TRACE-TEMP
-    internal static readonly bool R1NoCarried = System.Environment.GetEnvironmentVariable("R1_NOCARRIED") == "1"; // TRACE-TEMP
-    internal static readonly bool R1NoEntry = System.Environment.GetEnvironmentVariable("R1_NOENTRY") == "1"; // TRACE-TEMP
-    internal static readonly bool R1NoUnowned = System.Environment.GetEnvironmentVariable("R1_NOUNOWNED") == "1"; // TRACE-TEMP
-    internal static readonly bool R1NoB2 = System.Environment.GetEnvironmentVariable("R1_NOB2") == "1"; // TRACE-TEMP
-    internal static readonly bool R2NoLoan = System.Environment.GetEnvironmentVariable("R2_NOLOAN") == "1"; // TRACE-TEMP
-    internal static readonly bool R2NoDeclared = System.Environment.GetEnvironmentVariable("R2_NODECLARED") == "1"; // TRACE-TEMP
-    internal static readonly bool R2AllAtDeclared = System.Environment.GetEnvironmentVariable("R2_ALLATDECLARED") == "1"; // TRACE-TEMP
-    internal static readonly bool R2NoPhiDeclared = System.Environment.GetEnvironmentVariable("R2_NOPHIDECL") == "1"; // TRACE-TEMP
-    internal static readonly bool R2KeepOutput = System.Environment.GetEnvironmentVariable("R2_KEEPOUTPUT") == "1"; // TRACE-TEMP
-    internal static readonly System.IO.StreamWriter? TraceOut = System.Environment.GetEnvironmentVariable("M5VLH2_TRACE") is { Length: > 0 } tp ? new(tp, append: true) { AutoFlush = true } : null; // TRACE-TEMP
-
-    internal static readonly int TraceMin = int.TryParse(System.Environment.GetEnvironmentVariable("M5VLH2_MIN"), out var tm) ? tm : 40; // TRACE-TEMP
-
-    private bool Tracing => TraceOut is not null && this.body.Locals.Length > TraceMin; // TRACE-TEMP
-
-    // TRACE-TEMP: a Type's short spelling.
-    private static string Ty(BoundType? t)
-        => t is null ? "-" : t.Kind == BoundTypeKind.Semantics && t.Components.Count > 0 ? $"{t.Semantics}/{Ty(t.Components[0])}" : t.Name;
-
-    // TRACE-TEMP: a slot's local name.
-    private string SlotName(int slot)
-    {
-        if (slot == Escaped)
-        {
-            return "E";
-        }
-
-        for (var i = 0; i < this.body.Locals.Length; i++)
-        {
-            if (this.slots[i] == slot)
-            {
-                return this.body.Locals[i].Name ?? ("_" + i);
-            }
-        }
-
-        return "s" + slot;
-    }
-
-    private OutputRetention? walkOutput; // PROTOTYPE R1: the output whose store the running W walk is (Keep).
-    private bool rootHidden;
-    private bool readOn = true; // PROTOTYPE R1 (b2), N4: whether the running ReadAt reads on past its layers (the Type's guard steps). // PROTOTYPE R1: whether the walk's input key holds every part in the callee's kept binding (Keep).
     private readonly Dictionary<(StorageRetention Record, MirBody Body, long View, SourceRef Site), (ulong Proven, ulong Undecided)> solved = new();
     private int[] argValues = []; // A Call's operand values by position (Input), the callee operand's at call.Count.
     private bool limit; // Whether the replay's Call at the location made an undecided store (R4-M147, or a pun, MirBorrows.Puns), read and reset by Check.
@@ -165,11 +123,6 @@ internal sealed partial class MirBorrows
 
         this.Destroying(state, call, checks);
 
-        if (this.Tracing)
-        {
-            TraceOut!.WriteLine($"P loc {this.planLocation} callee {call.Callee.Symbol?.Name} untied {untied} |result| {this.sets.Count(result)} E {this.sets.Contains(result, Escaped)}"); // TRACE-TEMP
-        }
-
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
         result = this.sets.Union(result, this.unformedSet); // Never certainly null (PLAN G598): a call without a row may return any pointer.
         if (call.Target < 0)
@@ -197,8 +150,8 @@ internal sealed partial class MirBorrows
         // argument names at it (Writes; SPEC 5.7 Calls, 15.6.4), and each holder receives at it (Arrive).
         var input = cases.TypeOf(this.Input(call, position));
         BoundType? referent = input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
-        this.walkOutput = written; // PROTOTYPE R1: the output whose store the walk is (Entry; KeptKey).
-        this.rootHidden = !R1NoRoot && this.covering.Count == 0 && this.KeptKey(this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(written))]); // PROTOTYPE R1, R3, R5
+        // The Φ_E rule's site 1: the walk's input key lies wholly in the callee's kept binding (KeptKey), so its first step never maps to E.
+        var hiddenRoot = this.covering.Count == 0 && this.KeptKey(this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(written))], written);
         if (this.covering.Count > 0 && this.argValues[position] == 0)
         {
             this.BeginWalk();
@@ -206,32 +159,19 @@ internal sealed partial class MirBorrows
         }
         else
         {
-            this.Referents(this.argValues[position]);
+            this.Referents(this.argValues[position], hiddenRoot);
         }
 
-        this.walkOutput = written; // PROTOTYPE R1: the output whose store the walk is (Entry).
-        var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position], input, referent, call, position);
-        this.walkOutput = R2KeepOutput ? this.walkOutput : null; // PROTOTYPE R2: other store paths' walks have no output record.
-        this.rootHidden = false; // PROTOTYPE R3: other store paths' walks have no kept input key.
+        var (limited, deepHolder) = stored ? default : this.Writes(state, call, position, written, hiddenRoot);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
         var sourced = this.writeCount > 0 ? this.Sourcing(written) : 0;
-        if (this.Tracing)
-        {
-            TraceOut!.WriteLine($"K loc {this.planLocation} checks {checks} out {written.Output} arg |{this.sets.Count(this.argValues[position])}| targets {this.targets.Count} work {this.Work}");
-        }
 
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
-            var tw0 = this.Work; // TRACE-TEMP
             var received = this.Received(state, call, written, target, checks);
-            var tw1 = this.Work;
             var value = this.Arrive(target, referent, false, this.argValues[position], received);
-            if (this.Tracing)
-            {
-                TraceOut!.WriteLine($"  t {this.SlotName(target)} via {this.writingVia[target]} place {this.writingPlace[target].Type} recvW {tw1 - tw0} arrW {this.Work - tw1} |recv| {this.sets.Count(received)} |state| {this.sets.Count(Placed(state[target]))}+{this.sets.Count(Shared(state[target]))} entry {(target == Escaped || (this.writingVia[target] & ViaPast) != 0 ? string.Join(",", this.PastEntry(written, target).Kinds.ToArray()) : "-")}");
-            }
 
             value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
             value = target == Escaped && this.walkResting ? this.sets.Union(value, this.undecidedSet) : value; // MirBorrows.Puns' Φ_U.
@@ -268,7 +208,7 @@ internal sealed partial class MirBorrows
         var own = (via & ViaRoot) != 0 ? written.Own : null;
         var past = target == Escaped || (via & ViaPast) != 0 ? this.PastEntry(written, target) : null;
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
-        value = (via & ViaCarried) != 0 && this.Composes && !R6NoCarriedOwn ? this.sets.Union(value, this.escapedSet) : value; // Revision 6, T1: route 1's holder may take the call's own pointer (SPEC 15.6.4)
+        value = (via & ViaCarried) != 0 && this.Composes ? this.sets.Union(value, this.escapedSet) : value; // Revision 6, T1: route 1's holder may take the call's own pointer (SPEC 15.6.4)
         return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
     }
 
