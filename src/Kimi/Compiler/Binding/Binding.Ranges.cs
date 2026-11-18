@@ -44,8 +44,12 @@ public sealed partial class Binding
 
     /// <summary>Gets a value indicating whether the selection applies one ResolvedRange value, written or resolved from a range key.</summary>
     /// <param name="node">The selection expression.</param>
-    /// <returns>Whether the selection is a resolved range selection.</returns>
-    internal bool IsResolvedSlice(Koto node) => node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
+    /// <returns>Whether the selection is a resolved range selection; a node of the frozen library is refused (EnsurePassNode).</returns>
+    internal bool IsResolvedSlice(Koto node)
+    {
+        EnsurePassNode(node, nameof(this.IsResolvedSlice));
+        return node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
+    }
 
     // SPEC 4.6.1: `^a` whose operand is literal-only (SPEC 12.3).
     private static bool IsLiteralOnlyFromEnd(Koto node) => node is FromEndIndexKoto fromEnd && IsIntegerLiteralOnly(fromEnd.Operand);

@@ -384,21 +384,21 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // PLAN G951 U0 (C-g191, M1): in a build whose root range is the program's, a lookup of a library definition the HIR publishes with a
     // value builds its body once, validated, and runs its program pass where it is built, which builds the initializer its staticEnsure
-    // names (Stopwatch.start reads Time.counterFrequency, SPEC 22.4.3); the key then finds the same body. X3 is valid (SPEC 10.5.3: an
-    // erasure at a declared Function Type; 7.7.4).
+    // names (Time.readCounterFrequency, which Stopwatch.start calls, reads Time.counterFrequency, SPEC 22.4.3); the key then finds the
+    // same body. X3 is valid (SPEC 10.5.3: an erasure at a declared Function Type; 7.7.4).
     [Fact]
     public void ADemandedBodyIsBuiltWithItsProgramPass()
     {
         var c = Compile(StopwatchAction);
         var eager = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
-        var (start, frequency) = (Library(eager, MirBodyKind.Fn, "start"), Library(eager, MirBodyKind.StaticInit, "counterFrequency"));
+        var (reader, frequency) = (Library(eager, MirBodyKind.Fn, "readCounterFrequency"), Library(eager, MirBodyKind.StaticInit, "counterFrequency"));
         var program = new MirBuilder(c).Build(c.SourceModules.Length);
         var count = program.Bodies.Length;
         Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
-        var body = program[start];
-        Assert.Equal([start, frequency], program.Bodies[count..].ToArray().Select(static x => x.Key));
-        Assert.Equal([eager[start]!.Ordinal, eager[frequency]!.Ordinal], program.Bodies[count..].ToArray().Select(static x => x.Ordinal));
-        Assert.Same(body, program[start]);
+        var body = program[reader];
+        Assert.Equal([reader, frequency], program.Bodies[count..].ToArray().Select(static x => x.Key));
+        Assert.Equal([eager[reader]!.Ordinal, eager[frequency]!.Ordinal], program.Bodies[count..].ToArray().Select(static x => x.Ordinal));
+        Assert.Same(body, program[reader]);
         Assert.Same(body, program.Body(body!.Ordinal));
         Assert.Same(program.Bodies[count + 1], program[frequency]);
         Assert.Equal(count + 2, program.Bodies.Length);
