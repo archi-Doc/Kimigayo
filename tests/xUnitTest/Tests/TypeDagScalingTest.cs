@@ -89,6 +89,57 @@ public partial class TypeDagScalingTest
         Assert.True(counts[0].Steps == counts[2].Steps, text);
     }
 
+    // SPEC 8.15.2, 8.3.4 (the owner's O-417 (a); the Front's C-397 C1): the capability engine judges a pair layer once per case its own
+    // binder admits, each case's complete Type a part (SymbolicCapability), so a Copy requirement's capability evaluations grow
+    // linearly with the layers that share one binder in a flat Tuple (N = 32, 64, 128) and with distinct binders, nested two to a layer,
+    // up to the case bound (d = 2, 4, 6 binders in scope: 4, 16 and 64 cases), never with the product of the cases. Each program is valid
+    // (every case Copies; 9485340f9 left each Unknown), and each check has a deadline, so it fails, never hangs.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task APairLayerIsJudgedOncePerCaseOfItsOwnBinder(bool nested)
+    {
+        const string Need = "func needCopy<V>(x: V) -> i32\n    V is Copy\n    return 0\n";
+        var cancel = TestContext.Current.CancellationToken;
+        var sizes = nested ? new[] { 2, 4, 6 } : new[] { 32, 64, 128 };
+        var counts = new List<(int Size, int Evaluations)>();
+        foreach (var size in sizes)
+        {
+            var source = Need + (nested ? NestedBinders(size) : SharedBinder(size));
+            var run = Task.Run(
+                () =>
+                {
+                    var c = CompilationTestHelper.ParseSuccess(source);
+                    Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+                    return (size, c.Binding.CapabilityEvaluationWork);
+                },
+                cancel);
+            Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+            counts.Add(await run);
+        }
+
+        var text = string.Join(", ", counts.Select(static x => $"{x.Size}: {x.Evaluations} evaluations"));
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        // Per added layer or binder (the library's fixed part cancels): a product over the cases would quadruple from d = 4 to 6.
+        var low = (counts[1].Evaluations - counts[0].Evaluations) / (double)(sizes[1] - sizes[0]);
+        var high = (counts[2].Evaluations - counts[1].Evaluations) / (double)(sizes[2] - sizes[1]);
+        Assert.True(high <= low * 1.5, text);
+
+        static string SharedBinder(int n)
+            => "func k<s/T>(marker: s/T) -> i32\n    s is owner or ref\n" + string.Concat(Enumerable.Range(0, n).Select(static i => $"    var a{i}: i32 = {i}\n")) +
+                $"    let t = ({string.Join(", ", Enumerable.Range(0, n).Select(static i => $"a{i}@s"))})\n    return needCopy(t)\n";
+
+        // d / 2 parameters x_j: s_2j/(s_2j+1/U_j), each a layer of one binder over the original pair of the next, in one Tuple.
+        static string NestedBinders(int d)
+        {
+            var pairs = Enumerable.Range(0, d / 2).ToArray();
+            return $"func k<{string.Join(", ", pairs.Select(static j => $"s{2 * j}/T{j}, s{(2 * j) + 1}/U{j}"))}>(" +
+                string.Join(", ", pairs.Select(static j => $"m{2 * j}: s{2 * j}/T{j}, m{(2 * j) + 1}: s{(2 * j) + 1}/U{j}, x{j}: s{2 * j}/(s{(2 * j) + 1}/U{j})")) + ") -> i32\n" +
+                string.Concat(Enumerable.Range(0, d).Select(static i => $"    s{i} is owner or ref\n")) + string.Concat(pairs.Select(static j => $"    U{j} is Copy\n")) +
+                $"    let t = ({string.Join(", ", pairs.Select(static j => $"x{j}"))})\n    return needCopy(t)\n";
+        }
+    }
+
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
     [Theory]

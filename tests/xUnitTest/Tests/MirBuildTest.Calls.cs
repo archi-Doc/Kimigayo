@@ -177,22 +177,25 @@ public sealed partial class MirBuildTest
             body.Operands[x.Rvalue.Start] is { Kind: MirOperandKind.Copy, Place: { Root: 1, Projection: 0 } }));
     }
 
-    // SPEC 12.2 (R4-M37's Open): a pair-layer argument is acquired by case where it is evaluated, before a later argument's code, not at its
-    // Call. Its cases differ (`owner or uniq`: a Copy and a Reborrow); a pair layer whose every case Copies is a plain Copy, no case site
-    // (SPEC 8.15.2, 8.14: Copy in every case is the engine's Proven, the owner's O-417 (a)).
-    [Fact]
-    public void APairLayerArgumentIsAcquiredWhereItIsEvaluated()
+    // SPEC 12.2 (R4-M37's Open): a pair-layer argument is acquired where it is evaluated, before a later argument's code, not at its Call:
+    // by case where its cases differ (`owner or uniq`: a Copy and a Reborrow), and as a plain Copy of the parameter where every case
+    // Copies (`owner or ref`; SPEC 8.15.2, 8.14: Copy in every case is the engine's Proven, the owner's O-417 (a); the Middle's C-398 N1).
+    [Theory]
+    [InlineData("owner or uniq", false)]
+    [InlineData("owner or ref", true)]
+    public void APairLayerArgumentIsAcquiredWhereItIsEvaluated(string semantics, bool copies)
     {
-        const string Source = "func pass<s/T>(a: s/T, b: i32)\n    s is owner or uniq\n    T is Copy\n    _ = b\nfunc one() -> i32 => 1\n" +
-            "func pending<s/T>(x: s/T)\n    s is owner or uniq\n    T is Copy\n    pass(x, one())\n";
-        var body = Body(Source, "pending");
+        var source = $"func pass<s/T>(a: s/T, b: i32)\n    s is {semantics}\n    T is Copy\n    _ = b\nfunc one() -> i32 => 1\n" +
+            $"func pending<s/T>(x: s/T)\n    s is {semantics}\n    T is Copy\n    pass(x, one())\n";
+        var body = Body(source, "pending");
         var path = RuntimePath(body).ToArray();
         var one = Array.FindIndex(path, at => at.Index == body.Blocks[at.Block].Count && body.Blocks[at.Block].Terminator.Callee.Symbol?.Name == "one");
         Assert.InRange(Array.FindIndex(path, Acquires), 0, one - 1);
 
         bool Acquires(MirLocation at) => at.Index < body.Blocks[at.Block].Count &&
             body.Statements[body.Blocks[at.Block].Start + at.Index] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } statement &&
-            body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
+            body.Operands[statement.Rvalue.Start] is var operand &&
+            (copies ? operand is { Kind: MirOperandKind.Copy, Place: { Root: 1, Projection: 0 } } : operand.Kind == MirOperandKind.PairAcquire);
     }
 
     // PLAN G703 (SPEC 3.5.3, 10.2; the Middle's C-219 N2 and condition 1): a value read through qualifying pair layers at an annotated
