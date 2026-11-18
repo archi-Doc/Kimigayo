@@ -27,19 +27,28 @@ namespace XunitTest;
 //   id (S1-0b r2 and r3, the dispositions review's C5; a parsed id is fixed by the library's table, a synthesized one is equal across
 //   programs from G949 S1-e);
 // - the aggregates' library parts: Issues, Obligations, LibraryImports (Binding's lists) and the effect obligations.
-// Values print through declarations and nodes (by location), Types (by printed form) and pass stamps (by their distance from the latest
-// pass), so synthesized ids (R8-M32's Temporary 1) do not enter a table's row; rows compare as a sorted multiset. How a store compares
+// Values print through declarations and nodes (by location), Types (by printed form and dense id: d6, review-n52 N2, from G949
+// S1-r1b's split the library pass interns the library's Types first, so after a cold Final Bind each library row's Type has the empty
+// program's id; one pass interleaved them, Option<isize> 508 in the empty program and 511 in Milestone10) and pass stamps (by their
+// distance from the latest pass), so synthesized ids (R8-M32's Temporary 1) do not enter a table's row; rows compare as a sorted
+// multiset. How a store compares
 // is its disposition (S1-0b r2: the dispositions' §2 with the review's C1, C2 and C5), named in one table (LibraryLayer.Disposition);
 // a store not in it is a fact:
 // - fact: each program's rows equal the empty program's. Call scratch (suppliedExpansions, activeOriginRequirements and an Origin
 //   requirement work's Dependents) is a fact once its call empties it at its end (G949 S1-e), so a leftover is a difference;
+//   shapeCallCandidates, storedCases, storedFields and the Origin summaries' forming lists likewise (G949 S1-r1b,
+//   ACallsScratchIsEmptyAfterABind);
 // - subset: a content interner or Type-keyed memo keeps every row of the empty program's unchanged, and a program's extra row is the
 //   program's level (D2b-d §1.1, §1.5);
 // - epoch: a memo of one capability epoch is the program's (D2b-d §1.1, census O16) and is not printed; its invariant is
 //   TheCapabilityMemosEndWithTheirEpoch's;
 // - number: a number naming a walk's or memo's order prints as #, the rest of its row compared; ArchitectureRulesTest's rows confine
 //   its readers to the walk or memo that assigns it;
-// - pool: a pool prints its live prefix, asserted slot by slot to be its live store's values in order, and not its free tail.
+// - program: a per-pass scratch, pool or cache both passes use (r1b plan O9, F's rulings 152 and 178), each named with its reason,
+//   holds after a Bind what the program pass, the last, left (G949 S1-r1b's split; Re-check 3's RC-e: the result walk's and the
+//   publisher's Completion scratch follows the publication order, M4): the program's, no library-layer fact, not printed. Before the
+//   split the one pass ran the library's work last, so they held the library's leftovers, equal for every program. A pool's
+//   live-prefix rule stays a row: inlineSummaryPool's live prefix is inlineSummaries' values after every Bind (AssertLivePrefix).
 // Any other difference is a program fact in the library layer, never filtered: it moves to the program overlay by design (F decides).
 // The layer is clean since G949 S1-e (S1-r1 waited for it): before it the rows differed in the lazy library facts S1-e makes eager (the
 // dispositions' rows 1, 1b and 2), in the call scratch it empties (rows 8 and 17, and a library Origin requirement work's Dependents,
@@ -77,6 +86,36 @@ public partial class KimiLibraryShapeTest
             x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
     }
 
+    // PLAN G949 S1-r1b (r1b plan section 6, the layer dump's two Facts): the dump walks its roots' fields by reflection, and from the
+    // split the library's rows of every part collection are the layer's part's (LibraryLayer.Part, a root of the dump at its path from Binding),
+    // while Binding's swapped fields and its own part hold the program pass's between Binds. So after a Final Bind of the empty program
+    // the dump lists the layer's part's rows, and Binding's own part holds no library row: a dump that missed the layer's part would
+    // compare two empty parts in the fast and corpus rows and pass them (it did until this row: the walk met the part past its nesting
+    // limit).
+    [Fact]
+    public void TheLayerDumpListsTheLayersPartAndBindingsOwnPartHoldsNoLibraryRow()
+    {
+        var dump = LibraryLayer.Dump(Bound(string.Empty));
+        Assert.Contains(dump, static x => x.StartsWith("Binding.Library.Layer.Part.Nodes ", StringComparison.Ordinal));
+        Assert.Contains(dump, static x => x.StartsWith("Binding.Library.Layer.Part.Keepers ", StringComparison.Ordinal));
+        Assert.DoesNotContain(dump, static x => x.StartsWith("Binding.programPart.", StringComparison.Ordinal) || x.StartsWith("Binding.nodes ", StringComparison.Ordinal));
+    }
+
+    // PLAN G949 S1-r1b (v2's r1b clause; s1r1-design 1.3, M6; F's ruling 178 (2)): a pass that asks for a rerun starts a new run of
+    // every pass, the library pass's included, which runs as the run's second (StartRuns once per Bind). j4's cold Bind restarts (its
+    // program pass reads a base before its clause is bound), and its library layer is the empty program's: the library pass's second
+    // run binds the library as its first one does. The numbers the dump prints by value that are counters, not facts, are excluded by
+    // name (RestartCounters, each with what it counts), since a second run of the library pass moves them: mutation counters (a List's,
+    // an environment's, a scope's link), requirement calls and the run's reset stamps.
+    [Fact]
+    public void TheLibraryLayerAfterARestartIsTheEmptyPrograms()
+    {
+        var c = CompilationTestHelper.Parse(BaseInputFormationBindingTest.J4);
+        Assert.True(c.Bind().IsComplete);
+        Assert.True((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        SameLayer("j4 after its restart", LibraryLayer.Dump(Bound(string.Empty), RestartCounters), LibraryLayer.Dump(c, RestartCounters));
+    }
+
     // G949 N5-5's n3 (C-380 F2): a library binder's atoms and a library source's open regions live in the library module's NodeColumns
     // (originAtoms, openOrigins): after a second Bind, and after an edit to the program's module and a Bind, every atom the library's
     // rows hold is the same object.
@@ -99,7 +138,8 @@ public partial class KimiLibraryShapeTest
 
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which the pass driver's RunPass
     // runs first in each pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after
-    // it. Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
+    // it. Each pass's start ends the epoch of the stores it reads: the shared ones and its own part's (the closure index, PassPart), so
+    // the row starts each pass in turn, the library pass's and the program pass's (G949 S1-r1b). Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
     // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store
     // is empty. Reset leaves only a work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
     // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U fact
@@ -116,7 +156,13 @@ public partial class KimiLibraryShapeTest
         var work = ((IDictionary)LibraryLayer.ValueAt(binding, "Binding.capabilityNodes")).Values.Cast<object>().First();
         var fact = RuntimeHelpers.GetUninitializedObject(typeof(Binding).GetNestedType("CallableUnknown", BindingFlags.NonPublic)!);
         work.GetType().GetProperty("Fact", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(work, fact);
-        typeof(Binding).GetMethod("ResetCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(binding, [binding.Result.Mode]);
+        foreach (var pass in new[] { "LibraryPass", "ProgramPass" })
+        {
+            var part = typeof(Binding).GetProperty(pass, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(binding);
+            typeof(Binding).GetMethod("EnterPass", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(binding, [part]);
+            typeof(Binding).GetMethod("ResetCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(binding, [binding.Result.Mode]);
+        }
+
         var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
         string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Pending", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
@@ -153,11 +199,42 @@ public partial class KimiLibraryShapeTest
     [MemberData(nameof(LayerCorpus))]
     public void TheLibraryLayerIsIndependentOfTheCorpus(string program) => SameLayerAsTheEmptyPrograms(program);
 
+    // PLAN G949 S1-r1b (S1-e's call-scratch rule; review-s1r1 Re-check 3, RC-e): the scratch of a call or a step is empty at its end,
+    // so what the last call, container or summary left is no row of the layer, whichever pass ran last: the candidates of a call's
+    // shape contracts, the cases and Fields of the container whose storage was prepared last, the nodes of the Origin summary formed
+    // last. Each held a leftover before (the library's last, in one pass; the program's last after the split, a difference from the
+    // empty program's layer in 163, 30, 182 and 6 of the corpus' 517 differing programs).
+    [Theory]
+    [InlineData("shapeCallCandidates")]
+    [InlineData("storedCases")]
+    [InlineData("storedFields")]
+    [InlineData("summaryNodes")]
+    public void ACallsScratchIsEmptyAfterABind(string field)
+        => Assert.Empty((System.Collections.ICollection)typeof(Binding).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Bound("example/Hello").Binding)!);
+
     private static IEnumerable<string> Names(IEnumerable<string> names) => names.Order(StringComparer.Ordinal);
+
+    // The raw counters the restart row excludes by name (TheLibraryLayerAfterARestartIsTheEmptyPrograms).
+    private static readonly HashSet<string> RestartCounters =
+    [
+        "List`1._version", // A List's mutation counter, in list-valued rows.
+        "ConstraintEnvironment.Version", // An environment's change counter, which the contract solver's view serial reads.
+        "BindingScope.LinkVersion", // A scope's link counter, read with it.
+        "OriginRequirementWork.Pass", // The requirement call that last visited a work.
+        "KeeperList.Pass", // The requirement call that kept a slot's list.
+        "BoundConformance.Stamp", // A conformance identity's reset stamp, the run's counter.
+        "BoundConformancePath.Stamp", // A conformance path's reset stamp, the run's counter.
+    ];
 
     private static void SameLayerAsTheEmptyPrograms(string program)
     {
-        var (expected, actual) = (EmptyProgramLayer.Value, LibraryLayer.Dump(Bound(program)));
+        var c = Bound(program);
+        LibraryLayer.AssertLivePrefix(c.Binding, "Binding.inlineSummaryPool", "Binding.inlineSummaries");
+        SameLayer(program, EmptyProgramLayer.Value, LibraryLayer.Dump(c));
+    }
+
+    private static void SameLayer(string program, string[] expected, string[] actual)
+    {
         var differences = new List<string>();
         var (e, a) = (0, 0);
         while (e < expected.Length || a < actual.Length)
@@ -254,42 +331,51 @@ public partial class KimiLibraryShapeTest
         private static readonly ConcurrentDictionary<Type, FieldInfo[]> FieldsOf = new();
 
         // The dispositions (PLAN G949 S1-0b r2; the dispositions' §2 table with the review's C1): a store by its path from Binding, a
-        // number by its type and field, a pool with its live store (a field beside it). A store not named here is a fact.
-        private static readonly Dictionary<string, (Rule Rule, string? Live)> Disposition = new(StringComparer.Ordinal)
+        // number by its type and field. A store not named here is a fact.
+        private static readonly Dictionary<string, Rule> Disposition = new(StringComparer.Ordinal)
         {
             // Content interners and Type-keyed memos: the program's instantiations at builtin Types are its own rows.
-            ["Binding.constraints"] = (Rule.Subset, null),
-            ["Binding.types.types"] = (Rule.Subset, null),
-            ["Binding.originSummaries"] = (Rule.Subset, null),
-            ["Binding.erasureOutcomes"] = (Rule.Subset, null),
-            ["Binding.pendingAssociatedTypes"] = (Rule.Subset, null),
-            ["Binding.boundContracts"] = (Rule.Subset, null),
-            ["Binding.storageMarks"] = (Rule.Subset, null),
+            ["Binding.constraints"] = Rule.Subset,
+            ["Binding.types.types"] = Rule.Subset,
+            ["Binding.originSummaries"] = Rule.Subset,
+            ["Binding.erasureOutcomes"] = Rule.Subset,
+            ["Binding.pendingAssociatedTypes"] = Rule.Subset,
+            ["Binding.boundContracts"] = Rule.Subset,
+            ["Binding.storageMarks"] = Rule.Subset,
 
             // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,
             // whose pool lends its lists to enumerateKept alone (C1).
-            ["Binding.summaries"] = (Rule.Epoch, null),
-            ["Binding.capabilityNodes"] = (Rule.Epoch, null),
-            ["Binding.capabilityEdges"] = (Rule.Epoch, null),
-            ["Binding.capabilityQueue"] = (Rule.Epoch, null),
-            ["Binding.enumerateIndex"] = (Rule.Epoch, null),
-            ["Binding.enumerateKept"] = (Rule.Epoch, null),
-            ["Binding.enumerateKeptPool"] = (Rule.Epoch, null),
-            ["Binding.enumerateHeads"] = (Rule.Epoch, null),
+            ["Binding.summaries"] = Rule.Epoch,
+            ["Binding.capabilityNodes"] = Rule.Epoch,
+            ["Binding.capabilityEdges"] = Rule.Epoch,
+            ["Binding.capabilityQueue"] = Rule.Epoch,
+            ["Binding.enumerateIndex"] = Rule.Epoch,
+            ["Binding.programPart.EnumerateIndex"] = Rule.Epoch, // the same index, each pass's part's (PLAN G949 S1-r1b)
+            ["Binding.Library.Layer.Part.EnumerateIndex"] = Rule.Epoch,
+            ["Binding.enumerateKept"] = Rule.Epoch,
+            ["Binding.enumerateKeptPool"] = Rule.Epoch,
+            ["Binding.enumerateHeads"] = Rule.Epoch,
 
             // Numbers: Tarjan's visit order, the Origin requirement walk's consumer mark, a scope's view serial and the chain state it names.
-            ["InlineSummary.Index"] = (Rule.Number, null),
-            ["InlineSummary.Low"] = (Rule.Number, null),
-            ["OriginRequirementWork.Consumer"] = (Rule.Number, null),
-            ["BindingScope.ViewSerial"] = (Rule.Number, null),
-            ["BindingScope.ViewState"] = (Rule.Number, null),
+            ["InlineSummary.Index"] = Rule.Number,
+            ["InlineSummary.Low"] = Rule.Number,
+            ["OriginRequirementWork.Consumer"] = Rule.Number,
+            ["BindingScope.ViewSerial"] = Rule.Number,
+            ["BindingScope.ViewState"] = Rule.Number,
 
-            // A pool whose live prefix is its live store's values in insertion order (the store is only cleared, never removed from).
-            ["Binding.inlineSummaryPool"] = (Rule.Pool, "inlineSummaries"),
+            // A per-pass scratch, pool or cache both passes use (G949 S1-r1b; O9, rulings 152 and 178): the program pass's after a Bind.
+            ["Binding.enumeratePool"] = Rule.Program, // Enumerate's lists of one outermost request, lent by position, all free at its end.
+            ["Binding.resultPool"] = Rule.Program, // The result contexts a pass rents by its cursor, which each pass's reset sets back to 0.
+            ["Binding.identityPool"] = Rule.Program, // The free identity tables each capability epoch's end returns (ResetIdentityClasses).
+            ["Binding.inlineSummaries"] = Rule.Program, // ValidateInlineLayouts' summaries, emptied at its start in each pass.
+            ["Binding.inlineSummaryPool"] = Rule.Program, // Their pool: its live prefix is inlineSummaries' values (AssertLivePrefix).
+            ["Binding.resultStructure.cache"] = Rule.Program, // The result walk's Completion memo of the body it walked last (M4).
+            ["Binding.resultStructure.transferPool"] = Rule.Program, // That walk's transfer sets, rented by its cursor for each body.
+            ["Binding.hirPublisher.completion.transferPool"] = Rule.Program, // The publisher's transfer sets for the body it published last (M4).
         };
 
         // The number rule's fields, by declaring type and name.
-        private static readonly HashSet<(Type, string)> Numbers = [.. Disposition.Where(static x => x.Value.Rule == Rule.Number)
+        private static readonly HashSet<(Type, string)> Numbers = [.. Disposition.Where(static x => x.Value == Rule.Number)
             .Select(static x => NumberField(x.Key)).Where(static x => x.HasValue).Select(static x => x!.Value)];
 
         // Compilation-wide roots and the source text: never listed (the library's nodes print through R8-M32's printer).
@@ -309,6 +395,7 @@ public partial class KimiLibraryShapeTest
         private readonly HashSet<object> printing = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<BoundType, Side> typeOwners = new(ReferenceEqualityComparer.Instance);
         private readonly List<string> rows = [];
+        private IReadOnlySet<string>? counters; // Fields printed as # by their declaring type's name and their name (the restart row).
 
         private LibraryLayer(Compilation c)
         {
@@ -323,7 +410,7 @@ public partial class KimiLibraryShapeTest
             Subset,
             Epoch,
             Number,
-            Pool,
+            Program,
         }
 
         private enum Side
@@ -333,10 +420,14 @@ public partial class KimiLibraryShapeTest
             Program,
         }
 
-        internal static string[] Dump(Compilation c)
+        internal static string[] Dump(Compilation c, IReadOnlySet<string>? counters = null)
         {
-            var layer = new LibraryLayer(c);
+            var layer = new LibraryLayer(c) { counters = counters };
             layer.Store("Binding", c.Binding, 0);
+
+            // The library layer at its path from Binding (G949 S1-r1b): the walk meets it first through TyCtxt's library, where its
+            // part (LibraryLayer.Part, the library pass's per-pass collections) lies past the nesting limit.
+            layer.Store("Binding.Library.Layer", c.Library.Layer, 1);
 
             // Binding's node families (NodeColumns, DECISIONS BU-220) live in each module's HIR tables, which no store walks. A family's store
             // is its key's module, so its rows in the library's columns are the library layer's and a program's are its modules': by one
@@ -371,16 +462,27 @@ public partial class KimiLibraryShapeTest
         internal static Rule RuleOf(string row)
         {
             var store = row[..(row.IndexOf(' ', StringComparison.Ordinal) is var i && i < 0 ? row.Length : i)];
-            return Disposition.GetValueOrDefault(store.EndsWith("[]", StringComparison.Ordinal) ? store[..^2] : store).Rule;
+            return Disposition.GetValueOrDefault(store.EndsWith("[]", StringComparison.Ordinal) ? store[..^2] : store);
         }
 
-        internal static IEnumerable<string> StoresOf(Rule rule) => Disposition.Where(x => x.Value.Rule == rule).Select(static x => x.Key);
+        // The live-prefix rule of a pool both passes use (F's ruling 178): after a Bind its live prefix is its live store's values in
+        // insertion order (the store is only cleared, never removed from), slot by slot; its free tail is not read.
+        internal static void AssertLivePrefix(Binding binding, string pool, string live)
+        {
+            var (slots, values) = ((IList)ValueAt(binding, pool), (IDictionary)ValueAt(binding, live));
+            var i = 0;
+            foreach (var value in values.Values)
+            {
+                Assert.True(i < slots.Count && ReferenceEquals(slots[i], value), $"{pool}[{i}] is not its live store's value {i}");
+                i++;
+            }
+        }
 
-        // The dispositions naming no store or field: a store's path from Binding, a pool's live store beside it, a number's field of an
-        // integer or a tuple of integers.
+        internal static IEnumerable<string> StoresOf(Rule rule) => Disposition.Where(x => x.Value == rule).Select(static x => x.Key);
+
+        // The dispositions naming no store or field: a store's path from Binding, a number's field of an integer or a tuple of integers.
         internal static IEnumerable<string> Unresolved()
-            => Disposition.Where(static x => x.Value.Rule == Rule.Number ? NumberField(x.Key) is null
-                : FieldAt(x.Key) is null || (x.Value.Live is { } live && FieldAt(x.Key[..(x.Key.LastIndexOf('.') + 1)] + live) is null)).Select(static x => x.Key);
+            => Disposition.Where(static x => x.Value == Rule.Number ? NumberField(x.Key) is null : FieldAt(x.Key) is null).Select(static x => x.Key);
 
         // A store's value in a Binding, by its path.
         internal static object ValueAt(Binding binding, string store)
@@ -506,17 +608,12 @@ public partial class KimiLibraryShapeTest
             foreach (var field in Fields(owner.GetType()))
             {
                 var (name, value) = ($"{store}.{Name(field)}", field.GetValue(owner));
-                var (rule, live) = Disposition.GetValueOrDefault(name);
-                if (rule == Rule.Epoch)
+                if (Disposition.GetValueOrDefault(name) is Rule.Epoch or Rule.Program)
                 {
-                    continue; // The program's memo, not the library layer.
+                    continue; // The program's memo or scratch, not the library layer.
                 }
 
-                if (rule == Rule.Pool)
-                {
-                    this.Pool(name, (IList)value!, (IDictionary)Fields(owner.GetType()).Single(x => Name(x) == live).GetValue(owner)!);
-                }
-                else if (value is IEnumerable and not string)
+                if (value is IEnumerable and not string)
                 {
                     this.Table(name, value);
                 }
@@ -525,18 +622,6 @@ public partial class KimiLibraryShapeTest
                 {
                     this.Store(name, value, nesting + 1);
                 }
-            }
-        }
-
-        // The pool rule: the live prefix, each slot the live store's value at its position (insertion order), and not the free tail; a
-        // slot that is not fails the row instead of hiding a fact.
-        private void Pool(string store, IList pool, IDictionary live)
-        {
-            var i = 0;
-            foreach (var value in live.Values)
-            {
-                Assert.True(i < pool.Count && ReferenceEquals(pool[i], value), $"{store}[{i}] is not its live store's value {i}");
-                this.Element(store, pool[i++]);
             }
         }
 
@@ -675,7 +760,7 @@ public partial class KimiLibraryShapeTest
                 case BindingScope scope:
                     return "scope@" + Where(scope.Owner);
                 case BoundType type:
-                    return this.printer.Type(type);
+                    return this.printer.Type(type) + "#" + type.Id.ToString(CultureInfo.InvariantCulture);
                 case SourceRef id:
                     return id.Module == SyntaxTable.LibraryModule ? "@" + Where(this.library.Syntax.Nodes[id.Id]) : $"{id.Module}#{id.Id}";
                 case not null when Scalar(value):
@@ -723,7 +808,8 @@ public partial class KimiLibraryShapeTest
             {
                 var (name, x) = (Name(field), field.GetValue(value));
                 var stamp = x is ulong or uint && (name.Contains("pass", StringComparison.OrdinalIgnoreCase) || name.Contains("version", StringComparison.OrdinalIgnoreCase));
-                text.Append(name).Append('=').Append(Numbers.Contains((field.DeclaringType!, name)) ? "#"
+                var counter = this.counters?.Contains(field.DeclaringType!.Name + "." + name) == true;
+                text.Append(name).Append('=').Append(counter || Numbers.Contains((field.DeclaringType!, name)) ? "#"
                     : stamp ? this.Stamp(Convert.ToUInt64(x, CultureInfo.InvariantCulture)) : this.Print(x, depth + 1)).Append(' ');
             }
 
