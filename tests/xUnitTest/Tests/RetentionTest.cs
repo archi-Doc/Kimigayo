@@ -1467,8 +1467,11 @@ public sealed partial class RetentionTest
     // record that drops the write (before: store 0 kept nothing of y).
     [Fact]
     public void AWriteTestAtBindingsLimitIsTheLimit()
-        => Assert.Equal("limit", Declared(Bind("struct N<X>\n    public var item: X\n    public var next: raw/N<(X, X)>\n" +
-            "func f<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: (uniq/N<T> during u, E) -> ()) -> ()\n    return\n"), "f"));
+    {
+        var c = Bind("struct N<X>\n    public var item: X\n    public var next: raw/N<(X, X)>\n" +
+            "func f<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: (uniq/N<T> during u, E) -> ()) -> ()\n    return\n");
+        Assert.Equal("limit", Declared(c, "f"));
+    }
 
     // The same at a call: a Closure capturing the caller's T by move and passed by value, with a writer through `uniq/T` handed, keeps the
     // child in what the captured T hides; without the writer nothing.
