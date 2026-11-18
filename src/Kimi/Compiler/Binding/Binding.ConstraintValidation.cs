@@ -163,9 +163,9 @@ public sealed partial class Binding
     }
 
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
-    private static Koto? CallableArgument(Koto use, IsKoto clause)
+    private Koto? CallableArgument(Koto use, IsKoto clause)
     {
-        if (use is not InvocationKoto { BoundCall: { Target.Declaration: FunctionKoto function } plan } ||
+        if (use is not InvocationKoto invocation || this.CallOf(invocation) is not { Target.Declaration: FunctionKoto function } plan ||
             clause.BoundConstraint?.Subject is not { Kind: BoundTypeKind.Parameter, Symbol: { } slot })
         {
             return null;
@@ -542,7 +542,7 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Error)
         {
             var cause = diagnosticCause ?? this.TakeFailedCause().Use;
-            if (cause is not null && use.BindingFailure == BindingFailure.None)
+            if (cause is not null && this.RecordedFailure(use) == BindingFailure.None)
             {
                 this.Consulted(cause); // SPEC 23.1.2: the proof's evidence explains its outcome, never a record the use's own check owns.
             }
@@ -568,7 +568,7 @@ public sealed partial class Binding
     // owns (the conformance's verdict, or a failure it held before the outcome) never derives from the frame, which is dropped.
     private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame, Koto? diagnosticCause = null)
     {
-        var owned = use.BindingFailure != BindingFailure.None;
+        var owned = this.RecordedFailure(use) != BindingFailure.None;
         this.RequireConstraint(use, proof, mode, diagnosticCause);
         if (owned)
         {
@@ -610,7 +610,7 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.UnprovenConstraint, unresolved);
         }
 
-        var at = CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
+        var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
         var record = new CallableConstraintFact(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, use));
         return this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }

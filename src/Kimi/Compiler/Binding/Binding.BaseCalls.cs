@@ -52,7 +52,7 @@ public sealed partial class Binding
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoSelfCapture);
         }
 
-        if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.SelfType(type)) is not { } baseType)
+        if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.types, this.SelfType(type)) is not { } baseType)
         {
             return this.CompleteDependent(reference, structure);
         }
@@ -90,13 +90,13 @@ public sealed partial class Binding
 
     private BindingSymbol? BaseMember(MemberAccessKoto member, BaseReferenceKoto reference, BindingScope scope)
     {
-        if (this.BindNode(reference, scope) is not { } actual || !reference.HasCurrentBinding || reference.BasePath is not { } path ||
+        if (this.BindNode(reference, scope) is not { } actual || !this.IsCurrent(reference) || reference.BasePath is not { } path ||
             member.Right is not IdentifierNameKoto name)
         {
             return null;
         }
 
-        var selection = this.LookupTypeMember(path.Type, name.IdentifierName, scope, actual, path);
+        var selection = this.LookupMember(path.Type, name.IdentifierName, scope, LookupRole.Value, actual, path);
         var selected = selection.Member;
         if (selection.Pending)
         {
@@ -125,11 +125,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            this.memberSelections[member] = selection;
-            this.memberSides[member] = MemberSide.Value;
-            member.BoundSymbol = selected;
-            name.BoundSymbol = selected;
-            name.BindingState = BindingState.Resolved;
+            return this.PublishMemberAccess(member, selected, null, LookupRole.Value, selection);
         }
 
         return selected;

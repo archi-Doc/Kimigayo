@@ -17,6 +17,7 @@ public sealed partial class Binding
     private bool assuming; // The coinductive step is evaluating (AssumeResidual).
     private bool assumptionVoid; // It read a work never evaluated.
     private int assumptionDepth; // ObligationDepth when its evaluation began: an assumption is not read through a newer obligation.
+    private int assumedReads; // The assumptions read in the running coinductive step (temporary carrier with reentryReads; removal: R7-C2e2 e2-5b).
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -317,6 +318,7 @@ public sealed partial class Binding
                 }
                 else if (work.Assumed && consumer.Assumed && this.ObligationDepth == this.assumptionDepth)
                 {
+                    this.assumedReads++;
                     return ConstraintProof.Proven;
                 }
             }
@@ -390,6 +392,14 @@ public sealed partial class Binding
     // The nominal obligations open (the open set's and the conformance verifications in progress, the two guards of SPEC 8.3.3
     // Recursion): an assumption is not read through one opened during the evaluation that reads it (AssumeResidual).
     private int ObligationDepth => this.openObligations.Count + this.conformanceChecks;
+
+    // SPEC 8.3.3 Finality: the reads of a verdict not settled yet, an open obligation's re-entry reads (reentryReads) and the running
+    // coinductive step's assumptions, each valid only at the obligation depth its evaluation began. An answer computed while the count
+    // grows rests on one of them; one computed with it unchanged rests on settled verdicts alone and holds at any deeper obligation
+    // (Formation's nested reads). A whole request inside the computation leaves it unchanged: its step's reads end with the step.
+    // Temporary carrier with reentryReads and assumedReads; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer, which then
+    // says whether an answer rests on a provisional verdict (Formation's Settled and unsettledReads go with it).
+    private int ProvisionalReads => this.reentryReads + (this.assuming ? this.assumedReads : 0);
 
     // SPEC 8.3.3 Limits, 23.1.1 (DECISIONS BU-22): each Unknown or Error work of the request rests on the least Cause by CauseKey among
     // its own (what its last evaluation read from anything but a work) and those of the works it read that settled at its verdict.
@@ -512,6 +522,7 @@ public sealed partial class Binding
 
         this.assuming = true;
         this.assumptionVoid = false;
+        this.assumedReads = 0;
         this.CoinductiveStepWork++;
         while (!this.assumptionVoid && this.assumptionQueue.TryDequeue(out var next))
         {

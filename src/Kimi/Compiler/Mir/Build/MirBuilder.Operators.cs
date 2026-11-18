@@ -111,7 +111,7 @@ internal sealed partial class MirBuilder
 
         if (AdtDef.IsStruct(this.body.TypeOf(sequence)))
         {
-            sequence = this.body.Project(sequence, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(sequence)!, "value"));
+            sequence = this.body.Project(compilation.Types, sequence, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(sequence)!, "value"));
         }
 
         var length = form == BuiltinForm.Length ? destination : this.Temp(BoundType.ISize, member);

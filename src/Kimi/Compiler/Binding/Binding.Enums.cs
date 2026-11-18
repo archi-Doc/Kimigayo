@@ -42,9 +42,10 @@ public sealed class BoundEnumConstruction
     internal bool IsValid { get; set; }
 
     /// <summary>Gets the construction of the enum Case value a node with the Aggregate Op makes, or null for another node.</summary>
+    /// <param name="binding">The reader's Binding.</param>
     /// <param name="use">The node.</param>
     /// <returns>The construction the latest pass selected.</returns>
-    internal static BoundEnumConstruction? Of(Koto use) => use.CodeContext.Compilation.Binding.TryGetEnumConstruction(use, out var construction) ? construction : null;
+    internal static BoundEnumConstruction? Of(Binding binding, Koto use) => binding.TryGetEnumConstruction(use, out var construction) ? construction : null;
 
     internal void Set(BoundEnumCase enumeration, BoundType type, ReadOnlySpan<BoundArgumentOperation> operations)
     {
@@ -134,7 +135,8 @@ public sealed partial class Binding
             // SPEC 6.5.2 steps 2-3, 9.7: an omitted own list takes the expected owned Type of the same enum. A top-level enum is that Type
             // or, open in every slot, its declaration Type; a nested one (or a structure, which reaches here without own slots) keeps its
             // environment from the path (ConstructionTargetType).
-            var supplied = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : null;
+            var expectedResult = this.ExpectedTypeOf(expected); // SPEC 10.8.1: a Case construction is an owner value, so U at an expected `ref/U`.
+            var supplied = expectedResult?.Semantics == SemanticsKind.Owner && ReferenceEquals(expectedResult.Symbol, symbol) ? expectedResult : null;
             type = symbol.Declaration is StructKoto || qualifier is MemberAccessKoto ||
                 (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
                 ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
@@ -152,14 +154,15 @@ public sealed partial class Binding
             return null;
         }
 
+        expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
         if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
         {
             this.Fail(reference, BindingFailure.MissingType, true);
             return null;
         }
 
-        var member = this.LookupTypeMember(expected, name.IdentifierName, scope).Member;
-        if (member?.EnumCase is null)
+        var member = this.LookupMember(expected, name.IdentifierName, scope, LookupRole.EnumCase).Member;
+        if (member is null)
         {
             this.Fail(reference, BindingFailure.MissingName);
             return null;
@@ -173,6 +176,7 @@ public sealed partial class Binding
     private BoundType? BindEnumConstruction(Koto use, Koto reference, BindingSymbol symbol, InvocationKoto? call, BindingScope scope, BoundType? expected)
     {
         var enumeration = symbol.EnumCase!;
+        expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: a Case construction is an owner value; its expected result at `ref/U` is U.
         var declaration = (EnumKoto)enumeration.Owner.Declaration;
         var payload = enumeration.Payload;
         var count = call?.ArgumentNodes.Count ?? 0;
@@ -294,7 +298,7 @@ public sealed partial class Binding
             }
 
             var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, frame.Types[..slots]!, originArguments: origins.AsSpan(0, originCount));
-            if (expected is not null && !FitsType(result, expected))
+            if (expected is not null && !this.FitsType(result, expected))
             {
                 // SPEC 15.6.1, 10.8: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch, its
                 // pair layers read at the use's scope; a Function component's failed contract is the construction's contract record, whose
@@ -396,10 +400,11 @@ public sealed partial class Binding
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. A payload whose
     // payload Type those fixed slots settle (`settled`) is bound only at it, on completion; every other payload is prepared as an argument
     // is and is evidence by its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot that no evidence
-    // binds waits; otherwise the Literal parts' defaults apply to the slots that neither evidence nor a waiting callable at an F binds
-    // (SPEC 10.5, TakeWaiting), and are evidence once applied. Once every other slot is bound, the waiting callables at an F are
-    // completed with S and are evidence (SPEC 10.5.4), as a call's are after selection. False when the construction is complete: failed
-    // or waiting.
+    // binds waits; otherwise the parts' own Types apply step by step (OwnTypeSteps: the literals' defaults, then the waiting nested
+    // calls) to the slots that neither evidence nor a waiting callable at an F binds (SPEC 10.5, TakeWaiting), and are evidence once
+    // applied, each step over the slots the steps before it left unsolved. Once every other slot is bound, the waiting callables at an
+    // F are completed with S and are evidence (SPEC 10.5.4), as a call's are after selection. False when the construction is complete:
+    // failed or waiting.
     private bool SolveConstruction(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, BoundType? expected, ref SlotSet settled)
     {
         for (var i = 0; i < payload.Length; i++)
@@ -425,11 +430,43 @@ public sealed partial class Binding
         }
 
         var unsolved = this.RentSlotSet(CallSlotCount(solution.Binder));
+        var left = this.RentSlotSet(CallSlotCount(solution.Binder));
         try
         {
-            for (var late = 0; late < 2; late++)
+            if (!this.InferPayloads(use, payload, ref solution, settled, false))
             {
-                if (!this.InferPayloads(use, payload, ref solution, settled, late == 1))
+                return false;
+            }
+
+            if (!UnsolvedPayloadSlots(payload, solution, ref unsolved))
+            {
+                return true;
+            }
+
+            // SPEC 10.5.1 (D4): under the argument probe a construction waits while its result, which holds all its slots, holds one
+            // that neither evidence nor a waiting callable fixes, as a nested call does.
+            if (this.HoldsOpenSlot(payload, solution, unsolved) && this.DeferNestedCall(use, expected))
+            {
+                Complete(use, null);
+                return false;
+            }
+
+            solution.LeaveUnbound(ref left);
+            foreach (var kind in OwnTypeSteps)
+            {
+                if (unsolved.IsEmpty)
+                {
+                    break;
+                }
+
+                if (solution.DefaultPayloads(payload, unsolved, kind) is { } misfit)
+                {
+                    this.CompleteDependent(use, misfit); // SPEC 12.3: the literals' own records, on which the construction rests.
+                    return false;
+                }
+
+                // The late pass with the own Types applied so far, over the slots still unsolved.
+                if (!this.InferPayloads(use, payload, ref solution, settled, true))
                 {
                     return false;
                 }
@@ -437,25 +474,6 @@ public sealed partial class Binding
                 if (!UnsolvedPayloadSlots(payload, solution, ref unsolved))
                 {
                     return true;
-                }
-
-                // SPEC 10.5.1 (D4): under the argument probe a construction waits while its result, which holds all its slots, holds one
-                // that neither evidence nor a waiting callable fixes, as a nested call does.
-                if (late == 0 && this.HoldsOpenSlot(payload, solution, unsolved) && this.DeferNestedCall(use, expected))
-                {
-                    Complete(use, null);
-                    return false;
-                }
-
-                if (unsolved.IsEmpty || late == 1)
-                {
-                    break;
-                }
-
-                if (solution.DefaultPayloads(payload, unsolved) is { } misfit)
-                {
-                    this.CompleteDependent(use, misfit); // SPEC 12.3: the literals' own records, on which the construction rests.
-                    return false;
                 }
             }
 
@@ -472,6 +490,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.ReturnSlotSet(left);
             this.ReturnSlotSet(unsolved);
         }
     }
@@ -523,13 +542,21 @@ public sealed partial class Binding
     // is the construction's Type mismatch.
     private bool InferPayloads(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, SlotSet settled, bool late)
     {
+        var wholes = this.wholes.Count;
         for (var i = 0; i < payload.Length; i++)
         {
             if (!settled.Contains(i) && !solution.InferArgument(payload[i].BoundType!, solution.Call.ArgumentNodes[i], late))
             {
+                this.wholes.RemoveRange(wholes, this.wholes.Count - wholes);
                 this.Fail(use, BindingFailure.TypeMismatch);
                 return false;
             }
+        }
+
+        if (!solution.BindWholes(wholes, late))
+        {
+            this.Fail(use, BindingFailure.TypeMismatch);
+            return false;
         }
 
         return true;

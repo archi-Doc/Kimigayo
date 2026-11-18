@@ -246,7 +246,7 @@ public sealed partial class Binding
             {
                 var guardType = this.BindNode(guard, this.scopes[guard], BoundType.Boolean);
                 pendingBody |= guardType is null;
-                if (guardType is not null && !Compatible(guardType, BoundType.Boolean))
+                if (guardType is not null && !this.FitsType(guardType, BoundType.Boolean))
                 {
                     this.Fail(guard, BindingFailure.TypeMismatch);
                     plan.Invalid = true;
@@ -254,7 +254,7 @@ public sealed partial class Binding
             }
 
             var bodyType = this.BindNode(arm.Body, this.scopes[arm.Pattern], required ? resultContext.Expected : null);
-            pendingBody |= bodyType is null && !this.AwaitsCall(arm.Body) && !this.AwaitsPosition(arm.Body);
+            pendingBody |= bodyType is null && !this.AwaitsCall(arm.Body) && !this.AwaitsPosition(arm.Body) && !this.Deferred(arm.Body);
         }
 
         if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
@@ -528,12 +528,14 @@ public sealed partial class Binding
             }
         }
 
-        var symbol = this.LookupTypeMember(expected, name, scope).Member;
-        if (symbol?.EnumCase is null)
+        var symbol = this.LookupMember(expected, name, scope, LookupRole.EnumCase).Member;
+        if (symbol is null)
         {
             return null;
         }
 
+        // Written here until R7-N1 c3 makes it the member step's (PublishPath's MemberAccess step would mark the Name Resolved before the
+        // pattern's completion gives it its Type, a HIR change).
         member.BoundSymbol = member.Right.BoundSymbol = symbol;
         return symbol.EnumCase;
     }

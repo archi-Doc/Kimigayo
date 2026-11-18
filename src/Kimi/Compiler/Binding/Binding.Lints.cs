@@ -111,7 +111,7 @@ public sealed partial class Binding
         }
 
         var structural = this.ResultStructure();
-        var guessed = this.guessedCompletion ??= new(this.ResultNeverEvidence, this.RecordGuess);
+        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess);
         var nodes = this.guessNodes ??= new();
         guessed.Clear();
         nodes.Clear();
@@ -377,7 +377,7 @@ public sealed partial class Binding
             return true;
         }
 
-        for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+        for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
         {
             if (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Modifier: var modifier } && (modifier & ModifierKind.Unsafe) != 0)
             {
@@ -475,7 +475,7 @@ public sealed partial class Binding
         {
             this.lints.Add((node, LintRow.OverlappingLabel, null));
         }
-        else if (node is InvocationKoto call && CallPlan.Of(call) is { Target.LibraryDeclaration: KimiDeclarationId.WriterWrite } write)
+        else if (node is InvocationKoto call && CallPlan.Of(this, call) is { Target.LibraryDeclaration: KimiDeclarationId.WriterWrite } write)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
@@ -624,7 +624,7 @@ public sealed partial class Binding
     {
         // Binding's structural completion with its Never evidence, cleared once per walk: the descents of discarded tails and the
         // end arrivals compose each node's completion once.
-        private readonly StructuralCompletion completion = new(binding.ResultNeverEvidence);
+        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence);
 
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;
@@ -712,7 +712,7 @@ public sealed partial class Binding
 
         private void VisitFunction(FunctionKoto function)
         {
-            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(function))
+            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(binding.compilation, function))
             {
                 return;
             }

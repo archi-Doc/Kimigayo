@@ -29,7 +29,7 @@ public sealed partial class Binding
         call.BoundSymbol = null;
         call.CallStorage = callee.RequirementStorage;
         this.BindSynthesizedCall(root, call, scope);
-        if (call.BoundCall is not { } selected)
+        if (this.CallOf(call) is not { } selected)
         {
             return call;
         }

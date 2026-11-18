@@ -322,6 +322,7 @@ public class DictionaryLibraryTest
     [InlineData("let memory = Kimi.Storage.tryAllocateBytes(8)")]
     [InlineData("Kimi.Storage.countOverflow()")]
     [InlineData("Kimi.Storage.allocationSizeExceeded()")]
+    [InlineData("Kimi.Storage.clockFailure()")]
     public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

@@ -154,6 +154,22 @@
     Description="a base and a Contract parent are inheritance references: a Container path with at most a binding set or a during binding"
     Phrase="inheritance reference"
 
+  + Name="Syntax.ContractReference"
+    Description="a Contract reference is a Container path with at most a binding set: no Semantics prefix, group, '?', during binding, operator or other Type"
+    Phrase="contract reference"
+
+  + Name="Syntax.ContractMember"
+    Description="a grouped Contract after '.' is followed by '.' and its member Name: .(C).Name"
+    Phrase="grouped Contract followed by its member Name"
+
+  + Name="Syntax.ConformanceSubject"
+    Description="a conditional conformance's subject is Self"
+    Phrase="Self as a conditional conformance's subject"
+
+  + Name="Syntax.ConformanceRequirement"
+    Description="a conformance condition's requirement joins its atoms with and; not and or are unavailable there"
+    Phrase="conformance requirement"
+
   + Name="Syntax.ExtensionDeclaration"
     Description="no extension declaration is written"
     Phrase="extension declaration"

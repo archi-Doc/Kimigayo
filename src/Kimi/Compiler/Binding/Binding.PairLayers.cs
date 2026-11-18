@@ -54,13 +54,21 @@ public sealed partial class Binding
 
     /// <summary>Gets the admitted set of the pair layer a <c>@follow</c> node follows, or None for any other node.</summary>
     /// <param name="node">A <c>@follow</c> conversion.</param>
-    /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
-    internal SemanticsMask PairAdmitted(Koto node) => this.pairFollows.GetValueOrDefault(node);
+    /// <returns>The admitted Semantics, a subset of owner, ref and uniq; a node of the frozen library is refused (EnsurePassNode).</returns>
+    internal SemanticsMask PairAdmitted(Koto node)
+    {
+        EnsurePassNode(node, nameof(this.PairAdmitted));
+        return this.pairFollows.GetValueOrDefault(node);
+    }
 
     /// <summary>Gets the admitted set of a pair layer that selection follows implicitly at a receiver (SPEC 3.4.3, 7.3), or None.</summary>
     /// <param name="node">The receiver operand whose stored pair layer is followed.</param>
-    /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
-    internal SemanticsMask ImplicitPairAdmitted(Koto node) => this.implicitPairFollows.GetValueOrDefault(node);
+    /// <returns>The admitted Semantics, a subset of owner, ref and uniq; a node of the frozen library is refused (EnsurePassNode).</returns>
+    internal SemanticsMask ImplicitPairAdmitted(Koto node)
+    {
+        EnsurePassNode(node, nameof(this.ImplicitPairAdmitted));
+        return this.implicitPairFollows.GetValueOrDefault(node);
+    }
 
     /// <summary>Gets the terminal target below every qualifying pair layer of a node's Type (SPEC 13.5.5), or null when
     /// its Type is no qualifying pair layer.</summary>
@@ -223,7 +231,7 @@ public sealed partial class Binding
     // The followed target is the declared receiver Type: a subtype of it, or one Type with it in the view (SPEC 8.2.3, Verdict's Proven;
     // PLAN G772's premised pair target).
     private bool ReceiverTarget(BoundType target, BoundType declared, BindingScope scope)
-        => IsSubtype(target, declared) || this.IdentityProven(target, declared, scope);
+        => this.IsSubtype(target, declared) || this.IdentityProven(target, declared, scope);
 
     // SPEC 15.1.6, 14.6.2: a bare Subject Place that is a qualifying pair layer is followed like a borrow value, through
     // every further qualifying layer (s/(t/U)). The Subject is a reference to the terminal target in the weakest mode over

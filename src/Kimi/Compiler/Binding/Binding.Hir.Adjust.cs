@@ -192,7 +192,7 @@ public sealed partial class Binding
                 uses.Use(loop.Iterable);
                 Bindings(BoundMatch.Of(this, loop), ref uses);
                 break;
-            case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
+            case MacroKoto { Formatting.Acquisition: { } acquisition } when this.CallOf(acquisition) is { ArgumentOperations: [var writer, ..] }:
                 uses.Use(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
                 break;
         }
@@ -209,7 +209,7 @@ public sealed partial class Binding
         }
 
         var unselected = node is IndexKoto ? this.IndexerCall(node, !this.SelectsUniq(node, exclusive))?.CallStorage : null;
-        for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+        for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
         {
             uses.Call(i);
             if (ReferenceEquals(call, unselected))

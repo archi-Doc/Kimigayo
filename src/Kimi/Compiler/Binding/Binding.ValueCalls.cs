@@ -38,6 +38,10 @@ public sealed partial class Binding
         Foreign = 4,
     }
 
+    // The checked plan of a callable value's call (SetValue below) of the current pass (IsCurrent); null before selection and for a named
+    // callee's call.
+    internal CallPlan? ValueCallOf(InvocationKoto call) => this.IsCurrent(call) && call.CallStorage is { Kind: CalleeKind.Value } plan ? plan : null;
+
     // The unimplemented acquisition of an object callee's payload, as its reason (SPEC 7.3): a temporary handle, a handle reached through
     // a reference or an element, or an Exclusive call of a payload not proven Sealed.
 
@@ -291,7 +295,7 @@ public sealed partial class Binding
             }
 
             var currentSignature = this.CallableContractType(fact.RequiredType!, scope);
-            if (signature is not null && !SameCallableSignature(signature, currentSignature))
+            if (signature is not null && !this.SameCallableSignature(signature, currentSignature))
             {
                 several = true;
                 break;
@@ -681,7 +685,7 @@ public sealed partial class Binding
         // ArgumentType includes the already selected expected adaptation. Retain the original syntax
         // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
         operations[i] = new(
-            source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i, AdaptedType: adapted);
+            source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.ExpectedTypeFitting : quality, ParameterIndex: i, AdaptedType: adapted);
         instantiated[i] = adapted;
     }
 

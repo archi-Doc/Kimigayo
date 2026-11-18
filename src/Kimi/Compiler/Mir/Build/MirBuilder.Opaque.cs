@@ -8,7 +8,8 @@ namespace Kimi.Compiler.Mir;
 // Derived and unsupported values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, the one path of a construction record made
 // in the body being built (Record), and the Opaque value that replaces a node Binding rejected, a form no rule builds, or a default its
 // call does not instantiate (Defaults; SPEC 23.1.1, DECISIONS R4-M127), its site naming the roots the node's syntax reads, writes or
-// borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots.
+// borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots; the derived value of a write whose target Binding rejected follows
+// its right side, built first (DerivedWrite, PLAN G1022).
 internal sealed partial class MirBuilder
 {
     // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error (a literal the lexer could not
@@ -53,6 +54,22 @@ internal sealed partial class MirBuilder
     {
         this.SiteRoots(node);
         this.Site(node, destination, Completes(node));
+    }
+
+    // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2: an assignment or update whose target Binding rejected is derived from that error, after
+    // its right side, published with its facts and resting on no failure of the target, is evaluated by its Adjust and secured, as the
+    // accepted update's is (an accepted assignment holds it at the destination Type, which a rejected target does not give: here at its
+    // own), so its own failures are checked; the site names its root as a part located already (SiteRoots) and the target's.
+    private void DerivedWrite(Koto node, MirPlace destination)
+    {
+        var mark = this.located.Count;
+        if (node is BinaryKoto { Right: { } right } && this.Secure(this.Operand(right, expected: null), right) is { Kind: MirOperandKind.Move } value)
+        {
+            this.located.Add((right, value.Place));
+        }
+
+        this.Opaque(node, destination);
+        CollectionsMarshal.SetCount(this.located, mark);
     }
 
     // An Opaque value at a node's site naming the roots collected; where it cannot complete, building continues in a block only the

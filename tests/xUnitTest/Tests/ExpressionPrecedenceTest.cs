@@ -290,6 +290,27 @@ public class ExpressionPrecedenceTest
         }
     }
 
+    // SPEC F.3.2: wrap and bits are keywords after "@" when directly followed by "<", adjacency alone, and F.9.3 makes that "<" always
+    // begin Type arguments: a list without its ">" is the list's syntax error, never a comparison (PLAN G857's F5-1).
+    [Theory]
+    [InlineData("x@wrap<y", "\n", "MissingSyntax_Kd")]
+    [InlineData("x@bits<y", "\n", "MissingSyntax_Kd")]
+    [InlineData("g(x@wrap<y, 1)", ")", "ExpectedSyntax_Kd")]
+    [InlineData("g(x@bits<y, 1)", ")", "ExpectedSyntax_Kd")]
+    [InlineData("x@wrap<y == y", "==", "ExpectedSyntax_Kd")]
+    [InlineData("(x@wrap<y)", ")", "ExpectedSyntax_Kd")]
+    public void AWrapOrBitsKeywordAlwaysBeginsTypeArguments(string expression, string at, string code)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = (excluded ? "#if false\n    let result = " : "let result = ") + expression + "\nlet next = 42";
+            var diagnostic = Assert.Single(Parse(source).Diagnostics);
+            Assert.Equal(code, diagnostic.Code);
+            var start = source.IndexOf("let result", StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(at, start, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
     // The valid twins: a ClosedTarget takes the value's suffixes, a grouped adaptation any suffix, an OpenTarget none, and "." continues
     // an open Type head (a PathSuffix); a second "@" follows any target.
     [Theory]
@@ -321,6 +342,17 @@ public class ExpressionPrecedenceTest
     [InlineData("x@bits<u32>@ref.foo")]
     [InlineData("x@ref/wrap<u8>.foo")]
     [InlineData("x@(wrap<u8>).foo")]
+
+    // SPEC F.3.2, F.9.3: not adjacent (a space or a comment), after "ref/", another word: a Name, and "<" follows F.9.3's three rules.
+    [InlineData("x@wrap < y")]
+    [InlineData("x@bits <y")]
+    [InlineData("x@wrap/**/<y")]
+    [InlineData("x@ref/wrap<y")]
+    [InlineData("x@wrapper<y")]
+    [InlineData("x@Box<y")]
+    [InlineData("x@wrap<u8> < y")]
+    [InlineData("g(x@wrap<u8> < y, 1)")]
+    [InlineData("g(x@wrap < y, 1)")]
 
     // SPEC 13.5.1, F.5: another PathQualifier is grouped as a target, a plain path and a binding set are no qualifier, and a Type nested
     // in the target's Core (a Type argument, an Optional's payload, a Tuple or fixed array element, a Function Type's part) keeps the form.
