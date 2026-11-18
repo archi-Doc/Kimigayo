@@ -63,6 +63,7 @@ public struct Slice<T> {source}
     /// Both results retain `source`; neither copies an element.
     ///
     /// - abort: `index` does not resolve within `[0, self.length]`.
+    #CallerLocation
     public func splitAt<P>(self: Self, index: P) -> (Slice<T> during source, Slice<T> during source)
         P is Position
         let position = PositionSyntax.resolved(index, self.length)
