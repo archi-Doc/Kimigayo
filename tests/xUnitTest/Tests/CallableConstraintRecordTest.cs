@@ -75,6 +75,19 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Contains("hidden environment receiver", error.Note, StringComparison.Ordinal);
     }
 
+    // SPEC 10.1, 8.3 (PLAN G924 AF-2; F's ruling 90): a call whose selection an Unknown clause defers is bound again when its result is
+    // used, and that attempt equals the first: its anonymous function still waits, so nothing is selected past the Unknown and each
+    // call keeps its own record (both calls were accepted by the check while the first attempt's anonymous function was bound alone).
+    [Fact]
+    public void ADeferredSelectionBoundAgainKeepsItsRecord()
+    {
+        var source = "func apply2<F, G>(f: ref/F, g: ref/G, extra: i32 = 0) -> i32\n    F is Callable<() -> ref/i32>\n    G is Callable<(i32) -> i32>\n    let r = f()\n    return g(r@follow)\npublic func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    let v = apply2(f@ref, func (k: i32) -> i32 => k + 1)\n    let w = apply2(f@ref, func (k: i32) -> i32 => k + 2)\n    Console.writeLine(\"\\(v) \\(w)\")\n";
+        var output = DiagnosticCorpus.Check(source);
+        Assert.False(output.Accepted);
+        Assert.Equal(2, output.Diagnostics.Length);
+        Assert.All(output.Diagnostics, error => Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "f@ref"), (error.Code, Text(source, error.Span))));
+    }
+
     // SPEC 10.5: any other Unknown clause that no waiting argument leaves open blocks the call the same way (it selected the other
     // candidate and printed 0); without Callable facts the record is the fact-less UnprovenConstraint_Kd at the call (STATUS limit).
     [Fact]

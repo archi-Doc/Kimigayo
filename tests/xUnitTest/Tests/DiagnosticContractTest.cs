@@ -430,8 +430,11 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
 
         public bool EnableColor { get; set; }
 
-        // A host's console failure: the first line that starts with this text throws InvalidOperationException instead, once.
+        // A host's console failure: the first line that starts with this text throws Failure (InvalidOperationException by default)
+        // instead, once.
         public string? FailingLine { get; set; }
+
+        public Exception? Failure { get; set; }
 
         public void Write(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 
@@ -444,7 +447,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
             if (this.FailingLine is { } line && message.StartsWith(line, StringComparison.Ordinal))
             {
                 this.FailingLine = null;
-                throw new InvalidOperationException("The host's console failed.");
+                throw this.Failure ?? new InvalidOperationException("The host's console failed.");
             }
 
             this.text.Append(message).Append('\n');
