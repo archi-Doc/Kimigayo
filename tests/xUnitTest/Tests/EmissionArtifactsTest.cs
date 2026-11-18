@@ -487,10 +487,12 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Contains(("QueryPerformanceFrequency", true), declared);
     }
 
-    // R9-B1: a manifest whose external declaration is not a nonempty symbol with a boolean dllimport form is rejected before any tool.
+    // R9-B1: a manifest whose external declarations are not each a nonempty symbol, declared once, with a boolean dllimport form is
+    // rejected before any tool.
     [Theory]
     [InlineData("[{\"symbol\": \"\", \"dllimport\": true}]", "Invalid external declaration")]
-    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": \"yes\"}]", "'dllimport' is missing or not a JSON boolean")]
+    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": \"yes\"}]", "'externalDeclarations.dllimport' is missing or not a JSON Boolean")]
+    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": true}, {\"symbol\": \"encode\", \"dllimport\": false}]", "Duplicate external declaration")]
     public void AMalformedExternalDeclarationIsRejected(string declarations, string failure)
     {
         var c = this.Create();

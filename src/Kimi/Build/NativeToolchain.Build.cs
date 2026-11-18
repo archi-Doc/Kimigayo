@@ -43,13 +43,14 @@ internal static partial class NativeToolchain
         var ir = ResolvePath(LinkManifest.Text(manifest, "irFile"), directory);
         var optimization = LinkManifest.Text(manifest, "optimization");
         var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
-        var configured = llvmBin is null && manifest.TryGetProperty("toolchain", out var toolchain) ? LinkManifest.Text(toolchain, "llvmBin") : null;
+        var configured = llvmBin is null && manifest.TryGetProperty("toolchain", out var toolchain) ? LinkManifest.Text(toolchain, "toolchain.llvmBin") : null;
         var bin = llvmBin is not null ? ResolvePath(llvmBin, Directory.GetCurrentDirectory()) : configured is null ? null : ResolvePath(configured, directory);
         await new NativeBuild(null, paths, manifest, directory, optimization, report, cancellationToken).Run(toolchainRoot, bin);
     }
 
-    // The manifest a native build takes (LinkManifest's format): the fixed head as this compiler writes it, then an Application's output at
-    // O0 or O2 with well-formed external declarations. Every read is LinkManifest's, so a malformed manifest fails here, naming its field.
+    // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
+    // O2 whose external declarations each state a nonempty symbol, once, and its dllimport form (the declarations' one rule, checked
+    // before any tool). Every read is LinkManifest's, so a malformed manifest fails here, naming its field.
     internal static void ValidateManifest(JsonElement root)
     {
         LinkManifest.CheckFixed(root);
@@ -59,14 +60,20 @@ internal static partial class NativeToolchain
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
 
+        var symbols = new HashSet<string>(StringComparer.Ordinal);
         foreach (var declaration in LinkManifest.Items(root, "externalDeclarations"))
         {
-            if (LinkManifest.Text(declaration, "symbol").Length == 0)
+            var symbol = LinkManifest.Text(declaration, "externalDeclarations.symbol");
+            if (symbol.Length == 0)
             {
                 throw new InvalidDataException("Invalid external declaration.");
             }
 
-            _ = LinkManifest.Flag(declaration, "dllimport");
+            _ = LinkManifest.Flag(declaration, "externalDeclarations.dllimport");
+            if (!symbols.Add(symbol))
+            {
+                throw new InvalidDataException("Duplicate external declaration.");
+            }
         }
     }
 
@@ -96,16 +103,13 @@ internal static partial class NativeToolchain
     }
 
     // The external functions the module declares, keyed by symbol, with their dllimport form: the manifest's externalDeclarations, which
-    // publication writes from the generation result (R9-B1); ValidateManifest checked their shape.
+    // publication writes from the generation result (R9-B1); ValidateManifest checked their shape and that each symbol is declared once.
     private static Dictionary<string, bool> ReadExternalDeclarations(JsonElement manifest)
     {
         var declared = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var declaration in LinkManifest.Items(manifest, "externalDeclarations"))
         {
-            if (!declared.TryAdd(LinkManifest.Text(declaration, "symbol"), LinkManifest.Flag(declaration, "dllimport")))
-            {
-                throw new InvalidDataException("Duplicate external declaration.");
-            }
+            declared.Add(LinkManifest.Text(declaration, "externalDeclarations.symbol"), LinkManifest.Flag(declaration, "externalDeclarations.dllimport"));
         }
 
         return declared;
@@ -239,8 +243,8 @@ internal static partial class NativeToolchain
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in LinkManifest.Items(this.manifest, "libraries"))
             {
-                var name = LinkManifest.Text(item, "name");
-                var kind = LinkManifest.Text(item, "kind");
+                var name = LinkManifest.Text(item, "libraries.name");
+                var kind = LinkManifest.Text(item, "libraries.kind");
                 if (!seen.Add(name) || kind is not ("import" or "static"))
                 {
                     throw new InvalidDataException("Invalid or duplicate native library.");
@@ -257,7 +261,7 @@ internal static partial class NativeToolchain
                     CheckSupply(this.project, name, kind, hash);
                 }
 
-                if (LinkManifest.OptionalText(item, "sha256") is { } assertion &&
+                if (LinkManifest.OptionalText(item, "libraries.sha256") is { } assertion &&
                     (assertion.Length != 64 || !assertion.Equals(hash, StringComparison.OrdinalIgnoreCase)))
                 {
                     throw new InvalidDataException($"Native library '{name}' does not match its manifest Sha256 assertion.");
@@ -295,7 +299,7 @@ internal static partial class NativeToolchain
 
             if (name != WindowsProfile.BackendLibrary)
             {
-                return StageInput(ResolvePath(LinkManifest.Text(item, "input"), this.outputDirectory), this.paths.Stem, out stagedHash);
+                return StageInput(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory), this.paths.Stem, out stagedHash);
             }
 
             var backend = ToolchainResolver.ResolveBackend(item, toolchainRoot, this.outputDirectory);
@@ -306,7 +310,7 @@ internal static partial class NativeToolchain
                     "or install the matching compiler toolchain package.");
             }
 
-            if (LinkManifest.OptionalText(item, "input") is not null)
+            if (LinkManifest.OptionalText(item, "libraries.input") is not null)
             {
                 backend = StageInput(backend, this.paths.Stem, out stagedHash);
                 if (stagedHash != ToolchainIdentity.BackendSha256)
