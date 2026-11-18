@@ -260,6 +260,7 @@ public sealed partial class Binding
         {
             this.EnterPass(this.ProgramPass); // Between Binds, and after a throw, the fields hold Binding's own part.
             this.running = false;
+            this.producing = false; // A pass that did not finish produced none.
         }
     }
 

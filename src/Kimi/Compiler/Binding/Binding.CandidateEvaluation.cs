@@ -344,7 +344,11 @@ public sealed partial class Binding
 
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false);
+    // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
+    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false)
+    {
+        internal Refusal? HeldRefusal { get; init; }
+    }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);
