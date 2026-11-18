@@ -119,6 +119,7 @@ public sealed partial class Binding
         // Retained work survives between passes so summaries and lists are reused. A pass
         // stamp keeps declarations that dropped out from accumulating dependents forever.
         this.originRequirementPass++;
+        this.pass.Part.RequirementCall = this.originRequirementPass; // The running part's keepers are current by this call (Keepers).
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];

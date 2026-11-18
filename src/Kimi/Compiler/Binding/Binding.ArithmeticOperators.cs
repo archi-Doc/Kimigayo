@@ -216,7 +216,7 @@ public sealed partial class Binding
             {
                 if (identities[i].Contract.Type is { } reference && this.StoredType(reference, self) is { } bound)
                 {
-                    Add(this.BoundContractReference(bound), identities[i].DirectClause ?? (Koto)identities[i].Paths[0].Declaration);
+                    Add(this.BoundContractReference(bound), identities[i].DirectClause ?? (Koto)this.impls.PathsOf(identities[i])[0].Declaration);
                 }
             }
         }
