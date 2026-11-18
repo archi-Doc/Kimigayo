@@ -629,8 +629,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData("cyc2", "contract M\ncontract C\n    associate Item is M\ncontract D\n    associate Y\nstruct Pair<A, B>\n    Self is M\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Pair<S.(D).Y, i32>\n    associate D.Y is Pair<S.(C).Item, i32>\n", "")]
     public void AnEvidenceReadingADependentPartSuppliesNone(string id, string source, string records)
     {
-        Assert.True(Errors(source).Length != 0, id);
-        Assert.Equal(records, Records(source));
+        var errors = Errors(source);
+        Assert.True(errors.Length != 0, id);
+        Assert.Equal(records, Records(source, errors));
     }
 
     // SPEC 8.5.5, 8.6.3 (PLAN G1001, open; e2 ruling 81, the owner's O-427 (c)): an inferred binding is read as its normal form by every
@@ -639,7 +640,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // direct inference forms (inf2v-inftupv, inf2n-inftup), the hole in each Type syntax form (fv1-fv3, arr1, opt1, org1 and their
     // twins), a hole inside a Function Type (inffn, inffv: AssociatedTypeInferenceFailed_Kd) and several sources (two1-two4, two6,
     // two6r, two6n). Each row is labelled from SPEC (an invalid one that is accepted: accepted until G1001: class 1, open) and pins its
-    // Error records (Records; "" accepted).
+    // Error records (Records); "" is accepted, no Error at all.
     [Theory]
     [InlineData("infrv", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\n    func get(self: ref/Self) -> Item\nstruct R\n    Self is M\nstruct Box<T>\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    public func get(self: ref/Self) -> Box<S>.(K).X => $abort(\"x\")\n", "")] // V
     [InlineData("infn", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item\n    func get(self: ref/Self) -> Item\nstruct R\n    Self is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    public func get(self: ref/Self) -> Box<S>.(K).X => $abort(\"x\")\n", "")] // V
@@ -681,8 +682,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData("inffv", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\n    func get(self: ref/Self) -> (ref/Item) -> i32\nstruct R\n    Self is M\nstruct Box<T>\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    public func get(self: ref/Self) -> (ref/Box<S>.(K).X) -> i32 => $abort(\"x\")\n", "AssociatedTypeInferenceFailed_Kd@13:5")] // I
     public void AnInferredBindingIsReadAsItsNormalForm(string id, string source, string records)
     {
-        var actual = Records(source);
-        Assert.True(records == actual, $"{id}: {actual}");
+        var errors = Errors(source);
+        var actual = Records(source, errors);
+        Assert.True(records == actual && (records.Length != 0 || errors.Length == 0), $"{id}: {actual} ({errors.Length} Error records)");
     }
 
     // SPEC 8.3.3 Recursion and Finality (R7-C2e2 e2-3b's coverage rows, `design-e23b.md`): programs whose judgments read an open
@@ -735,9 +737,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     private static CheckDiagnostic[] Errors(string source)
         => [.. DiagnosticCorpus.Check(source, "Library").Diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).OrderBy(static x => x.Span?.Start ?? -1)];
 
-    // A program's independent Error records, `Code@line:column`, with no dependent InvalidConstraint_Kd (record selection, Q13).
-    private static string Records(string source)
-        => string.Join(' ', Errors(source).Where(static x => x.Code != nameof(DiagnosticCode.InvalidConstraint_Kd)).Select(x => $"{x.Code}@{Position(source, x.Span!.Value.Start)}"));
+    // A program's independent Error records (Errors'), `Code@line:column`, with no dependent InvalidConstraint_Kd (record selection, Q13).
+    private static string Records(string source, CheckDiagnostic[] errors)
+        => string.Join(' ', errors.Where(static x => x.Code != nameof(DiagnosticCode.InvalidConstraint_Kd)).Select(x => $"{x.Code}@{Position(source, x.Span!.Value.Start)}"));
 
     // A source offset as `line:column`, both from 1.
     private static string Position(string source, int offset)
