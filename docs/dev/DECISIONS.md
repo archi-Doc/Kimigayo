@@ -23808,6 +23808,28 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Changed by decision:** `DiagnosticPrecisionTest.ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild` (S1-1) asserts the refused
     Bind and its located `InternalInvariant_Kd` records (the library's and the refusal's own, at the use) instead of the throw (no
     expectation weakened).
+- **R8-M54 The interners' two levels (R8-L1 U4; PLAN G949 Stage 2)** (Back, 2026-11-19; Major, identity in Stage 1; U4's design
+  `back\notes\l1-s2\u4-design.md` §4, 5.7 and 7b.3, its review ACCEPT WITH CONDITIONS (`review-u4.md`), the implementation review
+  ACCEPT WITH NOTES (`review-u4-impl.md`), B's rulings `rulings-u4.md`; the Front's consent on C-380 (23:27); C-380 F3 (a)-(c), F4;
+  the dispositions' row 13). Extends BU-220 (the dense id) and R8-L1.
+  - **Adopted.** TyCtxt's Types and substitutions and Binding's Origin intersections, lengths and constraints are interned over two
+    levels: the library layer's frozen level and the compilation's. Each interner's one find reads `Binding.PassPart.Levels`, one
+    allocation-free enumerator stating the order (the layer's level, then the open level when it is another) and the open level an
+    insert goes to; `PassPart.Interned` gives an interner's open level (the layer's until the library is frozen, the compilation's
+    after), `PassPart.Parts` a keyed pass part's (the running pass's), and `PassPart.Find` reads the same enumerator. Content in no
+    level is inserted at the open level, so equal content is one object in both levels and no frozen object holds a compilation-level
+    one. The seal is the library table's freeze in `FreezeLibrary` (`KimiLibrary.Frozen`), after every library step that interns; until
+    U3 each compilation seals its own layer, from U3 the freeze seals it once per process. A frozen constraint's negation and a frozen
+    bound Contract reference are complete at the seal; a write of either after it is the internal-invariant form (`FormNegation` reads
+    the constraint's key through `ConstraintKey.Of`). TyCtxt numbers a compilation's Types from L. The bound Contract references keep
+    S1-1's two parts (the layer's found first; a pass resets only its own). A refused library's layer keeps its levels' objects, which
+    its rerun finds again; no reader of a refused library reads them. C-380 F3 (b) is U2b's row e1 (B's ruling 13), reading the
+    layer's level; refusing a frozen constraint's missing negation is the seal's, sound only once D-4 forms every library constraint's
+    negation over the layer's level (the open level in the library pass) before the seal (B's ruling 19 supersedes ruling 13's
+    "independent of D-4").
+  - **Rejected.** A per-compilation copy of the frozen levels; a flag or mode choosing the level (the layer's state decides); a seal
+    of its own beside the table's freeze; a growing shared level (O-s2 (c), rejected by O-381 (b)); two levels for `originSummaries`
+    and TyCtxt's memos (C-380 F3 (c), F4); the level order restated in each interner (review C1: one enumerator).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
