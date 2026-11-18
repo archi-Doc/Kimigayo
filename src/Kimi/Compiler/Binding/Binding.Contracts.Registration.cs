@@ -26,9 +26,6 @@ public sealed partial class Binding
     // Object forms over a concrete Type formed before the opt-outs are published (VerifyEarlyObjectForms).
     private List<(Koto Use, BoundType Target)>? earlyObjectForms;
 
-    // Whether this pass's conformance declarations have registered (RegisterConformances, after BindConstraints' pass 0).
-    private bool conformancesRegistered;
-
     // SPEC 8.6.1: `Self is C` in a Type declaration declares conformance; RegisterConformances registers exactly these clauses.
     private static bool DeclaresConformance(IsKoto clause)
         => clause.Parent is StructKoto or EnumKoto && IsSelfConstraint(clause);
@@ -52,7 +49,7 @@ public sealed partial class Binding
             }
         }
 
-        this.conformancesRegistered = true;
+        this.impls.Advance(ImplTable.AdmissionPoint.SelfClauses); // Point 1: this pass's conformance declarations have registered (rule (a)).
         this.VerifyEarlyProjections();
         this.PublishInheritedOptOuts();
 
@@ -161,7 +158,7 @@ public sealed partial class Binding
     // the form with NotObjectPayload_Kd naming the declaring Type. BindType reads it at formation and VerifyEarlyObjectForms once more.
     private bool RenouncedObjectTarget(Koto form, BoundType target)
     {
-        if (target.Symbol?.ObjectPayloadOptOut is not { } renounced)
+        if (this.ObjectPayloadOptOut(target.Symbol) is not { } renounced)
         {
             return false;
         }
@@ -170,11 +167,17 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 8.7.3: a Type's ObjectPayload opt-out, its own or inherited, as the running pass reads it, the one read of it: a library Type's
+    // from the Self-clause registrar's step (point 1, rule (a)), where the library's registration published it; a program Type's as its
+    // pass writes it.
+    private BindingSymbol? ObjectPayloadOptOut(BindingSymbol? type)
+        => type is not null && this.impls.Admits(type, ImplTable.AdmissionPoint.SelfClauses) ? type.ObjectPayloadOptOut : null;
+
     private BindingSymbol? InheritedObjectPayloadOptOut(StructKoto structure)
     {
         foreach (var layer in this.BaseLayers(structure))
         {
-            if (layer.ObjectPayloadOptOut is { } optOut)
+            if (this.ObjectPayloadOptOut(layer) is { } optOut)
             {
                 return optOut;
             }

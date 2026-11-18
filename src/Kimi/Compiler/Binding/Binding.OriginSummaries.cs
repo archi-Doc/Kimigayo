@@ -67,6 +67,8 @@ public sealed partial class Binding
         }
 
         var summary = new OriginSummary(nodeArray ?? nodes.ToArray(), rawArray ?? raw.ToArray(), holder);
+        nodes.Clear(); // The forming's scratch is empty at its end (PLAN G949 S1-e's rule): the last summary's nodes are no fact.
+        raw.Clear();
         this.originSummaries.Add(type, summary);
         return summary;
 
