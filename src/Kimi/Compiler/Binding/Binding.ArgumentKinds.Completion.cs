@@ -196,13 +196,13 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 23.1.2, 10.5.1 (DECISIONS D3 with rule W; G812 rulings 124, 126, 128): a value call on the split that fails in every case,
-    // every run failing at the same waiting named Call's own selection at the Type it formed for the Call's position
-    // (waitingSelectionFailure), rests on that Call; so that Call, deferred to the call, is completed as a call at that Type (`formed`,
-    // the canonical case's: each binding at its first admitted Semantics), where its selection fails as that run found, outside the
-    // probes and outside the call's consultation, and that failure is its record. Every other deferred call stays completed by its
-    // outer call (CompleteUnselectedPart): what only the missing expectation causes is dependent.
-    private BoundType? CompleteFailedWaitingCall(InvocationKoto call, Koto failed, BoundType formed, BindingScope scope)
+    // SPEC 23.1.2, 10.5.1 (DECISIONS D3 with rule W; G812 rulings 124, 126, 128, 132): a part of a value call on the split awaiting its
+    // call (a named Call or a contextual Case) that fails in every case of the bindings it reads, always at that same part, is completed
+    // at the Type the canonical case formed for it (each binding at its first admitted Semantics), where it fails as that run found,
+    // outside the probes and outside the call's consultation, and that failure is its record; the call rests on it unless it fails by
+    // itself (BindValueCallOnSplit). Every other deferred call stays completed by its outer call (CompleteUnselectedPart): what only
+    // the missing expectation causes is dependent.
+    private void CompleteFailedPart(Koto failed, BoundType formed, BindingScope scope)
     {
         var consultation = this.SuspendConsultation();
         var probes = (this.argumentProbe, this.nestedOperandProbe);
@@ -210,7 +210,6 @@ public sealed partial class Binding
         this.BindNode(failed, scope, formed);
         (this.argumentProbe, this.nestedOperandProbe) = probes;
         this.ResumeConsultation(consultation);
-        return this.CompleteDependent(call, failed);
     }
 
     private void CompleteUnselectedPart(Koto part, BindingScope scope)

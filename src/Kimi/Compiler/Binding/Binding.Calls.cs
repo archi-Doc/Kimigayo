@@ -146,12 +146,9 @@ public sealed partial class Binding
             var callable = callableType is not null && this.TryCallable(callableType, scope, out signature, out receiverKind, out several);
             if (this.UnformedSince(unformedMark))
             {
-                // DECISIONS D3 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents.
-                // A call that fails in every case of the split layer fails by itself (ValueCallRestsOnSplit; SPEC 10.1.1, 10.2), or rests on
-                // the waiting Call whose own selection failed its run (CompleteFailedWaitingCall).
-                return this.ValueCallRestsOnSplit(call, scope, callableType!, expected, unformedMark) ? this.Fail(call, BindingFailure.Unsupported, true)
-                    : this.waitingSelectionFailure is ({ } cause, { } formed) ? this.CompleteFailedWaitingCall(call, cause, formed, scope)
-                    : this.Fail(call, BindingFailure.NoApplicableCandidate);
+                // DECISIONS D3 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents:
+                // the call is judged in the cases of the split layer, each part as the unsplit path judges it (BindValueCallOnSplit).
+                return this.BindValueCallOnSplit(call, scope, callableType!, expected, unformedMark);
             }
 
             if (callable)
