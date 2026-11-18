@@ -12,6 +12,7 @@ public partial class PropertyBindingTest
     private const string GenW = "struct Gen<E> {a, b}\n    public let p: ref/i32 during a\n    public let q: ref/i32 during b\n    public let e: E\n    public init(p: ref/i32 during a, q: ref/i32 during b, e: E)\n        self.p = p\n        self.q = q\n        self.e = e@move\n    public computed w: (ref/i32 during a, Option<ref/(ref/i32 during b) during a>)\n        get() -> (ref/i32 during a, Option<ref/(ref/i32 during b) during a>) => (self.q, Option.None)\n";
     private const string RelatedS = "struct Related {first, second}\n    origin first outlives second\n    public let left: ref/i32 during first\n    public let right: ref/i32 during second\n    public init(left: ref/i32 during first, right: ref/i32 during second)\n        self.left = left\n        self.right = right\ncontract C\n    associate Item(a, b) is Related{view}\n        origin view.first == a\n        origin view.second == b\nstruct S\n    Self is C\n";
     private const string ReceiverW = "struct S2\n    public init() => ()\nstruct W<K>\n    K is Equatable\n    public var v: i32 = 0\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public var qs: i32 = 0\n        set(value: i32) -> () => storage = value\n    public init() => ()\n    public func touch(self: ref/Self) -> i32 => 0\n    public func put(self: uniq/Self, k: i32) => ()\n";
+    private const string OutputW = UnformedPart + "struct V\n    Self is Addable<i32>\n    associate Output is W<NC>\n    public init() => ()\n    public func added(self: ref/Self, right: ref/i32) -> W<NC>\n        $abort(\"x\")\nfunc f() -> i32\n    let v = V.init()\n";
 
     // SPEC 11.3, 11.4, 11.5, 15.6.1, 15.6.4 (PLAN G214): a getter is a definition with a result, so its body, its written result and a
     // computed Property's header assume the result well formed, its Types' own clauses included (R3), and each read, the getter's call,
@@ -23,7 +24,10 @@ public partial class PropertyBindingTest
     // that reports its constraint as its method twin's call does (rcg, rcu, rcs: dev had no record there). V: getters and reads that
     // prove it (dev rejected each but stg and scv at the getter's records), a header applying a Contract's associated Type (asv, asv0)
     // and the receiver's valid twin. The valid reads a member call's container-Origin instantiation still rejects (use, gen, rf, nbr, gread,
-    // gcl; an open issue) have no row.
+    // gcl; an open issue) have no row. The verdict rule is every synthesized call's: an operator whose Output is the ill-formed W<NC>
+    // (rfo, I) reports its use once at `v + 1`, as its method twin (I) reports once at `v.added(1)`, where its selection fails; dev
+    // had a second UnsatisfiedConstraint_Kd at `v + 1`, the requirement call's over the Type the binary's record reports (a dependent
+    // record, SPEC 23.1.2).
     [Theory]
     [InlineData(TwoW + "func leakf(t: ref/Two{s}) -> ref/i32 during s.a\n    return t.w.0\n", "UnprovenOriginRelation_Kd t.w")] // leakf
     [InlineData(TwoW + "    public func first(self: ref/Self) -> ref/i32 during a\n        return self.w.0\n", "UnprovenOriginRelation_Kd self.w")] // mm
@@ -41,6 +45,8 @@ public partial class PropertyBindingTest
     [InlineData(ReceiverW + "func f() -> i32\n    var w: W<S2> = W<S2>.init()\n    return w.q\n", "UnsatisfiedConstraint_Kd var w: W<S2> = W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; NoApplicableOverload_Kd W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd w.q")] // rcg
     [InlineData(ReceiverW + "func f() -> i32\n    var w: W<S2> = W<S2>.init()\n    w.q += 1\n    return 0\n", "UnsatisfiedConstraint_Kd var w: W<S2> = W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; NoApplicableOverload_Kd W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd w.q")] // rcu
     [InlineData(ReceiverW + "func f() -> i32\n    var w: W<S2> = W<S2>.init()\n    w.qs = 3\n    return 0\n", "UnsatisfiedConstraint_Kd var w: W<S2> = W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; UnsatisfiedConstraint_Kd W<S2>; NoApplicableOverload_Kd W<S2>.init(); UnsatisfiedConstraint_Kd w; UnsatisfiedConstraint_Kd w.qs")] // rcs
+    [InlineData(OutputW + "    let s = v + 1\n    return 0\n", "UnsatisfiedConstraint_Kd W<NC>; InvalidConstraint_Kd added(self: ref/Self, right: ref/i32) -> W<NC>; InvalidConstraint_Kd W<NC>; InvalidConstraint_Kd W<NC>; UnsatisfiedConstraint_Kd let s = v + 1; UnsatisfiedConstraint_Kd s; UnsatisfiedConstraint_Kd v + 1")] // rfo
+    [InlineData(OutputW + "    let s = v.added(1)\n    return 0\n", "UnsatisfiedConstraint_Kd W<NC>; InvalidConstraint_Kd added(self: ref/Self, right: ref/i32) -> W<NC>; InvalidConstraint_Kd W<NC>; InvalidConstraint_Kd W<NC>; NoApplicableOverload_Kd v.added(1)")] // rfo's method twin
     [InlineData(TwoW, "")] // f1c
     [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", "")] // g214
     [InlineData(TwoW + "func rfv(t: ref/Two{s}) -> i32\n    origin s.b outlives s.a\n    let v = t.w\n    return 0\n", "")] // rfv
