@@ -210,15 +210,16 @@ public sealed partial class OriginRowsTest
     // body it is written in: no row lies at a Type occurrence and no other declaration's Input is in that body's slice. An omitted inner
     // Origin ι is the body's variable, which the call's rows name where the body calls the value (k's argument fits into ι) and no row
     // names otherwise (g). The forms: G216's h1 and h2, a Closure body that needs the premise, a written enclosing Origin, a struct input,
-    // two inputs related by a written Origin, a Function Type annotation called, a named function's Function Type parameter called (its
-    // row was a declaration's), and a Function Type inside a Closure's parameter.
+    // a Function Type annotation called, a named function's Function Type parameter called (its row was a declaration's), and a Function
+    // Type inside a Closure's parameter. Two inputs related by a written Origin, `(p: ref/i32, r: ref/(ref/i32 during p))`, name the
+    // signature's own per-call Origin in an input, which SPEC 15.3.4 and 8.10 forbid (PLAN G972, the owner's O-403 (b)): its record is
+    // OriginRelationDiagnosticTest's g216 row.
     [Theory]
     [InlineData(HeaderOnly, "g", true, false)]
     [InlineData(HeaderCalled, "k", true, true)]
     [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> ref/i32 => p@follow\n    return 0\n", "g", true, false)]
     [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32 during q)) -> i32 => p@follow@follow\n    return h(q@ref)\n", "k", false, false)]
     [InlineData(StructInput, "k", false, false)]
-    [InlineData("func g() -> i32\n    let h = func [] (p: ref/i32, r: ref/(ref/i32 during p)) -> i32 => 1\n    return 0\n", "g", false, false)]
     [InlineData(FunctionTypeCalled, "f", true, true)]
     [InlineData(FunctionTypeParameter, "g", false, false)]
     [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (cb: (ref/(ref/i32 during q)) -> i32) -> i32 => 0\n    return 0\n", "k", false, false)]

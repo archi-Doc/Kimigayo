@@ -40,15 +40,59 @@ public static partial class Parser
         return FinishConstraint(ref reader, subject, lastError, finishLine);
     }
 
+    /// <summary>
+    /// Parses a ConditionalConformance's conditions (SPEC F.6.2 <c>"Self" "is" ContractReference "when" ConformanceConditions</c>) at its
+    /// <c>when</c>: the head was read as a ConstraintClause before it, since the <c>when</c> decides the production.
+    /// </summary>
+    /// <param name="reader">The token reader positioned at <c>when</c>.</param>
+    /// <param name="head">The head read before <c>when</c>, judged here: its subject is <c>Self</c> and its requirement a ContractReference,
+    /// each on its own input (SPEC 23.1.2); each condition's requirement is a ConformanceRequirement.</param>
+    /// <returns>The conditions, one node spanning them.</returns>
+    internal static SyntaxFormKoto ParseConformanceConditions(ref TokenReader reader, IsKoto head)
+    {
+        if (!IsRecoveredType(ref reader, head.Left) && !(head.Left is IdentifierNameKoto subjectName && subjectName.IdentifierName == TokenKind.Self.ToText()) &&
+            head.Left.Expected(SyntaxForm.ConformanceSubject) is { } subject && reader.CodeContext.RecoveryCause(head) is null)
+        {
+            reader.CodeContext.RecordRecovery(head, subject);
+        }
+
+        RecoverContractReference(ref reader, head.Right);
+        reader.Advance();
+        var conditions = new List<Koto>();
+        do
+        {
+            var condition = ParseTypeConstraint(ref reader, finishLine: false);
+            if (reader.CodeContext.RecoveryCause(condition) is null && !IsConformanceRequirement(condition.Right) &&
+                condition.Right.Expected(SyntaxForm.ConformanceRequirement) is { } cause)
+            {
+                reader.CodeContext.RecordRecovery(condition, cause);
+            }
+
+            conditions.Add(condition);
+        }
+        while (reader.TryConsume(TokenKind.Comma));
+        return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(conditions[0].Span.Start, conditions[^1].Span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
+
+        // ConformanceRequirement := ConformanceAtom ("and" ConformanceAtom)*; ConformanceAtom := ... | "(" ConformanceRequirement ")". Its
+        // atoms are RequirementAtom's (F.6.2: the productions differ only in "not" and "or"), so any other node is an atom.
+        static bool IsConformanceRequirement(Koto node) => node switch
+        {
+            BinaryKoto { Akind: KotoKind.And } both => IsConformanceRequirement(both.Left) && IsConformanceRequirement(both.Right),
+            BinaryKoto { Akind: KotoKind.Or } or UnaryKoto { Akind: KotoKind.Not } => false,
+            ParenthesizedKoto group => IsConformanceRequirement(group.Operand),
+            _ => true,
+        };
+    }
+
     /// <summary>Parses an associated Type's specification after its <c>associate</c>: <c>AssociatedTypeName OriginParameters? is requirement</c>.</summary>
     /// <param name="reader">The token reader positioned at the Name.</param>
     /// <returns>The parsed specification, retained as a recovery when any required part is invalid.</returns>
     internal static IsKoto ParseAssociatedConstraint(ref TokenReader reader)
     {
         var lastError = reader.Diagnostic.LastError;
-        // AssociatedTypeName := Name | ContractSelector "." Name (F.6.2), read so that its selector is one node: the selector's head, then
-        // the one suffix loop (`. Name`, Type arguments, `.(C).`, the Origin parameters). The head is the ContractSelector's group (F.5
-        // continues no grouped Type with `. Name`), a rooted first segment (ParseType's RootPath would wrap the whole name) or a Type head.
+        // AssociatedTypeName := Name | ContractSelector "." Name (F.6.2), read so that its selector is one node: a dotted path that "is"
+        // follows by the subject reader (G489's copy), else the one ContractSelector reader (ParseContractSelectorPath, shared with an
+        // EffectSpecification), with the Origin parameters after a group's ". Name"; the selector is judged once complete.
         Koto name;
         if (HasSimpleConstraintSubject(ref reader))
         {
@@ -56,13 +100,16 @@ public static partial class Parser
         }
         else
         {
-            var head = reader.CurrentTokenKind switch
+            name = ParseContractSelectorPath(ref reader);
+            if (reader.CurrentTokenKind == TokenKind.OpenParenthesis && name is MemberAccessKoto)
             {
-                TokenKind.OpenParenthesis => ParseBareParenthesizedType(ref reader),
-                TokenKind.ColonColon => ParseRootName(ref reader),
-                _ => ParseTypeHead(ref reader, target: false),
-            };
-            name = ParseTypeSuffixes(ref reader, head, disambiguateGenerics: false);
+                name = ParseOriginApplication(ref reader, name);
+            }
+        }
+
+        if ((name is OriginApplicationKoto application ? application.Type : name) is MemberAccessKoto { Left: { } selector })
+        {
+            RecoverContractSelector(ref reader, selector);
         }
 
         if (!ReportedSince(ref reader, lastError, out _) && !IsAssociatedTypeName(name, out _) && name.Expected(SyntaxForm.Name) is { } rejected)
@@ -229,36 +276,17 @@ public static partial class Parser
                 return ParseType(ref reader, TypeContext.Type);
             }
 
-            var name = ParseConstraintSubject(ref reader);
-            while (true)
+            // SPEC F.6.2 RequirementAtom: the head word (a Name, a Semantics word, a SemanticsCategory, Callable: Binding classifies it,
+            // with the subject reader's dotted path, such as I.(LendingIterator).LentItem, SPEC 8.5), then F.5's NamedType suffixes through
+            // their one owner (ParseTypeSuffixes: Type arguments, PathSuffixes, the OriginApplication that ends it), then AnnotatedType's tail.
+            var name = ParseTypeSuffixes(ref reader, ParseConstraintSubject(ref reader), disambiguateGenerics: false);
+            name = ParseTypeOrigin(ref reader, name);
+            if (name is not TypeSemanticsKoto && (reader.CurrentTokenKind == TokenKind.Question || reader.IsCurrentIdentifier("during") || reader.IsCurrentIdentifier("from")))
             {
-                if (reader.CurrentTokenKind == TokenKind.LessThan)
-                {
-                    name = ParseGenericsPostfix(ref reader, name);
-                }
-                else if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
-                {
-                    name = ParseOriginApplication(ref reader, name);
-                }
-                else if (reader.TryConsume(TokenKind.Dot))
-                {
-                    // SPEC 8.5: a requirement Type may be a Contract-qualified projection such as I.(LendingIterator).LentItem(step).
-                    var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                        ? ParseBareParenthesizedType(ref reader)
-                        : ParseName(ref reader);
-                    name = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, member.Span.End), name, member);
-                }
-                else
-                {
-                    name = ParseTypeOrigin(ref reader, name);
-                    if (name is not TypeSemanticsKoto && (reader.CurrentTokenKind == TokenKind.Question || reader.IsCurrentIdentifier("during") || reader.IsCurrentIdentifier("from")))
-                    {
-                        name = new TypeSemanticsKoto(ref reader, name.Span, name);
-                    }
-
-                    return ParseOptionalSuffix(ref reader, name, parseBorrowOrigin: true);
-                }
+                name = new TypeSemanticsKoto(ref reader, name.Span, name);
             }
+
+            return ParseOptionalSuffix(ref reader, name, parseBorrowOrigin: true);
         }
     }
 

@@ -9,7 +9,10 @@ namespace Kimi.Compiler;
 public enum ArgumentAdaptation : byte
 {
     Exact,
-    Literal,
+
+    // SPEC 10.4 step 1, 10.2 (PLAN G924; the class Expected-Type fitting): a part checked against its expected Type by value, an
+    // untyped literal, a literal-only expression, a literal form or a value join; at `ref/U` its one temporary is CrossSemanticsBorrow.
+    ExpectedTypeFitting,
     SameSemanticsReborrow,
     CrossSemanticsBorrow,
 
