@@ -38,7 +38,7 @@ public sealed partial class Binding
             if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) && this.FirstIncompleteNode() is { } first)
             {
                 var failure = this.RecordedFailure(first);
-                first.ReportDerived(DiagnosticRequirement.Binding(failure == BindingFailure.None ? BindingFailure.MissingType : failure), [DiagnosticKey.Unresolved]);
+                first.ReportDerivedIn(this.compilation.StoreOf(first), DiagnosticRequirement.Binding(failure == BindingFailure.None ? BindingFailure.MissingType : failure), [DiagnosticKey.Unresolved]);
             }
         }
     }
@@ -87,7 +87,8 @@ public sealed partial class Binding
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
-        if (issue.Problem >= 0 && this.ReportProblem(issue.Node, issue.Problem))
+        var store = this.compilation.StoreOf(issue.Node); // Core's store decision (PLAN G949 Stage 2 U3-3): a library node's record is this compilation's.
+        if (issue.Problem >= 0 && this.ReportProblem(issue.Node, store, issue.Problem))
         {
             // Its facts are the record (Binding.Problems).
         }
@@ -97,7 +98,7 @@ public sealed partial class Binding
             // signature.
             var span = this.LocatedPart(issue.Problem) ??
                 (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
-            issue.Node.Report(requirement, issue.Code, span: span);
+            issue.Node.ReportIn(store, requirement, issue.Code, span: span);
         }
         else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
         {
@@ -109,7 +110,8 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.ArithmeticDirection && this.arithmeticDirectionFailures?.TryGetValue(issue.Node, out var direction) == true)
         {
-            issue.Node.Report(
+            issue.Node.ReportIn(
+                store,
                 requirement,
                 issue.Code,
                 ArithmeticOperatorText(ArithmeticContractSyntax.Operator(direction.Id)),
@@ -122,7 +124,7 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.TypeHeightLimit)
         {
-            issue.Node.Report(requirement, issue.Code, (long)TypeHeightLimit);
+            issue.Node.ReportIn(store, requirement, issue.Code, (long)TypeHeightLimit);
         }
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
@@ -132,7 +134,7 @@ public sealed partial class Binding
             this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true && IsMissingInformation(cause))
         {
             // The recorded missing Name of the Constraint is its prerequisite.
-            issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
+            issue.Node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
         }
         else if (issue.Failure == BindingFailure.NoInit)
         {
@@ -144,7 +146,8 @@ public sealed partial class Binding
                 NoInitProblem.Element => $"owner Scalar is not proven for element {DiagnosticTypeName(variable.TypeKoto!.BoundType!.Components[0])}",
                 _ => "the declaration requires an explicit fixed-array Type annotation",
             };
-            issue.Node.Report(
+            issue.Node.ReportIn(
+                store,
                 requirement,
                 issue.Code,
                 evidence: [reason],
@@ -161,7 +164,8 @@ public sealed partial class Binding
                 ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(fact.Actual!)} but earlier initializer evidence established {DiagnosticLengthName(fact.Expected!)}",
                 _ => $"the annotation requires a fixed array here, but the initializer has {DiagnosticTypeName(fact.Type!)}",
             };
-            issue.Node.Report(
+            issue.Node.ReportIn(
+                store,
                 requirement,
                 issue.Code,
                 evidence: [reason],
@@ -175,17 +179,18 @@ public sealed partial class Binding
         {
             // SPEC 13.5.4: a direct literal is converted at compile time, so its range failure is explained at the literal.
             var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
-            issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4)");
+            issue.Node.ReportIn(store, requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4)");
         }
         else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
         {
             var (code, evidence, note) = this.TryFailure(issue.Node);
-            issue.Node.Report(requirement, code, note: note, evidence: evidence);
+            issue.Node.ReportIn(store, requirement, code, note: note, evidence: evidence);
         }
         else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
         {
             // SPEC 15.3.5: the formation condition of Loan<T>.
-            issue.Node.Report(
+            issue.Node.ReportIn(
+                store,
                 requirement,
                 issue.Code,
                 note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
@@ -193,7 +198,7 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
         {
             // FailObjectPayload records the declaring Type before it fails the use.
-            issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
+            issue.Node.ReportIn(store, requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
         }
         else if (this.ReportCallableSelection(issue.Node, requirement, issue.Code))
         {
@@ -203,7 +208,8 @@ public sealed partial class Binding
             var first = $"{DiagnosticTypeName(this.ProjectionContract(associated.First.Symbol, associated.First.Contract))}.{associated.First.Symbol.Name}";
             var second = $"{DiagnosticTypeName(this.ProjectionContract(associated.Second.Symbol, associated.Second.Contract))}.{associated.Second.Symbol.Name}";
             var head = AssociatedHead(issue.Node);
-            issue.Node.Report(
+            issue.Node.ReportIn(
+                store,
                 requirement,
                 issue.Code,
                 at: head is OriginApplicationKoto application ? application.Type : head,
@@ -305,7 +311,7 @@ public sealed partial class Binding
             // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
             // writes of one literal are distinct problems at distinct locations (SPEC 23.3, 23.1).
             var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
-            issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, at: at);
+            issue.Node.ReportIn(store, requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, at: at);
         }
         else if (this.callInferenceFailures?.TryGetValue(issue.Node, out var callInference) == true)
         {
@@ -321,12 +327,12 @@ public sealed partial class Binding
             // SPEC 10.5: the generic parameter that no expected call signature or explicit argument binds.
             var lengths = ItemTypeArgumentCount(generic) != generic.GenericArguments.Count;
             var note = lengths ? "A function reference without a fixed expected call signature binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)" : UnboundReferenceNote;
-            issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: note);
+            issue.Node.ReportIn(store, requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: note);
         }
         else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
         {
             // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
-            issue.Node.Report(requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
+            issue.Node.ReportIn(store, requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
         }
         else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
         {
@@ -367,7 +373,8 @@ public sealed partial class Binding
             object[] evidence = agreement.AssociatedLeft is { } a
                 ? [first, second, agreement.Associated!.Name, DiagnosticTypeName(a), DiagnosticTypeName(agreement.AssociatedRight!)]
                 : [$"At {first} = {second}, effective implementation mappings do not agree"];
-            issue.Node.Report(
+            issue.Node.ReportIn(
+                store,
                 requirement,
                 issue.Code,
                 evidence: evidence,
@@ -446,7 +453,7 @@ public sealed partial class Binding
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
-            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            issue.Node.ReportIn(store, requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints?.TryGetValue(issue.Node, out var reference) == true)
         {
@@ -456,7 +463,7 @@ public sealed partial class Binding
         {
             var subject = DiagnosticTypeName(erasure.Source);
             var viewTarget = DiagnosticTypeName(erasure.Target);
-            issue.Node.Report(requirement, issue.Code, note: $"Erasing {subject} to the {viewTarget} object View requires {subject} is Owned", evidence: issue.Code == DiagnosticCode.UnprovenConstraint_Kd ? [subject, "Owned"] : null);
+            issue.Node.ReportIn(store, requirement, issue.Code, note: $"Erasing {subject} to the {viewTarget} object View requires {subject} is Owned", evidence: issue.Code == DiagnosticCode.UnprovenConstraint_Kd ? [subject, "Owned"] : null);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
@@ -474,14 +481,14 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
         {
             var subject = rangeFailure.Subject;
-            issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
+            issue.Node.ReportIn(store, requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
         {
             // SPEC 4.6.4: the boundary Types are not known to be one integer Type in this generic context.
             var start = DiagnosticTypeName(unproven.Subject.Components[0]);
             var end = DiagnosticTypeName(unproven.Subject.Components[1]);
-            issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type");
+            issue.Node.ReportIn(store, requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type");
         }
         else if (issue.Code is DiagnosticCode.UnresolvedBinding_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.constructorAbsences?.TryGetValue(issue.Node, out var absent) == true)
         {
@@ -489,11 +496,11 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.InaccessibleBinding_Kd && issue.Node is MemberAccessKoto { BoundSymbol: { } inaccessible })
         {
-            issue.Node.Report(requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
+            issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
         else
         {
-            issue.Node.Report(requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
+            issue.Node.ReportIn(store, requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
         }
     }
 
@@ -523,7 +530,7 @@ public sealed partial class Binding
         for (var i = 0; i < derivedIssues.Count; i++)
         {
             var node = derivedIssues[i];
-            node.ReportDerived(DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
+            node.ReportDerivedIn(this.compilation.StoreOf(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
         }
     }
 }
