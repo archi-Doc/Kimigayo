@@ -59,6 +59,30 @@ public sealed partial class Binding
         return this.BindReference(node, symbol, scope);
     }
 
+    // A value's declaration queried for its Type as a use reads it: a Property's header (its and its storage's Types belong there; a
+    // use never re-enters accessor bodies), another variable's declaration. False when the Property's header is the query running now.
+    private bool QueryValueType(BindingSymbol symbol)
+    {
+        if (symbol.Type is not null || symbol.Declaration is not VariableKoto variable)
+        {
+            return true;
+        }
+
+        if (variable is not PropertyKoto)
+        {
+            this.BindVariable(variable, symbol.Scope);
+            return true;
+        }
+
+        if (this.QueryState(variable.BoundSymbol!, DeclQueryKind.Signature) == DeclState.Running)
+        {
+            return false;
+        }
+
+        this.BindHeader(variable.BoundSymbol!);
+        return true;
+    }
+
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
@@ -117,28 +141,15 @@ public sealed partial class Binding
 
         if (symbol.Type is null && symbol.Declaration is VariableKoto variable)
         {
-            if (variable is PropertyKoto)
+            // Interim until R7-D2 d2 (Binding.DeclQuery): the Signature re-entry's cycle record moves into the kind's rule.
+            if (!this.QueryValueType(symbol))
             {
-                // Property and storage Types belong to the header. A use never re-enters accessor bodies.
-                var declaration = variable.BoundSymbol!;
-                // Interim until R7-D2 d2 (Binding.DeclQuery): the Signature re-entry's cycle record moves into the kind's rule.
-                if (this.QueryState(declaration, DeclQueryKind.Signature) == DeclState.Running)
-                {
-                    this.Fail(variable, BindingFailure.Cycle, true);
-                }
-                else
-                {
-                    this.BindHeader(declaration);
-                }
-
-                if (symbol.Type is null)
-                {
-                    this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
-                }
+                this.Fail(variable, BindingFailure.Cycle, true);
             }
-            else
+
+            if (symbol.Type is null && variable is PropertyKoto)
             {
-                this.BindVariable(variable, symbol.Scope);
+                this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
             }
         }
 
