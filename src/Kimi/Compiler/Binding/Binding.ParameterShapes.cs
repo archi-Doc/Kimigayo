@@ -222,7 +222,7 @@ public sealed partial class Binding
         mode = other = default;
         shape = default;
         conservative = false;
-        if (earlier.Parameters[i].Type.BoundType is not { } ta || later.Parameters[j].Type.BoundType is not { } tb)
+        if (new FnSig(earlier).Input(i) is not { } ta || new FnSig(later).Input(j) is not { } tb)
         {
             return false;
         }

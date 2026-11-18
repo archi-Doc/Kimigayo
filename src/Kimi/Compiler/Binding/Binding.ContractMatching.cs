@@ -429,13 +429,15 @@ public sealed partial class Binding
 
     private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count)
+        var demanded = new FnSig(requirement);
+        var declared = new FnSig(implementation);
+        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || demanded.InputCount != declared.InputCount)
         {
             return false;
         }
 
         var pending = false;
-        for (var i = 0; i < requirement.Parameters.Count; i++)
+        for (var i = 0; i < demanded.InputCount; i++)
         {
             var a = requirement.Parameters[i];
             var b = implementation.Parameters[i];
@@ -444,14 +446,14 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (a.Type.BoundType is not { } required || b.Type.BoundType is not { } actual)
+            if (demanded.Input(i) is not { } required || declared.Input(i) is not { } actual)
             {
                 pending = true;
                 continue;
             }
 
             required = this.ContractType(required, scope, self);
-            if (i == requirement.BoundSymbol!.ReceiverIndex && selection.Path is not null)
+            if (i == demanded.ReceiverIndex && selection.Path is not null)
             {
                 required = this.ProjectRequirementReceiver(required, self, selection.DeclaringType)!;
                 if (required is null)
@@ -474,7 +476,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!SignatureEquals(required, actual, requirement, implementation))
+            if (!SignatureEquals(required, actual, demanded.Binder, declared.Binder))
             {
                 return false;
             }
@@ -484,7 +486,7 @@ public sealed partial class Binding
     }
 
     // SPEC 8.3.1: a requirement or an implementation whose declaration failed supplies no evidence, a function's or an accessor's alike.
-    private bool SuppliesNoEvidence(CallableContract requirement, CallableContract implementation)
+    private bool SuppliesNoEvidence(FnSig requirement, FnSig implementation)
         => this.InvalidDeclarationContext(requirement.Binder) || this.InvalidDeclarationContext(implementation.Binder);
 
     private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
