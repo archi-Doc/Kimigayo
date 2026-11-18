@@ -14060,6 +14060,12 @@ resumed by R4-M86 (2026-10-20).
     - A cheaper `ResetPass` alone: it is not where the time goes.
     - Every library summary computed eagerly in the library pass, instead of the failure rule above: it covers summaries only, not
       every on-demand path, and changes the capability epochs.
+  - **RP8 (W-255's slot T-W255; the owner's acceptance, verbatim 「すべて推奨通りでお願いします」, K's dialog, 2026-11-18 12:4x).** A f1f586555, B
+    617c3db04, 12 rounds: O2 unchanged (13 kernels, code differs in 0); warm Bind within; cold Bind B/A' beyond RP8's 1.03 on Hello
+    1.041 and Milestone26 1.071. T-310 (the Front's GC diagnostic, the same builds, blocking GC): Hello cold 1.016, Milestone26 cold
+    1.060 from one more gen2 collection inside Bind per 8 cold compilations (the cold bytes +3.5 KB on Hello, +9.7 KB on
+    Milestone26), Bind net of the GC pause 1.001, pooled without a gen2 0.999. The owner accepted the row as GC phase, as W-232
+    (R8-M45, O-387) was; no recovery unit. Removal: S1-1, the library bound once per process.
 - **BU-220 Binding's per-pass tables are paged dense columns over dense ids, with a `Frozen` base store and a program overlay; the
   dense Type id (PLAN G949, R7-N5, R7-D2 b)** (2026-11-16; Front, Binding; Major, behavior-preserving on every program whose
   SourceDocuments each lie in one module; the owner's O-376 (a) 「O-376 a」, its approval 3: N5's SyntaxId columns and D2 b's tables
