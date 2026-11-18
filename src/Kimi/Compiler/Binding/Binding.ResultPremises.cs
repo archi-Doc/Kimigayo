@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 15.3.7, 15.6.1, 15.6.4 step 3: a signature's intrinsic well-formedness (every Origin stored below a borrow layer outlives that
-// layer's Origin, and for an input its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
+// layer's Origin, and its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
 // result, a relation that the callee's inputs and declared relations already prove needs no premise; only the others, which the
 // definition would otherwise fail, are carried to the uses: each call solves its Origins with them and proves them for its substituted
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
