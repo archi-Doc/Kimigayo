@@ -279,7 +279,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var parameters = this.OpenScope(block: true);
         PairBinder.Collect(compilation.Binding, declaration, body.Binders);
         var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
-        var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType((FunctionKoto)declaration) : null;
+        var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType(compilation.Binding, (FunctionKoto)declaration) : null;
         this.entry = this.Info(declaration, local: true);
         body.AddLocal(self is null
             ? new(result, MirLocalKind.Return, template ? this.entry : this.Info(TyCtxt.SignatureSite(declaration, -1), local: true))
@@ -333,7 +333,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each at its written Type occurrence
         // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration.
-        for (var position = 0; !template && function is not null && position < Arity(function); position++)
+        for (var position = 0; !template && function is not null && position < this.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
             var parameter = CallPlan.Parameter(function, slot)!;

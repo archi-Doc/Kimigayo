@@ -36,7 +36,7 @@ public sealed partial class Binding
         }
 
         var self = this.SelfType(symbol);
-        if (AdtDef.Base(self) is not { } baseType)
+        if (AdtDef.Base(this.types, self) is not { } baseType)
         {
             return;
         }
@@ -202,8 +202,8 @@ public sealed partial class Binding
         call.VirtualImplementingType = null;
         if (call.VirtualIsDirect && call.ReceiverOperation.Source is { } receiverSource && this.ViewTarget(call.ReceiverOperation.SourceType, receiverSource) is { } receiver)
         {
-            call.VirtualBaseLookupType = AdtDef.Base(receiver);
-            for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(current))
+            call.VirtualBaseLookupType = AdtDef.Base(this.types, receiver);
+            for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(this.types, current))
             {
                 if (current.Symbol is { } symbol && OverrideEntryRows.TryGetValue((symbol, original), out var implementation) &&
                     this.virtualOverrides.TryGetValue(implementation, out var entry) && ReferenceEquals(this.MemberType(entry.Slot.DeclaringType, current), declaring))
@@ -234,7 +234,7 @@ public sealed partial class Binding
             }
 
             var self = this.SelfType(typeSymbol);
-            var baseType = AdtDef.Base(self);
+            var baseType = AdtDef.Base(this.types, self);
             if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && baseType is null))
             {
                 this.CompleteDependent(function, structure);
@@ -358,14 +358,14 @@ public sealed partial class Binding
     {
         var symbol = structure.BoundSymbol!;
         var table = symbol.Adt!.VTable ??= new();
-        if (table.Version == this.storageVersion)
+        if (Current(table.Version, this.storageVersion))
         {
             return table.Resolved ? table : null;
         }
 
         table.Version = this.storageVersion;
         table.Resolved = false;
-        var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.SelfType(symbol)));
+        var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.types, this.SelfType(symbol)));
         var inherited = parent is null ? null : this.FillVTable(parent);
         if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && inherited is null))
         {

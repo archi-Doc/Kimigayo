@@ -175,7 +175,7 @@ public sealed partial class Binding
     private bool ObjectUpcastFits(ConversionKoto conversion, BoundType actual, BoundType target)
     {
         var core = actual.Components[0];
-        for (var parent = core; parent is not null; parent = AdtDef.Base(parent))
+        for (var parent = core; parent is not null; parent = AdtDef.Base(this.types, parent))
         {
             if (parent.Symbol?.Declaration.BindingState == BindingState.Invalid)
             {

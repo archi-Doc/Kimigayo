@@ -56,7 +56,7 @@ public sealed partial class Binding
             var fitsAll = true;
             for (var j = 0; j < types.Count && fitsAll; j++)
             {
-                fitsAll = IsSubtype(types[j], candidate);
+                fitsAll = this.IsSubtype(types[j], candidate);
             }
 
             if (fitsAll)

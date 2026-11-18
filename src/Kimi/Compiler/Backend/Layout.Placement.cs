@@ -141,7 +141,7 @@ internal sealed partial class Layout
         var structure = AdtDef.IsStruct(type);
         var cLayout = structure && type.Symbol!.Adt is { IsCLayout: true };
         var fold = new Fold(type);
-        Entry? inherited = structure && AdtDef.Base(type) is { } parent ? fold.Add(this.Walk(parent, budget), cField: false) : null;
+        Entry? inherited = structure && AdtDef.Base(this.types, type) is { } parent ? fold.Add(this.Walk(parent, budget), cField: false) : null;
         var count = type.Kind switch
         {
             BoundTypeKind.Tuple or BoundTypeKind.Closure => type.Components.Count,
@@ -154,7 +154,7 @@ internal sealed partial class Layout
         {
             for (var i = 0; i < count; i++)
             {
-                if ((structure ? AdtDef.FieldType(type, i) : type.Components[i]) is not { } part)
+                if ((structure ? AdtDef.FieldType(this.types, type, i) : type.Components[i]) is not { } part)
                 {
                     fold.Reject();
                 }
@@ -269,7 +269,7 @@ internal sealed partial class Layout
         var fold = new Fold(type);
         var alignment = 1;
         UInt128 payload = 0;
-        foreach (var item in AdtDef.CaseTypes(type)!)
+        foreach (var item in AdtDef.CaseTypes(this.types, type)!)
         {
             if (item is null)
             {

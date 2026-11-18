@@ -355,7 +355,7 @@ internal sealed partial class MirBuilder
     // Never value is neither, so the target keeps its old value (DECISIONS R4-M62).
     private void Overwrite(MirPlace target, MirPlace value, Koto node)
     {
-        if (!this.IsNever(value) && MirTypes.MayNeedDrop(this.body.TypeOf(target), this.walked))
+        if (!this.IsNever(value) && MirTypes.MayNeedDrop(compilation.Types, this.body.TypeOf(target), this.walked))
         {
             this.DropAt(target, this.Info(node));
         }

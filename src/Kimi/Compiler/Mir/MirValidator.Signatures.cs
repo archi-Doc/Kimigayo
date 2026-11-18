@@ -18,7 +18,7 @@ internal sealed partial class MirValidator
     {
         // The Type a body gives in _0: its function's result (a constructor's object), a default template's parameter's or a static's; none
         // for the top-level statements, which have no symbol.
-        private static BoundType? Result(MirDefKey key)
+        private BoundType? Result(MirDefKey key)
         {
             if (key.Decl is not { } decl)
             {
@@ -30,7 +30,7 @@ internal sealed partial class MirValidator
                 return decl.Type;
             }
 
-            return TyCtxt.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _);
+            return types.Signature(decl, null, key.Kind == MirBodyKind.DefaultTemplate ? key.Index : -1, out _);
         }
 
         // SPEC 7.3: a Fn, Requirement or Virtual callee takes its function's parameters under its Subst, the receiver first (a default
@@ -54,7 +54,7 @@ internal sealed partial class MirValidator
             }
 
             var count = 0;
-            var result = function is null ? value!.Components[1] : TyCtxt.Signature(function, subst, template, out count);
+            var result = function is null ? value!.Components[1] : types.Signature(function, subst, template, out count);
             if (function is null)
             {
                 count = value!.Components[0].Components.Count;
@@ -80,7 +80,7 @@ internal sealed partial class MirValidator
                 }
                 else
                 {
-                    expected = TyCtxt.Signature(function, subst, template < 0 ? MirCallee.Slot(function, i) : i, out _);
+                    expected = types.Signature(function, subst, template < 0 ? MirCallee.Slot(function, i) : i, out _);
                 }
 
                 if (template < 0 || actual is null || actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [_] })

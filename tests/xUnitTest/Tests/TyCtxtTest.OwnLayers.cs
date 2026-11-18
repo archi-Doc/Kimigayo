@@ -243,7 +243,7 @@ public sealed partial class TyCtxtTest
         var inputs = functions.Where(static x => x.Name is "args" or "gargs").SelectMany(static x => x.Parameters);
         var input = inputs.Single(x => x.InternalName == argument).Type.TypeOf()!;
         var slot = function.Parameters.Select(static x => x.InternalName).ToList().IndexOf(parameter);
-        var key = TyCtxt.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, slot, input);
+        var key = c.Types.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, slot, input);
         Assert.Equal(expected, Hiding(c.Types, key, 0));
     }
 
@@ -268,7 +268,7 @@ public sealed partial class TyCtxtTest
         var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
         var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single();
         var written = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0);
-        var (key, into) = (TyCtxt.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
+        var (key, into) = (c.Types.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
         for (var i = 0; i < steps; i++)
         {
             into.Clear();
@@ -346,7 +346,7 @@ public sealed partial class TyCtxtTest
         var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
         var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single(static x => x.Target.Name == "f");
         var handed = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0).Handed.ToArray();
-        var (key, into) = (TyCtxt.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
+        var (key, into) = (c.Types.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
         Assert.True(c.Types.OwnLayers(key, into));
         key = into.Single().Past; // Past slot's own layer: the Tuple holding both parts.
         into.Clear();
@@ -368,7 +368,7 @@ public sealed partial class TyCtxtTest
         var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
         var input = functions.Single(static x => x.Name == "args").Parameters.Single(static x => x.InternalName == "ab").Type.TypeOf()!;
         var function = functions.SingleOrDefault(x => x.Name == callee);
-        var key = function is null ? PlaceKey.Root(input) : TyCtxt.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, 0, input);
+        var key = function is null ? PlaceKey.Root(input) : c.Types.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, 0, input);
         var into = new List<OwnLayer>();
         Assert.True(c.Types.OwnLayers(key, into));
         Assert.Equal(expected, Hiding(c.Types, c.Types.Base(into.Single().Past), 1));
@@ -388,7 +388,7 @@ public sealed partial class TyCtxtTest
         var function = functions.Single(x => x.Name == callee);
         var input = functions.Single(static x => x.Name == "args").Parameters.Single(x => x.InternalName == argument).Type.TypeOf()!;
         var into = new List<OwnLayer>();
-        Assert.True(c.Types.OwnLayers(TyCtxt.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, 0, input), into));
+        Assert.True(c.Types.OwnLayers(c.Types.ParameterKey(HirTables.Of(function).Symbols[function.SyntaxId]!, 0, input), into));
         var referent = into.Single().Past;
         var parts = expected.Split(" | ").Select((_, i) => Hiding(c.Types, c.Types.Select(referent, i), 1));
         Assert.Equal(expected, string.Join(" | ", parts));
@@ -423,7 +423,7 @@ public sealed partial class TyCtxtTest
             foreach (var (symbol, input) in calls)
             {
                 into.Clear();
-                _ = types.OwnLayers(TyCtxt.ParameterKey(symbol, 0, input), into);
+                _ = types.OwnLayers(c.Types.ParameterKey(symbol, 0, input), into);
                 foreach (var layer in into)
                 {
                     past.Clear();
