@@ -8,7 +8,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// PLAN G949 Stage 2 U2b-2 (design u2-design 2.7, 5.2; rows s7, s9b, s20b, R2-N2b, s15b; P-d's list; labels
+// PLAN G949 Stage 2 U2b-2 (design u2-design 2.7, 5.2; rows s7, s9b, s20b, R2-N2b, s15b, N1; P-d's list; labels
 // back\notes\l1-s2\u2b-impl\labels.md): Freeze detaches the library it returns, so no frozen object names its freeze compilation, and the
 // frozen library keeps its documentation failures, hover anchors and syntax list as data. The identity rows read Freeze's result through
 // the freeze compilation the test holds: S1-1's rules hold there unchanged (no fail-before: S1-1's B1 and freeze made them).
@@ -78,6 +78,72 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(count, names.Count);
         Assert.Equal(negations, constraints.Select(static x => x.Negation));
+    }
+
+    // N1 (B's ruling 45; P-d's walk as a row): every object the frozen library's fields reach (an array element by element; a string, a
+    // primitive, a Type or another reflection object ends a path) is none of a compilation's stores: no Compilation, Binding, TyCtxt,
+    // DiagnosticOwner or DiagnosticCollection, so the compilations that read the library (U3) share no mutable store through it.
+    [Fact]
+    public void AFrozenLibraryReachesNoCompilationStore()
+    {
+        var library = KimiLibrary.Freeze(Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false));
+        Type[] stores = [typeof(Compilation), typeof(Binding), typeof(TyCtxt), typeof(Kimi.Diagnostics.DiagnosticOwner), typeof(Kimi.Diagnostics.DiagnosticCollection)];
+        var fields = new Dictionary<Type, FieldInfo[]>();
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<object>();
+        var reached = new List<string>();
+        Push(library);
+        while (pending.TryPop(out var item))
+        {
+            var type = item.GetType();
+            if (Array.Exists(stores, x => x.IsAssignableFrom(type)))
+            {
+                reached.Add(type.Name);
+            }
+            else if (item is Array array)
+            {
+                foreach (var element in array)
+                {
+                    Push(element);
+                }
+            }
+            else
+            {
+                foreach (var field in Fields(type))
+                {
+                    Push(field.GetValue(item));
+                }
+            }
+        }
+
+        Assert.Contains(library.Kotonoha.RootKoto, seen);
+        Assert.Empty(reached);
+
+        void Push(object? value)
+        {
+            if (value is not (null or string or MemberInfo or Pointer) && value.GetType() is { IsPrimitive: false, IsEnum: false } && seen.Add(value))
+            {
+                pending.Push(value);
+            }
+        }
+
+        FieldInfo[] Fields(Type type)
+        {
+            if (!fields.TryGetValue(type, out var known))
+            {
+                var list = new List<FieldInfo>();
+                for (var level = type; level is not null; level = level.BaseType)
+                {
+                    list.AddRange(level.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                        .Where(static x => x.FieldType is { IsPointer: false, IsFunctionPointer: false, IsPrimitive: false, IsEnum: false }));
+                }
+
+                known = [.. list];
+                fields.Add(type, known);
+            }
+
+            return known;
+        }
     }
 
     // A frozen library whose freeze compilation only a weak reference names (the compilation made and dropped in a frame of its own).

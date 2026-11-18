@@ -7,6 +7,7 @@ using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
 using Xunit;
+using Printer = XunitTest.SemanticSnapshotTest.SemanticPrinter;
 
 namespace XunitTest;
 
@@ -133,20 +134,49 @@ public partial class KimiLibraryShapeTest
         return KimiLibrary.Unfrozen(target, kimigayo, project);
     }
 
-    // The frozen library's syntax and published HIR, read from its table alone (a frozen library names no compilation, U2b): each node's
-    // id, kind, Op, Type and symbol.
+    // The frozen library's syntax and every published HIR column, read from its table alone (B's ruling 45, C1: a frozen library names no
+    // compilation, U2b, and the semantic printer reads each node through its compilation until U0b-P3): each node's parent, location, span
+    // and kind; its State, Failure, Meaning, Symbol, Lookup and erased Type; its Op, Res, Completion, Adjust and Place; and every field of
+    // its plan row, a plan object's fields by value (Types and Origins as the printer prints them, a node by its id).
     private static string FrozenDump(KimiLibrary library)
     {
+        var printer = new Printer(false);
         var text = new System.Text.StringBuilder();
         foreach (var node in library.Kotonoha.Syntax.Nodes)
         {
-            if (node is not null)
+            if (node is null)
             {
-                text.Append(node.SyntaxId).Append(' ').Append(node.Akind).Append(' ').Append(HirTables.Op(node)).Append(' ').Append(HirTables.TypeOf(node))
-                    .Append(' ').Append(HirTables.Symbol(node)?.Name).Append('\n');
+                continue;
             }
+
+            ref readonly var row = ref HirTables.PlanOf(node);
+            text.Append(node.SyntaxId).Append(" ^").Append(node.Parent?.SyntaxId).Append(' ').Append(CompilationTestHelper.Location(node)).Append('+')
+                .Append(node.Span.Length).Append(' ').Append(node.Akind).Append(' ').Append(HirTables.State(node)).Append('/').Append(HirTables.Failure(node))
+                .Append(" m=").Append(Value(HirTables.Meaning(node), 2)).Append(" s=").Append(Value(HirTables.Symbol(node), 2)).Append(" l=")
+                .Append(HirTables.LookupOf(node)).Append(" e=").Append(Value(HirTables.ErasedType(node), 2)).Append(" op=").Append(HirTables.Op(node))
+                .Append(' ').Append(HirTables.ResOf(node)).Append(' ').Append(HirTables.CompletionOf(node)).Append(" a=").Append(Value(HirTables.AdjustOf(node), 2))
+                .Append(" p=").Append(Value(HirTables.PlaceOf(node), 2)).Append(" plan=").Append(Value(row.Plan, 2)).Append(" second=").Append(Value(row.Second, 2))
+                .Append(" format=").Append(Value(row.Formatting, 2)).Append(" mode=").Append(row.Mode).Append(" flag=").Append(row.Flag)
+                .Append(" adjust=").Append(Value(row.Adjust, 2)).Append(" discarded=").Append(Value(row.DiscardedType, 2)).Append(" folded=")
+                .Append(Value(row.Folded, 2)).Append('\n');
         }
 
         return text.ToString();
+
+        // A value by its contents, to a bounded depth: a published object (a plan, a row field) has no printer of its own.
+        string Value(object? value, int depth) => value switch
+        {
+            null => "-",
+            Koto koto => "#" + koto.SyntaxId,
+            BoundType type => printer.Type(type),
+            BoundOrigin origin => Printer.Origin(origin),
+            BindingSymbol symbol => $"{symbol.Kind}:{symbol.Name}@{CompilationTestHelper.Location(symbol.Declaration)}",
+            string or bool => value.ToString()!,
+            IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+            System.Collections.IEnumerable items => "[" + string.Join(",", items.Cast<object?>().Select(x => Value(x, depth))) + "]",
+            _ when depth == 0 => value.GetType().Name,
+            _ => value.GetType().Name + "{" + string.Join(" ", value.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Select(x => x.Name + "=" + Value(x.GetValue(value), depth - 1))) + "}",
+        };
     }
 }
