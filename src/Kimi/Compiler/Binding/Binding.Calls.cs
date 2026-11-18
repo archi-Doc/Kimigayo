@@ -157,7 +157,7 @@ public sealed partial class Binding
         var originSlots = solveOrigins ? shape.Origins : 0;
         var inputSlots = solveOrigins ? shape.InputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
-        var solveFrame = this.infer.Rent(Math.Max(1, maxGenerics));
+        var frames = this.RentFrames(candidateCount, maxGenerics);
         var explicitTypes = this.typeScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
@@ -168,8 +168,6 @@ public sealed partial class Binding
         var origins = this.originScratch.Rent(originSlots);
         var inputs = this.originScratch.Rent(inputSlots);
         var evaluated = this.candidateScratch.Rent(candidateCount);
-        var allTypes = this.typeScratch.Rent(savedCandidates * maxGenerics);
-        var allLengths = this.lengthScratch.Rent(savedCandidates * maxGenerics);
         var allMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
         var allOrigins = this.originScratch.Rent(savedCandidates * originSlots);
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
@@ -239,7 +237,7 @@ public sealed partial class Binding
                 Expected = expected,
                 Self = self,
                 Requirements = requirementGroup,
-                Frame = solveFrame,
+                Frames = frames,
                 ExplicitTypes = explicitTypes,
                 ExplicitLengths = explicitLengths,
                 Mapping = mapping,
@@ -252,12 +250,9 @@ public sealed partial class Binding
                 ChildSlices = childSlices,
                 OperationStride = operationStride,
                 SavedCandidates = savedCandidates,
-                AllTypes = allTypes,
-                AllLengths = allLengths,
                 AllMaps = allMaps,
                 AllOrigins = allOrigins,
                 AllInputs = allInputs,
-                MaxGenerics = maxGenerics,
                 OriginSlots = originSlots,
                 InputSlots = inputSlots,
                 Winner = -1,
@@ -380,10 +375,9 @@ public sealed partial class Binding
             var selected = (FunctionKoto)winner.Declaration;
             this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.
             var selectedType = evaluated[winnerIndex].DeclaringType;
+            var solveFrame = frames[winnerIndex];
             if (savedCandidates != 0)
             {
-                solveFrame.CopyTypes(allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
-                solveFrame.CopyLengths(allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 allMaps.AsSpan(winnerIndex * argumentCount, argumentCount).CopyTo(mapping);
                 allOrigins.AsSpan(winnerIndex * originSlots, originSlots).CopyTo(origins);
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
@@ -459,7 +453,7 @@ public sealed partial class Binding
             }
 
             if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructionTargets.Contains(constructorMember.Left) &&
-                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, solveFrame, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, frames, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
             {
                 return Complete(call, null);
             }
@@ -581,8 +575,6 @@ public sealed partial class Binding
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
-            this.typeScratch.Return(allTypes, clearArray: true);
-            this.lengthScratch.Return(allLengths, clearArray: true);
             this.lengthScratch.Return(explicitLengths, clearArray: true);
             this.candidateScratch.Return(evaluated, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
@@ -592,7 +584,7 @@ public sealed partial class Binding
             this.flagScratch.Return(completedWaiting);
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);
-            this.infer.Return(solveFrame);
+            this.ReturnFrames(frames, candidateCount);
         }
     }
 

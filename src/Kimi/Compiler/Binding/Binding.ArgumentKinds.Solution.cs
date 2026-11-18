@@ -22,7 +22,7 @@ public sealed partial class Binding
             Scope = evaluation.Scope,
             Self = evaluation.Self,
             DeclaringType = declaringType,
-            Frame = evaluation.Frame,
+            Frame = evaluation.Frames[candidate],
             Origins = evaluation.Origins,
             Inputs = evaluation.Inputs,
         };

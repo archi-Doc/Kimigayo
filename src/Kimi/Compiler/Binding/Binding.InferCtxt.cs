@@ -5,12 +5,12 @@ using System.Diagnostics;
 namespace Kimi.Compiler;
 
 // InferCtxt (SPEC 10.8; DECISIONS R7-I2): the owner of every solve's slot frames, with an undo log and snapshots.
-// - Responsibility: the slot frames (a solve's Type slots and length slots: a call candidate's, a Case construction's, a fixed
-//   construction's re-check, an implicit constructor's, a function reference's), held privately; their writes, each logged while a
-//   snapshot is open; Snapshot and Rollback.
+// - Responsibility: the slot frames (a solve's Type slots and length slots: a call candidate's, one per candidate, a Case
+//   construction's, a fixed construction's re-check, an implicit constructor's, a function reference's), held privately; their writes,
+//   each logged while a snapshot is open; Snapshot and Rollback.
 // - Inputs: Rent and Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, ClearTypes, ClearLengths,
-//   CopyTypes, CopyLengths) from the unifier (Infer, InferLength, InferArrayLength), a candidate's seeding and clearing, a trial's
-//   write-back, the selected candidate's restore and an open Origin's instantiation.
+//   CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's seeding and clearing, a trial's write-back and an open
+//   Origin's instantiation.
 // - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths), which SlotSolution and the other solves read.
 // - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write; no snapshot is open and
 //   the log is empty between two solves; a frame is returned only with no snapshot open (asserted); Rollback undoes in reverse order;
@@ -51,8 +51,6 @@ public sealed partial class Binding
         internal void ClearLengths(int count) => this.store.ClearLengths(this.id, count);
 
         internal void CopyTypes(ReadOnlySpan<BoundType?> source) => this.store.CopyTypes(this.id, source);
-
-        internal void CopyLengths(ReadOnlySpan<BoundLength?> source) => this.store.CopyLengths(this.id, source);
     }
 
     private sealed class InferCtxt
@@ -131,17 +129,6 @@ public sealed partial class Binding
         internal void CopyTypes(int id, ReadOnlySpan<BoundType?> source)
         {
             var frame = this.types[id];
-            for (var i = 0; i < source.Length; i++)
-            {
-                this.Push(frame, i);
-            }
-
-            source.CopyTo(frame);
-        }
-
-        internal void CopyLengths(int id, ReadOnlySpan<BoundLength?> source)
-        {
-            var frame = this.lengths[id];
             for (var i = 0; i < source.Length; i++)
             {
                 this.Push(frame, i);
