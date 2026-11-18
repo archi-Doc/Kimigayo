@@ -128,7 +128,8 @@ public static partial class Parser
     }
 
     // SPEC F.5: a Type head's PathSuffixes, Type arguments and OriginApplication (NamedType := NamedReference OriginApplication?), the
-    // one loop for every head; a grouped head enters it only where ContinuesGroupedType holds. A Semantics prefix's Type has read its
+    // one loop for every head, the requirement reader's head word included (an IdentifierNameKoto leaf); a grouped head enters it only
+    // where ContinuesGroupedType holds. A Semantics prefix's Type has read its
     // own suffixes, so a "." after it belongs to the enclosing construct.
     private static Koto ParseTypeSuffixes(ref TokenReader reader, Koto left, bool disambiguateGenerics)
     {
@@ -148,8 +149,9 @@ public static partial class Parser
                 var accessor = ParseTypeMember(ref reader);
                 if (accessor is ErrorKoto failed)
                 {
-                    // The member Name failed, so the qualified Type is the Error's recovery, as a failed head is.
-                    return new ErrorKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, failed.Span.End))) { Cause = failed.Cause };
+                    // The member Name failed: the path read so far stays the written Type beside the rejected suffix (SPEC 23.1.2), so its
+                    // head binds and keeps its own record, and every check over the Type rests on the record.
+                    return RecoverRejectedPart(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, failed.Span.End)), left, failed.Cause);
                 }
 
                 left = new MemberAccessKoto(
@@ -157,6 +159,11 @@ public static partial class Parser
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
                     left,
                     accessor);
+                if (accessor is ParenthesizedTypeKoto && ContractMemberCause(ref reader, accessor) is { } cause)
+                {
+                    // The path read so far stays bound beside the record (SPEC 23.1.2), so its head keeps its own record.
+                    return RecoverRejectedPart(ref reader, left.Span, left, cause);
+                }
             }
             else if (tokenKind == TokenKind.LessThan)
             {
@@ -170,9 +177,11 @@ public static partial class Parser
                 left = ParseGenericsPostfix(ref reader, left);
             }
             else if (tokenKind == TokenKind.OpenParenthesis && !disambiguateGenerics &&
-                left is TypeSemanticsKoto { Type: null } or MemberAccessKoto or GenericsKoto or SyntaxFormKoto { Akind: KotoKind.RootName })
+                left is TypeSemanticsKoto { Type: null } or IdentifierNameKoto or MemberAccessKoto or GenericsKoto or SyntaxFormKoto { Akind: KotoKind.RootName })
             {
-                left = ParseOriginApplication(ref reader, left);
+                // SPEC F.5, F.8: NamedType := NamedReference OriginApplication?: the OriginApplication is the NamedType's last part, so
+                // no PathSuffix, Type arguments or second application follows it; what does is the enclosing construct's.
+                return ParseOriginApplication(ref reader, left);
             }
             else
             {
@@ -188,7 +197,7 @@ public static partial class Parser
         {
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
-                return ParseBareParenthesizedType(ref reader);
+                return ParseContractGroup(ref reader);
             }
 
             if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
@@ -210,15 +219,136 @@ public static partial class Parser
     private static Koto ParseInheritanceReference(ref TokenReader reader)
     {
         var type = ParseType(ref reader, TypeContext.Type);
-        var path = type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : type;
-        var head = ContainerPathHead(path);
-        if (IsRecoveredType(ref reader, type) || head is TypeSemanticsKoto { Type: null } or SyntaxFormKoto { Akind: KotoKind.RootName } ||
-            (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto))
+        if (IsRecoveredType(ref reader, type) || IsContainerPath(OriginLayerType(type)))
         {
             return type;
         }
 
         return RecoverWrittenType(ref reader, type, type.Expected(SyntaxForm.InheritanceReference));
+    }
+
+    // SPEC F.5 ContainerPath := "::"? TypeSegment PathSuffix* | PathQualifier PathSuffix+, read as a Type: its head is a path leaf, or a
+    // PathQualifier (a group, a Tuple or Unit, a fixed array) that its PathSuffixes continue; it never ends at a grouped Contract, whose
+    // PathSuffix carries its ". Name" (a path split before that Name, as a selector's final ". Name" can split it, is none).
+    private static bool IsContainerPath(Koto path)
+    {
+        var head = ContainerPathHead(path);
+        return path is not MemberAccessKoto { Right: ParenthesizedTypeKoto } &&
+            (IsPathLeaf(head) || (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto));
+    }
+
+    // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name (F.9.1's PostfixSuffix the same): a grouped Contract
+    // after "." is one suffix with its ". Name", the one rule of every reader of it: F.5's suffix loop (ParseTypeSuffixes), the
+    // expression's PostfixSuffix (TryParsePostfixExpression) and, until G489 merges it into F.5's loop, ParseConstraintSubject's. Null when
+    // the ". Name" follows; else the one record's key: at a token after "." that is no Name (the "." consumed: the Name was expected
+    // there), or at the group when no "." follows (or a second group does). Each reader keeps what was read beside it (its recovery).
+    private static DiagnosticKey? ContractMemberCause(ref TokenReader reader, Koto group)
+    {
+        if (reader.CurrentTokenKind == TokenKind.Dot)
+        {
+            if (reader.PeekKind(1).IsIdentifierOrContextualKeyword())
+            {
+                return null;
+            }
+
+            if (reader.PeekKind(1) != TokenKind.OpenParenthesis)
+            {
+                reader.Advance();
+                return reader.Expect(SyntaxForm.Name);
+            }
+        }
+
+        return group.Expected(SyntaxForm.ContractMember);
+    }
+
+    // The first TypeSegment of a ContainerPath (F.5) or a root name: a Name as the Type reader builds it (TypeSemanticsKoto, Type: null)
+    // or as the requirement reader builds it (IdentifierNameKoto), the two leaves of one Name.
+    private static bool IsPathLeaf(Koto head)
+        => head is TypeSemanticsKoto { Type: null } or IdentifierNameKoto or SyntaxFormKoto { Akind: KotoKind.RootName };
+
+    // The Type below the transparent layer that carries a path's Origin (a binding set or a BorrowOrigin), or the Type itself.
+    private static Koto OriginLayerType(Koto type)
+        => type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : type;
+
+    // SPEC F.5 NamedReference := ContainerPath OriginBindingSet?, read as a Type or by the requirement reader: a ContainerPath with at
+    // most a binding set (a BorrowOrigin is an InheritanceReference's alternative, F.6.1, no NamedReference).
+    private static bool IsNamedReference(Koto type)
+        => type is not TypeSemanticsKoto { HasOrigin: true, BindingSetName: null } && IsContainerPath(OriginLayerType(type));
+
+    // SPEC F.6.2 ContractReference := ContainerReference := NamedReference, the one rule of every position that writes one (the grouped
+    // Contract, a ContractSelector's group, a ConditionalConformance's head): a reference that is no NamedReference is one record over
+    // it, a written Type outside its grammar (RecoverWrittenType); a failed reference judges nothing.
+    private static Koto RecoverContractReference(ref TokenReader reader, Koto reference)
+        => IsRecoveredType(ref reader, reference) || IsNamedReference(reference)
+            ? reference
+            : RecoverWrittenType(ref reader, reference, reference.Expected(SyntaxForm.ContractReference));
+
+    // SPEC F.6.2: "ContractSelector "." Name" of an AssociatedTypeName and an EffectSpecification, the one reader of both heads: a "(" is
+    // the group reader below, "::" a root name, any other token the Type head, then F.5's one suffix loop. The selector is judged once
+    // complete (RecoverContractSelector): the caller splits the final ". Name".
+    private static Koto ParseContractSelectorPath(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
+        {
+            return ParseContractSelectorGroup(ref reader);
+        }
+
+        var head = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseTypeHead(ref reader, target: false);
+        return ParseTypeSuffixes(ref reader, head, disambiguateGenerics: false);
+    }
+
+    // A ContractSelector's "(" (SPEC F.6.2 ContractSelector := ContainerPath | "(" ContractReference ")"): a PathQualifier that F.5's owner
+    // (ContinuesGroupedType) continues reads its PathSuffixes in the one suffix loop; any other group is "(" ContractReference ")" and
+    // only its one ". Name" follows, so a further suffix is the enclosing construct's.
+    private static Koto ParseContractSelectorGroup(ref TokenReader reader)
+    {
+        var qualifier = IsBoundContainerQualifier(ref reader, out _);
+        var group = ParseBareParenthesizedType(ref reader);
+        if (ContinuesGroupedType(ref reader, group, qualifier))
+        {
+            return ParseTypeSuffixes(ref reader, group, disambiguateGenerics: false);
+        }
+
+        if (!reader.TryConsume(TokenKind.Dot))
+        {
+            return group;
+        }
+
+        // The Name is a TypeSegment's: its Type arguments are read with it, so a head that is no AssociatedTypeName is judged whole.
+        var name = ParseName(ref reader);
+        var member = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(group.Span.Start, name.Span.End), group, name);
+        return reader.CurrentTokenKind == TokenKind.LessThan ? ParseGenericsPostfix(ref reader, member) : member;
+    }
+
+    // SPEC F.6.2 ContractSelector := ContainerPath | "(" ContractReference ")", judged once complete, for both heads (a whitelist): a
+    // ContainerPath (F.5; a path leaf, or a PathQualifier its PathSuffixes continued) is valid; a bare group is "(" ContractReference ")",
+    // its one reference judged; anything else (a PathQualifier without its PathSuffix, an OriginApplication) is one record over it.
+    private static void RecoverContractSelector(ref TokenReader reader, Koto selector)
+    {
+        if (IsRecoveredType(ref reader, selector) || IsContainerPath(selector))
+        {
+            return;
+        }
+
+        if (selector is ParenthesizedTypeKoto { Type: { } reference })
+        {
+            RecoverContractReference(ref reader, reference);
+            return;
+        }
+
+        RecoverWrittenType(ref reader, selector, selector.Expected(SyntaxForm.ContractReference));
+    }
+
+    // SPEC F.6.2: "(" ContractReference ")", a grouped Contract, the one reader of every position that writes it (F.5's PathSuffix in a
+    // Type, a requirement or a subject, F.9.1's PostfixSuffix and BoundContainerExpression, a ContractSelector's group): one reference,
+    // judged by the ContractReference rule, and its closer, so an empty group or a list is a syntax Error there; the node Binding reads
+    // (WrittenReference).
+    private static Koto ParseContractGroup(ref TokenReader reader)
+    {
+        var open = reader.Read().Span.Start;
+        var reference = RecoverContractReference(ref reader, ParseType(ref reader, TypeContext.Element));
+        reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        return new ParenthesizedTypeKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
     }
 
     // The head of a ContainerPath read as a Type (SPEC F.5): the node its PathSuffixes and Type arguments continue.

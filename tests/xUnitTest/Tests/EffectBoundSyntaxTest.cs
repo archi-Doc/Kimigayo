@@ -24,7 +24,6 @@ public class EffectBoundSyntaxTest
     [Theory]
     [InlineData("contract StableSource: Source\n    effect Source.take confined", "Source", "take")]
     [InlineData("contract Strict: Indexable<i32>\n    effect (Indexable<i32>).index confined", "(Indexable<i32>)", "index")]
-    [InlineData("contract Strict: Indexable<i32>\n    effect ((::Indexable<i32>)).index confined", "((::Indexable<i32>))", "index")]
     [InlineData("contract Stable: Kimi.Iterator\n    effect Kimi.LendingIterator.next confined", "Kimi.LendingIterator", "next")]
     [InlineData("contract Strict: confined\n    effect confined.f confined", "confined", "f")]
     public void ParsesEffectSpecificationsAsContractItems(string source, string selector, string name)
@@ -37,6 +36,19 @@ public class EffectBoundSyntaxTest
         Assert.Equal(selector[0] == '(', effect.Selector is ParenthesizedTypeKoto); // Every grouped Contract reference's form (PLAN G740).
         Assert.Equal(name, effect.Name!.ToString());
         AssertRoundTrip(tree);
+    }
+
+    // SPEC F.6.2 (PB3, F's ruling 16): a ContractSelector's group holds a ContractReference, a NamedReference, so a group inside it is
+    // invalid syntax: one record at the inner group (Binding rejected the form on base too, so no acceptance changes).
+    [Fact]
+    public void AGroupInAnEffectSelectorGroupIsOneSyntaxRecord()
+    {
+        const string source = "contract Strict: Indexable<i32>\n    effect ((::Indexable<i32>)).index confined";
+        var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+        Assert.Equal("ExpectedSyntax_Kd", diagnostic.Code);
+        Assert.Contains("Expected contract reference", diagnostic.Message, StringComparison.Ordinal);
+        Assert.Equal(source.IndexOf("(::Indexable", StringComparison.Ordinal), diagnostic.Span.Start);
+        Assert.Equal("(::Indexable<i32>)".Length, diagnostic.Span.Length);
     }
 
     [Fact]

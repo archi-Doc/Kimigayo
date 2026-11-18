@@ -263,6 +263,9 @@ public sealed partial class Binding
                 receiverOperation = new(receiver, actual, adapted, kind, quality, selection.Path, 0, proof);
             }
 
+            // SPEC 13.7.1: the input the update at `node` computed (its propertyUpdateInputs row) stands for an operand the expansion
+            // already evaluated, the call's Evaluated argument; a write's input is its source operand.
+            var evaluated = input is not null && ReferenceEquals(input, this.propertyUpdateInputs.GetValueOrDefault(node));
             if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
                 call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
                 (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
@@ -270,7 +273,7 @@ public sealed partial class Binding
             {
                 var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
                 Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
-                call = new(node, method, arguments) { CallStorage = new() { Evaluated = input is EvaluatedKoto ? 0 : -1 } };
+                call = new(node, method, arguments) { CallStorage = new() { Evaluated = evaluated ? 0 : -1 } };
                 this.propertyCalls[(node, accessor.Kind)] = call;
             }
 
@@ -283,7 +286,7 @@ public sealed partial class Binding
             var count = 0;
             if (input is not null)
             {
-                if (input is EvaluatedKoto)
+                if (evaluated)
                 {
                     Complete(input, inputType); // The update supplies its checked Output, never the original RHS.
                 }

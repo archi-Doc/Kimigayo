@@ -413,7 +413,7 @@ internal sealed class DependencyResolver
             Invalid(path, ex.Failures, failures);
             return this.inputs[path] = null;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or TinyhandException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex) || ex is TinyhandException)
         {
             failures.Add(new("InvalidProjectInput", ex.Message));
             return this.inputs[path] = null;

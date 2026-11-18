@@ -714,7 +714,7 @@ public sealed partial class Binding
             }
 
             var result = this.BindReference(member, symbol, scope);
-            member.Right.BoundSymbol = symbol;
+            this.PublishMemberAccess(member, symbol, null, LookupRole.Qualifier, null); // The group's member; its qualifier published at its read.
             Complete(member.Right, result);
             return result;
         }

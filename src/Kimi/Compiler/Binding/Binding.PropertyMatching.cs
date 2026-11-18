@@ -35,7 +35,7 @@ public sealed partial class Binding
     private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope, MemberSelection? retained = null)
     {
         this.BindHeader(requirement.Symbol);
-        var selection = retained ?? this.LookupTypeMember(self, requirement.Symbol.Name, scope, self);
+        var selection = retained ?? this.LookupMember(self, requirement.Symbol.Name, scope, LookupRole.Value, self);
         if (selection.Pending)
         {
             return ConstraintProof.Unknown;
