@@ -36,12 +36,12 @@ public sealed partial class Binding
         }
 
         var self = this.SelfType(symbol);
-        if (AdtDef.Base(self) is not { } baseType)
+        if (AdtDef.Base(this.types, self) is not { } baseType)
         {
             return;
         }
 
-        var selection = this.LookupTypeMember(baseType, function.Name, scope, self);
+        var selection = this.LookupMember(baseType, function.Name, scope, LookupRole.Value, self);
         if (selection.Pending || selection.DeclaringType?.Symbol is null)
         {
             return;
@@ -191,7 +191,8 @@ public sealed partial class Binding
             true);
     }
 
-    // Called by the common call-plan setter, including instantiated calls and Function Item contexts.
+    // Called by the common call-plan setter (CallPlan.Set) on the Binding its writer passes, including instantiated calls and Function Item
+    // contexts.
     // Target and its defaults always remain the original public contract.
     internal void SelectVirtualCall(CallPlan call, FunctionKoto original)
     {
@@ -202,8 +203,8 @@ public sealed partial class Binding
         call.VirtualImplementingType = null;
         if (call.VirtualIsDirect && call.ReceiverOperation.Source is { } receiverSource && this.ViewTarget(call.ReceiverOperation.SourceType, receiverSource) is { } receiver)
         {
-            call.VirtualBaseLookupType = AdtDef.Base(receiver);
-            for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(current))
+            call.VirtualBaseLookupType = AdtDef.Base(this.types, receiver);
+            for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(this.types, current))
             {
                 if (current.Symbol is { } symbol && OverrideEntryRows.TryGetValue((symbol, original), out var implementation) &&
                     this.virtualOverrides.TryGetValue(implementation, out var entry) && ReferenceEquals(this.MemberType(entry.Slot.DeclaringType, current), declaring))
@@ -234,7 +235,7 @@ public sealed partial class Binding
             }
 
             var self = this.SelfType(typeSymbol);
-            var baseType = AdtDef.Base(self);
+            var baseType = AdtDef.Base(this.types, self);
             if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && baseType is null))
             {
                 this.CompleteDependent(function, structure);
@@ -256,7 +257,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var selection = baseType is null ? default : this.LookupTypeMember(baseType, function.Name, this.scopes[function], self, this.MemberPath(null, structure.BaseClause!, baseType));
+            var selection = baseType is null ? default : this.LookupMember(baseType, function.Name, this.scopes[function], LookupRole.Value, self, this.MemberPath(null, structure.BaseClause!, baseType));
             FunctionKoto? first = null;
             FunctionKoto? second = null;
             var count = 0;
@@ -358,14 +359,14 @@ public sealed partial class Binding
     {
         var symbol = structure.BoundSymbol!;
         var table = symbol.Adt!.VTable ??= new();
-        if (table.Version == this.storageVersion)
+        if (Current(table.Version, this.storageVersion))
         {
             return table.Resolved ? table : null;
         }
 
         table.Version = this.storageVersion;
         table.Resolved = false;
-        var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.SelfType(symbol)));
+        var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.types, this.SelfType(symbol)));
         var inherited = parent is null ? null : this.FillVTable(parent);
         if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && inherited is null))
         {
@@ -514,21 +515,23 @@ public sealed partial class Binding
     // Selection deliberately ignores results, external labels, Origins, conditions and body facts.
     private bool VirtualInputsMatch(FunctionKoto original, FunctionKoto implementation, BoundType declaring)
     {
-        if (original.Parameters.Count != implementation.Parameters.Count || original.BoundSymbol!.ReceiverIndex != implementation.BoundSymbol!.ReceiverIndex)
+        var overridden = new FnSig(original);
+        var declared = new FnSig(implementation);
+        if (overridden.InputCount != declared.InputCount || overridden.ReceiverIndex != declared.ReceiverIndex)
         {
             return false;
         }
 
-        for (var i = 0; i < original.Parameters.Count; i++)
+        for (var i = 0; i < overridden.InputCount; i++)
         {
-            var required = original.Parameters[i].Type.BoundType;
-            var actual = implementation.Parameters[i].Type.BoundType;
+            var required = overridden.Input(i);
+            var actual = declared.Input(i);
             if (required is null || actual is null)
             {
                 return false;
             }
 
-            if (i == original.BoundSymbol.ReceiverIndex)
+            if (i == overridden.ReceiverIndex)
             {
                 if (required.Semantics != actual.Semantics)
                 {
@@ -536,7 +539,7 @@ public sealed partial class Binding
                 }
             }
             else if (this.MemberType(required, declaring) is not { } bound ||
-                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
+                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
             {
                 return false;
             }
@@ -563,8 +566,10 @@ public sealed partial class Binding
             }
         }
 
-        if (original.BoundSymbol!.Type is { } required && implementation.BoundSymbol!.Type is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
-            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
+        var overridden = new FnSig(original);
+        var declared = new FnSig(implementation);
+        if (overridden.Result is { } required && declared.Result is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
+            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
         {
             this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ResultType, original)
             {

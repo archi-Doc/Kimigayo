@@ -357,6 +357,7 @@ internal group Storage
         /// Splits the elements at the boundary `index` resolves to, `p`, into the Slices `[0, p)` and `[p, N)`.
         ///
         /// - abort: `index` does not resolve against the length.
+        #CallerLocation
         public func splitAt<E, length N, P>(self: ref/[N of E] during source, index: P) -> (Slice<E> during source, Slice<E> during source)
             P is Position
             let position = PositionSyntax.resolved(index, self.length)
@@ -535,6 +536,8 @@ internal group Storage
     internal func countOverflow() -> Never
     #Intrinsic("Fail", "KIMI_E_ALLOC_SIZE")
     internal func allocationSizeExceeded() -> Never
+    #Intrinsic("Fail", "KIMI_E_CLOCK")
+    internal func clockFailure() -> Never
     // The nullable form of Alloc (SPEC 21.4.3): null wherever Alloc would Abort. A nonnull result is the start of an
     // unreleased allocation of `bytes` bytes that holds no value; that allocation is its provenance, and it is readable and
     // writable (SPEC 5.2.1). `Raw.release` accepts it as the start of an `allocate` result, never as a zero-byte result

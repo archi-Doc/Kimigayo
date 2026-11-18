@@ -19,7 +19,7 @@ public sealed partial class Binding
             this.dictionaryStorageCalls.Add((key, value), call = new());
         }
 
-        call.Set(symbol, BoundType.ISize, null, [], [key, value], inputOrigins: [parameters[0].Type.BoundType!.Origin!, parameters[1].Type.BoundType!.Origin!]);
+        call.Set(this, symbol, BoundType.ISize, null, [], [key, value], inputOrigins: [parameters[0].Type.BoundType!.Origin!, parameters[1].Type.BoundType!.Origin!]);
         return call;
     }
 }

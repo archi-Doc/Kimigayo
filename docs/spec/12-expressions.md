@@ -41,9 +41,9 @@ let ok = ready() and check()  // check() runs only when ready() is true.
 
 ### 12.3.1. Expected Types and defaults
 
-Declared Types of bindings, parameters and results are expected Types and propagate into the expression (collection elements, selection branches); otherwise a Type comes from the operands. Built-in numeric operations need operands of one numeric Type: widths, signedness, and integer and floating-point Types never mix implicitly. There are no implicit conversions between `bool`, `char` and numbers, and a condition must be `bool`.
+Every fixed expected Type of [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation), a declared Type of a binding, parameter or result included, is an expected Type. An expected Type propagates into the expression by one rule, whatever its form: into every part of a Tuple, array, fill or Dictionary literal (each element, the fill value, each key and value), both range boundaries ([§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), every source of a selection, `do` or `loop` ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type)) and a generic call's result, which fills only the slots its evidence leaves unbound ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)); at a call argument it is the parameter Type under each remaining candidate ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). Otherwise a Type comes from the operands. Built-in numeric operations need operands of one numeric Type: widths, signedness, and integer and floating-point Types never mix implicitly. There are no implicit conversions between `bool`, `char` and numbers, and a condition must be `bool`.
 
-An untyped integer literal adopts an expected integer Type if its value fits; a floating-point literal adopts an expected `f32` or `f64`. At an expected `ref/U`, wherever [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) borrows an owner temporary, a source that a call would take as a Literal argument or as a Tuple or array literal argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)) is that temporary and is fitted to `U` as at an expected `U`; a call fits such an argument at a parameter `ref/U` by this rule ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)). Otherwise integer literals default to `i32` (also every range boundary and `^` operand with no other source of its Type, [§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), floating-point literals to `f64`, and literals in length contexts to `isize` ([§4.2](04-arrays-indexing-and-slices.md#42-length-expressions)); a literal that does not fit the default needs an explicit Type. In a call, defaults apply only after candidate selection ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)), never during candidate comparison or conformance selection ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)). Integers never fit floating-point Types implicitly.
+An untyped integer literal adopts an expected integer Type if its value fits; a floating-point literal adopts an expected `f32` or `f64`. At an expected `ref/U` whose `U` has no borrow value's outer Semantics ([§10.2.2](10-overload-resolution-and-inference.md#1022-inference-and-adaptation-classes) item 2), every owner value (neither a Place nor a borrow value, [§3.4.1](03-types-and-values.md#341-access-paths-and-value-kinds)), whatever its form (a literal of any kind, a fill, a range, a call returning a value, or a selection, `do` or `loop` that [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 3 makes one value), is the owner temporary that [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) borrows and is checked against `U` as at an expected `U`, at a parameter, a declared Type or any other fixed expected Type. Where no expected Type reaches a literal, integer literals default to `i32` (also every range boundary and `^` operand with no other source of its Type, [§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), floating-point literals to `f64`, and literals in length contexts to `isize` ([§4.2](04-arrays-indexing-and-slices.md#42-length-expressions)); a literal that does not fit the default needs an explicit Type. In a call, defaults apply only after candidate selection ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)), never during candidate comparison or conformance selection ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)). Integers never fit floating-point Types implicitly.
 
 ```kimi
 let a: i64 = 10
@@ -51,6 +51,12 @@ let b = a + 20       // 20 adopts i64.
 let c: i32 = 3
 let d = a + c@i64    // A typed operand is converted explicitly.
 let e = a + c        // Error: i64 and i32 do not mix.
+```
+
+```kimi
+// identity<T>(value: T) -> T; takeEntry(entry: (i64, ref/Dictionary<string, i64> during a)).
+let wide: ref/[2 of i64] = [2 of identity(1)] // The fill is checked against [2 of i64]: identity<i64>.
+takeEntry((1, ["a": identity(1)]))            // The Dictionary at the ref element is checked against Dictionary<string, i64>.
 ```
 
 ### 12.3.2. Direct literals
@@ -104,13 +110,18 @@ let f = (1.0 + 1.0)@f32                  // Computed in f64, then converted.
 | `(value,)`, `(a, b)` | Tuple. |
 | `[a, b]`, `[]` / `[key: value]`, `[:]` | Array / Dictionary literal. |
 
-An array has one element Type, a Dictionary one key and one value Type. A Dictionary literal's keys without an expected key Type, and its values without an expected value Type, each find their common Type as an independent array literal's elements do ([§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)): with `n: ref/i32`, `[1: n, 2: 3]` constructs `Dictionary<i32, i32>`. An empty literal needs an expected Type. Array and Dictionary literals use the required Kimi declarations ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), except for an expected fixed array ([§4](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices)); an unresolved element Type never falls back to a universal object Type.
+An array has one element Type, a Dictionary one key and one value Type. A Dictionary literal's keys and values are checked against the expected key and value Types wherever one exists ([§12.3.1](#1231-expected-types-and-defaults)), at the positions of a call argument too, as array elements are ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). Without an expected key or value Type, its keys and its values take their Types at its key place and its value place by the place rule of [§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes): with `n: ref/i32`, `[1: n, 2: 3]` constructs `Dictionary<i32, i32>`. An empty literal needs an expected Type. Array and Dictionary literals use the required Kimi declarations ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), except for an expected fixed array ([§4](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices)); an unresolved element Type never falls back to a universal object Type.
 
 ```kimi
 let pair = (10, "ten")
 let names = [1: "one", 2: "two",]
 let empty: Array<i32> = []
 let unknown = []        // Error: an empty literal needs an expected Type.
+```
+
+```kimi
+// identity<T>(value: T) -> T; inspectWideTable(table: ref/Dictionary<string, i64>).
+inspectWideTable(["a": identity(1)]) // The value is checked against i64: identity<i64>.
 ```
 
 ### 12.4.2. Interpolated strings

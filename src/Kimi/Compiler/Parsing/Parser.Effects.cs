@@ -60,7 +60,7 @@ public static partial class Parser
         }
 
         var next = reader.PeekKind(1);
-        return next.IsIdentifierOrContextualKeyword() || (specification && next is TokenKind.OpenParenthesis or TokenKind.ColonColon);
+        return next.IsIdentifierOrContextualKeyword() || (specification && next is TokenKind.OpenParenthesis or TokenKind.ColonColon or TokenKind.OpenBracket);
     }
 
     /// <summary>Parses an effect clause or an effect specification; the reader stands at <c>effect</c> (SPEC 8.11.1). The item
@@ -75,10 +75,10 @@ public static partial class Parser
         Koto? selector = null;
         Koto? name = null;
 
-        // A path continued by '.' or '<', or a parenthesized or root-qualified selector, names a requirement; a lone word
+        // A path continued by '.' or '<', or a parenthesized, root-qualified or fixed-array selector, names a requirement; a lone word
         // is the bound, so a Contract named like a bound word is still a selector.
         DiagnosticKey? cause = null;
-        if (reader.CurrentTokenKind is TokenKind.OpenParenthesis or TokenKind.ColonColon || reader.PeekKind(1) is TokenKind.Dot or TokenKind.LessThan)
+        if (reader.CurrentTokenKind is TokenKind.OpenParenthesis or TokenKind.ColonColon or TokenKind.OpenBracket || reader.PeekKind(1) is TokenKind.Dot or TokenKind.LessThan)
         {
             selector = ParseEffectTarget(ref reader, out name);
             cause = (name as ErrorKoto)?.Cause;
@@ -149,41 +149,22 @@ public static partial class Parser
         return null;
     }
 
-    // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The group holds
-    // one reference, so its Type and closer are read in every position (an empty group or a list is a syntax Error there), and it is
-    // the node of every grouped Contract reference; Binding reads the reference in it (WrittenReference). The last segment of the
-    // path is the requirement Name. Returns the ContractSelector; name is the requirement Name, an Error where the path names none.
+    // ContractSelector "." Name (SPEC F.6.2), read by the one ContractSelector reader (ParseContractSelectorPath, shared with an
+    // AssociatedTypeName) and judged once complete (RecoverContractSelector). The last segment of the path is the requirement Name.
+    // Returns the ContractSelector; name is the requirement Name, an Error where the path names none.
     private static Koto ParseEffectTarget(ref TokenReader reader, out Koto name)
     {
-        Koto? group = null;
-        if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
+        var path = ParseContractSelectorPath(ref reader);
+        if (IsRecoveredType(ref reader, path))
         {
-            var open = reader.Read().Span.Start;
-            var reference = ParseType(ref reader, TypeContext.Element);
-            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
-            group = new ParenthesizedTypeKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
-        }
-
-        var path = group ?? (reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader));
-        while (true)
-        {
-            if (reader.CurrentTokenKind == TokenKind.LessThan && !ReferenceEquals(path, group))
-            {
-                path = ParseGenericsPostfix(ref reader, path);
-            }
-            else if (reader.TryConsume(TokenKind.Dot))
-            {
-                var segment = ParseName(ref reader);
-                path = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(path.Span.Start, segment.Span.End), path, segment);
-            }
-            else
-            {
-                break;
-            }
+            // A path that failed (its record is reported) names no requirement; the item rests on that record.
+            name = new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = reader.CodeContext.RecoveryCause(path) ?? (path as ErrorKoto)?.Cause };
+            return path;
         }
 
         if (path is MemberAccessKoto member)
         {
+            RecoverContractSelector(ref reader, member.Left);
             name = member.Right;
             return member.Left;
         }

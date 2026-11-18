@@ -44,8 +44,12 @@ public sealed partial class Binding
 
     /// <summary>Gets a value indicating whether the selection applies one ResolvedRange value, written or resolved from a range key.</summary>
     /// <param name="node">The selection expression.</param>
-    /// <returns>Whether the selection is a resolved range selection.</returns>
-    internal bool IsResolvedSlice(Koto node) => node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
+    /// <returns>Whether the selection is a resolved range selection; a node of the frozen library is refused (EnsurePassNode).</returns>
+    internal bool IsResolvedSlice(Koto node)
+    {
+        EnsurePassNode(node, nameof(this.IsResolvedSlice));
+        return node is IndexKoto index && index.BindingState == BindingState.Resolved && this.resolvedSlices.Contains(index);
+    }
 
     // SPEC 4.6.1: `^a` whose operand is literal-only (SPEC 12.3).
     private static bool IsLiteralOnlyFromEnd(Koto node) => node is FromEndIndexKoto fromEnd && IsIntegerLiteralOnly(fromEnd.Operand);
@@ -406,9 +410,9 @@ public sealed partial class Binding
         return !IsUnfittedLiteral(boundary) || this.RequireType(boundary, scope, other ?? BoundType.I32) is not null;
     }
 
-    // SPEC 4.6.2: a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type satisfying
-    // Position, known independently of the context, and a literal-only boundary takes the S or E of an expected range of
-    // the same shape, else the integer Type of the other boundary, else i32 (SPEC 4.6.2). Construction checks nothing.
+    // SPEC 4.6.2, 12.3.1 (PLAN G924 rule A): a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type
+    // satisfying Position, checked against the S or E of an expected range of the same shape, and without one known on its own; a
+    // literal-only boundary takes that S or E, else the integer Type of the other boundary, else i32. Construction checks nothing.
     private BoundType? BindRangeValue(RangeKoto range, BindingScope scope, BoundType? expected)
     {
         if (range.IsInclusive && range.End is null)
@@ -418,16 +422,23 @@ public sealed partial class Binding
 
         var shape = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
         var fitted = expected is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } && ReferenceEquals(expected.Symbol, shape) ? expected : null;
-        var start = this.IndependentBoundary(range.Start, scope, out var startInteger, out var startFailed);
-        var end = this.IndependentBoundary(range.End, scope, out var endInteger, out var endFailed);
-        if (startFailed || endFailed)
+        var start = this.IndependentBoundary(range.Start, scope, ExpectedChild(range, 0, fitted), out var startInteger, out var startFailed);
+        var end = this.IndependentBoundary(range.End, scope, ExpectedChild(range, 1, fitted), out var endInteger, out var endFailed);
+        // SPEC 4.6.2, 23.1.2: beside a boundary whose own check failed the range rests on it. A literal-only boundary is still fitted
+        // where the range's expected Type gives its S or E: that fit reads nothing of the failed boundary, so its record is
+        // independent. Where its Type would come from the other boundary's integer Type it rests with the range.
+        var rests = startFailed || endFailed;
+        if (!startFailed && (!rests || fitted is not null))
         {
-            return Complete(range, null);
+            start = range.Start is null ? this.StartType : start ?? this.FitRangeBoundary(range.Start, scope, fitted?.Components[0], endInteger);
         }
 
-        start = range.Start is null ? this.StartType : start ?? this.FitRangeBoundary(range.Start, scope, fitted?.Components[0], endInteger);
-        end = range.End is null ? this.EndType : end ?? this.FitRangeBoundary(range.End, scope, fitted?.Components[1], startInteger);
-        if (start is null || end is null)
+        if (!endFailed && (!rests || fitted is not null))
+        {
+            end = range.End is null ? this.EndType : end ?? this.FitRangeBoundary(range.End, scope, fitted?.Components[1], startInteger);
+        }
+
+        if (rests || start is null || end is null)
         {
             return Complete(range, null);
         }
@@ -447,9 +458,10 @@ public sealed partial class Binding
         return this.BindSynthesizedCall(range, call, scope) is null ? Complete(range, null) : Complete(range, type);
     }
 
-    // The Type of a written range boundary known independently of the context, read through references; null for an
-    // omitted or literal-only boundary. `integer` is the integer Type a literal-only other boundary takes from it.
-    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, out BoundType? integer, out bool failed)
+    // The Type of a written range boundary, checked against its expected S or E or known on its own, read through references; null
+    // for an omitted or literal-only boundary, and for one whose own check failed (`failed`: RequireType gives no Type, and the range
+    // rests on it). `integer` is the integer Type a literal-only other boundary takes from it.
+    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, BoundType? expected, out BoundType? integer, out bool failed)
     {
         integer = null;
         failed = false;
@@ -458,7 +470,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var type = this.BindPositionKey(boundary, scope);
+        var type = expected is null ? this.BindPositionKey(boundary, scope) : this.RequireType(boundary, scope, expected);
         if (type is null || ReferenceEquals(type, BoundType.Never))
         {
             failed = type is null;

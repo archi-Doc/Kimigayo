@@ -91,7 +91,7 @@ public partial class TypeDagScalingTest
         var symbol = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "D").SymbolOf()!;
         var d = types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [t]);
         Assert.Same(t, types.StoredParts(d, out _)[0]);
-        Assert.Same(e, AdtDef.FieldType(d, 0));
+        Assert.Same(e, AdtDef.FieldType(c.Types, d, 0));
         Assert.Same(e, c.Binding.WithoutRawOrigins(t));
     }
 

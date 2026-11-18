@@ -97,7 +97,7 @@ internal sealed class TestCatalog
         var project = compilation.Project;
         this.ProjectId = ProjectIdOf(project);
 
-        new Collector(this).Visit(compilation.Kotonoha.RootKoto);
+        new Collector(this, compilation).Visit(compilation.Kotonoha.RootKoto);
         this.Cases.Sort(static (a, b) => Compare(a.Name, a.File, a.CaseId, b.Name, b.File, b.CaseId));
         this.Sites.Sort(static (a, b) =>
         {
@@ -242,14 +242,14 @@ internal sealed class TestCatalog
         return order == 0 ? string.CompareOrdinal(c, z) : order;
     }
 
-    private sealed class Collector(TestCatalog catalog) : KotoVisitor
+    private sealed class Collector(TestCatalog catalog, Compilation compilation) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
             var source = node.CodeContext.SourceDocument;
             if (node is FunctionKoto function && TestDefinition.Marker(function) is not null)
             {
-                if (!TestDefinition.IsIncluded(function))
+                if (!TestDefinition.IsIncluded(compilation, function))
                 {
                     return;
                 }

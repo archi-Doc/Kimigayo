@@ -37,14 +37,15 @@ internal static partial class MirTypes
 {
     /// <summary>Gets whether a value of a Type may own what its destruction releases (SPEC 16.3), the one rule by which the builder drops
     /// an old value: whether its <see cref="Destruction"/> reports a part.</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <param name="seen">Scratch for the Types walked, cleared first.</param>
     /// <returns>Whether drop elaboration has to consider the value.</returns>
-    internal static bool MayNeedDrop(BoundType? type, HashSet<BoundType> seen)
+    internal static bool MayNeedDrop(TyCtxt types, BoundType? type, HashSet<BoundType> seen)
     {
         seen.Clear();
         var any = new AnyPart(seen);
-        return Destruction(type, ref any);
+        return Destruction(types, type, ref any);
     }
 
     /// <summary>Gets what destroying a value of a Type may observe of the Origins and Loans it holds (SPEC 15.6.6, 16.3.3), as the walks'
@@ -64,7 +65,7 @@ internal static partial class MirTypes
     {
         entered.Clear();
         var observer = new Observer(types, definition, entered);
-        Destruction(type, ref observer);
+        Destruction(types, type, ref observer);
         return observer.Answer;
     }
 
@@ -79,11 +80,12 @@ internal static partial class MirTypes
     /// once per shallower meeting (<see cref="MirDepths"/>, at most once per depth), so the walk is linear in the distinct Types it meets,
     /// and a growing Type, new at each level, still ends at the bound.</summary>
     /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <param name="visitor">The visitor.</param>
     /// <param name="depth">The walk's depth.</param>
     /// <returns>Whether the visitor stopped the walk.</returns>
-    internal static bool Destruction<TVisitor>(BoundType? type, ref TVisitor visitor, int depth = 0)
+    internal static bool Destruction<TVisitor>(TyCtxt types, BoundType? type, ref TVisitor visitor, int depth = 0)
         where TVisitor : struct, IMirDestruction
     {
         if (type is null)
@@ -117,7 +119,7 @@ internal static partial class MirTypes
             return true;
         }
 
-        return !destructor && !AdtDef.IsInlineStorage(type) && Parts(type, ref visitor, depth);
+        return !destructor && !AdtDef.IsInlineStorage(type) && Parts(types, type, ref visitor, depth);
     }
 
     /// <summary>Gets the payload an owning handle's destruction walks on (SPEC 16.3.3): its View Target where Binding proves it Sealed,
@@ -136,19 +138,20 @@ internal static partial class MirTypes
     /// deeper. <see cref="Destruction"/> walks them past every part but a struct that declares a drop, whose destructor body destroys them
     /// (R4-M6b); a visitor that composes the drops a destruction runs walks them there itself.</summary>
     /// <typeparam name="TVisitor">The visitor's struct type.</typeparam>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <param name="visitor">The visitor.</param>
     /// <param name="depth">The Type's depth in the walk.</param>
     /// <returns>Whether the visitor stopped the walk.</returns>
-    internal static bool Parts<TVisitor>(BoundType type, ref TVisitor visitor, int depth)
+    internal static bool Parts<TVisitor>(TyCtxt types, BoundType type, ref TVisitor visitor, int depth)
         where TVisitor : struct, IMirDestruction
     {
         // A collection's elements or a Tuple's, fixed array's or Closure's inline components, else an enum's Case payloads.
         var parts = Collection(type) || type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure
-            ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(type) ?? [];
+            ? (IReadOnlyList<BoundType?>)type.Components : AdtDef.CaseTypes(types, type) ?? [];
         for (var i = 0; i < parts.Count; i++)
         {
-            if (Destruction(parts[i], ref visitor, depth + 1))
+            if (Destruction(types, parts[i], ref visitor, depth + 1))
             {
                 return true;
             }
@@ -156,13 +159,13 @@ internal static partial class MirTypes
 
         for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
         {
-            if (Destruction(AdtDef.FieldType(type, i), ref visitor, depth + 1))
+            if (Destruction(types, AdtDef.FieldType(types, type, i), ref visitor, depth + 1))
             {
                 return true;
             }
         }
 
-        return AdtDef.Base(type) is { } parent && Destruction(parent, ref visitor, depth + 1);
+        return AdtDef.Base(types, type) is { } parent && Destruction(types, parent, ref visitor, depth + 1);
     }
 
     // An Array or a Dictionary: a collection, whose elements live in managed storage (the drop glue's DropGlueRow.Collection).
@@ -205,7 +208,7 @@ internal static partial class MirTypes
             }
 
             return type.Kind == BoundTypeKind.Semantics &&
-                (SealedPayload(type, types, definition) is { } payload ? Destruction(payload, ref this, depth + 1) : this.Decide());
+                (SealedPayload(type, types, definition) is { } payload ? Destruction(types, payload, ref this, depth + 1) : this.Decide());
         }
 
         public readonly bool Deep(BoundType type)
@@ -225,14 +228,15 @@ internal static partial class MirTypes
     /// <summary>Gets the number of direct parts of a Type that move paths name, the parts of one level of what destroying a value of
     /// the Type destroys part by part (SPEC 16.3.2): a Tuple's elements, a Closure's captures, a fixed array's elements, an enum's Case
     /// payloads, a struct's Fields and its direct base; none for any other Type. A Type fact: no body, row or verdict is read.</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <returns>The number of parts, the ranks of <see cref="LevelPart"/>.</returns>
-    internal static long LevelCount(BoundType type) => type switch
+    internal static long LevelCount(TyCtxt types, BoundType type) => type switch
     {
         { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => type.Components.Count,
         { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => type.Length,
-        _ when AdtDef.CaseTypes(type) is { } payloads => payloads.Length,
-        _ => AdtDef.Count(type) + (AdtDef.Base(type) is null ? 0 : 1),
+        _ when AdtDef.CaseTypes(types, type) is { } payloads => payloads.Length,
+        _ => AdtDef.Count(type) + (AdtDef.Base(types, type) is null ? 0 : 1),
     };
 
     /// <summary>SPEC 16.3.2, the one statement of a level's order: the direct part of a Type destroyed at a rank (0 first), as the
@@ -240,16 +244,17 @@ internal static partial class MirTypes
     /// last; an enum's Case payloads by ordinal (one is live); a struct's Fields in reverse declaration order, then its direct base.
     /// Every reader of the order reads it here: A2's walk of a group and of a level no row governs (MirDropTable.Destroyed, Level,
     /// which A4 and the Backend's drop glue read) and a destructor body's Field cleanup (MirBuilder.FieldCleanup).</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <param name="rank">The rank, below <see cref="LevelCount"/>.</param>
     /// <returns>The step and its argument (MirBody.PartType gives the part's Type).</returns>
-    internal static (MirProjectionKind Step, long Arg) LevelPart(BoundType type, long rank) => type switch
+    internal static (MirProjectionKind Step, long Arg) LevelPart(TyCtxt types, BoundType type, long rank) => type switch
     {
         { Kind: BoundTypeKind.Tuple or BoundTypeKind.Closure } => (MirProjectionKind.Field, type.Components.Count - 1 - rank),
         { Kind: BoundTypeKind.FixedArray, LengthExpression: null } => (MirProjectionKind.ConstIndex, type.Length - 1 - rank),
-        _ when AdtDef.CaseTypes(type) is not null => (MirProjectionKind.Downcast, rank),
+        _ when AdtDef.CaseTypes(types, type) is not null => (MirProjectionKind.Downcast, rank),
         _ when rank < AdtDef.Count(type) => (MirProjectionKind.Field, AdtDef.Count(type) - 1 - rank),
-        _ when rank == AdtDef.Count(type) && AdtDef.Base(type) is not null => (MirProjectionKind.Base, 1),
+        _ when rank == AdtDef.Count(type) && AdtDef.Base(types, type) is not null => (MirProjectionKind.Base, 1),
         _ => throw new InvalidOperationException($"A level has no part at rank {rank} (InternalInvariant)."),
     };
 }

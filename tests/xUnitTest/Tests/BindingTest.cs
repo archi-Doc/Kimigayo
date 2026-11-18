@@ -474,6 +474,135 @@ public class BindingTest
         static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
     }
 
+    // PLAN G949 S1-r1b (s1r1-design 3.3, RC2's recorder): a pass binds the modules of its set, the library's table when it holds the
+    // library module and a source module's when it holds the sources; a node of another module that it fails is a foreign failure,
+    // listed with its earlier state. No pass fails another module's node today (the census: no program-pass write to a library node),
+    // so both parts' lists stay empty after a Bind that fails nodes.
+    [Fact]
+    public void APassBindsTheModulesOfItsSet()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var (library, source, part) = (c.Library.Kotonoha, c.SourceModules[0], c.Library.Layer.Part);
+        var libraryPass = new Binding.BindingPass([], library, part);
+        var programPass = new Binding.BindingPass([source], null, part);
+        Assert.True(libraryPass.Binds(library.Syntax) && !libraryPass.Binds(source.Syntax) && libraryPass.Binds(null));
+        Assert.True(programPass.Binds(source.Syntax) && !programPass.Binds(library.Syntax));
+        Assert.True(new Binding.BindingPass([source], library, part).Binds(library.Syntax));
+        Assert.Empty(part.ForeignFailures);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Empty(own.ForeignFailures);
+    }
+
+    // PLAN G949 S1-1 (k1; s11-design 2.1, DECISIONS BU-105 as S1-1 amends it): the pass driver's counters skip the Frozen image of the
+    // stamps that copy them, so no run's value reads as a frozen stamp: the run counter's uint image (BindingSymbol's query stamp copies
+    // the low 32 bits) skips uint.MaxValue, and the requirement counter (each pass's call, its part's RequirementCall) skips it too. The
+    // counters start two values before their images; a Bind of Hello advances each past it, and every Bind's Result is the first's.
+    // From S1-1's freeze (B4) the layer's RequirementCall is Frozen32 (s10) and no later pass calls in it, so the counter itself and the
+    // program part's call are read.
+    [Fact]
+    public void TheRunCountersSkipTheirFrozenImages()
+    {
+        var c = CompilationTestHelper.Parse(Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/')));
+        var first = c.Bind();
+        Assert.True(first.IsComplete);
+        var run = typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var call = typeof(Binding).GetField("originRequirementPass", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        run.SetValue(c.Binding, 0x1_FFFF_FFFEUL);
+        call.SetValue(c.Binding, uint.MaxValue - 1);
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.Equal(first, c.Bind());
+            Assert.NotEqual(uint.MaxValue, (uint)(ulong)run.GetValue(c.Binding)!);
+            Assert.NotEqual(uint.MaxValue, (uint)call.GetValue(c.Binding)!);
+            Assert.NotEqual(uint.MaxValue, own.RequirementCall);
+            Assert.Equal(Binding.Frozen32, c.Library.Layer.Part.RequirementCall);
+        }
+    }
+
+    // PLAN G949 S1-r1b (v5; s1r1-design 3.3, RC2's recorder; review-s1r1b N2), as S1-1 completes it (s11-design 3.3): a library node the
+    // program pass fails is the program part's entry, listed once with the state the library pass counted it in and the state and
+    // failure the program pass recorded, and its columns keep the library's final state: the recorder writes no library column. No
+    // program fails one today (the census: no program-pass write to a library node over the corpus), so the row fails one through the
+    // private Fail after a Final Bind, as a check of the program pass would: CheckBound then records it after the program's issues, the
+    // Bind's Result counts it once by its recorded state (Resolved - 1 and Invalid + 1 against the Bind's), ReportDiagnostics publishes
+    // one record of it, a second CheckBound publishes the one record again, not twice, and a second failure of the node adds no listing,
+    // also after a check cleared its failure (N2: the recorder reads the entry, so a node is listed once per pass).
+    [Fact]
+    public void ALibraryNodeTheProgramPassFailsIsRecordedOnce()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        var bound = c.Bind();
+        Assert.False(bound.IsComplete);
+        var program = c.Binding.Issues.Select(static x => x.Node).ToArray();
+        Assert.NotEmpty(program);
+        Assert.DoesNotContain(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(static x => x.StateOf() == BindingState.Resolved);
+        var fail = typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+        fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
+        c.Binding.ClearFailure(node); // A check's retry (ClearFailure), then the node failed again in the same pass.
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+        fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((node, BindingState.Resolved, BindingState.Invalid, BindingFailure.TypeMismatch), Assert.Single(own.ForeignFailures));
+        Assert.Empty(c.Library.Layer.Part.ForeignFailures);
+        for (var check = 0; check < 2; check++)
+        {
+            Assert.Equal(bound with { ResolvedCount = bound.ResolvedCount - 1, InvalidCount = bound.InvalidCount + 1 }, c.Binding.CheckBound());
+            Assert.Equal(program.Append(node), c.Binding.Issues.Select(static x => x.Node));
+            c.Binding.ReportDiagnostics();
+            Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+            Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+        }
+    }
+
+    // PLAN G949 S1-r1b (v4; s1r1-design 1.3): CheckBound reruns the program pass's Check only, on Binding's own part, and composes the
+    // Result again: after a Final Bind it equals the Bind's Result and issues, and the library layer's counts stay the library pass's.
+    [Fact]
+    public void CheckBoundKeepsTheLibraryLayersCounts()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        var bound = c.Bind();
+        var (issues, layer) = (c.Binding.Issues.ToArray(), c.Library.Layer.Part.Counts);
+        Assert.NotEqual(0, layer.ResolvedCount);
+        Assert.Equal(bound, c.Binding.CheckBound());
+        Assert.Equal(issues, c.Binding.Issues);
+        Assert.Equal(layer, c.Library.Layer.Part.Counts);
+    }
+
+    // PLAN G949 S1-r1b (c15 per review-s1r1 Re-check 3 RC-d: composition identities, not totals): the Bind's Result is the library
+    // layer's counts plus the program part's (ComposeResult); the layer's counts, imports and obligations are the empty program's (the
+    // library pass binds the library alone); each composed list is the program part's entries, then the layer's (R1.1's order), so after
+    // a Provisional Bind too the obligations list the program's rows first and the library's declaration rows after them (M2's order).
+    // The corpus compare of the aggregates (base against head) is an evidence run (O6).
+    [Theory]
+    [InlineData(BindingMode.Final)]
+    [InlineData(BindingMode.Provisional)]
+    public void TheBindsAggregatesAreTheProgramPartThenTheLibraryLayers(BindingMode mode)
+    {
+        var empty = CompilationTestHelper.Parse(string.Empty);
+        empty.Binding.Bind(mode);
+        // A missing Type (an issue) and a symbolic length (a program TypeFormation obligation; SPEC 4.4): invalid by the first.
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\ngroup Dimensions\n    private let Width: isize = 4\n" +
+            "    public func f<length N>(row: [(N + Width) of u8]) => ()\n");
+        var result = c.Binding.Bind(mode);
+        var (layer, own) = (c.Library.Layer.Part, (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        Assert.Equal(
+            (mode, layer.Counts.ResolvedCount + own.Counts.ResolvedCount, layer.Counts.UnresolvedCount + own.Counts.UnresolvedCount, layer.Counts.InvalidCount + own.Counts.InvalidCount),
+            (result.Mode, result.ResolvedCount, result.UnresolvedCount, result.InvalidCount));
+        Assert.Equal(empty.Library.Layer.Part.Counts, layer.Counts);
+        Assert.Equal(empty.Library.Layer.Part.Imports.Select(static x => (x.Decl.Name, x.Library, x.Symbol, x.Kind)), layer.Imports.Select(static x => (x.Decl.Name, x.Library, x.Symbol, x.Kind)));
+        Assert.Equal(empty.Library.Layer.Part.Obligations.Select(static x => x.ToString()), layer.Obligations.Select(static x => x.ToString()));
+        Assert.NotEmpty(own.Obligations);
+        Assert.NotEmpty(layer.Obligations);
+        Assert.Equal(own.Obligations.Concat(layer.Obligations), c.Binding.Obligations);
+        Assert.Equal(own.Imports.Concat(layer.Imports), c.Binding.LibraryImports);
+        Assert.Equal(own.Issues.Concat(layer.Issues), c.Binding.Issues);
+    }
+
     // PLAN G949 (s1r1-design 8.9; n55-design 2.3 rule 2): a keyed PassPart collection's one find reads the layer's map first, so a key
     // both parts hold reads the layer's row, and the running pass's map only for a key the layer's lacks; null when neither holds it.
     [Fact]
@@ -489,10 +618,10 @@ public class BindingTest
     }
 
     // PLAN G949, the localRegions batch (n55-design 2.3 rules 1-3; DECISIONS BU-220's D-9 line): the local-region graph is a PassPart
-    // collection. A Bind records its rows in the running pass's part, Binding's own until S1-r1b splits the library pass off, so the
-    // layer's part stays empty; rows moved after the Bind into the layer's part are found there, and each region's sources, walked again
-    // through them, equal the program part's. `held`'s region reaches b's borrow only through `view`'s row, so the walk reads a moved
-    // row past its first find too.
+    // collection. A Bind records its rows in the running pass's part, the library pass's in the layer's and the program pass's in
+    // Binding's own (S1-r1b), so the layer's part holds no program row; the program's rows moved after the Bind into the layer's part
+    // are found there, and each region's sources, walked again through them, equal the program part's. `held`'s region reaches b's
+    // borrow only through `view`'s row, so the walk reads a moved row past its first find too.
     [Fact]
     public void ALocalRegionInTheLayersPartIsFoundThere()
     {
@@ -504,7 +633,7 @@ public class BindingTest
         Assert.True(c.Binding.Result.IsComplete);
         var layer = c.Binding.Library.Layer.Part.Regions;
         var own = (Dictionary<BoundOrigin, Binding.LocalRegion>)typeof(Binding).GetField("localRegions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        Assert.Empty(layer);
+        Assert.DoesNotContain(own.Keys, layer.ContainsKey);
         var sources = own.Keys.Select(x => (Origin: x, Sources: c.Binding.LocalRegionSources(x).ToArray())).ToArray();
         Assert.Contains(sources, static x => x.Origin.Binder is VariableKoto { NameKoto: var name } && name.ToString() == "held" && x.Sources.Length >= 2);
         try
@@ -520,7 +649,10 @@ public class BindingTest
         }
         finally
         {
-            layer.Clear();
+            foreach (var (origin, _) in sources)
+            {
+                layer.Remove(origin);
+            }
         }
     }
 

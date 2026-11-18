@@ -14,6 +14,10 @@ namespace XunitTest;
 /// rows, judged with the layer's premises; the body's fixed-fixed oracle agrees with Binding's proof.</summary>
 public sealed partial class OriginRowsTest
 {
+    private const string ClauseS = "struct S {a, b}\n    origin a outlives b\n    public let x: ref/i32 during a\n    public let y: ref/i32 during b\n" +
+        "    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.x = x\n        self.y = y\n" +
+        "func keep<T>(value: T) -> i32 => 0\n";
+
     private const string Main = "public func main() => ()\n";
 
     private const string Pick = "func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
@@ -305,17 +309,26 @@ public sealed partial class OriginRowsTest
     }
 
     // 2a0-D D5 (T1): no row comes from a Constraint proof: a Type's own clause forms rows only at a local annotation of that Type, never at
-    // a use its Constraint check proves (CheckTypeOriginRelations).
+    // a use its Constraint check proves (CheckTypeOriginRelations). The clause is a body chain here (w.b is a local Borrow's Origin), a row
+    // A5 judges; a fixed-fixed one the premises entail is Binding's proof and no row (the next fact; 2a0-D D1, PLAN G962).
     [Fact]
     public void ATypesClauseFormsRowsOnlyAtLocalAnnotations()
     {
-        var c = MirBuildTest.Compile("struct S {a, b}\n    origin a outlives b\n    public let x: ref/i32 during a\n    public let y: ref/i32 during b\n" +
-            "    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.x = x\n        self.y = y\n" +
-            "func keep<T>(value: T) -> i32 => 0\nfunc f(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let s: S{w} = S.init(p, q)\n" +
+        var c = MirBuildTest.Compile(ClauseS + "func f(p: ref/i32) -> i32\n    let v: i32 = 1\n    let s: S{w} = S.init(p, v@ref)\n" +
             "        origin w.a == p\n    return keep(s@move)\n" + Main);
         var clauses = Rows(c, false).Where(static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto)).ToList();
         Assert.NotEmpty(clauses);
         Assert.All(clauses, x => Assert.True(Within(x.Use, static y => y.Parent is FieldKoto local && ReferenceEquals(local.TypeKoto, y)), $"{x.Use}"));
+    }
+
+    // 2a0-D D1 (PLAN G962): a Type's clause at a local annotation whose substituted relation is fixed-fixed and entailed by the premises
+    // at the annotation (`p outlives q`) is Binding's direct proof and forms no row, as a declaration row its premises entail.
+    [Fact]
+    public void AFixedTypeClauseThePremisesEntailFormsNoRow()
+    {
+        var c = MirBuildTest.Compile(ClauseS + "func f(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let s: S{w} = S.init(p, q)\n" +
+            "        origin w.a == p\n    return keep(s@move)\n" + Main);
+        Assert.DoesNotContain(Rows(c, false), static x => x.Body.IsBody && x.Clause is { } clause && Within(clause, static y => y is StructKoto));
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a

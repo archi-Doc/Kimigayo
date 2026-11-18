@@ -294,11 +294,12 @@ public partial class CallOriginRelationTest
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let r = v@ref\n    let f = func [r] () -> i32\n        let t = mk(.None, r)\n        return 0\n    return f()\n", "UnprovenOriginRelation_Kd@mk(.None, r)")]
     // da1
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gd(y: ref/i32 during q, x: Option<T during q> = .None) -> i32\n    return 0\nfunc k() -> i32\n    let v: i32 = 5\n    return gd(v@ref)\n", "UnsatisfiedOriginRelation_Kd@gd(v@ref)")]
-    // An anonymous callee: cl2 is invalid (the call's instantiated result `T during p` needs `p outlives static`, SPEC 15.6.1,
-    // 15.6.4: Unknown between fixed Origins); its named twin nf2 is rejected. Explicit: PLAN D-739: a Closure's value call does not
-    // prove its result's clauses yet (`CarriesResultPremises` excludes anonymous functions; G913 accepts it too).
-    // cl2
-    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "UnprovenOriginRelation_Kd@c(p)", Explicit = true)]
+    // The Middle's W-249 A5 oracle row (`g216a-oracle` s11w_bare_someshort), valid: the waited `c` takes the meet of the two inputs,
+    // the local `short`'s region, and nothing escapes it (SPEC 15.3.6; the owner's O-362 (a)); J2 accepts it (dev before J2:
+    // UnsatisfiedOriginRelation_Kd twice). PLAN G962 moved cl2 (an anonymous callee) to ResultPremiseTest's
+    // ANestedResultIsJudgedWhereItIsWritten: its rule is the written result's formation, not the call's.
+    // s11w_bare_someshort
+    [InlineData("func sw<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\nfunc bad(p: uniq/i32, c: bool, d: bool) -> i32\n    var short = 2\n    sw(.Some(short@uniq), p)\n    return 0\n", "")]
     // The same reading where a bound fails: one Closure level deeper than cap7 (q4, the evidence bound's record beside the located
     // limit), cap7's `var` twin (cap7var) and the cycles' invalid twins (s1i-s3i), each record naming the value's failing operand.
     // q4

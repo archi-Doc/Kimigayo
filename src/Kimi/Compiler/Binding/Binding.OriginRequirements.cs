@@ -118,7 +118,12 @@ public sealed partial class Binding
         this.originRequirementQueue.Clear();
         // Retained work survives between passes so summaries and lists are reused. A pass
         // stamp keeps declarations that dropped out from accumulating dependents forever.
-        this.originRequirementPass++;
+        if (++this.originRequirementPass == Frozen32)
+        {
+            this.originRequirementPass++; // A part's RequirementCall and its keeper lists copy it: never Frozen32 (Current).
+        }
+
+        this.pass.Part.RequirementCall = this.originRequirementPass; // The running part's keepers are current by this call (Keepers).
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
@@ -449,6 +454,19 @@ public sealed partial class Binding
         internal bool Queued { get; set; }
     }
 
+    // PLAN G949 S1-1's freeze of the library's works (FreezeLibrary): a frozen work is never active, since no call counter takes Frozen32,
+    // so a program pass's call adds no edge to it and writes neither its Consumer nor its Dependents.
+    private void FreezeRequirementWorks()
+    {
+        foreach (var work in OriginRequirementRows.Rows(this.Library.Kotonoha.Syntax))
+        {
+            if (work is not null)
+            {
+                work.Pass = Frozen32;
+            }
+        }
+    }
+
     /// <summary>The `originRequirementNodes` family's one accessor (DECISIONS BU-220): a kept family, a declaration's Origin requirement
     /// work, made once and reused by each pass (ComputeOriginRequirements), kept in its key node's module's NodeColumns at its SyntaxId.
     /// Its members keep the names its readers use.</summary>
@@ -459,6 +477,8 @@ public sealed partial class Binding
             ref var row = ref HirTables.Of(node).Families.OriginRequirementNodes.Ref(node.SyntaxId);
             row = row is null ? value : throw new ArgumentException($"`originRequirementNodes` already holds a row at `{node}`.", nameof(node));
         }
+
+        internal static PagedColumn<OriginRequirementWork?>.Enumerator Rows(SyntaxTable table) => table.Hir.Families.OriginRequirementNodes.Enumerate();
 
         internal static bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginRequirementWork? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.OriginRequirementNodes.Get(node.SyntaxId) : null) is not null;

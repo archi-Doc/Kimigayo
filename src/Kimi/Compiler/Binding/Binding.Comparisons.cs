@@ -83,7 +83,7 @@ public sealed partial class Binding
         // SPEC 13.4, 3.8: the terminal Types are equal under the Type relation, which relates Never only to itself, or one operand is Never:
         // the right one's own Type here, as applicability fitted a Never left one to the right; a Never terminal below a layer is ordinary.
         if (!ReferenceEquals(operand, BoundType.Never) &&
-            !IsSubtype(this.RegionValuesAt(right, binary.Right), this.RegionValuesAt(left, binary.Left), out var failure))
+            !this.IsSubtype(this.RegionValuesAt(right, binary.Right), this.RegionValuesAt(left, binary.Left), out var failure))
         {
             if (this.CommonOriginType(left, right, out _) is not { } common)
             {
@@ -112,7 +112,7 @@ public sealed partial class Binding
 
         var call = this.BindSelectedRequirement(binary, binary.ComparisonStorage, [binary.Left, binary.Right], self, members[0].Contract, members[0].Symbol, scope, tupleOperator);
         binary.ComparisonStorage = call;
-        binary.ComparisonActive = call?.BoundCall is not null;
+        binary.ComparisonActive = call is not null && this.CallOf(call) is not null;
         return Complete(binary, binary.ComparisonActive ? BoundType.Boolean : null);
     }
 }

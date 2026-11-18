@@ -9,11 +9,6 @@ namespace Kimi.Compiler;
 // the stored Field it is or lies inline in, which the allowlist of a layer reached through no dereference judges (HolderPlaceFailure).
 public sealed partial class Binding
 {
-    // The position an inline part step selects in its owner's Type (a Tuple element's, 0 for a fixed-array element); null for any other
-    // step (SPEC 3.4.3).
-    private static int? InlinePosition(PathStep step, Koto source)
-        => step is PathStep.Member or PathStep.InlinePart && ElementAccess.TryType((BinaryKoto)source, out _, out var position) ? Math.Max(position, 0) : null;
-
     // The stored Type of a Place selected in place from a stored Field: the Field's declared Type, or its element at `positions` (the
     // leaf's selection first); null without a Field, or where a selection is not of a Tuple or fixed array.
     private static BoundType? StoredPart(MemberAccessKoto? field, ReadOnlySpan<int> positions)
@@ -27,6 +22,11 @@ public sealed partial class Binding
 
         return stored;
     }
+
+    // The position an inline part step selects in its owner's Type (a Tuple element's, 0 for a fixed-array element); null for any other
+    // step (SPEC 3.4.3).
+    private int? InlinePosition(PathStep step, Koto source)
+        => step is PathStep.Member or PathStep.InlinePart && ElementAccess.TryType(this, (BinaryKoto)source, out _, out var position) ? Math.Max(position, 0) : null;
 
     // SPEC 5.7 (Reading a Field, Typed paths): the Origin of the last borrow or raw pointer that a Place's path dereferences, from the
     // leaf through NextPathStep: a member's, a borrowed element's or an inline part's the innermost borrow, raw or pair layer of the Type
@@ -51,7 +51,7 @@ public sealed partial class Binding
                 {
                     field = member;
                 }
-                else if (selected < positions.Length && InlinePosition(step, source) is { } position)
+                else if (selected < positions.Length && this.InlinePosition(step, source) is { } position)
                 {
                     positions[selected++] = position;
                 }
@@ -129,10 +129,7 @@ public sealed partial class Binding
             return new(true, layer.RawOrigin);
         }
 
-        var borrow = TryPairLayer(layer, out _, out _)
-            ? this.LayerAdmitted(layer) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0
-            : layer.Kind == BoundTypeKind.Semantics && IsBorrow(layer.Semantics);
-        return new(borrow ? true : null, this.OuterOrigin(layer));
+        return new(this.HasBorrowSemantics(layer) ? true : null, this.OuterOrigin(layer));
     }
 
     // SPEC 5.7, 6.3.4, 16.3.1 (DECISIONS BU-23): the Origin of a constructor's or destructor's receiver `self`, its Place's atom.

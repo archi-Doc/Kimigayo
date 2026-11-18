@@ -172,7 +172,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, value.OriginArguments.Count); i++)
             {
-                Bind(pattern.OriginArguments[i], value.OriginArguments[i], ComposeVariance(polarity, OriginArgumentVariance(pattern, i, this)));
+                Bind(pattern.OriginArguments[i], value.OriginArguments[i], ComposeVariance(polarity, this.OriginArgumentVariance(pattern, i, this)));
             }
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)

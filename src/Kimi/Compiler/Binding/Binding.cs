@@ -15,9 +15,10 @@ namespace Kimi.Compiler;
 //   (Semantics; the HIR tables and Plans), and the diagnostics ReportDiagnostics records (Binding.Diagnostics.Report.cs).
 // - Invariants: a pass is never reentered; a pass that does not finish leaves no Result, and the later phases' facts are discarded
 //   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The published per-pass lists (nodes, issues,
-//   derived issues, obligations, imports and the effect obligations' sources) are parts (PassPart, Binding.Passes.cs): a pass writes
-//   the part the driver hands it, Binding's own until the library pass (PLAN G949 S1-r1b) is handed LibraryLayer.Part, and a reader
-//   outside a pass reads the composed views, both parts.
+//   derived issues, obligations, imports, the effect obligations' sources, the Contract shapes, the effect bounds and the import
+//   declarations) and the slots' keepers are parts (PassPart, Binding.Passes.cs): a pass writes the part the driver hands it, the
+//   library pass LibraryLayer.Part and the program pass Binding's own (PLAN G949 S1-r1b), and a reader outside a pass reads the
+//   composed views, both parts.
 // - Prohibitions: no read of Mir or the Backend (COMPILER_ARCHITECTURE "Dependency rules"); readers outside Binding use its published
 //   facts, never its private state.
 
@@ -37,6 +38,7 @@ public sealed partial class Binding
     private List<LibraryImport> libraryImports;
     private List<BindingObligation> obligations;
     private HashSet<BindingObligation> obligationSet;
+    private List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> foreignFailures;
     private bool running;
 
     // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across
@@ -97,8 +99,11 @@ public sealed partial class Binding
         this.libraryImportsView = new(own.Imports, layer.Imports);
         this.virtualDeclarationsView = new(own.VirtualDeclarations, layer.VirtualDeclarations);
         this.callableEffectUsesView = new(own.CallableEffectUses, layer.CallableEffectUses);
-        this.callableEffectClausesView = new(own.CallableEffectClauses, layer.CallableEffectClauses);
+        this.contractShapesView = new(own.ContractShapes, layer.ContractShapes);
+        this.boundedRequirementsView = new(own.BoundedRequirements, layer.BoundedRequirements);
+        this.importDeclarationsView = new(own.ImportDeclarations, layer.ImportDeclarations);
         (this.Issues, this.Obligations, this.LibraryImports, this.DerivedIssues) = (this.issuesView, this.obligationsView, this.libraryImportsView, this.derivedIssuesView);
+        this.ImportDeclarations = this.importDeclarationsView;
         this.EnterPass(this.ProgramPass);
     }
 
@@ -209,8 +214,8 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
-        // The program pass's Check publishes both kinds of failure again (until PLAN G949 S1-r1b the one pass's), on the part the
-        // fields hold between Binds, Binding's own.
+        // The program pass's Check publishes both kinds of failure again, on the part the fields hold between Binds, Binding's own; the
+        // library pass's records stay in the layer's part.
         this.issues.Clear();
         this.derivedIssues.Clear();
         this.Check(BindingMode.Final);
@@ -256,6 +261,9 @@ public sealed partial class Binding
 
     internal bool IsRunning => this.running;
 
+    // Whether a node's plans are the current pass's: the node resolved by the running or the last completed pass, not an earlier one.
+    internal bool IsCurrent(Koto node) => HirTables.State(node) == BindingState.Resolved && (this.running || this.Result != default);
+
     internal void Invalidate()
     {
         // A Bind in progress rebuilds everything it published; clearing its state midway would lose its own issues.
@@ -264,7 +272,9 @@ public sealed partial class Binding
             return;
         }
 
-        // An edit revokes the whole pass, exactly as the next Bind discards it, unless no pass has finished since the last revocation.
+        // An edit revokes the program pass of the latest Bind, exactly as the next Bind discards it, unless no pass has finished since the
+        // last revocation; the frozen library is never revoked (PLAN G949 S1-1: a source edit never reaches it). Between Binds the
+        // fields hold the program pass's part.
         if (this.Result != default)
         {
             this.Result = default;
@@ -274,11 +284,13 @@ public sealed partial class Binding
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
         // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
-        // module's edit columns stale, StampedColumn), local regions, item contexts and the Type context's view memos.
+        // module's edit columns stale, StampedColumn), local regions, item contexts with the atoms their plans hold at library binders
+        // (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
         this.edit++;
         this.knownBases?.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
+        this.programAtoms.Empty();
         this.types.ResetViews();
     }
 

@@ -155,7 +155,7 @@ public sealed partial class Binding
                     // SPEC 10.1, 10.3, 15.6.1: applicability fitted the structural part alone (FitsStructuralPartAt); a Function Type
                     // position's whole contract and its implementation's own well-formedness are judged here, after selection, at the
                     // argument (DECISIONS R4-M155, landing review B1).
-                    var walk = new RelationWalk(this, at, OriginPart.Structural);
+                    var walk = new RelationWalk(this, this, at, OriginPart.Structural);
                     if (!walk.Fits(adapted, parameter))
                     {
                         _ = this.FailMismatch(at, at, adapted, parameter, walk.Failure);
@@ -265,7 +265,7 @@ public sealed partial class Binding
             pattern = null;
         }
 
-        if (FitOuterOrigins(actual, expected, this, context.At, out var longer, out var shorter) == OuterOriginFit.Relation)
+        if (this.FitOuterOrigins(actual, expected, this, context.At, out var longer, out var shorter) == OuterOriginFit.Relation)
         {
             // SPEC 8.1.2, 15.6.5: a pair layer's slot, `o` included, exists only in its binder's borrow cases.
             this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At));
@@ -279,7 +279,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
         {
-            var variance = OriginArgumentVariance(actual, i, this);
+            var variance = this.OriginArgumentVariance(actual, i, this);
             var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
             if (both || variance == OriginVariance.Covariant)
             {

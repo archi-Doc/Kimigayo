@@ -146,10 +146,9 @@ public sealed partial class Binding
     // when it fails.
     private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
     {
-        var literal = IsUnfittedLiteral(part);
         if (this.KindOf(part) != PartKind.Typed || part.BoundType is not { } typed)
         {
-            return this.BindNode(part, scope, literal ? LiteralInputType(parameter) : parameter);
+            return this.BindNode(part, scope, this.Materialization(part, parameter, scope) ?? parameter);
         }
 
         // SPEC 7.7.4, 10.5, 10.7 (PLAN G494, DECISIONS BU-107): a Closure or Function Item completed at a Function Type is converted to

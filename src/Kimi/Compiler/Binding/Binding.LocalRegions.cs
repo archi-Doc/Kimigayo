@@ -95,7 +95,7 @@ public sealed partial class Binding
             return [];
         }
 
-        if (region.Version != this.regionVersion)
+        if (!Current(region.Version, this.regionVersion))
         {
             region.Sources.Clear();
             this.regionWork.Clear();
@@ -224,7 +224,8 @@ public sealed partial class Binding
     // value (MirOrigins.Unproven; the converse of O-400 (b)'s lemma). A `var` region of the own body that reaches back to the region (a
     // cycle of definitions, which share one solved value) is read through its own bounds, so a value names regions of enclosing bodies
     // and `var` regions of its own body that do not reach the region: each read moves down that body's definitions or one body outward.
-    // A `var` region's value is computed once per graph version (its bounds are complete once its body is bound; the owner's O-426 (a)).
+    // A `var` region's value is computed once per graph version (its bounds are complete once its body is bound; the owner's O-426 (a));
+    // a frozen row of the library layer is read, never written (contract C, PLAN G949 S1-1), so its value is computed at each read.
     internal BoundOrigin? RegionValue(BoundOrigin origin)
     {
         var region = this.Region(origin);
@@ -264,8 +265,13 @@ public sealed partial class Binding
             }
         }
 
-        (region.Solution, region.SolutionVersion) = (bounded ? value : null, this.regionVersion);
-        return region.Solution;
+        var solution = bounded ? value : null;
+        if (region.Version != FrozenRegion)
+        {
+            (region.Solution, region.SolutionVersion) = (solution, this.regionVersion); // Contract C: a frozen library row is never written.
+        }
+
+        return solution;
     }
 
     // Whether `origin` is a `var` region of `body` (a reassignable region owner's region; O-422 (a)).
@@ -285,6 +291,36 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    // An Origin of atoms of the frozen library table only: such an atom, or a meet of such (contract C's library-only key).
+    private static bool LibraryOnly(BoundOrigin origin)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return origin.Binder?.SyntaxOwner is { Frozen: true };
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (!LibraryOnly(origin.Operands[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Contract C (PLAN G949 S1-1, s11-design 4.1): a row of the layer's part is frozen (FrozenRegion, FreezeLocalRegions; a program row
+    // never is), so a new parent or solution on it, which the region graph's two mutations would write, is the internal-invariant form.
+    // An identical re-record writes nothing and is not refused.
+    private static void EnsureWritable(LocalRegion region)
+    {
+        if (region.Version == FrozenRegion)
+        {
+            throw new InvalidOperationException("A pass wrote a frozen library region (InternalInvariant; PLAN G949 S1-1).");
+        }
     }
 
     // The atoms of a region's recorded bounds as RegionValue reads them, into `atoms` (cleared; RegionValue and ReachesRegion each pass
@@ -386,6 +422,29 @@ public sealed partial class Binding
         this.RecordRegionBound(record.Value, region, evidence);
     }
 
+    // O25 (PLAN G949 S1-1, R): every row of the running part has its sources for the run's version, so no later pass forms a source
+    // list on a row another pass made.
+    private void CompleteLocalRegions()
+    {
+        foreach (var origin in this.localRegions.Keys)
+        {
+            this.LocalRegionSources(origin);
+        }
+    }
+
+    // PLAN G949 S1-1's freeze of the layer's part (FreezeLibrary, after CompleteLocalRegions): each row with its sources for the run
+    // reads current in every later pass (FrozenRegion, never the "never computed" -1).
+    private void FreezeLocalRegions()
+    {
+        foreach (var region in this.localRegions.Values)
+        {
+            if (region.Version == this.regionVersion)
+            {
+                region.Version = FrozenRegion;
+            }
+        }
+    }
+
     // The running pass's rows, emptied in place; the version starts again per run (BeginRun).
     private void ResetLocalRegions()
     {
@@ -423,6 +482,13 @@ public sealed partial class Binding
         }
 
         region = new();
+        if (LibraryOnly(origin))
+        {
+            // Contract C (s11-design 4.1; n55-design 2.3 rule 6): no pass after the freeze records a bound on a target of frozen library
+            // atoms only, whose row the layer's part would hold; a frozen Sources would miss it silently.
+            throw new InvalidOperationException("A pass after the freeze made a region row of library atoms only (InternalInvariant; PLAN G949 S1-1).");
+        }
+
         this.localRegions.Add(origin, region);
         return region;
     }
@@ -474,6 +540,7 @@ public sealed partial class Binding
         var region = this.WrittenRegion(target);
         if (!region.Parents.Contains(source))
         {
+            EnsureWritable(region);
             region.Parents.Add(source);
             region.Values.Add(evidence);
             this.regionVersion++;
@@ -503,7 +570,12 @@ public sealed partial class Binding
         }
 
         var entry = this.WrittenRegion(solution);
-        entry.Solved = region;
+        if (!ReferenceEquals(entry.Solved, region))
+        {
+            EnsureWritable(entry);
+            entry.Solved = region;
+        }
+
         for (var i = 0; i < entry.Parents.Count; i++)
         {
             if (BoundsSolved(entry.Parents[i], solution, region))
