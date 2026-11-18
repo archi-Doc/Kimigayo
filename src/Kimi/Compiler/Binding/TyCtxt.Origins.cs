@@ -74,8 +74,19 @@ internal readonly record struct OriginRow(
     ulong CaseMask);
 
 /// <summary>An atom of a body's table with its class there; <c>EnclosingCallRegion</c>: the atom is an enclosing body's call region, or a meet
-/// with such an operand (row 6), which A5's failing chains read (the nested-body limit).</summary>
-internal readonly record struct OriginAtomEntry(BoundOrigin Atom, OriginAtomKind Kind, ProjectionRole Role, bool EnclosingCallRegion = false);
+/// with such an operand (row 6), which A5's failing chains read (the nested-body limit); <c>Value</c>: an enclosing body's local region's solved
+/// value (row 6; PLAN G492-a (ii), DECISIONS BU-127, O-422 (a)), whose operands A5 judges where the region fails at a longer end, null for
+/// any other atom.</summary>
+internal readonly record struct OriginAtomEntry(BoundOrigin Atom, OriginAtomKind Kind, ProjectionRole Role, bool EnclosingCallRegion = false, BoundOrigin? Value = null)
+{
+    // SPEC 15.3.6: the operands of what the entry holds as a meet's operands are read (TyCtxt.MeetOperand, A5's split of a failed source):
+    // a row-6 local region's solved value, else the atom; one, the held Origin itself, when it is no meet.
+    internal int HeldOperands => this.Held.Kind == OriginKind.Intersection ? this.Held.Operands.Count : 1;
+
+    private BoundOrigin Held => this.Value ?? this.Atom;
+
+    internal BoundOrigin HeldOperand(int index) => this.Held.Kind == OriginKind.Intersection ? this.Held.Operands[index] : this.Held;
+}
 
 internal sealed partial class TyCtxt
 {
@@ -86,7 +97,8 @@ internal sealed partial class TyCtxt
     internal int OriginAtom(ExecutableBody body, BoundOrigin origin, SourceRef site) => binding.OriginAtomIn(body, origin, site);
 
     // SPEC 15.3.6: the index of an operand of a meet atom of a body's table, as the meet holds it (the view resolved the meet once, at its
-    // use); never resolved again at the asking site, which only locates a broken contract.
+    // use), or of a row-6 local region's solved value (OriginAtomEntry.HeldOperand); never resolved again at the asking site, which only locates
+    // a broken contract.
     internal int MeetOperand(ExecutableBody body, int meet, int index, SourceRef site) => binding.MeetOperandIn(body, meet, index, site);
 
     // SPEC 15.3.6: the index of the canonical meet of two atoms of a body's table (A5's meet law), interned there once; a meet of Fixed atoms

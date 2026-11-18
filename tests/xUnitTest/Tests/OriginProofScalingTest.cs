@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Verification;
 using Xunit;
 
@@ -79,6 +80,29 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         }).ToArray();
         Assert.True((valid || rows[1].Work > rows[0].Work) && MirBorrowsTest.Grows(rows.Select(static x => x.Work).ToArray(), 2), string.Join(' ', rows));
         Assert.True(rows[2].MaxNodes <= 2 * rows[1].MaxNodes && rows[2].MaxEdges <= (4 * rows[1].MaxEdges) + (2 * rows[2].Layers), string.Join(' ', rows));
+    }
+
+    // PLAN G492-a (ii), the owner's O-426 (a): a diamond chain of 40 `var` definitions (x{i} and y{i} each bounded by x{i-1} and y{i-1},
+    // so each solved value is a meet of the two regions one level up) read through a Closure: A5's split of a failed source (df, invalid:
+    // `p outlives q` is Unknown, one record; SPEC 15.6.5) and the retention of a Closure call whose contract names x{N} (dr, valid) read
+    // each region once per judgement and per retention computation, and a region's value once per pass, so the check ends at once. Without
+    // the visited sets every path through the diamond was walked again (24 levels: 8.5 s -> 83 s). df's split is A5's, so its
+    // MirOrigins.Work (each operand Split judges counted) grows linearly from 10 to 40 levels; retention (dr) has no counter.
+    [Theory(Timeout = 120000)]
+    [InlineData("dr", false)]
+    [InlineData("df", true)]
+    public async Task ADiamondChainOfVarDefinitionsIsReadOnce(string form, bool invalid)
+    {
+        var records = await Task.Run(() => CompilationTestHelper.RecordsAtLines(DiamondChain(form, 40)), TestContext.Current.CancellationToken);
+        Assert.True(
+            invalid ? records.Length == 1 && records[0].StartsWith("UnprovenOriginRelation_Kd", StringComparison.Ordinal) : records.Length == 0,
+            $"{form}: [{string.Join(" | ", records)}]");
+        if (invalid)
+        {
+            long[] work = [.. new[] { 10, 20, 40 }.Select(n => OriginWork(DiamondChain(form, n)))];
+            output.WriteLine($"{form} N 10, 20, 40: origins {string.Join(", ", work)}");
+            Assert.True(MirBorrowsTest.Grows(work, 2.5), $"{form}: origins {string.Join(", ", work)}");
+        }
     }
 
     [Fact]
@@ -194,6 +218,36 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.Equal(["MissingOriginBinding_Kd", "UnprovenOriginRelation_Kd"], codes.Order());
         Assert.NotEqual(0, metrics.ChainWork);
         return metrics.ChainWork;
+    }
+
+    // A5's Origin work over a program's bodies, each body's Judge summed (MirOriginsTest.AShorterMeetsOperandEdgesFormOncePerClass).
+    private static long OriginWork(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var origins = new MirOrigins(c.Types, new MirCases(c.Types));
+        var total = 0L;
+        foreach (var body in c.BuildMir().Bodies.ToArray())
+        {
+            origins.Judge(body, MirCases.Count(body), new MirReport());
+            total += origins.Work;
+        }
+
+        return total;
+    }
+
+    // The reviewer's diamond (`rev5\dc2\gen_diamond.py`): dr returns x{n} through a Closure's call (retention), df relates it to q (A5).
+    private static string DiamondChain(string form, int n)
+    {
+        var source = new StringBuilder(form == "dr" ? "func see(p: ref/i32) => ()\nfunc t(k: bool, p: ref/i32, q: ref/i32)\n" : "func t(k: bool, p: ref/i32, q: ref/i32) -> i32\n");
+        source.Append("    var x0 = p\n    var y0 = q\n");
+        for (var i = 1; i <= n; i++)
+        {
+            source.Append($"    var x{i} = x{i - 1}\n    if k\n        x{i} = y{i - 1}\n    var y{i} = y{i - 1}\n    if k\n        y{i} = x{i - 1}\n");
+        }
+
+        return source.Append(form == "dr"
+            ? $"    let c = func [x{n}] () -> ref/i32 during x{n} => x{n}\n    let v = c()\n    see(v)\n"
+            : $"    let c = func [x{n}] () -> ref/i32 during q => x{n}\n    return 0\n").Append("public func main() => ()\n").ToString();
     }
 
     private static long RegionReads(int depth)

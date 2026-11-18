@@ -144,6 +144,34 @@ public partial class CallOriginRelationTest
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nstruct S2 {b}\n    origin b outlives static\n    public let t: Option<T during b>\n    public init(t: Option<T during b>) => self.t = t@move\nfunc mks(x: Option<ref/i32 during q>, y: ref/i32 during q) -> S2 during q => $abort(\"no\")\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let s = mks(.None, st())\n    let o = s.t@ref\n    return 0\n")]
     // da1v
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gd(y: ref/i32 during q, x: Option<T during q> = .None) -> i32\n    return 0\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    return gd(st())\n")]
+    // PLAN G492-a (ii) Revision 5 (design-ii.md §13.18.9-11; labels rev5\labels-b1.md, labels-var.md, r2's): in a nested body an enclosing
+    // local region at a longer end reads as its solved value, a `let` region's value or a `var` region's meet of its recorded bounds (the
+    // owner's O-422 (a)): two and three bodies down (q1-q3), a `var` capture over an enclosing `let` (q2v, q2w, q2wl), pk7vv, cap15dvar
+    // and f4v (valid programs dev rejects), and definition cycles (s1v-s3v).
+    // q1
+    [InlineData("func f(p: ref/i64) -> i64\n    let a = p\n    let g = func [a] () -> i64\n        let b = a\n        let h = func [b] () -> ref/i64 during p => b\n        return 0\n    return 0\n")]
+    // q2
+    [InlineData("func f() -> i32\n    let n = 1\n    var r = n@ref\n    let a = r\n    let g = func [a] () -> i32\n        let b = a\n        let h = func [b] () -> ref/i32 during r => b\n        return 0\n    return 0\n")]
+    // q3
+    [InlineData("func f() -> i32\n    let n = 1\n    var r = n@ref\n    let a = r\n    let g = func [a] () -> i32\n        let h = func [a] () -> ref/i32 during r => a\n        return 0\n    return 0\n")]
+    // q2v
+    [InlineData("func f() -> i32\n    let n = 1\n    var r = n@ref\n    let a = r\n    let g = func [a] () -> i32\n        var b = a\n        let h = func [b] () -> ref/i32 during r => b\n        return 0\n    return 0\n")]
+    // q2w
+    [InlineData("func f(p: ref/i32) -> i32\n    var r = p\n    let a = r\n    let g = func [a] () -> i32\n        var b = a\n        let h = func [b] () -> ref/i32 during r => b\n        return 0\n    return 0\n")]
+    // q2wl
+    [InlineData("func f(p: ref/i32) -> i32\n    let a = p\n    let g = func [a] () -> i32\n        var b = a\n        let h = func [b] () -> ref/i32 during p => b\n        return 0\n    return 0\n")]
+    // pk7vv
+    [InlineData("func f() -> i32\n    let n = 1\n    var r = n@ref\n    var a = r\n    let k = func [a] () -> ref/i32 during r => a\n    return 0\n")]
+    // cap15dvar
+    [InlineData("func use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var r = b\n    let g = func [r] () -> ref/i32 during b\n        return r\n    return g()@follow\n")]
+    // s1v
+    [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    let c = q\n    let g = func [a, c] () -> i32\n        var b = a\n        b = c\n        let h = func [b] () -> ref/i32 during (a and c) => b\n        return 0\n    return 0\n")]
+    // s2v
+    [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    var r = p\n    let g = func [r] () -> i32\n        var b = r\n        let h = func [b] () -> ref/i32 during r => b\n        return 0\n    return 0\n")]
+    // s3v
+    [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    var x = p\n    var w = x\n    x = w\n    let h = func [x] () -> ref/i32 during p => x\n    return 0\n")]
+    // f4v
+    [InlineData("func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    var s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    see(v)\n")]
     public void AWaitedVariablesSolutionIsOneValueForEveryReader(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
@@ -271,6 +299,18 @@ public partial class CallOriginRelationTest
     // prove its result's clauses yet (`CarriesResultPremises` excludes anonymous functions; G913 accepts it too).
     // cl2
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "UnprovenOriginRelation_Kd@c(p)", Explicit = true)]
+    // The same reading where a bound fails: one Closure level deeper than cap7 (q4, the evidence bound's record beside the located
+    // limit), cap7's `var` twin (cap7var) and the cycles' invalid twins (s1i-s3i), each record naming the value's failing operand.
+    // q4
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let r = keep(.Some(a@ref), b@ref)\n    let g = func [r] () -> i32\n        let s = r\n        let h = func [s] (q: ref/i32) -> ref/i32 during q\n            return s\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@s|Unsupported_Kd@s")]
+    // cap7var
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var r = keep(.Some(a@ref), b@ref)\n    let g = func [r] (q: ref/i32) -> ref/i32 during q\n        return r\n    return 0\n", "UnprovenOriginRelation_Kd@r|Unsupported_Kd@r")]
+    // s1i
+    [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    let c = q\n    let g = func [a, c] () -> i32\n        var b = a\n        b = c\n        let h = func [b] () -> ref/i32 during a => b\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@b")]
+    // s2i
+    [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    var r = p\n    let g = func [r] () -> i32\n        var b = r\n        let h = func [b] () -> ref/i32 during q => b\n        return 0\n    return 0\n", "UnprovenOriginRelation_Kd@b")]
+    // s3i
+    [InlineData("func f(p: ref/i32, q: ref/i32) -> i32\n    var x = p\n    var w = x\n    x = w\n    let h = func [x] () -> ref/i32 during q => x\n    return 0\n", "UnprovenOriginRelation_Kd@x")]
     public void AWaitedVariablesReadersKeepTheirRecords(string body, string records)
     {
         var source = body + Main;

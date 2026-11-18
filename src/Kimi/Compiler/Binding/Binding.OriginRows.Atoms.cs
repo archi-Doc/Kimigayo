@@ -34,10 +34,11 @@ public sealed partial class Binding
     // was resolved once, when it was interned (a row's end as the row reads it, a MIR Origin at its site), and its operands with it, so
     // an operand is interned as it is and never resolved again: a `let` region a Compared row names stays the region (PLAN G492-a (ii)).
     // The site only locates a broken contract, which the meet's classification excludes (it classed every operand when it was interned).
+    // A row-6 local region's operands are its solved value's, the value itself when it is no meet (OriginAtomEntry.HeldOperand).
     internal int MeetOperandIn(ExecutableBody body, int meet, int index, SourceRef site)
     {
         var slice = this.OriginRows(body);
-        var operand = slice.Atoms[meet].Atom.Operands[index];
+        var operand = slice.Atoms[meet].HeldOperand(index);
         return this.InternAtom(slice, operand, this.compilation.SyntaxOf(site), PartOf(operand, slice));
     }
 
@@ -188,7 +189,9 @@ public sealed partial class Binding
 
         if (EnclosingAtom(atom, slice.Body))
         {
-            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom)); // Row 6: an enclosing body's atom, and whether it is a call region.
+            // Row 6: an enclosing body's atom, whether it is a call region, and a local region's solved value (RegionValue; DECISIONS
+            // BU-127, O-422 (a)): A5 judges a relation the region fails at a longer end as the value's (PLAN G492-a (ii)).
+            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom), this.RegionValue(atom));
         }
 
         return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.

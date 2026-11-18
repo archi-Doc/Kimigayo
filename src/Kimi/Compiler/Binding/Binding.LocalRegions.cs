@@ -13,9 +13,12 @@ namespace Kimi.Compiler;
 // running pass's, and a new row goes into the running pass's. The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 // Output (PLAN G492-a (ii)): a `let` local's region has a value, the Origin its declaration fixes for the slot (PublishRegionValue: the
 // initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region. Its readers at a use:
-// RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type), RegionalAt through it.
+// RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type), RegionalAt through it; in
+// a nested body, RegionValue (the view's row 6, which A5 reads where the region fails at a longer end): BU-127's solved value of a
+// `let` or `var` region, a `var` region's the meet of its recorded bounds (the owner's O-422 (a)).
 // Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
-// (ResetLocalRegions); a `var` region has no value. A bound's parent is stored as its store read it at the bound's use (the owner's
+// (ResetLocalRegions); a `var` region publishes no value: a use in its own body reads the region, and only RegionValue (a nested body's
+// row 6) reads its meet of recorded bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
 // O-385 (a): a body row's ends as the row reads them, SuppliedAtUse with the row; a `let` value as published; an initializer alias as
 // its producers read it) and read as held: LocalRegionSources, LocalRegionBound and LocalRegionSourceUse apply the receiver resolution
 // alone (ReceiverAtUse; a Closure is classified after its body's bounds are stored), never OriginAtUse (DECISIONS R4-M133 as amended).
@@ -31,6 +34,14 @@ public sealed partial class Binding
     private readonly List<BoundOrigin> regionWork = new();
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
+
+    // RegionValue's scratch (its walk, the bound atoms it reads, and ReachesRegion's walk, which runs inside it), reused.
+    private readonly List<BoundOrigin> valueWork = new();
+    private readonly List<BoundOrigin> valueAtoms = new();
+    private readonly HashSet<BoundOrigin> valueRead = new(ReferenceEqualityComparer.Instance);
+    private readonly List<BoundOrigin> reachWork = new();
+    private readonly List<BoundOrigin> reachAtoms = new();
+    private readonly HashSet<BoundOrigin> reachSeen = new(ReferenceEqualityComparer.Instance);
 
     // The running pass's part of the rows (PassPart.Regions), which its steps write and reset; the driver hands it over (EnterPass),
     // Binding's own between Binds.
@@ -206,6 +217,62 @@ public sealed partial class Binding
     internal BoundOrigin RegionValueAtUse(BoundOrigin origin, Koto use)
         => this.regionValues == 0 || origin.Kind is not (OriginKind.Inference or OriginKind.Intersection) ? origin : this.RegionValueIn(origin, BodyOwner(use));
 
+    // DECISIONS BU-127's solved value of a local region (the owner's O-422 (a)), null for any other Origin and for a region with no bound:
+    // a `let` region's value as published; a `var` region's meet of its recorded bounds, complete once its body is bound (a nested body
+    // never bounds an environment region, BU-28), each read as stored with its receivers resolved and a `let` region of its own body as
+    // its value. The view's row 6 carries it for a body nested in the region's own, where the region at a longer end is judged as its
+    // value (MirOrigins.Unproven; the converse of O-400 (b)'s lemma). A `var` region of the own body that reaches back to the region (a
+    // cycle of definitions, which share one solved value) is read through its own bounds, so a value names regions of enclosing bodies
+    // and `var` regions of its own body that do not reach the region: each read moves down that body's definitions or one body outward.
+    // A `var` region's value is computed once per graph version (its bounds are complete once its body is bound; the owner's O-426 (a)).
+    internal BoundOrigin? RegionValue(BoundOrigin origin)
+    {
+        var region = this.Region(origin);
+        if (region is null || region.Value is not null || origin.Binder is not { } binder || !OwnVarRegion(origin, BodyOwner(binder)))
+        {
+            return region?.Value;
+        }
+
+        if (region.SolutionVersion == this.regionVersion)
+        {
+            return region.Solution;
+        }
+
+        var body = BodyOwner(binder);
+        var (value, bounded) = (BoundOrigin.Static, false);
+        (var work, var read) = (this.valueWork, this.valueRead);
+        work.Clear();
+        read.Clear();
+        work.Add(origin);
+        read.Add(origin);
+        while (work.Count != 0)
+        {
+            var current = work[^1];
+            work.RemoveAt(work.Count - 1);
+            var atoms = this.BoundAtoms(current, body, this.valueAtoms);
+            for (var i = 0; i < atoms.Count; i++)
+            {
+                var atom = atoms[i];
+                if (!OwnVarRegion(atom, body) || !this.ReachesRegion(atom, origin, body))
+                {
+                    (value, bounded) = (this.Meet(value, atom), true);
+                }
+                else if (read.Add(atom))
+                {
+                    work.Add(atom);
+                }
+            }
+        }
+
+        (region.Solution, region.SolutionVersion) = (bounded ? value : null, this.regionVersion);
+        return region.Solution;
+    }
+
+    // Whether `origin` is a `var` region of `body` (a reassignable region owner's region; O-422 (a)).
+    private static bool OwnVarRegion(BoundOrigin origin, Koto? body)
+        => origin is { Kind: OriginKind.Inference, Open: false, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder) && IsMutableDeclaration(binder) &&
+            ReferenceEquals(BodyOwner(binder), body);
+
     // The innermost function whose body holds `node`: a Closure's and a nested function's signature and body are their own.
     private static Koto? BodyOwner(Koto node)
     {
@@ -218,6 +285,54 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    // The atoms of a region's recorded bounds as RegionValue reads them, into `atoms` (cleared; RegionValue and ReachesRegion each pass
+    // their own, as they nest): each bound as stored, its receivers resolved, a `let` region of `body` as its value, a meet as its operands.
+    private List<BoundOrigin> BoundAtoms(BoundOrigin region, Koto? body, List<BoundOrigin> atoms)
+    {
+        atoms.Clear();
+        for (var i = 0; this.Region(region) is { } bounds && i < bounds.Parents.Count; i++)
+        {
+            var bound = this.RegionValueIn(this.ReceiverAtUse(bounds.Parents[i], bounds.Values[i]), body);
+            for (var k = 0; k < (bound.Kind == OriginKind.Intersection ? bound.Operands.Count : 1); k++)
+            {
+                atoms.Add(bound.Kind == OriginKind.Intersection ? bound.Operands[k] : bound);
+            }
+        }
+
+        return atoms;
+    }
+
+    // Whether the recorded bounds of `var` regions of `body` lead from `from` back to `target` (a cycle of definitions; RegionValue).
+    private bool ReachesRegion(BoundOrigin from, BoundOrigin target, Koto? body)
+    {
+        (var work, var seen) = (this.reachWork, this.reachSeen);
+        work.Clear();
+        seen.Clear();
+        work.Add(from);
+        seen.Add(from);
+        while (work.Count != 0)
+        {
+            var current = work[^1];
+            work.RemoveAt(work.Count - 1);
+            var atoms = this.BoundAtoms(current, body, this.reachAtoms);
+            for (var i = 0; i < atoms.Count; i++)
+            {
+                var atom = atoms[i];
+                if (ReferenceEquals(atom, target))
+                {
+                    return true;
+                }
+
+                if (OwnVarRegion(atom, body) && seen.Add(atom))
+                {
+                    work.Add(atom);
+                }
+            }
+        }
+
+        return false;
     }
 
     private BoundOrigin RegionValueIn(BoundOrigin origin, Koto? body)
@@ -283,6 +398,7 @@ public sealed partial class Binding
             region.Value = null;
             region.Body = null;
             region.Solved = null;
+            (region.Solution, region.SolutionVersion) = (null, -1);
         }
 
         this.regionValues = 0;
@@ -441,5 +557,10 @@ public sealed partial class Binding
 
         // J2: for a waited variable's own solution `(E and region)`, its region (RecordOpening); null for any other Origin.
         internal BoundOrigin? Solved { get; set; }
+
+        // A `var` region's BU-127 solved value (RegionValue) and the graph version it was computed at (-1: none).
+        internal BoundOrigin? Solution { get; set; }
+
+        internal int SolutionVersion { get; set; } = -1;
     }
 }
