@@ -150,6 +150,16 @@ internal readonly record struct DiagnosticFact(
 /// <param name="Span">The location, or null with no document.</param>
 internal readonly record struct LocatedRecord(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceDocument? Document, SourceSpan? Span);
 
+/// <summary>A module's syntax records taken out of their owner (PLAN G949 Stage 2 U2b; form (R)): the frozen library's syntax list, each
+/// record with its document; a reading compilation registers it read-only from U3.</summary>
+/// <param name="Facts">The records.</param>
+/// <param name="Documents">Each record's document, or null for none.</param>
+internal sealed record DetachedSyntax(DiagnosticFact[] Facts, SourceDocument?[] Documents)
+{
+    /// <summary>Gets an empty list.</summary>
+    internal static DetachedSyntax Empty { get; } = new([], []);
+}
+
 /// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.1.3).</summary>
 /// <param name="Source">The source table index of the recorded input.</param>
 /// <param name="Start">The span start.</param>

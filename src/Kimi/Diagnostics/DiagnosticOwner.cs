@@ -431,6 +431,30 @@ public sealed partial class DiagnosticOwner
         return [.. records];
     }
 
+    /// <summary>Takes a module's syntax records out of this owner as detached data (PLAN G949 Stage 2 U2b; form (R)): the frozen library
+    /// carries its own syntax list, which its freeze compilation's owner no longer holds (moved, never copied). Each record keeps its
+    /// document, since a later owner numbers its sources itself.</summary>
+    /// <param name="module">The module.</param>
+    /// <returns>The module's syntax records.</returns>
+    internal DetachedSyntax TakeSyntax(Kotonoha module)
+    {
+        if (!this.modules.TryGetValue(module, out var index) || index >= this.syntax.Count)
+        {
+            return DetachedSyntax.Empty;
+        }
+
+        var facts = this.syntax[index].Facts;
+        var documents = new SourceDocument?[facts.Count];
+        for (var i = 0; i < documents.Length; i++)
+        {
+            documents[i] = facts[i].Source >= 0 ? this.sources[facts[i].Source].Document : null;
+        }
+
+        var taken = new DetachedSyntax([.. facts], documents);
+        this.InvalidateSyntax(index);
+        return taken;
+    }
+
     /// <summary>Gets a value indicating whether the syntax of one document holds an Error; a decision inside one parse uses it.</summary>
     /// <param name="document">The document.</param>
     /// <returns><see langword="true"/> when lexing or parsing the document recorded an Error.</returns>

@@ -40,13 +40,13 @@ public sealed partial class Kotonoha
     /// Gets the diagnostics associated with this source unit.
     /// </summary>
     [IgnoreMember]
-    public DiagnosticCollection DiagnosticCollection { get; private set; }
+    public DiagnosticCollection DiagnosticCollection { get => this.diagnosticCollection ?? throw Detached(); private set => this.diagnosticCollection = value; }
 
     /// <summary>
     /// Gets the compilation that owns this source unit.
     /// </summary>
     [IgnoreMember]
-    public Compilation Compilation { get; private set; }
+    public Compilation Compilation { get => this.compilation ?? throw Detached(); private set => this.compilation = value; }
 
     /// <summary>
     /// Gets the stable identifier derived from the source unit name.
@@ -209,12 +209,23 @@ public sealed partial class Kotonoha
 
     private List<DocumentationSource>? documentationSources;
 
+    // The compilation and collection; both null once the frozen library is detached (Detach).
+    [IgnoreMember]
+    private Compilation? compilation;
+
+    [IgnoreMember]
+    private DiagnosticCollection? diagnosticCollection;
+
     [IgnoreMember]
     private List<DiagnosticKey>? omittedDeclarations;
 
     /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
     [IgnoreMember]
     public IReadOnlyList<DocumentationSource> DocumentationSources => (IReadOnlyList<DocumentationSource>?)this.documentationSources ?? [];
+
+    /// <summary>Detaches the frozen library's module from its freeze compilation (PLAN G949 Stage 2 U2b; design 5.2): a later read of its
+    /// compilation or collection, so a library node's, is the internal-invariant form.</summary>
+    internal void Detach() => (this.compilation, this.diagnosticCollection) = (null, null);
 
     internal void RecordDocumentation(DocumentationSource? documentation)
     {
@@ -418,6 +429,8 @@ public sealed partial class Kotonoha
 
     // A fully qualified, NUL-free directory is normalized once; any other value is used as given, so no Path call throws (an
     // API value: Project.TryCreate never produces one), and such a base matches only paths with its exact text.
+    private static InvalidOperationException Detached() => new("A node of the frozen Kimi library has no compilation (InternalInvariant; PLAN G949 Stage 2 U2b).");
+
     private static string Normalize(string directory)
         => Path.IsPathFullyQualified(directory) && !directory.Contains('\0') ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : directory;
 

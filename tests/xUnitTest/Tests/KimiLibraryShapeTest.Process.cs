@@ -7,7 +7,6 @@ using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
 using Xunit;
-using Printer = XunitTest.SemanticSnapshotTest.SemanticPrinter;
 
 namespace XunitTest;
 
@@ -38,7 +37,6 @@ public partial class KimiLibraryShapeTest
         var library = KimiLibrary.Of(target.Length == 0 ? TargetTriple.Invalid : TargetTriple.Parse(target));
         Assert.True(library.Kotonoha.Syntax.Frozen);
         Assert.Null(library.Layer.Refusal);
-        Assert.True(library.Kotonoha.Compilation.Binding.Result.IsComplete);
     }
 
     // s21a and s21b: a direct freeze adds no entry to Of's store, and the freeze's Binding holds the library it made (the freeze never
@@ -89,8 +87,9 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void ALibraryCallNamesNoBindingMadeShim()
     {
-        var library = KimiLibrary.Of(TargetTriple.Parse(WindowsProfile.Target));
-        var binding = library.Kotonoha.Compilation.Binding;
+        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var library = KimiLibrary.Freeze(freeze);
+        var binding = freeze.Binding;
         var shims = new HashSet<object>(ReferenceEqualityComparer.Instance);
         foreach (var name in new[] { "builtinArithmetic", "builtinEquals", "builtinCompare" })
         {
@@ -109,7 +108,8 @@ public partial class KimiLibraryShapeTest
         var calls = 0;
         foreach (var node in library.Kotonoha.Syntax.Nodes)
         {
-            if (node is InvocationKoto call && call.CallOf() is { } plan)
+            // The call's plan row: a frozen node names no compilation (the Koto currency getters route through it until U0b-P3).
+            if (node is InvocationKoto && HirTables.PlanOf(node).Plan is CallPlan { Kind: not CalleeKind.Value } plan)
             {
                 calls++;
                 Assert.DoesNotContain(plan.Target, shims);
@@ -133,11 +133,20 @@ public partial class KimiLibraryShapeTest
         return KimiLibrary.Unfrozen(target, kimigayo, project);
     }
 
-    // The frozen library's printed syntax and published HIR.
+    // The frozen library's syntax and published HIR, read from its table alone (a frozen library names no compilation, U2b): each node's
+    // id, kind, Op, Type and symbol.
     private static string FrozenDump(KimiLibrary library)
     {
-        var printer = new Printer(true);
-        printer.Visit(library.Kotonoha.RootKoto);
-        return printer + "\n" + printer.Hir;
+        var text = new System.Text.StringBuilder();
+        foreach (var node in library.Kotonoha.Syntax.Nodes)
+        {
+            if (node is not null)
+            {
+                text.Append(node.SyntaxId).Append(' ').Append(node.Akind).Append(' ').Append(HirTables.Op(node)).Append(' ').Append(HirTables.TypeOf(node))
+                    .Append(' ').Append(HirTables.Symbol(node)?.Name).Append('\n');
+            }
+        }
+
+        return text.ToString();
     }
 }
