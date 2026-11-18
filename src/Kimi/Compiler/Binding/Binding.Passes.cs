@@ -81,9 +81,16 @@ public sealed partial class Binding
     // The program pass: the source modules, with Binding's own part.
     private BindingPass ProgramPass => new(this.compilation.SourceModules, null, this.programPart);
 
-    // Every module of the compilation, the set a reader outside a pass walks (a family's Values; the composed views' modules): the source
-    // modules, then the library, with Binding's own part.
-    private BindingPass Modules => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
+    // Every module of the compilation (Compilation.BoundModules: the source modules, then the library), the set a reader outside a pass
+    // walks (a family's Values; the composed views' modules), with Binding's own part.
+    private BindingPass Modules
+    {
+        get
+        {
+            var (sources, library) = this.compilation.BoundModules;
+            return new(sources, library, this.programPart);
+        }
+    }
 
     // The one currency rule: a stamp is current when it equals its counter's value or is Frozen. A counter that could reach a Frozen
     // value skips it: the run counter's uint image (BeginRun) and the requirement counter (SolveOriginRequirements); the edit counter
