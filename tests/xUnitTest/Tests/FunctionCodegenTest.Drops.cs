@@ -79,14 +79,16 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void EachInitializedStringIsDestroyedOnce()
     {
-        var ir = GeneratedIr.Parse(Generate(Drops));
+        var c = Analyze(Drops);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var line = LineOf(ir, c, view: false);
         var body = ir.Startup;
         var strings = body.Instructions.Where(static x => x.Shape == "alloca %kimi.string, align 8").ToArray();
         var literals = body.Instructions.Where(static x => x.Opcode == "store" && x.Shape.StartsWith("store %kimi.string", StringComparison.Ordinal))
             .Select(static x => Assert.Single(x.Operands)).ToArray();
         var borrows = body.Instructions.Where(static x => x.Shape == "store ptr %, ptr %, align 8").Select(static x => x.Operands[0]).ToArray();
-        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == ir.Function("__kimi_write_line")).ToArray();
-        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != ir.Function("__kimi_write_line")).ToArray();
+        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == line).ToArray();
+        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != line).ToArray();
         Assert.Equal(3, strings.Length);
         Assert.Equal(2, literals.Distinct().Count());
         Assert.Equal(literals, borrows);
@@ -405,17 +407,18 @@ public sealed partial class FunctionCodegenTest
         var ends = bodies.Select(x => (Rows: table.RowsOf(x.Ordinal).ToArray(), Points: table.PointsOf(x.Ordinal).ToArray(),
             Flags: table.FlagsOf(x.Ordinal), Views: table.ViewsOf(x.Ordinal), Fact: table.Incomplete(x.Ordinal))).ToArray();
         table.Clear();
+        table.EndLibrary(); // The bodies are the program store's, as the version's stepping left them.
         for (var i = 0; i < bodies.Length; i++)
         {
             if (bodies[i].Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" })
             {
-                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default, -1));
+                table.Close(bodies[i].Ordinal, 0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default));
                 continue;
             }
 
             table.Rows.AddRange(ends[i].Rows);
             table.Points.AddRange(ends[i].Points);
-            table.Close(ends[i].Flags, ends[i].Views, ends[i].Fact);
+            table.Close(bodies[i].Ordinal, ends[i].Flags, ends[i].Views, ends[i].Fact);
         }
 
         Assert.False(c.Generate(TextWriter.Null));
@@ -441,7 +444,7 @@ public sealed partial class FunctionCodegenTest
     {
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
+        var first = program.VersionBodies.ToArray().Where(x => x.Ordinal < body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length); // In the program's store.
         var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
         program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
     }

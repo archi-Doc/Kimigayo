@@ -14,7 +14,8 @@ namespace Kimi.Compiler;
 // Must not: verify a path (ContractMatching, InheritedConformances) or decide availability at a use (ResolveConformance).
 public sealed partial class Binding
 {
-    private readonly ImplTable impls = new();
+    // The compilation's overlay over the library's base (LibraryLayer.Impls), made with the Binding.
+    private readonly ImplTable impls;
 
     // Early reads of the conformances (VerifyEarlyProjections), each with the path end its producer formed (End): a Projection over a
     // declared struct or enum that found no associated Type before this pass's conformance declarations registered (NoteEarlyProjection),

@@ -11,13 +11,13 @@ public sealed partial class Binding
 
     internal readonly record struct ObjectErasureEvidence(BoundType Source, BoundType Target, FunctionKoto? Entry);
 
-    private Dictionary<Koto, ObjectErasureEvidence>? objectErasures;
+    private readonly ObjectErasureRows objectErasures;
 
     // Evidence belongs to this operation and source snapshot, never to every value of Source.
     internal bool TryGetObjectErasure(Koto use, out ObjectErasureEvidence evidence)
     {
         evidence = default;
-        return HirTables.HasCurrentBinding(use) && this.objectErasures is not null && this.objectErasures.TryGetValue(use, out evidence);
+        return HirTables.HasCurrentBinding(use) && this.objectErasures.TryGetValue(use, out evidence);
     }
 
     // SPEC 3.4.3: a field access lends the handle's payload in the access mode already checked by Binding.
@@ -41,7 +41,7 @@ public sealed partial class Binding
         var proof = inherited ? ConstraintProof.Proven : this.ProveOwned(source, use);
         if (proof == ConstraintProof.Proven)
         {
-            (this.objectErasures ??= new(ReferenceEqualityComparer.Instance))[use] = new(source, target, entry);
+            this.objectErasures[use] = new(source, target, entry);
             return true;
         }
 
@@ -66,7 +66,7 @@ public sealed partial class Binding
             // Each proven immutable alias is a reusable fact for this binding pass, not an Owned Type premise.
             for (var i = mark; i < this.objectErasureAliases.Count; i++)
             {
-                (this.objectErasures ??= new(ReferenceEqualityComparer.Instance))[this.objectErasureAliases[i]] = new(source, source, entry);
+                this.objectErasures[this.objectErasureAliases[i]] = new(source, source, entry);
             }
 
             return true;
@@ -209,7 +209,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
-            if (IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(actual, this.ConstraintScope(conversion)))
+            if (this.IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(actual, this.ConstraintScope(conversion)))
             {
                 return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }
@@ -239,5 +239,20 @@ public sealed partial class Binding
         Complete(conversion.Right, result);
         conversion.ConversionBinding = ConversionBinding.ObjectUpcast;
         return Complete(conversion, result);
+    }
+
+    /// <summary>The `objectErasures` family's one accessor (DECISIONS BU-220): a pass family, an operation's or an immutable alias's
+    /// erased-view evidence kept in its node's module's NodeColumns at its SyntaxId; absent after a pass until the column's first write.
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct ObjectErasureRows(Binding binding)
+    {
+        internal ObjectErasureEvidence this[Koto use]
+        {
+            set => HirTables.Of(use).Families.ObjectErasures.Ref(use.SyntaxId, binding) = value;
+        }
+
+        // A present row's Source is a Type, so the column's default, an absent row, has none.
+        internal bool TryGetValue(Koto use, out ObjectErasureEvidence evidence)
+            => (evidence = use.SyntaxOwner is { } table ? table.Hir.Families.ObjectErasures.Get(use.SyntaxId, binding) : default).Source is not null;
     }
 }

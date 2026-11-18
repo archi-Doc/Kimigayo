@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<IndexKoto, InvocationKoto> viewRangeCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly ViewRangeCallRows viewRangeCalls;
 
     internal InvocationKoto? ViewRangeCall(Koto node)
         => KotoHelper.UnwrapParentheses(node) is IndexKoto { BindingState: BindingState.Resolved } index &&
@@ -46,7 +47,7 @@ public sealed partial class Binding
         if (!range && shared is not null)
         {
             this.uniqIndexing[source] = new(true, null);
-            if (ExclusivelyAcquirable(source.Left))
+            if (this.ExclusivelyAcquirable(source.Left))
             {
                 this.BindViewCall(source, scope, core, key, false, true);
             }
@@ -81,5 +82,21 @@ public sealed partial class Binding
         this.ResetSynthetic(call);
         this.ResetSynthetic(generic);
         return this.BindSynthesizedCall(source, call, scope) is null ? null : call;
+    }
+
+    /// <summary>The `viewRangeCalls` family's one accessor (DECISIONS BU-220): a kept family, a view's range selection's synthesized
+    /// `slice` call (SPEC 4.7), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct ViewRangeCallRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?> Values => new(binding, static (table, _) => table.Hir.Families.ViewRangeCalls.Enumerate());
+
+        internal InvocationKoto this[IndexKoto node]
+        {
+            set => HirTables.Of(node).Families.ViewRangeCalls.Ref(node.SyntaxId) = value;
+        }
+
+        internal bool TryGetValue(IndexKoto node, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.ViewRangeCalls.Get(node.SyntaxId) : null) is not null;
     }
 }

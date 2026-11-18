@@ -517,7 +517,8 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + "func h<T>(value: T) => ()\nfunc f(value: " + Huge + ") => h(value@move)\n" +
             "group J\n    public var j: i32 = 0\ngroup K\n    public var k: i32 = P.init(1, ()).n\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var program = new MirBuilder(c).Build(); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Assert.Empty(program.Findings);
         Break(program, "f", MirBodyKind.Fn);
         Break(program, "j", MirBodyKind.StaticInit);
@@ -535,7 +536,8 @@ public sealed partial class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(InBlock + "require outer(3) == outer(3) and outer(true) == outer(true) else => $abort(\"nested\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var program = new MirBuilder(c).Build(); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Break(program, "inner", MirBodyKind.Fn);
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.Unsupported_Kd, "inner(x)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
@@ -1070,13 +1072,21 @@ public sealed partial class InstanceCollectorTest
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G856): a Closure erased in `adder<T>` holds T in its instantiation,
+    // so `T is Copy` alone leaves the erasure invalid (AnErasureIsItsAdapterItem's program until G856, accepted then).
+    [Fact]
+    public void AnErasureInAGenericFunctionNeedsItsParameterOwned()
+        => Assert.Equal(
+            "UnprovenConstraint_Kd f",
+            CheckRecords("func adder<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n    return e(x)\nrequire adder(1) == 1 else => $abort(\"erasure\")\n"));
+
     // K 4.5 row 13: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
     // erased Type and the erased Function Type (DECISIONS R5-M108) and represented by the first Type that requests it, whose target is the
     // body the Closure or Item runs; a call of the Function Type value has no target.
     [Fact]
     public void AnErasureIsItsAdapterItem()
     {
-        var c = MirBuildTest.Compile("func adder<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n" +
+        var c = MirBuildTest.Compile("func adder<T>(x: T) -> T\n    T is Copy and Owned\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n" +
             "    return e(x)\n" +
             "func pick<T>(value: T) -> T => value@move\nlet h: (i32) -> i32 = pick<i32>\nrequire adder(1) == 1 and h(2) == 2 else => $abort(\"erasure\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -1172,9 +1182,10 @@ public sealed partial class InstanceCollectorTest
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
     }
 
-    // SPEC 15.7.1, 16.3.2 (R8-U1): replace is a body whose destroyValues call destroys the old value in place, so each of its instances
-    // over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one its direct calls and its Item's
-    // Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and swap's instances destroy nothing.
+    // SPEC 15.7.1, 16.3.2, 5.2.3 (R8-U1, R8-M17): replace is a body whose discarded Take `_ = (*place)@move` destroys the old value in
+    // place, so each of its instances over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one
+    // its direct calls and its Item's Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and
+    // swap's instances destroy nothing.
     [Fact]
     public void ReplacesBodyTargetsTheGlueOfTheValueItDestroysInPlace()
     {
@@ -1281,16 +1292,16 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(Targets(program, set, "Fn f"));
     }
 
-    // K 4.5 rows 6, 12 (DECISIONS R5-M74): an Item of a function without a MIR body runs what its call does, what its intrinsic's row names
-    // (Text.writer's destination's reserve witness).
+    // K 4.5 rows 8, 12 (DECISIONS R5-M74): an Item of a function without a MIR body runs what its call does, what its intrinsic's row names
+    // (a creation's payload descriptor, at the Item and at its Value call; Text.writer's row until R8-W2 b2-1 made it a body).
     [Fact]
     public void ABodylessFunctionsItemIsWhatItsCallRuns()
     {
-        var source = FormatSource
-            .Replace("var writer = Text.writer(sink@uniq)", "let make = Text.writer<Sink>\n    var writer = make(sink@uniq)", StringComparison.Ordinal);
-        var (program, set) = Collect(source);
+        var (program, set) = Collect("struct P\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+            "func f() -> rc/P\n    let make = Kimi.Intrinsics.makeRc<P>\n    return make(P.init(1))\nfunc g() -> rc/P => Kimi.Intrinsics.makeRc(P.init(2))\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        Assert.Equal(["Fn reserve", "Fn reserve"], Calls(program, set, "Fn toSink").Where(static x => x == "Fn reserve"));
+        var descriptor = Assert.Single(Targets(program, set, "Fn g"), static x => x.StartsWith("Object", StringComparison.Ordinal));
+        Assert.Equal([descriptor, descriptor], Targets(program, set, "Fn f").Where(static x => x.StartsWith("Object", StringComparison.Ordinal)));
     }
 
     // K 4.5 rows 2, 12 and 13 (DECISIONS R5-M136): an intrinsic's Type argument is read only where its row reads one
@@ -1507,18 +1518,19 @@ public sealed partial class InstanceCollectorTest
         const string ShowBox = "library Fn toString in group Text [Text, Box]";
         const string FillBox = "library Fn tryFormat in group Text [Text, Box, ]";
         const string Heap = "library Fn heap in group Text"; // An owning interpolation's buffer (R8-W2 c3b; before: the FormatBuffer intrinsic).
+        const string Writer = "library Fn writer in group Text"; // Its adapter, a specialization's body (R8-W2 b2-1; before: the ErasedWriter intrinsic).
         const string Finish = "library Fn finish in struct Utf8Writer";
         const string IntoString = "library Fn intoString in struct HeapBuffer";
         Assert.Equal([ShowBox], Calls(program, set, "Fn show [Box]"));
         Assert.Equal([ShowI32], Calls(program, set, "Fn show [i32]"));
-        Assert.Equal([Heap, WriteBox, Finish, IntoString], Calls(program, set, ShowBox));
-        Assert.Equal([Heap, WriteI32, Finish, IntoString], Calls(program, set, ShowI32));
+        Assert.Equal([Heap, Writer, WriteBox, Finish, IntoString], Calls(program, set, ShowBox));
+        Assert.Equal([Heap, Writer, WriteI32, Finish, IntoString], Calls(program, set, ShowI32));
         Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
         const string FormatI32 = "library Fn format in group IntegerFormat [i32]";
         Assert.Equal([Status, FormatI32, Failure], Calls(program, set, WriteI32));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, FormatI32));
         Assert.Equal([FillBox], Calls(program, set, "Fn fill [Box]"));
-        Assert.Equal(["library Fn fixed in group Text [Text, ]", WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
+        Assert.Equal(["library Fn fixed in group Text [Text, ]", Writer, WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
         Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
         Assert.Equal([Status, "Fn format", Failure], Calls(program, set, WriteBox));
         Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));
@@ -1574,16 +1586,23 @@ public sealed partial class InstanceCollectorTest
         Assert.Contains("library Fn format in group IntegerFormat [u8]", Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, u8]"));
     }
 
-    // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; one over a
-    // fixed buffer has none, though its reserve is a body: the runtime's standard-buffer arm reserves for it (R8-W1a, until W2).
+    // K 4.5 row 6, SPEC 22.10.1, 8.13.3 (R8-W2 b2-1): an adapter over a user BufferWriter is Text.writer's generic body, whose
+    // reserveDispatch is the item of its destination's reserve witness; one over a fixed buffer is the FixedBuffer specialization, selected
+    // for its call, which names no reserve target, Utf8Writer.reserve's Fixed arm reserving for it (fail-before: the ErasedWriter
+    // intrinsic's item, without a target for a fixed buffer by W1a's clause on the legacy writer kind).
     [Fact]
     public void AnErasedWriterIsItsDestinationsReserveWitness()
     {
         var (program, set) = Collect(FormatSource);
-        Assert.Equal(["Fn init", "Fn reserve", "Fn init", "Fn emit [Box]"], Calls(program, set, "Fn toSink"));
-        var reserve = set.Items[set.Targets(Item(program, set, "Fn toSink"))[1].Item];
+        const string User = "library Fn writer in group Text [Text, Sink]";
+        Assert.Equal(["Fn init", User, "Fn init", "Fn emit [Box]"], Calls(program, set, "Fn toSink"));
+        var reserve = set.Items[set.Targets(Item(program, set, User))[0].Item];
         Assert.Equal("struct Sink", $"{program.Body(reserve.BodyOrdinal).Key.Decl!.Scope.Owner}");
-        Assert.Equal(["library Fn fixed in group Text [Text, ]", "Fn emit [i32]"], Calls(program, set, "Fn toFixed")); // Text.fixed is a body (R8-W1c).
+        const string Standard = "library Fn writer in group Text"; // A specialization: no Type parameter of its own.
+        Assert.Equal(["library Fn fixed in group Text [Text, ]", Standard, "Fn emit [i32]"], Calls(program, set, "Fn toFixed")); // Text.fixed is a body (R8-W1c).
+        var standard = Enumerable.Range(0, set.Items.Length).Where(x => Label(program, set.Items[x]) == Standard).ToArray();
+        Assert.Equal(2, standard.Length); // FixedBuffer's (toFixed) and HeapBuffer's (show's Text.toString).
+        Assert.All(standard, x => Assert.DoesNotContain(set.Targets(x).ToArray(), y => Label(program, set.Items[y.Item]).Contains("reserve", StringComparison.Ordinal)));
     }
 
     // K 4.3, F package 4.6, DECISIONS R5-M166: a built-in comparison of a composite Self, a generic instance's comparison over its Type
@@ -1658,7 +1677,7 @@ public sealed partial class InstanceCollectorTest
             var (function, representative) = (set.Items[shim].Key.Symbol!, set.Items[shim].Representative);
             Assert.Same(set.Items[shim].RepresentativeType, representative?.Self);
             _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
-            var expected = function.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? "bool" : "i32";
+            var expected = TyCtxt.Contract(function).LibraryDeclaration == KimiDeclarationId.Equatable ? "bool" : "i32";
             var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, TyCtxt.Signature(function, null, x, out _)!)!));
             Assert.Equal([expected, "ref/i32", "ref/i32"], types);
         }
@@ -2172,6 +2191,33 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(gap ? [(DiagnosticCode.Unsupported_Kd, add.Source.Syntax)] : [], program.Records(MirRecordClass.Collection).Select(static x => (x.Code, x.Subject)));
     }
 
+    // PLAN G950 (the Back's C-378 (2); design §R1.4's M3 with a record, G950-0's review N1): A3b is judged work, run in the root loop every
+    // version and never kept with a library body's template: under the library's root range, one collector over two versions records a
+    // closed operation of the table seeded into a library body after each build (an i128 division of a new local in a new unreachable
+    // block, as above) in each version, at its location, once.
+    [Fact]
+    public void TheLibraryRangeChecksALibraryBodyInEveryVersion()
+    {
+        var c = Compilation.CreateForTest();
+        var (builder, analysis, collector) = (new MirBuilder(c), new MirAnalysis(c.Types), new InstanceCollector(c.Types, c.Layout));
+        var wide = BoundType.Primitives["i128"];
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+            var program = analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1); // The collector replays stepped bodies (PLAN G951).
+            var body = program.LibraryBodies[0];
+            var source = body.Blocks[0].Terminator.Source;
+            var operand = MirOperand.Copy(new(body.AddLocal(new(wide, MirLocalKind.Temp, source)))); // A stored body interns nothing.
+            var first = body.AddOperand(operand);
+            _ = body.AddOperand(operand);
+            var block = body.AddBlock();
+            body.Push(block, MirStatement.Assign(new(0), new(MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Div, Start: first, Count: 2, Type: wide), source));
+            body.Terminate(block, MirTerminator.Unreachable(source));
+            _ = collector.Run(program, SyntaxTable.LibraryModule + 1);
+            Assert.Equal([(version, DiagnosticCode.Unsupported_Kd, body.Subject(source))], program.Records(MirRecordClass.Collection).Select(x => (version, x.Code, x.Subject)));
+        }
+    }
+
     // K 4.7: an operation whose Types depend on slots is no definition-stage record; without an instance it has none.
     [Fact]
     public void AnOpenOperationIsNoDefinitionStageRecord()
@@ -2242,7 +2288,7 @@ public sealed partial class InstanceCollectorTest
         var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
         Assert.Equal(expected, c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
         var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin);
-        Assert.Equal(refused.Length == 0, shims.Any(static x => x.Key.Symbol!.CompilerFunction == CompilerFunctionKind.BuiltinArithmetic));
+        Assert.Equal(refused.Length == 0, shims.Any(static x => ArithmeticContracts.IsArithmetic(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
     }
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
@@ -2433,7 +2479,8 @@ public sealed partial class InstanceCollectorTest
         var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var program = new MirBuilder(c).Build(); // Uncollected: the compilation's own collection roots both modules.
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: the compilation's own collection roots both modules.
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Assert.Empty(program.Records(MirRecordClass.Construction));
         var main = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "main" });
         Assert.Contains(
@@ -2601,14 +2648,14 @@ public sealed partial class InstanceCollectorTest
             .Order(StringComparer.Ordinal).ToArray();
     }
 
-    // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ErasedWriter, StaticEnsure, the creations and DestroyValues name a
+    // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ReserveDispatch, StaticEnsure, the creations and DestroyValues name a
     // target (a type test and a clone acquire nothing, SPEC 13.6.4).
     [Fact]
     public void OnlyTheWhitelistedIntrinsicsCarryATarget()
     {
         var targets = Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None && IntrinsicRows.Of(x).Target != IntrinsicTarget.None);
         Assert.Equal(
-            [IntrinsicId.DestroyValues, IntrinsicId.ErasedWriter, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
+            [IntrinsicId.DestroyValues, IntrinsicId.ReserveDispatch, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }
@@ -2667,25 +2714,6 @@ public sealed partial class InstanceCollectorTest
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
 
-    // The targets at each call site of an item's body whose callee is a compiler function or a value, joined (empty: none).
-    private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
-    {
-        var item = Item(program, set, label);
-        var body = program.Body(set.Items[item].BodyOrdinal);
-        var sites = new List<string>();
-        for (var b = 0; b < body.Blocks.Length; b++)
-        {
-            if (body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call &&
-                (call.Callee.Kind == MirCalleeKind.Value || call.Callee.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None)))
-            {
-                var at = new MirLocation(b, body.Blocks[b].Count);
-                sites.Add(string.Join(", ", set.Targets(item).ToArray().Where(x => x.At == at).Select(x => Label(program, set.Items[x.Item]))));
-            }
-        }
-
-        return [.. sites];
-    }
-
     // An item's targets but the glue of the values its body drops.
     private static string[] Calls(MirProgram program, CheckedSet set, string label)
         => Targets(program, set, label).Where(static x => !x.StartsWith("DropGlue ", StringComparison.Ordinal)).ToArray();
@@ -2708,8 +2736,8 @@ public sealed partial class InstanceCollectorTest
         {
             var variant = item.Key.Kind switch
             {
-                MonoKind.Builtin when item.Key.Variant != 0 => $" {item.Key.Symbol!.CompilerFunction} {(ComparisonMode)item.Key.Variant}",
-                MonoKind.Builtin => " " + item.Key.Symbol!.CompilerFunction,
+                MonoKind.Builtin when item.Key.Variant != 0 => $" {Shim(item.Key.Symbol!)} {(ComparisonMode)item.Key.Variant}",
+                MonoKind.Builtin => " " + Shim(item.Key.Symbol!),
                 MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
                 _ => string.Empty,
             };
@@ -2735,6 +2763,15 @@ public sealed partial class InstanceCollectorTest
             FunctionKoto { IsAnonymous: false } named => named.Name,
             PropertyAccessorKoto accessor => ((PropertyKoto)accessor.Parent!).NameKoto.IdentifierName + "." + accessor.AccessorKind,
             _ => Enclosing(node.Parent!),
+        };
+
+        // A Builtin item's shim by its function's Contract (Binding.PrepareBuiltinTargets).
+        static string Shim(BindingSymbol function) => TyCtxt.Contract(function).LibraryDeclaration switch
+        {
+            KimiDeclarationId.Equatable => "BuiltinEquals",
+            KimiDeclarationId.Comparable => "BuiltinCompare",
+            var contract when ArithmeticContracts.IsArithmetic(contract) => "BuiltinArithmetic",
+            var contract => throw new InvalidOperationException($"{function.Name} of {contract} is no shim."),
         };
     }
 

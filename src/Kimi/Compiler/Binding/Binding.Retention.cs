@@ -14,7 +14,7 @@ namespace Kimi.Compiler;
 // - Responsibility: what such a callable relates, read from its signature alone (AddErasedRelations): each fixed Origin of an input
 //   outlives each fixed Origin of an output.
 // - Inputs: the instantiated signature Type and the declaration whose syntax binds its per-call Origins, its Binder: a Function Type's
-//   FunctionTypeKoto (FunctionTypeBinder, null where it binds none), a requirement's or a Virtual's own declaration, a Property
+//   FunctionTypeKoto (BoundType.Binder, null where it binds none), a requirement's or a Virtual's own declaration, a Property
 //   accessor's Binder (BoundAccessor.Binder: its declaration, else its Property's), never the accessor's FunctionKoto. TyCtxt.ErasedCallee
 //   gives one for a requirement or Virtual callee on an abstract Self, TyCtxt.Retains for a
 //   Value callee's signature, and HandedSignatures (with TyCtxt.RequirementSignatures) and HandedCallables for each callable a contract
@@ -297,7 +297,7 @@ public sealed partial class Binding
     // A Callable premise's signature (HandedSignatures), reached.
     private void Hand(BoundType callable, List<ErasedSignature> handed)
     {
-        handed.Add(new(callable, FunctionTypeBinder(callable)));
+        handed.Add(new(callable, callable.Binder));
         this.Reach(callable);
     }
 
@@ -485,7 +485,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < this.retentionCallables.Count; i++)
         {
-            this.AddErasedSignature(environment, new(this.retentionCallables[i], FunctionTypeBinder(this.retentionCallables[i])));
+            this.AddErasedSignature(environment, new(this.retentionCallables[i], this.retentionCallables[i].Binder));
         }
     }
 

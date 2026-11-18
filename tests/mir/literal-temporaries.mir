@@ -128,7 +128,7 @@ fn assignSource @76
   _1: ref/i32 arg n @77
   _2: ref/i32 var mut x @81 s1
   _3: () temp @86 s1
-  _4: ref/i32 temp @87 s1
+  _4: ref/i32 temp (Assigned) @87 s1
   _5: i32 temp @88 s1
   _6: i32 temp (Result) @76
   s1: lexical in s0 @80

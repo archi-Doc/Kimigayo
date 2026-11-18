@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -580,22 +581,22 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "heap", "ErasedWriter", "hint 12", "deferLiteral \"n=\"", "hint 1", "write", "hint 0", "format \"!\"", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 12", "deferLiteral \"n=\"", "hint 1", "write", "hint 0", "format \"!\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "hint 11", "deferLiteral \"lit\"", "hint 0", "write", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 11", "deferLiteral \"lit\"", "hint 0", "write", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"\\(\"only\")\"\n",
-        new[] { "heap", "ErasedWriter", "hint 0", "format \"only\"", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 0", "format \"only\"", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "heap", "ErasedWriter", "hint 2", "format \"x\"", "hint 1", "format \"y\"", "hint 0", "format \"z\"", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 2", "format \"x\"", "hint 1", "format \"y\"", "hint 0", "format \"z\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "hint 12", "deferLiteral \"a\"", "hint 11", "deferLiteral \"b\"", "hint 0", "write", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 12", "deferLiteral \"a\"", "hint 11", "deferLiteral \"b\"", "hint 0", "write", "finish", "intoString" })]
     [InlineData(
         "func f<T>(a: ref/string, b: ref/T) -> string\n    T is Utf8Format\n    return \"\\(a)\\(b)\"\n",
-        new[] { "heap", "ErasedWriter", "hint (0 + hint(T))", "write", "hint 0", "write", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint (0 + hint(T))", "write", "hint 0", "write", "finish", "intoString" })]
     public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
@@ -609,22 +610,22 @@ public sealed partial class MirBuildTest
     [InlineData(
         "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
         "[13 of u8]",
-        new[] { "fixed", "ErasedWriter", "hint 11", "deferLiteral \"n=\"", "hint 0", "write", "text", "writeLine" },
-        new[] { "ErasedWriter", "deferLiteral", "fixed", "text", "write", "writeLine" })]
+        new[] { "fixed", "writer", "hint 11", "deferLiteral \"n=\"", "hint 0", "write", "text", "writeLine" },
+        new[] { "deferLiteral", "fixed", "text", "write", "writeLine", "writer" })]
     [InlineData(
         "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
         null,
-        new[] { "heap", "ErasedWriter", "hint 0", "deferLiteral \"s=\"", "hint 0", "write", "finish", "intoString", "writeLine" },
-        new[] { "ErasedWriter", "deferLiteral", "finish", "heap", "intoString", "write", "writeLine" })]
+        new[] { "heap", "writer", "hint 0", "deferLiteral \"s=\"", "hint 0", "write", "finish", "intoString", "writeLine" },
+        new[] { "deferLiteral", "finish", "heap", "intoString", "write", "writeLine", "writer" })]
 #pragma warning disable SA1118 // The generic line's healthy path, wrapped at the 160-character line limit.
     [InlineData(
         "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
         "[(2 + bound(T)) of u8]",
         new[]
         {
-            "fixed", "heap", "ErasedWriter", "hint (0 + hint(T))", "deferLiteral \"v=\"", "hint 0", "write", "finish", "intoString", "writeLine",
+            "fixed", "heap", "writer", "hint (0 + hint(T))", "deferLiteral \"v=\"", "hint 0", "write", "finish", "intoString", "writeLine",
         },
-        new[] { "ErasedWriter", "ErasedWriter", "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine" })]
+        new[] { "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine", "writer", "writer" })]
 #pragma warning restore SA1118
     public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
     {
@@ -675,12 +676,43 @@ public sealed partial class MirBuildTest
         {
             var calls = new List<string>();
             _ = Next(arm, calls);
-            Assert.Equal("ErasedWriter", calls[0]); // Each arm makes only the writer; the writes follow their join.
+            Assert.Equal("writer", calls[0]); // Each arm makes only the writer (Text.writer's call, R8-W2 b2-1); the writes follow their join.
         }
 
         var lines = MirDumpTest.Unsited(program, body).Split('\n').Select(static x => x.TrimStart(' ', '*')).ToArray();
         Assert.Equal(["flags 1"], lines.Where(static x => x.StartsWith("flags", StringComparison.Ordinal)));
         Assert.Single(lines, x => x.StartsWith($"drop _{heap.Place.Root} ", StringComparison.Ordinal) && x.Contains("[flag f0]", StringComparison.Ordinal));
+    }
+
+    // SPEC 22.7, 22.10.2, 22.10.3 (R8-W2 b2-1; the Middle's C-330 note N3, its twin g2): a direct line embedded in another formatting
+    // plan is its own expansion inside that plan's writes: the outer plan's buffer and its writer, then, where the embedded expression
+    // is evaluated, the inner line's region of exactly its bytes, Text.fixed, its own Text.writer call, its writes and its end, then the
+    // outer write of the line's Unit ("()"); the outer position's hint is stored before its expression is evaluated (the builder's
+    // order, which no program observes). Rows labelled from SPEC before running, both valid, without a finding or a problem: a line in
+    // a line, two regions (1 + 2 and 1 + 11 bytes) and two writers over two FixedBuffers; a line in an owning interpolation, the
+    // HeapBuffer's writer and the FixedBuffer's (the nested rows above embed an owning interpolation, whose line never reaches Erase).
+    [Theory]
+    [InlineData(
+        "func f(n: i32) => Console.writeLine(\"o\\(Console.writeLine(\"i\\(n)\"))\")\n",
+        new[] { "[3 of u8]", "[12 of u8]" },
+        new[] { "FixedBuffer", "FixedBuffer" },
+        new[] { "fixed", "writer", "hint 2", "deferLiteral \"o\"", "hint 0", "fixed", "writer", "hint 11", "deferLiteral \"i\"", "hint 0", "write", "text", "writeLine", "write", "text", "writeLine" })]
+    [InlineData(
+        "func f(n: i32) -> string => \"a\\(Console.writeLine(\"m=\\(n)\"))b\"\n",
+        new[] { "[13 of u8]" },
+        new[] { "HeapBuffer", "FixedBuffer" },
+        new[] { "heap", "writer", "hint 3", "deferLiteral \"a\"", "hint 1", "fixed", "writer", "hint 11", "deferLiteral \"m=\"", "hint 0", "write", "text", "writeLine", "write", "hint 0", "format \"b\"", "finish", "intoString" })]
+    public void ADirectLineInsideAnotherPlanIsItsOwnExpansion(string source, string[] regions, string[] writers, string[] healthy)
+    {
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Problems.All.ToArray());
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
+        var locals = Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type).ToArray();
+        Assert.Equal(regions, locals.Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name));
+        Assert.Equal(writers, Regex.Matches(MirDumpTest.Unsited(program, body), @"= writer<(\w+)>\(").Select(static x => x.Groups[1].Value));
+        Assert.Equal(writers.Length, locals.Count(static x => x.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer)); // One writer local for each plan.
     }
 
     // SPEC 22.10.3, 22.9.3 (R8-W2 c3a): an owning interpolation's end is Utf8Writer.finish, the writer's last use, so its Loan on the buffer

@@ -3,7 +3,8 @@
 // Owns module-local dense syntax identity and semantic-column capacity.
 // Input: parsed children and Binding's synthetic nodes. Output: SyntaxIds and their indexed storage.
 // Parsed nodes use pre-order ids; zero means no node; renumbering moves only this module's semantic rows with their nodes.
-// A module's ordinal is its position among the source modules; the Kimi library's is LibraryModule in every compilation, above them all.
+// A module's ordinal is its position among the source modules; the Kimi library's is LibraryModule in every compilation, above them all,
+// given when its table is created (ForLibrary), so its sources parse under the library mark (IsLibrary).
 // A compilation has at most LibraryModule source modules (IMPL A.4): Compilation.PrepareModules refuses more before one is numbered.
 // Must not decide Binding facts or let consumers assign independent ids.
 
@@ -51,12 +52,21 @@ public sealed class SyntaxTable
     public int Count { get; private set; }
 
     /// <summary>Gets the module's ordinal in its compilation, which a <see cref="SourceRef"/> names: a source module's position, or
-    /// <see cref="LibraryModule"/>.</summary>
+    /// <see cref="LibraryModule"/>, which the library's table holds from its creation (<see cref="ForLibrary"/>), before it is parsed.</summary>
     public ushort Module { get; private set; }
 
     /// <summary>Gets the node of each id from 0 (no node) to <see cref="Count"/>. A node that another module took over keeps its
     /// entry here, but its <see cref="Koto.SyntaxOwner"/> names that module's table.</summary>
     public ReadOnlySpan<Koto?> Nodes => this.nodes.AsSpan(0, this.Count + 1);
+
+    /// <summary>Gets a value indicating whether this is the Kimi library's table, the one syntax-side test of a library source
+    /// (SPEC 6.7: the implementation Attributes are recognized only there). A source module's table never is.</summary>
+    internal bool IsLibrary => this.Module == LibraryModule;
+
+    /// <summary>Creates the Kimi library's table, numbered <see cref="LibraryModule"/> before its sources are parsed
+    /// (<see cref="Kotonoha.ForKimiLibrary"/>).</summary>
+    /// <returns>The table.</returns>
+    internal static SyntaxTable ForLibrary() => new() { Module = LibraryModule };
 
     /// <summary>Gets the id of a node, giving a node without one the next id of its module's table.</summary>
     /// <param name="node">The node.</param>
@@ -93,9 +103,14 @@ public sealed class SyntaxTable
 
     /// <summary>Numbers the tree under the module root when the syntax changed since the latest numbering.</summary>
     /// <param name="root">The module root.</param>
-    /// <param name="module">The module's ordinal.</param>
+    /// <param name="module">The module's ordinal; the library's table is numbered only as <see cref="LibraryModule"/>.</param>
     internal void Number(Koto root, ushort module)
     {
+        if (this.IsLibrary != (module == LibraryModule))
+        {
+            throw new InvalidOperationException($"A table marked {this.Module} was numbered as module {module} (InternalInvariant; R8-G1).");
+        }
+
         this.Module = module;
         if (this.numberedVersion == this.Version)
         {
@@ -125,6 +140,8 @@ public sealed class SyntaxTable
                 node.SyntaxId = 0;
             }
         }
+
+        this.Hir.Retire();
     }
 
     private readonly record struct Walked(Koto Node, SyntaxTable? Owner, int Id);
@@ -156,7 +173,8 @@ public sealed class SyntaxTable
         }
 
         // The walk fills a pooled buffer, so the table keeps one array per column: the tree, then room for the nodes outside it.
-        // A row follows its node only within this table. Foreign semantic state cannot cross a module boundary.
+        // A row follows its node only within this table. Foreign semantic state cannot cross a module boundary. Binding's node
+        // families take their kept rows over into their spare arenas (HirTables.Renumbered).
         internal int Run(Koto root, int previousCount, int room)
         {
             this.walked = ArrayPool<Walked>.Shared.Rent(Math.Max(256, previousCount + 1));
@@ -165,7 +183,7 @@ public sealed class SyntaxTable
             var nodes = new Koto?[this.count + room + 1];
 
             // About one node in fourteen has a plan row (the library: 658 of 9,596).
-            var hir = new HirTables(nodes.Length, Math.Max(table.Hir.PlanCount, this.count / 8) + 16);
+            var hir = table.Hir.Renumbered(nodes.Length, Math.Max(table.Hir.PlanCount, this.count / 8) + 16);
             for (var id = 1; id <= this.count; id++)
             {
                 var (node, owner, previous) = this.walked[id];

@@ -11,7 +11,6 @@ public sealed partial class Binding
     // open obligation reads no evidence (Unknown), from whichever scope it asks (the obligation, not the requester, is the key). Its
     // value counts those requests while it is open (reentryReads).
     private readonly Dictionary<(BoundType Type, BindingSymbol Contract), int> openObligations = new();
-    private readonly Dictionary<(BoundConformancePath Left, BoundConformancePath Right), BindingScope> conformanceOverlapScopes = new();
 
     // SPEC 8.3.3 Finality: the re-entry reads of the obligations now open, the open set's and a path's being verified (Checking). An
     // answer computed while the count grows read no evidence at an obligation still pending, so it is no fact once that obligation's
@@ -19,6 +18,23 @@ public sealed partial class Binding
     // result. Its reader is the capability engine, which keeps no such work past its outermost request (ForgetPendingCapabilities).
     // Temporary carrier; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
     private int reentryReads;
+
+    // A pair's overlap scope, kept with its left path (BoundConformancePath.OverlapScopes); both paths share their Type, so their store.
+    private static BindingScope OverlapScope(BoundConformancePath a, BoundConformancePath b)
+    {
+        var scopes = a.OverlapScopes ??= new();
+        for (var i = 0; i < scopes.Count; i++)
+        {
+            if (ReferenceEquals(scopes[i].Right, b))
+            {
+                return scopes[i].Scope;
+            }
+        }
+
+        var scope = new BindingScope(a.Declaration);
+        scopes.Add((b, scope));
+        return scope;
+    }
 
     // SPEC 8.9.1: two conformances' conditions exclude each other when a's chain and b's hold facts of one subject that cannot both
     // hold: identities to different complete Types, or Semantics sets that share no member. Each TypeIdentity or Semantics fact of a's
@@ -140,10 +156,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.conformanceOverlapScopes.TryGetValue((a, b), out var scope))
-                {
-                    this.conformanceOverlapScopes.Add((a, b), scope = new(a.Declaration));
-                }
+                var scope = OverlapScope(a, b);
 
                 // SPEC 8.9.2: the pair's intersection is a's conformance scope with every premise of b's, read along b's scope chain where
                 // b keeps them (a declared path's in its block, an inherited path's in its own scope), as the Contract agreement check
@@ -384,7 +397,7 @@ public sealed partial class Binding
 
         if (identity is null || identity.PathStorage.Count == 0)
         {
-            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -466,6 +479,52 @@ public sealed partial class Binding
     private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
         => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
             : type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown;
+
+    // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
+    // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
+    // scope's (IdentityRefuted), or each of its paths' own conditions is Refuted (PLAN G866). The walk opens the obligation as
+    // ResolveConformance does (openObligations); a request reaching it open reads no evidence and rules out nothing.
+    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope)
+    {
+        if (contract.Type is not { } required || ReferenceEquals(required.Symbol, contract) || this.ConformancesOf(symbol) is not { } bindings)
+        {
+            return false;
+        }
+
+        var key = (type, contract);
+        ref var reentries = ref CollectionsMarshal.GetValueRefOrAddDefault(this.openObligations, key, out var open);
+        if (open)
+        {
+            reentries++;
+            this.reentryReads++;
+            return true;
+        }
+
+        try
+        {
+            for (var i = 0; i < bindings.Count; i++)
+            {
+                if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
+                    !this.IdentityRefuted(instance, required, scope, type))
+                {
+                    for (var p = 0; p < bindings[i].PathStorage.Count; p++)
+                    {
+                        if (this.ProveConformanceConditions(bindings[i].PathStorage[p], type, scope) != ConstraintProof.Refuted)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            this.openObligations.Remove(key, out var read);
+            this.reentryReads -= read;
+        }
+    }
 
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {

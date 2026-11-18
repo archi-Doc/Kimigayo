@@ -262,6 +262,66 @@ public sealed partial class TyCtxtTest
         CheckInstantiations(c, c.Kotonoha.RootKoto);
     }
 
+    // PLAN G949 S1-b2 (DECISIONS BU-220): the statics hold the ids 1..StaticCount from one fixed list, the same objects in every
+    // compilation; a compilation's TyCtxt numbers every Type it makes after them, the interned ones and the parameter Types (a generic
+    // parameter's whole Type and target projection, a Contract's Self), each id once and with no gap, in the order it makes them, so two
+    // compilations of one program number alike.
+    [Fact]
+    public void TypeIdsAreDenseAndUnique()
+    {
+        var statics = new[] { BoundType.Unit, BoundType.Never, BoundType.Boolean, BoundType.Range }.Concat(BoundType.Primitives.Values)
+            .Concat(BoundType.WrappingScalars.Values).Distinct().Select(static x => x.Id).Order();
+        Assert.Equal(Enumerable.Range(1, BoundType.StaticCount), statics);
+        var first = Made(CompilationTestHelper.BindSuccess("()"));
+        var second = Made(CompilationTestHelper.BindSuccess("()"));
+        Assert.Equal(Enumerable.Range(BoundType.StaticCount + 1, first.Length), first);
+        Assert.Equal(first, second);
+
+        // The ids of every Type the compilation's TyCtxt made (its interned ones, each declared symbol's own Types), as many as its count.
+        static int[] Made(Compilation c)
+        {
+            const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var interned = ((Dictionary<int, List<BoundType>>)typeof(TyCtxt).GetField("types", Private)!.GetValue(c.Types)!).Values.SelectMany(static x => x);
+            var own = new List<BoundType?>();
+            foreach (var symbol in c.Binding.Semantics.Declarations)
+            {
+                own.AddRange([symbol.WholeType, symbol.Type, symbol.ContractSelf]);
+            }
+
+            int[] ids = [.. interned.Concat(own.OfType<BoundType>()).Where(static x => x.Id > BoundType.StaticCount).Distinct().Select(static x => x.Id).Order()];
+            Assert.Equal((int)typeof(TyCtxt).GetField("typeCount", Private)!.GetValue(c.Types)! - BoundType.StaticCount, ids.Length);
+            return ids;
+        }
+    }
+
+    // PLAN G949 (the flaky TableCounts row of BindingTest.AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass): Binding.TableCounts'
+    // TypeKeys is the Types the compilation interned, whatever the hashes of their parts. A part's hash is its identity hash, which the
+    // thread's earlier objects move: two Tuples over two Types whose identity hashes are equal share one key of the interned Types' table
+    // and are still two Types (a count of the keys counted them as one, so a twin compilation counted one Type fewer).
+    [Fact]
+    public void TypesWhosePartsShareAnIdentityHashAreCountedApart()
+    {
+        var c = CompilationTestHelper.BindSuccess("()");
+        var symbol = c.Binding.Library.DynamicArray;
+        var made = new Dictionary<int, BoundType>();
+        BoundType? first = null;
+        BoundType? second = null;
+        while (second is null && made.Count < 1_000_000)
+        {
+            // An identity hash has 26 bits: two of about 10,000 fresh Types share one at even odds, two of 1,000,000 at certainty.
+            var type = c.Types.Parameter("T", BoundTypeKind.Parameter, symbol);
+            if (!made.TryAdd(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(type), type))
+            {
+                (first, second) = (made[System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(type)], type);
+            }
+        }
+
+        Assert.NotNull(second);
+        var before = c.Binding.TableCounts.TypeKeys;
+        Assert.NotSame(c.Types.Tuple([first!]), c.Types.Tuple([second]));
+        Assert.Equal(before + 2, c.Binding.TableCounts.TypeKeys);
+    }
+
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
@@ -274,7 +334,7 @@ public sealed partial class TyCtxtTest
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "identity").Select(static x => x.CallOf()!).ToArray();
         var closed = calls.Select(x => c.Binding.InstantiateStorageType(closure.EnvironmentType!, x)!).ToArray();
-        Assert.All(closed, static x => Assert.NotNull(x.ClosureContext));
+        Assert.All(closed, static x => Assert.NotNull(x.InstanceContext));
         Assert.Equal(calls.Select(c.Types.SubstOf), closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(c.Types.SubstOf(calls[0]), c.Types.SubstOf(calls[1]));
         Assert.All(closed, x => Assert.Same(c.Binding.ClosureSignature(x), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(x)!)));
@@ -357,7 +417,7 @@ public sealed partial class TyCtxtTest
         var pair = function.Parameters[0].Type.TypeOf()!;
         var application = function.Parameters[1].Type.TypeOf()!;
         var binders = new List<PairBinder>();
-        PairBinder.Collect(function, binders);
+        PairBinder.Collect(c.Binding, function, binders);
         Assert.Equal(HirPlaceKind.Deref, TyCtxt.Layer(types.Reference(SemanticsKind.Uniq, BoundType.I32), out var below, out var binder));
         Assert.Same(BoundType.I32, below);
         Assert.Null(binder);
@@ -1143,7 +1203,7 @@ public sealed partial class TyCtxtTest
     // SPEC 6.1.3, 6.3.3 (DECISIONS BU-60): a Field initializer's Closure read through an owner holds the owner's instance modulo Origins as
     // its context's declaring Type, by substitution: one Closure Type for every read of one instance, another for another instance. An
     // owner instance whose erased form has an Origin position, static or not, is held erased, and its readers see no instance
-    // (ClosureInstance): the Closure's body is its own identity, closed in no instance (PLAN G300). The owner's (a) (2026-10-31): the
+    // (NestedInstance): the Closure's body is its own identity, closed in no instance (PLAN G300). The owner's (a) (2026-10-31): the
     // context is formed from the closed instance modulo Origins, and the gate is the readers' view, not a staged context.
     [Fact]
     public void AFieldInitializersClosureHoldsItsOwnersInstance()
@@ -1157,12 +1217,12 @@ public sealed partial class TyCtxtTest
         var types = "abcde".Select(name => body.Locals[Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Name == name.ToString())].Type!).ToArray();
         Assert.Same(types[0], types[2]);
         Assert.NotSame(types[0], types[1]);
-        Assert.Equal(["Box<i32>", "Box<i64>"], types[..2].Select(x => TyCtxt.Name(x.ClosureContext!.Declaring!)));
+        Assert.Equal(["Box<i32>", "Box<i64>"], types[..2].Select(x => TyCtxt.Name(x.InstanceContext!.Declaring!)));
         Assert.Same(types[3], types[4]);
         var held = TyCtxt.HeldType(types[3])!;
         Assert.Same(c.Types.Erase(held), held);
         Assert.Equal("Box<ref/i32>", TyCtxt.Name(held));
-        Assert.Null(TyCtxt.ClosureInstance(types[3]));
+        Assert.Null(TyCtxt.NestedInstance(types[3]));
         Assert.True(c.Types.SubstOfClosure(types[3]) is { IsIdentity: true } context && ReferenceEquals(context.Target, types[3].Symbol));
     }
 
@@ -1205,10 +1265,10 @@ public sealed partial class TyCtxtTest
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var g = KotoTree.Walk(nodes.OfType<FunctionKoto>().Single(static x => x.Name == "g")).OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
         var closure = g.ClosureOf()!;
-        Assert.Equal((null, 0), (closure.EnvironmentType!.ClosureContext, closure.EnvironmentType.Height));
+        Assert.Equal((null, 0), (closure.EnvironmentType!.InstanceContext, closure.EnvironmentType.Height));
         var instances = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x?.Target.Name == "g")
             .Select(x => c.Binding.InstantiateStorageType(closure.EnvironmentType!, x!)!).ToArray();
-        Assert.All(instances, static x => Assert.True(x.Components.Count == 0 && x.Height == x.ClosureContext!.Height + 1));
+        Assert.All(instances, static x => Assert.True(x.Components.Count == 0 && x.Height == x.InstanceContext!.Height + 1));
         Assert.Equal([1, 3], instances.Select(static x => x.Height));
         var reads = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "reads");
         BoundType[] held = [Local(reads, "a"), Local(reads, "b")];
@@ -1278,7 +1338,7 @@ public sealed partial class TyCtxtTest
         var closed = calls.Select(x => types.Apply(closure, x)!).ToArray();
         Assert.NotSame(closed[0], closed[1]);
         Assert.Same(types.Erase(closed[0]), types.Erase(closed[1]));
-        Assert.Same(types.Erase(closed[0].ClosureContext!), types.Erase(closed[0]).ClosureContext);
+        Assert.Same(types.Erase(closed[0].InstanceContext!), types.Erase(closed[0]).InstanceContext);
         Assert.Same(BoundType.I32, types.Erase(BoundType.I32));
         Assert.Same(types.Tuple([BoundType.I32, BoundType.Boolean]), types.Erase(types.Tuple([BoundType.I32, BoundType.Boolean])));
         var host = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Single(static x => x?.Target.Name == "host")!;
@@ -1828,14 +1888,14 @@ public sealed partial class TyCtxtTest
         return (c, probe.Parameters.ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!));
     }
 
-    // The struct and enum instances the MIR locals hold, added to `instances`, and the names of those whose erased instance does not store
-    // the erasure of what they store.
+    // The struct and enum instances the MIR locals hold (the library's bodies' included: the library check's root range, PLAN G951 U2-T),
+    // added to `instances`, and the names of those whose erased instance does not store the erasure of what they store.
     private static List<string> ErasedStoreProblems(Compilation c, List<BoundType> instances)
     {
         var types = c.Types;
         var seen = new HashSet<BoundType>();
         var problems = new List<string>();
-        foreach (var body in c.BuildMir().Bodies)
+        foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
         {
             foreach (var local in body.Locals)
             {
