@@ -15,6 +15,9 @@ public sealed class NativeToolchainTest : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-native-" + Guid.NewGuid().ToString("N"));
 
+    // The host's console of the test's projects, which reads a refusal's message.
+    private readonly DiagnosticContractTest.DiagnosticConsole console = new();
+
     public NativeToolchainTest() => Directory.CreateDirectory(this.directory);
 
     public void Dispose() => Directory.Delete(this.directory, true);
@@ -147,7 +150,7 @@ public sealed class NativeToolchainTest : IDisposable
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
-        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
+        await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
     }
 
     [Fact]
@@ -157,7 +160,7 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(file, "Targets = { \"x86_64-pc-windows-msvc\" }\nOutputKind = \"Library\"\nTestSources = { \"tests.kimi\" }");
         File.WriteAllText(Path.Combine(this.directory, "product.kimi"), "public group Example");
         File.WriteAllText(Path.Combine(this.directory, "tests.kimi"), "let broken =");
-        Assert.True(Project.TryCreate(Compilation.CreateForTest().Kimigayo, null, file, out var project));
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
         project.ProjectFile.LlvmBin = "missing LLVM directory";
         project.KimiOptions.Debug = true;
         Assert.True(await project.Build(TestContext.Current.CancellationToken));
@@ -174,7 +177,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Ir));
         Assert.False(File.Exists(paths.Manifest));
         Assert.False(File.Exists(paths.Executable));
-        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
+        await this.AssertRunRefused(project, "No built Application is available. Run 'kimi build' first.");
     }
 
     [Theory]
@@ -252,12 +255,12 @@ public sealed class NativeToolchainTest : IDisposable
     {
         var project = this.Create();
         var paths = ArtifactPaths.Create(project);
-        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
+        await this.AssertRunRefused(project, "No built Application is available. Run 'kimi build' first.");
         Assert.False(File.Exists(paths.Ir));
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
         File.WriteAllText(paths.Executable, "changed executable");
         File.WriteAllText(paths.Record, "{\"status\":\"linked\",\"optimization\":\"O2\",\"executableSha256\":\"wrong\"}");
-        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
+        await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
         Assert.False(File.Exists(paths.Ir));
     }
 
@@ -353,9 +356,16 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(Path.Combine(this.directory, "out", "Hello.O2.exe")));
     }
 
+    // The toolchain refuses the run before launch with this reason (IMPL 20.3, 20.3.2): exit 1, and the refusal, not another failure.
+    private async Task AssertRunRefused(Project project, string reason)
+    {
+        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken));
+        Assert.Contains(reason, this.console.Text, StringComparison.Ordinal);
+    }
+
     private Project Create(string source = "::Kimi.Console.writeLine(\"Hello\")")
     {
-        var project = Compilation.CreateForTest().Project;
+        var project = new Project(new Kimigayo(this.console));
         project.Name = "Native test";
         project.Directory = this.directory;
         project.AddSource("main.kimi", source);

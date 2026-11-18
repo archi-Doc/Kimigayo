@@ -1,7 +1,9 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Checking;
 using Kimi.Command;
 using Kimi.Diagnostics;
+using Tinyhand.IO;
 
 namespace Kimi;
 
@@ -39,7 +41,19 @@ public class Solution
         try
         {
             utf8 = File.ReadAllBytes(path);
-            var file = TinyhandSerializer.DeserializeFromUtf8<SolutionFile>(utf8);
+            SolutionFile? file;
+            var writer = TinyhandWriter.CreateFromThreadStaticBuffer();
+            try
+            {
+                ConfigurationText.ToBinary(utf8, ref writer);
+                var reader = new TinyhandReader(writer);
+                file = TinyhandSerializer.Deserialize<SolutionFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
+            }
+            finally
+            {
+                writer.Dispose();
+            }
+
             if (file is null)
             {
                 logger?.GetWriter()?.Write(Hashed.Solution.NotLoaded, path);
@@ -60,7 +74,7 @@ public class Solution
 
             this.SolutionFile = file;
         }
-        catch (Exception ex) when (IsInputFailure(ex) || ex is TinyhandException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex) || ex is TinyhandException)
         {
             // The solution file's read, its format and its project paths are the selection's input (IMPL 20.3.1); any other exception is
             // the compiler's and propagates.
@@ -273,16 +287,11 @@ SolutionLoaed:
         {
             return Resolve(input);
         }
-        catch (Exception ex) when (IsInputFailure(ex))
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             throw new CommandInputException(ex.Message);
         }
     }
-
-    // A failure to name, list or read a selected input (SPEC 23.2.3, IMPL 20.3.1), which the selection reports as its Input error; the
-    // predicate applies only around the selection's own reads.
-    internal static bool IsInputFailure(Exception ex)
-        => ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
 
     private static string Resolve(string input)
     {
@@ -327,7 +336,7 @@ SolutionLoaed:
         {
             return Directory.GetFiles(directory, pattern, SearchOption.TopDirectoryOnly);
         }
-        catch (Exception ex) when (IsInputFailure(ex))
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             throw new CommandInputException(ex.Message);
         }

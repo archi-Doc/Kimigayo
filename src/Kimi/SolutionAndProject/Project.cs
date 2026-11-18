@@ -343,7 +343,7 @@ public partial class Project
             {
                 reads.Add((path, inputs.ReadSource(path), null));
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
             {
                 reads.Add((path, null, ex));
             }
@@ -665,7 +665,7 @@ public partial class Project
             {
                 reads.Add((path, inputs.ReadSource(path), null));
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
             {
                 reads.Add((path, null, ex));
             }
