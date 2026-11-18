@@ -158,7 +158,7 @@ public sealed partial class Binding
     // operation's position or range parameter, or the receiver of `resolve`/`tryResolve` on a position or range Type.
     private void CheckLiteralArguments(InvocationKoto call)
     {
-        if (call.BoundCall is not { Target.Declaration: FunctionKoto function } bound || !function.Kotonoha.Syntax.IsLibrary)
+        if (this.CallOf(call) is not { Target.Declaration: FunctionKoto function } bound || !function.Kotonoha.Syntax.IsLibrary)
         {
             return;
         }
