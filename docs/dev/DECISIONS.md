@@ -23265,6 +23265,16 @@ R8-M* and R9-M* by the stage of the recording unit.
     U0b-1 removes `TyCtxt.cs`'s `Signature` line, `AdtDef.cs`'s two lines, `Binding.ClosureInstances.cs`,
     `Binding.TypeRelations.Origins.cs` (2), `Binding.AssociatedOrigins.cs` and `TestDefinition.cs` (2) in one behaviour-preserving
     commit (the route row 33 -> 24); `HirTables.HasCurrentBinding` is U0b-P3's.
+  - **U0b-P3 (PLAN G949 Stage 2, the Back, 2026-11-18; W-259).** `CallPlan.Of`, `CallPlan.Called`, `ExpansionPlan.Of` and
+    `BoundEnumConstruction.Of` take the reader's Binding first (the MIR builder passes `compilation.Binding`, as for
+    `BoundMatch.Of`). Whether a node's plan is the current pass's is Binding's one test, `Binding.IsCurrent` (the node resolved, and
+    the Binding running or holding a result), replacing `HirTables.HasCurrentBinding`; the Koto getters over it,
+    `InvocationKoto.BoundCall`, `BoundValueCall`, `ConversionKoto.CreationCall`, `Adaptation` and their forwarding base
+    `Koto.HasCurrentBinding`, are deleted (R7-Y4's rows done early, the Front's condition on C-380), and their readers read
+    `Binding.CallOf`, `ValueCallOf`, `CreationOf`, `AdaptationOf`, which hold the same predicate with the storage kind, carry
+    `SemanticQuery`'s published names and live beside their storage's writers (`Binding.Calls.cs`, `Binding.ValueCalls.cs`,
+    `Binding.ObjectCreation.cs`, `Binding.ExplicitAdaptations.cs`; ruling P3-3). `StructuralCompletion` takes the Binding that makes
+    it. One behaviour-preserving commit; the route row 24 -> 18.
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
