@@ -11,6 +11,15 @@ namespace XunitTest;
 // compilations that read one frozen library.
 public partial class KimiLibraryShapeTest
 {
+    /// <summary>A program whose `step` resolves `I.(LendingIterator).LentItem(s)` for OwningIterator&lt;Counter&gt; and
+    /// BorrowingIterator&lt;Counter&gt; (U3's census finding 4; valid, SPEC 8.9.2): a reading compilation forms hop chains through the library's
+    /// frozen conformance paths (r3a; s11, KimiLibraryConcurrencyTest).</summary>
+    internal const string HopChainProgram = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+        "    public func next(self: uniq/Self) -> Option<i32> => .None\n" +
+        "func step<I>(it: uniq/I during s) -> Option<I.(LendingIterator).LentItem(s)>\n    I is LendingIterator\n    return it.next()\n" +
+        "var i1 = Kimi.Iteration.owning(Counter.init())\nlet x1 = step(i1@uniq)\nvar counter = Counter.init()\n" +
+        "var i2 = Kimi.Iteration.borrowing(counter@uniq)\nlet x2 = step(i2@uniq)\n";
+
     // s8 within one compilation (U4; C-380 F3 (a)): after the first Bind of each of c2's programs, a second Bind and Analyze, every
     // interned object a library object holds (a Type other than the statics and the parameter Types, a substitution, an Origin
     // intersection, a length, a constraint) is in the layer's frozen level; the frozen levels hold the objects they held after the first
@@ -128,20 +137,14 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // r3a (PLAN G949 Stage 2 U3, Revision 3; B's ruling 36): no compilation writes a frozen library object. Two reading compilations of a
-    // program whose `step` resolves `I.(LendingIterator).LentItem(s)` for OwningIterator<Counter> and BorrowingIterator<Counter> (the
-    // census's finding 4; TyCtxtTest.ProvenPathsBindTheirCommonType's shape; valid, SPEC 8.9.2) form hop chains through the library's
+    // r3a (PLAN G949 Stage 2 U3, Revision 3; B's ruling 36): no compilation writes a frozen library object. Two reading compilations of
+    // HopChainProgram (the census's finding 4; TyCtxtTest.ProvenPathsBindTheirCommonType's shape) form hop chains through the library's
     // frozen paths, each its own (Binding.frozenPathHops), and no frozen path's chains hold a step above L (a program's Type). Before
     // Revision 3 the chains were appended to the frozen paths. Hello and Milestone26 form none after the seal.
     [Fact]
     public void NoCompilationExtendsAFrozenPathsHopChains()
     {
-        const string Step = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
-            "    public func next(self: uniq/Self) -> Option<i32> => .None\n" +
-            "func step<I>(it: uniq/I during s) -> Option<I.(LendingIterator).LentItem(s)>\n    I is LendingIterator\n    return it.next()\n" +
-            "var i1 = Kimi.Iteration.owning(Counter.init())\nlet x1 = step(i1@uniq)\nvar counter = Counter.init()\n" +
-            "var i2 = Kimi.Iteration.borrowing(counter@uniq)\nlet x2 = step(i2@uniq)\n";
-        var (first, second) = (MinimalEmissionTest.Analyze(Step), MinimalEmissionTest.Analyze(Step));
+        var (first, second) = (MinimalEmissionTest.Analyze(HopChainProgram), MinimalEmissionTest.Analyze(HopChainProgram));
         Assert.True(first.Binding.Result.IsComplete && second.Binding.Result.IsComplete, MinimalEmissionTest.Describe(first));
         var layer = first.Library.Layer;
         var paths = ((System.Collections.IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(layer.Impls)!).Values.Cast<BoundConformancePath>();

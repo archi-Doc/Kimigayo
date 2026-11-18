@@ -193,8 +193,9 @@ internal static class AllocationMeasurement
     }
 
     // PLAN G949 Stage 2 U3 (design 8, s10): a compilation reads the process's frozen library for its target (KimiLibrary.Of), which
-    // the target's first reader freezes. Each measurement forces it first for the targets tests use (the test profile's, and none),
-    // so no window or run measures the freeze, only the program's share.
+    // the target's first reader freezes. Each measurement forces it first for two keys only, windows-x64 (the test profile's) and none
+    // (TargetTriple.Invalid), so no window or run of a compilation for those measures the freeze, only the program's share; a row that
+    // measures a compilation for another target forces that target's library itself (the implementation review's N7).
     private static void FreezeLibraries()
     {
         _ = KimiLibrary.Of(TargetTriple.Parse(WindowsProfile.Target));

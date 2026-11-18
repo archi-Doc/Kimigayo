@@ -696,6 +696,109 @@ public partial class KimiLibraryShapeTest
         Assert.False(freeze.Library.Kotonoha.Syntax.Frozen);
     }
 
+    /// <summary>Gets every field of every object reachable from a reading compilation's frozen library (LibraryObjects) and of every
+    /// library node, by value (the implementation review's N1; its probe's form): a primitive or string by value, a reference by identity,
+    /// a collection by identity, count and its elements' values two levels deep, a struct two levels deep.</summary>
+    /// <param name="reader">A compilation reading the library.</param>
+    /// <returns>Each object's field values, by the object's identity.</returns>
+    internal static Dictionary<object, string[]> FieldSnapshot(Compilation reader)
+    {
+        var map = new Dictionary<object, string[]>(ReferenceEqualityComparer.Instance);
+        foreach (var value in LibraryObjects(reader))
+        {
+            if (!value.GetType().IsValueType)
+            {
+                map[value] = Fields(value);
+            }
+        }
+
+        foreach (var node in reader.Library.Kotonoha.Syntax.Nodes)
+        {
+            if (node is not null)
+            {
+                map[node] = Fields(node);
+            }
+        }
+
+        return map;
+
+        static string[] Fields(object value) => [.. FreezeFields(value.GetType()).Select(f => $"{f.DeclaringType!.Name}.{FieldName(f)}={Shallow(f.GetValue(value), 2)}")];
+
+        static string Shallow(object? x, int depth)
+        {
+            switch (x)
+            {
+                case null:
+                    return "-";
+                case string s:
+                    return "\"" + s + "\"";
+                case Enum or bool or char:
+                    return x.ToString()!;
+                case Delegate:
+                    return "delegate#" + RuntimeHelpers.GetHashCode(x);
+            }
+
+            var type = x.GetType();
+            if (type.IsPrimitive)
+            {
+                return Convert.ToString(x, System.Globalization.CultureInfo.InvariantCulture)!;
+            }
+
+            if (x is ICollection collection)
+            {
+                var hash = default(HashCode);
+                if (depth > 0)
+                {
+                    foreach (var item in collection)
+                    {
+                        hash.Add(Shallow(item, depth - 1));
+                    }
+                }
+
+                return $"#{RuntimeHelpers.GetHashCode(x)}[{collection.Count}:{hash.ToHashCode()}]";
+            }
+
+            return type.IsValueType ? (depth == 0 ? type.Name : type.Name + "(" + string.Join(",", FreezeFields(type).Select(f => Shallow(f.GetValue(x), depth - 1))) + ")")
+                : "#" + RuntimeHelpers.GetHashCode(x);
+        }
+    }
+
+    /// <summary>Gets the changes between two field snapshots (FieldSnapshot): an object gained or lost, and each field whose value moved,
+    /// with its holder.</summary>
+    /// <param name="before">The earlier snapshot.</param>
+    /// <param name="after">The later snapshot.</param>
+    /// <returns>The changes; empty when no field of any object changed.</returns>
+    internal static string[] FieldChanges(Dictionary<object, string[]> before, Dictionary<object, string[]> after)
+    {
+        var changes = new List<string>();
+        foreach (var (key, fields) in after)
+        {
+            if (!before.TryGetValue(key, out var old))
+            {
+                changes.Add($"new {key.GetType().Name} {key}");
+                continue;
+            }
+
+            for (var i = 0; i < fields.Length; i++)
+            {
+                if (fields[i] != old[i])
+                {
+                    changes.Add($"{Holder(key)}: {old[i]} -> {fields[i]}");
+                }
+            }
+        }
+
+        changes.AddRange(before.Keys.Where(x => !after.ContainsKey(x)).Select(static x => $"gone {x.GetType().Name} {x}"));
+        return [.. changes];
+
+        static string Holder(object key) => key switch
+        {
+            BindingSymbol s => $"{s.Kind}:{s.Name}@{CompilationTestHelper.Location(s.Declaration)}",
+            Koto k => $"{k.GetType().Name}@{CompilationTestHelper.Location(k)}",
+            _ => key.GetType().Name,
+        };
+    }
+
     // w1's comparison after each later step.
     private static void SameLayerAfterEachStep(string program)
     {
