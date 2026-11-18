@@ -448,6 +448,11 @@ public partial class TypeIdentityTest
 
     private const string PqUses = "func f<T>(x: ref/T.(Pq).Up, y: ref/T.(Pq).Up)\n    T is Pq\n";
 
+    private const string HasItems = "contract Has1\n    associate Item is Inner\ncontract Has2\n    associate Item is Inner\ncontract Has3\n    associate Item is Inner\n";
+
+    private const string BoxWhen = HasItems + "struct Box<T>\n    var v: i32\n    Self is Has1 when T is Pq\n        associate Has1.Item is T.(Pq).Up\n" +
+        "    Self is Has2 when T is Pq\n        associate Has2.Item is T.(Pq).Up\n";
+
     // PLAN G881b, F's ruling 216 (SPEC 8.3.3 Limits: the limit "is reported once ... at the declaration that reaches it"; 8.2.1,
     // 7.5): the declaration whose premise closure reaches the bound is the nearest one with a Constraint region, so a refused use in
     // an `if`, `do`, `while` or `for` body, a match arm or a Closure (none states premises: a Closure's body is an ExecutableBody,
@@ -455,6 +460,9 @@ public partial class TypeIdentityTest
     // tw-do, tw-while with the nested use on `y`, so the record's line names the use: N1); a named function written in the body is
     // its own declaration (tw-local: two records); a Copy judged with no check frame open records at the declaration (tw-copyblk).
     // Each row is a whole declaration after CyclePrelude and Pq; b0cec6e90 gave the block's, arm's or Closure's own record too.
+    // F's ruling 220 (SPEC 8.2.3, 8.8.1: a conditional conformance's scope is a constrained declaration of its own): a conformance
+    // path's requests extend the closure of the declaration whose premises it extends, so each conditional conformance has its own
+    // record (tw-cc2, tw-cc3; de975db32 gave the Type's one) and a direct conformance's are its Type's (tw-ccdir: one record).
     public static TheoryData<string, string, string> RoundBoundDeclarationRows => new()
     {
         { "tw-blk", PqUses + "    need(x)\n    if true\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
@@ -466,6 +474,9 @@ public partial class TypeIdentityTest
         { "tw-closure", PqUses + "    need(x)\n    let g = func () => need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
         { "tw-local", PqUses + "    need(x)\n    func g<U>(z: ref/U.(Pq).Up)\n        U is Pq\n        need(z)\n", "PremiseClosureLimit_Kd: need(x) | PremiseClosureLimit_Kd: need(z)" },
         { "tw-copyblk", "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    if true\n        return x\n    return x\n", "PremiseClosureLimit_Kd: func f<T>(x: T.(Pq).Up) -> T.(Pq).Up" },
+        { "tw-cc2", BoxWhen, "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq" },
+        { "tw-cc3", BoxWhen + "    Self is Has3 when T is Pq\n        associate Has3.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1 when T is Pq | PremiseClosureLimit_Kd: Self is Has2 when T is Pq | PremiseClosureLimit_Kd: Self is Has3 when T is Pq" },
+        { "tw-ccdir", HasItems + "struct Box<T>\n    T is Pq\n    var v: i32\n    Self is Has1\n    associate Has1.Item is T.(Pq).Up\n    Self is Has2\n    associate Has2.Item is T.(Pq).Up\n", "PremiseClosureLimit_Kd: Self is Has1" },
     };
 
     [Theory]

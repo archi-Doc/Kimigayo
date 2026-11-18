@@ -31,7 +31,7 @@ public sealed partial class Binding
             }
         }
 
-        var scope = new BindingScope(a.Declaration);
+        var scope = new BindingScope(a.Declaration, a.Type.Declaration); // SPEC 8.9.2: the pair's agreement is the Type's.
         scopes.Add((b, scope));
         return scope;
     }

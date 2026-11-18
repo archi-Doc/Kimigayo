@@ -807,37 +807,42 @@ public sealed class BoundType : IEquatable<BoundType?>
 // LinkVersion, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class BindingScope(Koto owner)
 {
+    private readonly bool declares;
     private BindingScope? parent;
     private ConstraintEnvironment? constraints;
     private BoundConformancePath? conformancePath;
 
+    // A scope formed for `declaration`'s own premises (Declaration).
+    internal BindingScope(Koto owner, Koto declaration)
+        : this(owner)
+    {
+        this.Declaration = declaration;
+        this.declares = true;
+    }
+
     internal Koto Owner { get; } = owner;
 
-    // SPEC 8.2.1, 8.3.3: the declaration whose premises the requests made in this scope close, the one that reaches a limit of that
-    // closure: the nearest owner on the chain with a Constraint region of its own, a named function, an accessor, a Container or a
-    // conditional conformance's scope. A block, an `if`, `do`, `while` or `for` body, a match arm and an anonymous function (its body an
-    // ExecutableBody, SPEC F.9.1, with no generic parameters, 7.7.1) state no premises, so their requests are their definition's. A
-    // chain's root is a module's or a declaration's, so the walk ends at a declaration. Not TyCtxt.EnclosingDeclaration, the
-    // declaration whose instance the code holds, which passes a conditional conformance's scope (a constrained declaration of its own).
-    internal Koto Declaration
-    {
-        get
-        {
-            var scope = this;
-            while (scope.Owner is not (FunctionKoto { IsAnonymous: false } or PropertyAccessorKoto or DeclarationContainerKoto or
-                SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && scope.parent is { } outer)
-            {
-                scope = outer;
-            }
-
-            return scope.Owner;
-        }
-    }
+    // SPEC 8.2.1, 8.3.3: the declaration whose premise closure the requests made in this scope extend, the one that reaches a limit of
+    // that closure, published where the scope is formed, never found by a walk: a scope formed for a constrained declaration's own
+    // premises names it (the two-argument constructor: a named function's, an accessor's, a Container's or a conditional conformance's
+    // scope, Binding.Scopes; a function's implementation premises; the Type's for an overlap of two of its conformances, SPEC 8.9.2),
+    // and every other scope extends its Parent's closure and takes its Parent's as it is linked: a block, an `if`, `do`, `while` or
+    // `for` body, a match arm and an anonymous function (its body an ExecutableBody, SPEC F.9.1, with no generic parameters, 7.7.1)
+    // state no premises, and a conformance path's or a function requirement's premises extend the declaration's whose premises they
+    // extend (ImplTable.Register: a conditional conformance's, else the Type's). A scope never linked is a chain's root, its own.
+    internal Koto Declaration { get; private set; } = owner;
 
     internal BindingScope? Parent
     {
         get => this.parent;
-        set => this.Link(ref this.parent, value);
+        set
+        {
+            this.Link(ref this.parent, value);
+            if (!this.declares)
+            {
+                this.Declaration = value?.Declaration ?? this.Owner;
+            }
+        }
     }
 
     // The number of changes of this scope's link.

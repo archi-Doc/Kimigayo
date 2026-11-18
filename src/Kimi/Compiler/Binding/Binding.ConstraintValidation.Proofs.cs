@@ -372,8 +372,9 @@ public sealed partial class Binding
 
     // SPEC 8.3.3 (Limits), 23.1.1 (DECISIONS BU-22's L): an analysis a judgment needs reached an implementation limit (`limit`, a
     // failure whose record's category is Resource), so its negative answer is a resource failure, never Unknown or Refuted. The
-    // limit is the declaration's that reaches it, the declaration whose premises the analysis read (`scope`'s Declaration: a block,
-    // a loop body, a match arm or a Closure inside a definition is the definition's), and is reported once (SPEC 8.3.3): its record
+    // limit is the declaration's that reaches it, the declaration whose premise closure the request extends (`scope`'s published
+    // Declaration: a block, a loop body, a match arm or a Closure inside a definition is the definition's, a conformance path's is its
+    // conditional conformance's or else its Type's), and is reported once (SPEC 8.3.3): its record
     // is at the first refused request's site in the run, the open consultation frame's node (the use; the owner's O-321 (b)), else
     // the declaration, and a later request of the run, in any of the declaration's bodies, rests on that record (Refusal.Reach),
     // so no refusal is without a node. Inside a proof the answer joins it
