@@ -13,6 +13,7 @@ public sealed partial class Binding
 
     private readonly DiscoveredOriginRows discoveredOrigins;
     private OriginRewriteVisitor? originRewriteVisitor;
+    private PerCallNamingFinder? perCallNamingFinder;
 
     private static Koto? OriginOwner(Koto node)
     {
@@ -47,9 +48,8 @@ public sealed partial class Binding
     // an outer Origin expression (nested Origins stay fixed), so in its result and body.
     private static bool OriginVisible(BoundOrigin origin, Koto use)
     {
-        if (origin.Binder is FunctionTypeKoto || origin is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } })
+        if (PerCallBinder(origin) is { } binder)
         {
-            var binder = origin.Binder;
             if (!IsWithin(use, binder))
             {
                 return false;
@@ -75,6 +75,11 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 15.3.4: the nested signature whose per-call Origin `origin` is, a Function Type's or an anonymous function's (the omitted
+    // Origin of a direct borrowed input); null for every other Origin.
+    private static Koto? PerCallBinder(BoundOrigin origin)
+        => origin.Binder is FunctionTypeKoto || origin is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } } ? origin.Binder : null;
+
     // SPEC 15.3.5: the variance of a position nested at `inner` within a position of variance `outer`; an unused position is compared
     // as an invariant one (RelationWalk).
     private static OriginVariance ComposeVariance(OriginVariance outer, OriginVariance inner)
@@ -96,6 +101,29 @@ public sealed partial class Binding
         BoundTypeKind.Constructed when type.Symbol?.Schema is { } schema && component < schema.GenericSlots.Count => schema.GenericSlots[component].OriginVariance,
         _ => OriginVariance.Covariant,
     };
+
+    // SPEC 15.3.4, 8.10 (PLAN G972; board C-400): whether a written Origin in an input of `perCall`'s nested signature names it, the
+    // input half of OriginVisible's verdict, read at the written Origins it judged (their recorded InvalidOrigin failure; the Origin stays
+    // bound, SPEC 23.1.2). Such a signature names its per-call Origin outside its own input's outer layer, so instantiating it there is no
+    // per-call binding of SPEC 15.3.7; false for every valid signature. Read by a comparison judging an end that, as written, is `perCall`.
+    private bool NamedInItsInputs(BoundOrigin perCall)
+    {
+        if (PerCallBinder(perCall) is not { } binder)
+        {
+            return false;
+        }
+
+        var finder = this.perCallNamingFinder ??= new(this);
+        for (var i = 0; i < InputCount(binder); i++)
+        {
+            if (InputType(binder, i) is { } input && finder.Finds(input, perCall))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 15.3.5: the variance of a Type's Origin argument `index`, the one reading every relation, fit and walk takes: a Closure Type's
     // by its occurrences in its definition's signature (ClosureArgumentVariance, DECISIONS R4-M159); a declared Type's by its schema's
@@ -697,6 +725,38 @@ public sealed partial class Binding
             }
 
             node.VisitChildren(this);
+        }
+    }
+
+    // NamedInItsInputs' search of one input's syntax: a written Origin bound to the per-call Origin that OriginVisible rejected there.
+    private sealed class PerCallNamingFinder(Binding binding) : KotoVisitor
+    {
+        private BoundOrigin? perCall;
+        private bool found;
+
+        public override void Visit(Koto node)
+        {
+            if (this.found)
+            {
+                return;
+            }
+
+            if (ReferenceEquals(node.BoundOrigin, this.perCall) && binding.RecordedFailure(node) == BindingFailure.InvalidOrigin)
+            {
+                this.found = true;
+                return;
+            }
+
+            node.VisitChildren(this);
+        }
+
+        internal bool Finds(Koto input, BoundOrigin perCall)
+        {
+            (this.perCall, this.found) = (perCall, false);
+            this.Visit(input);
+            var found = this.found;
+            (this.perCall, this.found) = (null, false);
+            return found;
         }
     }
 
