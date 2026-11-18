@@ -10862,6 +10862,8 @@ resumed by R4-M86 (2026-10-20).
       layer reaches (`LibraryQuerySymbols`), each with the state the library pass left (G949 ruling 200).
     - The reason that no longer holds: a state was valid only in its pass because every pass rebound every declaration; a library
       declaration is now bound once, by the library pass.
+  - Amended by R8-M53 (R8-L1 U2b): each compilation's pass counter starts anew, so a stamp a frozen library object holds is the
+    literal `Frozen`; no counter value of the freeze survives it. Change counters are not stamps.
 - **BU-120 A declared signature's Proven is a declaration query, `DeclQueryKind.SignatureVerdict`; any other answer is computed at each read**
   (2026-11-07; R7-V1, plan §5.1, PLAN G375; ruling 3, the owner's O-44 for contract matching) SPEC 8.1.3, 8.3.3, 15.3.7, 15.6.1, 23.1.2.
   Supersedes in part R4-M163: its "Stays: the per-use re-proof" holds now only for an answer other than Proven and for contract matching.
@@ -23745,8 +23747,10 @@ R8-M* and R9-M* by the stage of the recording unit.
   G949 Stage 2's plan of record, the design `back\notes\l1-s2\design.md` §5 under the owner's O-381 (b); U2's design
   `back\notes\l1-s2\u2-design.md` Revision 2, its review ACCEPT WITH CONDITIONS, B's rulings `rulings-u2.md`; the Front's consent on
   C-380 (16:55, 17:08); U2a's implementation review ACCEPT WITH CONDITIONS, met (`review-u2a-impl.md`), the Front's ACCEPT after
-  c5f64fc81 (C-380) and the Middle's consent on the Core hunks (C-381); L1 M-B4, M-R2-B1, D-C1, D-C2; C-376) SPEC 22.1, 23.1.2.
-  Extends R8-M31, R8-M32, R8-M33, BU-219 and BU-220; amends BU-219 (its R8-M53 line).
+  c5f64fc81 (C-380) and the Middle's consent on the Core hunks (C-381); U2b's implementation review ACCEPT WITH CONDITIONS, met
+  (`review-u2b-impl.md`), and the Front's ACCEPT WITH CONDITIONS (C-380, G949 ruling 221), its C1 and C2 met and its C3 U3's step 0
+  (B's ruling 49); L1 M-B4, M-R2-B1, D-C1, D-C2; C-376) SPEC 22.1, 23.1.2. Extends R8-M31, R8-M32, R8-M33, BU-219 and BU-220;
+  amends BU-105 and BU-219 (their R8-M53 lines).
   - **Adopted.** `KimiLibrary.Of(target)` (`KimiLibrary.Process.cs`) returns the process's library for a target (the key is the
     target; the language version is the build's constant, which `KimiLibrary.Version` names; no target, `TargetTriple.Invalid`, is a
     key of its own), from one add-only store of `Lazy` values (the process's one mutable static of R8-L1).
@@ -23754,9 +23758,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     and the project, with documentation and hover collection on), whose Binding makes the library by the one constructor, parsed in
     that compilation (the parse reads its conditions, flags, identifier table and collection); `KimiLibrary.Freeze(freeze)` binds
     that compilation Final by the one driver and returns its library (B's ruling 37: the freeze's input is its compilation, so no step
-    reaches a compilation through a library node). `Of` is `Freeze(Unfrozen(target, default kimigayo, default project))` behind the
-    store; a test edits or extends an unfrozen library and freezes it through the same two calls, the tests' seam, not a second path.
-    No compilation reads `Of` before U3.
+    reaches a compilation through a library node): its `Kotonoha` (syntax, the frozen table and columns, documents), scope, symbols
+    and `LibraryLayer`, detached (below), and the freeze's compilation is dropped. `Of` is `Freeze(Unfrozen(target, default
+    kimigayo, default project))` behind the store; a test edits or extends an unfrozen library and freezes it through the same two
+    calls, the tests' seam, not a second path. No compilation reads `Of` before U3.
   - **A library pass with records is refused.** `FreezeLibrary`'s clause alone decides it (the pass's issues, derived issues and
     non-failing records, the siteless refusal, and the library module's syntax records of any severity,
     `DiagnosticOwner.HasSyntaxRecords`). While the pass's tables stand, its Binding-side records are reported by Binding's own
@@ -23776,10 +23781,23 @@ R8-M* and R9-M* by the stage of the recording unit.
     Until U3, Core's `Publish` reports a MIR record through the node (`node.Report`) instead of `StoreOf` (B's ruling 32: routing it
     needs a larger parameter exception on `Koto.Report`, which the owner's O-425 (a) approved for U3); no program the suite checks
     has a MIR record with a library subject.
+  - **The library's lazy facts and the detachment (U2b).** The library pass completes every lazy fact of a library object: S1-1's
+    effect bounds, view serials and region sources; U2b's constraint negations (`Binding.CompleteNegations` at S1-1's B1 site, D-4)
+    and the logical names its documents get where `KimiLibrary` makes them (D-C1). Every stamp a frozen object holds is `Frozen`
+    (S1-1's rule, now across the process; BU-105's R8-M53 line). `Freeze` detaches the library it returns, frozen or refused
+    (`KimiLibrary.Detach`; a Stage 1 compilation's library is never detached): each library `DocumentationSource` forms every
+    comment's text (`DocumentationComment.GetText`'s lazy cache) and then drops its owner, and each library `CodeContext` drops its
+    collection and the `Kotonoha` its compilation and collection, so a library node's compilation or collection is the
+    internal-invariant form (D-C2; `KimiLibraryShapeTest.AFrozenLibraryReachesNoCompilationStore`). The frozen library carries its
+    documentation failures and hover anchors (`Compilation.HoverDataOf`) and its module's syntax list (`SyntaxRecords`, moved out of
+    the freeze compilation's diagnostics by `DiagnosticOwner.TakeSyntax`, never copied; form (R)) as data, which a reading
+    compilation reads from U3. C4's outcome (B's ruling 18): every `Purpose=Allocation` row (1,337) passed unchanged with the eager
+    negations, so D-4 is U2b's, not U3's; U4's `Negation` refusal stays U4's.
   - **Rejected.** A key with the language version, configuration, test build, Debug, settings or documentation flags (R8-M32 shows
     none read; the version is the build's constant); refusing a compilation without a target; a mode or flag deciding the library
-    pass; a documentation failure as a refusal record or a cached exception; publishing the refusal through the library node's
-    collection (it would accumulate across compilations); a second library constructor or record injection; a compilation-free parse
+    pass; a lazy cache in a frozen object; a counter-valued stamp on a frozen object (it aliases a fresh compilation's pass); a
+    documentation failure as a refusal record or a cached exception; publishing the refusal through the library node's collection
+    (it would accumulate across compilations); a second library constructor or record injection; a compilation-free parse
     re-homed by `Freeze` (a second writer of `Kotonoha.Compilation`; the parse reads its compilation's conditions); the freeze
     reaching its compilation through the library's `Kotonoha` (a route the route row counts, R8-M51); a library with records thrown
     as an exception (the `Lazy` would cache it; a defect surfaces as an analysis fault, not located records); a second test of "the
