@@ -538,13 +538,13 @@ public class BindingTest
         var program = c.Binding.Issues.Select(static x => x.Node).ToArray();
         Assert.NotEmpty(program);
         Assert.DoesNotContain(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
-        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(static x => x.StateOf() == BindingState.Resolved);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
         var fail = typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!;
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
-        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
         c.Binding.ClearFailure(node); // A check's retry (ClearFailure), then the node failed again in the same pass.
-        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Equal((node, BindingState.Resolved, BindingState.Invalid, BindingFailure.TypeMismatch), Assert.Single(own.ForeignFailures));
@@ -555,7 +555,7 @@ public class BindingTest
             Assert.Equal(program.Append(node), c.Binding.Issues.Select(static x => x.Node));
             c.Binding.ReportDiagnostics();
             Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
-            Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
+            Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
         }
     }
 

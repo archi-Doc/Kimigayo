@@ -1989,7 +1989,7 @@ public sealed partial class TyCtxtTest
             count++;
             var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst;
             var where = $"{module.Compilation.Kotonoha.Name} {outer.Target.Name} > {inner.Target.Name}";
-            foreach (var declared in ((FunctionKoto)inner.Target.Declaration).Parameters.Select(static x => x.Type.TypeOf()).Append(inner.Target.Type))
+            foreach (var declared in ((FunctionKoto)inner.Target.Declaration).Parameters.Select(x => x.Type.TypeOf(c)).Append(inner.Target.Type))
             {
                 var expected = declared is null ? null
                     : c.Types.Apply(declared, c.Types.SubstOf(inner)!) is { } once ? c.Types.Apply(once, c.Types.SubstOf(outer)!) : null;
@@ -2052,7 +2052,7 @@ public sealed partial class TyCtxtTest
                     calls++;
                     foreach (var parameter in callee.Parameters)
                     {
-                        Check(node, parameter.Type.TypeOf(), subst, call);
+                        Check(node, parameter.Type.TypeOf(c), subst, call);
                     }
 
                     Check(node, subst.Target.Type, subst, call);
@@ -2063,11 +2063,11 @@ public sealed partial class TyCtxtTest
                 }
             }
 
-            if (node.TypeOf() is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item) is { } context)
+            if (node.TypeOf(c) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item) is { } context)
             {
                 foreach (var parameter in function.Parameters)
                 {
-                    Check(node, parameter.Type.TypeOf(), c.Types.SubstOfItem(item)!, context);
+                    Check(node, parameter.Type.TypeOf(c), c.Types.SubstOfItem(item)!, context);
                 }
             }
         }

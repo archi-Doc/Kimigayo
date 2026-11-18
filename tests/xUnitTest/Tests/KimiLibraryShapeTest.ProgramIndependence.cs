@@ -195,7 +195,7 @@ public partial class KimiLibraryShapeTest
         var scopes = new HashSet<BindingScope>(ReferenceEqualityComparer.Instance);
         for (var id = 1; id <= table.Count; id++)
         {
-            if (table.Nodes[id]!.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, table.Nodes[id]))
+            if (c.Binding.Semantics.SymbolOf(table.Nodes[id]!) is { } symbol && ReferenceEquals(symbol.Declaration, table.Nodes[id]))
             {
                 scopes.Add(symbol.Scope);
                 if (id <= table.ParsedCount)
@@ -255,10 +255,11 @@ public partial class KimiLibraryShapeTest
         for (var id = table.ParsedCount + 1; id <= table.Count; id++)
         {
             var (line, row, node) = (new Printer(false), new Printer(true), table.Nodes[id]!);
+            line.Attach(c);
             line.Node(node);
             row.Attach(c);
             row.Node(node);
-            var own = node.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
+            var own = c.Binding.Semantics.SymbolOf(node) is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
             facts.Add($"{line.ToString().TrimEnd('\n')} | {row.Hir.TrimEnd('\n')} | {own}");
         }
 

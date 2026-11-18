@@ -275,9 +275,9 @@ public partial class KimiLibraryShapeTest
         Assert.True(table.Frozen);
         var nodes = table.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
         var indexes = nodes.OfType<IndexKoto>().ToArray();
-        var slice = indexes.Where(static x => x.TypeOf()?.Kind == BoundTypeKind.Slice).OrderBy(static x => x.Right is RangeKoto).First();
-        var follows = nodes.OfType<ConversionKoto>().Where(static x => x.ConversionOf().Kind is ConversionBinding.PairFollow or ConversionBinding.Follow).ToArray();
-        var follow = follows.FirstOrDefault(static x => x.ConversionOf().Kind == ConversionBinding.PairFollow) ?? follows.First();
+        var slice = indexes.Where(x => x.TypeOf(c)?.Kind == BoundTypeKind.Slice).OrderBy(static x => x.Right is RangeKoto).First();
+        var follows = nodes.OfType<ConversionKoto>().Where(x => x.ConversionOf(c).Kind is ConversionBinding.PairFollow or ConversionBinding.Follow).ToArray();
+        var follow = follows.FirstOrDefault(x => x.ConversionOf(c).Kind == ConversionBinding.PairFollow) ?? follows.First();
         var index = indexes.FirstOrDefault(x => c.Binding.SelectedIndexCall(x, exclusive: false) is not null) ?? indexes.First();
         var member = nodes.OfType<MemberAccessKoto>().First();
         Refused(nameof(Binding.IsResolvedSlice), () => c.Binding.IsResolvedSlice(slice));

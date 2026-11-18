@@ -115,7 +115,7 @@ public class CoreCatalogTest
             Assert.NotNull(c.Library.GetSymbol(id));
         }
 
-        Assert.Equal(BindingState.Resolved, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration.StateOf()); // SPEC 22.1: declared `#Unsupported`.
+        Assert.Equal(BindingState.Resolved, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration.StateOf(c)); // SPEC 22.1: declared `#Unsupported`.
     }
 
     [Fact]
