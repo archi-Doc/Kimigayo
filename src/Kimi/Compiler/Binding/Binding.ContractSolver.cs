@@ -359,8 +359,8 @@ public sealed partial class Binding
                     }
 
                     var identity = this.Reading(fact, view.Premises, ref serial);
-                    positive |= SameProofPremise(identity, proposition);
-                    negative |= SameProofPremise(identity, negation);
+                    positive |= this.SameProofPremise(identity, proposition);
+                    negative |= this.SameProofPremise(identity, negation);
                 }
             }
         }

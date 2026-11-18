@@ -192,7 +192,7 @@ public class SemanticsAdaptationTypeTest
         var expected = c.Binding.SemanticsAdaptation(pair, shorter, BoundOrigin.Static, pair.Scope);
         Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.Raw)];
-        Assert.False(Binding.FitsType(c.Binding.CaseType(actual, cases), c.Binding.CaseType(expected, cases)));
+        Assert.False(c.Binding.FitsType(c.Binding.CaseType(actual, cases), c.Binding.CaseType(expected, cases)));
     }
 
     [Fact]

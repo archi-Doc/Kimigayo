@@ -289,7 +289,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var walk = new RelationWalk(this, use, OriginPart.Contract);
+            var walk = new RelationWalk(this, this, use, OriginPart.Contract);
             if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
             {
                 this.contractFailure = walk.Failure.Within((byte)(i + 1));
@@ -326,7 +326,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var resultWalk = new RelationWalk(this, use, OriginPart.Contract);
+        var resultWalk = new RelationWalk(this, this, use, OriginPart.Contract);
         if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
         {
             this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);

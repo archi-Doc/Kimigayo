@@ -4960,11 +4960,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `BoundAccessor.Binder` (its declaration, else its Property's), the `use` Binding.Retains takes; `ErasedCallee` had given the
     accessor's `FunctionKoto`, so since 4b58be003 (rule 3) a Property requirement setter's own Origins read as fixed and `s.item = 9;
     return s.item` erred at `s`. A carrier has, besides its own node (a value of T, R4-M36), its reached node (Revision 3,
-    `ReachedNode`): only a relation whose output is a writable carrier position (an erased writer's `uniq/Self` or `uniq/T` input)
-    reaches it, and it fills `Abstract`; a result builder's relation fills the carrier's own node.
+    `ReachedNode`): only a relation whose output is a carrier occurrence whose hidden storage is writable reaches it (an
+    erased writer's `uniq/Self`, `uniq/T` or by-value `T` input: `RetentionAtom.HiddenWritable`; superseded in part by BU-225
+    (PLAN G963): the earlier "writable carrier position" read the carrier's own position, which route 2 does not ask, since
+    SPEC 15.6.4's route 2 gives a by-value T the same hidden storage), and it fills `Abstract`; a result builder's relation fills the carrier's own node.
   - Made precise by rows during implementation (Revisions 3–5): a `during self` layer of a stored part admits the holding instance's
     Type arguments by their actual Types, or with an Origin argument any value at that argument's node in its own and the Abstract
-    storage (SPEC 5.7 Calls, the owner's Q2 (a); `Binding.SelfAdmitted`, the one reading, which A5's `MirTypes.Holding` reads through
+    storage (the Abstract half wherever an input's walk meets the layer, a by-value holder's included; the own half where its
+    storage is written: BU-225) (SPEC 5.7 Calls, the owner's Q2 (a); `Binding.SelfAdmitted`, the one reading, which A5's `MirTypes.Holding` reads through
     TyCtxt); at a referent store whose referent does not destroy shallowly (R4-M143) each holder past refs(S) also takes `Own_j`, the
     interim until A5 composes the destruction (PLAN G264); a holder whose Place no `Reached` entry names takes `All` (Revision 8;
     Revision 1's `Beyond` stays withdrawn). A borrow formed through an argument is identified by its path (Revision 10; Revision 7's
@@ -14057,6 +14060,12 @@ resumed by R4-M86 (2026-10-20).
     - A cheaper `ResetPass` alone: it is not where the time goes.
     - Every library summary computed eagerly in the library pass, instead of the failure rule above: it covers summaries only, not
       every on-demand path, and changes the capability epochs.
+  - **RP8 (W-255's slot T-W255; the owner's acceptance, verbatim 「すべて推奨通りでお願いします」, K's dialog, 2026-11-18 12:4x).** A f1f586555, B
+    617c3db04, 12 rounds: O2 unchanged (13 kernels, code differs in 0); warm Bind within; cold Bind B/A' beyond RP8's 1.03 on Hello
+    1.041 and Milestone26 1.071. T-310 (the Front's GC diagnostic, the same builds, blocking GC): Hello cold 1.016, Milestone26 cold
+    1.060 from one more gen2 collection inside Bind per 8 cold compilations (the cold bytes +3.5 KB on Hello, +9.7 KB on
+    Milestone26), Bind net of the GC pause 1.001, pooled without a gen2 0.999. The owner accepted the row as GC phase, as W-232
+    (R8-M45, O-387) was; no recovery unit. Removal: S1-1, the library bound once per process.
 - **BU-220 Binding's per-pass tables are paged dense columns over dense ids, with a `Frozen` base store and a program overlay; the
   dense Type id (PLAN G949, R7-N5, R7-D2 b)** (2026-11-16; Front, Binding; Major, behavior-preserving on every program whose
   SourceDocuments each lie in one module; the owner's O-376 (a) 「O-376 a」, its approval 3: N5's SyntaxId columns and D2 b's tables
@@ -14429,6 +14438,50 @@ resumed by R4-M86 (2026-10-20).
   - Closes PLAN G936. Open: G942-G944 (above); a Closure's value call never proves its result's clauses, since
     `CarriesResultPremises` excludes anonymous functions (PLAN G962, to reuse this judge); pre-existing on G913 and found by the
     Middle's consent re-check: PLAN G966, G967 and the G710 and G870 additions.
+- **BU-225 What an abstract part hides is writable wherever an input's walk meets it (PLAN G963)** (2026-11-18; Front, Binding; Q17
+  class 1; Major, an acceptance mover; design review REVISE (B1), re-check ACCEPT (F's G963 ruling 6); implementation review ACCEPT;
+  the Middle's RP17 consent C-386 after F2's fix; W-256) SPEC 15.6.4 (the abstract-Type sentence, route 2), 5.7 Calls. Supersedes
+  one sentence of R4-M154 (Revision 9's "writable carrier position"); amends R4-M154 Revision 3's emission of the Abstract storage
+  and the Revisions 3-5 write fact of a `during self` layer.
+  - Rule: what a part hides (an abstract part's storage: what its binding's exclusive references reach; what a value an AnyOf
+    content holds may refer to) is storage the call may write wherever an input's output walk meets the part, which is through no
+    shared layer and outside a callable, whether the part's own value is a position (written in place) or the callee's own (a
+    by-value input's part: the root `T`, a Field, a Tuple element, an Option payload, a Type argument, a Closure's environment
+    binding). Route 2's "a parameter or a capture ... since its binding may hold an exclusive reference with Origins of its own"
+    does not ask whether the part's own value is writable. It applies two dev readings at by-value parts (the Middle's N6): route 2
+    for a Copy abstract Type, and a writer of a projection's base or Contract argument writes what the projection hides.
+  - One predicate, read at three sites: the storage walk's state (`StorageAt.HiddenWritable`: every state of an input's output walk,
+    never the result's walk or an input fold's) gates `AbstractPositions` at an abstract part (`StorageWalk`; no longer inside
+    `Position`) and, at a part that is no position, rule 3's fill (`storageHidden`) and the Abstract half of `Admitted`'s AnyOf
+    write fact (its own-storage half stays where the state is writable); the atom walk's flag `RetentionAtom.HiddenWritable`, "met
+    through no shared layer and outside a callable": false past a shared borrow or shared handle (ref, objref, rc, arc, a Slice),
+    past a raw layer whose step is Shared, past a pair layer whose binder admits no exclusive Semantics, and inside a callable Type;
+    true at a by-value input, an exclusive borrow's referent, a raw input's pointee and a raw layer's members. It is the condition
+    under which the storage walk enters a state at all, so the two walks state one rule. A carrier atom inherits it; it gates
+    `AddErasedRelations`' ReachedNode edge and `ErasedFills`, so a handed or erased callable that takes the T by value
+    (`set: (T, E)`) writes what T hides, and one that reaches the T only through a shared layer
+    (`set: (uniq/(ref/T during a) during u, E)`) does not. `Writable` keeps BU-1's meaning (the carrier's own position), which the
+    carrier-node edge reads.
+  - No writer test is added: the positions exist for every part met, and the existing fills (the erased writers' ReachedNode edges,
+    rule 3's fills) decide what fills them.
+  - What fills it (F2's revision, C-386): at a position the hold as before (rule A's hold walk). At a part that is no position (a
+    by-value input's part, a `let` capture) its own value is the callee's and is not written, so only rule 3's fill reaches what it
+    hides (`storageHidden`, `HiddenFills`: each raw source but the output keeps its own value where HoldsRaw, BU-66); rule A never
+    starts there (SPEC 15.6.4: "a raw layer that the abstract Type's binding may hold and the abstract Type does not show adds no
+    reach of its own").
+  - Rows (60 programs, 30 invalid and 30 valid, and 22 contracts; the Middle's N5): RetentionTest
+    `WhatAPartHidesIsWrittenWhereverAnInputsWalkMeetsIt` and `ACapturedAbstractPartHidesStorageTheCallMayWrite` (Binding's record);
+    MirBorrowsTest `AWriterOfWhatAPartHidesKeepsTheArgumentThere` (the invalid programs with A5's one record each, the valid ones
+    with none, the shared-layer boundary byVUniqRefFnOk and byVUniqUniqFnBad among them); F2's four valid by-value projection
+    programs (projRawArgOk, projRawArgRawOk, projRawArgCopyOk, projPlainArgOk) and their invalid twins with a handed writer. Six
+    RetentionTest pins move by the rule (PremisesAndInputsHandTheirCallables x4, CallableBoundsRelateTheirFixedOrigins,
+    ErasedCarriersAreFixedOrigins; each 15.6.4 reading in d4415c22e's message).
+  - Name: `HiddenWritable`, not `Hides`: `Binding.Hides(BoundType)` (BU-202) already names another fact.
+  - Rejected: a writer test at the by-value input (a second copy of the erased relations' decision, and a `set: (T, E)` writer would
+    still be missed); emitting the Abstract positions only where a handed writer exists (a gate per form; the fills already decide);
+    making the carrier atom's `Writable` true for a by-value T (it would relate E to the carrier's own node: an over-report);
+    narrowing `AddErasedRelations`' carrier-node edge at every shared layer (prototype p5 accepted the invalid uniqTUniqRcFnBad;
+    that edge is PLAN G993's).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -22878,6 +22931,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     bytes move which of the 8 cold rounds take a gen2 collection, so the median steps by about half a gen2 pause. The owner's O-387
     (a) (verbatim 「質問の回答は、すべて推奨通り」, 2026-11-17) puts it under the same acceptance, with no recovery unit and no harness
     change. Removal: G949 Stage 2 (R8-L1), the per-process freeze of the library's Binding and HIR.
+  - Extended by PLAN G71 (W-256, the Back, 2026-11-18): 23 more library declarations carry `#CallerLocation` (SPEC 22.5.1); a direct
+    lowered check inside a `#CallerLocation` body already reports the received location (`FunctionCodegen.Location`), so no
+    forwarded-location operand is needed. `KimiLibraryShapeTest`: `#CallerLocation` declarations 82 -> 105, unnamed registrations 63
+    -> 79.
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
@@ -23096,7 +23153,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     (O-381 (b): Stage 2 freezes Binding and HIR only; the library's MIR is built per compilation, G951). `ArchitectureRulesTest`'s
     `SourcePatternStaysAtItsSites` row "Routes from a node to its compilation" names the route's sites over `src/Kimi` by file and
     occurrence (C-376's condition 1: a named list, so a new route fails it). U0b-T2 introduces it at 38 occurrences in 22 files (52
-    before; 26 in `Compiler/Binding`); U0b-1, U0b-6, U0b-P3 and U0b-N5 lower it by 11, 6, 4 and 5 to its 12 sites outside Binding,
+    before; 26 in `Compiler/Binding`); U0b-1, U0b-6, U0b-P3 and U0b-N5 lower it by 9, 6, 6 and 5 to its 12 sites outside Binding,
     `CodeContext`'s property and the parser's, which R7 owns (U3's end state).
   - **Route units' grouping (U0b-T2, U0b-N5, U0b-C2).** `ElementAccess`'s statics and `Binding.PlaceAuthority`'s statics call each
     other, so one unit converts both: U0b-T2 takes the 8 `ElementAccess.cs` lines and `Binding.PlaceAuthority.cs:141, 150, 274, 319,
@@ -23117,6 +23174,20 @@ R8-M* and R9-M* by the stage of the recording unit.
     `RestingCauses`, and `ReportOriginRelation`). `PairBinder.Collect` stays although it only forwards to `Binding.PairBinders`: it is
     the published entry of the canonical Semantics cases component (COMPILER_ARCHITECTURE's Canonical components), not one of the four
     Binding views Mir/Build's dependency row names.
+  - **U0b-1's form (narrows U0b-N5's form; PLAN G949 Stage 2, the Back, 2026-11-18; W-257).** Where every caller holds only a
+    `TyCtxt` (MIR's analyses, its validator, the collector, codegen), a static of another type that MIR or Core reaches takes the
+    compilation's `TyCtxt` instead of the Binding: those callers hold no Binding, and a `TyCtxt.Binding` accessor would open every
+    Binding member to them. So `AdtDef`'s instance readers (`FieldType`, `Base`, `CaseTypes`, `StorageCount`, `FieldOwner`,
+    `FindField`) and the MIR and Backend statics over them take the `TyCtxt`; `TyCtxt.Signature` becomes an instance member;
+    `TyCtxt.Storage` is the one non-Binding entry to Binding's instance storage. Four MIR objects hold no reader:
+    `MirBody.Project`/`ProjectedType` and `MirDropTable.Level`/`Destroyed` take the `TyCtxt` per call (a stored body or drop table
+    never keeps a compilation's `TyCtxt`), and `MirDrops` and `MirMoveData` take it in their constructors from `MirAnalysis`, as
+    `MirEffects`, `MirOrigins` and `MirBorrows` do. `AdtDef.ReceiverType` takes the Binding (its MIR caller passes
+    `compilation.Binding` and reads no Binding member). A relation walk carries the Binding that made it as a non-null owner beside
+    its nullable premises reader. Binding's own statics become instance members; `Binding.Compatible` (a forwarder) is deleted.
+    U0b-1 removes `TyCtxt.cs`'s `Signature` line, `AdtDef.cs`'s two lines, `Binding.ClosureInstances.cs`,
+    `Binding.TypeRelations.Origins.cs` (2), `Binding.AssociatedOrigins.cs` and `TestDefinition.cs` (2) in one behaviour-preserving
+    commit (the route row 33 -> 24); `HirTables.HasCurrentBinding` is U0b-P3's.
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
@@ -23527,3 +23598,49 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends R9-M6 (the dependency rule's "`CompilationBuildMetadata`, through `Project.BuildMetadata`": Build reads the value
     `Project.Build` passes) and R5-M169 (the results with a fault path: the project's own and the build's, beside the front end's
     and the Emission result; DIAGNOSTICS §7).
+- **R9-M11 The generation result carries the link facts; the link manifest is one table with its readers (R9-B1)** (Middle,
+  2026-11-18; the R7-R9 plan's §5.3 unit B1, parts 1 and 2; Major; under R9-M6 and R9-M10; design review REVISE then ACCEPT WITH
+  NOTES; the Back's consent on its codegen half, C-389; W-256)
+  - Rule (part 1): the generation entry publishes, beside its `bool`, what the written module states for its link:
+    `Compilation.Generated` (`GeneratedModule`): the output kind (the startup selection's, which chose the output roots; a test
+    build's is an Application), the required libraries (`ModuleCodegen.Libraries`: the Library and Kind of every validated
+    `#LibraryImport`, called or not, one per library; SPEC 22.6 resolves the name "when the program is built", per declaration) and
+    the external declarations (`ModuleCodegen.Externals`: the `ExternalFunction` records code generation declares, one per symbol in
+    declaration order). Build reads `ExternalFunction`'s `Symbol` and `DllImport` only; the record stays one (the writer's input and
+    the published fact). The result exists only for the generation request that wrote the module, until the next generation request
+    or analysis: the generation entry keeps one field, set only when `Generate` returns true (the output kind snapshotted at the
+    write, code generation's two lists by reference), cleared at the start of every generation request and when `Analyze` begins,
+    before it builds the MIR program (so an analysis that throws leaves none either); a request that writes nothing leaves none, and
+    a read without one throws (`InvalidOperationException`), a broken contract the command renders as the fault, never a stale or
+    partial list. Publication reads the result after generation, so the foreign supplies follow generation: an
+    `InternalInvariant_Kd` in generation is a broken contract without recovery, and publication and its supply check do not run
+    after it (Q13). The manifest's output section states the declarations (`externalDeclarations`, `{symbol, dllimport}`); the
+    native build's object inspection reads them from the manifest.
+  - Rule (part 2): `LinkManifest` (`src/Kimi/Build/LinkManifest.cs`) owns the manifest's fixed fields and its readers, schema 4
+    (IMPL 20.3.2: the format is implementation-defined): one row table of the fixed fields by path (schemaVersion, target, the
+    codegen and backendSupport sections; a string, an Int32 or a string list each) that publication writes and the native build
+    checks in one order; the variable fields follow it (optimization, now top-level; the output section; the libraries; the optional
+    toolchain.llvmBin), written by `EmissionArtifacts` and read by `NativeToolchain.Build`, `Kernel32Imports` and
+    `ToolchainResolver`. Every manifest read goes through its readers (`Field`, `Text`, `OptionalText`, `Items`, `Flag`), which name
+    the field by its path (`codegen.features`, `libraries.kind`) and turn a missing field or another JSON kind into "'<path>' is
+    missing or not a JSON <kind>" and a fixed field's other value (another number included) into "'<path>' is not this compiler's",
+    `InvalidDataException` at the read (form J for the manifest: PLAN G983's manifest share; R9-B2's O3 for `build --Manifest`).
+    `ValidateManifest` states the external declarations' one rule before any tool: each a nonempty symbol, declared once, with its
+    dllimport form.
+  - Deleted: `NativeToolchain.ReadExternalDeclarations`' IR re-parse, `LlvmModuleText.SymbolFromName`, Build's reads of
+    `Binding.Startup.OutputKind` and `Binding.LibraryImports` (R9-M6's Temporary clause ends), `WriteProfile`, `WriteLinkInputs`,
+    `WriteStrings`, `StatesCodegen`, `StatesSupport`, the fixed fields' second copy and the manifest's `providedRuntimeSymbols` and
+    `expectedUndefinedSymbols` (constants nothing read but their check).
+  - Tests: ForeignEmissionTest (the generation result's link facts, unspelled escaped symbols, a library test build's Application,
+    `Generated` before any generation, after a failed generation and after the next analysis, warm generation with imports
+    allocating nothing, Purpose=Allocation); EmissionArtifactsTest (the manifest's external declarations, a dependency's called
+    import, a malformed or duplicate external declaration, the schema row); NativeToolchainTest.AManifestFieldFailsAtItsRead (10
+    rows: missing, another kind, a non-Int32 number, a fixed value); test-manual-build.ps1's and test-cli.ps1's manifest rows.
+  - Rejected: the called imports' libraries (option (b): the supply set would follow the generated closure, differing between build,
+    Library and test); `Generate` returning the result (about 1,000 test calls read its `bool`); a narrower published record beside
+    `ExternalFunction` (a second representation); keeping the IR re-parse as a check (a second derivation of codegen's decision); a
+    schema-3 manifest accepted with a fallback to the IR; a JSON-node template for the fixed head (the reflection serializer, and a
+    second representation of three value kinds); converting the build record's, installation's and catalog's readers in this unit
+    (G983's remainder, not the manifest).
+  - Amends R9-M6 (the dependency rule; the Temporary clause ends), R5-M181 (the foreign supplies follow generation) and R9-M10 (its
+    known limit narrows: no manifest read raises a listed contract type).

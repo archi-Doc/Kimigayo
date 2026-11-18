@@ -24,10 +24,12 @@ public struct Array<T>
         T is Copy
 
     /// Lends the element at `key` for shared access; a key outside the elements Aborts at the caller's access.
+    #CallerLocation
     public func index(self: ref/Self, key: ref/isize) -> ref/T during self
         return self[key]@ref
 
     /// Lends the element at `key` for exclusive access; a key outside the elements Aborts at the caller's access.
+    #CallerLocation
     public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
         return self[key]@uniq
 
@@ -66,6 +68,7 @@ public struct Array<T>
     ///
     /// - abort: `index` does not resolve against the current length.
     #Lang("ArrayInsertPosition")
+    #CallerLocation
     public func insert<P>(self: uniq/Self, index: P, value: T)
         P is Position
         // Each path calls insertAt, so a resolved position reaches it unmerged and `^1` moves one element; -1 fails
@@ -79,6 +82,7 @@ public struct Array<T>
     /// - return: The removed element; the caller takes ownership.
     /// - abort: `index` does not resolve to an element position.
     #Lang("ArrayRemovePosition")
+    #CallerLocation
     public func remove<P>(self: uniq/Self, index: P) -> T
         P is Position
         // As insert: a resolved position reaches removeAt unmerged; -1 fails removeAt's own check.
@@ -90,6 +94,7 @@ public struct Array<T>
     ///
     /// - abort: A position does not resolve to an element position.
     #Lang("ArraySwapPositions")
+    #CallerLocation
     public func swap<P, Q>(self: uniq/Self, first: P, second: Q)
         P is Position
         Q is Position
@@ -115,6 +120,7 @@ public struct Array<T>
     /// Splits the elements at the boundary `index` resolves to, `p`, into the Slices `[0, p)` and `[p, length)`.
     ///
     /// - abort: `index` does not resolve against the current length.
+    #CallerLocation
     public func splitAt<P>(self, index: P) -> (Slice<T> during self, Slice<T> during self)
         P is Position
         let position = PositionSyntax.resolved(index, self.length)
@@ -152,6 +158,7 @@ public struct Array<T>
     /// - return: The removed element; the caller takes ownership.
     /// - abort: `index` does not resolve to an element position.
     #Lang("ArraySwapRemove")
+    #CallerLocation
     public func swapRemove<P>(self: uniq/Self, index: P) -> T
         P is Position
         // As remove: swapAt's one check rejects -1, the end boundary and an empty Array, so pop then has an element.
@@ -185,6 +192,7 @@ public struct Array<T>
 
     /// Moves every element of `other` to the end, in order; `other` is consumed.
     #Lang("ArrayAppendAll")
+    #CallerLocation
     public func appendAll(self: uniq/Self, other: Array<T>)
         var source = other@move
         self.reserve(additional: source.length)
@@ -374,6 +382,7 @@ public struct Array<T>
     /// `matching` is called once per element in increasing index order with a shared reference. The removed
     /// elements are destroyed after the last call, in an unspecified order.
     #Lang("ArrayRemoveAll")
+    #CallerLocation
     public func removeAll<F>(self: uniq/Self, matching: F)
         F is Callable<(ref/T) -> bool>
         let count = self.length
