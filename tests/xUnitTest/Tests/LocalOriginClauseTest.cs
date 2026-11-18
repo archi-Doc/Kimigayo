@@ -42,6 +42,9 @@ public partial class LocalOriginClauseTest
     // A Type with its own clause, a premise of its definition that each use proves.
     private const string Ordered = "struct S {a, b}\n    origin a outlives b\n    public let x: ref/i32 during a\n    public let y: ref/i32 during b\n    public init(x: ref/i32 during a, y: ref/i32 during b)\n        self.x = x\n        self.y = y\n\n";
 
+    // A function whose result is that Type, formed from its parameters.
+    private const string Make = "func make(p: ref/i32, q: ref/i32) -> S{s}\n    origin s.a == p\n    origin s.b == q\n    return S.init(p, q)\n\n";
+
     // Local annotations that prove S's clause by a premise and by an initializer's Type, and a meet kept as a local's Origin, executed.
     private const string TypePremises = Holder + Ordered +
         "func premise(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    origin r outlives q\n    let s2: S{w} = s@move\n        origin w.a == r\n        origin w.b == q\n    return s2.x@follow * 10 + s2.y@follow\n" +
@@ -256,14 +259,18 @@ public partial class LocalOriginClauseTest
         Assert.True(output.Accepted, string.Join("\n", output.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
-    // A Type's own clause stays a premise that every formation of the Type must prove.
-    [Fact]
-    public void ATypePremiseIsRequiredWhereTheTypeIsFormed()
+    // SPEC 15.6.1, 15.6.4, 15.6.5: a Type's own clause stays a premise that every formation of the Type must prove: in a body, where
+    // a use ties the formed S to fixed Origins (the chain p -> a -> b -> q needs p outlives q), and at a call of a function whose result
+    // is the Type (the call proves the instantiated result well-formed: m outlives n). Forming the Type as the definition's own result is
+    // proven, since a definition may assume its result Type well-formed (ATypesClauseThatALocalProvesIsAccepted; G962 C1).
+    [Theory]
+    [InlineData("func make(p: ref/i32, q: ref/i32) -> ref/i32 during q\n    let t = S.init(p, q)\n    return t.y\n", "S.init(p, q)")]
+    [InlineData(Make + "func g(m: ref/i32, n: ref/i32) -> ref/i32 during n\n    let t = make(m, n)\n    return t.y\n", "make(m, n)")]
+    public void ATypePremiseIsRequiredWhereTheTypeIsFormed(string body, string at)
     {
-        var source = "struct S {a, b}\n    origin a outlives b\n    public let first: ref/i32 during a\n    public let second: ref/i32 during b\n    public init(first: ref/i32 during a, second: ref/i32 during b)\n        self.first = first\n        self.second = second\n\n" +
-            "func make(p: ref/i32, q: ref/i32) -> S{s}\n    origin s.a == p\n    origin s.b == q\n    return S.init(p, q)\n" + Main;
+        var source = Ordered + body + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "S.init(p, q)"), (error.Code, Text(source, error.Span)));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), at), (error.Code, Text(source, error.Span)));
     }
 
     // SPEC 15.3.3, 15.6.1: a local annotation proves its Type's own clauses substituted with the Origins it binds; each that does not
@@ -308,13 +315,17 @@ public partial class LocalOriginClauseTest
     }
 
     // The premise in the enclosing function or in the method, other Origins for the Type, Origins inferred from
-    // an initializer whose Type proves the clause, and the meet of a parameter with its Borrow, kept as the local's Origin.
+    // an initializer whose Type proves the clause, and the meet of a parameter with its Borrow, kept as the local's Origin. The last
+    // row forms the Type as the definition's own result, whose well-formedness the definition may assume (SPEC 15.6.1): it was
+    // UnprovenConstraint_Kd at S.init(p, q) until G962 C1 made the result Type's own clauses premises of the definition (a change of
+    // the row's subject, kept by ATypePremiseIsRequiredWhereTheTypeIsFormed's programs).
     [Theory]
     [InlineData("func f(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    origin r outlives q\n    let s2: S{w} = s@move\n        origin w.a == r\n        origin w.b == q\n    return s2.x@follow + s2.y@follow\n")]
     [InlineData("func f(p: ref/i32, q: ref/i32, r: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n    let s2: S{w} = s@move\n        origin w.a == p\n        origin w.b == q\n    return s2.x@follow + s2.y@follow\n")]
     [InlineData("func f(p: ref/i32, q: ref/i32, s: S{u}) -> i32\n    origin u.a == p\n    origin u.b == q\n    let s2: S = s@move\n    let s3: S{w} = s2@move\n        origin w.a == p\n        origin w.b == q\n    return s3.x@follow + s3.y@follow\n")]
     [InlineData("struct T {c, d}\n    origin c outlives d\n    public let s: S{z}\n        origin z.a == c\n        origin z.b == c\n    public let e: ref/i32 during d\n    public func take(self: owner/Self) -> i32\n        origin self.d outlives self.c\n        let s2: S{w} = self.s@move\n            origin w.a == self.d\n            origin w.b == self.c\n        return 0\n\n")]
     [InlineData(Holder + "func f(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n    return h.item@follow\n")]
+    [InlineData(Make)]
     public void ATypesClauseThatALocalProvesIsAccepted(string body)
     {
         var output = DiagnosticCorpus.Check(Ordered + body + Main);

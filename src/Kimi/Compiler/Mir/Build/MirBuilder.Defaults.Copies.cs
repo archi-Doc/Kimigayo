@@ -232,7 +232,7 @@ internal sealed partial class MirBuilder
                 Operand = operand, Start = first, Place = place, Callee = callee,
             };
             // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
-            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place), this.walked);
+            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(compilation.Types, this.body.TypeOf(place), this.walked);
             var continuation = copied;
             if (terminator.Kind == MirTerminatorKind.Return)
             {
@@ -264,8 +264,8 @@ internal sealed partial class MirBuilder
             {
                 MirProjectionKind.PairLayer => TyCtxt.Layer(this.body.TypeOf(prefix), out _, out _) is var kind and not HirPlaceKind.Value
                     ? this.Layer(prefix, kind) : prefix,
-                MirProjectionKind.Index => this.body.Project(prefix, row.Kind, map[locals + row.Arg]),
-                _ => this.body.Project(prefix, row.Kind, row.Arg),
+                MirProjectionKind.Index => this.body.Project(compilation.Types, prefix, row.Kind, map[locals + row.Arg]),
+                _ => this.body.Project(compilation.Types, prefix, row.Kind, row.Arg),
             };
         }
 

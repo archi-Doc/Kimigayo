@@ -20,8 +20,13 @@ namespace Kimi.Compiler;
 //   library Contract) take symbols the compiler holds, never a written Contract.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
+
+    // CompleteEffectBounds' scratch: the running part's entries, copied before EnsureEffectBounds may add one; empty between uses.
+    private readonly List<BindingSymbol> boundScratch = new();
+
+    // The running pass's bound Contract references (PassPart.BoundContracts, EnterPass); a lookup finds the layer's part first.
+    private Dictionary<BoundType, BindingSymbol> boundContracts;
 
     // SPEC 8.6.1, 9.7.1 (R7-N1e2-1R): a Contract use names its declaration, the selection its lookup published (its Symbols entry, written
     // once, never a bound reference), and the bound reference its Type arguments formed is its Type (the Meaning column). This writes
@@ -165,7 +170,7 @@ public sealed partial class Binding
             return reference.Symbol;
         }
 
-        if (this.boundContracts.TryGetValue(reference, out var cached) && cached.Contract!.State == 2)
+        if (PassPart.Find(this.Library.Layer.Part.BoundContracts, this.boundContracts, reference, out var cached) is not null && cached!.Contract!.State == 2)
         {
             return cached;
         }
@@ -245,6 +250,34 @@ public sealed partial class Binding
         }
 
         return bound;
+    }
+
+    // SPEC 8.11.1 (PLAN G949 S1-1, E3 and w1 (i)): every Contract of the running pass has its effect bounds: each Contract its modules
+    // declare (the `symbols` family's rows, those no node of the pass holds included, such as the library's `#Lang` markers, which
+    // PrepareEffectBounds' shapes never reach) and every bound Contract reference of the running part, the references its bounds
+    // substitute included (EnsureEffectBounds may add one), so no later pass computes the effect bounds of a Contract another pass made
+    // (census O5, O15).
+    private void CompleteEffectBounds()
+    {
+        foreach (var symbol in this.symbols.Values.In(this.pass))
+        {
+            if (symbol.Contract is { } contract)
+            {
+                this.EnsureEffectBounds(contract);
+            }
+        }
+
+        for (var done = -1; done != this.boundContracts.Count;)
+        {
+            done = this.boundContracts.Count;
+            this.boundScratch.AddRange(this.boundContracts.Values);
+            for (var i = 0; i < this.boundScratch.Count; i++)
+            {
+                this.EnsureEffectBounds(this.boundScratch[i].Contract!);
+            }
+
+            this.boundScratch.Clear();
+        }
     }
 
     private BindingSymbol SubstituteRequirementContract(BindingSymbol contract, BoundType reference)

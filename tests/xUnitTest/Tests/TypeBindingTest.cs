@@ -89,8 +89,8 @@ public partial class TypeBindingTest
         var c = Parse("func f(x: ref/i32 during a, y: ref/i32 during (a and b), u: uniq/(ref/i32 during a) during a, v: uniq/(ref/i32 during (a and b)) during a) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.True(Binding.FitsType(f.Parameters[0].Type.TypeOf()!, f.Parameters[1].Type.TypeOf()!));
-        Assert.False(Binding.FitsType(f.Parameters[2].Type.TypeOf()!, f.Parameters[3].Type.TypeOf()!));
+        Assert.True(c.Binding.FitsType(f.Parameters[0].Type.TypeOf()!, f.Parameters[1].Type.TypeOf()!));
+        Assert.False(c.Binding.FitsType(f.Parameters[2].Type.TypeOf()!, f.Parameters[3].Type.TypeOf()!));
     }
 
     [Fact]

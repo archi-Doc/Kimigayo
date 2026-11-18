@@ -47,7 +47,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed class MirAnalysis
 {
     private readonly MirCases cases;
-    private readonly MirMoveData moves = new();
+    private readonly MirMoveData moves;
     private readonly MirLints lints;
     private readonly MirDataflow flow;
     private readonly MirInit init;
@@ -61,15 +61,16 @@ internal sealed class MirAnalysis
     private (MirProgram? Program, int Segment) library; // The program and library segment whose step-2 facts the analyses hold (none yet).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
-    /// <param name="types">The Type context of the programs, which the case views read.</param>
+    /// <param name="types">The Type context of the programs, which the case views, the move paths and drop elaboration read.</param>
     internal MirAnalysis(TyCtxt types)
     {
         // The scratch the analyses share: MirCases, the one MirReach, the dataflow arena and the move paths.
         var reach = new MirReach(); // The one reachability walk: A3's runtime walks, the dataflow's block order and phases.
         this.cases = new(types);
+        this.moves = new(types);
         this.lints = new(reach);
         this.flow = new(reach);
-        this.drops = new(this.moves, this.cases);
+        this.drops = new(types, this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, this.flow);
         this.origins = new(types, this.cases); // A5's Origin stratum (2a0-D D13).

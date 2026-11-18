@@ -438,6 +438,7 @@ public struct Array<T>
     /// for less, equal or greater.
     ///
     /// Heapsort: O(n log n) calls and moves in the worst case, without allocation; not stable.
+    #CallerLocation
     public func sort<F>(self: uniq/Self, by: F)
         F is Callable<(ref/T, ref/T) -> i32>
         var end = self.length

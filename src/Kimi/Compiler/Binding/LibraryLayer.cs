@@ -14,7 +14,10 @@ namespace Kimi.Compiler;
 // - Outputs: Impls, which only the compilation's ImplTable reads and composes (its one composition point); Part, which only Binding's
 //   pass driver hands to a pass and only Binding's composed views and its keyed collections' one find (PassPart.Find) read.
 // - Invariants: never a region of an overlay store and never copied into one; its stores fill and reset with each library pass, one
-//   per run, until S1-1 freezes them; written only by the library's registrations and the library pass; Frozen from S1-1.
+//   per compilation: the library pass fills them once and S1-1's freeze stamps them Frozen (Binding.FreezeLibrary); written only by
+//   the library's registrations and the library pass. The library version is per compilation (HirTables.LibraryVersion, the run of
+//   the compilation's own Binding that froze the library), and the library HIR is identical in every Bind of a compilation after the
+//   freeze (G949 ruling 174).
 // - Prohibitions: no field holds a Compilation, Binding, TyCtxt, DiagnosticOwner or diagnostic collection (C-376 condition 3); no
 //   reader composes it with an overlay outside the overlay's own accessor.
 internal sealed class LibraryLayer
@@ -29,4 +32,8 @@ internal sealed class LibraryLayer
     /// <summary>Gets or sets the library's size: the library pass's table counts at its end (KimiLibrarySize's measure; Binding's pass
     /// driver writes it).</summary>
     internal KimiLibrarySize.Tables Size { get; set; }
+
+    /// <summary>Gets or sets L (PLAN G949 S1-1, d2b-d 1.4): the last Type id the library pass gave, so every Type the library made has an
+    /// id at most this; Binding's freeze writes it.</summary>
+    internal int TypeCount { get; set; }
 }
