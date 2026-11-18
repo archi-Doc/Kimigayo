@@ -72,6 +72,8 @@ public class NormalizedConstraintProofBindingTest
     // and Derived (an identity view with the derived identity fact of `T is K`: K's state is Proven, so the fact's availability is
     // Complete (W6, R7-C2e2 e2-3a), the table Final and the entry Kept; 1,416 while W6 kept every derived fact Provisional and each
     // request formed the entry again), less the library's: exact, over the publications that form the entries again. Every row counts.
+    // PLAN G949 S1-1c (dev: the certificate rounds judge the environments again only after a failure) leaves this count: the entry is
+    // formed once and Kept (dev's count, W6 Provisional: 1,416 before S1-1c, 912 after it).
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
         => Assert.Equal(220, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
@@ -119,7 +121,7 @@ public class NormalizedConstraintProofBindingTest
     // IndexOf's rebuild branch, indexes 68, as does an entry Kept with readings that were not kept.
     [Fact]
     public void ARequestInsideANormalizationIndexesItsViewAgain()
-        => Assert.Equal(108, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty)); // 98 before e2-3a's publication lifetime
+        => Assert.Equal(106, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty)); // dev 98; 108 with e2-3a's publication lifetime before G949 S1-1c's fewer rounds
 
     // DECISIONS R7-C2e2-2: a closure validator's read forms its view's entry when it has a fact to pair, and the entry goes back when
     // the read ends. The agreement reads f's view (three identities of one projection through K<U>, K<V> and K<i32>, SPEC 8.9.2);
@@ -127,7 +129,7 @@ public class NormalizedConstraintProofBindingTest
     // entries and the requests' index over the library's: exact.
     [Fact]
     public void AValidatorsReadIndexesItsViewOncePerRead()
-        => Assert.Equal(97, ClosureWork(Validated) - ClosureWork(string.Empty)); // 89 before e2-3a's publication lifetime
+        => Assert.Equal(95, ClosureWork(Validated) - ClosureWork(string.Empty)); // dev 89; 97 with e2-3a's publication lifetime before G949 S1-1c's fewer rounds
 
     // R7-C2c2 c2-3b at R7-C2e2-2's merge (merge review N1): a Callable fact is a row kind's fact, so a request's entry files it under its
     // subject and its class key, and a validator's read (no classes) under its subject alone. In f's view (`U is T`, whose class key is T)
@@ -155,8 +157,8 @@ public class NormalizedConstraintProofBindingTest
     // error (the owner's O-296 (a); RecursiveContractTest's l2 rows). Q joins the class where i32 did and its own conformance forms no
     // view entry, so the pairs are l2's and l2r's. The pairs over the library's: exact.
     [Theory]
-    [InlineData("T", "U", 28)] // 22 and 20 before e2-3a: each publication forms the entries again
-    [InlineData("U", "T", 26)]
+    [InlineData("T", "U", 24)] // dev 22 and 20; 28 and 26 with e2-3a (each publication forms the entries again) before G949 S1-1c's fewer rounds
+    [InlineData("U", "T", 22)]
     public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
     {
         var source = "struct Q\n    Self is C\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
