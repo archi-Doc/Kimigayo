@@ -453,6 +453,15 @@ public partial class TypeIdentityTest
     private const string BoxWhen = HasItems + "struct Box<T>\n    var v: i32\n    Self is Has1 when T is Pq\n        associate Has1.Item is T.(Pq).Up\n" +
         "    Self is Has2 when T is Pq\n        associate Has2.Item is T.(Pq).Up\n";
 
+    // The delta re-check's ov3, line for line: two paths to one conformance (D: C), C's under `T.Next^68.Up is Inner`, D's under that,
+    // `T.Next^69.Up is Inner` and `T is Copy`; D's premise closure reaches the bound.
+    private static readonly string Ov3SelfD = "    Self is D when T is Pq, T" + string.Concat(Enumerable.Repeat(".(Pq).Next", 68)) + ".(Pq).Up is Inner, T" +
+        string.Concat(Enumerable.Repeat(".(Pq).Next", 69)) + ".(Pq).Up is Inner, T is Copy";
+
+    private static readonly string Ov3 = "contract Inner\n    associate Z\n" + Pq + "contract C\n    associate Item\ncontract D: C\nstruct Box<T>\n    var v: i32\n" +
+        "    Self is C when T is Pq, T" + string.Concat(Enumerable.Repeat(".(Pq).Next", 68)) + ".(Pq).Up is Inner\n" +
+        "        associate C.Item is T.(Pq).Up.(Inner).Z\n" + Ov3SelfD + "\n        associate C.Item is T.(Pq).Next.(Pq).Up.(Inner).Z\npublic func main() => ()\n";
+
     // PLAN G881b, F's ruling 216 (SPEC 8.3.3 Limits: the limit "is reported once ... at the declaration that reaches it"; 8.2.1,
     // 7.5): the declaration whose premise closure reaches the bound is the nearest one with a Constraint region, so a refused use in
     // an `if`, `do`, `while` or `for` body, a match arm or a Closure (none states premises: a Closure's body is an ExecutableBody,
@@ -483,6 +492,25 @@ public partial class TypeIdentityTest
     [MemberData(nameof(RoundBoundDeclarationRows))]
     public void ADeclarationsLimitIsRecordedOnceAtItsFirstRefusedUse(string row, string source, string records)
         => CompilationTestHelper.AssertRecordsAtLines(row, CyclePrelude + Pq + source + "public func main() => ()\n", records);
+
+    // F's ruling 222 (SPEC 8.3.3 Limits, 23.1.2): a check that reads a declaration the premise-closure limit refused rests on the
+    // limit's record and keeps none of its own: in ov3 the agreement of C's two paths (at `Self is C`) and the use check of `Self is D`
+    // read D's conditional conformance, whose closure reached the bound (8d4e74206 gave each an InvalidConstraint_Kd beside the limit).
+    // ov3-own: C's specification names no associate of Inner, an independent failure whose records stay (23.1.2).
+    public static TheoryData<string, string, string> RefusedDeclarationReadRows => new()
+    {
+        { "ov3", Ov3, "PremiseClosureLimit_Kd: " + Ov3SelfD.Trim() },
+        {
+            "ov3-own", Ov3.Replace("(Inner).Z\n    Self is D", "(Inner).Zz\n    Self is D", StringComparison.Ordinal),
+            "InvalidAssociatedType_Kd: " + Ov3.Split('\n')[11].Trim() + " | PremiseClosureLimit_Kd: " + Ov3SelfD.Trim() +
+            " | UnresolvedBinding_Kd: associate C.Item is T.(Pq).Up.(Inner).Zz"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(RefusedDeclarationReadRows))]
+    public void ACheckReadingARefusedDeclarationRestsOnItsLimit(string row, string source, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(row, source, records);
 
     // PLAN G881 with G881b: a query made after the pass has counted its failures fails no node. MIR's destruction analysis asks Copy
     // of `T.(Pq).Up` (pqcallv, valid), a request that reaches the round bound: it keeps Unknown, as before the bound's rounds, and a

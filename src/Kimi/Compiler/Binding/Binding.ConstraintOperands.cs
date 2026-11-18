@@ -30,11 +30,18 @@ public sealed partial class Binding
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
     // An independent failure can keep the signature valid; a failed declaration part still rejects that context.
     private Koto? InvalidDeclarationContextCause(Koto declaration)
+        => this.FailedDeclarationContext(declaration) is { } context ? this.ReadFailedDeclaration(context) : null;
+
+    // SPEC 23.1.2, 8.3.3: a check's read of a failed declaration (or conditional conformance), the one place such a read forms its
+    // failure: the check rests on the node its failure is recorded at, whose record explains the check's outcome (IsDerived), a
+    // refused premise closure's limit included (Refusal: reported once, at the declaration's first refused site), so a check
+    // reading it keeps no record of its own.
+    private Koto? ReadFailedDeclaration(Koto declaration)
     {
-        var cause = this.FailedDeclarationContext(declaration) is { } context ? this.InvalidDeclarationCause(context) : null;
+        var cause = this.InvalidDeclarationCause(declaration);
         if (cause is not null)
         {
-            this.Consulted(cause); // SPEC 23.1.2: the check read it; its record explains the check's outcome (IsDerived).
+            this.Consulted(cause);
         }
 
         return cause;
