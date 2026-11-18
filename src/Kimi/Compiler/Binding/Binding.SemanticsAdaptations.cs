@@ -345,9 +345,13 @@ public sealed partial class Binding
     {
         var (stamp, mark) = (this.splitReads, this.unformedWrites);
         var type = form(this, state, declared);
-        split = this.splitReads != stamp || this.UnformedSince(mark);
+        split = this.ReadSplitSince(stamp, mark);
         return type;
     }
+
+    // DECISIONS D3: whether what was formed since `stamp` and `mark` read a split layer: a binding of the open combination, or a
+    // formation that formed none (the one predicate of a part's split read: FormReadsSplit, ItemPartFails).
+    private bool ReadSplitSince(int stamp, int mark) => this.splitReads != stamp || this.UnformedSince(mark);
 
     // DECISIONS D3: a part of a check judged in split cases starts (RestsOnSplitCases): its writes and reads count from here.
     private void EnterSplitPart()

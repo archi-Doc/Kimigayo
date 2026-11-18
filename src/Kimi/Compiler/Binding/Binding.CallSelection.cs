@@ -397,19 +397,26 @@ public sealed partial class Binding
     // Unsupported_Kd. A Function Item or reference part that every candidate a case can still select declares at a common Function Type
     // (ErasedByEveryCandidate) is erased whichever of them a case selects, so its environment is still judged, once, as a conversion's
     // is (FailErasedOwned; a reference part by its written arguments, FailUnformedOwned): the erasure comes after a selection that
-    // the split leaves open, and its Owned proof reads no unformed Type. An anonymous function awaiting the call is completed as a value
-    // call's part on the split is (CompleteValueCallPart, G812 ruling 134), at the Function Type the canonical case forms for it
-    // (CandidateParameter).
+    // the split leaves open, and its Owned proof reads no unformed Type. Each anonymous function awaiting the call in a part's tree is
+    // completed as a value call's part on the split completes it (CompleteSplitPart, G812 rulings 134, 136), at the Type the trial of
+    // the call's one candidate (ShapedCandidate) forms for its position in the canonical case, as SlotSolution.Type forms a parameter.
     private BoundType? FailUnformedCall(ref CallEvaluation evaluation)
     {
         var call = evaluation.Call;
+        var shaped = this.ShapedCandidate(ref evaluation);
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
             var part = call.ArgumentNodes[a];
-            if (this.KindOf(part) == PartKind.Function && this.CandidateParameter(ref evaluation, a) is ({ } canonical, var open))
+            if (shaped >= 0 && evaluation.Evaluated[shaped] is { Symbol.Declaration: FunctionKoto function } candidate &&
+                function.Parameters[evaluation.Mapping[a]].Type.BoundType is { } declared)
             {
-                this.CompleteValueCallPart(part, canonical, evaluation.Scope, open);
-                continue;
+                var trial = (function, evaluation.Frame, evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType);
+                _ = this.CompleteSplitPart(
+                    part,
+                    declared,
+                    trial,
+                    static (binding, s, type) => binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths),
+                    evaluation.Scope);
             }
 
             if (ErasedByEveryCandidate(ref evaluation, a) is not { } erased)
@@ -430,21 +437,46 @@ public sealed partial class Binding
         return this.Fail(call, BindingFailure.Unsupported, true);
     }
 
-    // DECISIONS D3 (G812 ruling 134): the Function Type the trial of a call's one candidate forms for argument `a` in the canonical case
-    // (CanonicalForm, formed as SlotSolution.Type forms a parameter), with its open parts. None for a group of several, whose selection
-    // the split leaves open (the evaluation keeps no resting trial's frame), or a parameter that forms no Function Type.
-    private (BoundType? Type, OpenParts Open) CandidateParameter(ref CallEvaluation evaluation, int a)
+    // SPEC 10.1 step 1, DECISIONS D3 (G812 rulings 134, 136): the index of the one candidate the call's own shape admits (its argument
+    // count and labels: a valid argument map), whose trial's frame and mapping the evaluation then holds: the last trial's, so a
+    // candidate evaluated before another is evaluated again alone, as a query that publishes nothing (BeginSelectionQuery). -1 where
+    // the shape admits several, whose selection the split leaves open.
+    private int ShapedCandidate(ref CallEvaluation evaluation)
     {
-        if (evaluation.Count != 1 || evaluation.Evaluated[0] is not { Symbol.Declaration: FunctionKoto function } candidate ||
-            function.Parameters[evaluation.Mapping[a]].Type.BoundType is not { } declared)
+        var shaped = -1;
+        for (var i = 0; i < evaluation.Count; i++)
         {
-            return default;
+            if (evaluation.Evaluated[i].ArgumentMap.Valid)
+            {
+                if (shaped >= 0)
+                {
+                    return -1;
+                }
+
+                shaped = i;
+            }
         }
 
-        var trial = (function, evaluation.Frame, evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType);
-        var formed = this.CanonicalForm(declared, trial, static (binding, s, type) =>
-            binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths));
-        return formed.Type is { Kind: BoundTypeKind.Function } ? formed : default;
+        if (shaped < 0 || shaped == evaluation.Count - 1)
+        {
+            return shaped;
+        }
+
+        var (query, candidate) = (this.BeginSelectionQuery(), evaluation.Evaluated[shaped].Symbol!);
+        var selection = this.OpenFrame();
+        this.candidateTrials++;
+        try
+        {
+            evaluation.Count = shaped;
+            this.EvaluateCallCandidate(ref evaluation, candidate);
+            return shaped;
+        }
+        finally
+        {
+            this.candidateTrials--;
+            this.CloseFrame(selection);
+            this.EndSelectionQuery(query);
+        }
     }
 
     private struct CandidateShape

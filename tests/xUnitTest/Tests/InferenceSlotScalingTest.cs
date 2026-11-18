@@ -99,6 +99,34 @@ public class InferenceSlotScalingTest
         string List(Func<int, string> item) => string.Join(", ", all.Select(item));
     }
 
+    // DECISIONS D3 (G812 ruling 136): the walk of a split part's tree completes every anonymous function it reaches, each by one
+    // one-run search (CanonicalForm), so a tree chain of n Tuple elements each holding a contextual Case whose payload is an anonymous
+    // function (`(.Some(func (x) => true), (...))` at `(Option<(s0/Box) -> i32>, (...))`) takes split runs linear in n, and each
+    // body keeps its record (7c04029eb completed none: one run and Unsupported_Kd alone at every n).
+    [Fact]
+    public void ASplitPartsTreeCompletesItsAnonymousFunctionsInRunsLinearInItsDepth()
+    {
+        var runs = new[] { 10, 20, 40 }.Select(Runs).ToArray();
+        Assert.True(MirBorrowsTest.Grows(runs, 2), $"runs {string.Join(", ", runs)}");
+
+        static long Runs(int depth)
+        {
+            var (type, argument) = ("i32", "1");
+            for (var i = 0; i < depth; i++)
+            {
+                (type, argument) = ($"(Option<(s0/Box) -> i32>, {type})", $"(.Some(func (x) => true), {argument})");
+            }
+
+            var source =
+                "struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\n" +
+                $"func putN<s0/W0>(m0: s0/W0, n: {type}, k: s0/Box during c) -> i32\n    return 0\n" +
+                "func call<t0/U0>(k0: t0/U0, u0: U0) -> i32\n    t0 is owner or ref\n    U0 is Owned\n" +
+                $"    let f = putN<U0>\n    return f(u0@move, {argument}, stop())\n";
+            Assert.Equal($"{depth}*TypeMismatch_Kd {depth}*UnprovenConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
+            return MinimalEmissionTest.Analyze(source).Binding.SplitCaseRuns;
+        }
+    }
+
     // G216 (a) U3a (C-38 B3; DECISIONS BU-104): premise discovery reads the evidence names once per solve, so its reads grow linearly
     // in a literal's elements beside the evidence that names the callee's Origins (`mk([.None x N], q, r)`), not with every leaf.
     [Fact]

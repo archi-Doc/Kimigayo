@@ -193,7 +193,8 @@ public sealed partial class Binding
     //   where its failure is its own record (CompleteFailedPart); the parts before it passed that case, and the result is judged
     //   only where it failed first (a call that forms no result checks none: BindValueCall);
     // - a part whose parameter reads no split layer is completed at it as the unsplit path completes it (CompleteValueCallPart): its
-    //   check rests on nothing, so an anonymous function's body is judged;
+    //   check rests on nothing, so an anonymous function's body is judged; in any other part that fails in no case, each anonymous
+    //   function its tree holds is completed at the canonical case's Type for its position (CompletePartOnSplit, CompleteSplitPart);
     // - the call then fails by itself on a misfit, or where it fails in every combination with no part failing so; else it rests on
     //   a failed part (rule W), else on the split (one located Unsupported_Kd, O-332 (a)).
     private BoundType? BindValueCallOnSplit(InvocationKoto call, BindingScope scope, BoundType callee, BoundType? expected, int mark)
@@ -245,10 +246,9 @@ public sealed partial class Binding
                     this.CompleteFailedPart(waiting, part.Type!, scope);
                     failed ??= waiting;
                 }
-                else if (part is { Fails: false, Prepared: true } && this.CompletedParameter(call.ArgumentNodes[i], part, item, scope, i) is ({ } parameter, var open) &&
-                    this.CompleteValueCallPart(call.ArgumentNodes[i], parameter, scope, open) is null)
+                else if (part is { Fails: false, Prepared: true } && this.CompletePartOnSplit(call.ArgumentNodes[i], part, item, scope, i) is { } completed)
                 {
-                    failed ??= call.ArgumentNodes[i];
+                    failed ??= completed;
                 }
             }
 
@@ -263,15 +263,15 @@ public sealed partial class Binding
         }
     }
 
-    // G812 rulings 132, 134: the parameter a part of a value call on the split that fails in no case is completed at, with its open
-    // parts: one whose run read no split layer at the parameter that run formed (H2); an anonymous function awaiting the call at the
-    // Function Type the canonical case forms for it, the parts the split decides open (CanonicalForm, J1). Any other part's check reads
-    // the whole split parameter, so it rests and is bound on its own (CompleteUnselected).
-    private (BoundType? Parameter, OpenParts Open) CompletedParameter(Koto argument, in SplitPart part, BoundType item, BindingScope scope, int i)
-        => !part.Split ? (part.Parameter, default)
-            : this.KindOf(argument) == PartKind.Function && ((FunctionKoto)item.Symbol!.Declaration).Parameters[i].Type.BoundType is { } declared
-                ? this.CanonicalForm(declared, (item, scope), static (binding, state, type) => binding.ItemPart(type, state.item, (FunctionKoto)state.item.Symbol!.Declaration, state.scope))
-                : default;
+    // G812 rulings 132, 136: a part of a value call on the split that fails in no case, completed: one whose run read no split layer at
+    // the parameter that run formed (H2), any other by the walk of its tree (CompleteSplitPart), each anonymous function in it at the
+    // Type the canonical case forms for its position, as ItemPart forms the Item's parameter (none past the Item's parameters: the
+    // call fails by its count). The part that failed so, else null.
+    private Koto? CompletePartOnSplit(Koto argument, in SplitPart part, BoundType item, BindingScope scope, int i)
+        => !part.Split ? (part.Parameter is { } parameter && this.CompleteValueCallPart(argument, parameter, scope) is null ? argument : null)
+            : ((FunctionKoto)item.Symbol!.Declaration).Parameters is var parameters && i < parameters.Count && parameters[i].Type.BoundType is { } declared
+                ? this.CompleteSplitPart(argument, declared, (item, scope), static (binding, state, type) => binding.ItemPart(type, state.item, (FunctionKoto)state.item.Symbol!.Declaration, state.scope), scope)
+                : null;
 
     // G812 ruling 132: whether one part of a value call's split check (an argument, or the result after them) fails in every case of
     // the bindings it reads, by its own search, and the waiting part it fails at with the canonical case's Type where every failing
@@ -357,7 +357,7 @@ public sealed partial class Binding
             var parameter = this.ItemPart(declared, item, function, scope);
             fails = parameter is not null &&
                 (this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable || this.WaitingPartFails(scope));
-            this.splitParts[parts + i] = this.splitParts[parts + i] with { Parameter = parameter, Split = this.splitReads != stamp || this.UnformedSince(mark) };
+            this.splitParts[parts + i] = this.splitParts[parts + i] with { Parameter = parameter, Split = this.ReadSplitSince(stamp, mark) };
             if (fails && this.argumentMisfit.Names(declared!, out var element))
             {
                 this.EnterSplitPart();

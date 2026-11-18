@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 // waiting arguments and the waiting callables at its F (TakeWaiting), and decides a join they alone kept waiting (DecideTaken);
 // CompleteArguments completes its arguments at its operations and erases a callable completed at a common Function Type (ErasePart);
 // CompleteValueCallPart completes a value call's part at its one candidate's parameter Type, a waiting one (WaitsForValueCallSolve) at
-// the instantiated parameter, an anonymous function on the split at the canonical case's with its open parts (CompleteOpenClosure);
-// CompleteUnselected binds on its own each
+// the instantiated parameter; CompleteSplitPart completes the anonymous functions in a part's tree on the split at the canonical
+// case's Types with their open parts (CompleteOpenClosure); CompleteUnselected binds on its own each
 // part of a call that completes none, outside its consultation. The selection, its defaults and their re-check (SolveSelected,
 // CheckDefaulted) stay in Binding.ArgumentKinds.cs.
 public sealed partial class Binding
@@ -143,16 +143,10 @@ public sealed partial class Binding
     // SPEC 12.5.2, 10.5.1, 10.1.1 (D1): a value call's part, classified as a named call's is (PrepareArgument, by its caller, which
     // composes its rows in between) and completed at its known parameter Type with no selection probe, since a value call has one
     // candidate: a Typed part keeps its own Type, which the call adapts; every other part is bound at the parameter Type, a Literal at
-    // its literal input Type. A part that waits for the solve (WaitsForValueCallSolve) is completed at its instantiated parameter, an
-    // anonymous function at one with parts a split layer decides at the others (`open`, CompleteOpenClosure; G812 ruling 134). Null
+    // its literal input Type. A part that waits for the solve (WaitsForValueCallSolve) is completed at its instantiated parameter. Null
     // when it fails.
-    private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope, OpenParts open = default)
+    private BoundType? CompleteValueCallPart(Koto part, BoundType parameter, BindingScope scope)
     {
-        if (open != default && KotoHelper.UnwrapParentheses(part) is FunctionKoto closure)
-        {
-            return this.CompleteOpenClosure(part, closure, parameter, open, scope);
-        }
-
         var literal = IsUnfittedLiteral(part);
         if (this.KindOf(part) != PartKind.Typed || part.BoundType is not { } typed)
         {
@@ -177,9 +171,43 @@ public sealed partial class Binding
     // decides open (OpenParts): its body is bound there, so its failures that read no split binding keep their records and a check
     // reading an open part rests on the split (O-332 (a)). Its erasure's signature part reads the split, so only its Owned part is
     // judged (FailErasedOwned, as FailUnformedCall judges a Function Item's). Null when that fails or the header fails: the call rests on
-    // it. Both D3 paths complete it here (BindValueCallOnSplit, FailUnformedCall).
+    // it. The walk of a split part's tree completes it here (CompleteSplitPart).
     private BoundType? CompleteOpenClosure(Koto part, FunctionKoto closure, BoundType canonical, OpenParts open, BindingScope scope)
         => this.BindClosureArgument(part, closure, scope, canonical, open) is { } actual && !this.FailErasedOwned(part, actual, canonical) ? actual : null;
+
+    // SPEC 10.5, 6.5.2, 10.5.1, 23.1.2 (DECISIONS D3 with rule W, temporary with it; G812 ruling 136): a part of a call on the split that
+    // fails in no case and whose check reads a split layer. Every anonymous function awaiting the call in its tree (the part itself, a
+    // Tuple or array literal's elements, a contextual Case's payloads at its enum's slots: the components a fit's path names,
+    // ComponentPath) is completed at the Type the canonical case forms for its position (CanonicalForm of the declared component there,
+    // `form` forming it as the call does): with the parts a split binding decides open by CompleteOpenClosure, with none as at a
+    // parameter that reads no split (CompleteValueCallPart). Every other part, and a position no declared component names, reads the
+    // split, rests and is bound on its own (CompleteUnselected). The first anonymous function that fails, else null: the call rests on
+    // it. Both D3 paths complete their parts here (BindValueCallOnSplit, FailUnformedCall).
+    private Koto? CompleteSplitPart<TState>(Koto part, BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form, BindingScope scope)
+    {
+        var node = PartCore(KotoHelper.UnwrapParentheses(part));
+        if (this.KindOf(node) == PartKind.Function && node is FunctionKoto { BoundType: null } closure)
+        {
+            var (type, open) = this.CanonicalForm(declared, state, form);
+            return type is not { Kind: BoundTypeKind.Function } ? null
+                : (open == default ? this.CompleteValueCallPart(part, type, scope) : this.CompleteOpenClosure(part, closure, type, open, scope)) is null ? part : null;
+        }
+
+        // The declared component at each child's position is the one the fit's path names there (ProbeAggregateArgument, FitCaseAt).
+        Koto? failed = null;
+        var elements = CallableParts(node);
+        var ordinal = elements is null && NeedsEnumContext(node) ? CaseOrdinal(node, declared) : -1;
+        IReadOnlyList<Koto>? children = elements ?? (ordinal >= 0 && node is InvocationKoto call ? call.ArgumentNodes : null);
+        for (var i = 0; children is not null && i < children.Count; i++)
+        {
+            var at = elements is null ? PayloadSlot(declared, ordinal, i)
+                : declared.Kind == BoundTypeKind.Tuple ? i : declared.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray ? 0 : -1;
+            var completed = at >= 0 && at < declared.Components.Count ? this.CompleteSplitPart(children[i], declared.Components[at], state, form, scope) : null;
+            failed ??= completed;
+        }
+
+        return failed;
+    }
 
     // SPEC 23.1.2, 10.1 (DECISIONS U4b): a call that ends unresolved, with no selected candidate or one that failed before completing
     // its arguments, binds each argument part still unbound on its own under the argument probe, so that the part's own problems are

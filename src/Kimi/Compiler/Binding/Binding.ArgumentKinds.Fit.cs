@@ -22,6 +22,27 @@ public sealed partial class Binding
     // reads it right after the fit and blames that part's bindings (ItemCallFails).
     private ComponentPath argumentMisfit;
 
+    // SPEC 6.5.2: the ordinal of the Case a contextual Case names in `type`'s enum, else -1.
+    private static int CaseOrdinal(Koto node, BoundType type)
+    {
+        var name = ((SyntaxFormKoto)((node as InvocationKoto)?.Method ?? node)).Operands is [IdentifierNameKoto identifier] ? identifier.IdentifierName : null;
+        for (var i = 0; AdtDef.Case(type, i) is { } found; i++)
+        {
+            if (found.Symbol.Name == name)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    // The component of `type` (an instance of the Case's enum) that payload `i` of Case `ordinal` takes: its slot where the payload's
+    // declared Type is the enum's slot, else -1 (the position no component path names: ComponentPath).
+    private static int PayloadSlot(BoundType type, int ordinal, int i)
+        => AdtDef.Case(type, ordinal) is { } found && i < found.Payload.Length && found.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot }
+            ? ContainerSlot(type.Symbol!.Declaration, slot) : -1;
+
     // The waiting parts met below a part's position (from `from` on), as the enclosing position sees them: within its component
     // `index`; none (the part's own position, -1) where the part is no component of it.
     private void WaitingWithin(int from, int index)
@@ -124,14 +145,8 @@ public sealed partial class Binding
         }
 
         var call = node as InvocationKoto;
-        var name = ((SyntaxFormKoto)(call?.Method ?? node)).Operands is [IdentifierNameKoto identifier] ? identifier.IdentifierName : null;
         var payloads = AdtDef.CaseTypes(type);
-        var ordinal = -1;
-        for (var i = 0; payloads is not null && i < payloads.Length && ordinal < 0; i++)
-        {
-            ordinal = AdtDef.Case(type, i)?.Symbol.Name == name ? i : -1;
-        }
-
+        var ordinal = payloads is null ? -1 : CaseOrdinal(node, type);
         var found = ordinal >= 0 ? AdtDef.Case(type, ordinal) : null;
         if (!this.ShapeFits(found is not null && payloads![ordinal] is not null && EnumArityMatches(found.Payload.Length, call)))
         {
@@ -142,7 +157,7 @@ public sealed partial class Binding
         {
             var met = this.waitingParts.Count;
             var fit = this.FitArgumentPart(call.ArgumentNodes[i], payloads![ordinal]!.Components[i], scope, call, out _);
-            var index = found!.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot } ? ContainerSlot(type.Symbol!.Declaration, slot) : -1;
+            var index = PayloadSlot(type, ordinal, i);
             this.WaitingWithin(met, index);
             if (fit == CandidateApplicability.Inapplicable)
             {
