@@ -23153,7 +23153,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     (O-381 (b): Stage 2 freezes Binding and HIR only; the library's MIR is built per compilation, G951). `ArchitectureRulesTest`'s
     `SourcePatternStaysAtItsSites` row "Routes from a node to its compilation" names the route's sites over `src/Kimi` by file and
     occurrence (C-376's condition 1: a named list, so a new route fails it). U0b-T2 introduces it at 38 occurrences in 22 files (52
-    before; 26 in `Compiler/Binding`); U0b-1, U0b-6, U0b-P3 and U0b-N5 lower it by 11, 6, 4 and 5 to its 12 sites outside Binding,
+    before; 26 in `Compiler/Binding`); U0b-1, U0b-6, U0b-P3 and U0b-N5 lower it by 9, 6, 6 and 5 to its 12 sites outside Binding,
     `CodeContext`'s property and the parser's, which R7 owns (U3's end state).
   - **Route units' grouping (U0b-T2, U0b-N5, U0b-C2).** `ElementAccess`'s statics and `Binding.PlaceAuthority`'s statics call each
     other, so one unit converts both: U0b-T2 takes the 8 `ElementAccess.cs` lines and `Binding.PlaceAuthority.cs:141, 150, 274, 319,
@@ -23174,6 +23174,20 @@ R8-M* and R9-M* by the stage of the recording unit.
     `RestingCauses`, and `ReportOriginRelation`). `PairBinder.Collect` stays although it only forwards to `Binding.PairBinders`: it is
     the published entry of the canonical Semantics cases component (COMPILER_ARCHITECTURE's Canonical components), not one of the four
     Binding views Mir/Build's dependency row names.
+  - **U0b-1's form (narrows U0b-N5's form; PLAN G949 Stage 2, the Back, 2026-11-18; W-257).** Where every caller holds only a
+    `TyCtxt` (MIR's analyses, its validator, the collector, codegen), a static of another type that MIR or Core reaches takes the
+    compilation's `TyCtxt` instead of the Binding: those callers hold no Binding, and a `TyCtxt.Binding` accessor would open every
+    Binding member to them. So `AdtDef`'s instance readers (`FieldType`, `Base`, `CaseTypes`, `StorageCount`, `FieldOwner`,
+    `FindField`) and the MIR and Backend statics over them take the `TyCtxt`; `TyCtxt.Signature` becomes an instance member;
+    `TyCtxt.Storage` is the one non-Binding entry to Binding's instance storage. Four MIR objects hold no reader:
+    `MirBody.Project`/`ProjectedType` and `MirDropTable.Level`/`Destroyed` take the `TyCtxt` per call (a stored body or drop table
+    never keeps a compilation's `TyCtxt`), and `MirDrops` and `MirMoveData` take it in their constructors from `MirAnalysis`, as
+    `MirEffects`, `MirOrigins` and `MirBorrows` do. `AdtDef.ReceiverType` takes the Binding (its MIR caller passes
+    `compilation.Binding` and reads no Binding member). A relation walk carries the Binding that made it as a non-null owner beside
+    its nullable premises reader. Binding's own statics become instance members; `Binding.Compatible` (a forwarder) is deleted.
+    U0b-1 removes `TyCtxt.cs`'s `Signature` line, `AdtDef.cs`'s two lines, `Binding.ClosureInstances.cs`,
+    `Binding.TypeRelations.Origins.cs` (2), `Binding.AssociatedOrigins.cs` and `TestDefinition.cs` (2) in one behaviour-preserving
+    commit (the route row 33 -> 24); `HirTables.HasCurrentBinding` is U0b-P3's.
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
