@@ -48,6 +48,26 @@ public partial class Compilation
 
     internal bool HasDocumentationFailure(SourceDocument source) => this.documentationFailures?.ContainsKey(source) == true;
 
+    /// <summary>Gets a module's documentation failures and hover anchors as data (PLAN G949 Stage 2 U2b; design 5.2: the frozen library
+    /// carries its own, which its freeze compilation recorded).</summary>
+    /// <param name="module">The module.</param>
+    /// <returns>The failures of its documented sources and the anchors of its syntax.</returns>
+    internal (IReadOnlyDictionary<SourceDocument, string> Failures, HoverAnchor[] Anchors) HoverDataOf(Kotonoha module)
+    {
+        var failures = new Dictionary<SourceDocument, string>(ReferenceEqualityComparer.Instance);
+        var documentation = module.DocumentationSources;
+        for (var i = 0; i < documentation.Count; i++)
+        {
+            if (this.documentationFailures?.TryGetValue(documentation[i].Source, out var failure) == true)
+            {
+                failures[documentation[i].Source] = failure;
+            }
+        }
+
+        var anchors = this.hoverAnchors?.Where(x => ReferenceEquals(x.Syntax.Kotonoha, module)).ToArray() ?? [];
+        return (failures, anchors);
+    }
+
     internal void RecordDocumentationFailure(SourceDocument? source, string? failure, bool invalidateSource = true)
     {
         if (failure is not null)
