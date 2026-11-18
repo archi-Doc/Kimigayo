@@ -6,9 +6,9 @@ using Kimi.Compiler.Target;
 namespace Kimi.Compiler;
 
 // The process's library per target (PLAN G949 Stage 2 U2a; design u2-design 2.1-2.3; DECISIONS R8-M?? on landing): KimiLibrary's
-// store (Of), its freeze (Freeze) and the seam that makes the freeze compilation an unfrozen library is parsed in (Unfrozen; B's ruling
-// 37: the freeze's input is its compilation, so no step reaches a compilation through a library node). Read by no
-// compilation before U3.
+// store (Of), its freeze (Freeze), its detachment (Detach) and the seam that makes the freeze compilation an unfrozen library is parsed
+// in (Unfrozen; B's ruling 37: the freeze's input is its compilation, so no step reaches a compilation through a library node). Read by
+// no compilation before U3.
 public sealed partial class KimiLibrary
 {
     // One Lazy per target (L1's one mutable static): its value is the frozen or refused library. ExecutionAndPublication keeps one freeze

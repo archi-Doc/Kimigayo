@@ -25,7 +25,7 @@ public sealed class CodeContext
     private DiagnosticCollection? diagnosticCollection; // Null once the frozen library is detached (Detach).
 
     /// <summary>
-    /// Gets the diagnostic destination for this context.
+    /// Gets the diagnostic destination for this context; a detached frozen library context has none (the internal-invariant form).
     /// </summary>
     /// <remarks>
     /// Resolved once, because it is read for every node the parser creates.

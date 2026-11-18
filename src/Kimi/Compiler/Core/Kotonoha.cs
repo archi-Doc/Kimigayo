@@ -13,7 +13,8 @@
 // (creation, OnDeserialized, a new Project.Directory value, which the getter detects by reference); a root module whose project has
 // no directory takes the current directory its compilation captured when created; names are memoized until Base is recomputed or
 // the source analysis is revoked, so a warm read allocates nothing. Must not read the process's current directory itself, and no
-// Path call it makes for a name throws.
+// Path call it makes for a name throws. A frozen library module is detached (Detach): its Compilation and DiagnosticCollection throw
+// the internal-invariant form.
 
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
@@ -37,16 +38,16 @@ namespace Kimi.Compiler;
 public sealed partial class Kotonoha
 {
     /// <summary>
-    /// Gets the diagnostics associated with this source unit.
+    /// Gets the diagnostics associated with this source unit; a detached frozen library module has none (the internal-invariant form).
     /// </summary>
     [IgnoreMember]
-    public DiagnosticCollection DiagnosticCollection { get => this.diagnosticCollection ?? throw Detached(); private set => this.diagnosticCollection = value; }
+    public DiagnosticCollection DiagnosticCollection { get => this.diagnosticCollection ?? throw Detached("diagnostic collection"); private set => this.diagnosticCollection = value; }
 
     /// <summary>
-    /// Gets the compilation that owns this source unit.
+    /// Gets the compilation that owns this source unit; a detached frozen library module has none (the internal-invariant form).
     /// </summary>
     [IgnoreMember]
-    public Compilation Compilation { get => this.compilation ?? throw Detached(); private set => this.compilation = value; }
+    public Compilation Compilation { get => this.compilation ?? throw Detached("compilation"); private set => this.compilation = value; }
 
     /// <summary>
     /// Gets the stable identifier derived from the source unit name.
@@ -427,10 +428,11 @@ public sealed partial class Kotonoha
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
 
+    // A detached frozen library module's refusal of a read of the fact it no longer holds (its compilation or its diagnostic collection).
+    private static InvalidOperationException Detached(string fact) => new($"A node of the frozen Kimi library has no {fact} (InternalInvariant; PLAN G949 Stage 2 U2b).");
+
     // A fully qualified, NUL-free directory is normalized once; any other value is used as given, so no Path call throws (an
     // API value: Project.TryCreate never produces one), and such a base matches only paths with its exact text.
-    private static InvalidOperationException Detached() => new("A node of the frozen Kimi library has no compilation (InternalInvariant; PLAN G949 Stage 2 U2b).");
-
     private static string Normalize(string directory)
         => Path.IsPathFullyQualified(directory) && !directory.Contains('\0') ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)) : directory;
 
