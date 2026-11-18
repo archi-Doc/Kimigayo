@@ -129,7 +129,8 @@ public partial class Compilation
 
     /// <summary>Checks the established inputs (SPEC 23.2.2): the one phase sequence of a check, which every command and the check service
     /// run through <c>Project</c>. Final Binding, the startup check (a test build's test startup, else the project's output kind; IMPL
-    /// 20.6.1) and the analysis each run whatever an earlier one found (SPEC 23.1.2) and publish their records; an accepted test build
+    /// 20.6.1) and the analysis each run whatever an earlier one found (SPEC 23.1.2) and publish their records, except over a refused Kimi
+    /// library, whose Bind leaves no result: the check then publishes Binding's records and stops (PLAN G949 Stage 2 U2a); an accepted test build
     /// discovers its tests, the catalog its generation reads. It is not a site: it composes sites that hop to a compiler thread
     /// themselves (Bind, BuildMir, ReportAnalysis, TestCatalog.Discover; DECISIONS R4-M178) and runs the startup check and Binding's and
     /// the startup's publication on its caller's thread.</summary>
@@ -138,6 +139,11 @@ public partial class Compilation
     {
         this.Bind();
         this.Binding.ReportDiagnostics();
+        if (this.Binding.Result == default)
+        {
+            return false; // A refused library (PLAN G949 Stage 2 U2a, ruling 33): only its refusal is published; no startup check, no MIR.
+        }
+
         _ = this.IsTestBuild ? this.Binding.CheckTestStartup() : this.Binding.CheckStartup(this.Project.ProjectFile.OutputKind);
         this.Binding.ReportStartupDiagnostics();
         this.Analyze();
