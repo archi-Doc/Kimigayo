@@ -150,21 +150,25 @@ public partial class KimiLibraryShapeTest
         c.Analyze();
         Assert.Empty(TestDiagnostics.Of(c));
         Assert.Equal(atoms, LibraryAtoms(c));
-        var program = (IDictionary)typeof(Binding).GetField("programAtoms", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var program = ProgramAtoms(c);
         Assert.Equal(2, program.Count); // tryResolve's two inputs, interned once for both bodies.
-        Assert.All(program.Keys.Cast<ITuple>(), static x => Assert.True(((Koto)x[0]!).SyntaxOwner!.IsLibrary));
+        Assert.All(program, x => Assert.Same(c.Library.Kotonoha.Syntax, x.Binder!.SyntaxOwner));
         Assert.True(c.Bind().IsComplete);
-        Assert.Empty(program);
+        Assert.Empty(ProgramAtoms(c));
         c.Analyze();
         Assert.Equal(atoms, LibraryAtoms(c));
 
-        static List<BoundOrigin> LibraryAtoms(Compilation c)
+        static List<BoundOrigin> LibraryAtoms(Compilation c) => Atoms(c, c.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms);
+
+        static List<BoundOrigin> ProgramAtoms(Compilation c)
+            => Atoms(c, (PagedColumn<BoundOrigin?[]?>)typeof(Binding).GetField("programAtoms", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+
+        static List<BoundOrigin> Atoms(Compilation c, PagedColumn<BoundOrigin?[]?> column)
         {
-            var table = c.Library.Kotonoha.Syntax;
             var atoms = new List<BoundOrigin>();
-            for (var id = 1; id <= table.Count; id++)
+            for (var id = 1; id <= c.Library.Kotonoha.Syntax.Count; id++)
             {
-                atoms.AddRange((table.Hir.Families.OriginAtoms.Get(id) ?? []).OfType<BoundOrigin>());
+                atoms.AddRange((column.Get(id) ?? []).OfType<BoundOrigin>());
             }
 
             return atoms;

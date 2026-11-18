@@ -17,11 +17,12 @@ public sealed partial class Binding
     private static readonly Func<BoundOrigin, (OriginKind Kind, int Slot)> AtomKey = static x => (x.Kind, x.Slot);
 
     private readonly OriginAtomRows originAtoms;
-
-    // The program pass's atoms at binders of the frozen library table (OriginAtomRows; ruling 203 (4)), reset with the pass.
-    private readonly Dictionary<(Koto Binder, OriginKind Kind, int Slot), BoundOrigin> programAtoms = new();
     private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
     private long originRowProbes;
+
+    // The program pass's atoms at binders of the frozen library table (OriginAtomRows; ruling 203 (4)): the family's column form over
+    // the library's ids (DECISIONS BU-220), emptied with the pass.
+    private PagedColumn<BoundOrigin?[]?> programAtoms;
 
     /// <summary>Gets the entries the owner-keyed Origin interners' row searches (KeyedRow: originAtoms, openOrigins) probed over the
     /// Binding's lifetime, which a scaling check reads.</summary>
@@ -275,8 +276,9 @@ public sealed partial class Binding
     /// at its SyntaxId, one KeyedRow of them by kind and slot, never reset; a renumbering moves the row with its binder. From the freeze
     /// (PLAN G949 S1-1; ruling 203 (4)) an atom a later step interns at a binder of the frozen library table, such as a library
     /// requirement member's Input atoms that an Item's call context interns at MIR time (RequirementItemContext, `Body` the forming body),
-    /// is a program fact: a row of the program pass's (programAtoms, reset with the pass), found after the library's column, so the frozen
-    /// layer holds no row a later step made. Its members keep the names and the tuple key its readers use.</summary>
+    /// is a program fact: a row of the program pass's (programAtoms: the same KeyedRow form at the binder's library id, emptied with the
+    /// pass), found after the library's column, so the frozen layer holds no row a later step made. Its members keep the names and the
+    /// tuple key its readers use.</summary>
     private readonly struct OriginAtomRows(Binding binding)
     {
         internal BoundOrigin this[(Koto Binder, OriginKind Kind, int Slot) key]
@@ -284,9 +286,10 @@ public sealed partial class Binding
             set
             {
                 var atom = Interned(value, key.Binder, (key.Kind, key.Slot));
-                if (key.Binder.SyntaxOwner is { Frozen: true })
+                if (key.Binder.SyntaxOwner is { Frozen: true } library)
                 {
-                    binding.programAtoms[key] = atom;
+                    binding.programAtoms.Grow(library.Count); // A frozen table's count is final.
+                    KeyedRow.Put(ref binding.programAtoms.Ref(key.Binder.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
                 }
                 else
                 {
@@ -299,7 +302,12 @@ public sealed partial class Binding
         {
             var table = key.Binder.SyntaxOwner;
             origin = table is null ? null : KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
-            return origin is not null || (table is { Frozen: true } && binding.programAtoms.TryGetValue(key, out origin));
+            if (origin is null && table is { Frozen: true })
+            {
+                origin = KeyedRow.Find(binding.programAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
+            }
+
+            return origin is not null;
         }
 
         internal void Add((Koto Binder, OriginKind Kind, int Slot) key, BoundOrigin origin)
