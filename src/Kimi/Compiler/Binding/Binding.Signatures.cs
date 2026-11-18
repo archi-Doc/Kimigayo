@@ -10,7 +10,9 @@ namespace Kimi.Compiler;
 //   keeps a function's header open: BindFunctionHeader then leaves it unbound (AbandonQuery), and a later BindHeader binds it again. A
 //   demand while the header is being bound returns, and an anonymous function's header belongs to its expression context.
 //   FnSig is the one read of a callable's declared signature (SPEC 9.1: generic count and ordered parameter Types, the receiver
-//   included; with its result and binder): a view over what the header published, read by every signature comparison.
+//   included; with its result, Origin count and binder): a view over what the header published, read by every signature comparison,
+//   the 7.3 receiver shape and the 7.4 checker's correspondence (Binding.ParameterShapes) included; the generic slots' kinds are the
+//   bound Schema's (SameGenericShape) and the syntax's (SameExplicitArgumentShape, SameSlotKinds), read once their counts compared equal.
 //   ValidateSignatures checks a member group's one receiver shape (SPEC 7.3), its duplicate overloads (SPEC 9.1, by SignatureEquals)
 //   and a Contract's same-name requirements with those they inherit (SPEC 8.4.2).
 // - Inputs: the declared symbols and scopes; the bound parameter Types. Outputs: each header's Type, its Signature state (BeginQuery,
@@ -18,16 +20,16 @@ namespace Kimi.Compiler;
 //   Binding.ParameterShapes.cs's.
 // - Invariants: a header is its declaration's, never the body that demands it (BindHeader binds it outside any body). FnSig copies
 //   nothing: a function's parameter Types are the ones BindType published on its parameters (each as soon as it is bound, also while a
-//   pending associated Type keeps the header open), its result the symbol's Type, its receiver index the declaration's `self`
-//   parameter (Binding.Indexing); an accessor's are its BoundAccessor's (BindPropertyHeader).
+//   pending associated Type keeps the header open), its result the symbol's Type (BindType's partial value while the header is open),
+//   its receiver index the declaration's `self` parameter (Binding.Indexing); an accessor's are its BoundAccessor's (BindPropertyHeader).
 // - Prohibitions: no call is selected and no overload ranked here; ValidateSignatures only fails declarations; no signature
 //   comparison reads a function's parameter Types, receiver index, result or generic count other than through FnSig.
 public sealed partial class Binding
 {
     /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
-        => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
-            new FnSig(function).Input(symbol.ReceiverIndex) is { } receiver ? receiver.Semantics : null;
+        => symbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsSpecialization: false } function } &&
+            new FnSig(function) is { ReceiverIndex: >= 0 } signature && signature.Input(signature.ReceiverIndex) is { } receiver ? receiver.Semantics : null;
 
     private static bool SignatureSlotEquals(BindingSymbol? a, BindingSymbol? b, Koto aBinder, Koto bBinder)
         => ReferenceEquals(a, b) || (a is not null && b is not null && ReferenceEquals(a.Scope.Owner, aBinder) && ReferenceEquals(b.Scope.Owner, bBinder) && a.Slot == b.Slot);

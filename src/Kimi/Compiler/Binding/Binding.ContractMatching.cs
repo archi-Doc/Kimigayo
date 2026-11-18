@@ -6,13 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 8.4.2, 8.6.3: the bound Schemas' generic slot kinds, position by position, of two declarations whose generic counts
+    // (FnSig.GenericCount) the caller found equal.
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
-        if (requirement.GenericArguments.Count != implementation.GenericArguments.Count)
-        {
-            return false;
-        }
-
         var a = requirement.BoundSymbol!.Schema!;
         var b = implementation.BoundSymbol!.Schema!;
         for (var i = 0; i < a.GenericSlots.Count; i++)
@@ -431,7 +428,7 @@ public sealed partial class Binding
     {
         var demanded = new FnSig(requirement);
         var declared = new FnSig(implementation);
-        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || demanded.InputCount != declared.InputCount)
+        if (implementation.IsSpecialization || demanded.GenericCount != declared.GenericCount || !SameGenericShape(requirement, implementation) || demanded.InputCount != declared.InputCount)
         {
             return false;
         }
