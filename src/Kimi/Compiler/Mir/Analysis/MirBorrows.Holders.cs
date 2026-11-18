@@ -229,9 +229,10 @@ internal sealed partial class MirBorrows
 
     // The locals that may hold a value that is neither a call's result nor a Case payload of one, the least such set: an argument (the
     // caller's value), a local an Assign stores into (through no borrow or raw Deref, Through) other than whole by a Move or Copy of
-    // another local's whole value or Case payload (Whole), a local a Call returns into a part of, and a local such a Move or Copy gives
-    // the value of one of them: a call's result stays one while it is Moved or Copied whole from local to local, and a Case payload of
-    // it is bounded as it is (the owner's O-383 (b)). A pointer the body formed on such a local does not make it one of them otherwise:
+    // another local's whole value or Case payload (Whole), a local a Call returns into a part of, a Call's whole destination whose result
+    // keeps an input's own value that may carry a Loan in a Loan-free part (KeepsSourced), and a local such a Move or Copy gives the value
+    // of one of them: a call's result stays one while it is Moved or Copied whole from local to local, and a Case payload of it is bounded
+    // as it is (the owner's O-383 (b)). A pointer the body formed on such a local does not make it one of them otherwise:
     // a raw write is SPEC 15.6 Addresses', and a store of the body through a reference to it is not read here (a known limit: the row
     // rvCaseRefWriteBad). A call's write may store a value a Loan-free Case payload may hold and that may carry a Loan in a local
     // (Writes): the local stays a call's result, written, as is a local such a Move or Copy gives its value, and its write slot carries
@@ -266,9 +267,9 @@ internal sealed partial class MirBorrows
                 }
             }
 
-            if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place: { Root: >= 0 and var into, Projection: not 0 } part } && !this.Through(part))
+            if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place: { Root: >= 0 and var into } place } call && !this.Through(place))
             {
-                this.mixed[into] = true;
+                this.mixed[into] |= place.Projection != 0 || this.KeepsSourced(call);
             }
 
             lost |= data.Terminator.Kind == MirTerminatorKind.Call && this.Writes(data.Terminator);
@@ -362,6 +363,33 @@ internal sealed partial class MirBorrows
         }
 
         return lost;
+    }
+
+    // Whether a call's result keeps by Value a source slot's input (a Loan-free input, SourceSlots) that may carry a Loan (Carries): its
+    // own value then rides in the result, in a part whose Type holds no Loan, with the Loans of its holder, which the Case bound cannot
+    // tell from a payload that carries nothing (SPEC 15.6 Holders' Case-payload sentence, 15.6.4: an Origin-free input's own value at a
+    // result position that can hold it; the owner's O-383 (b) read per result, not per Case: the per-Case record, D-733, is the exact form
+    // that will replace it, and caseOwnElseOk its known limit). Mixing then leaves the call's whole destination unbounded.
+    private bool KeepsSourced(in MirTerminator call)
+    {
+        if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention)
+        {
+            return false;
+        }
+
+        var receiver = this.Receiver(call);
+        var kinds = retention.Result.Kinds;
+        this.SourceSlots(call, kinds.Length, receiver);
+        foreach (var slot in this.sourceSlots)
+        {
+            this.Work++;
+            if ((kinds[slot] & RetentionKind.Value) != 0 && this.Carries(this.Input(call, Position(call.Callee, receiver, slot)).Place.Root))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Whether a call of the view has a write source (an output whose record holds a source slot, Sourced), so Mixing decides the written
