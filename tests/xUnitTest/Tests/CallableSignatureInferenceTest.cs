@@ -426,13 +426,13 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     // fit, so no Origin fact makes the candidate inapplicable. mixc is the instantiation's row: an instantiation that leaves the
     // argument's other per-call input open solves nothing (AFixedRequiredInputDecidesNothingElse's rule for a Closure). The fixed-input
     // forms of an anonymous function and a Function value (anonfixed, fvfixedm, fvparam, fvret) are valid and wait for the stand-in of
-    // those kinds (G379-OI, the open issue PLAN G379 (a) opens).
+    // those kinds (G1037, the open issue PLAN G379 (a) opens).
     [Theory]
-    [InlineData("G379-OI", "anonfixed", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc run()\n    let n: i32 = 6\n    let r = make(n@ref, func (k: ref/i32) -> ref/i32 => k)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("G1037", "anonfixed", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc run()\n    let n: i32 = 6\n    let r = make(n@ref, func (k: ref/i32) -> ref/i32 => k)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
     [InlineData("guard", "anonmake", "func make<T>(action: (ref/i32) -> T) -> i32 => 7\nfunc run()\n    let m = make(func (k: ref/i32) -> ref/i32 => k)\n", "UnprovenOriginContract_Kd: let m = make(func (k: ref/i32) -> ref/i32 => k)")]
-    [InlineData("G379-OI", "fvfixedm", Pick + FixedMake + "func run()\n    let n: i32 = 6\n    let fv: (ref/i32) -> ref/i32 = pick\n    let r = make(n@ref, fv@move)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
-    [InlineData("G379-OI", "fvparam", FixedMake + "func use(fv: (ref/i32) -> ref/i32) -> i32\n    let n: i32 = 6\n    let r = make(n@ref, fv@move)\n    return r@follow\n", "", Explicit = true)]
-    [InlineData("G379-OI", "fvret", Pick + "func get() -> (ref/i32) -> ref/i32 => pick\n" + FixedMake + "func run()\n    let n: i32 = 6\n    let r = make(n@ref, get())\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("G1037", "fvfixedm", Pick + FixedMake + "func run()\n    let n: i32 = 6\n    let fv: (ref/i32) -> ref/i32 = pick\n    let r = make(n@ref, fv@move)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("G1037", "fvparam", FixedMake + "func use(fv: (ref/i32) -> ref/i32) -> i32\n    let n: i32 = 6\n    let r = make(n@ref, fv@move)\n    return r@follow\n", "", Explicit = true)]
+    [InlineData("G1037", "fvret", Pick + "func get() -> (ref/i32) -> ref/i32 => pick\n" + FixedMake + "func run()\n    let n: i32 = 6\n    let r = make(n@ref, get())\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
     [InlineData("guard", "fvmakem", Pick + "func make<T>(action: (ref/i32) -> T) -> i32 => 7\nfunc run()\n    let fv: (ref/i32) -> ref/i32 = pick\n    let m = make(fv@move)\n", "Unsupported_Kd: let m = make(fv@move)")]
     [InlineData("guard", "fvsamem", Pick + "func same<T>(action: (T) -> T) -> i32 => 7\nfunc run()\n    let fv: (ref/i32) -> ref/i32 = pick\n    let m = same(fv@move)\n", "")]
     [InlineData("guard", "mixc", MixedMake + "    let c = func (a: ref/i32, b: ref/i32) -> ref/i32 => a\n    let r = make(n@ref, c)\n", "MissingOriginBinding_Kd: let r = make(n@ref, c)")]
