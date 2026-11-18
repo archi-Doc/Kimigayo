@@ -150,8 +150,10 @@ internal sealed partial class MirBorrows
         // argument names at it (Writes; SPEC 5.7 Calls, 15.6.4), and each holder receives at it (Arrive).
         var input = cases.TypeOf(this.Input(call, position));
         BoundType? referent = input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
-        // The Φ_E rule's site 1: the walk's input key lies wholly in the callee's kept binding (KeptKey), so its first step never maps to E.
-        var hiddenRoot = this.covering.Count == 0 && this.KeptKey(this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(written))], written);
+        // The Φ_E rule's site 1: where the walk's input key lies wholly in the callee's kept binding (KeptKey), the first step is route 1,
+        // the named step (Referents).
+        var root = this.covering.Count == 0 && this.KeptKey(this.punKeys[this.Key(this.InputKey(call, position, input), this.Fold(written))], written)
+            ? MirWrites.Named : MirWrites.Through;
         if (this.covering.Count > 0 && this.argValues[position] == 0)
         {
             this.BeginWalk();
@@ -159,20 +161,17 @@ internal sealed partial class MirBorrows
         }
         else
         {
-            this.Referents(this.argValues[position], hiddenRoot);
+            this.Referents(this.argValues[position], root);
         }
 
-        var (limited, deepHolder) = stored ? default : this.Writes(state, call, position, written, hiddenRoot);
+        var (limited, deepHolder) = stored ? default : this.Writes(state, call, position, written, root);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
         var sourced = this.writeCount > 0 ? this.Sourcing(written) : 0;
-
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
-            var received = this.Received(state, call, written, target, checks);
-            var value = this.Arrive(target, referent, false, this.argValues[position], received);
-
+            var value = this.Arrive(target, referent, false, this.argValues[position], this.Received(state, call, written, target, checks));
             value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
             value = target == Escaped && this.walkResting ? this.sets.Union(value, this.undecidedSet) : value; // MirBorrows.Puns' Φ_U.
             this.AddSlot(target, value, 0, JoinedThrough, issue: false);
@@ -208,7 +207,6 @@ internal sealed partial class MirBorrows
         var own = (via & ViaRoot) != 0 ? written.Own : null;
         var past = target == Escaped || (via & ViaPast) != 0 ? this.PastEntry(written, target) : null;
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
-        value = (via & ViaCarried) != 0 && this.Composes ? this.sets.Union(value, this.escapedSet) : value; // Revision 6, T1: route 1's holder may take the call's own pointer (SPEC 15.6.4)
         return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
     }
 

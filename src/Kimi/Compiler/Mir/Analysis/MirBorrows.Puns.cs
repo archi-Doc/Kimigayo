@@ -112,10 +112,10 @@ internal sealed partial class MirBorrows
         }
 
         var output = this.OutputAt(position);
-        var index = this.Key(this.InputKey(call, position, input), this.Fold(output)); // PROTOTYPE R5 (R3): Keep's fold.
+        var index = this.Key(this.InputKey(call, position, input), this.Fold(output)); // The fold Keep's walk of the output reads.
         if (output is null)
         {
-            this.CarriedInput(state, value, index); // Revision 6, T1 (ii): route 1 where the plan has no output (MirBorrows.Reach).
+            this.CarriedInput(state, value, index); // Route 1 where the plan has no output (MirBorrows.Reach).
         }
 
         if (!this.Below(index))
@@ -135,7 +135,7 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // PROTOTYPE R5 (R3): the call's output through the input at `position` (the plan's Writes, as Keep reads them), null where none.
+    // The call's output through the input at `position` (the plan's Writes, as Keep reads them), null where none.
     private OutputRetention? OutputAt(int position)
     {
         foreach (var written in this.planned is null ? default : this.planned.Writes)
@@ -343,6 +343,11 @@ internal sealed partial class MirBorrows
 
         return PunAt(this.PlaceBytes(place).Pointer == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided, facts);
     }
+
+    // What a call that may leave its own pointer in the Place entry `entry` names does there (SPEC 15.6.4: a pointer the call may write at
+    // a raw layer without an Origin, its own included, may address storage the body does not own; 5.7 Calls: one at a layer stating an
+    // Origin is judged by that Origin, R4-M183): a pun where the Place may hold a raw pointer, as the Place's layers keep it (PunAt).
+    private PunWrite OwnWrite(int entry) => this.Holder(entry, out var facts) is null ? PunWrite.Typed : PunAt(PunWrite.Pun, facts);
 
     // The Type of the Place entry `entry` names where a write there may pun a raw pointer, else null: a raw layer at the Place's own
     // address (the key's facts: Binding's layers there) in a Place that holds a raw pointer's byte (PlaceBytes; SPEC 4.1, 5.2: an array

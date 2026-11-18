@@ -14,8 +14,8 @@ namespace Kimi.Compiler.Mir;
 // the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
 internal sealed partial class MirBorrows
 {
-    private readonly Dictionary<(PlaceKey Key, int Fold), int> punKeyIndex = []; // The version's keys, indexed by key and fold (PROTOTYPE R5).
-    private readonly List<BoundType[]> punFolds = [[]]; // PROTOTYPE R5: the Handed lists keys are folded under, by fold; 0 the empty one. Kept across versions (a list is its content), so a warm run allocates none.
+    private readonly Dictionary<(PlaceKey Key, int Fold), int> punKeyIndex = []; // The version's keys, indexed by key and fold.
+    private readonly List<BoundType[]> punFolds = [[]]; // The Handed lists keys are folded under, by fold; 0 the empty one. Kept across versions (a list is its content), so a warm run allocates none.
     private readonly List<PunKey> punKeys = []; // By index: a key's folded facts.
     private readonly List<BoundType> punViewTypes = []; // The keys' write Types (PunKey's spans).
     private readonly List<OwnLayer> punLayers = []; // OwnLayers' scratch.
@@ -27,7 +27,7 @@ internal sealed partial class MirBorrows
     private ulong punVersion; // The program version whose keys punKeys answers.
     private int punStamp; // Below's walks, which mark the keys they reach.
 
-    // PROTOTYPE R5: whether a fold's list holds `kept`: OwnLayer.Kept and OutputRetention.Handed name a kept Type by the one interned
+    // Whether a fold's list holds `kept`: OwnLayer.Kept and OutputRetention.Handed name a kept Type by the one interned
     // erased Type (TyCtxt.Erase), compared by identity.
     private static bool Lists(ReadOnlySpan<BoundType> list, BoundType kept)
     {
@@ -42,7 +42,7 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // PROTOTYPE R5: whether two Handed lists are one (Fold), by identity.
+    // Whether two Handed lists are one (Fold), by identity.
     private static bool Same(ReadOnlySpan<BoundType> list, ReadOnlySpan<BoundType> other)
     {
         for (var i = 0; list.Length == other.Length && i < list.Length; i++)
@@ -117,7 +117,7 @@ internal sealed partial class MirBorrows
     // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive); whether any states an Origin,
     // `static` included (AnyStated, the storing rule's); whether one has no answer (Unsupported); the write Types (the Part past each raw
     // layer and each exclusive borrow) and whether an abstract part leaves them unknown. A key at Binding's Limit is unknown.
-    // PROTOTYPE R5: under `fold` (Fold: an output's Handed list), a hidden layer whose kept Type the list holds is folded as shown.
+    // Under `fold` (Fold: an output's Handed list), a hidden layer whose kept Type the list holds is folded as shown.
     private int Key(in PlaceKey key, int fold)
     {
         this.PunRun();
@@ -154,13 +154,12 @@ internal sealed partial class MirBorrows
             }
 
             // A layer hidden in a called function's own Type parameter's binding adds no reach of its own (SPEC 15.6.4; OwnLayer.Hidden at
-            // a parameter key, TyCtxt.ParameterKey): no write Type, no key past it. PROTOTYPE R5: unless a callable the callee's declaration
+            // a parameter key, TyCtxt.ParameterKey): no write Type, no key past it, unless a callable the callee's declaration
             // hands its body writes that layer's kept Type (the fold's Handed list holds OwnLayer.Kept; SPEC 15.6.4 "through its result or
             // its writes"): then the layer is read as shown (hidRawWTwoBad, handedSameBad, hidPunWBad), and another kept Type's stays hidden
             // (handedOtherOk).
             var hidden = own.Hidden && !Lists(this.punFolds[fold], own.Kept!);
-            facts = hidden ? facts with { Hidden = true, HiddenUniq = facts.HiddenUniq || (layer is null && step == HoldStep.Exclusive) }
-                : facts with { Shown = true };
+            facts = hidden ? facts with { Hidden = true } : facts with { Shown = true };
             if ((layer is not null || step == HoldStep.Exclusive) && past.Type is { } to && !hidden && !own.Loan)
             {
                 this.punViewTypes.Add(cases.Type(to));
@@ -179,7 +178,7 @@ internal sealed partial class MirBorrows
         return index;
     }
 
-    // PROTOTYPE R5 (R2, R3): the fold of a call's output, the one read of OutputRetention.Handed (the kept Types a callable the callee's
+    // The fold of a call's output, the one read of OutputRetention.Handed (the kept Types a callable the callee's
     // declaration hands its body writes; SPEC 15.6.4 "through its result or its writes"): 0 for none, else the list's index in
     // punFolds, equal lists one fold. W's walk of the output and the pun rule at the output's input both read it (Keep, PunCall).
     private int Fold(OutputRetention? output)
@@ -272,10 +271,6 @@ internal sealed partial class MirBorrows
 
         internal bool Hidden { get; init; } // A part hidden in a called function's own Type parameter's binding (OwnLayer.Hidden).
 
-        // Whether a hidden part is a safe exclusive reference (OwnLayer.Hidden marks one as well as a raw layer): it is no layer that "adds
-        // no reach of its own", and SPEC 15.6.4's routes apply to it (R5.4's safe-reference half; route 2 reaches E through it).
-        internal bool HiddenUniq { get; init; }
-
         internal bool Shown { get; init; } // A part not hidden there, or a part not known (the layers not all known).
 
         // Whether every part the value at the key holds lies in a called function's own Type parameter's binding, so that the value adds
@@ -296,6 +291,6 @@ internal sealed partial class MirBorrows
 
         internal int Stamp { get; init; } // The last Below walk that reached the key.
 
-        internal int Fold { get; init; } // PROTOTYPE R5: the fold the key was folded under (Fold); its past keys are folded under it too.
+        internal int Fold { get; init; } // The fold the key was folded under (Fold); its past keys are folded under it too.
     }
 }
