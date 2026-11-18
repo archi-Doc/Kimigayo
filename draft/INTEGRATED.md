@@ -1406,6 +1406,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 94 (2026-11-19, plan §14; the Front's Q-503, with R7-V2d): V2's row records V2d's landing in W-262 (DECISIONS R7-M37,
   `FnSig`); the 71 syntax reads of a declared parameter Type and the name contract's receiver read it staged go to P3's row (the call
   forms' 47) and Y4's row (the other 25). Nothing frozen.
+- Revision 95 (2026-11-19, plan §14; the Front's Q-516, with R7-I2 c): §5.0's I2 row records c's landing in W-266 (DECISIONS R7-M40,
+  superseding R7-M18 in part): a candidate's trial owns a frame and the invariant mark is a frame column, in place of candidate
+  evaluation through snapshot and rollback. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
