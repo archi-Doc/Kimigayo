@@ -33,13 +33,13 @@ public sealed partial class Binding
     private BoundType? Materialization(Koto part, BoundType? type, BindingScope scope)
     {
         var core = KotoHelper.UnwrapParentheses(part);
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } || DeliveredOperand(core) is not null)
+        if (ExpectedTypeOf(type) is not { } referent || ReferenceEquals(referent, type) || DeliveredOperand(core) is not null)
         {
             return null;
         }
 
         return IsAggregateArgument(core) || core is DictionaryLiteralKoto || IsUnfittedLiteral(core) || (ControlFlowExpression(core) is { } join &&
             (this.KindOf(core) == PartKind.Join || (core.BoundType is null && this.SurveyResult(join, scope) is { Literal: true } or { Value: true })))
-            ? ExpectedTypeOf(type) : null;
+            ? referent : null;
     }
 }
