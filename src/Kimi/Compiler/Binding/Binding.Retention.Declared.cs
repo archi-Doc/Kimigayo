@@ -56,31 +56,6 @@ public sealed partial class Binding
             !TryPairLayer(declared!, out _, out _) ? function : null;
     }
 
-    // The function whose own abstract Types a Type names (Identical's view): the binder of its first Type parameter or pair target a
-    // function declares, in component order; null for a Type that names none.
-    private static FunctionKoto? AbstractOwner(BoundType type)
-    {
-        if (!type.ContainsParameter)
-        {
-            return null;
-        }
-
-        if (type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection, Symbol.Scope.Owner: FunctionKoto function })
-        {
-            return function;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (AbstractOwner(type.Components[i]) is { } owner)
-            {
-                return owner;
-            }
-        }
-
-        return null;
-    }
-
     // Whether a declared counterpart is an abstract Type of its function's own declaration: the binding there is one the declaration does
     // not show (SPEC 15.6.4).
     private static bool Hides(BoundType? declared) => OwnAbstract(declared) is not null;
