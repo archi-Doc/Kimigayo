@@ -28,7 +28,10 @@ they do not change language guarantees or mark pending work as supported.
   ownership is completed when the latest analysis judged the function's MIR body without a problem: the analyses stepped
   it (A2's table holds it, `MirDropTable.Holds`; PLAN G951), no validator finding, no construction record in it and no
   merged problem with a member in it (`Compilation.JudgedWithoutProblem`, DECISIONS R5-M183, R5-M185), else pending; a
-  record made in no body (a collection record, a module's broken HIR contract) is outside it. Hover runs no analysis.
+  library body the compilation keeps from an earlier version of its library segment counts as judged without a problem
+  whether or not the latest program reaches it, since its facts are a function of the library alone (DECISIONS R9-M9,
+  R5-M168; M-K1's Q1); a record made in no body (a collection record, a module's broken HIR contract) is outside it. Hover
+  runs no analysis.
 - Function and Property syntax writers also write body-free headers. Verified accessor metadata supplements implicit
   operations. A missing named-function result means Unit; it is not inferred from the body.
 - Documentation inputs retain immutable partial placement maps. Editor links reuse profile validation and logical

@@ -689,7 +689,7 @@ public sealed partial class Binding
         }
 
         var self = this.ConformanceSelf(path);
-        var selection = this.LookupTypeMember(self, identity.Symbol.Name, path.Scope, self);
+        var selection = this.LookupMember(self, identity.Symbol.Name, path.Scope, LookupRole.Value, self);
         var requirement = (FunctionKoto)identity.Symbol.Declaration;
         BindingSymbol? selected = null;
         var matches = 0;

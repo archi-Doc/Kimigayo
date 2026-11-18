@@ -438,6 +438,36 @@ public sealed partial class Binding
         }
 
         // The walk reuses its storage; only the published array is allocated.
+        var keys = this.AddPrerequisiteKeys(node);
+        DiagnosticKey[] result = keys.Count == 0 ? [DiagnosticKey.Unresolved] : [.. keys];
+        keys.Clear();
+        return result;
+    }
+
+    // SPEC 23.1.2, 10.5.1 (PLAN G924, ruling 115 B2): whether a failure is reported: a recovery, its own record, or a record its
+    // prerequisites reach, directly or through failures resting on them (the records PrerequisiteKeys names); one that reaches only
+    // parts without a record rests on what is not decided yet. EndAwait reads it; nothing is allocated.
+    private bool FailureReported(Koto node)
+    {
+        if (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None)
+        {
+            return true;
+        }
+
+        var keys = this.AddPrerequisiteKeys(node);
+        var reported = false;
+        foreach (var key in keys)
+        {
+            reported |= !key.IsUnresolved;
+        }
+
+        keys.Clear();
+        return reported;
+    }
+
+    // The walk of PrerequisiteKeys into its reused list, which the caller clears.
+    private List<DiagnosticKey> AddPrerequisiteKeys(Koto node)
+    {
         var keys = this.prerequisiteKeys;
         var visited = this.prerequisiteVisited;
         var pending = this.prerequisitePending;
@@ -460,10 +490,8 @@ public sealed partial class Binding
             }
         }
 
-        DiagnosticKey[] result = keys.Count == 0 ? [DiagnosticKey.Unresolved] : [.. keys];
-        keys.Clear();
         visited.Clear();
-        return result;
+        return keys;
     }
 
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)

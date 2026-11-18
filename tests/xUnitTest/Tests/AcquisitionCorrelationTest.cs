@@ -112,12 +112,22 @@ public class AcquisitionCorrelationTest
         Assert.Equal("UnresolvedBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
     }
 
+    // SPEC 10.2.2 item 2, 10.8.1, 12.3.1 (PLAN G924, K's revision; F's rulings 68 and 74): at an expected `ref/U` a returned value that is
+    // no borrow value is matched against U. So `(T, i32)` at `ref/(i32, i32)` is filled at `(i32, i32)`, the Literal correlates T, and
+    // the result is one owner temporary, borrowed (before G924 the reference matched nothing and no candidate applied).
+    [Fact]
+    public void AnExpectedReferenceFillsAReturnedValueAtItsReferent()
+    {
+        var c = MinimalEmissionTest.Analyze(Results + Body + "    let r: ref/(i32, i32) = f(42, 0)");
+        c.Binding.ReportDiagnostics();
+        Assert.Empty(TestDiagnostics.Of(c));
+    }
+
     // SPEC 10.8, 10.3: an expected result is evidence only at the occurrences its structural fill reaches: none of a result it does not
     // match, and only Tuple.0 of `(T, Option<T>)` against `(i32, Box<i32>)`. So the Literal alone, or with the same reached path,
     // correlates T, and the call reports only that no candidate fits the expected result.
     [Theory]
     [InlineData(Results + Body + "    let r: i64 = f(42, 0)")]
-    [InlineData(Results + Body + "    let r: ref/(i32, i32) = f(42, 0)")]
     [InlineData(Wrappers + "func f<T>(value: T, code: i32) -> (T, Option<T>) => (value@move, .None)\nfunc f<T>(value: T, name: string) -> (T, Option<i64>) => (value@move, .None)\n" + Body + "    let r: (i32, Box<i32>) = f(42, 0)")]
     public void AnExpectedResultIsEvidenceOnlyWhereItsFillReaches(string source)
     {

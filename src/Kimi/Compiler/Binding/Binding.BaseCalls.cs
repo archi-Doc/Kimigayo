@@ -96,7 +96,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var selection = this.LookupTypeMember(path.Type, name.IdentifierName, scope, actual, path);
+        var selection = this.LookupMember(path.Type, name.IdentifierName, scope, LookupRole.Value, actual, path);
         var selected = selection.Member;
         if (selection.Pending)
         {
@@ -125,11 +125,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            this.memberSelections[member] = selection;
-            this.memberSides[member] = MemberSide.Value;
-            member.BoundSymbol = selected;
-            name.BoundSymbol = selected;
-            name.BindingState = BindingState.Resolved;
+            return this.PublishMemberAccess(member, selected, null, LookupRole.Value, selection);
         }
 
         return selected;

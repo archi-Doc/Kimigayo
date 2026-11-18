@@ -232,11 +232,18 @@ public sealed partial class Binding
 
             var outer = this.scopes[container];
             var scope = this.GetScope(syntax, outer);
+            if (IsRecovery(target, out _) || IsRecovery(target.Right, out _))
+            {
+                // SPEC 23.1.2: a head whose subject or ContractReference Parsing rejected (F.6.2) explains the conformance's verdicts.
+                this.AddPrerequisite(syntax, IsRecovery(target, out _) ? target : target.Right);
+            }
+
             if (!conditions)
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
+                // A subject other than Self is Parsing's record (F.6.2, ParseConformanceConditions); its head rests (the prerequisite above).
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
