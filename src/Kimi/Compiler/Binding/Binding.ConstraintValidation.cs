@@ -18,6 +18,10 @@ public sealed partial class Binding
     // The conformance uses whose completeness rests on a specification, settled at publication (SettleSpecificationLinks).
     private List<Koto>? specificationLinks;
 
+    // The failure count (Fail) at the start of the latest walk of the pass's environments that changed nothing: -1 at the pass's start
+    // (ResetPass) and after a walk that changed the binding (ValidateConstraintEnvironments).
+    private int environmentsJudged = -1;
+
     // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).
     [Flags]
     private enum TypeRoleCause : byte
@@ -198,10 +202,19 @@ public sealed partial class Binding
         this.ClearCapabilityResults();
     }
 
-    // The running pass's environments, its own modules' scopes (In, PLAN G949 S1-r2), judged at the validation step and again in each
-    // certificate round.
+    // The running pass's environments, its own modules' scopes (In, PLAN G949 S1-r2), judged at the validation step and again in a
+    // certificate round only when a judgment's inputs may have changed since the last walk: a judgment acts on an Error, which rests on a
+    // failed input or on contradictory evidence that only a failure changes (the rounds' contract), so the walk runs again when a node
+    // was failed (Fail) since the last walk began or that walk changed the binding itself (an environment it made Invalid under an owner
+    // already failed calls no Fail).
     private bool ValidateConstraintEnvironments(BindingMode mode)
     {
+        if (this.environmentsJudged == this.failures)
+        {
+            return false;
+        }
+
+        var start = this.failures;
         var changed = false;
         foreach (var scope in this.scopes.Values.In(this.pass))
         {
@@ -241,6 +254,7 @@ public sealed partial class Binding
             }
         }
 
+        this.environmentsJudged = changed ? -1 : start;
         return changed;
     }
 

@@ -32,6 +32,11 @@ public sealed partial class Binding
     private int consultationStart = -1;
     private Koto? consultationNode;
 
+    // The pass's failure count: every call that fails a node (Fail) advances it, whether or not the node held a failure already, so
+    // each invalidation a judgment reads (a node's, a conformance's, an environment's outside its own walk) moves it in the step that
+    // writes it (ValidateConstraintEnvironments).
+    private int failures;
+
     // The running pass's part (PassPart.DerivedIssues), which its Check writes (EnterPass).
     private List<Koto> derivedIssues;
 
@@ -158,6 +163,7 @@ public sealed partial class Binding
 
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
+        this.failures++;
         if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
         {
             failure = BindingFailure.QualificationRequired;
