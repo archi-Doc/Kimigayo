@@ -1461,6 +1461,18 @@ public sealed partial class RetentionTest
     public void AWriterOfAFreshValueOfTheTypeWritesItsStorage(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(HiddenWritableShapes + function + "\n    return\n"), "f"));
 
+    // Q2's condition 4 (F's G935 rulings 73 C3, 76 D1; the reviewer's irvC3GrowWriterBad, labelled I first): a handed writer's parameter
+    // whose storage is at Binding's Limit (N<T> grows through its raw Field from its first level) leaves the write test undecided, so f's
+    // declared retention (no substitution: Instance checks no limit; A5's BeginStoring reads it for f's own body) is the Limit, never a
+    // record that drops the write (before: store 0 kept nothing of y).
+    [Fact]
+    public void AWriteTestAtBindingsLimitIsTheLimit()
+    {
+        var c = Bind("struct N<X>\n    public var item: X\n    public var next: raw/N<(X, X)>\n" +
+            "func f<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: (uniq/N<T> during u, E) -> ()) -> ()\n    return\n");
+        Assert.Equal("limit", Declared(c, "f"));
+    }
+
     // The same at a call: a Closure capturing the caller's T by move and passed by value, with a writer through `uniq/T` handed, keeps the
     // child in what the captured T hides; without the writer nothing.
     [Fact]
