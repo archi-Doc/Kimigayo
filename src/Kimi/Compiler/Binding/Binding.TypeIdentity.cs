@@ -143,10 +143,13 @@ public sealed partial class Binding
         }
     }
 
-    // R7-C2c2 c2-2: the view's classes with the identity rows a request's walk recorded (SPEC 8.2.3's grounds include the
+    // R7-C2c2 c2-2: the declaration's classes with the identity rows a request's walk recorded (SPEC 8.2.3's grounds include the
     // Constraints `T is C` supplies at every depth). Request-local: one reused table, never memoized as the view's; its rows are
     // Provisional (a derived availability), so nothing keyed by it is kept, and at R7-C2e2 e2-1's merge what it keys stays the
-    // request's. Its keys follow the table's rule: a constructed member keys to itself (Representative).
+    // request's. Its keys follow the table's rule: a constructed member keys to itself (Representative). R7-C2c2 c2-4b (DECISIONS
+    // R4.13): its premises are the declaration's grounds alone (ConstraintEnvironment.Declares, asked of an identity fact only),
+    // never a use's supply, so the closure a request extends is a function of the declaration's premises and its own rows (SPEC
+    // 8.3.3 Limits).
     private IdentityClasses? ExtendedClassesOf(BindingScope scope, List<(BoundType A, BoundType B)> rows)
     {
         if (!this.identityBuilding.Add(scope))
@@ -158,7 +161,22 @@ public sealed partial class Binding
         {
             var classes = this.identityExtended ??= new IdentityClasses(this);
             classes.Open(scope);
-            this.ApplyIdentityPremises(classes, scope);
+            for (var current = scope; current is not null; current = current.Parent)
+            {
+                if (current.Constraints is not { Invalid: false } environment)
+                {
+                    continue;
+                }
+
+                foreach (var fact in environment.Facts)
+                {
+                    if (fact.Kind == ConstraintKind.TypeIdentity && environment.Declares(fact))
+                    {
+                        this.ApplyIdentityPremise(classes, environment, fact);
+                    }
+                }
+            }
+
             for (var i = 0; i < rows.Count; i++)
             {
                 classes.Premise(rows[i].A, rows[i].B, Completion.Provisional);
@@ -185,20 +203,26 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject: { } subject, RequiredType: { } required })
-                {
-                    continue;
-                }
-
-                if (this.AvailableConstraintFact(environment, fact, out var availability))
-                {
-                    classes.Premise(subject, required, availability);
-                }
-                else
-                {
-                    classes.Read(availability); // An unavailable premise that may become available: the classes may grow.
-                }
+                this.ApplyIdentityPremise(classes, environment, fact);
             }
+        }
+    }
+
+    // One fact of an environment into a table: an available identity premise joins its sides.
+    private void ApplyIdentityPremise(IdentityClasses classes, ConstraintEnvironment environment, BoundConstraint fact)
+    {
+        if (fact is not { Kind: ConstraintKind.TypeIdentity, Subject: { } subject, RequiredType: { } required })
+        {
+            return;
+        }
+
+        if (this.AvailableConstraintFact(environment, fact, out var availability))
+        {
+            classes.Premise(subject, required, availability);
+        }
+        else
+        {
+            classes.Read(availability); // An unavailable premise that may become available: the classes may grow.
         }
     }
 

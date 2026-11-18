@@ -94,7 +94,8 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 }
 
 // A scope's premises. Its state (the three fact sets, the two flags they set and Failed) is written only by its own members (Add, Fail,
-// Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf). An Invalid
+// Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf); the mark of
+// the declaration's own supply (Declared) only by MarkDeclared and Reset. An Invalid
 // environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer fails that node in the same step and names
 // it here; the first one is kept. As an ICheckCause it is what a proof that reads the environment rests on (Binding.InvalidEnvironment,
 // the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
@@ -112,6 +113,9 @@ internal sealed class ConstraintEnvironment : ICheckCause
     internal HashSet<BoundConstraint> DirectFacts { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
+
+    // R7-C2c2 c2-4b (DECISIONS R4.13): the first Declared of DerivedFacts are the declaration's own supply (Declares).
+    internal int Declared { get; private set; }
 
     /// <summary>Gets the node whose failure made the environment Invalid; null while it is valid.</summary>
     internal Koto? Failed { get; private set; }
@@ -155,6 +159,36 @@ internal sealed class ConstraintEnvironment : ICheckCause
         }
     }
 
+    // The declaration's own supply ends here (ExpandScopeContractPremises' end). No Version change: no view-keyed table reads the mark.
+    internal void MarkDeclared() => this.Declared = this.DerivedFacts.Count;
+
+    // R7-C2c2 c2-4b (DECISIONS R4.13; SPEC 8.3.3 Limits, "the closure of a declaration's premises"): whether `fact` is a ground of
+    // the declaration's closure, the one fact an extending request's table reads (ExtendedClassesOf): written, or derived by the
+    // declaration's own supply of its written Contract premises; never a use's supply alone. Invariant: the declaration's expansion
+    // (ExpandContractPremises) runs before any use supply (Binding.AssociatedTypes holds its supply while bindingConstraintTypes,
+    // until after the expansion; Binding.ContractCalls' is body time), so every derived fact written after the mark is a use's
+    // (the syntax-triggered supply, staged until C3). Known exception (read, not measured): an override's implementation premises are
+    // expanded again after its signature is bound (PrepareVirtualOverridePremises), so there the mark also covers that signature's
+    // use supply. Temporary: C3 removes the syntax-triggered supply, after which every derived fact is the declaration's and this
+    // split goes. Cost: a linear scan of the declared derived facts, asked only for an identity fact (RP8's spm rows measure it).
+    internal bool Declares(BoundConstraint fact)
+    {
+        if (this.DirectFacts.Contains(fact))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < this.Declared; i++)
+        {
+            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
     /// <param name="node">The failed node.</param>
     internal void Fail(Koto node)
@@ -181,6 +215,7 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.Facts.Clear();
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
+        this.Declared = 0;
         this.Failed = null;
         this.HasAssociatedProjection = false;
         this.HasParameterIdentity = false;
