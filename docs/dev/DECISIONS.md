@@ -5089,7 +5089,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     syntax that declares it.
 - **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
   (2026-10-31; superseded in part by R4-M162; amended by R4-M161; amended in part by BU-221 (PLAN G913: a failed solve's bound names
-  a variable's representative, not only fixed ends); design round 2 and design-r2 Amendments 1-5; the owner, verbatim:
+  a variable's representative, not only fixed ends) and by R4-M213 (G379 (a): a Closure's erasure fit reads the structural part);
+  design round 2 and design-r2 Amendments 1-5; the owner, verbatim:
   「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and 「すべて推奨の内容でお願いします」 for the e1a split) SPEC 10.7, 15.3.5,
   15.3.7, 15.6.1, 7.7.4, 8.3, 23.1. Supersedes R4-M137's result half and, in part, BU-26; amends BU-22.
   - One fact: `ComparisonFailure` (Kind, Part, Path, Depth, Clause, ends, CallableInstance), produced once by the judgment that fails:
@@ -5327,7 +5328,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: per-walk id stamps alone (they leave writingPlaces' near-copies); hash-consed Patricia tries (R4-M53's tree rejection,
     size, small-set risk); restating V16 (R4-M65). Not temporary.
 - **R4-M161 The erasure's outcome: a failed erasure publishes its part for its two Types (G216 (a) U2.1 r2-1a)** (2026-10-31; r2-1
-  design with Revision 1; r2-1b adds the engine's Owned fact) SPEC 7.7.4, 15.2.3, 23.1.2. Amends R4-M155 (Owned's record).
+  design with Revision 1; r2-1b adds the engine's Owned fact; amended by R4-M215, G379 (a): the parts on every engine path, read at
+  any depth by applicability and the record) SPEC 7.7.4, 15.2.3, 23.1.2. Amends R4-M155 (Owned's record).
   - The erasure's row. `ErasesToFunction` decides once, in SPEC 7.7.4's order, which part failed (Receiver, Shape, Owned,
     Condition) and publishes it with today's `SignatureFits`, the closure's receiver and an Owned Error's cause, held and not rested
     (`HoldCause`: an erasure records nothing). The row is keyed by the converted and expected Types by identity (`erasureOutcomes`,
@@ -6764,6 +6766,72 @@ and migration obligations remain in force; no numeric cap changes are authorized
     which 8.10 says stays fixed: the owner chose (b)); the check in `FormNestedResult`'s inputs' half (a second walk of the inputs and
     a second judge for 15.3.4's one scope rule); a clause in `OriginCandidate`'s input-name branch (a consumer deciding by syntax:
     `x.a` with `x: ref/U` names a fixed body variable, valid); `BindOrigin` returning no Origin (it would hide independent records).
+- **R4-M213 G379 (a): a Closure's erasure decides applicability by its structural part; its per-call stand-in is a fact of the
+  solve** (2026-11-19; Back, Binding's selection; Major; PLAN G379 (a), R7-P4 T2's Closure arm; design
+  `back\notes\g379c\design.md` Revisions 0-2 (§7, R1.5) with B's rulings, the Front's design review on C-385 ACCEPT WITH CONDITIONS,
+  the Middle's RP17 consent C-387; commits 293eda7d5 and 33c224409) SPEC 15.6.1, 10.8, 10.2, 10.4, 10.7, 15.3.6. Amends R4-M155
+  ("Not yet a Closure's or Function Item's erasure fit": the Closure's is now).
+  - Cause: `ErasureSignatureFits`' Closure arm judged the Origin part before selection with the use-free `CallableSubtype`, so an
+    Origin difference dropped a candidate (clsel and nb3b accepted, clselctl1 and nb1 rejected, s2c at the call).
+  - Rule: the arm reads `FitsStructuralPartAt` (R4-M155's one pre-selection entry); the Origin part is judged once after selection
+    at the argument (`ErasesToFunction`, BU-107). `TryCandidate` sends an argument whose own per-call input left an open region in
+    the parameter's Type to `FitPerCall` by that fact, not after its fit fails, and `FitPerCall` instantiates only when no open region
+    of the argument remains. The per-call stand-in decides exactly the arguments `HasPerCallStandIn` names (a function group, a
+    Closure or Function Item value whose own per-call input left an open region); a Function value and an anonymous function written
+    in the call keep their fit.
+  - Moves (named in 293eda7d5 and 33c224409): class 1 (rejected) clsel, clselif1, tw-res, tw-mixsel, nb3b, nb3bif1, rank2bc,
+    rank3i1, tw-osel2, tw-joinsel1, d-selI, e-owu, e-owv; class 3 (accepted) clselctl1, nb1, G519's r04n and z02n, d-selR, c-nfnv,
+    c-nrefv2; wrong code fixed: tw-osel2-okr; records moved to the argument (R4-M155's t1d_n precedent): s2c, s9, e6c, clselctl1n,
+    nb1n, r04n_bad, z02n_bad, escc (s2c, s9, e6c and e-owu then the located limit, R4-M215).
+  - Rejected: P2 (the use-aware comparison before selection: Origins still decide); RD16's structural reading without the stand-in
+    split; Revision 0's routing by the open region alone (a Function value or an anonymous function routed to a stand-in that does
+    not decide it: an Origin fact made the candidate inapplicable).
+  - Open, G379 (b), R7-P4 T2: the Item arm (`ItemContractFits`), `FunctionReferenceApplicability` (census row 14) and the Callable
+    proof's per-call fallback (`PerCallCallables`); boundary rows itsel, frsel, frselctl1n and G514's t4q, u2, u2g Explicit until T2.
+- **R4-M214 A7 (commit 04857b18f, N29c) is superseded** (2026-11-19; Back, Binding's selection; PLAN G379 (a)) by G379 (a)
+  (Revision 3, commit 76846f209, and Revisions 4-5, commit 780e4d16a): 'an erasure's Shared receiver, Owned environment and
+  receiver-free result are judged after selection' had one basis, SPEC 10.7's sentence 'a receiver, Copy, Owned or Loan failure
+  cannot reopen selection', removed by the 2026-10-15 rewrite (72fb4b791); it was never a DECISIONS, SETTLED or owner entry. Now the
+  erasure row's conditions (SPEC 7.7.4's receiver and its second bullet) decide applicability (SPEC 10.2, 10.1 step 5, 15.6.1).
+- **R4-M215 G379 (a) R4-R5: the erasure row's environment verdict is one fact** (2026-11-19; Back, Binding's selection; Major;
+  PLAN G379 (a); the owner's O-406 (a), verbatim 「O-406 a」, amendment 「O-406について aですが、設計レビューが通らなければ、また質問を出し
+  てください（すぐbの保留に移らないでください）」; O-411 (a), verbatim 「すべて推奨通りでお願いします」; O-417 (a); design
+  `back\notes\g379c\design.md` Revisions 3-5, implementation review ACCEPT WITH NOTES (`review-impl-r5.md`), B's reviewer's C3 delta
+  check (`review-c3.md`), the Front's CONSENT WITH CONDITIONS (C-385) and the Middle's re-consent (C-387); moves named in 76846f209,
+  780e4d16a, 411f6e06e, 9485340f9 and e21d43cc0) SPEC 7.7.4, 10.1 step 5, 10.2, 10.5.1, 15.2.3, 15.6.5. The `Owned` engine records, on
+  every path that combines a verdict, each part that is not Proven with its member, Origin and Type (`CapabilityWork.Part`: a layer's
+  own Origin, a structure's components and Origin parts, a collection's elements, a callable's closed call signature, a declaration's
+  Type and Origin arguments and stored projections, an abstract Type's evidence). The erasure's Owned owner computes `Owned` over
+  every part at any depth from those records (`OwnedMember`), each leaf Origin classified once by the 15.6.5 relation judge at the
+  erasure's use with `static` as the shorter end (`JudgeOriginRelation`): Refuted; or, for a leaf with a local region the forming
+  body judges and the judge does not refute, decided only once the body is bound (`Final`, the owner's one class; a subject with no
+  part known, whose work was forgotten (Pending) or that no work judged, too: rulings-g 3, review-r5 N1). The receiver condition is
+  one predicate (`SharedReceiver`, over `BoundClosure.Receiver`), read by the erasure row (`ErasureSignatureFits`), `ErasureFits` and
+  `ErasesToFunction`: an Exclusive-receiver Closure has no erasure row (Revision 3). The result's independence of the receiver
+  (`ReceiverIndependence`, BU-116) is the same row's. `TryCandidate`'s step 5 and `ErasesToFunction` read the same fact: Refuted (the
+  engine's own verdict, such as raw storage's leaf or a summary that excludes Owned, or a refuted leaf) or dependent -> inapplicable
+  (a lone candidate's record `NoApplicableOverload_Kd` at the call); at step 5 a `Final` part or a retention past its limits -> the
+  located `Unsupported_Kd` at the argument (BU-22), only where nothing refutes the candidate (one ordering for the step: a candidate
+  its own Constraints, premises or an erased argument refute is inapplicable whatever an erased argument's limit says; the Front's
+  review B1, rulings-j 1); the record keeps O-57's recorded limit for a `Final` part. Step 5 (`ErasedArgumentsEnvironment`, one
+  verdict per erased argument) reads every argument position, each Tuple or array literal element included (SPEC 10.5.1; the
+  Middle's C3, `positionOperations`, rulings-j 11), and gives the located limit at each limited position's own source; a join formed
+  part by part ranks one class per typed position, so step 5 sees none of its parts' erasures (SPEC 10.5.1's last paragraph; PLAN
+  G1035). The record's kind (`FailOwnedConversion`: `UnsatisfiedConstraint_Kd` for a refuted leaf, else `UnprovenConstraint_Kd`) does
+  not yet read the engine's own Refuted verdict, which step 5 counts: fb-init records `UnprovenConstraint_Kd` where SPEC gives
+  `UnsatisfiedConstraint_Kd` (PLAN G1032, review-r5 N2). Amends R4-M161 (the parts are recorded on every engine path and read at any
+  depth by applicability and the record) and O-57's class at a call argument (the located limit; named moves: s2c, e6c, s9, e-owu).
+  Record moves on invalid programs (Q13): the lone forms to `NoApplicableOverload_Kd` at the call; `ContextualCaptureTest`'s
+  `var v = self.buffer@ref` row `UnprovenConstraint_Kd` -> `UnsatisfiedConstraint_Kd` at the closure. C3's moves (9485340f9,
+  e21d43cc0): n-tup-p, n-arr-p, n-tup2-p accepted as on dev; n-tup-q, n-arr-q, n-tup2-q, x-order-q, x-arrtup-q, x-deep-q, x-named-q
+  and x-gen2-q accepted (class 3); n-tupF-q and c-ntup the located `Unsupported_Kd` at the element (O-406 (a)); n-tup-lone
+  `UnsatisfiedConstraint_Kd` -> `NoApplicableOverload_Kd` (Q13); x-order-i one record added, `Unsupported_Kd` at the element `e2@move`
+  beside the one at `e@move` (each limited position its own record). Renamed: `ResultDependsOnReceiver` is `ReceiverIndependence`,
+  `SignatureCapability` is `ClosedSignature` (its two callers request and record the closed Type), and `OwnedRest` holds the subject's
+  work and scope; earlier entries' wording (the G570 bullet, BU-116, BU-73) stays as history. Rejected: one more condition per round
+  (rulings-f); the first part's Origin (B2); parts on the structural path alone (review-r4 C1); a second copy of 15.6.5's refutation
+  (review-r4 C2); a limit keyed on the candidate count or the ambiguity; the `Final` limit at the record (it moves O-57's recorded
+  rows with no selection to protect).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
