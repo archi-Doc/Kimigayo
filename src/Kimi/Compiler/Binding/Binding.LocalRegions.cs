@@ -441,6 +441,7 @@ public sealed partial class Binding
             if (region.Version == this.regionVersion)
             {
                 region.Version = FrozenRegion;
+                (region.Solution, region.SolutionVersion) = (null, FrozenRegion); // RegionValue computes a frozen row's value per read.
             }
         }
     }
