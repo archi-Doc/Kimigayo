@@ -24053,8 +24053,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     `NotSupportedException`; R5-M165) stay. (2) An exception in a target's preparation before `BuildTarget`'s front end
     (`DependencyResolver.Resolve`, `DependencyLock.Validate`, `new Compilation`) ends the project's own result, and that target's
     own records (its registered project file, lock or resolution records) are not rendered; no command input reaches it (resolution
-    and lock failures are records); `BuildTarget`'s finalization is not widened here (PLAN G829's area). (3) Outside
-    `Project.Build`, `CommandExecution` and `TestCommand` still apply the set over compiler steps (PLAN G984).
+    and lock failures are records); `BuildTarget`'s finalization is not widened here (PLAN G829's area). (3) Closed by R9-M12 (PLAN
+    G984): outside `Project.Build` the set applies only around a command's own toolchain calls (`CommandExecution.Toolchain`,
+    `Project.Run`) and `kimi test`'s native build.
   - Tests: `NativeToolchainTest.ABuildFailsByTheToolchainBoundarysRule` (project checks: a null target list escaped the build;
     report: the host's `InvalidOperationException` after generation printed as a toolchain failure; the toolchain's message: the
     host console failing at `ToolchainFailed`'s line escaped the build, now the build's own fault, the row that observes `Build`'s
@@ -24073,6 +24074,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends R9-M6 (the dependency rule's "`CompilationBuildMetadata`, through `Project.BuildMetadata`": Build reads the value
     `Project.Build` passes) and R5-M169 (the results with a fault path: the project's own and the build's, beside the front end's
     and the Emission result; DIAGNOSTICS §7).
+  - Amended by R9-M12 (PLAN G984): known limit (3) closes.
 - **R9-M11 The generation result carries the link facts; the link manifest is one table with its readers (R9-B1)** (Middle,
   2026-11-18; the R7-R9 plan's §5.3 unit B1, parts 1 and 2; Major; under R9-M6 and R9-M10; design review REVISE then ACCEPT WITH
   NOTES; the Back's consent on its codegen half, C-389; W-256)
@@ -24119,3 +24121,59 @@ R8-M* and R9-M* by the stage of the recording unit.
     (G983's remainder, not the manifest).
   - Amends R9-M6 (the dependency rule; the Temporary clause ends), R5-M181 (the foreign supplies follow generation) and R9-M10 (its
     known limit narrows: no manifest read raises a listed contract type).
+- **R9-M12 The command's own result: an exception no result owns is the command's fault (PLAN G984)** (Middle, 2026-11-18; Major;
+  under SPEC 23.2.3, DIAGNOSTICS rule 9, R5-M169 and R9-M10; design review REVISE then ACCEPT WITH NOTES)
+  - Rule: `CommandExecution.Execute` (every command but `test` and `lsp`) decides no fault by exception type: it catches
+    cancellation and the command's own Input error by its own type, and renders anything else as the command's fault. The command's
+    own Input error, a selection or usage failure (SPEC 23.2.3; IMPL 20.3, 20.3.1), is `CommandInputException`, thrown only by the
+    command layer where it decides the failure (`Solution`'s selection, the commands' usage checks, `CheckCommand`'s unknown
+    `--Format` and `DefaultCommand`'s unknown command). A toolchain call's failure is classified around the call only
+    (`NativeToolchain.IsToolchainFailure`: `CommandExecution.Toolchain` for `build --Manifest`, `run <exe>` and `toolchain verify`;
+    `Project.Run` around `RunProject` with `Project.ToolchainFailed`, as `Project.Build` around its calls), and restore's lock write
+    is its output (`ArtifactFiles.IsOutputFailure`). Each prints its message and fails the command (exit 1). Any other exception
+    that reaches the command, one no `Project` result owns (in selection, between the projects, in a command's host lines or in a
+    result's rendering), ends the command's own result as Faulted: one `CheckFaulted_Kd` (Exception, its message the note, no
+    location), exit 1. Cancellation returns 130. `TestCommand`'s toolchain catch spans `NativeToolchain.Build` only.
+  - The parse of a user's configuration text is the file's own read: `ConfigurationText.ToBinary`, Tinyhand's text reader, one
+    library call over the user's bytes with no compiler code inside, turns whatever it raises into the reader's own failure type
+    (`TinyhandException`), which `Solution.TryReadFile`, `Project.TryCreate` and `DependencyResolver` report as that file's load
+    failure: a too deeply nested file is an Input error, never a fault. The span is that one library call, so it hides no compiler
+    defect.
+  - A read of a user's input is classified by one predicate, `CheckInputSource.IsReadFailure` (I/O, access, a path the host cannot
+    name), applied only around the read: by the command layer's selection, `DependencyResolver` (with `TinyhandException`),
+    `CheckJsonOutput` and the language server's `DiskReader` (its five lists). `Project`'s source reads keep their I/O and access
+    kinds (a listed path cannot fail to be named; a null one is a caller's broken contract, the front end's fault), and
+    `DependencyLock.Validate` its own (its catch spans the lock's comparison, compiler code).
+  - `kimi test`: the pinned executable, its case manifest and the artifact map are the runner's startup (IMPL 20.6.4: 3), not the
+    build (2). Two consequences: a startup failure ends the project loop (later projects' native builds and their failures are not
+    reported, where each build failure is collected and the loop continues), and its message has no "<project>: " prefix.
+    `TestCommand`'s outer list gains `CommandInputException`, so a selection error keeps exit 2 (PLAN G1012 removes the list).
+  - Public contracts: `Project.Run` returns 1 with the toolchain's message for a refusal before launch (it threw
+    `InvalidDataException`); `Solution.Run`, `LoadForBuild`, `PrepareProject` and `ResolveInputPath` throw `CommandInputException`
+    for selection errors (an internal type through public methods, as `ProjectConfigurationException`); `Solution.TryReadFile`
+    (public, a Try method) returns false for the read's and the parse's failures and lets any other exception (a defect) propagate.
+    `DefaultCommand` takes `Kimigayo` from the container; its unknown-command message moves from standard error to the Kimigayo
+    console, where every other command's Input error goes (PLAN G1015 moves them together).
+  - Holds by structure: no type list decides input error, toolchain failure or fault outside the call it names.
+  - Tests: `CommandExecutionTest.ACommandFailsByItsInputItsToolchainOrItsOwnFault` (26 rows: 19 message rows, the usage, selection,
+    toolchain-call, restore-output, malformed and deep configuration rows among them, and 7 fault rows: the host's console failing
+    at the selected project's line with a listed and an unlisted type, after the projects, at a toolchain failure's line, in
+    `check`, in `emit` and at restore's lock line; before G984 five printed as a plain failure without a code and two escaped the
+    command; the 200-deep solution and project rows hold the parse's classification), `ACancelledCommandReturns130`,
+    `CommandExecutionTest+ConsoleTests.ATestSelectionFailureReturns2` (`kimi test` missing input and deep solution: 2; run alone,
+    `ConsoleIsolationCollection`, since `kimi test` swaps the process-global `Console.Out`); `NativeToolchainTest`'s refusal rows
+    assert exit 1 and the refusal's own message (`AssertRunRefused`). No production seam: the triggers are command inputs and the
+    host's console (`DiagnosticContractTest.DiagnosticConsole`'s `Failure`).
+  - Open: the JSON command document for an internal selection failure is PLAN S1015's envelope; `Project.TryCreate`'s catch-all
+    (PLAN G1010), `PrepareTests`' fault path (G1011) and `TestCommand`'s type lists (G1012) are their own rows; a fault's note keeps
+    only the exception's message on every fault path (PLAN G1014).
+  - Rejected: `InvalidDataException` as the input-error type (the framework and the compiler throw it; a type would still decide
+    over the body); selection returning its failures (every selection method and caller, same behavior); a fault path per command
+    (seven copies); turning a toolchain failure into `CommandInputException` (a rethrow chain); `CommandExecution.Toolchain` inside
+    `Project.Build` (closures on every build's success path; two renderings remain, one per owner: `Project.ToolchainFailed` for a
+    project's result, `CommandExecution.Toolchain` for a command's own calls); keeping the type in the command's fault note alone
+    (one `CheckFaulted_Kd` note form; G1014 changes every path at once); the naming kinds in `Project`'s source reads (a null source
+    path, the front end's broken contract, became a read failure: `EmissionArtifactsTest`'s "front end" row).
+  - Amends R9-M10 (its known limit (3) closes: outside `Project.Build` the set applies only around a command's own toolchain calls
+    and `kimi test`'s native build) and R5-M169 (its rejected catch in `CommandExecution` concerned generation's exceptions, which
+    the Emission result owns; the command's own result has this one).
