@@ -14861,6 +14861,56 @@ resumed by R4-M86 (2026-10-20).
     NotCallable_Kd (c05j, r05i, r08i, w05i, q04i), NoApplicableOverload_Kd (c15i, r06j, w03i), InvalidAssignment_Kd (q03i),
     Unsupported_Kd (q05i, q06i, q07i; w17i at `X`), InternalInvariant_Kd (r04i, w09i, q09i); support: w15v, w16v, w19v, q11v
     (BU-117's Unsupported_Kd -> accepted), and D11 alike (a Type path found at stage 6; its row 72b22eb33, C-393's N1).
+- **BU-227 PB3: one ContractReference rule, one ContractSelector reader, the ConditionalConformance head, a failed member's
+  recovery, an OriginApplication that ends a NamedType (PLAN G857 F5-1, G873 with R1; PB3b)** (Front, 2026-11-19; PB3 + PB3b, the
+  Front's third Parsing bundle (Q-504); plan revision 69 (B) class 1, (C) one bundle per component; Major, an acceptance mover in
+  selected syntax; design review REVISE, delta re-review REVISE, short checks ACCEPT WITH NOTES; implementation review REVISE (I1),
+  re-checks ACCEPT; the Middle's C-372 CONSENT WITH CONDITIONS; F's PB3 rulings 1-20, 176 and 182). SPEC F.3.2, F.5, F.6.2, F.8,
+  F.9.1, F.9.3, F.9.4, 8.8.1, 8.11.1, 23.1.2.
+  - F.3.2: `wrap`/`bits` are keywords after `@` by adjacency to `<` alone (`IsConversionOperationTarget`); F.9.3's list after them is
+    Type arguments, so a missing `>` is the list's record; the one-argument count rests on the list's recovery.
+  - F.6.2 ContractReference := NamedReference: one rule, `RecoverContractReference` over `IsNamedReference`
+    (Parser.ContainerReferences; `IsContainerPath`/`IsPathLeaf` are F.5's ContainerPath test, shared with
+    `ParseInheritanceReference`), and one reader of `"(" ContractReference ")"`, `ParseContractGroup`, at every position (F.5's
+    PathSuffix in a Type, a subject, a requirement; F.9.1's PostfixSuffix and BoundContainerExpression; a ContractSelector's group).
+    Record: `ExpectedSyntax_Kd`, `SyntaxForm.ContractReference`.
+  - Four SyntaxForm rows, through DECISIONS as PB2's (BU-206; SyntaxForm is no closed vocabulary, no owner approval):
+    `ContractReference`, `ConformanceSubject`, `ConformanceRequirement`, `ContractMember`, each with its requirement row.
+  - ConditionalConformance (`ParseConformanceConditions`, at the `when` that decides the production): the subject `Self`
+    (`SyntaxForm.ConformanceSubject`), the requirement a ContractReference, each condition a ConformanceRequirement (no `not`/`or`,
+    `SyntaxForm.ConformanceRequirement`), each on its own input (SPEC 23.1.2); Binding's conformance check rests on a recovered head.
+  - ContractSelector: one reader for an AssociatedTypeName and an EffectSpecification (`ParseContractSelectorPath`, with
+    `ParseContractSelectorGroup`: `ContinuesGroupedType`, F.5's owner, decides a PathQualifier group), and one rule over the complete
+    selector (`RecoverContractSelector`, a whitelist: a ContainerPath or `"(" ContractReference ")"`). `ParseEffectTarget`'s Name loop
+    is deleted; Binding's `EffectTarget` reads either leaf of the requirement Name.
+  - A failed member Name keeps the path bound (`RecoverRejectedPart`, the one recovery widened from `RecoverRejectedPrefix` to a
+    written span); `ParseAnnotatedType`'s grouped-Type exception for a failed member is deleted.
+  - F.5 PathSuffix `"." "(" ContractReference ")" "." Name` is one suffix (ruling 10, I1): `ParseTypeSuffixes` reads `.(C)` only
+    with its `. Name` (`ContractMemberCause`: a token after "." that is no Name is the one record there; a lone one is one
+    `ExpectedSyntax_Kd`, `SyntaxForm.ContractMember`, at the group; Type readers keep the path bound in a transparent recovered layer,
+    so its head keeps its own record, e.g. `Missing.(Y).1` keeps `UnresolvedBinding_Kd` at Missing); `ParseConstraintSubject`'s loop
+    applies the same function as a temporary (it also reads a runtime type test's target and a requirement's head word in the
+    requirement reader's leaves), removed when G489 routes it through `ParseTypeSuffixes`; the expression PostfixSuffix and
+    BoundContainerExpression read the same function (ruling 12, X1: `let r = v.(Y)`); `IsContainerPath` admits no path ending at a
+    grouped Contract (a selector split before the PathSuffix's own Name); Binding's `EffectTarget` reads an explicit set (either Name
+    leaf, or the Error of a failed path), any other form `InternalInvariant_Kd`; Binding's `Self` subject test in
+    `BindConditionalDeclarations` deleted (Parsing owns it; I2).
+  - PB3b: `ParseTypeSuffixes` returns after an OriginApplication (F.5 `NamedType := NamedReference OriginApplication?`); the
+    requirement reader reads its head word then F.5's loop (`ParsePrimary`'s suffix loop deleted, ruling 7 (c)).
+  - A selector Parsing rejected is judged there (ruling 16, 75d1878d8; SPEC 23.1.2): Binding's readers of the selector's reference
+    (an applying item's target, a misplaced item's own judgment) rest on Parsing's record (`SelectorRestsOnParsing`,
+    `Binding.EffectDeclarations`), so `effect X.(Y).h confined` keeps `ExpectedSyntax_Kd` alone (ruling 20).
+  - Test restated (F's ruling 182, 68e816160): dev's G949 S1-b1 row
+    `ConditionalConformanceBindingTest.AnEditThatUnregistersAConditionalConformanceLeavesItsBlockNoDeclaringPath` (14cf0b712) edited
+    the head's subject `Self` to `T` to keep the clause's key while the conformance registers no more; that program (`struct S<T>` /
+    `T is K when T is Copy`) is invalid syntax under F.6.2 (`"Self" "is" ContractReference "when" ConformanceConditions`) and SPEC
+    8.8.1, so under PB3 it is Parsing's `ExpectedSyntax_Kd` at the subject. The row, renamed
+    `ASubjectOtherThanSelfCannotUnregisterAConditionalConformance`, expects that record (the SPEC verdict, not a weakening). The S1-b1
+    reviewer's intent (a block's declaring path is the path registered in this pass, never an earlier pass's unregistered one) stays
+    in `Binding.ConditionalMembers.cs`; the path it guarded is unreachable through valid syntax (an F.6.2 head in a generic Type
+    registers unless its key changes).
+  - Rejected: a lookahead for `when` (it misreads a Type named `when` and scans every item); reusing `ParseInheritanceReference` for a
+    ContractReference (it admits a BorrowOrigin; ruling 6); a per-site whitelist copy (the leaf predicate is one).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
