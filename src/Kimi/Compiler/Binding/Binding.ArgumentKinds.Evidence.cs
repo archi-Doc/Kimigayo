@@ -379,7 +379,7 @@ public sealed partial class Binding
                 case PartKind.Aggregate:
                     return this.InferComposite(pattern, start, end, late);
                 case PartKind.Literal:
-                    return this.InferLiteral(pattern, binding.FirstLiteral(start, end)!, late);
+                    return this.InferLiteral(pattern, binding.FirstLiteral(start, end) ?? throw new InvalidOperationException("A Literal position holds a literal (InternalInvariant)."), late);
                 case PartKind.Call when binding.FirstLiteral(start, end) is { } literal && binding.DefaultOf(literal) is not null:
                     return this.InferLiteral(pattern, literal, late);
                 case PartKind.Typed when type is not null && !late:
@@ -582,6 +582,8 @@ public sealed partial class Binding
             return misfit;
         }
 
+        // `kind` is OwnTypeSteps' row, a filter of the parts that take their own Types now; the rows are a closed order of two (a
+        // literal's default, then a waiting nested call's own Type; O-408 (a)), so the single-part case below names both.
         private readonly Koto? DefaultPosition(int start, BoundType pattern, SlotSet unsolved, PartKind kind, ref bool applied)
         {
             var binding = this.Binding;
@@ -620,20 +622,31 @@ public sealed partial class Binding
             return this.DefaultChildren(start, end, pattern, unsolved, kind, ref applied);
         }
 
-        // SPEC 10.5.1, 10.2.1 (the owner, 2026-10-26; O-341 (a), O-408 (a)): a join's Literal position takes its first literal's default,
-        // which each of its literals must fit (its own record otherwise); an Aggregate one goes by its child positions; at a position that
-        // waits for its call each part of `kind` takes its own Type (OwnType); the others take none.
+        // SPEC 10.5.1, 10.2.1 (the owner, 2026-10-26; O-341 (a), O-408 (a)): one join rule for literals: in the literal step a position's
+        // literals take its first literal's default, which each must fit (its own record otherwise), at a Literal position (its Never
+        // parts with them, SPEC 14.9.2 step 3) and at one that waits for its call beside its literals alike; in the call step each
+        // waiting nested call at a waiting position takes its own Type (OwnType); an Aggregate position goes by its child positions; the
+        // others take none.
         private readonly Koto? DefaultParts(int start, int end, BoundType pattern, SlotSet unsolved, PartKind kind, ref bool applied)
         {
             var binding = this.Binding;
             Koto? misfit = null;
-            switch (binding.PositionKind(start, end, out _))
+            var position = binding.PositionKind(start, end, out _);
+            switch (position)
             {
-                case PartKind.Literal when kind == PartKind.Literal:
-                    var type = binding.PartDefault(binding.FirstLiteral(start, end)!, this.Scope);
+                case PartKind.Literal or PartKind.Call when kind == PartKind.Literal:
+                    if (binding.FirstLiteral(start, end) is not { } first)
+                    {
+                        return position == PartKind.Call ? null : throw new InvalidOperationException("A Literal position holds a literal (InternalInvariant).");
+                    }
+
+                    var type = binding.PartDefault(first, this.Scope);
                     for (var i = start; i < end; i++)
                     {
-                        misfit = this.Default(binding.positionParts[i], type, ref applied) ?? misfit;
+                        if (position == PartKind.Literal || binding.KindOf(binding.positionParts[i]) == PartKind.Literal)
+                        {
+                            misfit = this.Default(binding.positionParts[i], type, ref applied) ?? misfit;
+                        }
                     }
 
                     return misfit;
@@ -642,7 +655,7 @@ public sealed partial class Binding
                 case PartKind.Call:
                     for (var i = start; i < end; i++)
                     {
-                        if (binding.KindOf(binding.positionParts[i]) == kind)
+                        if (binding.KindOf(binding.positionParts[i]) == PartKind.Call)
                         {
                             misfit = this.Default(binding.positionParts[i], binding.OwnType(binding.positionParts[i], this.Scope), ref applied) ?? misfit;
                         }

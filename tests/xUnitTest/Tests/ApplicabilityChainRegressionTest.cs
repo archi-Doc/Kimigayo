@@ -170,7 +170,9 @@ public partial class ApplicabilityChainRegressionTest
     // whole (`consume([1, mkZero()])`); then each waiting nested call, a construction included, at a position whose slot is still
     // unbound takes its own Type (`identity(1)`), and every other part (an anonymous function, a function reference that needs S, a
     // leading-dot Case, an empty literal) is checked at the Type now fixed. `mkT(1, .None)` and `mkT(n, mkNone())` are controls; the
-    // invalid twins are NestedInferenceHasOneBoundary's O-408 rows.
+    // five rows `h(1, func (p) => 0)`, `h(identity(1), func (p) => 0)`, `h(identity(1), show)`, `mkT(identity(1), .None)` and
+    // `f(identity(1), [])` held before O-408 (a) too: coverage of "every other part is checked at the Type now fixed", not failing rows.
+    // The invalid twins are NestedInferenceHasOneBoundary's O-408 rows.
     [Theory]
     [InlineData(OwnTypeDeclarations + "let r = mkT(1, mkNone())")]
     [InlineData(OwnTypeDeclarations + "let r = mkT(1, Option.None)")]
@@ -644,6 +646,21 @@ public partial class ApplicabilityChainRegressionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
         Assert.True(rejected);
         Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
+    // PLAN G924 (the owner's O-408 (a); the review's N4): the own Types after selection, step by step (OwnTypeSteps: the literals'
+    // defaults, then a waiting nested call's own Type), and the completion at the Type they fix allocate nothing in a warm rebind.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("let r = mkT(1, mkNone())")]
+    [InlineData("let w = W.Make(1, mkNone())")]
+    [InlineData("let r = mkT(identity(1), .None)")]
+    public void WarmOwnTypeStepsAllocateNothing(string body)
+    {
+        var c = MinimalEmissionTest.Analyze(OwnTypeDeclarations + body);
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // PLAN G729: a joined position of two references at `ref/i32 during a` (two Origins, one region covering both) allocates nothing in a

@@ -299,6 +299,11 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("guard", "q1_own", MkAnyCall + "func k(a: ref/i32) -> i32\n    let y: ref/i32 during a = mkAny()\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/i32 during a = mkAny()")]
     [InlineData("guard", "q1_ownarg", MkAnyCall + "func look(x: ref/i32) -> i32 => 0\nfunc k() -> i32\n    return look(mkAny())\n", "")]
 
+    // SPEC 10.2.2 item 2, 15.6.5 (PLAN G924, the review's N6): at a borrow U the structural match keeps the declared Origins, with no
+    // temporary to fail at the `let`; a result that needs another Origin then fails at the return (q1_bor_i), its twin passes (q1_bor).
+    [InlineData("guard", "q1_bor", MkAnyCall + "func k(a: ref/i32, b: ref/i32) -> ref/(ref/i32 during a) during a\n    let y: ref/(ref/i32 during a) during a = mkAny()\n    return y\n", "")]
+    [InlineData("guard", "q1_bor_i", MkAnyCall + "func k(a: ref/i32, b: ref/i32) -> ref/(ref/i32 during b) during b\n    let y: ref/(ref/i32 during a) during a = mkAny()\n    return y\n", "UnprovenOriginRelation_Kd: return y")]
+
     // SPEC 10.5.1, 14.9.2, 15.6.1 (PLAN G390, closed): the selected call judges a nested join's positions (nn in a Tuple, nd alone).
     [InlineData("guard", "nn", NnHead + NnInner + "    return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)\n", "UnprovenOriginRelation_Kd: return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)")]
     [InlineData("guard", "nn_ok", NnHead + "    origin q outlives r\n" + NnInner + "    return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)\n", "")]
