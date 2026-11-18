@@ -158,10 +158,11 @@ public sealed partial class Binding
     // Verify (writes nothing; a failure is a compiler-build defect, thrown as the internal-invariant form before any Frozen is written):
     // the library pass asked for no rerun (it is the same in every run, so a rerun would ask again), it has no record of any kind (its
     // issues, derived issues and non-failing records, warnings and lints included: each list is the pass's, which the program pass's
-    // reset empties, so a layer record would be dropped or explained by another pass's tables; a startup record is never the library
-    // pass's: CheckStartup runs after a Final Bind, outside every pass, over the source modules only), and its query states are
-    // complete (LibraryQueryFault). Stamp
-    // (field stores only, each owner its own): every stamp the run made current on a library object or base store turns Frozen, so it
+    // reset empties, so a layer record would be dropped or explained by another pass's tables; a siteless height refusal too: its
+    // at-once report does not survive ReportDiagnostics, which invalidates the Binding partition and re-reports it only while the flag
+    // holds, and the program pass's ResetPass clears the flag, so a library one would be dropped silently; the term goes with the flag's
+    // Transitional, G651 a1. A startup record is never the library pass's: CheckStartup runs after a Final Bind, outside every pass,
+    // over the source modules only), and its query states are complete (LibraryQueryFault). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns Frozen, so it
     // reads current in every later pass; a stamp of an earlier run stays stale and reads absent, as the library pass left it. Publish,
     // last: L (LibraryLayer.TypeCount, the ids of the Types the library pass made) and the library's publication version, constant
     // from here for the compilation (HirTables.LibraryVersion), which the driver's skip reads.
@@ -169,7 +170,7 @@ public sealed partial class Binding
     {
         var symbols = this.LibraryQuerySymbols();
         var fault = !completed ? "asked for a rerun"
-            : this.issues.Count + this.derivedIssues.Count != 0 || this.HasNonFailingRecords ? "has records"
+            : this.issues.Count + this.derivedIssues.Count != 0 || this.HasNonFailingRecords || this.sitelessHeightRefusal ? "has records"
             : this.LibraryQueryFault(symbols) is { } incomplete ? $"left the query states of `{incomplete.Name}` incomplete" : null;
         if (fault is not null)
         {

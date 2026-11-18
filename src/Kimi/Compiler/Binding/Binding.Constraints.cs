@@ -463,7 +463,7 @@ public sealed partial class Binding
         // SPEC 23.1.2: a subject that formed no Type because of a failure in it, its own or a part's (the published HasFailureCauses),
         // supplies none: the requirement binds against no subject, and a rejecting verdict rests on the subject.
         var failedSubject = subject is null &&
-            (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid || this.HasFailureCauses(clause.Left));
+            (this.RecordedFailure(clause) != BindingFailure.None || this.RecordedState(clause.Left) == BindingState.Invalid || this.HasFailureCauses(clause.Left));
         // Closed subjects are valid in a struct's, an enum's and, Self apart, a Contract's region.
         var closedScope = scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause));
         // A subject that formed nothing for a missing name is pending when a later source can complete it into a subject valid here,
@@ -546,7 +546,7 @@ public sealed partial class Binding
                 environment.Fail(clause); // The clause failed, or holds a recovery.
             }
 
-            if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
+            if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
             {
                 this.AddPrerequisite(scope.Owner, clause);
             }
