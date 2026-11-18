@@ -1,5 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 // The pass reset (ResetPass), run when a pass starts and when an edit revokes the latest one (Invalidate), after its run's BeginRun.
@@ -8,10 +12,28 @@ namespace Kimi.Compiler;
 //   and symbols.
 // - Invariants: the cross-pass storage ResetPass's comment lists stays. A kept family's rows are reset in place over the running
 //   pass's modules only (In, PLAN G949 S1-r2), so no pass resets another pass's rows. R7-D2 b replaces the Clears with
-//   generation-stamped tables.
+//   generation-stamped tables. A reader of a per-pass table reachable outside a pass, given a node of the frozen library, refuses
+//   it (EnsurePassNode): its row was the library pass's and is gone.
 // - Prohibitions: no fact is computed or recorded here; ResetPass only empties tables and resets state.
 public sealed partial class Binding
 {
+    // PLAN G949 Stage 2 (U0b-C2, design 7b.1's C2): a per-pass table holds the running pass's rows only (ResetPass empties it), so after
+    // the library's freeze (SyntaxTable.Frozen) a library node has no row in it and its reader's "none" would be a silent wrong answer:
+    // such a read is the internal-invariant form. During the library pass the table is not frozen and the reader answers.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void EnsurePassNode(Koto node, string reader)
+    {
+        if (node.SyntaxOwner is { Frozen: true })
+        {
+            RefusePassRead(reader);
+        }
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void RefusePassRead(string reader)
+        => throw new InvalidOperationException($"{reader} read a per-pass row of a frozen library node (InternalInvariant; PLAN G949 U0b-C2).");
+
     // Discards every fact of the latest pass. Cross-pass storage stays: interned Types, Origins and Constraints, scopes and
     // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
     private void ResetPass(BindingMode mode)
