@@ -11391,7 +11391,7 @@ resumed by R4-M86 (2026-10-20).
 - **BU-124 A conformance proves no signature's formation** (2026-11-07; R7-V5, PLAN G556; the owner's O-44, verbatim 「(a) 有効とする」) SPEC 8.3.1, 8.3.2, 8.3.3, 8.6.3, 11.9.1, 15.6.1, 23.1.2.
   Supersedes in part BU-120 (its "Contract matching calls the compute directly", and the removal it names) and R4-M163 (its "Stays" for contract matching).
   - Rule: verifying a conformance reads no Type's formation from a function's or an accessor's signature, on the requirement's side or the implementation's. It proves 8.6.3's rows: Constraints, Inputs, Result Type, Result Origins, Access, Context and Effects.
-  - One read of a failed declaration: `SuppliesNoEvidence` (SPEC 8.3.1) over `CallableContract.Binder`, by `InvalidDeclarationContext`, for a function in `CompatibleRequirement` and an accessor in `MatchPropertyOperation`. It replaces the function's `BindingState` test and the four `ValidateAccessor` reads in `VerifyPropertyRequirement`. It reads a declaration's context, and it narrows too: a failed declaration that keeps its signature (`KeepsSignature`) supplies evidence, whose program stays rejected by its own record (k2, k5, Q13).
+  - One read of a failed declaration: `SuppliesNoEvidence` (SPEC 8.3.1) over `FnSig.Binder` (the view named `CallableContract` until R7-V2d, DECISIONS R7-M37), by `InvalidDeclarationContext`, for a function in `CompatibleRequirement` and an accessor in `MatchPropertyOperation`. It replaces the function's `BindingState` test and the four `ValidateAccessor` reads in `VerifyPropertyRequirement`. It reads a declaration's context, and it narrows too: a failed declaration that keeps its signature (`KeepsSignature`) supplies evidence, whose program stays rejected by its own record (k2, k5, Q13).
   - Judge: `ValidateConstraintUses`, at the written Type, after the final `ValidateConformances`. `S is C` reads nothing of `Box<S>`, so `Box<S>` follows from it. `ValidateProperties` keeps judging every accessor, requirements included, and a Property whose certificate fails is a failed declaration, which the read above sees, so a malformed Property signature keeps `IsVerified` false where a function's does not. `SignatureVerdict` stays a reader's memo with no record of its own; G375's second owner on the failing path stays until R7-C2.
   - `FormSignature` has one caller, `CheckSignatureTypeConstraints`, until R7-C2.
   - Open until R7-V5b (PLAN G588): `VerifyConformance`'s formation of an associated binding stays, though O-54 decides that form valid, because it is also the only judge of a binding-only inline cycle (BU-65, SPEC 6.2). `ProveConformance`'s formation of a constructed subject stays.
@@ -21225,6 +21225,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     placed by allocation, is noise unrelated to the code: W-235's Hello cold Bind rose +3.9 ms (B/A′ 1.139) with no per-compilation
     cost of its unit (the Front's probe: GC-free cold Bind CPU B/A′ 0.996-1.008; Hello within ±1 % with blocking GC). A measurement
     taken before the change compares only with one taken under the same setting.
+- **R7-M37 `FnSig`, a callable's declared signature** (2026-11-18; R7-V2d; plan §5.1 V2; Major, behavior-preserving). The view
+  formerly named `CallableContract` is `FnSig`, owned by `Binding.Signatures` (BindHeader, the Signature query): a function's or an
+  accessor's binder, generic count, Origin count, input count, receiver index, input Types and result, read from what the header
+  published: each input as `BindType` publishes it, also while a pending associated Type keeps the header open; the result the
+  symbol's Type, `BindType`'s partial value while the header is open. Every `SignatureEquals` comparison of declared signatures
+  (SPEC 9.1, 8.4.2, 8.6.3, 8.13.1, the virtual override rules of 6.4), the 7.3 receiver shape and the 7.4 checker's correspondence read
+  those parts through it; the generic slots' kinds stay the bound Schema's (`SameGenericShape`) and the syntax's, read once the counts
+  compared equal. `SignatureEquals` stays the comparison until R7-V2e's `SignatureKey`. Rejected: a stored row written at the Signature
+  query's completion (a third copy of the parameter Types; a reader during an open header would see none, which turns
+  `MatchesRequirement`'s false into pending under associated inference); the parameter symbols' Types (partial while the header is
+  open); a prohibition worded for the `SignatureEquals` comparisons only (a second path to the receiver index and the generic count
+  would stay). Staged: the other 71 syntax reads of a declared parameter Type and the name contract's receiver read (70 lines in 37
+  files at V2d's landing) move to `FnSig` with the unit that rewrites their component: the call forms' 47 (with
+  `ArgumentMapping.AllowsPositionalArgument`'s receiver read) with R7-P3 (its row normalizes each form to `FnSig`), the other 25 (with
+  AssociatedInference.cs:309's read through a Type-node local) by R7-Y4 (the Koto forwarding's deletion, after N5, T2 and E move the
+  Binding reads; Y4's zero-reference row finds any left).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
