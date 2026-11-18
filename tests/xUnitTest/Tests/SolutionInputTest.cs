@@ -29,7 +29,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal(project, Solution.ResolveInputPath(Path.GetRelativePath(Directory.GetCurrentDirectory(), stem)));
         Directory.CreateDirectory(stem);
         Assert.Equal(stem, Solution.ResolveInputPath(stem));
-        Assert.Throws<InvalidDataException>(() => this.Load(stem));
+        Assert.Throws<CommandInputException>(() => this.Load(stem));
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class SolutionInputTest : IDisposable
         this.Write("A.kimiproj", "{}");
         this.Write("A.kimi", "()");
         var path = this.Write("A", "()");
-        Assert.Throws<InvalidDataException>(() => Solution.ResolveInputPath(path));
+        Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
     }
 
     [Theory]
@@ -50,14 +50,14 @@ public sealed class SolutionInputTest : IDisposable
     {
         this.Write(name + ".kimiproj", "{}");
         this.Write(name + ".kimi", "()");
-        Assert.Throws<FileNotFoundException>(() => Solution.ResolveInputPath(Path.Combine(this.directory, name)));
+        Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(Path.Combine(this.directory, name)));
     }
 
     [Fact]
     public void MissingNameReportsAllCandidates()
     {
         var path = Path.Combine(this.directory, "absent");
-        var exception = Assert.Throws<FileNotFoundException>(() => Solution.ResolveInputPath(path));
+        var exception = Assert.Throws<CommandInputException>(() => Solution.ResolveInputPath(path));
         Assert.Contains(path, exception.Message);
         Assert.Contains(path + ".kimiproj", exception.Message);
         Assert.Contains(path + ".kimi", exception.Message);
@@ -73,7 +73,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(await solution.Build(TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<CommandInputException>(() => solution.Run(TestContext.Current.CancellationToken));
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
     }
 
@@ -82,7 +82,7 @@ public sealed class SolutionInputTest : IDisposable
     {
         this.Write("A.kimisln", "Projects = true");
         this.Write("A.kimiproj", "Targets=\"x86_64-pc-windows-msvc\" OutputKind=\"Application\"");
-        Assert.Throws<InvalidDataException>(() => this.Load(this.directory));
+        Assert.Throws<CommandInputException>(() => this.Load(this.directory));
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public sealed class SolutionInputTest : IDisposable
         }
         else
         {
-            Assert.Throws<PlatformNotSupportedException>(() => solution.PrepareProject(null));
+            Assert.Throws<CommandInputException>(() => solution.PrepareProject(null));
         }
 
         var configured = this.Write("Configured.kimiproj", "Targets={\"aarch64-pc-windows-msvc\"} OutputKind=\"Library\" Optimization=\"O0\"");
@@ -146,9 +146,12 @@ public sealed class SolutionInputTest : IDisposable
     {
         var source = Path.Combine(this.directory, "Single.kimi");
         File.WriteAllBytes(source, [0xff]);
-        var solution = this.Load(source);
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
-        Assert.Contains("Run 'kimi build' first", error.Message);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        var solution = new Solution(new Kimigayo(console));
+        solution.LoadForBuild(null, new() { Target = WindowsProfile.Target }, [source]);
+        solution.PrepareProject(null);
+        Assert.Equal(1, await solution.Run(TestContext.Current.CancellationToken)); // The toolchain's failure before launch (IMPL 20.3).
+        Assert.Contains("Run 'kimi build' first", console.Text, StringComparison.Ordinal);
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
     }
 
@@ -163,8 +166,8 @@ public sealed class SolutionInputTest : IDisposable
         Assert.NotSame(projects[0].ProjectFile, projects[1].ProjectFile);
         projects[0].ProjectFile.Optimization = "O0";
         Assert.Equal("O2", projects[1].ProjectFile.Optimization);
-        await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
-        Assert.Throws<FileNotFoundException>(() => this.Load(first, Path.Combine(this.directory, "missing")));
+        await Assert.ThrowsAsync<CommandInputException>(() => solution.Run(TestContext.Current.CancellationToken));
+        Assert.Throws<CommandInputException>(() => this.Load(first, Path.Combine(this.directory, "missing")));
     }
 
     [Theory]

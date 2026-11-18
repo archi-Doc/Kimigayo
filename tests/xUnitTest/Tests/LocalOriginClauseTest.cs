@@ -228,8 +228,10 @@ public partial class LocalOriginClauseTest
     [InlineData(Holder + Reader + "func use(a: ref/i32, c0: R<H{p}>, k: (R<H{q}>) -> i32) -> i32\n    origin p.s == a\n    origin q.s == a\n    return k(c0@move)\n")]
     // An exclusive target under a contravariant slot with equal target slots and the reversed outer premise (p2e's counterpart).
     [InlineData(Holder + Reader + "func f(a: ref/i32, b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/H{hw} during p>) -> i32\n    origin hw.s == a\n    origin a == b\n    origin q outlives p\n    origin b outlives q\n    let r: R<uniq/H{x} during q> = r0@move\n        origin x.s == b\n    return 0\n")]
-    // An anonymous function's clause proven: the input bounds itself, or the enclosing function states the premise.
-    [InlineData(Holder + "func f() -> i32\n    let g = func (a: ref/i32 during b, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return h.item@follow\n    return 0\n")]
+    // An anonymous function's clause proven: the input states `static`, which outlives every Origin, or the enclosing function states
+    // the premise. An input that names a sibling's per-call Origin, `(a: ref/i32 during b, b: ref/i32)`, is invalid (SPEC 15.3.4, 8.10;
+    // PLAN G972, the owner's O-403 (b)): OriginRelationDiagnosticTest's loc row.
+    [InlineData(Holder + "func f() -> i32\n    let g = func (a: ref/i32 during static, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return h.item@follow\n    return 0\n")]
     [InlineData(Holder + "func outer(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let g = func [p, q] () -> i32\n        let h0 = H.init(p)\n        let h: H{x} = h0@move\n            origin x.s outlives q\n        return h.item@follow\n    return g()\n")]
     // The `==` premise applied to a local's clause.
     [InlineData("func f(a: ref/i32, b: ref/i32) -> i32\n    origin a == b\n    let x: ref/i32 during a = a\n        origin a == b\n    return x@follow\n")]

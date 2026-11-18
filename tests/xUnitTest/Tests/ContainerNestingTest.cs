@@ -351,6 +351,21 @@ public class ContainerNestingTest
     public void NestedEnumConstructionRetainsOuterBindings()
         => ScalarEmissionTest.EmitFixture("ContainerNestingEnum", "struct Outer<T>\n    public enum Choice\n        Value(T)\nlet x = Outer<i32>.Choice.Value(42)\nmatch x@move\n    .Value(let value)\n        if value == 42 => Kimi.Console.writeLine(\"ok\")", "ok\n");
 
+    // SPEC 9.6, 9.2 (R7-N1 c2): inherited member lookup stops at the first layer with accessible, role-compatible declarations, so a
+    // Core use passes a nearer layer's group of the same name (no Core declaration) and selects the base's struct: the private struct in
+    // its own body (valid; before, the walk stopped at the group: UnresolvedBinding_Kd at the use) and, where the group conflicts with
+    // an accessible ancestor struct (SPEC 9.7.1), the declarations' records alone (before, also UnresolvedBinding_Kd at the use).
+    [Theory]
+    [InlineData("public open struct Base2\n    struct X\n        public init() => ()\n    public init() => ()\n    func probe(x: Derived.X) -> i32 => 0\npublic open struct Base1 : Base2\n    public group X\n        public func f() -> i32 => 1\n    public init() : base() => ()\npublic struct Derived : Base1\n    public init() : base() => ()", false)]
+    [InlineData("public open struct Base2\n    public struct X\n        public init() => ()\n    public init() => ()\npublic open struct Base1 : Base2\n    public group X\n        public func f() -> i32 => 1\n    public init() : base() => ()\npublic struct Derived : Base1\n    public init() : base() => ()\nfunc use(x: Derived.X) -> i32 => 0", true)]
+    public void AnInheritedCoreUsePassesANearerLayerOfAnotherRole(string source, bool conflict)
+    {
+        var records = DiagnosticCorpus.Check(source, "Library").Diagnostics;
+        Assert.DoesNotContain(records, x => source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == "Derived.X");
+        Assert.Equal(conflict, records.Any(static x => x.Code == "DuplicateBinding_Kd"));
+        Assert.Equal(conflict, records.Length != 0);
+    }
+
     [Fact]
     public void InheritedNestedReferenceKeepsDefiningIdentity()
     {
