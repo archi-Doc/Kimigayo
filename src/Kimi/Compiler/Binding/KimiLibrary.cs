@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 
 #pragma warning disable CS1591 // Compiler-owned library identities.
 
-// KimiLibrary (PLAN G949 Stage 2; DECISIONS R8-M?? on landing): the Kimi library of a compilation and, frozen, of the process.
+// KimiLibrary (PLAN G949 Stage 2; DECISIONS R8-M53): the Kimi library of a compilation and, frozen, of the process.
 // - Responsibility: the library's identities (the catalog's symbols, its scope and module) over its parsed embedded sources; the
 //   process's frozen library per target (Of, the one store, KimiLibrary.Process.cs), made by the freeze (Unfrozen, Freeze: a compilation
 //   over an empty program whose Binding binds the library by the one driver), and its refusal (LibraryLayer.Refusal, which Binding's
