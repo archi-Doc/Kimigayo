@@ -58,7 +58,7 @@ public sealed partial class Binding
     // the declaration itself when it is left unresolved on a failure of its own (an accessor resting on a missing part).
     private Koto? InvalidCalledDeclaration(Koto node)
     {
-        for (var i = 0; CallPlan.Called(node, i) is { } called; i++)
+        for (var i = 0; CallPlan.Called(this, node, i) is { } called; i++)
         {
             if ((this.InvalidDeclarationContextCause(called) ?? (called.BindingState == BindingState.Unresolved && this.HasFailureCauses(called) ? called : null)) is { } cause)
             {

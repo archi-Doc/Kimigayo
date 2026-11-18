@@ -71,12 +71,12 @@ public sealed class HirColumnsTest
         var c = virtualBodies ? MinimalEmissionTest.Analyze(VirtualSource) : SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
         HirTables.Publish(c);
         var nodes = Reachable(c.Kotonoha).Concat(Reachable(c.Library.Kotonoha)).ToArray();
-        var (cold, warm) = (ReadViews(nodes), 0);
+        var (cold, warm) = (ReadViews(c.Binding, nodes), 0);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
             HirTables.Publish(c);
-            warm = ReadViews(nodes);
+            warm = ReadViews(c.Binding, nodes);
         }));
         Assert.True(cold > 0 && cold == warm, $"{cold} facts cold, {warm} warm");
     }
@@ -285,7 +285,7 @@ public sealed class HirColumnsTest
 
             if (!ViewsAgree(binding, node, op))
             {
-                problems.Add($"{where} views {Binding.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
+                problems.Add($"{where} views {Binding.FormOf(node)} {BoundEnumConstruction.Of(binding, node)?.Type}");
             }
 
             if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
@@ -295,18 +295,18 @@ public sealed class HirColumnsTest
 
             // An index names its key resolution, which reads the evaluated receiver, and a user or view selection its selected call; an update
             // of a Property with an accessor its setter, which takes the computed value.
-            var expansion = ExpansionPlan.Of(node);
+            var expansion = ExpansionPlan.Of(binding, node);
             var written = (node as BinaryKoto)?.Left ?? (node as UnaryKoto)?.Operand;
             var updated = written is null ? null : KotoHelper.UnwrapParentheses(written); // The Property Binding designates.
             if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
-                (op == HirOp.Range && CallPlan.Of(node) is not null) ||
-                (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(node) is not null))) ||
+                (op == HirOp.Range && CallPlan.Of(binding, node) is not null) ||
+                (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(binding, node) is not null))) ||
                 (op == HirOp.CompoundAssign && HirTables.Op(updated!) == HirOp.Call && updated is not IndexKoto && expansion?.Second is null))
             {
                 problems.Add($"{where} expansion {expansion}");
             }
 
-            foreach (var child in Consumed(node, op))
+            foreach (var child in Consumed(binding, node, op))
             {
                 if (Parsed(child) && HirTables.AdjustOf(child!).Acquire == HirAcquire.Unset)
                 {
@@ -314,12 +314,12 @@ public sealed class HirColumnsTest
                 }
             }
 
-            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+            for (var i = 0; CallPlan.Of(binding, node, i) is { } call; i++)
             {
                 var disposition = call.Kind == CalleeKind.Value ? default : call.Target.Definition;
                 if ((call.Kind == CalleeKind.Requirement && call.RequirementContract is null && disposition.Kind != DispositionKind.Shim) ||
                     (disposition.Id is IntrinsicId.Abort or IntrinsicId.Fail && !ReferenceEquals(call.ReturnType, BoundType.Never)) ||
-                    (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Accessor.Declaration: { Body: not null } accessor } && !ReferenceEquals(call.Target, CallPlan.Accessor(accessor))))
+                    (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Accessor.Declaration: { Body: not null } accessor } && !ReferenceEquals(call.Target, CallPlan.Accessor(binding, accessor))))
                 {
                     problems.Add($"{where} calls {call.Target.Name} without its Contract, as {disposition} or not as its accessor");
                 }
@@ -348,7 +348,7 @@ public sealed class HirColumnsTest
                 }
             }
 
-            if (BoundEnumConstruction.Of(node) is { } construction)
+            if (BoundEnumConstruction.Of(binding, node) is { } construction)
             {
                 foreach (ref readonly var payload in construction.PayloadOperations)
                 {
@@ -432,7 +432,7 @@ public sealed class HirColumnsTest
 
     // Reads R3 U1's lookup views at every node, as the MIR builder does: each layer's binder, an enum construction, a built-in form, an
     // accessor's executing function and every parameter of a body; the count of the facts found.
-    private static int ReadViews(Koto[] nodes)
+    private static int ReadViews(Binding binding, Koto[] nodes)
     {
         var found = 0;
         foreach (var node in nodes)
@@ -443,12 +443,12 @@ public sealed class HirColumnsTest
                 found += TyCtxt.Layer(type, out type, out var binder) == HirPlaceKind.PairLayer && binder is not null ? 1 : 0;
             }
 
-            found += (BoundEnumConstruction.Of(node) is null ? 0 : 1) + (int)Binding.FormOf(node);
-            var function = node is PropertyAccessorKoto accessor && HirTables.Op(node) == HirOp.Body ? CallPlan.Accessor(accessor)
+            found += (BoundEnumConstruction.Of(binding, node) is null ? 0 : 1) + (int)Binding.FormOf(node);
+            var function = node is PropertyAccessorKoto accessor && HirTables.Op(node) == HirOp.Body ? CallPlan.Accessor(binding, accessor)
                 : node is FunctionKoto && HirTables.Op(node) is HirOp.Body or HirOp.Closure ? HirTables.Symbol(node) : null;
             for (var i = -1; function is not null && i < ((FunctionKoto)function.Declaration).Parameters.Count; i++)
             {
-                found += CallPlan.Parameter(function, i) is null ? 0 : 1;
+                found += CallPlan.Parameter(binding, function, i) is null ? 0 : 1;
             }
         }
 
@@ -457,7 +457,7 @@ public sealed class HirColumnsTest
 
     // The children an Op consumes (SPEC 3.5, 10.2, 15.1.6): its own operands, conditions, Subject, initializer, result or jump operand,
     // then each call's receiver, value callee and arguments, and an enum Case's payloads.
-    private static IEnumerable<Koto?> Consumed(Koto node, HirOp op)
+    private static IEnumerable<Koto?> Consumed(Binding binding, Koto node, HirOp op)
     {
         IEnumerable<Koto?> own = (node, op) switch
         {
@@ -488,9 +488,9 @@ public sealed class HirColumnsTest
             _ => [],
         };
 
-        var calls = Enumerable.Range(0, int.MaxValue).Select(x => CallPlan.Of(node, x)).TakeWhile(static x => x is not null)
+        var calls = Enumerable.Range(0, int.MaxValue).Select(x => CallPlan.Of(binding, node, x)).TakeWhile(static x => x is not null)
             .SelectMany(static x => x!.ArgumentOperations.ToArray().Select(static y => y.Source).Prepend(x.Kind == CalleeKind.Value ? x.CalleeValue : x.Receiver));
-        var payloads = op == HirOp.Aggregate && node.CodeContext.Compilation.Binding.TryGetEnumConstruction(node, out var construction)
+        var payloads = op == HirOp.Aggregate && binding.TryGetEnumConstruction(node, out var construction)
             ? construction!.PayloadOperations.ToArray().Select(static x => x.Source) : [];
         return own.Concat(calls).Concat(payloads);
 
@@ -504,7 +504,7 @@ public sealed class HirColumnsTest
     // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.3.6).
     private static bool ViewsAgree(Binding binding, Koto node, HirOp op)
     {
-        var construction = BoundEnumConstruction.Of(node);
+        var construction = BoundEnumConstruction.Of(binding, node);
         var type = node.TypeOf();
         var form = Binding.FormOf(node);
         var agree = (construction is not null) == (op == HirOp.Aggregate && node is not (TupleLiteralKoto or ArrayLiteralKoto)) &&
@@ -526,25 +526,25 @@ public sealed class HirColumnsTest
                 callable = callable.Parent;
             }
 
-            var function = callable is PropertyAccessorKoto accessor ? CallPlan.Accessor(accessor) : callable?.SymbolOf();
-            agree &= function is not null && Enumerable.Range(-1, ((FunctionKoto)function.Declaration).Parameters.Count + 1).Any(x => ReferenceEquals(CallPlan.Parameter(function, x), node.SymbolOf()));
+            var function = callable is PropertyAccessorKoto accessor ? CallPlan.Accessor(binding, accessor) : callable?.SymbolOf();
+            agree &= function is not null && Enumerable.Range(-1, ((FunctionKoto)function.Declaration).Parameters.Count + 1).Any(x => ReferenceEquals(CallPlan.Parameter(binding, function, x), node.SymbolOf()));
         }
 
         if (node is PropertyAccessorKoto { } syntax && op == HirOp.Body)
         {
-            var executing = CallPlan.Accessor(syntax);
+            var executing = CallPlan.Accessor(binding, syntax);
             var bound = Binding.Accessor(syntax);
             var parameters = new[] { bound.Receiver, bound.Input }.Where(static x => x is not null).ToArray();
             agree &= ReferenceEquals(executing.Type, bound.Result) && ((FunctionKoto)executing.Declaration).Parameters.Count == parameters.Length &&
-                parameters.Select((x, i) => ReferenceEquals(CallPlan.Parameter(executing, i)?.Type, x)).All(static x => x);
+                parameters.Select((x, i) => ReferenceEquals(CallPlan.Parameter(binding, executing, i)?.Type, x)).All(static x => x);
         }
 
         if (node is FunctionKoto { IsConstructor: true } constructor && op == HirOp.Body)
         {
             var self = AdtDef.ReceiverType(binding, constructor);
-            agree &= self is not null && ReferenceEquals(CallPlan.Parameter(constructor.SymbolOf()!, -1)?.Type, self);
+            agree &= self is not null && ReferenceEquals(CallPlan.Parameter(binding, constructor.SymbolOf()!, -1)?.Type, self);
             agree &= !constructor.IsImplicitConstructor || (constructor.Parameters.Count == 0 && (AdtDef.Base(binding.Types, self!) is null) == (constructor.BaseInitializer is null) &&
-                (constructor.BaseInitializer is null || CallPlan.Of(constructor.BaseInitializer) is not null) &&
+                (constructor.BaseInitializer is null || CallPlan.Of(binding, constructor.BaseInitializer) is not null) &&
                 Enumerable.Range(0, AdtDef.Count(self!)).All(x => AdtDef.Field(self!, x).InitializerKoto is { } initializer && HirTables.Op(initializer) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error)));
         }
 

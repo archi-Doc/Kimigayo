@@ -166,7 +166,7 @@ public partial class EffectBoundImplementationTest
         Assert.Equal(new[] { IntrinsicId.WriteStdout, IntrinsicId.TestTempDirectory }, environment.Order().ToArray());
         var c = MinimalEmissionTest.Analyze("let same = (1, 2) == (1, 2)\nlet less = (1, 2) < (3, 4)");
         var shims = KotoTree.Walk(c.Kotonoha.RootKoto)
-            .SelectMany(static x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
+            .SelectMany(x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(c.Binding, x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
             .Where(static x => x.Target.Definition.Kind == DispositionKind.Shim).Select(static x => x.Target).Distinct().ToArray();
         var contracts = shims.Select(static x => TyCtxt.Contract(x).LibraryDeclaration!.Value).ToArray();
         Assert.Equal(2, contracts.Length);
