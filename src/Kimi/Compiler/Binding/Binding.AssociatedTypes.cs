@@ -282,8 +282,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            syntax.BoundSymbol = nested;
-            syntax.Right.BoundSymbol = nested;
+            this.PublishProjectionMember(syntax, nested);
             return this.BindContainerReference(syntax, nested, scope, this.TypeContext(syntax, scope), []) is { } nestedType ? Complete(syntax.Right, nestedType) : null;
         }
 
@@ -303,8 +302,7 @@ public sealed partial class Binding
 
         // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
-        syntax.BoundSymbol = associated;
-        syntax.Right.BoundSymbol = associated;
+        this.PublishProjectionMember(syntax, associated);
         Complete(syntax.Right, projection);
         if (!ReferenceEquals(receiver, syntax.Left))
         {

@@ -61,6 +61,9 @@ public sealed partial class Binding
         return x == a.End && y == b.End;
     }
 
+    // A pattern's syntax node no check typed has the Unit Type (PatternMarker's rule; also the Case Name a member step settles).
+    private static void CompletePatternSyntax(Koto node) => Complete(node, BoundType.Unit);
+
     private void ResetMatches()
     {
         // The pass counter already left the last pass's matches stale, so every kept plan is reset: the last pass's, the same objects, and
@@ -535,7 +538,9 @@ public sealed partial class Binding
         }
 
         // SPEC 9.6, 14.8.1: the Case is the member access's selection, published by PublishPath's MemberAccess step (the Type side, the
-        // enum qualifier); the pattern then completes the Name with its Type.
+        // enum qualifier). The step settles the Name, so PatternMarker, which types every pattern node no check typed, would not reach
+        // it: the pattern types its Case Name first, by the marker's own rule.
+        CompletePatternSyntax(member.Right);
         this.PublishMemberAccess(member, symbol, definition, LookupRole.Qualifier, selection);
         return symbol.EnumCase;
     }
@@ -757,7 +762,7 @@ public sealed partial class Binding
             {
                 if (outer is null)
                 {
-                    Complete(node, BoundType.Unit);
+                    CompletePatternSyntax(node);
                 }
                 else
                 {

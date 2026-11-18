@@ -71,6 +71,7 @@ public sealed partial class Binding
         AmbiguousRole,
         Unsupported,
         MemberAccess,
+        ProjectionMember,
     }
 
     // ReadLeft's verdict: the reading of a member access's left that selects its member (SPEC 9.6).
@@ -81,6 +82,15 @@ public sealed partial class Binding
         Ambiguous,
         Unsupported,
         ValueFailure, // No path succeeds; the value path failed at its own stage (a stop or a conflict), whose record the access rests on.
+    }
+
+    // LeftValue's verdict: a member access's left's value reading (SPEC 9.6).
+    private enum LeftValueKind : byte
+    {
+        None,
+        Possible,
+        StageFailure,
+        StepFailure,
     }
 
     // One step of a path, with what its publication writes (PublishPath's table). A Head's role names the namespace whose stop it clears.
@@ -347,6 +357,11 @@ public sealed partial class Binding
                 case NameStepKind.Unsupported:
                     this.Fail(step.Use, BindingFailure.Unsupported, unresolved: true); // As the base's miss path fails the Name.
                     break;
+                case NameStepKind.ProjectionMember:
+                    var projected = (MemberAccessKoto)step.Use;
+                    projected.BoundSymbol = step.Symbol;
+                    projected.Right.BoundSymbol = step.Symbol;
+                    break;
                 case NameStepKind.MemberAccess:
                     var access = (MemberAccessKoto)step.Use;
                     var side = step.Role == LookupRole.Value ? MemberSide.Value : MemberSide.Type;
@@ -411,6 +426,15 @@ public sealed partial class Binding
         return this.PublishPath(new(PathEnd.Selected, selected, member), mark);
     }
 
+    // A projection path's selection (SPEC 8.5.2, 9.6), published by its ProjectionMember step: the associated Type a projection names,
+    // or the member Type of its normal form a Name after it names (x08). A Type position, so no side and no member lookup.
+    private void PublishProjectionMember(MemberAccessKoto syntax, BindingSymbol selected)
+    {
+        var mark = this.nameSteps.Count;
+        this.nameSteps.Add(new(NameStepKind.ProjectionMember, syntax, selected, null, default, default, default, null));
+        this.PublishPath(new(PathEnd.Projection, null, syntax), mark);
+    }
+
     // An unqualified value Name completed (SPEC 9.5 in the Value namespace): judged (Supported) as Lookup reads it and ReadAgain reads it again.
     private ResolvedPath ResolveValue(string name, BindingScope scope, Koto use) => this.Supported(this.ResolveName(name, scope, use, LookupRole.Value, 0));
 
@@ -437,28 +461,43 @@ public sealed partial class Binding
     }
 
     // SPEC 9.6: the reading of a member access's left that selects its member, decided before either reading publishes. The left's
-    // Type walk (its use's lookup in its row) and its head's value lookup are evaluated unpublished. A left that reads one way takes
-    // that reading (a Type walk that did not select is a failed path, so a value reading beside it takes the left). A Name left of both
-    // readings takes its sole successful path (PickReading). A member-access left of both readings is Unsupported: its value is its own
-    // access's selection, which publishes as it selects. The Type reading's lookup is published here, the value reading's by its
-    // former (BindNode).
+    // Type walk (its use's lookup in its row) and its value reading (LeftValue) are evaluated unpublished. A Name left, with Type
+    // arguments or not, of both readings takes its sole successful path (PickReading). A member-access left takes the Type reading
+    // unless its value reading may succeed: when its Type walk also selected, both readings succeed at the left and the form is
+    // Unsupported (its value is its own access's selection, which publishes as it selects; ruling 13's Q1); when the Type walk failed,
+    // the value reading. The Type reading's lookup is published here; a failed Type walk beside the value reading publishes its
+    // outcome too (true facts the inner accesses read, so the chain is walked once), but for the head's own steps when the head is a
+    // value; the value reading is published by its former (BindNode), its own stage's failure by Lookup (ValueFailure).
     private LeftReading ReadLeft(MemberAccessKoto member, string name, BindingScope scope, out ResolvedPath qualifierPath)
     {
         var mark = this.nameSteps.Count;
         qualifierPath = this.EvaluateUse(member.Left, scope, 0, out var early);
         var typed = qualifierPath.End is PathEnd.Selected or PathEnd.Projection;
-        var reading = !this.ReadsAsValue(member.Left, scope, mark, out var valuePath) ? LeftReading.Type
-            : member.Left is not (IdentifierNameKoto or GenericsKoto { Identifier: IdentifierNameKoto }) ? (typed ? LeftReading.Unsupported : LeftReading.Value)
-            : typed || qualifierPath.End is PathEnd.Ambiguous or PathEnd.QualificationStop ? this.PickReading(member, qualifierPath, valuePath, name, scope)
+        var value = this.LeftValue(member.Left, scope, mark, out var valuePath);
+        var reading = value == LeftValueKind.None ? LeftReading.Type
+            : member.Left is IdentifierNameKoto or GenericsKoto { Identifier: IdentifierNameKoto }
+                ? typed || qualifierPath.End is PathEnd.Ambiguous or PathEnd.QualificationStop ? this.PickReading(member, qualifierPath, valuePath, name, scope)
+                    : value == LeftValueKind.StageFailure ? LeftReading.ValueFailure : LeftReading.Value
+            : typed ? (value == LeftValueKind.Possible ? LeftReading.Unsupported : this.PickReading(member, qualifierPath, valuePath, name, scope))
             : LeftReading.Value;
-        if (reading is LeftReading.Value or LeftReading.ValueFailure)
+        if (reading == LeftReading.ValueFailure)
         {
             this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
-            if (reading == LeftReading.ValueFailure && member.Left is IdentifierNameKoto left)
+            if (valuePath.Use is IdentifierNameKoto head)
             {
-                this.Lookup(left.IdentifierName, scope, left); // Publishes the value path's stop or conflict, the access's record.
+                this.Lookup(head.IdentifierName, scope, head); // Publishes the value path's stop or conflict, the access's record.
+                if (member.Left is GenericsKoto applied)
+                {
+                    this.CompleteDependent(applied, head); // A left with Type arguments rests on its Name's failure (SPEC 23.1.2).
+                }
             }
 
+            return reading;
+        }
+
+        if (reading == LeftReading.Value && !this.PublishesFailedWalk(qualifierPath, mark, valuePath))
+        {
+            this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
             return reading;
         }
 
@@ -466,12 +505,39 @@ public sealed partial class Binding
         return reading;
     }
 
+    // Whether a Type walk the value reading replaces publishes its outcome (SPEC 9.6: a failed path's failure is no error): only an
+    // Unresolved walk with no step that records, and then without the head's own steps when the head is a value (its reading is the
+    // value one); the rest are facts no reading contradicts.
+    private bool PublishesFailedWalk(in ResolvedPath qualifierPath, int mark, in ResolvedPath valuePath)
+    {
+        if (qualifierPath.End != PathEnd.Unresolved)
+        {
+            return false;
+        }
+
+        for (var i = this.nameSteps.Count - 1; i >= mark; i--)
+        {
+            if (this.nameSteps[i].Kind is NameStepKind.Unsupported or NameStepKind.AmbiguousRole)
+            {
+                return false;
+            }
+
+            if (valuePath.End != PathEnd.Unresolved && ReferenceEquals(this.nameSteps[i].Use, valuePath.Use))
+            {
+                this.nameSteps.RemoveAt(i);
+            }
+        }
+
+        return true;
+    }
+
     // SPEC 9.6: a Name left of both readings: each namespace's path, evaluated without publishing; the sole successful one is selected,
     // and paths to one Symbol that the value access uses with no receiver count once (the Type reading). A path fails at its own stage
     // (a 9.5 stop or a conflict), at a missing, inaccessible or ambiguous member, and the Type path at a member that needs a receiver and
     // is no function (its static use; a Type-qualified instance function takes its receiver as an argument, 9.6.1). The Type path's
     // member is looked up over the qualifier declaration's own Type (arguments never change the selection), the value path's over the
-    // value's declared Type (QueryValueType); a value named with Type arguments is a function, whose value has no members. When no
+    // value's declared Type (QueryValueType); a value named with Type arguments is a function, whose value has no members, but its
+    // lookup's own stage failure is its path's (B3). A member-access left comes here when its value reading did not succeed. When no
     // path succeeds, a path that failed at its own stage keeps its record (the value reading's when only it did), else the Type path's.
     private LeftReading PickReading(MemberAccessKoto member, in ResolvedPath qualifierPath, in ResolvedPath valuePath, string name, BindingScope scope)
     {
@@ -506,13 +572,17 @@ public sealed partial class Binding
     private BoundType? OwnType(BindingSymbol qualifier) => qualifier.Type is not null ? this.SelfType(qualifier)
         : qualifier.Declaration is GroupKoto { IsRoot: false } ? this.types.Intern(BoundTypeKind.Nominal, qualifier, SemanticsKind.Owner, []) : null;
 
-    // Whether a member access's left reads as a value (SPEC 9.6): its head's value lookup committed a stage (`headPath`, evaluated
-    // unpublished), its head is a value expression, or one of its member steps names a value member of the Type its prefix selected,
-    // read from the left's Type walk above `mark` (its Qualifier steps) or its published lookup: one pass, no prefix evaluated again.
-    private bool ReadsAsValue(Koto left, BindingScope scope, int mark, out ResolvedPath headPath)
+    // A member access's left's value reading (SPEC 9.6), evaluated unpublished: None when it has none (a projection step is Type syntax,
+    // 8.5.2, so nothing outward of one is a value; a Type head; a head with no value); StageFailure when the head's value lookup stopped
+    // or conflicted at its stage; StepFailure when a value head's first member step finds nothing over its declared Type (or the head
+    // is a function); Possible otherwise: a value head whose first step succeeds, a member step naming a value member of the Type its
+    // prefix selected, or a value expression head. A prefix's selected Type is read from the left's Type walk above `mark` (its
+    // Qualifier steps) or its published lookup: one pass, no prefix evaluated again.
+    private LeftValueKind LeftValue(Koto left, BindingScope scope, int mark, out ResolvedPath headPath)
     {
         headPath = default;
         var step = this.nameSteps.Count;
+        MemberAccessKoto? first = null;
         var node = left;
         while (true)
         {
@@ -526,24 +596,42 @@ public sealed partial class Binding
                 break;
             }
 
+            if (member.Right is ParenthesizedTypeKoto)
+            {
+                return LeftValueKind.None;
+            }
+
             var prefix = UseNode(member.Left);
             var type = HirTables.LookupOf(prefix) == PathEnd.Selected ? prefix.BoundSymbol : this.WalkQualifier(prefix, mark, ref step);
             if (type is not null && member.Right is IdentifierNameKoto right && this.scopes.TryGetValue(type.Declaration, out var members) &&
                 members.Values.ContainsKey(right.IdentifierName))
             {
-                return true;
+                return LeftValueKind.Possible;
             }
 
+            first = member;
             node = member.Left;
         }
 
-        if (node is IdentifierNameKoto name)
+        if (node is not IdentifierNameKoto name)
         {
-            headPath = this.EvaluateName(name.IdentifierName, scope, node, LookupRole.Value);
-            return headPath.End != PathEnd.Unresolved;
+            return node is TypeKoto or SyntaxFormKoto { Akind: KotoKind.RootName } ? LeftValueKind.None : LeftValueKind.Possible;
         }
 
-        return node is not (TypeKoto or SyntaxFormKoto { Akind: KotoKind.RootName });
+        headPath = this.EvaluateName(name.IdentifierName, scope, node, LookupRole.Value);
+        if (headPath.End != PathEnd.Selected)
+        {
+            return headPath.End == PathEnd.Unresolved ? LeftValueKind.None : LeftValueKind.StageFailure;
+        }
+
+        if (first?.Right is not IdentifierNameKoto step1)
+        {
+            return LeftValueKind.Possible;
+        }
+
+        return headPath.Symbol is { Kind: not BindingSymbolKind.Function } value && this.QueryValueType(value) && value.Property?.Refusal is null &&
+            value.Type is { } receiver && this.ReceiverMember(first, step1.IdentifierName, scope, receiver, out _).Member is not null
+            ? LeftValueKind.Possible : LeftValueKind.StepFailure;
     }
 
     // The symbol the Type walk above `mark` selected for a path's left `prefix` (its Qualifier step), searched below `step`, which moves to
@@ -567,7 +655,7 @@ public sealed partial class Binding
     {
         var mark = this.nameSteps.Count;
         this.EvaluateUse(left, scope, 0, out _);
-        var value = this.ReadsAsValue(left, scope, mark, out _);
+        var value = this.LeftValue(left, scope, mark, out _) != LeftValueKind.None;
         this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
         return value;
     }

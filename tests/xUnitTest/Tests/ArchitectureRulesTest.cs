@@ -43,7 +43,7 @@ public class ArchitectureRulesTest
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
     private const string NameEvaluations = "ResolvePath|ResolveName|ResolveValue|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|ReadAgain|PublishPath|EvaluateUse|EvaluateName";
 
-    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=26;" +
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=27;" +
         "Binding.Types.cs=2";
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget|PublishLookup";
