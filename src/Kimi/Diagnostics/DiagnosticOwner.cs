@@ -23,6 +23,10 @@ public sealed partial class DiagnosticOwner
     private readonly List<FactList> syntax = [];
     private int unattributed = -1;
 
+    // The module index whose syntax list a frozen library's registration holds (AddLibrary, PLAN G949 Stage 2 U3): no record or
+    // invalidation reaches it; -1 for none.
+    private int library = -1;
+
     // SPEC 19.4: excluded syntax per source index, created only for documents that have excluded syntax.
     private Dictionary<int, List<ExcludedRange>>? excludedRanges;
 
@@ -315,6 +319,11 @@ public sealed partial class DiagnosticOwner
 
     internal void Record(DiagnosticPartition partition, int module, in DiagnosticFact fact, bool isError)
     {
+        if (partition == DiagnosticPartition.Syntax)
+        {
+            this.EnsureWritable(module);
+        }
+
         var list = partition == DiagnosticPartition.Syntax ? this.syntax[module] : this.partitions[(int)partition];
 
         // One problem, one fact: a repeated report merges its prerequisites and must agree on location and facts.
@@ -461,6 +470,57 @@ public sealed partial class DiagnosticOwner
         var taken = new DetachedSyntax([.. facts], documents);
         this.InvalidateSyntax(index);
         return taken;
+    }
+
+    /// <summary>Registers a frozen library module's detached syntax list as this owner's, read-only (PLAN G949 Stage 2 U3; form (i)):
+    /// its documents first, in the order of their indices in the freeze owner (the freeze's consumption order of the library's documents,
+    /// so the source table keeps the order of a compilation that parsed the library), then each record moved into this owner's source
+    /// table by the fact's one renumbering (<see cref="DiagnosticFact.WithSource"/>) and recorded as any module's, so the counts,
+    /// <see cref="HasSyntaxErrors(SourceDocument)"/> and Finalize read it; no later record or invalidation reaches the list. The list carries no excluded
+    /// range: no library file holds a compile-time directive (KimiLibraryShapeTest's tripwire; a library that gains one makes this
+    /// registration carry the freeze owner's ranges). Its one caller is <see cref="Compiler.Compilation.ReadLibrary"/>.</summary>
+    /// <param name="module">The frozen library's module.</param>
+    /// <param name="detached">Its syntax list, taken by its freeze (<see cref="TakeSyntax"/>).</param>
+    /// <exception cref="InvalidOperationException">A library is registered already (InternalInvariant).</exception>
+    internal void AddLibrary(Kotonoha module, DetachedSyntax detached)
+    {
+        if (this.library >= 0)
+        {
+            throw new InvalidOperationException("A diagnostic owner registers one library (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+
+        var index = this.ModuleIndex(module);
+        var facts = detached.Facts;
+        if (facts.Length != 0)
+        {
+            var documents = new SortedDictionary<int, SourceDocument>();
+            for (var i = 0; i < facts.Length; i++)
+            {
+                if (detached.Documents[i] is { } document)
+                {
+                    documents.TryAdd(facts[i].Source, document);
+                }
+            }
+
+            var sources = new Dictionary<int, int>(documents.Count);
+            foreach (var (freeze, document) in documents)
+            {
+                sources.Add(freeze, this.DocumentSource(document, index));
+            }
+
+            for (var i = 0; i < facts.Length; i++)
+            {
+                if (!DiagnosticEntries.TryGet(facts[i].Code, out var entry))
+                {
+                    throw new DiagnosticContractException(DiagnosticFault.UnknownCode, facts[i].Code.ToString());
+                }
+
+                var source = detached.Documents[i] is not null ? sources[facts[i].Source] : -1;
+                this.Record(DiagnosticPartition.Syntax, index, facts[i].WithSource(source), entry.Severity == DiagnosticSeverity.Error);
+            }
+        }
+
+        this.library = index;
     }
 
     /// <summary>Gets a value indicating whether the syntax of one document holds an Error; a decision inside one parse uses it.</summary>
@@ -903,6 +963,7 @@ public sealed partial class DiagnosticOwner
 
     private void InvalidateSyntax(int module)
     {
+        this.EnsureWritable(module);
         this.partitionErrors[(int)DiagnosticPartition.Syntax] -= this.syntax[module].Errors;
         this.syntax[module].Clear();
         foreach (var entry in this.sources)
@@ -922,6 +983,15 @@ public sealed partial class DiagnosticOwner
                     excluded.Remove(source);
                 }
             }
+        }
+    }
+
+    // A registered library's syntax list is read-only (AddLibrary): a record or an invalidation of it is a compiler defect.
+    private void EnsureWritable(int module)
+    {
+        if (module == this.library)
+        {
+            throw new InvalidOperationException("The library module's syntax list is registered read-only (InternalInvariant; PLAN G949 Stage 2 U3).");
         }
     }
 

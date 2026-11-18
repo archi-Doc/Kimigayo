@@ -100,7 +100,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AFrozenQueryStateIsNeverWritten()
     {
-        var c = Bound(string.Empty);
+        var c = BoundOverItsOwnLibrary(string.Empty);
         var function = DeclaredSymbols(c).First(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha));
         var stamp = typeof(BindingSymbol).GetField("queryPass", BindingFlags.Instance | BindingFlags.NonPublic)!;
         stamp.SetValue(function, Binding.Frozen32);
@@ -191,7 +191,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void EveryWriteToTheFrozenLibraryIsRefused()
     {
-        var c = Bound(string.Empty);
+        var c = BoundOverItsOwnLibrary(string.Empty);
         var table = c.Library.Kotonoha.Syntax;
         var node = c.Library.Kotonoha.RootKoto;
         var planned = table.Nodes.ToArray().First(x => x is not null && table.Hir.PlanIndexes[x.SyntaxId] != 0)!;
@@ -324,6 +324,7 @@ public partial class KimiLibraryShapeTest
             var c = Compilation.CreateForTest();
             Assert.True(c.Prepare(WindowsProfile.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            CompilationTestHelper.UseEditedLibrary(c, static _ => { }); // A library of its own: the row writes its query states (x1).
             Assert.True(c.Bind().IsComplete);
             var queries = typeof(BindingSymbol).GetField("queries", BindingFlags.Instance | BindingFlags.NonPublic)!;
             var functions = DeclaredSymbols(c).Where(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();

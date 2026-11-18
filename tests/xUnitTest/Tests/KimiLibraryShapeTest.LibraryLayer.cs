@@ -153,7 +153,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
-        var binding = Bound("example/Hello").Binding;
+        var binding = BoundOverItsOwnLibrary("example/Hello").Binding;
 
         // Hello's works end with no U fact, so one work keeps one as an earlier epoch's Unknown leaves it: without Reset's clear the
         // Fact check below fails.
@@ -285,6 +285,16 @@ public partial class KimiLibraryShapeTest
     private static Compilation Bound(string program)
     {
         var c = Prepared(program);
+        c.Bind();
+        return c;
+    }
+
+    // Bound's form over a library of the compilation's own (PLAN G949 Stage 2 U3, x1): for a row that writes a library object by reflection
+    // or starts the library's pass itself, so no other compilation reads what it writes.
+    private static Compilation BoundOverItsOwnLibrary(string program)
+    {
+        var c = Prepared(program);
+        CompilationTestHelper.UseEditedLibrary(c, static _ => { });
         c.Bind();
         return c;
     }

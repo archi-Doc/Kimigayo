@@ -211,15 +211,15 @@ public sealed partial class Binding
             return ref parameters[index];
         }
 
-        internal BindingSymbol? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Symbols.Get(node.SyntaxId) : null;
-
-        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out BindingSymbol? symbol) => (symbol = this.GetValueOrDefault(node)) is not null;
-
-        internal void Add(Koto node, BindingSymbol symbol)
+        internal static void Add(Koto node, BindingSymbol symbol)
         {
             ref var kept = ref Slot(node);
             kept = kept is null ? symbol : throw new ArgumentException($"A symbol is already declared at `{node}`.", nameof(node));
         }
+
+        internal BindingSymbol? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Symbols.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out BindingSymbol? symbol) => (symbol = this.GetValueOrDefault(node)) is not null;
 
         internal void Remove(Koto node)
         {

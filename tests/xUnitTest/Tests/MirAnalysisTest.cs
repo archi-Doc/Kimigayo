@@ -997,7 +997,7 @@ public sealed class MirAnalysisTest
             "    public func brokenOf<T>(value: T, condition: bool) -> i32\n        var second: i32\n        if condition\n" +
             "            second = 2\n        return second\n";
         var c = CompilationTestHelper.Parse(program + "\n");
-        c.Library.Kotonoha.AddSource(new("G951Probe.kimi", Probe));
+        CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.AddSource(new("G951Probe.kimi", Probe)));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         string[] expected = reached.Length == 0 ? [] : [$"UninitializedPlace_Kd {reached}"];

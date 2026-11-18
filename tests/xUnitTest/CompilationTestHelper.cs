@@ -13,6 +13,18 @@ internal static class CompilationTestHelper
     /// <summary>The prefix of a library document's location.</summary>
     internal const string Library = "Kimi/";
 
+    // The seam for a test that edits the Kimi library (PLAN G949 Stage 2 U3, design 4.1, x1): the edit runs on a library of the test's own,
+    // before any Binding reads it, and the test compilation is given that library (Compilation.UseLibrary), so no test writes a library
+    // another compilation reads. Until U3-4 the library is made in the test compilation (its own library, as before); from U3-4 it is
+    // frozen through the seam (KimiLibrary.Unfrozen for the compilation's target, the edit, KimiLibrary.Freeze), frozen or refused.
+    internal static KimiLibrary UseEditedLibrary(Compilation c, Action<KimiLibrary> edit)
+    {
+        var library = new KimiLibrary(c);
+        edit(library);
+        c.UseLibrary(library);
+        return library;
+    }
+
     // Preparation and parsing only: callers choose when to Bind and analyze ownership.
     internal static Compilation Parse(string source, string? path = null)
     {

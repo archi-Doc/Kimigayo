@@ -258,6 +258,48 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    // n2 (PLAN G949 Stage 2 U3, design R2.2; the Front's U2b N2, form (b)): a library's detached data exist only once its freeze detached
+    // it; a read before Freeze is the internal-invariant form, never an empty default (before U3 each read empty), and after Freeze they read
+    // as AFrozenLibraryNamesNoCompilation reads them.
+    [Fact]
+    public void ALibrarysDetachedDataAreReadOnlyAfterItsFreeze()
+    {
+        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        var library = freeze.Library;
+        Refused(() => library.DocumentationFailures);
+        Refused(() => library.HoverAnchors);
+        Refused(() => library.SyntaxRecords);
+        Assert.Same(library, KimiLibrary.Freeze(freeze));
+        Assert.Empty(library.DocumentationFailures);
+        Assert.NotEmpty(library.HoverAnchors);
+        Assert.Empty(library.SyntaxRecords.Facts);
+
+        static void Refused(Func<object> read)
+            => Assert.Contains("is not detached", Assert.Throws<InvalidOperationException>(read).Message, StringComparison.Ordinal);
+    }
+
+    // The registration's order (PLAN G949 Stage 2 U3, the delta review's N8 and its re-check's row; B's U3 ruling 28): AddLibrary registers
+    // the library's documents in the order of their indices in the freeze owner, not the list's order, so the source table keeps the order
+    // of a compilation that parsed the library. A hand-made list holds document B's record before document A's (freeze indices A < B): A
+    // is published first, each record located in its own document, and the registered list is read-only.
+    [Fact]
+    public void AddLibraryRegistersTheLibrarysDocumentsInTheirFreezeOrder()
+    {
+        var module = Compilation.CreateForTest().Kotonoha;
+        var (a, b) = (new SourceDocument("a.kimi", "func f( => ()\n"), new SourceDocument("b.kimi", "func g( => ()\n"));
+        var requirement = new Kimi.Diagnostics.DiagnosticRequirement(Kimi.Diagnostics.DiagnosticPartition.Syntax, 0);
+        Kimi.Diagnostics.DiagnosticFact Fact(int source) => new(Kimi.DiagnosticCode.MissingSyntax_Kd, new(null, source, 7, 1, requirement), source, 7, 1, ")", null, null, null);
+        var owner = new Kimi.Diagnostics.DiagnosticOwner();
+        owner.DocumentSource(new SourceDocument("program.kimi", "func main() => ()\n"), owner.ModuleIndex(Compilation.CreateForTest().Kotonoha));
+        owner.AddLibrary(module, new([Fact(5), Fact(3)], [b, a]));
+        Assert.True(owner.HasSyntaxErrors(a));
+        Assert.True(owner.HasSyntaxErrors(b));
+        var result = owner.Finalize(Kimi.Diagnostics.DiagnosticPartition.Syntax, Kimi.Diagnostics.DiagnosticPartition.Syntax);
+        Assert.Equal(["a.kimi", "b.kimi"], result.Sources.Select(static x => x.Path).Where(static x => x != "program.kimi"));
+        Assert.Equal(["a.kimi", "b.kimi"], result.Diagnostics.Select(x => result.Sources[x.Source].Path));
+        Assert.Contains("registered read-only", Assert.Throws<InvalidOperationException>(() => owner.InvalidateSyntax(module)).Message, StringComparison.Ordinal);
+    }
+
     // Every source index a fact holds, in the order WithSource names them (a subject primary key's excepted: its node is its identity).
     private static int[] Indices(in Kimi.Diagnostics.DiagnosticFact fact)
         => [.. new[] { fact.Source, fact.Key.Subject is null ? fact.Key.Source : -1 }

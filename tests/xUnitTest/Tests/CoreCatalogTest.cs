@@ -66,9 +66,13 @@ public class CoreCatalogTest
     public void DeclarationOrderDoesNotChangeRecognizedIdentities()
     {
         var c = Compilation.CreateForTest();
-        var makeObj = c.Library.MakeObj;
-        Assert.IsType<List<DeclarationContainerKoto>>(c.Library.Kotonoha.RootKoto.NestedContainers).Reverse();
-        Assert.IsType<List<Koto>>(((DeclarationContainerKoto)makeObj.Declaration.Parent!).Members).Reverse(); // Kimi.Intrinsics
+        BindingSymbol? makeObj = null;
+        CompilationTestHelper.UseEditedLibrary(c, x =>
+        {
+            makeObj = x.MakeObj;
+            Assert.IsType<List<DeclarationContainerKoto>>(x.Kotonoha.RootKoto.NestedContainers).Reverse();
+            Assert.IsType<List<Koto>>(((DeclarationContainerKoto)makeObj.Declaration.Parent!).Members).Reverse(); // Kimi.Intrinsics
+        });
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let value = Kimi.Intrinsics.makeObj(42)");
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.Same(makeObj, c.Library.MakeObj);
@@ -79,15 +83,18 @@ public class CoreCatalogTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Library.Kotonoha.CreateCodeContext().Parse(
-            c.Library.Kotonoha.RootKoto,
-            "public struct Extra\n    public func read(self: ref/Self) -> i32 => 42\npublic group Helpers\n    public func helper() -> i32 => Extra.init().read()");
-        c.Library.Kotonoha.CreateCodeContext().Parse(
-            (StructKoto)c.Library.Slice.Declaration,
-            "public func extra(self: Self) -> isize => self.length");
-        c.Library.Kotonoha.CreateCodeContext().Parse(
-            (EnumKoto)c.Library.Option.Declaration,
-            "public func extra(self: ref/Self) -> i32 => 42");
+        CompilationTestHelper.UseEditedLibrary(c, static x =>
+        {
+            x.Kotonoha.CreateCodeContext().Parse(
+                x.Kotonoha.RootKoto,
+                "public struct Extra\n    public func read(self: ref/Self) -> i32 => 42\npublic group Helpers\n    public func helper() -> i32 => Extra.init().read()");
+            x.Kotonoha.CreateCodeContext().Parse(
+                (StructKoto)x.Slice.Declaration,
+                "public func extra(self: Self) -> isize => self.length");
+            x.Kotonoha.CreateCodeContext().Parse(
+                (EnumKoto)x.Option.Declaration,
+                "public func extra(self: ref/Self) -> i32 => 42");
+        });
         c.Kotonoha.CreateCodeContext().Parse(
             c.Kotonoha.RootKoto,
             "let value = Kimi.Helpers.helper()\nlet a: [1 of i32] = [42]\nlet count = a[..].extra()");
