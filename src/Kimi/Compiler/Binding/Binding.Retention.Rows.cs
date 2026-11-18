@@ -548,21 +548,18 @@ public sealed partial class Binding
             return kind;
         }
 
-        var start = this.retentionHeld.Count;
         var found = RetentionKind.None;
-        if (this.Holdings(declared, null, null, this.retentionHeld))
+        var run = this.HeldRun(declared, null, null, out var complete);
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit, as at an Unsupported entry (HeldRun): the contract's Limit.
+        for (var i = run.Start; i < run.End; i++)
         {
-            var end = this.retentionHeld.Count;
-            for (var i = start; i < end; i++)
-            {
-                var entry = this.retentionHeld[i];
-                var layer = (entry.Flags & HoldFlags.Raw) != 0 || entry.Step is HoldStep.Shared or HoldStep.Exclusive;
-                var next = this.ByValue(declared, entry) ? kind : layer ? (kind == RetentionKind.Value ? RetentionKind.Content : RetentionKind.Chain) : RetentionKind.None;
-                found |= next == RetentionKind.None ? RetentionKind.None : this.HiddenKind(entry.Part, hidden, next, depth + 1);
-            }
+            var entry = this.retentionHeld[i];
+            var layer = (entry.Flags & HoldFlags.Raw) != 0 || entry.Step is HoldStep.Shared or HoldStep.Exclusive;
+            var next = this.ByValue(declared, entry) ? kind : layer ? (kind == RetentionKind.Value ? RetentionKind.Content : RetentionKind.Chain) : RetentionKind.None;
+            found |= next == RetentionKind.None ? RetentionKind.None : this.HiddenKind(entry.Part, hidden, next, depth + 1);
         }
 
-        this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         if (ReferenceTypes.IsPointer(declared) && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
         {
             var first = this.rawMembers.Count;
@@ -714,7 +711,8 @@ public sealed partial class Binding
     // a fresh handle brings a new payload, `set: (uniq/(rc/T) during u, E)`; never past a borrow, `set: (uniq/(ref/T during a) during u,
     // E)`, whose referent is never fresh, PLAN G993). `reach` is the step into the storage the walk stands in: Inline in the parameter's
     // own value, Exclusive in storage the call writes, Own in a value it stores there anew. Each (Type, reach) entered at the shallowest
-    // depth it is met at (Enters, retentionReaches).
+    // depth it is met at (Enters, retentionReaches). A Type's entries are HeldRun's, so a write the walk cannot decide (Binding's Limit, an
+    // Unsupported entry) makes the contract the Limit, never "writes nothing".
     private bool WrittenThrough(BoundType? type, BoundType position, HoldStep reach, int depth, BindingScope? view)
     {
         if (type is null || depth > StorageBound)
@@ -733,18 +731,16 @@ public sealed partial class Binding
             return true;
         }
 
-        var (start, found) = (this.retentionHeld.Count, false);
-        if (this.Holdings(type, null, null, this.retentionHeld))
+        var found = false;
+        var run = this.HeldRun(type, null, null, out var complete);
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit, as at an Unsupported entry (HeldRun): the contract's Limit.
+        for (var i = run.Start; !found && i < run.End; i++)
         {
-            var end = this.retentionHeld.Count;
-            for (var i = start; !found && i < end; i++)
-            {
-                var entry = this.retentionHeld[i];
-                found = this.WriteReach(type, entry, reach) is { } next && this.WrittenThrough(entry.Part, position, next, depth + 1, view);
-            }
+            var entry = this.retentionHeld[i];
+            found = this.WriteReach(type, entry, reach) is { } next && this.WrittenThrough(entry.Part, position, next, depth + 1, view);
         }
 
-        this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return found;
     }
 

@@ -176,8 +176,9 @@ public sealed partial class Binding
     // so a projection or a dependent Semantics term is its parts and joins its base. An occurrence is writable storage of its input when
     // the walk has reached an invariant position through storage the call may write (`at.Writable`: an exclusive referent, the pointee
     // of a raw layer without an Origin or with `static`, or a value the call may write, whose nominal Type may hide an exclusive layer)
-    // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer
-    // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
+    // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer a
+    // fresh value passes (FreshPast: no callable, no borrow, no raw layer stating a borrow's Origin; SPEC 15.6.4, 5.7, DECISIONS BU-1 as
+    // PLAN G993 narrows it). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
     // the step makes Shared (`at.Shared`; RawStepAt: the signature's or the binder's inputs state its Origin only by shared borrows, so a
     // pointer read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
     // pair layer whose binder admits no exclusive Semantics (an exclusive borrow layer, uniq, objuniq, or a pair layer admitting one, is
