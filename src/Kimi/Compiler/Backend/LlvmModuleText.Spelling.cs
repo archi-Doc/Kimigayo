@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Kimi.Compiler.Backend;
 
-// The spellings of LlvmModuleText (DECISIONS R5-M14): an external symbol's spelling after @ and its recovery, numbers formatted on the
+// The spellings of LlvmModuleText (DECISIONS R5-M14): an external symbol's spelling after @, numbers formatted on the
 // stack, numbered names and the bits of a floating constant's hexadecimal spelling.
 internal static partial class LlvmModuleText
 {
@@ -38,34 +38,6 @@ internal static partial class LlvmModuleText
         }
 
         return text.Append('"').ToString();
-    }
-
-    // Recovers the external symbol from its ExternalName spelling.
-    internal static string SymbolFromName(ReadOnlySpan<char> name)
-    {
-        if (name.Length < 2 || name[0] != '"' || name[^1] != '"')
-        {
-            return name.ToString();
-        }
-
-        name = name[1..^1];
-        var bytes = new byte[name.Length];
-        var count = 0;
-        for (var i = 0; i < name.Length; i++)
-        {
-            if (name[i] == '\\' && i + 2 < name.Length &&
-                byte.TryParse(name.Slice(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var escaped))
-            {
-                bytes[count++] = escaped;
-                i += 2;
-            }
-            else
-            {
-                bytes[count++] = (byte)name[i];
-            }
-        }
-
-        return Encoding.UTF8.GetString(bytes, 0, count);
     }
 
     // TextWriter.Write(long) formats through a temporary string; format on the stack instead.

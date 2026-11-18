@@ -52,6 +52,44 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
     }
 
+    // R9-B1 part 2 (form J, PLAN G983's manifest share): a manifest field that is missing, of another JSON kind or, for an Int32 row,
+    // another number fails at its read with InvalidDataException naming the field, before any tool and with the record left
+    // incomplete; a fixed field with another value is not this compiler's. Each row edits one field of an emitted Application's
+    // manifest (a JSON value, or null to remove it). The libraries are read after the tools are found, so their rows need a toolchain.
+    [Theory]
+    [InlineData("schemaVersion", "3.5", "'schemaVersion' is not this compiler's")]
+    [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
+    [InlineData("backendSupport.abiVersion", "2.5", "'backendSupport.abiVersion' is not this compiler's")]
+    [InlineData("codegen.cpu", "\"native\"", "'codegen.cpu' is not this compiler's")]
+    [InlineData("codegen.features", "\"+sse2\"", "'codegen.features' is missing or not a JSON Array")]
+    [InlineData("codegen", null, "'codegen' is missing or not a JSON Object")]
+    [InlineData("externalDeclarations", null, "'externalDeclarations' is missing or not a JSON Array")]
+    [InlineData("irFile", "7", "'irFile' is missing or not a JSON String")]
+    [InlineData("optimization", null, "'optimization' is missing or not a JSON String")]
+    [InlineData("irSha256", "1", "'irSha256' is missing or not a JSON String")]
+    public async Task AManifestFieldFailsAtItsRead(string field, string? value, string failure)
+    {
+        var project = this.Create();
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+        var (section, name) = field.Contains('.') ? (manifest[field[..field.IndexOf('.')]]!.AsObject(), field[(field.IndexOf('.') + 1)..]) : (manifest, field);
+        if (value is null)
+        {
+            Assert.True(section.Remove(name));
+        }
+        else
+        {
+            section[name] = System.Text.Json.Nodes.JsonNode.Parse(value);
+        }
+
+        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        Assert.Contains(failure, error.Message);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+    }
+
     [Theory]
     [InlineData("LLVM version 22.1.8", "22.1.8")]
     [InlineData("clang version 22.1.9 (release)", "22.1.9")]

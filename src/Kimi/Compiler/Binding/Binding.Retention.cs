@@ -552,8 +552,9 @@ public sealed partial class Binding
     // An erased callable's relations (owner decision 2026-10-17, DECISIONS R4-M52): its implementation was compared where it was
     // converted, under premises no view reads, so no absence of a relation among its fixed Origins is proven (SPEC 15.6.4): each fixed
     // Origin of an input, among the atoms from `start`, outlives each fixed Origin of an output, its result's or one its inputs let it
-    // write, and, where it writes an abstract part (a writer: `absorb(self: uniq/Self, r: E)`), that carrier's ReachedNode, the storage its
-    // implementation may write through the part's exclusive layers; a result it returns replaces a part and reaches none (DECISIONS
+    // write, and, where it meets a carrier through no shared layer (HiddenWritable, PLAN G963: a writer `absorb(self: uniq/Self, r: E)`, or
+    // `set: (T, E)` taking the T by value), that carrier's ReachedNode, the storage its implementation may write through the part's
+    // exclusive layers (SPEC 15.6.4 route 2 applied to its own signature); a result it returns replaces a part and reaches none (DECISIONS
     // R4-M154). Its per-call Origins (IsFixed, its Binder's) keep only its own premises.
     private void AddErasedRelations(OriginPremiseEnvironment environment, int start, Koto? binder)
     {
@@ -573,7 +574,7 @@ public sealed partial class Binding
                     AddPremiseEdge(environment, longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
                 }
 
-                if (atoms[j] is { Input: >= 0, Writable: true, Carrier: { } carrier } && IsFixed(atoms[j], binder))
+                if (atoms[j] is { Input: >= 0, HiddenWritable: true, Carrier: { } carrier } && IsFixed(atoms[j], binder))
                 {
                     AddPremiseEdge(environment, longer, this.ReachedNode(environment, carrier), OriginPremiseRule.Input);
                 }

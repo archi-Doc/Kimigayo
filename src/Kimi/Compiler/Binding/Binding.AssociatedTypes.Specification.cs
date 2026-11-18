@@ -81,9 +81,9 @@ public sealed partial class Binding
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? available = null;
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? unproven = null;
         var conflicting = false;
-        for (var i = 0; i < identity.PathStorage.Count; i++)
+        for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
-            var path = identity.PathStorage[i];
+            var path = this.impls.PathsOf(identity)[i];
             var condition = this.ProveConformanceConditions(path, receiver, scope);
             if (condition == ConstraintProof.Error)
             {
@@ -143,7 +143,7 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (identity.Paths.Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
+            if (this.impls.PathsOf(identity).Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
                 (ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope)))
             {
                 if (found is not null && !ReferenceEquals(found, identity))
