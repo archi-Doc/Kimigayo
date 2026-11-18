@@ -213,7 +213,8 @@ public sealed partial class Binding
             // a common Type), its common Type's at the position's Type: Exact where no operation is needed (Exact concerns Types);
             // otherwise a supplying part's (FitsTypedPart); with no supplying part every part was value-read into a read Type, whose
             // owner temporary is borrowed (10.2 row 2). The position's operation has no source: its parts are the sources of one
-            // control-flow argument, each adapted after selection (an erased part's environment judged there, at its value).
+            // control-flow argument, each adapted after selection (an erased part's environment judged there, at its value), so step 5
+            // (ErasedArgumentsEnvironment) sees none of the parts' erasures: the limit of SPEC 10.5.1's last paragraph.
             var adaptation = this.SameStructure(common, type) ? ArgumentAdaptation.Exact : positionClass ?? ArgumentAdaptation.CrossSemanticsBorrow;
             this.positionOperations.Add(new(null, common, type, ArgumentOperationKind.Value, adaptation));
         }
