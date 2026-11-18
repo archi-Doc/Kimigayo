@@ -254,7 +254,7 @@ public sealed partial class MirDropTest
         var problem = Assert.Single(all, static x => x.Subject.Module == 0);
         var bodies = program.Bodies.ToArray();
         var f = bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        Assert.Equal((MirBodyKind.DefaultTemplate, "a.indices"), (bodies[problem.Body].Key.Kind, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal((MirBodyKind.DefaultTemplate, "a.indices"), (program.Body(problem.Body).Key.Kind, c.SyntaxOf(problem.Subject).ToString()));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, problem.Body));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, f.Ordinal));
         Assert.Equal(["own", "copy"], [Owner(program, (problem.Code, problem.Subject, problem.Body)), Owner(program, (problem.Code, problem.Subject, f.Ordinal))]);

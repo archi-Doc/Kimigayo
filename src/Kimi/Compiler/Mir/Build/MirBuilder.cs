@@ -6,6 +6,9 @@
 // the guessed completion nodes of a require's failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated
 // MirProgram: the bodies of a root range built eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each
 // with its program pass where it is built.
+// Numbers the library's ordinals (PLAN G951 U2-K, G950 R-4): the library's templates, then the library walk's definitions in id order
+// (Library), each through the one node-to-definition filter (Walked) without building, so a library definition's body has the same
+// ordinal (Slot) in an eager and a lazy build; MirProgram numbers every other body.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
 // Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
@@ -46,10 +49,15 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private int receiver; // The local a Field of the implicit self, an accessor's storage or a capture is reached from (-1: none).
     private int scope;
     private bool statementStart; // The next statement or terminator starts a source statement.
+    private int[] slots = []; // The library walk's definitions' node ids, ascending: a definition's slot is its index here (Library).
+    private int slotCount;
+    private int templates; // The library's templates, built before its walk: the ordinals before the slots.
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (PLAN G951): every module's default templates, the
-    /// bodies of the modules below the root range, then each body's program pass, the library segment's once per library version before
-    /// the program segment's (PLAN G950); the version's lookups build any other body on demand (<see cref="Demand"/>) until it is sealed.
+    /// bodies of the modules below the root range, then each body's program pass, the library segment's before the program segment's,
+    /// once per library segment: a version keeps its segment while the library version holds and the version before it keeps it
+    /// (<see cref="MirProgram.Keeps"/>, R-K2'', PLAN G950, G951 U2-K), else builds a new one; the version's lookups build any other body
+    /// on demand (<see cref="Demand"/>) until it is sealed.
     /// One version is built with one range, and every version of a builder with the library on one side of its range (D1 per builder,
     /// PLAN G951 U2): a version asked for with another range, or a later version with the library on the other side, is a broken
     /// contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/> and a kept library
@@ -73,23 +81,29 @@ internal sealed partial class MirBuilder(Compilation compilation)
             return this.program;
         }
 
+        // The library version (PLAN G950-K): Binding's library publication version, per compilation and written once at the library's
+        // freeze (G949 S1-1, ruling 174), so a later version keeps the segment while each version keeps it. A built version follows a
+        // Bind whose library pass froze (a thrown library pass publishes no Result and builds no MIR): 0 is a broken contract.
+        var libraryVersion = HirTables.LibraryVersion(compilation);
+        if (libraryVersion == 0)
+        {
+            throw new InvalidOperationException($"Version {version} follows no frozen library pass (InternalInvariant).");
+        }
+
         this.program.Open(this, rootModules);
-        var libraryVersion = version; // The Binding pass until G949's library publication version replaces it (G950-K).
-        if (libraryVersion != this.program.LibraryVersion)
+        if (libraryVersion != this.program.LibraryVersion || !this.program.Keeps())
         {
             this.program.Clear();
             this.visited.Clear();
             this.omissions.Clear();
             this.named = 0;
-            // The library's bodies first, the ordinals' prefix, then the program's (R8-L1 M-B1); in each, the default templates first, which
-            // the bodies that omit them copy: a library body omits the library's only, so the library's nodes of the omission graph are its
-            // prefix. The templates are built in every build, a demanded body's included (G951 M2). A library body names library bodies
-            // only (SPEC 18), so the library segment's program passes run here, before the program's (G191).
+            // The library's range first, the ordinals' prefix, then the program's (R8-L1 M-B1): its walk numbers its definitions in
+            // every build and builds them in a build whose root range holds the library (Library). In each, the default templates
+            // first, which the bodies that omit them copy: a library body omits the library's only, so the library's nodes of the
+            // omission graph are its prefix. The templates are built in every build, a demanded body's included (G951 M2). A library
+            // body names library bodies only (SPEC 18), so the library segment's program passes run here, before the program's (G191).
             this.Module(library, templates: true);
-            if (library.Module < rootModules)
-            {
-                this.Module(library, templates: false);
-            }
+            this.Library(library);
 
             this.Name();
             this.program.EndLibrary(libraryVersion);
@@ -127,12 +141,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     internal MirBody? Demand(MirDefKey key)
     {
         var node = (Koto?)(key.Decl?.Declaration as FunctionKoto)?.Accessor?.Declaration ?? key.Decl?.Declaration; // An accessor's executing function's.
-        if (node?.SyntaxOwner is not { } table || table.Module < this.program.RootModules || !Published(node))
-        {
-            return null;
-        }
-
-        if (this.Definition(node, table) is not { } definition || definition.Key != key)
+        if (node?.SyntaxOwner is not { } table || table.Module < this.program.RootModules || this.Walked(table, node) is not { } definition || definition.Key != key)
         {
             return null;
         }
@@ -201,6 +210,12 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
     }
 
+    // A module walk's definition at a node: its body's key and Body's arguments (Definition) where the node is the table's own and the
+    // HIR publishes it with a value (Published), null for another node. The one filter of the module walk, the library's numbering and
+    // Demand, so every library body a build or a lookup builds has a slot.
+    private (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Walked(SyntaxTable table, Koto? node)
+        => node is not null && ReferenceEquals(node.SyntaxOwner, table) && Published(node) ? this.Definition(node, table) : null;
+
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
     // source statement takes; a local does not take it.
     private SourceInfo Info(Koto node, bool local = false)
@@ -237,11 +252,48 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var nodes = table.Nodes;
         for (var id = 1; id < nodes.Length; id++)
         {
-            if (nodes[id] is { } node && ReferenceEquals(node.SyntaxOwner, table) && Published(node) && this.Definition(node, table) is { } definition)
+            if (this.Walked(table, nodes[id]) is { } definition)
             {
-                this.Body(definition.Key, node, definition.Function, definition.Result, definition.Value);
+                this.Body(definition.Key, nodes[id]!, definition.Function, definition.Result, definition.Value);
             }
         }
+    }
+
+    // The library's walk (PLAN G951 U2-K, G950 R-4), once per library segment after the library's templates: its definitions in id
+    // order, each numbered, its slot the next (Slot), and built here, at its slot, in a build whose root range holds the library; in a
+    // build whose range is the program's a lookup builds a slot's body (Demand). So the library's ordinal range, its templates and its
+    // slots (MirProgram.Reserve), is the same in every build, and an eager build's ordinals are the walk's order by construction.
+    private void Library(SyntaxTable table)
+    {
+        var nodes = table.Nodes;
+        (this.slotCount, this.templates) = (0, this.program.Bodies.Length);
+        for (var id = 1; id < nodes.Length; id++)
+        {
+            if (this.Walked(table, nodes[id]) is { } definition)
+            {
+                if (this.slotCount == this.slots.Length)
+                {
+                    Array.Resize(ref this.slots, Math.Max(512, this.slotCount * 2));
+                }
+
+                this.slots[this.slotCount++] = id;
+                if (table.Module < this.program.RootModules)
+                {
+                    this.Body(definition.Key, nodes[id]!, definition.Function, definition.Result, definition.Value);
+                }
+            }
+        }
+
+        this.program.Reserve(this.templates + this.slotCount);
+    }
+
+    // A library definition's ordinal: the library's templates' count plus its position in the library walk (Library), the one number of
+    // its body in every build and version of the library segment. A definition the walk did not number is a broken contract.
+    private int Slot(Koto declaration)
+    {
+        var index = Array.BinarySearch(this.slots, 0, this.slotCount, declaration.SyntaxId);
+        return index >= 0 ? this.templates + index
+            : throw new InvalidOperationException($"The library walk numbered no slot for node {declaration.SyntaxId} (InternalInvariant).");
     }
 
     // The program pass (G191) of each body built since the last, in build order, each once: the root build's after its walk, a demanded
@@ -269,7 +321,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType result, Koto value)
     {
         var template = key.Kind == MirBodyKind.DefaultTemplate;
-        var body = this.body = this.program.Begin(key, SourceRef.Of(template ? value : declaration));
+        var source = SourceRef.Of(template ? value : declaration);
+        var body = this.body = template || !ReferenceEquals(declaration.SyntaxOwner, compilation.Library.Kotonoha.Syntax)
+            ? this.program.Begin(key, source) : this.program.Begin(key, source, this.Slot(declaration));
         (this.declaration, this.scope, this.statementStart) = (declaration, 0, false);
         this.locals.Clear();
         this.targets.Clear();

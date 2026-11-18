@@ -214,6 +214,7 @@ public sealed class MirModelTest
         var library = program.End();
         program.Report(librarySite);
         program.Findings.Add(new(MirViolation.Callee, librarySite));
+        program.Reserve(1);
         program.EndLibrary(7);
         program.Begin(closure, programSite);
         var made = program.End();

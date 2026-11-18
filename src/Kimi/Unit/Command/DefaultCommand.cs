@@ -5,17 +5,19 @@ using SimpleCommandLine;
 namespace Kimi.Command;
 
 [SimpleCommand("Default", IsDefault = true)]
-public class DefaultCommand : ISimpleCommand
+public class DefaultCommand(Kimigayo kimigayo) : ISimpleCommand
 {
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
-        if (args.Length != 0)
+        Environment.ExitCode = await CommandExecution.Execute(kimigayo, () =>
         {
-            Console.Error.WriteLine($"Unknown command '{args[0]}'. Use restore, check, build, run, test, emit, toolchain verify, or lsp.");
-            Environment.ExitCode = 1;
-            return;
-        }
+            if (args.Length != 0)
+            {
+                throw new CommandInputException($"Unknown command '{args[0]}'. Use restore, check, build, run, test, emit, toolchain verify, or lsp.");
+            }
 
-        Console.WriteLine($"Kimi ({Compiler.CompilerRelease.Version}) by archi-Doc");
+            Console.WriteLine($"Kimi ({Compiler.CompilerRelease.Version}) by archi-Doc");
+            return Task.FromResult(0);
+        });
     }
 }

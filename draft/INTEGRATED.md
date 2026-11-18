@@ -1403,6 +1403,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 93 (2026-11-19, plan §14; the Front's Q-499, with R7-I4): I4's row after its landing in W-261, its stale text corrected:
   `Binding.Interpolation` never tested `EvaluatedKoto`, `ExpansionPlan`'s part landed with R5 Q15 (c2005bd44), and I4's size is +5/−2,
   not +40/−60. Nothing frozen.
+- Revision 94 (2026-11-19, plan §14; the Front's Q-503, with R7-V2d): V2's row records V2d's landing in W-262 (DECISIONS R7-M37,
+  `FnSig`); the 71 syntax reads of a declared parameter Type and the name contract's receiver read it staged go to P3's row (the call
+  forms' 47) and Y4's row (the other 25). Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

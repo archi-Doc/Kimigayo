@@ -344,13 +344,19 @@ public class IntrinsicCapabilityTest
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(Function(c, "inspect").Parameters[0].Type.TypeOf()!, Function(c, "inspect")));
     }
 
+    // SPEC F.6.2 ConformanceRequirement, 8.8.1 (PB3, O1 (a)): a conformance condition joins its atoms with "and", so "or" and "not" are
+    // Parsing's record at the condition's requirement (ConformanceRequirement).
     [Theory]
-    [InlineData("T is Copy or Owned")]
-    [InlineData("T is not Copy")]
-    public void ConditionalCopyRejectsNonPositivePremises(string premise)
+    [InlineData("T is Copy or Owned", "Copy or Owned")]
+    [InlineData("T is not Copy", "not Copy")]
+    public void ConditionalCopyRejectsNonPositivePremises(string premise, string requirement)
     {
-        var c = CompilationTestHelper.ParseSuccess($"struct Box<T>\n    Self is Copy when {premise}\n    let value: T");
-        Assert.False(c.Bind().IsComplete);
+        var source = $"struct Box<T>\n    Self is Copy when {premise}\n    let value: T";
+        var record = Assert.Single(TestDiagnostics.Of(CompilationTestHelper.Parse(source, "Hello.kimi"), "Hello.kimi"));
+        Assert.Equal("ExpectedSyntax_Kd", record.Code);
+        Assert.Contains("Expected conformance requirement", record.Message, StringComparison.Ordinal);
+        Assert.Equal(source.IndexOf(requirement, StringComparison.Ordinal), record.Span.Start);
+        Assert.Equal(requirement.Length, record.Span.Length);
     }
 
     [Fact]
