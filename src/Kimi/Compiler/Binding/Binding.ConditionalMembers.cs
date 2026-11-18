@@ -37,8 +37,10 @@ public sealed partial class Binding
             return this.InvalidEnvironment(invalid);
         }
 
-        if (declaration.BindingState == BindingState.Invalid ||
-            this.InvalidDeclarationCause(member.Declaration) is not null)
+        // R7-C3 (F's ruling 233; SPEC 8.2.3, 23.1.2): the conditional declaration is read as every failed declaration is, through its one
+        // read (InvalidDeclarationCause; G881b's ReadFailedDeclaration, Q-479), so a premise-error context is kept and judged as a valid
+        // view; a raw Invalid state is no Error of its own.
+        if (this.InvalidDeclarationCause(declaration) is not null || this.InvalidDeclarationCause(member.Declaration) is not null)
         {
             return ConstraintProof.Error;
         }
