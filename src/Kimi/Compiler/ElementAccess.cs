@@ -37,7 +37,22 @@ internal static class ElementAccess
             (receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || binding.BorrowsInEveryCase(receiver, receiverNode));
 
     // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
-    internal static bool ReachesThroughBorrow(Binding binding, Koto source) => HasReceiverOnPath(binding, source);
+    internal static bool ReachesThroughBorrow(Binding binding, Koto source)
+    {
+        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
+            !Binding.IsGetterResult(selection); depth++)
+        {
+            var receiver = AccessType(binding, selection.Left);
+            if (receiver?.Kind == BoundTypeKind.Slice || binding.BorrowsInEveryCase(receiver, selection.Left))
+            {
+                return true;
+            }
+
+            source = selection.Left;
+        }
+
+        return false;
+    }
 
     internal static bool IsSyntax(Binding binding, Koto source) => source is IndexKoto index ? !IsUserIndex(binding, index) && binding.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto member && HirTables.Symbol(member) is { Property.IsStored: true } && AdtDef.IsStruct(HirTables.TypeOf(member.Left)));
@@ -58,9 +73,9 @@ internal static class ElementAccess
             is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
 
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
-    internal static int StaticSelector(BinaryKoto source)
+    internal static int StaticSelector(Binding binding, BinaryKoto source)
     {
-        if (source is MemberAccessKoto && TryType(source, out _, out var position))
+        if (source is MemberAccessKoto && TryType(binding, source, out _, out var position))
         {
             return position;
         }
@@ -81,7 +96,7 @@ internal static class ElementAccess
 
         while (source is BinaryKoto element && IsSyntax(binding, element))
         {
-            if (!TryType(element, out _, out _))
+            if (!TryType(binding, element, out _, out _))
             {
                 return null;
             }
@@ -166,7 +181,7 @@ internal static class ElementAccess
     internal static bool IsPointerPath(Binding binding, Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64 && source is BinaryKoto element && IsSyntax(binding, element) && TryType(element, out _, out _); depth++)
+        for (var depth = 0; depth < 64 && source is BinaryKoto element && IsSyntax(binding, element) && TryType(binding, element, out _, out _); depth++)
         {
             source = KotoHelper.UnwrapParentheses(element.Left);
             if (IsRawRoot(source))
@@ -222,7 +237,7 @@ internal static class ElementAccess
     // SPEC 4.7.1: an owned fixed-array element selected at a runtime index, which has no static Move Path.
     internal static bool IsRuntimeFixedElement(Binding binding, Koto selection)
         => KotoHelper.UnwrapParentheses(selection) is IndexKoto element && IsSyntax(binding, element) && !IsSlicing(binding, element) && !Binding.IsGetterResult(element) &&
-            HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.FixedArray && StaticSelector(element) < 0;
+            HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.FixedArray && StaticSelector(binding, element) < 0;
 
     internal static Koto? BorrowedPathRoot(Binding binding, MemberAccessKoto field)
     {
@@ -246,7 +261,7 @@ internal static class ElementAccess
                 return reference;
             }
 
-            if (field.Left is not MemberAccessKoto parent || !TryType(field, out _, out _))
+            if (field.Left is not MemberAccessKoto parent || !TryType(binding, field, out _, out _))
             {
                 return null;
             }
@@ -263,7 +278,7 @@ internal static class ElementAccess
     {
         for (var depth = 0; depth < 64; depth++)
         {
-            if (Binding.IsGetterResult(field) || !IsSyntax(binding, field) || StaticSelector(field) < 0)
+            if (Binding.IsGetterResult(field) || !IsSyntax(binding, field) || StaticSelector(binding, field) < 0)
             {
                 return null;
             }
@@ -302,7 +317,7 @@ internal static class ElementAccess
         return false;
     }
 
-    internal static bool TryType(BinaryKoto source, out BoundType? element, out int position)
+    internal static bool TryType(Binding binding, BinaryKoto source, out BoundType? element, out int position)
     {
         element = null;
         position = -1;
@@ -314,7 +329,7 @@ internal static class ElementAccess
 
         if (source is MemberAccessKoto && HirTables.Symbol(source) is { Property.IsStored: true } && AdtDef.IsStruct(type))
         {
-            return AdtDef.FindField(type, HirTables.Symbol(source), out element, out position);
+            return AdtDef.FindField(binding.Types, type, HirTables.Symbol(source), out element, out position);
         }
 
         if (source is IndexKoto && type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && type.Components.Count == 1)
@@ -335,23 +350,6 @@ internal static class ElementAccess
             position = (int)magnitude;
             element = type.Components[position];
             return true;
-        }
-
-        return false;
-    }
-
-    private static bool HasReceiverOnPath(Binding binding, Koto source)
-    {
-        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
-            !Binding.IsGetterResult(selection); depth++)
-        {
-            var receiver = AccessType(binding, selection.Left);
-            if (receiver?.Kind == BoundTypeKind.Slice || binding.BorrowsInEveryCase(receiver, selection.Left))
-            {
-                return true;
-            }
-
-            source = selection.Left;
         }
 
         return false;

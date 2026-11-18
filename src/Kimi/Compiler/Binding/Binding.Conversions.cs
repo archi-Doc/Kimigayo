@@ -295,7 +295,7 @@ public sealed partial class Binding
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
                 : this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
-                !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
+                !this.IsSubtype(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
             {
                 return failure.IsCondition ? this.RecordMismatch(conversion, conversion, adapted, pattern, failure)

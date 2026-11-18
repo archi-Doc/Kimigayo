@@ -180,7 +180,7 @@ public sealed partial class Binding
         this.AddRetentionAtom(here with { Origin = OwnedOrigin(type) }, callable);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            var position = ComposeVariance(variance, OriginArgumentVariance(type, i, this));
+            var position = ComposeVariance(variance, this.OriginArgumentVariance(type, i, this));
             this.AddRetentionAtom(at with { Origin = type.OriginArguments[i], Writable = at.Writable && position == OriginVariance.Invariant }, callable);
         }
 

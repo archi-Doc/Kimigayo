@@ -291,7 +291,7 @@ public sealed partial class Binding
             }
 
             var currentSignature = this.CallableContractType(fact.RequiredType!, scope);
-            if (signature is not null && !SameCallableSignature(signature, currentSignature))
+            if (signature is not null && !this.SameCallableSignature(signature, currentSignature))
             {
                 several = true;
                 break;

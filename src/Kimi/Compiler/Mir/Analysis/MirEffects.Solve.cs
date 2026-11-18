@@ -228,7 +228,7 @@ internal sealed partial class MirEffects
         {
             var glue = new Glue(this);
             this.found |= type is null ? Limit : (byte)0;
-            MirTypes.Destruction(type, ref glue);
+            MirTypes.Destruction(types, type, ref glue);
             return;
         }
 
@@ -366,7 +366,7 @@ internal sealed partial class MirEffects
             var glue = new Glue(this);
             var payload = MirTypes.SealedPayload(type, types, this.definition);
             this.found |= payload is null ? Unknown : (byte)0;
-            MirTypes.Destruction(payload, ref glue, depth + 1);
+            MirTypes.Destruction(types, payload, ref glue, depth + 1);
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {

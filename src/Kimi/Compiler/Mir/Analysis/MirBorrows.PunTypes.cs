@@ -136,16 +136,16 @@ internal sealed partial class MirBorrows
 
         for (var i = 0; most != Extent.Positive && i < AdtDef.Count(type); i++)
         {
-            most = Most(most, AdtDef.FieldType(type, i) is { } field ? this.Pointered(cases.Type(field)) : Extent.Open);
+            most = Most(most, AdtDef.FieldType(types, type, i) is { } field ? this.Pointered(cases.Type(field)) : Extent.Open);
         }
 
-        var payloads = AdtDef.CaseTypes(type);
+        var payloads = AdtDef.CaseTypes(types, type);
         for (var i = 0; most != Extent.Positive && payloads is not null && i < payloads.Length; i++)
         {
             most = Most(most, payloads[i] is { } payload ? this.Pointered(cases.Type(payload)) : Extent.Open);
         }
 
-        return most != Extent.Positive && AdtDef.Base(type) is { } parent ? Most(most, this.Pointered(cases.Type(parent))) : most;
+        return most != Extent.Positive && AdtDef.Base(types, type) is { } parent ? Most(most, this.Pointered(cases.Type(parent))) : most;
     }
 
     // The leading chain's one step under the case view (TyCtxt.Leading, Binding's): the part the specification places at the address of

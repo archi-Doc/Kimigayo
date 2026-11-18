@@ -798,7 +798,7 @@ public sealed partial class Binding
     private BoundType? LateAdaptation(Koto node, BoundType target)
     {
         if (this.SuppliedType(node) is not { } actual || node.ErasedFunctionType is not null || this.adaptations.ContainsKey(node) ||
-            Compatible(actual, target))
+            this.FitsType(actual, target))
         {
             return this.SuppliedType(node);
         }

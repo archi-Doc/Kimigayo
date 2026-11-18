@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -13,6 +14,9 @@ namespace Kimi.Compiler;
 // RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
 // frame (BeginConsultation(element) around a pass element that publishes facts and records no proof, DropConsultation after it).
 // This concern preserves the existing cause order and performs no diagnostic rendering.
+// A node of a module the running pass does not bind keeps its columns, the state its own pass left: the recorder writes such a node's
+// state and failure in the pass's entry for it (PassPart.ForeignFailures), and every read of a node's state or failure here and in the
+// publication goes through RecordedState and RecordedFailure (PLAN G949 S1-1, s11-design 3.3).
 public sealed partial class Binding
 {
     // SPEC 23.1.2: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
@@ -63,11 +67,8 @@ public sealed partial class Binding
     /// <param name="node">The node.</param>
     /// <returns>Whether a check that reads the node rests on a Binding cause.</returns>
     internal bool HasFailureCauses(Koto node)
-        => node.BindingState != BindingState.Resolved &&
-            (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
-
-    private static bool IsUnresolvedPrerequisite(Koto node)
-        => node.BindingState != BindingState.Resolved || IsRecovery(node, out _);
+        => this.RecordedState(node) != BindingState.Resolved &&
+            (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
 
     // SPEC 23.1.2: the declaration part that gives a binding its Type: a parameter's written Type, an accessor parameter's annotation or
     // Property Type, or a local's or Pattern's declaration; null for any other binding. A use or a written capture entry of a binding
@@ -89,6 +90,72 @@ public sealed partial class Binding
         return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
     }
 
+    private bool IsUnresolvedPrerequisite(Koto node)
+        => this.RecordedState(node) != BindingState.Resolved || IsRecovery(node, out _);
+
+    // The recorder's two readers: a node the running pass has an entry for (ForeignEntry) reads the entry, any other node its columns, so
+    // a node of another module that the pass never wrote reads the state its own pass left (for a library node, the library's final state).
+    private BindingState RecordedState(Koto node)
+        => this.IndexOfForeign(node) is var i and >= 0 ? this.foreignFailures[i].State : node.BindingState;
+
+    private BindingFailure RecordedFailure(Koto node)
+        => this.IndexOfForeign(node) is var i and >= 0 ? this.foreignFailures[i].Failure : node.BindingFailure;
+
+    // The recorder's two writers, the readers' counterparts: a node of a module the running pass does not bind takes the value in its
+    // entry, never in its columns; any other node in its column.
+    private void SetRecordedState(Koto node, BindingState state)
+    {
+        if (this.pass.Binds(node.SyntaxOwner))
+        {
+            node.BindingState = state;
+        }
+        else
+        {
+            this.ForeignEntry(node).State = state;
+        }
+    }
+
+    private void SetRecordedFailure(Koto node, BindingFailure failure)
+    {
+        if (this.pass.Binds(node.SyntaxOwner))
+        {
+            node.BindingFailure = failure;
+        }
+        else
+        {
+            this.ForeignEntry(node).Failure = failure;
+        }
+    }
+
+    // A foreign node's entry, listed at the pass's first write to it with its columns as they stood (State and Before the state its own
+    // pass counted): a node a check cleared (ClearFailure) and fails again keeps its one entry with that first state (review-s1r1b N2),
+    // so a node enters the list once per pass.
+    private ref (Koto Node, BindingState Before, BindingState State, BindingFailure Failure) ForeignEntry(Koto node)
+    {
+        var i = this.IndexOfForeign(node);
+        if (i < 0)
+        {
+            i = this.foreignFailures.Count;
+            this.foreignFailures.Add((node, node.BindingState, node.BindingState, node.BindingFailure));
+        }
+
+        return ref CollectionsMarshal.AsSpan(this.foreignFailures)[i];
+    }
+
+    // The running pass's entry of a node, or -1: linear in the list, which no program fills today.
+    private int IndexOfForeign(Koto node)
+    {
+        for (var i = 0; i < this.foreignFailures.Count; i++)
+        {
+            if (ReferenceEquals(this.foreignFailures[i].Node, node))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
         if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
@@ -104,64 +171,52 @@ public sealed partial class Binding
             this.consulted.Add(node);
         }
 
-        if (node.BindingFailure != BindingFailure.None)
+        if (this.RecordedFailure(node) != BindingFailure.None)
         {
             return null;
         }
 
-        // A failure at a node of a module the running pass does not bind (PLAN G949, DECISIONS BU-220's pass driver): the node is not in
-        // the pass's nodes, so the pass lists it, with the state its own pass counted, and CountStates gives it its record and count.
-        // This is the one place a node's failure is first written; a node a check cleared (ClearFailure) and fails again keeps its one
-        // listing with that first state (review-s1r1b N2), so a node enters the list once per pass.
-        if (!this.pass.Binds(node.SyntaxOwner) && !this.ListsForeignFailure(node))
-        {
-            this.foreignFailures.Add((node, node.BindingState));
-        }
-
+        // A failure at a node of a module the running pass does not bind (PLAN G949, DECISIONS BU-220's pass driver) is the pass's entry
+        // for it (the recorder's writers), which CountStates gives its record and count; its columns keep its own pass's state.
         if (unresolved)
         {
             this.MarkUnresolved(node);
         }
         else
         {
-            node.BindingState = BindingState.Invalid;
+            this.SetRecordedState(node, BindingState.Invalid);
         }
 
-        node.BindingFailure = failure;
+        this.SetRecordedFailure(node, failure);
         return null;
-    }
-
-    // Whether the running pass has listed a node among its foreign failures: linear in the list, which no program fills today.
-    private bool ListsForeignFailure(Koto node)
-    {
-        foreach (var (listed, _) in this.foreignFailures)
-        {
-            if (ReferenceEquals(listed, node))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.
     private void MarkUnresolved(Koto node)
     {
-        if (node.BindingState != BindingState.Invalid || this.UnresolvedPart(node) is null)
+        if (this.RecordedState(node) != BindingState.Invalid || this.UnresolvedPart(node) is null)
         {
-            node.BindingState = BindingState.Unresolved;
+            this.SetRecordedState(node, BindingState.Unresolved);
         }
     }
 
     private Koto? UnresolvedPart(Koto node)
-        => this.partPrerequisites.TryGetValue(node, out var part) && IsUnresolvedPrerequisite(part) ? part : null;
+        => this.partPrerequisites.TryGetValue(node, out var part) && this.IsUnresolvedPrerequisite(part) ? part : null;
 
+    // A dependent takes Complete's state for no Type; a node of a module the pass does not bind takes it in its entry and keeps its
+    // columns, its Type's included.
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
         this.prerequisiteStore.Add(cause);
-        return Complete(node, null);
+        if (this.pass.Binds(node.SyntaxOwner))
+        {
+            return Complete(node, null);
+        }
+
+        ref var entry = ref this.ForeignEntry(node);
+        entry.State = CompletedState(entry.State, null);
+        return null;
     }
 
     private (int Start, Koto? Node) BeginConsultation(Koto node)
@@ -219,7 +274,7 @@ public sealed partial class Binding
     /// <param name="dependency">The node whose result was read.</param>
     private void Consulted(Koto dependency)
     {
-        if (this.consultationStart >= 0 && dependency.BindingState != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
+        if (this.consultationStart >= 0 && this.RecordedState(dependency) != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
             !this.IsWaitingPart(dependency))
         {
             this.consulted.Add(dependency);
@@ -244,19 +299,22 @@ public sealed partial class Binding
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses).
     private bool IsDerived(Koto node)
-        => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
-            (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
+    {
+        var failure = this.RecordedFailure(node);
+        return IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
+            (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
-            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
-            (part.BindingState == BindingState.Invalid || this.HasFailureCauses(part))) ||
-            (node.BindingFailure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
+            (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
+            (this.RecordedState(part) == BindingState.Invalid || this.HasFailureCauses(part))) ||
+            (failure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
             this.formationCauses?.ContainsKey(occurrence) == true) ||
-            (node.BindingFailure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
-            (specification.BindingFailure != BindingFailure.None || specification.BindingState == BindingState.Invalid)) ||
-            (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
+            (failure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
+            (this.RecordedFailure(specification) != BindingFailure.None || this.RecordedState(specification) == BindingState.Invalid)) ||
+            (failure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
             this.formationCauses?.ContainsKey(read) == true) ||
-            (node.BindingFailure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
+            (failure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
             this.KeepsPremiseErrorContext(premise));
+    }
 
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
     // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
@@ -303,7 +361,7 @@ public sealed partial class Binding
     private void AddPrerequisite(Koto node, Koto part)
     {
         // A recovery part explains the failure even when a Type was formed for it (a length slot binds as isize).
-        if (IsRecovery(part, out _) || (part.BindingState != BindingState.Resolved && !this.partPrerequisites.ContainsKey(node)))
+        if (IsRecovery(part, out _) || (this.RecordedState(part) != BindingState.Resolved && !this.partPrerequisites.ContainsKey(node)))
         {
             this.partPrerequisites[node] = part;
         }
@@ -317,7 +375,7 @@ public sealed partial class Binding
 
     // A node whose failure is a reached implementation limit: its record's category is Resource (SPEC 23.1.1).
     private bool ResourceFailed(Koto node)
-        => node.BindingFailure != BindingFailure.None && DiagnosticEntries.TryGet(this.CodeOf(node, node.BindingFailure), out var entry) &&
+        => this.RecordedFailure(node) is var failure && failure != BindingFailure.None && DiagnosticEntries.TryGet(this.CodeOf(node, failure), out var entry) &&
             entry.Category == DiagnosticCategory.Resource;
 
     // A consulted operand can resolve after it was consulted, such as a callee completed by overload selection; only
@@ -333,7 +391,7 @@ public sealed partial class Binding
         {
             for (var i = range.Start; i < range.Start + range.Count; i++)
             {
-                if (IsUnresolvedPrerequisite(this.prerequisiteStore[i]))
+                if (this.IsUnresolvedPrerequisite(this.prerequisiteStore[i]))
                 {
                     return true;
                 }
@@ -347,7 +405,7 @@ public sealed partial class Binding
     /// <param name="node">The unresolved node.</param>
     /// <returns>The keys; the unresolved mark when no cause was recorded.</returns>
     private DiagnosticKey[] CauseKeys(Koto node)
-        => !IsRecovery(node, out _) && node.BindingFailure != BindingFailure.None ? [node.KeyOf(DiagnosticRequirement.Binding(node.BindingFailure))] : this.PrerequisiteKeys(node);
+        => !IsRecovery(node, out _) && this.RecordedFailure(node) is var failure && failure != BindingFailure.None ? [node.KeyOf(DiagnosticRequirement.Binding(failure))] : this.PrerequisiteKeys(node);
 
     /// <summary>Gets the check keys a derived failure rests on; a skipped prerequisite contributes its own prerequisites.</summary>
     /// <param name="node">The derived node.</param>
@@ -403,7 +461,7 @@ public sealed partial class Binding
             }
 
             var key = IsRecovery(cause, out var syntax) ? syntax
-                : cause.BindingFailure != BindingFailure.None ? cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))
+                : this.RecordedFailure(cause) is var failure && failure != BindingFailure.None ? cause.KeyOf(DiagnosticRequirement.Binding(failure))
                 : this.PushPrerequisites(cause, pending) ? (DiagnosticKey?)null
                 : DiagnosticKey.Unresolved;
             if (key is { } found && !keys.Contains(found))
@@ -429,7 +487,7 @@ public sealed partial class Binding
             for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
             {
                 var cause = this.prerequisiteStore[i];
-                if (IsUnresolvedPrerequisite(cause))
+                if (this.IsUnresolvedPrerequisite(cause))
                 {
                     pending.Push(cause);
                 }

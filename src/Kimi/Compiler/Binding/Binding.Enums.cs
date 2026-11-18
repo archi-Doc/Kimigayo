@@ -297,7 +297,7 @@ public sealed partial class Binding
             }
 
             var result = this.types.Intern(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, frame.Types[..slots]!, originArguments: origins.AsSpan(0, originCount));
-            if (expected is not null && !FitsType(result, expected))
+            if (expected is not null && !this.FitsType(result, expected))
             {
                 // SPEC 15.6.1, 10.8: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch, its
                 // pair layers read at the use's scope; a Function component's failed contract is the construction's contract record, whose
