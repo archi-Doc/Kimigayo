@@ -35,7 +35,7 @@ public sealed partial class Binding
 
     // Returns the pass the published columns of the program pass's modules describe (0: none), by which the MIR builder caches its
     // program. A Final pass published them itself (Check, DECISIONS BU-81); another finished pass publishes here, once. The library's
-    // module is published by its own pass (PublishLibrary).
+    // module is published by its own pass, which is Final in every Bind (Run).
     internal ulong PublishHir()
     {
         if (this.running || this.Result == default || this.hirVersion == this.storageVersion)
@@ -47,24 +47,18 @@ public sealed partial class Binding
         return this.hirVersion;
     }
 
-    // RB1 (PLAN G949 S1-r1b; review-s1r1 Re-check 3; C-379 F1): the library module is published at the end of the pass that binds
-    // it, in every mode, since the program pass empties the per-pass tables the publisher reads for the library's nodes: a Final pass's
-    // Check published it with the pass's modules, another pass publishes it here. Its version is the library's (LibraryVersion), never
-    // hirVersion, which PublishHir compares for the program pass's modules.
-    private void PublishLibrary(Kotonoha library, BindingMode mode)
-    {
-        if (mode != BindingMode.Final)
-        {
-            (this.hirPublisher ??= new(this)).Publish(library.Syntax, library.RootKoto);
-        }
-
-        this.libraryVersion = this.storageVersion;
-    }
-
-    // The columns of the pass's modules, in their order, from the pass's facts.
+    // The columns of the pass's modules, in their order, from the pass's facts. RB1 (PLAN G949 S1-r1b; review-s1r1 Re-check 3; C-379
+    // F1): a pass that holds the library module publishes it at its end, since the program pass empties the per-pass tables the
+    // publisher reads for the library's nodes; its version is the library's (LibraryVersion, which the pass driver sets), never
+    // hirVersion, which PublishHir compares for the program pass's modules. So the library pass, Final in every Bind, leaves a
+    // Provisional program pass's modules to PublishHir.
     private void PublishPass()
     {
-        this.hirVersion = this.storageVersion;
+        if (this.pass.Library is null)
+        {
+            this.hirVersion = this.storageVersion;
+        }
+
         var publisher = this.hirPublisher ??= new(this);
         for (var i = 0; i < this.pass.Count; i++)
         {
@@ -172,6 +166,7 @@ public sealed partial class Binding
 
         internal void Publish(SyntaxTable table, Koto root)
         {
+            table.EnsureWritable(nameof(HirPublisher)); // The one entry of the publisher's direct column writes.
             ref var hir = ref table.Hir;
             if (hir.Ops?.Length != hir.States.Length)
             {

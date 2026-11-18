@@ -358,7 +358,7 @@ public sealed partial class Binding
     {
         var symbol = structure.BoundSymbol!;
         var table = symbol.Adt!.VTable ??= new();
-        if (table.Version == this.storageVersion)
+        if (Current(table.Version, this.storageVersion))
         {
             return table.Resolved ? table : null;
         }

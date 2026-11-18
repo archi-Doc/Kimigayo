@@ -25,6 +25,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     private int typeCount = BoundType.StaticCount; // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter).
     private int interned; // The Types Intern made: the table's entries.
 
+    /// <summary>Gets the last id this compilation gave a Type (Binding's freeze reads it as the library's L).</summary>
+    internal int TypeCount => this.typeCount;
+
     /// <summary>Gets the number of interned Types, the entries of their table. Not its keys: a key is a hash of the parts' identity
     /// hashes, which a thread's earlier objects move, so two Types share one at random (PLAN G949's flaky TableCounts row).</summary>
     internal int KeyCount => this.interned;

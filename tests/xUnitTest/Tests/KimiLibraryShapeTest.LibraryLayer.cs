@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -39,7 +40,10 @@ namespace XunitTest;
 //   shapeCallCandidates, storedCases, storedFields and the Origin summaries' forming lists likewise (G949 S1-r1b,
 //   ACallsScratchIsEmptyAfterABind);
 // - subset: a content interner or Type-keyed memo keeps every row of the empty program's unchanged, and a program's extra row is the
-//   program's level (D2b-d §1.1, §1.5);
+//   program's level (D2b-d §1.1, §1.5). The table classes each subset store (G949 ruling 167 Q4): a Type interner's extra row is
+//   keyed by a Type the program made, its key naming a Type id above L (LibraryLayer.TypeCount; the subset Fact, over the stores keyed
+//   by Type: a row keyed by the library's Types alone is a library fact a later pass made); a memo's extra rows, and those of an
+//   interner keyed by no Type (constraints), are the program's whatever their key;
 // - epoch: a memo of one capability epoch is the program's (D2b-d §1.1, census O16) and is not printed; its invariant is
 //   TheCapabilityMemosEndWithTheirEpoch's;
 // - number: a number naming a walk's or memo's order prints as #, the rest of its row compared; ArchitectureRulesTest's rows confine
@@ -113,7 +117,7 @@ public partial class KimiLibraryShapeTest
         var c = CompilationTestHelper.Parse(BaseInputFormationBindingTest.J4);
         Assert.True(c.Bind().IsComplete);
         Assert.True((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
-        SameLayer("j4 after its restart", LibraryLayer.Dump(Bound(string.Empty), RestartCounters), LibraryLayer.Dump(c, RestartCounters));
+        SameLayer("j4 after its restart", LibraryLayer.Dump(Bound(string.Empty), RestartCounters), LibraryLayer.Dump(c, RestartCounters), c.Library.Layer.TypeCount);
     }
 
     // G949 N5-5's n3 (C-380 F2): a library binder's atoms and a library source's open regions live in the library module's NodeColumns
@@ -224,16 +228,18 @@ public partial class KimiLibraryShapeTest
         "KeeperList.Pass", // The requirement call that kept a slot's list.
         "BoundConformance.Stamp", // A conformance identity's reset stamp, the run's counter.
         "BoundConformancePath.Stamp", // A conformance path's reset stamp, the run's counter.
+        "InstanceStorage.Version", // The run whose substitution formed an instance (Binding.instances, a Type-keyed memo): from S1-1's freeze a restart reruns the program pass alone, so an instance the library pass formed keeps the first run's.
     ];
 
     private static void SameLayerAsTheEmptyPrograms(string program)
     {
         var c = Bound(program);
         LibraryLayer.AssertLivePrefix(c.Binding, "Binding.inlineSummaryPool", "Binding.inlineSummaries");
-        SameLayer(program, EmptyProgramLayer.Value, LibraryLayer.Dump(c));
+        SameLayer(program, EmptyProgramLayer.Value, LibraryLayer.Dump(c), c.Library.Layer.TypeCount);
     }
 
-    private static void SameLayer(string program, string[] expected, string[] actual)
+    // The comparison of a layer with the empty program's; `library` is the compilation's L (the subset Fact).
+    private static void SameLayer(string program, string[] expected, string[] actual, int library)
     {
         var differences = new List<string>();
         var (e, a) = (0, 0);
@@ -246,9 +252,9 @@ public partial class KimiLibraryShapeTest
                 continue;
             }
 
-            if (order > 0 && LibraryLayer.RuleOf(actual[a]) == LibraryLayer.Rule.Subset)
+            if (order > 0 && LibraryLayer.RuleOf(actual[a]) is var rule && (rule == LibraryLayer.Rule.Memo || (rule == LibraryLayer.Rule.Interner && LibraryLayer.KeyIds(actual[a]).Any(x => x > library))))
             {
-                a++; // The subset rule: the program's own row in a content interner or Type-keyed memo.
+                a++; // The subset rule: the program's own row in a Type-keyed memo, or in a content interner under a Type the program made.
                 continue;
             }
 
@@ -278,6 +284,14 @@ public partial class KimiLibraryShapeTest
     // A program read from the repository or the diagnostic corpus, after its Final Bind.
     private static Compilation Bound(string program)
     {
+        var c = Prepared(program);
+        c.Bind();
+        return c;
+    }
+
+    // A program read from the repository or the diagnostic corpus, prepared.
+    private static Compilation Prepared(string program)
+    {
         var c = Compilation.CreateForTest();
         var kind = program.Length == 0 ? string.Empty : program[..program.IndexOf('/', StringComparison.Ordinal)];
         var subject = program[(kind.Length == 0 ? 0 : kind.Length + 1)..];
@@ -299,7 +313,6 @@ public partial class KimiLibraryShapeTest
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         }
 
-        c.Bind();
         return c;
     }
 
@@ -334,14 +347,31 @@ public partial class KimiLibraryShapeTest
         // number by its type and field. A store not named here is a fact.
         private static readonly Dictionary<string, Rule> Disposition = new(StringComparer.Ordinal)
         {
-            // Content interners and Type-keyed memos: the program's instantiations at builtin Types are its own rows.
-            ["Binding.constraints"] = Rule.Subset,
-            ["Binding.types.types"] = Rule.Subset,
-            ["Binding.originSummaries"] = Rule.Subset,
-            ["Binding.erasureOutcomes"] = Rule.Subset,
-            ["Binding.pendingAssociatedTypes"] = Rule.Subset,
-            ["Binding.boundContracts"] = Rule.Subset,
-            ["Binding.storageMarks"] = Rule.Subset,
+            // Content interners and Type-keyed memos (the subset rule; G949 ruling 167 Q4 classes each): the program's instantiations at
+            // builtin Types are its own rows.
+            ["Binding.types.types"] = Rule.Interner,
+            ["Binding.boundContracts"] = Rule.Interner,
+            ["Binding.programPart.BoundContracts"] = Rule.Interner, // the same entries, the program pass's part (PLAN G949 S1-1)
+            ["Binding.constraints"] = Rule.Memo, // A content interner keyed by a constraint, no Type: a program's question over library Types (i32 is Position) is its own row.
+            ["Binding.originSummaries"] = Rule.Memo,
+            ["Binding.erasureOutcomes"] = Rule.Memo,
+            ["Binding.pendingAssociatedTypes"] = Rule.Memo,
+            ["Binding.storageMarks"] = Rule.Memo,
+
+            // Memos the reads after a Bind (MIR's, at Analyze) fill too (PLAN G949 S1-1, ruling 199 w1 (ii)): a row is a function of its key,
+            // whose Types are interned and whose declarations are frozen, so a later step adds rows and never changes or drops one (an edit's
+            // ResetViews drops only TyCtxt's view memos, which a later read forms again, equal).
+            ["Binding.instances"] = Rule.Memo, // An ADT's storage at a Type (n9): Fields and parts a function of the Type; Version the run's currency.
+            ["Binding.types.instances"] = Rule.Memo, // Whether a definition instantiates: a function of its scope chain.
+            ["Binding.types.copies"] = Rule.Memo, // A premises node's Copy facts, each a function of the node and the Type proven.
+            ["Binding.types.retentions"] = Rule.Memo, // A callee's retention by callee, Subst, premise scope and region version.
+            ["Binding.types.handedCallables"] = Rule.Memo, // HandedCallables' answer per interned Type.
+            ["Binding.types.comparisons"] = Rule.Memo, // A comparison's composition by Contract, Type and operator form.
+            ["Binding.types.witnesses"] = Rule.Memo, // A requirement's target by requirement, Contract and Subst.
+            ["Binding.types.erasedTypes"] = Rule.Memo, // A Type's erased form, structural.
+            ["Binding.types.erasedSubsts"] = Rule.Memo, // A substitution's erased form, structural.
+            ["Binding.types.substs"] = Rule.Memo, // The substitution interner: a row is its own key, keyed by no Type (constraints' class).
+            ["Binding.programAtoms"] = Rule.Memo, // The program's atoms at library binders (ruling 203 (4)): a function of the binder, kind and slot, kept as the item contexts holding them are, until an edit (ruling 205 N4).
 
             // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,
             // whose pool lends its lists to enumerateKept alone (C1).
@@ -355,13 +385,15 @@ public partial class KimiLibraryShapeTest
             ["Binding.enumerateKept"] = Rule.Epoch,
             ["Binding.enumerateKeptPool"] = Rule.Epoch,
             ["Binding.enumerateHeads"] = Rule.Epoch,
+            ["Binding.readings"] = Rule.Epoch, // A view's readings (ResetCapabilities; G949 S1-1, w1 (ii)).
+            ["Binding.identityClasses"] = Rule.Epoch, // A view's identity tables (ResetIdentityClasses, from ResetCapabilities).
+            ["Binding.identityLent"] = Rule.Epoch, // The tables lent to them, returned to identityPool at the epoch's end.
 
-            // Numbers: Tarjan's visit order, the Origin requirement walk's consumer mark, a scope's view serial and the chain state it names.
+            // Numbers: Tarjan's visit order. A scope's view serial and the chain state it names, and an Origin requirement work's
+            // Consumer mark, compare by value (PLAN G949 S1-1, ruling 205 C2): the library pass settles every library scope's serial
+            // (SettleViewSerials) and a frozen work is never active, so a later step's write to a library one is a difference.
             ["InlineSummary.Index"] = Rule.Number,
             ["InlineSummary.Low"] = Rule.Number,
-            ["OriginRequirementWork.Consumer"] = Rule.Number,
-            ["BindingScope.ViewSerial"] = Rule.Number,
-            ["BindingScope.ViewState"] = Rule.Number,
 
             // A per-pass scratch, pool or cache both passes use (G949 S1-r1b; O9, rulings 152 and 178): the program pass's after a Bind.
             ["Binding.enumeratePool"] = Rule.Program, // Enumerate's lists of one outermost request, lent by position, all free at its end.
@@ -372,6 +404,35 @@ public partial class KimiLibraryShapeTest
             ["Binding.resultStructure.cache"] = Rule.Program, // The result walk's Completion memo of the body it walked last (M4).
             ["Binding.resultStructure.transferPool"] = Rule.Program, // That walk's transfer sets, rented by its cursor for each body.
             ["Binding.hirPublisher.completion.transferPool"] = Rule.Program, // The publisher's transfer sets for the body it published last (M4).
+
+            // A run's view, a per-run cache and a walk's reused scratch the reads after a Bind (MIR's) use too (PLAN G949 S1-1, ruling 199 w1
+            // (ii)): rebuilt at the run's first read, current in one run, or cleared at the walk's start, so after a step it holds what the
+            // program's last read left.
+            ["Binding.originUnitIndex"] = Rule.Program, // The C1-F4 view's units of the run's obligations, rebuilt at its first read (PrepareOriginRows).
+            ["Binding.originUnits"] = Rule.Program, // Their rows, in the units' reused lists.
+            ["Binding.comparisonPlans"] = Rule.Program, // The legacy comparison plans, each current in the run that formed it (n7).
+            ["Binding.enumerateIndexPool"] = Rule.Program, // The running part's free epoch index entries (EnumerateIndex's, returned at the epoch's end).
+            ["Binding.programPart.EnumerateIndexPool"] = Rule.Program, // The same pool, the program pass's part's.
+            ["Binding.retentionContracts"] = Rule.Program, // HandedSignatures' walk.
+            ["Binding.retentionReached"] = Rule.Program,
+            ["Binding.retentionWalk"] = Rule.Program,
+            ["Binding.retentionScope"] = Rule.Program, // BeginRetention's walk and its erased signatures'.
+            ["Binding.retentionErasedScope"] = Rule.Program,
+            ["Binding.retentionPositions"] = Rule.Program,
+            ["Binding.retentionSources"] = Rule.Program, // The retention sources' walk.
+            ["Binding.retentionWalked"] = Rule.Program,
+            ["Binding.retentionMet"] = Rule.Program, // The retention rows' walk.
+            ["Binding.ownSeen"] = Rule.Program, // OwnLayers' walk.
+            ["Binding.storageSeen"] = Rule.Program, // The storage walk (BeginStorages).
+            ["Binding.storageHolds"] = Rule.Program,
+            ["Binding.storageTargeted"] = Rule.Program,
+            ["Binding.retentionOccurred"] = Rule.Program,
+            ["Binding.types.handedFound"] = Rule.Program, // HandedCallables' walk.
+            ["Binding.types.handedSeen"] = Rule.Program,
+            ["Binding.types.retentionBounds"] = Rule.Program, // A retention computation's Callable bounds.
+            ["Binding.types.composedTypes"] = Rule.Program, // Compose's bindings before interning.
+            ["Binding.types.composedOrigins"] = Rule.Program,
+            ["Binding.types.witnessOrigins"] = Rule.Program, // A witness instance's Origins before interning.
         };
 
         // The number rule's fields, by declaring type and name.
@@ -407,7 +468,8 @@ public partial class KimiLibraryShapeTest
         internal enum Rule
         {
             Fact,
-            Subset,
+            Interner, // The subset rule over a Type interner: an extra row is keyed by a Type above L (the subset Fact).
+            Memo, // The subset rule over a memo, or an interner keyed by no Type: an extra row is the program's.
             Epoch,
             Number,
             Program,
@@ -458,11 +520,20 @@ public partial class KimiLibraryShapeTest
             return [.. layer.rows.Order(StringComparer.Ordinal)];
         }
 
-        // A row's rule, by its store (a number-keyed table's rows are its elements, "[]").
+        // A row's rule, by its store (a number-keyed table's rows are its elements, "[]") or the nearest store the walk listed it inside
+        // (programAtoms' column lists its arena as Binding.programAtoms.arena).
         internal static Rule RuleOf(string row)
         {
             var store = row[..(row.IndexOf(' ', StringComparison.Ordinal) is var i && i < 0 ? row.Length : i)];
-            return Disposition.GetValueOrDefault(store.EndsWith("[]", StringComparison.Ordinal) ? store[..^2] : store);
+            for (store = store.EndsWith("[]", StringComparison.Ordinal) ? store[..^2] : store; !Disposition.ContainsKey(store); store = store[..store.LastIndexOf('.')])
+            {
+                if (!store.Contains('.', StringComparison.Ordinal))
+                {
+                    return Rule.Fact;
+                }
+            }
+
+            return Disposition[store];
         }
 
         // The live-prefix rule of a pool both passes use (F's ruling 178): after a Bind its live prefix is its live store's values in
@@ -479,6 +550,14 @@ public partial class KimiLibraryShapeTest
         }
 
         internal static IEnumerable<string> StoresOf(Rule rule) => Disposition.Where(x => x.Value == rule).Select(static x => x.Key);
+
+        // The Type ids a row's key names (a Type prints with its id, `#n`; a number-keyed table's element is its own key).
+        internal static IEnumerable<int> KeyIds(string row)
+        {
+            var key = row[(row.IndexOf(' ', StringComparison.Ordinal) + 1)..];
+            key = key.IndexOf(" = ", StringComparison.Ordinal) is var end and >= 0 ? key[..end] : key;
+            return Regex.Matches(key, "#([0-9]+)").Select(static x => int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture));
+        }
 
         // The dispositions naming no store or field: a store's path from Binding, a number's field of an integer or a tuple of integers.
         internal static IEnumerable<string> Unresolved()

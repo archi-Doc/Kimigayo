@@ -30,7 +30,7 @@ public sealed partial class Binding
     /// <param name="node">The node.</param>
     internal void ClearFailure(Koto node)
     {
-        node.BindingFailure = BindingFailure.None;
+        this.SetRecordedFailure(node, BindingFailure.None);
         this.UnlinkProblems(node);
     }
 
@@ -152,7 +152,7 @@ public sealed partial class Binding
     // first failure, as a Fail does.
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
-        if (node.BindingFailure != BindingFailure.None)
+        if (this.RecordedFailure(node) != BindingFailure.None)
         {
             return this.Fail(node, BindingFailure.TypeMismatch);
         }
@@ -180,7 +180,7 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "Records only at a node whose slot takes the failure (its first), for snapshot 0, until E2's located batch.")]
     private void FailUnsupportedAt(Koto node, SourceSpan part, bool unresolved = false)
     {
-        if (node.BindingFailure != BindingFailure.None)
+        if (this.RecordedFailure(node) != BindingFailure.None)
         {
             this.Fail(node, BindingFailure.Unsupported, unresolved);
             return;
@@ -240,7 +240,7 @@ public sealed partial class Binding
     // The problem of the node's slot, the issue's bridge to its facts; -1 without one.
     [Transitional("R7", Reason = "Finds the slot's issue among a node's problems until the slot's reads and Binding.Issues go (R7-E5).")]
     private int SlotProblem(Koto node)
-        => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(node.BindingFailure), 0);
+        => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), 0);
 
     // The part of a located problem (its Span fact), or null for no problem.
     private SourceSpan? LocatedPart(int problem)
