@@ -8,11 +8,16 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<PairCase> adaptationCaseScratch = new();
 
+    // The plan of a conversion bound as a case adaptation (BindCaseAdaptation below) of the current pass (IsCurrent); null for any other
+    // conversion.
+    internal ExplicitAdaptationPlan? AdaptationOf(ConversionKoto conversion)
+        => this.IsCurrent(conversion) && conversion.ConversionBinding == ConversionBinding.CaseAdaptation ? conversion.AdaptationStorage : null;
+
     // SPEC 13.5.6, 15.1.5, 8.14: whether an explicit adaptation borrows its operand exclusively (AdaptationBorrow), a case adaptation in
     // some admitted case: every case of its plan holds, and a case whose target is an exclusive reference or object view borrows there.
     internal bool BorrowsExclusively(ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.CaseAdaptation
-            ? conversion.Adaptation is { } plan &&
+            ? this.AdaptationOf(conversion) is { } plan &&
                 (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion)) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
             : conversion.BoundType is { } target && AdaptationBorrow(conversion.ConversionBinding, target) == true;
 

@@ -212,7 +212,7 @@ internal sealed partial class MirBuilder
     // (Fill, DECISIONS R4-M81); an Array's elements moved into the one buffer its aggregate allocates (DECISIONS R5-M129).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
-        var construction = BoundEnumConstruction.Of(node);
+        var construction = BoundEnumConstruction.Of(compilation.Binding, node);
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
@@ -313,7 +313,7 @@ internal sealed partial class MirBuilder
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
         {
             var property = KotoHelper.UnwrapParentheses(assignment.Left);
-            if ((CallPlan.Of(property, 1) ?? CallPlan.Of(property)) is { } setter)
+            if ((CallPlan.Of(compilation.Binding, property, 1) ?? CallPlan.Of(compilation.Binding, property)) is { } setter)
             {
                 this.Call(destination, setter, assignment, assignment.Right);
             }

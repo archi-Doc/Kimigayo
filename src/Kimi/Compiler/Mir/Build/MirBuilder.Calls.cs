@@ -20,8 +20,8 @@ internal sealed partial class MirBuilder
     // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1); a direct line's is Line's (SPEC 22.7).
     private void Call(MirPlace destination, Koto node)
     {
-        var call = (ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node))!;
-        if (call.ArgumentOperations is [{ Source: { } text }] && HirTables.Op(text) == HirOp.Interpolation && ExpansionPlan.Of(text) is { Direct: true })
+        var call = (ExpansionPlan.Of(compilation.Binding, node) is { } plan ? plan.Second : CallPlan.Of(compilation.Binding, node))!;
+        if (call.ArgumentOperations is [{ Source: { } text }] && HirTables.Op(text) == HirOp.Interpolation && ExpansionPlan.Of(compilation.Binding, text) is { Direct: true })
         {
             this.Line(destination, call, node, text);
             return;

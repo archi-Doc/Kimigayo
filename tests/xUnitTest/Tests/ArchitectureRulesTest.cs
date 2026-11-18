@@ -65,9 +65,9 @@ public class ArchitectureRulesTest
     // R6-check H14 (D7): a read or write of a Koto semantic slot, as a member access or as a property pattern's name, nested or not (a
     // static `BoundType.X` argument is neither).
     private const string SemanticSlotReads = @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:" + SemanticSlots + @")(?:\.\w+)*\s*:";
-    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=11;" +
-        "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;Koto/Expressions/InvocationKoto.cs=4;" +
-        "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=4";
+    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=5;" +
+        "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;" +
+        "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=3";
 
     // DECISIONS R5-M162 and R5-M163 (plan §4.9 row G10, §5.4 item 4): the old generator's components R6-gen deleted, their stems
     // included, and the old analysis's instance entry points; the R8 runtime helpers are not among them. A letter in brackets keeps the
@@ -268,8 +268,8 @@ public class ArchitectureRulesTest
     [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
     // PLAN G949 Stage 2 (R8-L1 under O-381 (b)): a reader reaches its Binding's facts through its own Binding, never through a node's
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
-    // by file: the route units lower them (U0b-6, U0b-P3) to CodeContext's and the parser's, which R7 owns.
-    [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Binding/Binding.Documentation.cs=1;Compiler/Binding/Binding.Enums.cs=1;Compiler/Binding/Binding.Retention.cs=1;Compiler/Binding/CallPlan.cs=5;Compiler/Binding/ExpansionPlan.cs=1;Compiler/Binding/HirTables.cs=2;Compiler/Binding/TyCtxt.cs=1;Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
+    // by file: the route units lower them (U0b-6) to CodeContext's and the parser's, which R7 owns.
+    [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Binding/Binding.Documentation.cs=1;Compiler/Binding/Binding.Retention.cs=1;Compiler/Binding/CallPlan.cs=3;Compiler/Binding/TyCtxt.cs=1;Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

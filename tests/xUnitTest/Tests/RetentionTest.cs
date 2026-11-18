@@ -716,7 +716,7 @@ public sealed partial class RetentionTest
             "let ku = k@uniq\n_ = ku(a@ref)\n");
         Assert.Equal(
             [false, false, false, true, true, true],
-            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => CallPlan.Of(x, 0)).OfType<CallPlan>()
+            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => CallPlan.Of(c.Binding, x, 0)).OfType<CallPlan>()
                 .Where(static x => x.Kind == CalleeKind.Value).Select(x => c.Types.HasReceiverInput(x.CalleeType)).ToArray());
 
         var m = MirBuildTest.Compile("func marked<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
@@ -1598,7 +1598,7 @@ public sealed partial class RetentionTest
         var calls = 0;
         foreach (var node in KotoTree.Walk(module.RootKoto))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } call; i++, calls++)
+            for (var i = 0; CallPlan.Of(c.Binding, node, i) is { } call; i++, calls++)
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
@@ -1693,7 +1693,7 @@ public sealed partial class RetentionTest
             c.Binding.Bind(BindingMode.Final);
             foreach (var (node, definition) in calls)
             {
-                var call = CallPlan.Of(node, 0)!;
+                var call = CallPlan.Of(c.Binding, node, 0)!;
                 _ = call.Kind == CalleeKind.Value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, definition)
                     : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
             }
@@ -1809,12 +1809,12 @@ public sealed partial class RetentionTest
 
     // Each call of a named callee under its substitution, in its definition, in source order; a loop's entry is its call (SPEC 14.6.2).
     private static string[] Calls(Compilation c, string name)
-        => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
+        => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
             .Select(x => Show(c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(x.Node)))).ToArray();
 
     // Each Value call over its declared Callable signature, in its definition, in source order.
     private static string[] ValueCalls(Compilation c)
-        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
+        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
             .Select(x => Show(c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(x.Node)))).ToArray();
 
     // A retention as the records spell it (DECISIONS R4-M154): the result's kinds and whether it is untied, then per output it writes its

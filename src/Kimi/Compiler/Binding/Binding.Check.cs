@@ -61,14 +61,14 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(node, invalidTarget);
             }
-            else if (node is InvocationKoto { BoundCall: { } } synthesized &&
+            else if (node is InvocationKoto synthesized && this.CallOf(synthesized) is not null &&
                 this.synthesizedCalls?.GetValueOrDefault(synthesized) is { BindingFailure: not BindingFailure.None } consumer)
             {
                 // SPEC 23.1.2: a synthesized call is its consumer's witness call (an iteration's entry or step, an index, a view, a range, a
                 // requirement, a write); a consumer that has already failed leaves the call resting on it.
                 this.CompleteDependent(synthesized, consumer);
             }
-            else if (node is InvocationKoto { BoundCall: { } call })
+            else if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call)
             {
                 this.RequireClauses(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
             }

@@ -1,9 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns construction and validation of one MIR body per definition or closure.
-// Input: syntax children, published HIR/plans, declaration views, TyCtxt and one Binding view, the guessed completion nodes of a require's
-// failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated MirProgram: the bodies of a root range built
-// eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each with its program pass where it is built.
+// Input: syntax children, published HIR/plans, declaration views, TyCtxt; the compilation's Binding as the reader the plan entries take
+// (CallPlan.Of, ExpansionPlan.Of, BoundMatch.Of, BoundEnumConstruction.Of, PairBinder.Collect, AdtDef.ReceiverType), and one Binding view,
+// the guessed completion nodes of a require's failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated
+// MirProgram: the bodies of a root range built eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each
+// with its program pass where it is built.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
 // Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).

@@ -157,7 +157,7 @@ public sealed partial class Binding
     // `get`'s result (the read Type).
     private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
         => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
-            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind)) is { } setter && this.CallOf(setter) is { ArgumentOperations.Length: > 0 } call
                 ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)

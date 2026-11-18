@@ -103,7 +103,7 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        var calls = Reachable(c.Kotonoha).OfType<InvocationKoto>().Select(static x => CallPlan.Of(x)).Where(x => ReferenceEquals(x?.Target.Declaration, f)).ToArray();
+        var calls = Reachable(c.Kotonoha).OfType<InvocationKoto>().Select(x => CallPlan.Of(c.Binding, x)).Where(x => ReferenceEquals(x?.Target.Declaration, f)).ToArray();
         Assert.Equal([BoundType.I32, BoundType.Boolean], calls.Select(x => c.Types.Apply(DefaultDecl.Of(x!.DefaultArguments[0]).Parameter(1), c.Types.SubstOf(x)!)));
         var declaration = DefaultDecl.Of(calls[0]!.DefaultArguments[0]);
         Assert.Equal((f, 1, HirOp.Call), (declaration.Function, declaration.Index, HirTables.Op(declaration.Expression)));
@@ -129,8 +129,8 @@ public sealed partial class HirFormsTest
         {
             var invocation = Assert.IsType<InvocationKoto>(macro.Operand);
             Assert.Equal((HirOp.Call, HirOp.Syntax), (HirTables.Op(macro), HirTables.Op(invocation)));
-            Assert.Same(invocation.CallOf(), CallPlan.Of(macro));
-            Assert.Null(CallPlan.Of(macro, 1));
+            Assert.Same(invocation.CallOf(), CallPlan.Of(c.Binding, macro));
+            Assert.Null(CallPlan.Of(c.Binding, macro, 1));
             Assert.Equal(HirCompletion.Diverges, HirTables.CompletionOf(macro));
             Assert.Equal(HirCompletion.Unset, HirTables.CompletionOf(invocation));
             Assert.Equal(HirAcquire.Unset, HirTables.AdjustOf(invocation).Acquire);
@@ -454,7 +454,7 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("var m = ", StringComparison.Ordinal);
-        var plans = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && ExpansionPlan.Of(x) is not null).Select(x => (Node: x, Plan: ExpansionPlan.Of(x)!.Value))
+        var plans = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && ExpansionPlan.Of(c.Binding, x) is not null).Select(x => (Node: x, Plan: ExpansionPlan.Of(c.Binding, x)!.Value))
             .Select(x => $"{Source.Substring(x.Node.Span.Start, x.Node.Span.Length)} {x.Plan.Kind} {x.Plan.First?.Target.Name}/{x.Plan.Second?.Target.Name} {x.Plan.Evaluated} {x.Plan.Direct}");
         string[] expected =
         [
@@ -466,7 +466,7 @@ public sealed partial class HirFormsTest
         Assert.Equal(expected, plans);
         var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
         Assert.NotNull(BoundMatch.Of(c.Binding, loop));
-        Assert.Equal(("intoIterator", "next"), (CallPlan.Of(loop)!.Target.Name, CallPlan.Of(loop, 1)!.Target.Name));
+        Assert.Equal(("intoIterator", "next"), (CallPlan.Of(c.Binding, loop)!.Target.Name, CallPlan.Of(c.Binding, loop, 1)!.Target.Name));
     }
 
     // SPEC 4.6.4, 14.6.2: a ResolvedRange Subject's mode selects its entry, as every Iterable's: a Shared Subject (a Place, a
@@ -487,7 +487,7 @@ public sealed partial class HirFormsTest
         Assert.Empty(Problems(c.Kotonoha));
         var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
         var subject = HirTables.AdjustOf(loop.Iterable);
-        Assert.Equal(expected, $"{CallPlan.Of(loop)?.Target.Name} {CallPlan.Of(loop, 1)?.Target.Name} {c.Binding.ReadsReferent(loop.Iterable)} {subject.Acquire}/{subject.Adaptation}");
+        Assert.Equal(expected, $"{CallPlan.Of(c.Binding, loop)?.Target.Name} {CallPlan.Of(c.Binding, loop, 1)?.Target.Name} {c.Binding.ReadsReferent(loop.Iterable)} {subject.Acquire}/{subject.Adaptation}");
         Assert.NotNull(BoundMatch.Of(c.Binding, loop));
     }
 
@@ -620,8 +620,8 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         Assert.Empty(Problems(c.Kotonoha));
         var start = Source.IndexOf("func write", StringComparison.Ordinal);
-        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && x.Span.Start >= start && ExpansionPlan.Of(x)?.Second is not null)
-            .Select(x => $"{Line(x.Span.Start)} {ExpansionPlan.Of(x)!.Value.Second!.Target.Name}");
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && x.Span.Start >= start && ExpansionPlan.Of(c.Binding, x)?.Second is not null)
+            .Select(x => $"{Line(x.Span.Start)} {ExpansionPlan.Of(c.Binding, x)!.Value.Second!.Target.Name}");
         string[] expected =
         [
             "entries[1]@follow = 99 indexUniq", "entries[1]@follow += 1 indexUniq", "let child = entries[1]@follow@uniq indexUniq", "change(entries[1]) indexUniq",
@@ -722,7 +722,7 @@ public sealed partial class HirFormsTest
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ReferenceRead), HirTables.PlanOf(updated).Adjust);
         var reborrowed = Reachable(c.Kotonoha).Single(x => Text(x) == "value" && Line(x.Span.Start) == "func reborrows(value: uniq/Meter) => change(value)" && x.Span.Start > Source.IndexOf("change(value)", StringComparison.Ordinal));
         Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None, ExclusiveMode: true), HirTables.AdjustOf(reborrowed));
-        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && x.Span.Start >= start).Select(static x => ExpansionPlan.Of(x)!.Value.Second!.Target.Name);
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && x.Span.Start >= start).Select(x => ExpansionPlan.Of(c.Binding, x)!.Value.Second!.Target.Name);
         Assert.Equal(["indexUniq", "index"], selections);
 
         static string Text(Koto node) => Source.Substring(node.Span.Start, node.Span.Length);
@@ -820,11 +820,11 @@ public sealed partial class HirFormsTest
             .Select(static x => x.Name + ":" + string.Join(',', ((FunctionKoto)x.Declaration).Parameters.Select((_, i) => CallPlan.Parameter(x, i)!.Name)));
         Assert.Equal(["item.Get:", "item.Set:value", "level.Get:self", "level.Set:self,value", "doubled.Get:self", "doubled.Set:self,value"], accessors);
         var tally = nodes.OfType<FunctionKoto>().Single(static x => x.IsImplicitConstructor);
-        Assert.Equal(("Counter", 1), (CallPlan.Of(tally.BaseInitializer!)!.Target.Scope.Owner.SymbolOf()!.Name, AdtDef.Count(AdtDef.ReceiverType(c.Binding, tally)!)));
+        Assert.Equal(("Counter", 1), (CallPlan.Of(c.Binding, tally.BaseInitializer!)!.Target.Scope.Owner.SymbolOf()!.Name, AdtDef.Count(AdtDef.ReceiverType(c.Binding, tally)!)));
         Assert.Equal(HirOp.Literal, HirTables.Op(AdtDef.Field(AdtDef.ReceiverType(c.Binding, tally)!, 0).InitializerKoto!));
         BuiltinForm[] forms = [BuiltinForm.IsEmpty, BuiltinForm.Capacity, BuiltinForm.Indices];
         Assert.Equal(forms, nodes.Select(static x => Binding.FormOf(x)).Where(static x => x != BuiltinForm.None));
-        Assert.Equal("Some", BoundEnumConstruction.Of(nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
+        Assert.Equal("Some", BoundEnumConstruction.Of(c.Binding, nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
@@ -1022,7 +1022,7 @@ public sealed partial class HirFormsTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
-        var selections = Reachable(c.Kotonoha).Where(static x => x is IndexKoto && ExpansionPlan.Of(x)?.Second is not null).Select(static x => ExpansionPlan.Of(x)!.Value.Second!.Target.Name);
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && ExpansionPlan.Of(c.Binding, x)?.Second is not null).Select(x => ExpansionPlan.Of(c.Binding, x)!.Value.Second!.Target.Name);
         Assert.Equal(Enumerable.Repeat("index", 5), selections);
     }
 
@@ -1060,8 +1060,8 @@ public sealed partial class HirFormsTest
         Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
         var c = MinimalEmissionTest.Analyze(source);
         HirTables.Publish(c);
-        var selection = Reachable(c.Kotonoha).Single(static x => x is IndexKoto { Parent: ConversionKoto } && ExpansionPlan.Of(x)?.Second is not null);
-        Assert.Equal("indexUniq", ExpansionPlan.Of(selection)!.Value.Second!.Target.Name);
+        var selection = Reachable(c.Kotonoha).Single(x => x is IndexKoto { Parent: ConversionKoto } && ExpansionPlan.Of(c.Binding, x)?.Second is not null);
+        Assert.Equal("indexUniq", ExpansionPlan.Of(c.Binding, selection)!.Value.Second!.Target.Name);
     }
 
     // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that

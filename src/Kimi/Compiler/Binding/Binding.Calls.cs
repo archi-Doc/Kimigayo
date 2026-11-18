@@ -8,6 +8,9 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
+    // The plan of a named callee's call (CallStorage.Set below) of the current pass (IsCurrent); null before selection and for a value call.
+    internal CallPlan? CallOf(InvocationKoto call) => this.IsCurrent(call) && call.CallStorage is { Kind: not CalleeKind.Value } plan ? plan : null;
+
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.1, 8.6.4): a call bound inside

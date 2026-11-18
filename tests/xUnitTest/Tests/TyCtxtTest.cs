@@ -1396,7 +1396,7 @@ public sealed partial class TyCtxtTest
 
         // copy, count, first, same (a requirement, whose Self the composition closes) and get bind a Type, a length, an Origin, Self and
         // a declaring Type of the instance.
-        var composed = NestedCalls(direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!).Subst!)).ToArray();
+        var composed = NestedCalls(direct.Binding, direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!).Subst!)).ToArray();
         Assert.Equal(["i32", "bool"], composed.Where(static x => x.Name == "copy").Select(static x => x.Subst.Types[0]!.Name));
         Assert.Equal(3, composed.Single(static x => x.Name == "count").Subst.Lengths[0]!.Value);
         Assert.Contains(composed.Single(static x => x.Name == "first").Subst.Origins.ToArray().Concat(composed.Single(static x => x.Name == "first").Subst.Inputs.ToArray()), static x => x is not null);
@@ -1696,16 +1696,16 @@ public sealed partial class TyCtxtTest
     {
         var c = SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto))
-            .SelectMany(static x => Enumerable.Range(0, 8).Select(i => (Node: x, Ordinal: i)).TakeWhile(static y => CallPlan.Of(y.Node, y.Ordinal) is not null))
-            .Where(x => c.Types.SubstOf(CallPlan.Of(x.Node, x.Ordinal)!) is not null).ToArray();
-        var substs = calls.Select(x => c.Types.SubstOf(CallPlan.Of(x.Node, x.Ordinal)!)).ToArray();
+            .SelectMany(x => Enumerable.Range(0, 8).Select(i => (Node: x, Ordinal: i)).TakeWhile(y => CallPlan.Of(c.Binding, y.Node, y.Ordinal) is not null))
+            .Where(x => c.Types.SubstOf(CallPlan.Of(c.Binding, x.Node, x.Ordinal)!) is not null).ToArray();
+        var substs = calls.Select(x => c.Types.SubstOf(CallPlan.Of(c.Binding, x.Node, x.Ordinal)!)).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
             for (var i = 0; i < calls.Length; i++)
             {
-                changed += ReferenceEquals(c.Types.SubstOf(CallPlan.Of(calls[i].Node, calls[i].Ordinal)!), substs[i]) ? 0 : 1;
+                changed += ReferenceEquals(c.Types.SubstOf(CallPlan.Of(c.Binding, calls[i].Node, calls[i].Ordinal)!), substs[i]) ? 0 : 1;
             }
         }));
         Assert.Equal(0, changed);
@@ -1718,7 +1718,7 @@ public sealed partial class TyCtxtTest
     public void WarmComposeIsTheSameAndAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(ComposeSource);
-        var pairs = NestedCalls(c.Kotonoha).ToArray();
+        var pairs = NestedCalls(c.Binding, c.Kotonoha).ToArray();
         var composed = pairs.Select(x => c.Types.Compose(c.Types.SubstOf(x.Inner)!, c.Types.SubstOf(x.Outer)!).Subst).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -1932,17 +1932,17 @@ public sealed partial class TyCtxtTest
         ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(types, type, x)).Append(AdtDef.Base(types, type)) : AdtDef.CaseTypes(types, type) ?? [];
 
     // Each call in a default a call omits, with that call.
-    private static IEnumerable<(CallPlan Inner, CallPlan Outer)> NestedCalls(Kotonoha module)
+    private static IEnumerable<(CallPlan Inner, CallPlan Outer)> NestedCalls(Binding binding, Kotonoha module)
     {
         foreach (var node in KotoTree.Walk(module.RootKoto))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } outer; i++)
+            for (var i = 0; CallPlan.Of(binding, node, i) is { } outer; i++)
             {
                 foreach (var omitted in outer.DefaultArguments.ToArray())
                 {
                     foreach (var nested in KotoTree.Walk(DefaultDecl.Of(omitted).Expression))
                     {
-                        for (var k = 0; CallPlan.Of(nested, k) is { } inner; k++)
+                        for (var k = 0; CallPlan.Of(binding, nested, k) is { } inner; k++)
                         {
                             if (inner.Kind != CalleeKind.Value)
                             {
@@ -1960,7 +1960,7 @@ public sealed partial class TyCtxtTest
     private static int ComposeProblems(Compilation c, Kotonoha module, List<string> problems)
     {
         var count = 0;
-        foreach (var (inner, outer) in NestedCalls(module))
+        foreach (var (inner, outer) in NestedCalls(c.Binding, module))
         {
             count++;
             var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst;
@@ -2021,7 +2021,7 @@ public sealed partial class TyCtxtTest
         var calls = 0;
         foreach (var node in KotoTree.Walk(root))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+            for (var i = 0; CallPlan.Of(c.Binding, node, i) is { } call; i++)
             {
                 if (c.Types.SubstOf(call) is { } subst && subst.Target.Declaration is FunctionKoto callee)
                 {
@@ -2079,7 +2079,7 @@ public sealed partial class TyCtxtTest
         var bodies = new Dictionary<FunctionKoto, CallPlan[]>();
         foreach (var node in KotoTree.Walk(module.RootKoto))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } outer; i++)
+            for (var i = 0; CallPlan.Of(c.Binding, node, i) is { } outer; i++)
             {
                 if (outer.Kind != CalleeKind.Function || outer.Target.Declaration is not FunctionKoto callee || !c.Types.Instantiates(outer.Target))
                 {
@@ -2089,7 +2089,7 @@ public sealed partial class TyCtxtTest
                 if (!bodies.TryGetValue(callee, out var inner))
                 {
                     inner = KotoTree.Walk(callee).Where(x => ReferenceEquals(Binder(x), callee))
-                        .SelectMany(static x => Enumerable.Range(0, 8).Select(k => CallPlan.Of(x, k)).TakeWhile(static y => y is not null).OfType<CallPlan>())
+                        .SelectMany(x => Enumerable.Range(0, 8).Select(k => CallPlan.Of(c.Binding, x, k)).TakeWhile(static y => y is not null).OfType<CallPlan>())
                         .Where(static x => x.Kind == CalleeKind.Requirement).ToArray();
                     bodies.Add(callee, inner);
                 }
