@@ -706,12 +706,16 @@ internal sealed partial class MirBorrows
         // A hidden part adds no reach of its own, but the abstract value reaches the holders its Loans and addresses name (SPEC
         // 15.6.4: the named step, R4-M147's; O-312 (a)), never storage the body does not own (PROTOTYPE R1: the Φ_E exclusion): route 1
         // at every hidden key, whatever the key Type's guard (Revision 6, T1); the guard decides only the read-on past the key's own layers.
-        // A call whose writes SPEC states (Composes false: `replace`, `exchange`, `swap`, `Raw.initialize`, 4.6 to 4.9) writes only them.
+        // Past a stepping guard (Through, Named) it is the named step every call takes (R4-M147), a transfer's included; at a None guard the
+        // key's Type holds nothing the call stores, so only the call's own write through the hidden layer reaches a carried holder, which a
+        // call whose writes SPEC states never makes (Composes false: `replace`, `exchange`, `swap`, `Raw.initialize`, 4.6 to 4.9). A Deep or
+        // Limit guard leaves the step undecided, as before (ViaDeep, the Limit).
+        var route1 = guard is MirWrites.Through or MirWrites.Named || (guard == MirWrites.None && (this.Composes || R6StatedCarried));
         if (facts.Hidden && R1NoCarried)
         {
             this.ReadHolder(state[node.Slot], MirWrites.Named);
         }
-        else if (facts.Hidden && !R6GuardFirst && (this.Composes || R6StatedCarried))
+        else if (facts.Hidden && !R6GuardFirst && route1)
         {
             this.HiddenCarried(Placed(state[node.Slot]), node.Key);
             this.HiddenCarried(Shared(state[node.Slot]), node.Key);
