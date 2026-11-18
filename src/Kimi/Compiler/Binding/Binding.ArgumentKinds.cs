@@ -221,14 +221,16 @@ public sealed partial class Binding
     // SPEC 10.5.1 (the owner's O-341 (a)): the one writer that ends Awaits: the selected candidate's defaults resolved the waiting
     // nested call alone (OwnType), so it is no waiting part any more: one that got no Type and no failure of its own (it rests on a
     // part of its own, such as an anonymous function without a Type) is a failed part to its readers (PartFailed), as one with its
-    // own failure already is. A resolution that failed with its own record is final (SPEC 10.5.1: a failure is an error and never
-    // reselects; 23.1.2): it is Invalid, so no later binding at the Type its call fixed (the argument's, a payload's or an element's
-    // completion) retries it and loses its record (PLAN G924, ruling 113 B1).
+    // own failure already is. A failed resolution whose failure is reported, its own record or one it rests on at any depth
+    // (FailureReported), is final (SPEC 10.5.1: a failure is an error and never reselects; 23.1.2): it is Invalid, so the call's
+    // re-check rests on it (FitArgument's rule-W row) and no later binding at the Type its call fixed (the argument's, a payload's or
+    // an element's completion) retries it and loses that record; one resting only on parts without a record stays provisional
+    // (PLAN G924, rulings 113 B1 and 115 B2).
     private void EndAwait(Koto part)
     {
         ref var record = ref this.PartRecord(part);
         record = record with { Relation = record.Relation & ~CallRelation.Awaits };
-        if (KotoHelper.UnwrapParentheses(part) is { BoundType: null, BindingFailure: not BindingFailure.None } failed)
+        if (KotoHelper.UnwrapParentheses(part) is { BoundType: null } failed && this.FailureReported(failed))
         {
             failed.BindingState = BindingState.Invalid;
         }

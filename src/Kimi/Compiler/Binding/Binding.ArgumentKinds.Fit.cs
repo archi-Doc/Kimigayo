@@ -27,10 +27,11 @@ public sealed partial class Binding
         {
             case var _ when node.BindingState == BindingState.Invalid && this.PartFailed(node):
                 // SPEC 23.1.2 (DECISIONS BU-43, U2.1 r2-3, BU-79): a failed argument whose failure is final (Invalid: one that kept its
-                // Type, or a nested call the defaults resolved alone, EndAwait) fits every candidate the evidence walk keeps, with the
-                // operation its kept Type, if any, takes at the parameter by structure; its record stays its own, and the call rests on
-                // it. Rule W at the argument's top. A provisional failure (Unresolved), such as an operator's anonymous function whose
-                // omitted header rests on its call, is completed by the call and stays FitTyped's (C19's reason, kept; PLAN G924).
+                // Type, or a nested call the defaults resolved alone whose failure is reported, its own record or one it rests on at any
+                // depth, EndAwait) fits every candidate the evidence walk keeps, with the operation its kept Type, if any, takes at the
+                // parameter by structure; its record stays its own, and the call rests on it. Rule W at the argument's top. A provisional
+                // failure (Unresolved), such as an operator's anonymous function whose omitted header rests on its call, is completed by
+                // the call and stays FitTyped's (C19's reason, kept; PLAN G924, ruling 115).
                 var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
                 operation = new(part, node.BoundType, type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
                 return CandidateApplicability.Applicable;

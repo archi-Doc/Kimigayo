@@ -34,6 +34,8 @@ public partial class ApplicabilityChainRegressionTest
         "func show(x: i32) -> i32 => 0\nfunc show(x: string) -> i32 => 1\nfunc f<T>(a: T, b: Array<T>) -> i32 => 0\n" +
         "func stop() -> Never => $abort(\"stop\")\nfunc make<T>(action: () -> T) -> T => action()\nenum W<T>\n    Make(T, Option<T>)\n    Empty\n";
 
+    private const string WrapOpt = "func wrapOpt<T>(o: Option<T>) -> Option<T> => o@move\n";
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -141,6 +143,12 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData(OwnTypeDeclarations + "let r = mkT(identity(1), Option.None)", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.None")]
     [InlineData(OwnTypeDeclarations + "let w = W.Make(identity(1), mkNone())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
     [InlineData(OwnTypeDeclarations + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet r = mkT2(identity(1), (mkNone(), 2))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+
+    // SPEC 10.5.1, 23.1.2 (PLAN G924, ruling 115 B2): a nested call whose own Type fails only because a part below it failed rests on
+    // that part's record at any depth, inside a Tuple too; its failure is final, and the re-check adds no record.
+    [InlineData(OwnTypeDeclarations + WrapOpt + "let r = mkT(identity(1), wrapOpt(mkNone()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + WrapOpt + "let r = mkT(identity(1), wrapOpt(wrapOpt(mkNone())))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + WrapOpt + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet r = mkT2(identity(1), (wrapOpt(mkNone()), 2))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
     public void NestedInferenceHasOneBoundary(string source, string code, string at)
     {
         var check = DiagnosticCorpus.Check(source);
@@ -190,13 +198,13 @@ public partial class ApplicabilityChainRegressionTest
     public void LiteralDefaultsBindBeforeANestedCallTakesItsOwnType(string source)
         => Assert.True(DiagnosticCorpus.Check(source).Accepted);
 
-    // SPEC 10.5.1 (PLAN G924, ruling 113 B1): the valid twins of NestedInferenceHasOneBoundary's B1 rows generate: a nested call or Case
-    // checked at the Type the defaults or an own Type fixed is completed there; completion skips only a part that failed.
+    // SPEC 10.5.1 (PLAN G924, rulings 113 B1 and 115 B2): the valid twins of NestedInferenceHasOneBoundary's B1 and B2 rows generate: a
+    // nested call or Case checked at the Type the defaults or an own Type fixed is completed there; completion skips only a part that failed.
     [Fact]
     public void ANestedPartCheckedAtTheFixedTypeGenerates()
     {
-        const string Source = OwnTypeDeclarations + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet w = W.Make(1, mkNone())\n" +
-            "require mkT(1, mkNone()) + mkT(identity(1), .None) + mkT2(1, (mkNone(), 2)) == 0 else => $abort(\"own\")";
+        const string Source = OwnTypeDeclarations + WrapOpt + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet w = W.Make(1, mkNone())\n" +
+            "require mkT(1, mkNone()) + mkT(identity(1), .None) + mkT2(1, (mkNone(), 2)) + mkT(1, wrapOpt(mkNone())) == 0 else => $abort(\"own\")";
         ScalarEmissionTest.EmitFixture("ApplicabilityChainOwnTypes", Source, string.Empty);
     }
 
