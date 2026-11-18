@@ -102,7 +102,7 @@ internal sealed partial class MirBuilder
     private MirOperand Reborrowed(MirPlace place, BoundType stored, BoundType? expected, bool input, Koto node, MirPlace? into)
     {
         if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
-            stored.Components is not [var referent] || !MirTypes.Agrees(this.body, named, referent))
+            stored.Components is not [var referent] || !MirTypes.Agrees(compilation.Types, this.body, named, referent))
         {
             this.Record(node, DiagnosticCode.InternalInvariant_Kd);
             var temp = this.Temp(stored, node);
@@ -147,7 +147,7 @@ internal sealed partial class MirBuilder
         var referent = reference.Components is [var target] ? target : null;
         var depth = 0;
         place = referent is null ? place : this.FollowTo(place, referent);
-        for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agrees(this.body, referent, layer);
+        for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agrees(compilation.Types, this.body, referent, layer);
             layer = AdtDef.Base(compilation.Types, layer))
         {
             depth = AdtDef.Base(compilation.Types, layer) is null ? 0 : depth + 1;

@@ -41,7 +41,7 @@ internal sealed partial class MirBuilder
         this.visited.Add(decl, index);
         this.omissions.Add(new(decl, index));
         this.component.Add(index);
-        (this.walker ??= new(this)).Visit(decl.Expression);
+        (this.walker ??= new(this, compilation.Binding)).Visit(decl.Expression);
         for (int i = start, end = this.edges.Count; i < end; i++)
         {
             int low;
@@ -174,11 +174,11 @@ internal sealed partial class MirBuilder
     // The defaults the calls a default's template builds omit, appended to the edges: none at a node whose call the builder does not build,
     // one the HIR publishes as Syntax (a part replaced, such as the body of a closure Binding failed to define, or covered; its evaluated
     // parts lie below it), Error or Unset (an Opaque value); a closure definition's body is a body of its own (DECISIONS R5-M79).
-    private sealed class Edges(MirBuilder builder) : KotoVisitor
+    private sealed class Edges(MirBuilder builder, Binding binding) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
-            for (var i = 0; HirTables.Op(node) is not (HirOp.Syntax or HirOp.Error or HirOp.Unset) && CallPlan.Of(node, i) is { } call; i++)
+            for (var i = 0; HirTables.Op(node) is not (HirOp.Syntax or HirOp.Error or HirOp.Unset) && CallPlan.Of(binding, node, i) is { } call; i++)
             {
                 foreach (ref readonly var omitted in call.DefaultArguments)
                 {

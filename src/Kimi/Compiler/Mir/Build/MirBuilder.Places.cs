@@ -124,7 +124,7 @@ internal sealed partial class MirBuilder
         }
 
         this.program.LayerWalkWork += type.Height + 1;
-        return MirTypes.Premised(this.body, type);
+        return MirTypes.Premised(compilation.Types, this.body, type);
     }
 
     // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the
@@ -289,7 +289,7 @@ internal sealed partial class MirBuilder
     // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names.
     private MirPlace Referent(Koto node)
     {
-        var call = ExpansionPlan.Of(node)!.Value.Second!;
+        var call = ExpansionPlan.Of(compilation.Binding, node)!.Value.Second!;
         var result = this.Hold(call.ReturnType, node);
         this.Call(result, call, node, first: null);
         return this.body.Project(compilation.Types, this.Made(result), MirProjectionKind.Deref, 0);
