@@ -114,9 +114,9 @@ public sealed partial class Binding
     // (O-363 (a)), which may lie inside its value, so only the region reading decides the condition, and the uses of the compared Type
     // read values (LeavesBodyRows leaves no row their values do not prove), until (a) or (a') designs the region reading at uses. A
     // direction with a fixed shorter end keeps its record: a `let` region outlives nothing its value does not, so the readings agree.
-    // Valid and invalid programs alike, since none differs before the uses of the compared Type (us2n, us2): the invalid us family is
-    // rejected at the comparison, as O-400 (b) decides, by this limit at dev's UnprovenOriginContract_Kd site, not by that record
-    // (the text's "dev's record" described it; record selection, Q13).
+    // Valid and invalid programs alike: no fact at the comparison separates them, since each verdict is decided at the uses of the
+    // compared Type (us2 and us2n are identical through the comparison). So the invalid us family is rejected at the comparison by
+    // this limit at dev's UnprovenOriginContract_Kd site, a record that differs from the one O-400 (b) states (Q13; no acceptance move).
     internal bool ComparedRegionLimit(BoundOrigin longer, BoundOrigin shorter, bool equality, Koto use)
     {
         return Shrinks(longer, shorter) && (!equality || Shrinks(shorter, longer)) &&
