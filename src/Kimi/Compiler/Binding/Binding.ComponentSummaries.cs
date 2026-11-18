@@ -354,7 +354,7 @@ public sealed partial class Binding
         }
 
         this.summaryParts.Set(type, query, true);
-        if (TryLeafCapability(type, IntrinsicKind.Owned, out var leaf))
+        if (this.TryLeafCapability(type, IntrinsicKind.Owned, out var leaf))
         {
             summary.ExcludesOwned |= leaf == ConstraintProof.Refuted; // An Owned leaf is never Error.
             return;
