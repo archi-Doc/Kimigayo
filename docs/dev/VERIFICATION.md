@@ -243,7 +243,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 
 ## Native fixtures
 
-`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to eight workers, and a window's Session runs 16 (DECISIONS Q20); 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit-code and dependency oracles are checked at each level.
+`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit-code and dependency oracles are checked at each level.
 
 Each fixture owns its output names and log. Workers publish status (passed, failed or incomplete), completed optimization levels and per-level execution measurements; the parent waits for every worker, preserves failure logs and fails the step if any fixture fails, is incomplete or has no result. Verify stores per-fixture logs and `results.json` under its evidence directory, with generated binaries under `temp/`. Fixture patterns are still processed in order, and parallelism is bounded within each pattern.
 

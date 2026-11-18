@@ -411,16 +411,18 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Effect: a review finding that rests only on a removed limit is dropped; PLAN rows that rest only on one close (G438).
   - Supersedes in part Q2 (the limits it put in COMPILER_ARCHITECTURE), Q6 (the commit message's length) and Q9 (PD21's no-growth clause for Binding files over the token limit).
 
-- **Q20 One Session per window, more native workers and shared ratchet rows** (2026-11-18, the owner in K's dialog, verbatim
+- **Q20 One Session per window and shared ratchet rows** (2026-11-18, the owner in K's dialog, verbatim
   「推奨どおり（A をすべて実施、B をセッションに伝達、C1〜C4 を採用）で、進めてください」, to the Coordinator's measures C1-C4 after the owner's
-  analysis of 11-18's limiting factors; C4 cancelled by the owner on 2026-11-19, verbatim 「C4はキャンセルします」; [WORKFLOW](WORKFLOW.md) "Sessions", "Windows"; [VERIFICATION](VERIFICATION.md)
+  analysis of 11-18's limiting factors; C4 and C2 cancelled by the owner on 2026-11-19, verbatim 「C4はキャンセルします」 and
+  「ゴメン、ネイティブの並列数を元に戻して。今の状態でも、かなりCPU利用率が高くて、他の作業に支障が出ている。」; [WORKFLOW](WORKFLOW.md) "Sessions", "Windows"; [VERIFICATION](VERIFICATION.md)
   "Feedback and completion", "Native fixtures").
   - Rule 1 (C1): a unit that lands in a window runs no Session of its own. Its checks are VERIFICATION's Unit verification of the
     related checks, with the diagnostic snapshot against the shared base, the relevant native fixtures and milestones selected
     explicitly, and, for a behaviour-preserving claim, the semantic HIR and MIR comparison; the window's Session is its final Session.
     A refresh merge reruns those Unit checks only.
-  - Rule 2 (C2): native fixture workers: `verify.ps1`'s default is up to 8 (was 4); a window's Session runs 16 (was 6), since the
-    window holds new heavy runs.
+  - C2 (native fixture workers 8 by default and 16 in a window) was cancelled before a window used it: at the existing 6 the
+    window's native step already kept the host's CPU busy enough to hinder the owner's other work. The workers stay 4 by default
+    and 6 in a window.
   - Rule 3 (C3): units of one window may share a ratchet or pin test file (`ArchitectureRulesTest`, `KimiLibraryShapeTest`) when they
     change separate named constants or rows and `git merge-tree` merges them cleanly, as PLAN's table end; the window's build and
     Session check the merged file.
@@ -428,8 +430,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     measurement after the restart (contexts 23-31% within 30 minutes) put a handoff every one and a half to two hours. The owner's
     rule of 2026-11-16 stands: handoffs are revised only on the owner's or a USAGE STOP's order.
   - Reason: on 11-18 weekly usage went from 51% to 97% between 15:20 and 22:25 (about 6.5% an hour). Each unit ran a full Session
-    (40 minutes to 2 hours) and its window ran another, and every window from W-253 to W-259 passed on its first run. A library change's
-    native step took about 80 minutes at 4 workers on 32 cores. Three Ready units (R8-X1, G984, R7-N1 c-a) each waited a window
+    (40 minutes to 2 hours) and its window ran another, and every window from W-253 to W-259 passed on its first run. Three Ready units (R8-X1, G984, R7-N1 c-a) each waited a window
     behind one ratchet file in which they change separate constants.
   - Risk accepted: without unit Sessions a window fails more often; a failure that names no unit splits the window in halves
     (WORKFLOW). Base freshness (two windows) is unchanged, since a clean merge broke twice before (W-243, G1-2).

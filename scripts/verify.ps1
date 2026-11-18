@@ -48,7 +48,7 @@ param(
     [switch] $VerifyToolchain,
     # Milestone harnesses run concurrently, each in its own process with its own work directory and log.
     [ValidateRange(1, 2147483647)] [int] $Parallel = [Math]::Min(8, [Environment]::ProcessorCount),
-    [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(8, [Environment]::ProcessorCount),
+    [ValidateRange(1, 2147483647)] [int] $NativeParallel = [Math]::Min(4, [Environment]::ProcessorCount),
     [string] $NativeReuse = '',
     [ValidateRange(1, 2147483647)] [int] $TestParallel = [Math]::Min(8, [Environment]::ProcessorCount)
 )
