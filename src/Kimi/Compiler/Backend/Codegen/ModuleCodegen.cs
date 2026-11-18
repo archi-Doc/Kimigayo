@@ -23,8 +23,10 @@
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection; the test catalog, a test build's cases, identity and verification site
 // numbers (Compilation.Tests, discovered for the version; DECISIONS R5-M136).
-// Output: the complete module written to the caller's writer with what it states for its link (Externals, Libraries; R9-B1), or nothing
-// and the Records of why: InternalInvariant_Kd at a broken input
+// Output: the complete module written to the caller's writer with what it states for its link (Externals, Libraries; R9-B1), which are
+// the module's only after a Write that returned true, until the next Write: a failed Write leaves nothing readable (Externals holds its
+// partial list, Libraries the previous module's), since the generation entry publishes them only for a written module
+// (Compilation.Generated) and a read there without one is a broken contract; or nothing and the Records of why: InternalInvariant_Kd at a broken input
 // contract, an inexact body reaching FunctionCodegen.Write among them (DECISIONS R5-M96, R5-M185); no record only for a broken contract
 // without a subject (an Application's startup that is no generated root), which the caller records. The caller publishes each record
 // keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's one call writer (DECISIONS R5-M89).

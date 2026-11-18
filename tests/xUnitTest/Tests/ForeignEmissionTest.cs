@@ -23,6 +23,9 @@ public class ForeignEmissionTest
             Console.writeLine("same")
         """;
 
+    private const string Encode = "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
+        "public func main()\n    var v: i32 = 0\n    unsafe => v = Native.encode(1)";
+
     [Fact]
     public void KernelImportCallsShareTheRuntimeDeclaration()
     {
@@ -150,6 +153,35 @@ public class ForeignEmissionTest
         Assert.Equal([("?value@@YAHXZ", kind == "import"), ("GetLastError", true)], module.Externals.Select(static x => (x.Symbol, x.DllImport)));
         Assert.Equal(("codec", kind), Assert.Single(module.Libraries, static x => x.Library == "codec"));
         Assert.Contains(("kernel32", "import"), module.Libraries);
+    }
+
+    // R9-B1 (the generation entry's contract): the result exists only for the generation request that wrote the module, until the next
+    // generation request or analysis; a read without one is a broken contract, never a stale or partial list.
+    [Fact]
+    public void GeneratedBeforeAnyGeneration()
+        => Assert.Throws<InvalidOperationException>(() => Analyze(Encode, "static").Generated);
+
+    [Fact]
+    public void GeneratedAfterAFailedGeneration()
+    {
+        var c = Analyze(Encode, "static");
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal("encode", Assert.Single(c.Generated.Externals).Symbol);
+        var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Native").Members.OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single();
+        Assert.True(function.RemoveAttribute(function.AttributeChain!)); // A bodyless function without an import: check rejects it.
+        c.Bind();
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Throws<InvalidOperationException>(() => c.Generated);
+    }
+
+    [Fact]
+    public void GeneratedEndsWithTheNextAnalysis()
+    {
+        var c = Analyze(Encode, "static");
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal("encode", Assert.Single(c.Generated.Externals).Symbol);
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Throws<InvalidOperationException>(() => c.Generated);
     }
 
     [Fact]
