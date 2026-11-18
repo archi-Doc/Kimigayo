@@ -19,6 +19,12 @@ public sealed partial class Binding
     private HirPublisher? hirPublisher;
     private ulong hirVersion;
 
+    // The run whose library pass published the library module (RB1, C-379 F1); 0 before the first.
+    private ulong libraryVersion;
+
+    // The library module's publication version (HirTables.LibraryVersion).
+    internal ulong LibraryVersion => this.libraryVersion;
+
     // The nodes the publisher's jump walk visited (Keeps, DECISIONS BU-106): a scaling check's work measure.
     internal long KeptTargetWork => this.hirPublisher?.TargetWork ?? 0;
 
@@ -27,8 +33,9 @@ public sealed partial class Binding
     // interpolation terms read (DECISIONS R5-M79).
     internal static bool WritesText(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto;
 
-    // Returns the pass the published columns describe (0: none), by which the MIR builder caches its program. A Final pass published
-    // them itself (Check, DECISIONS BU-81); another finished pass publishes here, once.
+    // Returns the pass the published columns of the program pass's modules describe (0: none), by which the MIR builder caches its
+    // program. A Final pass published them itself (Check, DECISIONS BU-81); another finished pass publishes here, once. The library's
+    // module is published by its own pass (PublishLibrary).
     internal ulong PublishHir()
     {
         if (this.running || this.Result == default || this.hirVersion == this.storageVersion)
@@ -38,6 +45,20 @@ public sealed partial class Binding
 
         this.PublishPass();
         return this.hirVersion;
+    }
+
+    // RB1 (PLAN G949 S1-r1b; review-s1r1 Re-check 3; C-379 F1): the library module is published at the end of the pass that binds
+    // it, in every mode, since the program pass empties the per-pass tables the publisher reads for the library's nodes: a Final pass's
+    // Check published it with the pass's modules, another pass publishes it here. Its version is the library's (LibraryVersion), never
+    // hirVersion, which PublishHir compares for the program pass's modules.
+    private void PublishLibrary(Kotonoha library, BindingMode mode)
+    {
+        if (mode != BindingMode.Final)
+        {
+            (this.hirPublisher ??= new(this)).Publish(library.Syntax, library.RootKoto);
+        }
+
+        this.libraryVersion = this.storageVersion;
     }
 
     // The columns of the pass's modules, in their order, from the pass's facts.
@@ -125,7 +146,7 @@ public sealed partial class Binding
 
             // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).
             this.exclusive = claimed || this.ExclusiveUse(node, parent, parentOp, exclusive);
-            Fold(node, op);
+            this.Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
@@ -183,7 +204,7 @@ public sealed partial class Binding
         // a literal its Type does not hold, the operand of a folded wrap conversion or the number under a direct literal's sign, keeps
         // its value modulo 2^N, and a generic literal its value); a fixed-array element's literal position, beside its PlaceShape
         // (SPEC 15.1.3); a Tuple element's position (SPEC 3.2), the integer its Field names.
-        private static void Fold(Koto node, HirOp op)
+        private void Fold(Koto node, HirOp op)
         {
             if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
             {
@@ -194,7 +215,7 @@ public sealed partial class Binding
             }
             else if (node is IndexKoto index && HirTables.PlaceOf(node).Kind == HirPlaceKind.ConstIndex)
             {
-                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(index);
+                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(binding, index);
             }
             else if (op == HirOp.Field && node is MemberAccessKoto { Right: NumberLiteralKoto element } && element.TryGetIntegerMagnitude(out var position))
             {
@@ -235,7 +256,7 @@ public sealed partial class Binding
             },
             HirOp.Field => HirPlaceKind.Field,
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
-            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
+            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector(binding, (IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
             HirOp.Call => ElementAccess.IsUserIndex(binding, node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
             HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, binding.OpOf(inner)),
             _ => HirPlaceKind.Value,

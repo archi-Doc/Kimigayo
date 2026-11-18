@@ -52,7 +52,7 @@ public sealed partial class Binding
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoSelfCapture);
         }
 
-        if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.SelfType(type)) is not { } baseType)
+        if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.types, this.SelfType(type)) is not { } baseType)
         {
             return this.CompleteDependent(reference, structure);
         }

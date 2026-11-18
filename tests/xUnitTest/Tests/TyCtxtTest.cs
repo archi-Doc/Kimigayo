@@ -583,6 +583,29 @@ public sealed partial class TyCtxtTest
         Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
     }
 
+    // PLAN G949 S1-r1b (review-s1r1b C1: v9 through the reader MIR's holding walk uses): a library slot's keepers reach a program's raw
+    // layer through TyCtxt.RawMembers. X's `at` belongs to the borrows X's slot `s` is kept by: `it`, a BorrowingIterator<Counter> during
+    // s, keeps it through the library slot `source`, which the library pass keeps by its `iterator: uniq/I during source` Field, so the
+    // member is Counter's exclusive Loan, after a first and a second Bind. A library slot's list is current by its part's requirement
+    // call, the library pass's; read against the program pass's call instead, it answers no keepers and the member is lost. Labelled from
+    // SPEC first (5.7 Origins, 15.3.5; Counter is an Iterator, so a LendingIterator, as BorrowingIterator requires): valid.
+    [Fact]
+    public void ALibrarySlotsKeepersAreARawLayersMembersAfterEachBind()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self) -> Option<i32> => .None\nstruct X {s}\n    internal let at: raw/u8 during s\n" +
+            "    internal let it: Kimi.Iteration.BorrowingIterator<Counter> during s\nfunc probe(y: uniq/Counter, x: X during y) => ()\n" +
+            "public func main() => ()\n");
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.True((bind == 0 ? c.Binding.Result : c.Bind()).IsComplete, MinimalEmissionTest.Describe(c));
+            var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[1].Type.TypeOf()!;
+            var members = new List<RawMember>();
+            Assert.True(MembersAt(c.Types, holder, 0, [], members));
+            Assert.Equal(["0 Counter True"], members.Select(static x => $"{x.Input} {TyCtxt.Name(x.Referent)} {x.Exclusive}"));
+        }
+    }
+
     // SPEC 5.7 (the final review's R3; DECISIONS BU-24, U2): a keeper reached on many paths is walked once per slot, owner Type, input and
     // mode, so a ladder of n diamonds (D_i keeps its slot through D_(i-1) and through E_(i-1), which keeps it through D_(i-1)) gives D0's
     // one keeper once as a member of the raw layer X stores, not once per path (2^n), and the walk is linear in n.
@@ -643,7 +666,7 @@ public sealed partial class TyCtxtTest
             [HoldStep.Own, HoldStep.Own, HoldStep.Shared, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Own, HoldStep.Own],
             layers.Select(x => types.StoredStep(x.Instance, x.Part, x.Positions)));
         Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
-        Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
+        Assert.All([AdtDef.FieldType(types, p[3], 0)!, AdtDef.CaseTypes(types, p[4])![0]!.Components[0], AdtDef.FieldType(types, p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): a raw layer a Type argument supplies, where the declaration states a
@@ -771,11 +794,11 @@ public sealed partial class TyCtxtTest
         foreach (var holder in p[1..8])
         {
             Assert.Contains(Kept(c, holder), static x => x?.CarriesRawOrigin == true);
-            Assert.DoesNotContain(Stored(holder), static x => x?.CarriesRawOrigin == true);
+            Assert.DoesNotContain(Stored(c.Types, holder), static x => x?.CarriesRawOrigin == true);
         }
 
         var plain = Kept(c, p[8]);
-        Assert.Same(AdtDef.FieldType(p[8], 0), plain[0]);
+        Assert.Same(AdtDef.FieldType(c.Types, p[8], 0), plain[0]);
         var failed = MirBuildTest.Compile("struct Bad<P>\n    public var v: P\n    public var m: Missing\nenum E<P>\n    A(Missing, P)\n    B(P)\n" +
             "func f(x: uniq/i32, b: Bad<raw/u8 during x>, e: E<raw/u8 during x>) => ()\n");
         Assert.False(failed.Binding.Result.IsComplete);
@@ -789,7 +812,7 @@ public sealed partial class TyCtxtTest
         {
             var parts = c.Types.StoredParts(holder, out var parent).ToArray();
             BoundType?[] kept = AdtDef.IsStruct(holder) ? [.. parts, parent] : parts;
-            var erased = Stored(holder).ToArray();
+            var erased = Stored(c.Types, holder).ToArray();
             Assert.Equal(erased.Length, kept.Length);
             for (var i = 0; i < kept.Length; i++)
             {
@@ -817,7 +840,7 @@ public sealed partial class TyCtxtTest
         Assert.Equal(
             (HoldStep.Exclusive, false, false),
             (types.StoredStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), MembersAt(types, wrap, 0, [], members)));
-        Assert.Equal(HoldStep.Address, types.StoredStep(AdtDef.FieldType(p[1], 0)!, 0, []));
+        Assert.Equal(HoldStep.Address, types.StoredStep(AdtDef.FieldType(c.Types, p[1], 0)!, 0, []));
         Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
         var option = Kept(9);
         var some = Array.FindIndex(option.Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 });
@@ -829,7 +852,7 @@ public sealed partial class TyCtxtTest
             layers.Select(x => $"{types.StoredStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
                 $"{MembersAt(types, x.Instance, x.Part, x.Positions, members)}"));
         Assert.Empty(members);
-        Assert.Same(AdtDef.FieldType(p[13], 0), Kept(13));
+        Assert.Same(AdtDef.FieldType(c.Types, p[13], 0), Kept(13));
         (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
         Assert.All(broken, x => Assert.Contains(
             "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
@@ -877,9 +900,9 @@ public sealed partial class TyCtxtTest
                 "raw/u8 True", "raw/u8 False", "raw/u8 True", "Wrapping<i32> False",
             ],
             holders.Select(x => $"{TyCtxt.Name(Kept(x))} {TyCtxt.RawStated(Kept(x))}"));
-        Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(x, 0)));
-        Assert.All(holders, x => Assert.Same(AdtDef.FieldType(x, 0), c.Binding.StoredType(x.Symbol!.Adt!.Fields[0], x)));
-        Assert.All(holders, x => Assert.False(AdtDef.FieldType(x, 0)!.HasAbstractPart));
+        Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(c.Types, x, 0)));
+        Assert.All(holders, x => Assert.Same(AdtDef.FieldType(c.Types, x, 0), c.Binding.StoredType(x.Symbol!.Adt!.Fields[0], x)));
+        Assert.All(holders, x => Assert.False(AdtDef.FieldType(c.Types, x, 0)!.HasAbstractPart));
         var payload = types.StoredParts(u[1], out _)[Array.FindIndex(u[1].Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 })]!;
         Assert.Equal("(raw/u8) True", $"{TyCtxt.Name(payload)} {TyCtxt.RawStated(payload.Components[0])}");
         Assert.Equal(BoundTypeKind.AssociatedProjection, Kept(u[0]).Kind);
@@ -1010,7 +1033,7 @@ public sealed partial class TyCtxtTest
         Assert.Same(p["wrap"], Part(p["outer"], 0));
         foreach (var holder in p.Values.Where(static x => AdtDef.IsStruct(x) || AdtDef.IsEnum(x)))
         {
-            var erased = Stored(holder).ToArray();
+            var erased = Stored(c.Types, holder).ToArray();
             var parts = types.StoredParts(holder, out var parent).ToArray();
             BoundType?[] kept = AdtDef.IsStruct(holder) ? [.. parts, parent] : parts;
             Assert.Equal(erased.Length, kept.Length);
@@ -1279,7 +1302,7 @@ public sealed partial class TyCtxtTest
         var heights = new List<int> { n.Height };
         for (var step = 0; step < 3; step++)
         {
-            var next = AdtDef.FieldType(n, 0)!;
+            var next = AdtDef.FieldType(c.Types, n, 0)!;
             n = next.Components[0].Components[0];
             Assert.Equal(n.Height + 2, next.Height);
             heights.Add(n.Height);
@@ -1685,7 +1708,7 @@ public sealed partial class TyCtxtTest
         var c = MirBuildTest.Compile("enum E\n    A(Missing)\n    B(i32)\n    C\nenum G<T>\n    A(Missing)\n    B(rc/G<(T, T)>)\nfunc f(e: E, g: G<i32>) => ()\n");
         Assert.False(c.Binding.Result.IsComplete);
         var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
-        Assert.Equal([null, c.Types.Tuple([BoundType.I32]), c.Types.Tuple([])], AdtDef.CaseTypes(parameters[0]) ?? []);
+        Assert.Equal([null, c.Types.Tuple([BoundType.I32]), c.Types.Tuple([])], AdtDef.CaseTypes(c.Types, parameters[0]) ?? []);
         Assert.Equal([Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], parameters.Select(c.Binding.PrepareTypeStorage));
     }
 
@@ -1920,7 +1943,7 @@ public sealed partial class TyCtxtTest
             if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
             {
                 instances.Add(type);
-                if (!Stored(type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types.Erase(type))))
+                if (!Stored(types, type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types, types.Erase(type))))
                 {
                     problems.Add(TyCtxt.Name(type));
                 }
@@ -1928,8 +1951,8 @@ public sealed partial class TyCtxtTest
         }
     }
 
-    private static IEnumerable<BoundType?> Stored(BoundType type) => AdtDef.IsStruct(type)
-        ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(type, x)).Append(AdtDef.Base(type)) : AdtDef.CaseTypes(type) ?? [];
+    private static IEnumerable<BoundType?> Stored(TyCtxt types, BoundType type) => AdtDef.IsStruct(type)
+        ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(types, type, x)).Append(AdtDef.Base(types, type)) : AdtDef.CaseTypes(types, type) ?? [];
 
     // Each call in a default a call omits, with that call.
     private static IEnumerable<(CallPlan Inner, CallPlan Outer)> NestedCalls(Kotonoha module)

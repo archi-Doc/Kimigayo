@@ -171,8 +171,8 @@ internal sealed partial class MirValidator
 
         // The Type of an aggregate's operand, as its shape (Shape) gives it: its element, or the base, then the Fields of its parts.
         private readonly BoundType? Component(in AggregateShape shape, int index) => shape.Element ?? (shape.Base is null
-            ? body.ProjectedType(shape.Parts, MirProjectionKind.Field, index)
-            : index == 0 ? shape.Base : body.ProjectedType(shape.Parts, MirProjectionKind.Field, index - 1));
+            ? body.ProjectedType(types, shape.Parts, MirProjectionKind.Field, index)
+            : index == 0 ? shape.Base : body.ProjectedType(types, shape.Parts, MirProjectionKind.Field, index - 1));
 
         // SPEC 8.14: an Adapt acquires its operand by value, a Place's Copy or a temporary's Move, beside the token of Binding's source Type,
         // into its target Type. A Place or a constant out of range is the walk's finding.
@@ -253,7 +253,7 @@ internal sealed partial class MirValidator
 
             if (rvalue.Kind == MirRvalueKind.Aggregate)
             {
-                var shape = Shape(rvalue); // Its Count is the operands' (Rvalue's Arity).
+                var shape = this.Shape(rvalue); // Its Count is the operands' (Rvalue's Arity).
                 for (var i = 0; i < operands.Length; i++)
                 {
                     this.Agree(this.Component(shape, i), this.TypeOf(operands[i]));

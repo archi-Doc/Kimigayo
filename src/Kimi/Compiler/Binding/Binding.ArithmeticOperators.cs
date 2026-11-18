@@ -216,7 +216,7 @@ public sealed partial class Binding
             {
                 if (identities[i].Contract.Type is { } reference && this.StoredType(reference, self) is { } bound)
                 {
-                    Add(this.BoundContractReference(bound), identities[i].DirectClause ?? (Koto)identities[i].Paths[0].Declaration);
+                    Add(this.BoundContractReference(bound), identities[i].DirectClause ?? (Koto)this.impls.PathsOf(identities[i])[0].Declaration);
                 }
             }
         }
@@ -230,7 +230,7 @@ public sealed partial class Binding
             if (other is not null)
             {
                 var expected = candidate.Type!.Components[0];
-                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !FitsStructuralPart(counterpart, expected))
+                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !this.FitsStructuralPart(counterpart, expected))
                 {
                     continue;
                 }

@@ -316,6 +316,7 @@ public sealed partial class Binding
                 this.RegisterConformances();
                 this.BindCopyDeclarations();
                 this.BindConditionalDeclarations(false);
+                this.impls.Advance(ImplTable.AdmissionPoint.ConditionalClauses); // Point 2 (rule (a)).
                 this.RegisterInheritedConformances();
             }
         }
@@ -341,12 +342,13 @@ public sealed partial class Binding
         this.ExpandContractPremises();
         this.PublishSourceStates();
         this.PrepareAssociatedBindings();
+        this.impls.Advance(ImplTable.AdmissionPoint.AssociatedBindings); // Point 3 (rule (a)).
         this.bindingConstraintTypes = false;
         this.ValidateConstraintProjectionAccess();
     }
 
     // A clause waits for the conformances when it names an associated projection (SPEC 8.5, 15.3.1), except a conformance declaration
-    // (DeclaresConformance): RegisterConformances registers it after pass 0, so it binds in pass 0 (conformancesRegistered). Each clause is
+    // (DeclaresConformance): RegisterConformances registers it after pass 0, so it binds in pass 0 (point 1, ImplTable.Reached). Each clause is
     // decided once per Bind run, before any Constraint binds: the query's TypeName lookups publish import and qualifier facts as every
     // lookup does, and a lookup through a base clause not ready yet is an early read (TypeName's note) that VerifyEarlyReads evaluates
     // again, running the declarations once more on a different answer, so the decision cannot disagree with the final names
@@ -474,7 +476,7 @@ public sealed partial class Binding
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
-        if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
+        if (AssociatedHead(clause) is OriginApplicationKoto && this.HasUnsupportedAssociatedIdentity(requirement))
         {
             this.Fail(clause, BindingFailure.Unsupported, true);
             return;

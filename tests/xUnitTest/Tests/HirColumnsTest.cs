@@ -283,7 +283,7 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} pair binders");
             }
 
-            if (!ViewsAgree(node, op))
+            if (!ViewsAgree(binding, node, op))
             {
                 problems.Add($"{where} views {Binding.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
@@ -502,7 +502,7 @@ public sealed class HirColumnsTest
     // that member has, and no other node a built-in form; an accessor's executing
     // function its result and its receiver and input; a parameter read the function's own parameter; an implicit constructor its receiver,
     // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.3.6).
-    private static bool ViewsAgree(Koto node, HirOp op)
+    private static bool ViewsAgree(Binding binding, Koto node, HirOp op)
     {
         var construction = BoundEnumConstruction.Of(node);
         var type = node.TypeOf();
@@ -541,9 +541,9 @@ public sealed class HirColumnsTest
 
         if (node is FunctionKoto { IsConstructor: true } constructor && op == HirOp.Body)
         {
-            var self = AdtDef.ReceiverType(constructor);
+            var self = AdtDef.ReceiverType(binding, constructor);
             agree &= self is not null && ReferenceEquals(CallPlan.Parameter(constructor.SymbolOf()!, -1)?.Type, self);
-            agree &= !constructor.IsImplicitConstructor || (constructor.Parameters.Count == 0 && (AdtDef.Base(self!) is null) == (constructor.BaseInitializer is null) &&
+            agree &= !constructor.IsImplicitConstructor || (constructor.Parameters.Count == 0 && (AdtDef.Base(binding.Types, self!) is null) == (constructor.BaseInitializer is null) &&
                 (constructor.BaseInitializer is null || CallPlan.Of(constructor.BaseInitializer) is not null) &&
                 Enumerable.Range(0, AdtDef.Count(self!)).All(x => AdtDef.Field(self!, x).InitializerKoto is { } initializer && HirTables.Op(initializer) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error)));
         }
