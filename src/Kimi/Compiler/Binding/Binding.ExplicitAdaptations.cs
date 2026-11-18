@@ -271,7 +271,7 @@ public sealed partial class Binding
 
         if (operation == ConversionBinding.ObjectCreation)
         {
-            if (source.Symbol?.ObjectPayloadOptOut is { } renounced)
+            if (this.ObjectPayloadOptOut(source.Symbol) is { } renounced)
             {
                 this.FailObjectPayload(conversion, renounced);
                 return false;

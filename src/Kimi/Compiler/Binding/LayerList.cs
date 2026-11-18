@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 // - Inputs: the two parts, each its store's own list (ImplTable: the overlay's and LibraryLayer's base's).
 // - Outputs: the composed reads; Program, the program part alone.
 // - Invariants: an index below the program part's Count reads the program part, any other the library part at the index less it;
-//   foreach reads the program part, then the library part, and fails as a List's does when a part changes during it.
+//   foreach reads the program part, then the library part, and fails as a List's does when a part changes during it. The library part
+//   may be read as a prefix (a limit: ImplTable's admitted part, PLAN G949 S1-r1b rule (a)); Count and foreach stop at it.
 // - Precondition (the reader's): no entry joins either part while an index loop over the composed list runs, since a program entry
 //   added then shifts every library index (the loop reads one library entry twice and never the new one); ImplTable's registrations
 //   end with RegisterInheritedConformances, before every index loop over Paths (Binding's pass order).
@@ -19,15 +20,23 @@ internal readonly struct LayerList<T> : IReadOnlyList<T>
 {
     private readonly List<T> program;
     private readonly List<T> library;
+    private readonly int libraryLimit;
 
     internal LayerList(List<T> program, List<T> library)
+        : this(program, library, int.MaxValue)
+    {
+    }
+
+    // The library part read as its prefix of `libraryLimit` entries (ImplTable's admitted part, PLAN G949 S1-r1b rule (a)).
+    internal LayerList(List<T> program, List<T> library, int libraryLimit)
     {
         this.program = program;
         this.library = library;
+        this.libraryLimit = libraryLimit;
     }
 
-    /// <summary>Gets the entries of both parts.</summary>
-    public int Count => this.program.Count + this.library.Count;
+    /// <summary>Gets the entries of both parts (the library part's admitted prefix, ImplTable's).</summary>
+    public int Count => this.program.Count + Math.Min(this.library.Count, this.libraryLimit);
 
     /// <summary>Gets the program part.</summary>
     internal List<T> Program => this.program;
@@ -39,7 +48,7 @@ internal readonly struct LayerList<T> : IReadOnlyList<T>
 
     /// <summary>Enumerates the program part, then the library part, without allocating.</summary>
     /// <returns>The enumerator.</returns>
-    public Enumerator GetEnumerator() => new(this.program, this.library);
+    public Enumerator GetEnumerator() => new(this.program, this.library, this.libraryLimit);
 
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => this.GetEnumerator();
 
@@ -51,11 +60,13 @@ internal readonly struct LayerList<T> : IReadOnlyList<T>
         private readonly List<T> library;
         private List<T>.Enumerator part;
         private bool inLibrary;
+        private int remaining;
 
-        internal Enumerator(List<T> program, List<T> library)
+        internal Enumerator(List<T> program, List<T> library, int libraryLimit)
         {
             this.library = library;
             this.part = program.GetEnumerator();
+            this.remaining = libraryLimit;
         }
 
         /// <inheritdoc/>
@@ -66,19 +77,19 @@ internal readonly struct LayerList<T> : IReadOnlyList<T>
         /// <inheritdoc/>
         public bool MoveNext()
         {
+            if (this.inLibrary)
+            {
+                return this.remaining-- > 0 && this.part.MoveNext();
+            }
+
             if (this.part.MoveNext())
             {
                 return true;
             }
 
-            if (this.inLibrary)
-            {
-                return false;
-            }
-
             this.inLibrary = true;
             this.part = this.library.GetEnumerator();
-            return this.part.MoveNext();
+            return this.remaining-- > 0 && this.part.MoveNext();
         }
 
         /// <inheritdoc/>

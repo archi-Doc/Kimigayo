@@ -130,9 +130,9 @@ public sealed partial class Binding
             }
 
             var contract = Substitute(identity.Contract);
-            for (var j = 0; j < identity.Paths.Count; j++)
+            for (var j = 0; j < this.impls.PathsOf(identity).Count; j++)
             {
-                var source = identity.Paths[j];
+                var source = this.impls.PathsOf(identity)[j];
                 var path = this.impls.Register(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
                 path.Use = syntax;
                 if (path.InheritedFrom is null)
@@ -402,7 +402,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var path in identity.PathStorage)
+            foreach (var path in this.impls.PathsOf(identity))
             {
                 if (path.InheritedFrom is not null && path.RejectedSelfSignature is { } implementation)
                 {

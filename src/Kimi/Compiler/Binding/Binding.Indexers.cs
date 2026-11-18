@@ -179,7 +179,7 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && identity.Paths.Count != 0 && identity.Contract.Type is { } formal &&
+            if (ReferenceEquals(identity.Contract.Declaration, contract.Declaration) && this.impls.PathsOf(identity).Count != 0 && identity.Contract.Type is { } formal &&
                 this.NamesReference(formal, core, this.types.Rebuild(formal, [type], null, []), scope))
             {
                 if (found is not null)

@@ -165,7 +165,7 @@ public sealed partial class Binding
                 if (arm.Guard is { } guard)
                 {
                     this.Scope = binding.GetScope(guard, outer);
-                    binding.candidateScopes.Add(guard);
+                    binding.pass.Part.CandidateScopes.Add(guard);
                     this.IndexCandidates(arm.Pattern, true);
 
                     this.Visit(guard);
@@ -343,7 +343,7 @@ public sealed partial class Binding
             binding.nodes.Add(node);
             if (this.patternDepth != 0)
             {
-                binding.patternNodes.Add(node);
+                binding.pass.Part.PatternNodes.Add(node);
                 if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
                 {
                     if (binding.symbols.TryGetValue(pattern, out var existing) && existing.Name != name.IdentifierName)
@@ -453,7 +453,7 @@ public sealed partial class Binding
                     break;
                 case CodeBlockKoto:
                     if (node.Parent is ForKoto || node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
-                        (node.Parent is MatchKoto && binding.patternNodes.Contains(this.Scope.Owner)))
+                        (node.Parent is MatchKoto && binding.pass.Part.PatternNodes.Contains(this.Scope.Owner)))
                     {
                         binding.scopes[node] = this.Scope;
                     }

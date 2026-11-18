@@ -323,7 +323,7 @@ public sealed partial class Binding
 
     private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (this.patternNodes.Contains(node))
+        if (this.pass.Part.PatternNodes.Contains(node))
         {
             throw new InvalidOperationException("Pattern syntax must be handled by the positional Pattern binder.");
         }

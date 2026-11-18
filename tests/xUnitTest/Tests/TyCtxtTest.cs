@@ -584,6 +584,29 @@ public sealed partial class TyCtxtTest
         Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
     }
 
+    // PLAN G949 S1-r1b (review-s1r1b C1: v9 through the reader MIR's holding walk uses): a library slot's keepers reach a program's raw
+    // layer through TyCtxt.RawMembers. X's `at` belongs to the borrows X's slot `s` is kept by: `it`, a BorrowingIterator<Counter> during
+    // s, keeps it through the library slot `source`, which the library pass keeps by its `iterator: uniq/I during source` Field, so the
+    // member is Counter's exclusive Loan, after a first and a second Bind. A library slot's list is current by its part's requirement
+    // call, the library pass's; read against the program pass's call instead, it answers no keepers and the member is lost. Labelled from
+    // SPEC first (5.7 Origins, 15.3.5; Counter is an Iterator, so a LendingIterator, as BorrowingIterator requires): valid.
+    [Fact]
+    public void ALibrarySlotsKeepersAreARawLayersMembersAfterEachBind()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self) -> Option<i32> => .None\nstruct X {s}\n    internal let at: raw/u8 during s\n" +
+            "    internal let it: Kimi.Iteration.BorrowingIterator<Counter> during s\nfunc probe(y: uniq/Counter, x: X during y) => ()\n" +
+            "public func main() => ()\n");
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.True((bind == 0 ? c.Binding.Result : c.Bind()).IsComplete, MinimalEmissionTest.Describe(c));
+            var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[1].Type.TypeOf()!;
+            var members = new List<RawMember>();
+            Assert.True(MembersAt(c.Types, holder, 0, [], members));
+            Assert.Equal(["0 Counter True"], members.Select(static x => $"{x.Input} {TyCtxt.Name(x.Referent)} {x.Exclusive}"));
+        }
+    }
+
     // SPEC 5.7 (the final review's R3; DECISIONS BU-24, U2): a keeper reached on many paths is walked once per slot, owner Type, input and
     // mode, so a ladder of n diamonds (D_i keeps its slot through D_(i-1) and through E_(i-1), which keeps it through D_(i-1)) gives D0's
     // one keeper once as a member of the raw layer X stores, not once per path (2^n), and the walk is linear in n.

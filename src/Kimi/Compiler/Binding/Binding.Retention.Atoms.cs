@@ -91,7 +91,7 @@ public sealed partial class Binding
             this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
             var place = exclusive ? RetentionPlace.None : RetentionPlace.Shared;
             var written = Below(declared, declared is null ? null : this.BorrowReferent(declared, out _, out _));
-            var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer, place, written);
+            var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer, place, written, HiddenWritable: exclusive);
             var captured = content with { Place = place | RetentionPlace.Captured, Signature = Below(written, null) };
             var variance = exclusive ? OriginVariance.Invariant : OriginVariance.Covariant;
             if (outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
@@ -112,12 +112,12 @@ public sealed partial class Binding
         {
             this.retentionRawSources.Add((index, null));
             this.AddRetentionAtom(new(index, Kind: null, Writable: false, OwnedOrigin(input), null, null), callable: false);
-            var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, null, Signature: declared);
+            var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, null, Signature: declared, HiddenWritable: true);
             this.RetentionParts(input, content, OriginVariance.Covariant, callable: false);
         }
         else
         {
-            var value = new RetentionAtom(index, RetentionKind.Value, Writable: true, null, null, null, Signature: declared);
+            var value = new RetentionAtom(index, RetentionKind.Value, Writable: true, null, null, null, Signature: declared, HiddenWritable: true);
             this.RetentionWalk(input, value, OriginVariance.Covariant, callable: false);
         }
 
@@ -167,7 +167,7 @@ public sealed partial class Binding
             this.AddRetentionAtom(here with { Origin = slot }, callable);
             var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);
             var written = this.SignaturePast(at.Signature, type, default);
-            var below = at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer, Signature = written };
+            var below = at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer, Signature = written, HiddenWritable = at.HiddenWritable && exclusive };
             this.RetentionWalk(target, below, inner, callable);
             return;
         }
@@ -211,7 +211,11 @@ public sealed partial class Binding
         var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : HoldStep.Address;
         var past = at.Shared || shared || step == HoldStep.Shared;
         var through = raw ? !past && step is HoldStep.Address or HoldStep.Static : at.Writable && !shared;
-        var below = at with { Layer = layer, Writable = !inside && (through || writable), Place = past ? at.Place | RetentionPlace.Shared : at.Place };
+        var below = at with
+        {
+            Layer = layer, Writable = !inside && (through || writable), Place = past ? at.Place | RetentionPlace.Shared : at.Place,
+            HiddenWritable = at.HiddenWritable && !inside && !past,
+        };
         if (raw && !inside && !past && step == HoldStep.Exclusive && at.Input >= 0)
         {
             this.RawContent(OwnedOrigin(type)!, at.Input);
@@ -246,7 +250,7 @@ public sealed partial class Binding
             return;
         }
 
-        var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, origin);
+        var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, origin, HiddenWritable: true);
         var start = this.rawMembers.Count;
         this.retentionLimit |= !this.RawMembers(origin, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
         var end = this.rawMembers.Count;
@@ -270,10 +274,13 @@ public sealed partial class Binding
     // An Origin atom or a carrier of an input or of the result (CallRetention.ResultOutput): the kind it gives the input (none for a raw input's own
     // layer's Origin, RetentionInput), whether it is writable storage of the input (RetentionWalk), the Origin of the nearest borrow,
     // Slice or pair layer above it, which a carrier's hidden Origins outlive (SPEC 15.6.1), and where it lies (RetentionPlace); while the
-    // walk carries it, the walked signature's declared Type at its position (Signature, as StorageAt's; DECISIONS BU-113; no atom keeps it).
+    // walk carries it, the walked signature's declared Type at its position (Signature, as StorageAt's; DECISIONS BU-113; no atom keeps it),
+    // and whether the walk met it through no shared layer and outside a callable (HiddenWritable, PLAN G963: false past a shared borrow or
+    // handle, a raw layer stepping Shared or a pair layer admitting no exclusive case, and inside a callable Type; the condition on which
+    // the storage walk enters a state, StorageAt.HiddenWritable), which says for a carrier that what its instances hide is written.
     private readonly record struct RetentionAtom(
         int Input, RetentionKind? Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, RetentionPlace Place = RetentionPlace.None,
-        BoundType? Signature = null)
+        BoundType? Signature = null, bool HiddenWritable = false)
     {
         public bool Shared => (this.Place & RetentionPlace.Shared) != 0;
 

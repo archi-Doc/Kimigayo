@@ -13,10 +13,6 @@ public sealed partial class Binding
     // is still selected; a removed match's plan leaves with its row at renumbering, and a live match the pass did not index drops its
     // plan (PruneMatchPlans).
     private readonly MatchPlanRows matchPlans;
-    private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
-    private readonly List<Koto> previousPatternNodes = new();
-    private readonly HashSet<Koto> candidateScopes = new();
-    private readonly List<Koto> previousCandidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
     private UnsupportedMarker? unsupportedMarker;
@@ -74,46 +70,46 @@ public sealed partial class Binding
             plan!.Reset(null);
         }
 
-        foreach (var guard in this.candidateScopes)
+        foreach (var guard in this.pass.Part.CandidateScopes)
         {
-            this.previousCandidateScopes.Add(guard);
+            this.pass.Part.PreviousCandidateScopes.Add(guard);
         }
 
-        this.candidateScopes.Clear();
-        foreach (var node in this.patternNodes)
+        this.pass.Part.CandidateScopes.Clear();
+        foreach (var node in this.pass.Part.PatternNodes)
         {
-            this.previousPatternNodes.Add(node);
+            this.pass.Part.PreviousPatternNodes.Add(node);
         }
 
-        this.patternNodes.Clear();
+        this.pass.Part.PatternNodes.Clear();
         this.patternWarnings.Clear();
     }
 
     private void PruneCandidateScopes()
     {
-        foreach (var guard in this.previousCandidateScopes)
+        foreach (var guard in this.pass.Part.PreviousCandidateScopes)
         {
-            if (!this.candidateScopes.Contains(guard))
+            if (!this.pass.Part.CandidateScopes.Contains(guard))
             {
                 this.scopes.Remove(guard);
             }
         }
 
-        this.previousCandidateScopes.Clear();
+        this.pass.Part.PreviousCandidateScopes.Clear();
     }
 
     private void PrunePatternScopes()
     {
-        foreach (var node in this.previousPatternNodes)
+        foreach (var node in this.pass.Part.PreviousPatternNodes)
         {
-            if (!this.patternNodes.Contains(node) && !this.candidateScopes.Contains(node))
+            if (!this.pass.Part.PatternNodes.Contains(node) && !this.pass.Part.CandidateScopes.Contains(node))
             {
                 this.scopes.Remove(node);
                 this.symbols.Remove(node);
             }
         }
 
-        this.previousPatternNodes.Clear();
+        this.pass.Part.PreviousPatternNodes.Clear();
     }
 
     private void IndexMatch(MatchKoto match)
@@ -812,7 +808,7 @@ public sealed partial class Binding
     }
 
     /// <summary>The `matchPlans` family's one accessor (DECISIONS BU-220): a kept family, the plan object a match keeps across rebinds (each
-    /// pass resets it, ResetMatches, and a match the pass did not index returns it to the pool, PruneMatchPlans), in the match's module's
+    /// pass resets it, ResetMatches, and a match the pass did not index drops it, PruneMatchPlans), in the match's module's
     /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
     private readonly struct MatchPlanRows(Binding binding)
     {
