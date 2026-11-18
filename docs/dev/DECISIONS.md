@@ -19568,6 +19568,19 @@ structure is recorded here by the unit that first implements it.
     byte form (decimal bytes, 24 a line); `UnicodeIdentifierData`, which had no generator, was converted once with every value shown
     equal; since PLAN G738 (2026-11-11) `GenerateIdentifierUnicode.ps1` writes it. Since PLAN G742 (2026-11-11) the three
     generators write the form through one writer, `Add-IntegerTable` in `Helper/IntegerTable.ps1`, which each dot-sources.
+    - PLAN G818 (the Middle, 2026-11-18; the commits 2ad67ffc8, 17995209c, 6ca4112bc, 10d815789 and 3d8c496a1 hold the
+      measurements): `MarkdownUnicode` reads each CommonMark 2.1 class from generated tables of `MarkdownUnicodeData`: a Latin-1 map
+      (U+0000-U+00FF, `IntegerTable<ulong>`) below 256, and above it the row of the class's ranges above U+00FF
+      (`IntegerTable<int>`), read only between the row's generated first and last scalars (`<Class>First`, `<Class>Last`: Whitespace
+      U+1680..U+3000, Punctuation U+02C2..U+1FBCA) by one binary search, `InRanges`, marked
+      `[MethodImpl(MethodImplOptions.AggressiveInlining)]`. Reason: reading the row for every scalar above ASCII through a call cost
+      delimiter runs with non-ASCII neighbours about 3-16% (T-233 STOP, Latin1-flank 1.045) across U+0080-U+3000. Outcome: RP8 T-309
+      PASS on ten inputs (dev 1005a6cb1 vs 3d8c496a1: Latin-1 0.867, the six common inputs 0.926-0.992, Japanese 0.988,
+      Cyrillic/Greek 0.995, typographic 0.998; bytes equal); against each input's own A'/A control the three non-Latin flanks sit
+      1.029-1.043 above it, and a remainder of about 2-3% inside U+1680..U+3000 (typographic neighbours) is accepted under RP8.
+      Rejected: a branch-free fixed-step search (latency-bound, 1.13-1.22 of dev on Latin-1, 1.05-1.21 on Japanese); a linear scan
+      of the Whitespace row (a second reader shape); the maps behind the ASCII tests (a third tier, equal timing); `CharUnicodeInfo`
+      above ASCII (the runtime's Unicode version).
   - Departures from the planning session's design, which it took on figures: the read is a `MemoryMarshal.Cast` element, because
     `BinaryPrimitives.Read*LittleEndian` at index × width adds a range check per read; and each reader wraps its bytes, because a typed
     getter (`Int32Table X => new([..])`) is not inlined without PGO.
