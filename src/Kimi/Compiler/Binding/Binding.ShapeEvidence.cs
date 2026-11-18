@@ -292,6 +292,7 @@ public sealed partial class Binding
 
         if (!needed || candidates.Length < 2)
         {
+            this.shapeCallCandidates.Clear(); // The call's scratch is empty at its end (PLAN G949 S1-e's rule), as below.
             return true;
         }
 
@@ -502,6 +503,7 @@ public sealed partial class Binding
         finally
         {
             this.acquisitionFailure = savedAcquisition;
+            this.shapeCallCandidates.Clear();
             this.flagScratch.Return(fixedSlots);
             this.infer.Return(bindings);
             this.indexScratch.Return(modes);

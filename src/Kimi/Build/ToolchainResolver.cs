@@ -40,9 +40,9 @@ internal static class ToolchainResolver
 
     internal static string ResolveBackend(JsonElement entry, string root, string manifestDirectory)
     {
-        if (entry.TryGetProperty("resolution", out var resolution))
+        if (LinkManifest.OptionalText(entry, "libraries.resolution") is { } resolution)
         {
-            if (resolution.GetString() != "toolchain" || entry.TryGetProperty("input", out _))
+            if (resolution != "toolchain" || LinkManifest.OptionalText(entry, "libraries.input") is not null)
             {
                 throw new InvalidDataException("Invalid backend toolchain resolution: an input path is not permitted.");
             }
@@ -50,6 +50,6 @@ internal static class ToolchainResolver
             return Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile);
         }
 
-        return ArtifactFiles.ResolvePath(entry.GetProperty("input").GetString()!, manifestDirectory);
+        return ArtifactFiles.ResolvePath(LinkManifest.Text(entry, "libraries.input"), manifestDirectory);
     }
 }
