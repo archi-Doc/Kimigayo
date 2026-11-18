@@ -14240,6 +14240,10 @@ resumed by R4-M86 (2026-10-20).
     1.060 from one more gen2 collection inside Bind per 8 cold compilations (the cold bytes +3.5 KB on Hello, +9.7 KB on
     Milestone26), Bind net of the GC pause 1.001, pooled without a gen2 0.999. The owner accepted the row as GC phase, as W-232
     (R8-M45, O-387) was; no recovery unit. Removal: S1-1, the library bound once per process.
+  - Amended by R8-M53 (R8-L1 U2a; `FreezeLibrary`'s contract line, with the Front's consent on C-380, 16:55 and 17:08): a library
+    pass with records (its clause also counting the library module's syntax records) refuses the run instead of throwing: its records
+    are kept as the layer's refusal while its tables stand, the layer's part is emptied, no program pass runs and nothing is frozen;
+    the next Bind refuses identically.
 - **BU-220 Binding's per-pass tables are paged dense columns over dense ids, with a `Frozen` base store and a program overlay; the
   dense Type id (PLAN G949, R7-N5, R7-D2 b)** (2026-11-16; Front, Binding; Major, behavior-preserving on every program whose
   SourceDocuments each lie in one module; the owner's O-376 (a) 「O-376 a」, its approval 3: N5's SyntaxId columns and D2 b's tables
@@ -23737,6 +23741,55 @@ R8-M* and R9-M* by the stage of the recording unit.
     about the backend; it does not make the intrinsic inexpressible in Kimigayo.
   - **Comment.** `IntrinsicId.FormatFloat`'s group comment (`KimiLibraryKinds.cs:83`) said "i128 until Kimigayo formats it"; it now
     says "i128 until a Kimigayo body replaces it (RQ16: a post-reduction unit, by measurement)".
+- **R8-M53 The library is frozen once per process: `KimiLibrary.Of` (R8-L1 U2a, U2b; PLAN G949 Stage 2)** (Back, 2026-11-18; Major;
+  G949 Stage 2's plan of record, the design `back\notes\l1-s2\design.md` §5 under the owner's O-381 (b); U2's design
+  `back\notes\l1-s2\u2-design.md` Revision 2, its review ACCEPT WITH CONDITIONS, B's rulings `rulings-u2.md`; the Front's consent on
+  C-380 (16:55, 17:08); U2a's implementation review ACCEPT WITH CONDITIONS, met (`review-u2a-impl.md`), the Front's ACCEPT after
+  c5f64fc81 (C-380) and the Middle's consent on the Core hunks (C-381); L1 M-B4, M-R2-B1, D-C1, D-C2; C-376) SPEC 22.1, 23.1.2.
+  Extends R8-M31, R8-M32, R8-M33, BU-219 and BU-220; amends BU-219 (its R8-M53 line).
+  - **Adopted.** `KimiLibrary.Of(target)` (`KimiLibrary.Process.cs`) returns the process's library for a target (the key is the
+    target; the language version is the build's constant, which `KimiLibrary.Version` names; no target, `TargetTriple.Invalid`, is a
+    key of its own), from one add-only store of `Lazy` values (the process's one mutable static of R8-L1).
+    `KimiLibrary.Unfrozen(target, kimigayo, project)` makes the freeze's compilation (over an empty program, prepared with the target
+    and the project, with documentation and hover collection on), whose Binding makes the library by the one constructor, parsed in
+    that compilation (the parse reads its conditions, flags, identifier table and collection); `KimiLibrary.Freeze(freeze)` binds
+    that compilation Final by the one driver and returns its library (B's ruling 37: the freeze's input is its compilation, so no step
+    reaches a compilation through a library node). `Of` is `Freeze(Unfrozen(target, default kimigayo, default project))` behind the
+    store; a test edits or extends an unfrozen library and freezes it through the same two calls, the tests' seam, not a second path.
+    No compilation reads `Of` before U3.
+  - **A library pass with records is refused.** `FreezeLibrary`'s clause alone decides it (the pass's issues, derived issues and
+    non-failing records, the siteless refusal, and the library module's syntax records of any severity,
+    `DiagnosticOwner.HasSyntaxRecords`). While the pass's tables stand, its Binding-side records are reported by Binding's own
+    per-record steps and taken as located facts (`DiagnosticOwner.TakeLocated`, leaving out what `Finalize` would suppress) into the
+    layer's refusal (`LibraryLayer.Refusal`, with the first record the freeze counted); the library part is emptied and Binding's own
+    part entered empty (`StartPass`, the one reset site), nothing is frozen, no program pass runs and the next Bind refuses
+    identically, so a refused layer holds only its refusal and no reader sees a partial layer. A refused Bind leaves no result, and
+    `Compilation.Check` stops after publishing Binding's records, before the startup check and MIR (B's ruling 33). `Of` caches the
+    refusal like a frozen library; only a compiler defect is cached as an exception.
+  - **Each library record has one owner and one publisher.** A Binding-side record lives only in the refusal, and the compilation
+    publishes it as `InternalInvariant_Kd` at its library location in its root collection (`Compilation.PublishRefusal`), Core's one
+    store decision for a library subject's record (`Compilation.StoreOf`, which also serves `Locate`); the refusal's own
+    `InternalInvariant_Kd` is published at its first counted record, so a refused library always publishes an Error, a syntax Warning
+    alone included (B's ruling 40, form (i): the parser's records reach the published set through `DiagnosticOwner`, so routing them
+    through Core's decision would be a second publication path). A syntax record stays in the library module's syntax list (form
+    (R)), which the refusal refers to and never copies, and the `DiagnosticOwner` holding the list publishes it under its own code.
+    Until U3, Core's `Publish` reports a MIR record through the node (`node.Report`) instead of `StoreOf` (B's ruling 32: routing it
+    needs a larger parameter exception on `Koto.Report`, which the owner's O-425 (a) approved for U3); no program the suite checks
+    has a MIR record with a library subject.
+  - **Rejected.** A key with the language version, configuration, test build, Debug, settings or documentation flags (R8-M32 shows
+    none read; the version is the build's constant); refusing a compilation without a target; a mode or flag deciding the library
+    pass; a documentation failure as a refusal record or a cached exception; publishing the refusal through the library node's
+    collection (it would accumulate across compilations); a second library constructor or record injection; a compilation-free parse
+    re-homed by `Freeze` (a second writer of `Kotonoha.Compilation`; the parse reads its compilation's conditions); the freeze
+    reaching its compilation through the library's `Kotonoha` (a route the route row counts, R8-M51); a library with records thrown
+    as an exception (the `Lazy` would cache it; a defect surfaces as an analysis fault, not located records); a second test of "the
+    library has records" beside `FreezeLibrary`'s clause (such as a search that every syntax error also yields a counted record); a
+    refused layer that keeps its part or lets a program pass run; copying the syntax records into the refusal and publishing a copy
+    only where the reading compilation lacks the library's syntax list (a duplicate suppressed afterwards and a consumer deciding what
+    an owner publishes); moving them into the refusal (it empties the clause's input, so a rerun would freeze a syntax-only defect).
+  - **Changed by decision:** `DiagnosticPrecisionTest.ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild` (S1-1) asserts the refused
+    Bind and its located `InternalInvariant_Kd` records (the library's and the refusal's own, at the use) instead of the throw (no
+    expectation weakened).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
