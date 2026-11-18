@@ -69,20 +69,50 @@ public sealed partial class Binding
     // The referenced declaration, its Type parameter when one is known (else -1), the failure and whether Type arguments are written.
     private readonly record struct ReferenceSlotFact(FunctionKoto Declaration, int Slot, ReferenceSlotFailure Failure, bool Explicit);
 
+    internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
+        => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
+
+    /// <summary>Forms the Transfer candidate of a bare Place (SPEC 23.1.3): <c>@move</c> after the Place, or <c>(*p)@move</c> around a dereference.</summary>
+    /// <param name="node">The reporting node, in the Place's document.</param>
+    /// <param name="place">The Place.</param>
+    /// <param name="judgment">The Take judgment; never refuted.</param>
+    /// <returns>The candidate.</returns>
+    internal static DiagnosticRepairFact[] TransferRepair(Koto node, Koto place, AcquisitionJudgment judgment)
+    {
+        DiagnosticEditFact[] edits = place is DereferenceKoto
+            ? [node.Edit(new(place.Span.Start, 0), "("), node.Edit(new(place.Span.End, 0), ")@move")]
+            : [node.Edit(new(place.Span.End, 0), "@move")];
+        var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
+        var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
+        return [new(RepairKind.Transfer, [place.ToString(), TransferDestination(place)], edits, verified, required)];
+    }
+
+    // The destination a Place is acquired for, as the Transfer title names it.
+    internal static string TransferDestination(Koto place)
+        => Destination(place) switch
+        {
+            InvocationKoto call when ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) => "its call",
+            InvocationKoto call => call.Method is MemberAccessKoto member ? member.Right.ToString() : call.Method.ToString(),
+            VariableKoto variable => $"the binding {variable.NameKoto.IdentifierName}",
+            ReturnKoto => "the result",
+            ArrayLiteralKoto or TupleLiteralKoto or DictionaryLiteralKoto => "the element",
+            _ => "its destination",
+        };
+
     // SPEC 15.6.1, 23.1: the Reason facts and related locations of an Origin relation record, shared by every phase that reports
     // one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
-    internal static (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
+    internal (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
     {
         // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
         // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
-        var borrow = BorrowSource(relation.At, relation.Supplier) ??
-            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? BorrowSource(call, relation.Supplier) : null);
+        var borrow = this.BorrowSource(relation.At, relation.Supplier) ??
+            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? this.BorrowSource(call, relation.Supplier) : null);
         // A clause of a Field or Case names its Type's own slots as written there, without `self.`; a Type's clause substituted at
         // a use in a body names the substituted Origins as that body does.
         var typeLevel = relation.Clause is not null && !relation.Substituted && TypeLevelClause(relation.At);
         var longer = OriginDisplay(relation.Longer, borrow, typeLevel);
         // SPEC 15.6.1, 23.1: a shorter end that an equality fixed to another argument's Borrow shows that Borrow too.
-        var shorterBorrow = relation.FixedBy is { } fixedBy && relation.Shorter.Kind is OriginKind.Projection or OriginKind.Anchor ? BorrowSource(fixedBy, relation.Shorter) : null;
+        var shorterBorrow = relation.FixedBy is { } fixedBy && relation.Shorter.Kind is OriginKind.Projection or OriginKind.Anchor ? this.BorrowSource(fixedBy, relation.Shorter) : null;
         var shorter = OriginDisplay(relation.Shorter, shorterBorrow, typeLevel);
         var operation = relation.Equality ? "==" : "outlives";
         // SPEC 23.1: a borrow or omitted end is also related at its syntax.
@@ -118,36 +148,6 @@ public sealed partial class Binding
             : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
         return ([operation, longer, shorter, source, destination], related);
     }
-
-    internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
-        => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
-
-    /// <summary>Forms the Transfer candidate of a bare Place (SPEC 23.1.3): <c>@move</c> after the Place, or <c>(*p)@move</c> around a dereference.</summary>
-    /// <param name="node">The reporting node, in the Place's document.</param>
-    /// <param name="place">The Place.</param>
-    /// <param name="judgment">The Take judgment; never refuted.</param>
-    /// <returns>The candidate.</returns>
-    internal static DiagnosticRepairFact[] TransferRepair(Koto node, Koto place, AcquisitionJudgment judgment)
-    {
-        DiagnosticEditFact[] edits = place is DereferenceKoto
-            ? [node.Edit(new(place.Span.Start, 0), "("), node.Edit(new(place.Span.End, 0), ")@move")]
-            : [node.Edit(new(place.Span.End, 0), "@move")];
-        var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
-        var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
-        return [new(RepairKind.Transfer, [place.ToString(), TransferDestination(place)], edits, verified, required)];
-    }
-
-    // The destination a Place is acquired for, as the Transfer title names it.
-    internal static string TransferDestination(Koto place)
-        => Destination(place) switch
-        {
-            InvocationKoto call when ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) => "its call",
-            InvocationKoto call => call.Method is MemberAccessKoto member ? member.Right.ToString() : call.Method.ToString(),
-            VariableKoto variable => $"the binding {variable.NameKoto.IdentifierName}",
-            ReturnKoto => "the result",
-            ArrayLiteralKoto or TupleLiteralKoto or DictionaryLiteralKoto => "the element",
-            _ => "its destination",
-        };
 
     private static Koto? Destination(Koto place)
     {
@@ -319,21 +319,6 @@ public sealed partial class Binding
         return null;
     }
 
-    private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
-    {
-        var (evidence, related) = OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
-        if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
-        {
-            // SPEC 23.1: a closure end is related at the anonymous function's header, from `func` through the parameter list.
-            var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
-            var at = relation.At is CodeBlockKoto ? BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
-            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
-            return;
-        }
-
-        node.Report(requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
-    }
-
     // SPEC 9.7.1: outside constructor-own inference, required Type arguments are written in full; an outer container never takes call
     // arguments or an expected Type; outside a generic container, a nested declaration is named through that container.
     private static void ReportArity(Koto node, (BindingSymbol Declaration, int Declared, int Written, bool Outer) arity, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -362,6 +347,21 @@ public sealed partial class Binding
     // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
     private static bool IsMissingInformation(Koto? node)
         => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
+
+    private void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
+    {
+        var (evidence, related) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
+        if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
+        {
+            // SPEC 23.1: a closure end is related at the anonymous function's header, from `func` through the parameter list.
+            var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
+            var at = relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
+            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
+            return;
+        }
+
+        node.Report(requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
+    }
 
     // The call signature of a Function Item, closure or Function value.
     private BoundType? ValueSignature(BoundType value) => value.Kind switch

@@ -216,7 +216,7 @@ internal static class StaticKeyMeasurements
         effects.BeginLibrary();
         Local(w.Program.LibraryBodies);
         effects.BeginProgram();
-        Local(w.Program.ProgramBodies);
+        Local(w.Program.VersionBodies);
         w.Report.Clear();
         var (runBytes, runTicks) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
         _ = effects.Run(w.Program, w.Report, Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1);

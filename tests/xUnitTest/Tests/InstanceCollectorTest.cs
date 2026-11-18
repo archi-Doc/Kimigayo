@@ -1182,9 +1182,10 @@ public sealed partial class InstanceCollectorTest
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
     }
 
-    // SPEC 15.7.1, 16.3.2 (R8-U1): replace is a body whose destroyValues call destroys the old value in place, so each of its instances
-    // over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one its direct calls and its Item's
-    // Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and swap's instances destroy nothing.
+    // SPEC 15.7.1, 16.3.2, 5.2.3 (R8-U1, R8-M17): replace is a body whose discarded Take `_ = (*place)@move` destroys the old value in
+    // place, so each of its instances over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one
+    // its direct calls and its Item's Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and
+    // swap's instances destroy nothing.
     [Fact]
     public void ReplacesBodyTargetsTheGlueOfTheValueItDestroysInPlace()
     {

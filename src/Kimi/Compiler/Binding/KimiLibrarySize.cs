@@ -118,7 +118,7 @@ internal static class KimiLibrarySize
         int RangeCalls, // The library's rangeCalls column: the slots its pages hold.
         int ResolvedKeys, // The library's resolvedKeys column: the slots its pages hold.
         int MatchPlans, // The library's matchPlans column: the slots its pages hold.
-        int TypeKeys, // TyCtxt's keys of the interned Types.
+        int TypeKeys, // TyCtxt's interned Types, the entries of its keyed table (TyCtxt.KeyCount).
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
         int MemberSelections, // Binding's member selections: library-only.
