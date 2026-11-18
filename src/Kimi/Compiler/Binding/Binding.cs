@@ -156,7 +156,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
             this.types.KeyCount,
-            this.constraints.Count,
+            this.Library.Layer.Constraints.Count + this.constraints.Count,
             this.pendingAssociatedTypes.Count,
             this.memberSelections.Count,
             this.memberSides.Count,

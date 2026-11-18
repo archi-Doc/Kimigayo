@@ -256,7 +256,7 @@ public sealed partial class Binding
     // bound or slot was recorded on it.
     private LocalRegion? Region(BoundOrigin origin)
     {
-        _ = PassPart.Find(this.Library.Layer.Part.Regions, this.localRegions, origin, out var region);
+        _ = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.Regions, this.localRegions), origin, out var region);
         return region;
     }
 

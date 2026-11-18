@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 //   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations, the prune steps' sets, the contract
 //   solver's Closure(view) entries and the documents' unnamed aliases), handed over as the fields every step writes (EnterPass);
 //   R1.1's one composition point per aggregate: the composed views, the program part then the library layer's, and the Bind's Result
-//   (ComposeResult); a keyed collection's one find (PassPart.Find).
+//   (ComposeResult); a keyed collection's one find (PassPart.Find) and the one level order of the keyed parts and the interners
+//   (PassPart.Levels: Parts, Interned; PLAN G949 Stage 2 U4), whose seal is the freeze's library table freeze (Syntax.Freeze()).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
 // - Invariants: one counter value per run; a restart starts a new run of the program pass, never a new Bind (StartRuns runs once per
@@ -212,7 +213,7 @@ public sealed partial class Binding
 
         this.Library.Layer.Impls.Freeze();
         this.Library.Kotonoha.Syntax.Hir.Families.Freeze(this);
-        this.Library.Kotonoha.Syntax.Freeze();
+        this.Library.Kotonoha.Syntax.Freeze(); // Also the seal of the layer's interner levels (KimiLibrary.Frozen; PLAN G949 Stage 2 U4).
         this.FreezeLocalRegions();
         this.FreezeRequirementWorks();
         this.FreezeKeepers();
@@ -396,17 +397,54 @@ public sealed partial class Binding
 
         internal BindingResult Counts { get; set; }
 
-        // The one find of a keyed collection: the layer's map, then the running pass's when it is not the layer's (a test of the map,
-        // never of which pass runs). Returns the map that holds the key, null when neither does.
-        internal static Dictionary<TKey, TValue>? Find<TKey, TValue>(Dictionary<TKey, TValue> layer, Dictionary<TKey, TValue> running, TKey key, out TValue? value)
+        // The one find of a keyed collection over its levels (Levels: a part's, the layer's then the running pass's; an interner's, the
+        // layer's then the compilation's once the library is frozen). Returns the map that holds the key, null when none does.
+        internal static Dictionary<TKey, TValue>? Find<TKey, TValue>(Levels<Dictionary<TKey, TValue>> levels, TKey key, out TValue? value)
             where TKey : notnull
         {
-            if (layer.TryGetValue(key, out value))
+            foreach (var level in levels)
             {
-                return layer;
+                if (level.TryGetValue(key, out value))
+                {
+                    return level;
+                }
             }
 
-            return !ReferenceEquals(running, layer) && running.TryGetValue(key, out value) ? running : null;
+            value = default;
+            return null;
+        }
+
+        // A keyed part's levels (Regions, Keepers, BoundContracts): the layer's part, then the running pass's, its open level (the
+        // layer's own in the library pass).
+        internal static Levels<T> Parts<T>(T layer, T running)
+            where T : class
+            => new(layer, running);
+
+        // An interner's levels (TyCtxt: Types, substitutions; Binding: Origin intersections, lengths, constraints; PLAN G949 Stage 2 U4):
+        // its library layer's frozen level, then the compilation's, its open level once the library is frozen (KimiLibrary.Frozen, the
+        // seal, Binding.FreezeLibrary) and the layer's own before, so equal content is one object in both levels and nothing enters the
+        // layer's after the seal.
+        internal static Levels<T> Interned<T>(KimiLibrary library, T layer, T own)
+            where T : class
+            => new(layer, library.Frozen ? own : layer);
+
+        // The levels of a two-level store in their one order (PLAN G949 Stage 2 U4; Parts, Interned): the layer's, then the open level
+        // when it is not the layer's; Open is where a key no level holds goes. A struct enumerator: a find allocates nothing.
+        internal readonly struct Levels<T>(T layer, T open)
+            where T : class
+        {
+            internal T Open => open;
+
+            public Enumerator GetEnumerator() => new(layer, open);
+
+            internal struct Enumerator(T layer, T open)
+            {
+                private int index = -1;
+
+                public readonly T Current => this.index == 0 ? layer : open;
+
+                public bool MoveNext() => ++this.index == 0 || (this.index == 1 && !ReferenceEquals(layer, open));
+            }
         }
     }
 

@@ -90,6 +90,11 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 
     public override int GetHashCode() => HashCode.Combine(this.Kind, this.Mask, Identity(this.Subject), Identity(this.RequiredType), Identity(this.Contract), Identity(this.Left), Identity(this.Right));
 
+    // The key a constraint was interned by (its parts, as BoundConstraint's constructor copies them): the one statement of a constraint's
+    // key, which the interner's frozen-level test reads (Binding.FormNegation; PLAN G949 Stage 2 U4).
+    internal static ConstraintKey Of(BoundConstraint constraint)
+        => new(constraint.Kind, constraint.Subject, constraint.RequiredType, constraint.Contract, constraint.Mask, constraint.Left, constraint.Right);
+
     private static int Identity(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 }
 
