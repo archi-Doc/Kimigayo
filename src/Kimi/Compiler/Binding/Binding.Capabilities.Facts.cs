@@ -75,8 +75,8 @@ public sealed partial class Binding
         return relations.Outlives(origin);
     }
 
-    // An Owned query that also returns its subject's rest (R4-M161): the parts its work found not Proven; none without a work (a context
-    // that is not resolved returns before one exists, `Judged` false).
+    // An Owned query that also returns its subject's rest (R4-M161): the work that judged it, whose parts are those it found not Proven;
+    // none without a work (a context that is not resolved returns before one exists).
     private ConstraintProof ProveOwned(BoundType type, Koto context, out OwnedRest rest)
     {
         var proposition = this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned));
@@ -114,8 +114,9 @@ public sealed partial class Binding
         internal bool Queued { get; set; }
 
         // Whether its last evaluation read an open obligation, or a work that did (SPEC 8.3.3 Finality): no fact past the outermost
-        // request, which returns it to its initial state (Binding.ForgetPendingCapabilities). Temporary carrier with reentryReads;
-        // removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
+        // request, which returns it to its initial state but keeps this flag until its next evaluation (Binding.ForgetPendingCapabilities),
+        // so the erasure's Owned owner reads a forgotten subject as Final (OwnedMember). Temporary carrier with reentryReads; removal:
+        // R7-C2e2 e2-5b, with e2-3's Completion on the answer.
         internal bool Pending { get; set; }
 
         internal CapabilityWork? Parent { get; set; }

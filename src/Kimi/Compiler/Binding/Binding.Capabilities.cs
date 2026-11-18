@@ -593,10 +593,11 @@ public sealed partial class Binding
 
     // SPEC 8.3.3 Finality (R7-C2e2 e2-5a): an evaluation that read an open obligation (reentryReads) supplied no evidence there, and
     // that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that proof ends. None is kept
-    // past the outermost request, which has answered its requester inside that proof: each returns to its initial state and is
-    // evaluated again when next requested. A work whose last evaluation read none stays, unless it read one that did. A forgotten work
-    // stays in its sources' Dependents and edges: a later change of a source evaluates it again with no Parent, which only the growth
-    // guard reads (no verdict depends on it). Temporary carrier with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion.
+    // past the outermost request, which has answered its requester inside that proof: each returns to its initial state, keeping
+    // Pending until it is evaluated again when next requested (read as Final by the erasure's Owned owner, OwnedMember). A work whose
+    // last evaluation read none stays, unless it read one that did. A forgotten work stays in its sources' Dependents and edges: a later
+    // change of a source evaluates it again with no Parent, which only the growth guard reads (no verdict depends on it). Temporary
+    // carrier with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion.
     private void ForgetPendingCapabilities()
     {
         var pending = this.pendingCapabilities;

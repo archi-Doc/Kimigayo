@@ -9,11 +9,14 @@ namespace Kimi.Compiler;
 // DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (an
 // OwnedConversionFact), chosen where the erasure decides (OwnedMember), at the converted value (DECISIONS BU-107). Before the capability
 // engine judges (an inferred Field's header), a subject no work judged is the located limit. A call's applicability reads the same
-// proof for its erased arguments (ErasedArgumentsEnvironment, SPEC 10.1 step 5).
-// Input: the erasure's Owned proof with its rest (the capability engine's parts that are not Proven, R4-M161); the erasure's outcome for
-// the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
-// Output: the explaining member; the use failed, or false when the erasure failed another part; a derived use, settled in Binding.Check's
-// Final prologue (SettleDerivedUses); a candidate's erased arguments' Owned verdict. The record must not prove Owned again or select a
+// fact for its erased arguments (ErasedArgumentsEnvironment, SPEC 10.1 step 5).
+// Input: the erasure's Owned proof with its rest (the subject's work, whose parts the capability engine records at every path,
+// CapabilityWork.Part; R4-M161), each leaf Origin judged by the relation judge at the use (JudgeOriginRelation with `static` as the
+// shorter end, SPEC 15.6.5); the call's retention for the result's independence of the receiver (ReceiverIndependence); the erasure's
+// outcome for the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
+// Output: the explaining member and the Owned fact (Refuted, Final); the use failed, or false when the erasure failed another part; a
+// derived use, settled in Binding.Check's Final prologue (SettleDerivedUses); a candidate's erased arguments' environment verdict, with
+// a ComponentSite at each limited argument (LimitErasedArgument, BU-22's L). The record must not prove Owned again or select a
 // conversion.
 public sealed partial class Binding
 {
@@ -172,56 +175,78 @@ public sealed partial class Binding
     // A part walk's visited works (OwnedMember), kept across walks so a warm rebind allocates nothing.
     private readonly HashSet<CapabilityWork> ownedWalk = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 7.7.4's second bullet, 10.1 step 5, 15.6.1: an erased argument's environment condition is the erasure row's verdict at
-    // applicability, the one fact the record reads too (ErasesToFunction): its complete Owned fact (ProveErasedOwned, OwnedMember) and its
-    // result's independence of the receiver (ReceiverIndependence). A refuted part or a dependence makes the candidate inapplicable; a
-    // part decided only once the body is bound, or a retention past its limits, is the located limit at the argument (BU-22's L, each
-    // such argument its own, SPEC 23.1.2); every other verdict is judged after selection, an Unknown an obligation.
+    // SPEC 7.7.4's second bullet, 10.1 step 5, 15.6.1: the erased arguments' environment conditions at applicability, each argument's
+    // verdict computed once (ErasedArgumentEnvironment): a refuted argument makes the candidate inapplicable whatever another argument's
+    // limit says; else a limited argument is the located limit at that argument (LimitErasedArgument); else every verdict is judged
+    // after selection, an Unknown an obligation.
     private ConstraintProof ErasedArgumentsEnvironment(ReadOnlySpan<BoundArgumentOperation> operations)
     {
-        var limited = false;
-        for (var pass = 0; pass < 2; pass++)
+        var limits = this.flagScratch.Rent(operations.Length); // Whether each argument's verdict is the limit.
+        try
         {
-            foreach (ref readonly var operation in operations)
+            var limited = false;
+            for (var i = 0; i < operations.Length; i++)
             {
-                if (operation is { Adaptation: ArgumentAdaptation.Erasure, Source: { } source, SourceType: { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } actual })
+                var verdict = this.ErasedArgumentEnvironment(operations[i]);
+                if (verdict == ConstraintProof.Refuted)
                 {
-                    var held = this.failedCause;
-                    var proof = this.ProveErasedOwned(actual, source, out var owned);
-                    this.failedCause = held;
-                    var independence = this.ReceiverIndependence(actual);
-                    // The engine's Refuted (a decided leaf: raw storage's TryLeafCapability row, a summary excluding Owned) or a refuted leaf.
-                    if (proof == ConstraintProof.Refuted || (proof == ConstraintProof.Unknown && owned.Refuted) || independence == ConstraintProof.Refuted)
-                    {
-                        return ConstraintProof.Refuted;
-                    }
+                    return ConstraintProof.Refuted;
+                }
 
-                    if ((proof == ConstraintProof.Unknown && owned.Final) || independence == ConstraintProof.Error)
-                    {
-                        limited = true;
-                        if (pass == 1)
-                        {
-                            var site = new ComponentSite(this.neededSites) { Use = source };
-                            if (this.failedCause is null)
-                            {
-                                this.failedCause = site; // The call rests on the first.
-                            }
-                            else
-                            {
-                                site.Rest();
-                            }
-                        }
-                    }
+                limits[i] = verdict == ConstraintProof.Error;
+                limited |= limits[i];
+            }
+
+            for (var i = 0; limited && i < operations.Length; i++)
+            {
+                if (limits[i])
+                {
+                    this.LimitErasedArgument(operations[i].Source!);
                 }
             }
 
-            if (!limited)
-            {
-                return ConstraintProof.Proven;
-            }
+            return limited ? ConstraintProof.Error : ConstraintProof.Proven;
+        }
+        finally
+        {
+            this.flagScratch.Return(limits, clearArray: true);
+        }
+    }
+
+    // An argument's environment condition, the erasure row's verdict at applicability and the one fact the record reads too
+    // (ErasesToFunction): its complete Owned fact (ProveErasedOwned, OwnedMember) and its result's independence of the receiver
+    // (ReceiverIndependence). Refuted: the engine's own Refuted (a decided leaf: raw storage's TryLeafCapability row, a summary excluding
+    // Owned), a refuted leaf or a dependence; Error: a part decided only once the body is bound (Final) or a retention past its limits;
+    // else Proven, its verdict judged after selection. An argument that is no Closure's or Function Item's erasure is Proven.
+    private ConstraintProof ErasedArgumentEnvironment(in BoundArgumentOperation operation)
+    {
+        if (operation is not { Adaptation: ArgumentAdaptation.Erasure, Source: { } source, SourceType: { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } actual })
+        {
+            return ConstraintProof.Proven;
         }
 
-        return ConstraintProof.Error;
+        var held = this.failedCause;
+        var proof = this.ProveErasedOwned(actual, source, out var owned);
+        this.failedCause = held;
+        var independence = this.ReceiverIndependence(actual);
+        return proof == ConstraintProof.Refuted || (proof == ConstraintProof.Unknown && owned.Refuted) || independence == ConstraintProof.Refuted ? ConstraintProof.Refuted
+            : (proof == ConstraintProof.Unknown && owned.Final) || independence == ConstraintProof.Error ? ConstraintProof.Error
+            : ConstraintProof.Proven;
+    }
+
+    // The located limit at a limited erased argument (BU-22's L): a site of its own at `source`, each such argument its own (SPEC
+    // 23.1.2); the call rests on the first.
+    private void LimitErasedArgument(Koto source)
+    {
+        var site = new ComponentSite(this.neededSites) { Use = source };
+        if (this.failedCause is null)
+        {
+            this.failedCause = site;
+        }
+        else
+        {
+            site.Rest();
+        }
     }
 
     // SPEC 7.7.4, 15.2.3: the erasure's one Owned proof (ErasesToFunction), of its subject (ErasureSubject), the channel cleared before it;

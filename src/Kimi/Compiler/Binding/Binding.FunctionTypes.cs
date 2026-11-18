@@ -13,9 +13,10 @@ namespace Kimi.Compiler;
 // - Inputs: the Types compared, the use whose premises the comparison reads, the Type relation (Binding.TypeRelations) and, for a
 //   Closure's erasure, its call's retention (TyCtxt.Retains).
 // - Outputs: the verdicts and, for ContractFits, the solved Origins and argument operations.
-// - Invariants: an erasure's Shared receiver (SharedReceiver), the structural part of its signature and its Owned environment over an
-//   Origin the forming body refutes (ErasedArgumentsEnvironment) decide applicability; its Origin part, its other Owned verdicts and its
-//   receiver-free result are judged after selection.
+// - Invariants: an erasure's Shared receiver (SharedReceiver), the structural part of its signature and its environment
+//   (ErasedArgumentsEnvironment: an Owned part the engine or the forming body refutes, or a result that depends on its receiver,
+//   ReceiverIndependence) decide applicability, and a part decided only once the body is bound (Final) or a retention past its limits is
+//   the located limit there; its Origin part and its other Owned verdicts are judged after selection.
 // - Prohibitions: the Type relation's walk stays in Binding.TypeRelations.Walk.cs; these judgments call its entries.
 public sealed partial class Binding
 {
