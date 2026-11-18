@@ -178,12 +178,12 @@ public sealed class VTableDefTest
 
         static string Entry(bool? applies, BoundType layer) => applies == true ? TyCtxt.Name(layer) : "null";
 
-        static BoundType Layer(BoundType type, BindingSymbol function)
+        BoundType Layer(BoundType type, BindingSymbol function)
         {
             var layer = type;
             while (!ReferenceEquals(layer.Symbol!.Declaration, function.Scope.Owner))
             {
-                layer = AdtDef.Base(layer)!;
+                layer = AdtDef.Base(c.Types, layer)!;
             }
 
             return layer;

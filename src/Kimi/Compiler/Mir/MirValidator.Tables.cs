@@ -162,6 +162,6 @@ internal sealed partial class MirValidator
 
         private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
             row.Type,
-            body.ProjectedType(type, row.Kind, row.Arg));
+            body.ProjectedType(types, type, row.Kind, row.Arg));
     }
 }

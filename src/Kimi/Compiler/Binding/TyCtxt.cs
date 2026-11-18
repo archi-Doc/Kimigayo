@@ -3,7 +3,7 @@
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
 // of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, and R4-M118's chain
 // judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
-// Input: immutable Type shapes. Output: canonical Types and derived views.
+// Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
 // Interned identity is equality, over two levels (PLAN G949 Stage 2 U4; Binding.PassPart.Levels): the library layer's frozen level, filled
 // until the library's seal, and the compilation's, filled after it; values live with the compilation and survive warm rebinds. A
 // compilation-level Type's id is above L (LibraryLayer.TypeCount), from which the numbering goes on. No instance or Item states a raw Origin on
@@ -88,23 +88,25 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 23.1: a length as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundLength length) => Binding.DiagnosticLengthName(length);
 
-    // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
-    // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
-    // not instantiate it. The MIR validator checks calls and bodies by it.
-    internal static BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
-    {
-        var declaration = (FunctionKoto)function.Declaration;
-        count = declaration.Parameters.Count;
-        var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(declaration) : function.Type;
-        return type is null || subst is null ? type : declaration.CodeContext.Compilation.Types.Apply(type, subst);
-    }
+    // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
+    // the MIR's case views resolve a case adaptation.
+    internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
+        => ExplicitAdaptationPlan.Select(source, target, shorthand);
 
     // SPEC 8.2, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
     // Binding compares Types there: the one premising (Binding.CallableContractType), which Binding.OperandTerminal applies too.
-    internal static BoundType Premised(BindingSymbol definition, BoundType type)
+    internal BoundType Premised(BindingSymbol definition, BoundType type)
+        => binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
+
+    // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
+    // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
+    // not instantiate it. The MIR validator checks calls and bodies by it.
+    internal BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
     {
-        var binding = definition.Declaration.CodeContext.Compilation.Binding;
-        return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
+        var declaration = (FunctionKoto)function.Declaration;
+        count = declaration.Parameters.Count;
+        var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(binding, function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(binding, declaration) : function.Type;
+        return type is null || subst is null ? type : this.Apply(type, subst);
     }
 
     // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key: the root key of `input` (the slot's instantiated Type
@@ -115,13 +117,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // (`S.Item is raw/u8` inside `HA<S>`), an enclosing Type's parameter, which the receiver's instance completes (DECISIONS BU-50); a Type
     // the declaration and the input write with different constructors ends the path there, shown (named limit: a pair layer's owner case,
     // `s/U` read as U itself). Must not decide what a hidden layer reaches (A5's).
-    internal static PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
-        => PlaceKey.Root(input) with { Signature = Signature(function, null, slot, out _) };
-
-    // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
-    // the MIR's case views resolve a case adaptation.
-    internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
-        => ExplicitAdaptationPlan.Select(source, target, shorthand);
+    internal PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
+        => PlaceKey.Root(input) with { Signature = this.Signature(function, null, slot, out _) };
 
     // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.

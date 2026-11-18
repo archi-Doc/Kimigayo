@@ -12,9 +12,11 @@ internal static partial class KimiLibraryCatalog
 
     internal static ReadOnlySpan<Entry> Entries => Definitions;
 
-    // SPEC 22.5.1: the private caller-location ABI, the original declaration's `#CallerLocation`; a reader passes the original's symbol
-    // (TyCtxt.Original), never a specialization's.
-    internal static bool RequiresCallerLocation(BindingSymbol? symbol) => symbol is { CallerLocation: true };
+    // SPEC 22.5.1: the private caller-location ABI: the original declaration's `#CallerLocation`, and a destructor of the Kimi Kotonoha,
+    // which only a destruction runs (SPEC 16.3) and which reports the location its drop glue receives, the Drop's (O-405); a reader
+    // passes the original's symbol (TyCtxt.Original), never a specialization's.
+    internal static bool RequiresCallerLocation(BindingSymbol? symbol)
+        => symbol is { CallerLocation: true } or { Declaration: Parsing.FunctionKoto { IsDestructor: true, Kotonoha.Syntax.IsLibrary: true } };
 
     // The number of lang items, the KimiDeclarationId members, whose values are implicit and dense from 0: an array of this length is
     // indexed by (int)id.

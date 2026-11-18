@@ -244,11 +244,12 @@ public sealed partial class Binding
                     this.AddReceiverPremises(environment, literal, plan);
                 }
 
-                // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
+                // SPEC 15.3.7, 15.6.1: the result Type's well-formedness, its Types' own clauses included, is a premise of the definition
+                // (Binding.ResultPremises.cs).
                 if (!ReferenceEquals(signature, this.resultPremiseExcluded) &&
                     signature is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result })
                 {
-                    this.AddResultPremises(environment, result);
+                    this.AddDefinitionResultPremises(environment, result);
                 }
             }
 
@@ -424,21 +425,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (type.Symbol is { } symbol && this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.Completed)
-        {
-            foreach (var relation in declaration.Relations)
-            {
-                var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-                var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-                this.AddPremise(environment, a, b, relation.Equality, rule);
-            }
-
-            if (environment.Dependence)
-            {
-                this.ReadFailedClauses(environment, declaration, (BoundOrigin[])type.OriginArguments);
-            }
-        }
-
+        this.AddTypeClausePremises(environment, type, rule);
         if (this.WellFormedLayer(type, environment.Use, environment.Comparison) is { Target.StoresOrigin: true } layer)
         {
             this.AddStoredPremises(environment, layer.Target, this.PremiseNode(environment, layer.Outer), rule, false, layer.Condition);
@@ -453,6 +440,57 @@ public sealed partial class Binding
         for (var i = 0; i < type.Components.Count; i++)
         {
             this.AddTypePremises(environment, type.Components[i], rule);
+        }
+    }
+
+    // SPEC 15.3.3: a well-formed Type's own clauses, substituted with its Origin arguments, are premises under `rule` (an input's, R2; a
+    // result's, R3); a dependence query reads their failed clauses there too (DECISIONS BU-69).
+    private void AddTypeClausePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
+    {
+        if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || !declaration.Completed)
+        {
+            return;
+        }
+
+        foreach (var relation in declaration.Relations)
+        {
+            var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
+            var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
+            this.AddPremise(environment, a, b, relation.Equality, rule);
+        }
+
+        if (environment.Dependence)
+        {
+            this.ReadFailedClauses(environment, declaration, (BoundOrigin[])type.OriginArguments);
+        }
+    }
+
+    // SPEC 15.6.1, 15.3.3 (PLAN G962 C1): a named function's definition assumes its result Type well formed (R3): every Origin stored
+    // below a borrow layer outlives that layer's Origin (AddResultPremises), and each of its Types' own clauses holds; each call proves
+    // them for its substituted result (RequireResultPremises). Only a definition assumes its own result: a Callable comparison's required
+    // signature is an obligation being compared, so AddRequiredPremises reads the borrow layers alone.
+    private void AddDefinitionResultPremises(OriginPremiseEnvironment environment, BoundType result)
+    {
+        this.AddResultPremises(environment, result);
+        this.ResultClausePart(environment, result, this.visitedParts.Begin(this.storageVersion));
+    }
+
+    // The result's Types' own clauses down to a nested Function Type, whose per-call Origins cannot leave their binder (SPEC 15.3.4);
+    // each distinct part once per query.
+    private void ResultClausePart(OriginPremiseEnvironment environment, BoundType type, uint query)
+    {
+        if (!type.StoresOrigin || type.Kind == BoundTypeKind.Function)
+        {
+            return;
+        }
+
+        this.AddTypeClausePremises(environment, type, OriginPremiseRule.Result);
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.ResultClausePart(environment, type.Components[i], query);
+            }
         }
     }
 

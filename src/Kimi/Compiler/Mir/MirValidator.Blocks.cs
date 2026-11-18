@@ -194,7 +194,7 @@ internal sealed partial class MirValidator
         private readonly bool WritesNever(in MirRvalue rvalue) => rvalue.Kind == MirRvalueKind.Opaque ||
             (rvalue is { Kind: MirRvalueKind.Use, Op: 0, Count: 1 } &&
                 body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move } operand &&
-                this.IsValid(operand.Place) && MirTypes.IsNever(body, body.TypeOf(operand.Place)));
+                this.IsValid(operand.Place) && MirTypes.IsNever(types, body, body.TypeOf(operand.Place)));
 
         // Whether a placing Assign, a Use or an aggregate, into a temp's Place takes an operand of that temp: the builder never emits one,
         // and MirMoveData carries what each operand takes into its component, apart from it (its closure's invariant).
@@ -319,7 +319,7 @@ internal sealed partial class MirValidator
             }
             else if (terminator.Kind == MirTerminatorKind.Return && body.Locals.Length > 0)
             {
-                this.Agree(Result(body.Key), body.Locals[0].Type);
+                this.Agree(this.Result(body.Key), body.Locals[0].Type);
             }
 
             if (terminator.Kind == MirTerminatorKind.Call && !this.Call(terminator))

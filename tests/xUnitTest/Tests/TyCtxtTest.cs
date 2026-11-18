@@ -366,15 +366,16 @@ public sealed partial class TyCtxtTest
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
         var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).First(static x => x?.Target.Name == "identity")!;
-        var substs = new[] { BoundType.Boolean, BoundType.I32 }.Select(self => c.Types.SubstOf(Conforming(call, self))!).ToArray();
+        var substs = new[] { BoundType.Boolean, BoundType.I32 }.Select(self => c.Types.SubstOf(Conforming(c.Binding, call, self))!).ToArray();
         var closed = substs.Select(x => c.Types.Apply(closure.EnvironmentType!, x)!).ToArray();
         Assert.Equal(substs, closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(closed[0], closed[1]);
 
-        static CallPlan Conforming(CallPlan call, BoundType self)
+        static CallPlan Conforming(Binding binding, CallPlan call, BoundType self)
         {
             var synthesized = new CallPlan();
             synthesized.Set(
+                binding,
                 call.Target,
                 call.ReturnType,
                 null,
@@ -666,7 +667,7 @@ public sealed partial class TyCtxtTest
             [HoldStep.Own, HoldStep.Own, HoldStep.Shared, HoldStep.Shared, HoldStep.Exclusive, HoldStep.Own, HoldStep.Own],
             layers.Select(x => types.StoredStep(x.Instance, x.Part, x.Positions)));
         Assert.All(layers, x => Assert.False(TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))));
-        Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0]!.Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
+        Assert.All([AdtDef.FieldType(types, p[3], 0)!, AdtDef.CaseTypes(types, p[4])![0]!.Components[0], AdtDef.FieldType(types, p[5], 1)!], static x => Assert.Null(x.RawOrigin));
     }
 
     // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24; R4's constraint 2): a raw layer a Type argument supplies, where the declaration states a
@@ -794,11 +795,11 @@ public sealed partial class TyCtxtTest
         foreach (var holder in p[1..8])
         {
             Assert.Contains(Kept(c, holder), static x => x?.CarriesRawOrigin == true);
-            Assert.DoesNotContain(Stored(holder), static x => x?.CarriesRawOrigin == true);
+            Assert.DoesNotContain(Stored(c.Types, holder), static x => x?.CarriesRawOrigin == true);
         }
 
         var plain = Kept(c, p[8]);
-        Assert.Same(AdtDef.FieldType(p[8], 0), plain[0]);
+        Assert.Same(AdtDef.FieldType(c.Types, p[8], 0), plain[0]);
         var failed = MirBuildTest.Compile("struct Bad<P>\n    public var v: P\n    public var m: Missing\nenum E<P>\n    A(Missing, P)\n    B(P)\n" +
             "func f(x: uniq/i32, b: Bad<raw/u8 during x>, e: E<raw/u8 during x>) => ()\n");
         Assert.False(failed.Binding.Result.IsComplete);
@@ -812,7 +813,7 @@ public sealed partial class TyCtxtTest
         {
             var parts = c.Types.StoredParts(holder, out var parent).ToArray();
             BoundType?[] kept = AdtDef.IsStruct(holder) ? [.. parts, parent] : parts;
-            var erased = Stored(holder).ToArray();
+            var erased = Stored(c.Types, holder).ToArray();
             Assert.Equal(erased.Length, kept.Length);
             for (var i = 0; i < kept.Length; i++)
             {
@@ -840,7 +841,7 @@ public sealed partial class TyCtxtTest
         Assert.Equal(
             (HoldStep.Exclusive, false, false),
             (types.StoredStep(wrap, 0, []), TyCtxt.RawStated(KeptLayer(types, wrap, 0, [])), MembersAt(types, wrap, 0, [], members)));
-        Assert.Equal(HoldStep.Address, types.StoredStep(AdtDef.FieldType(p[1], 0)!, 0, []));
+        Assert.Equal(HoldStep.Address, types.StoredStep(AdtDef.FieldType(c.Types, p[1], 0)!, 0, []));
         Assert.Same(wrap, types.StoredParts(p[3], out _)[0]!.Components[0]);
         var option = Kept(9);
         var some = Array.FindIndex(option.Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 });
@@ -852,7 +853,7 @@ public sealed partial class TyCtxtTest
             layers.Select(x => $"{types.StoredStep(x.Instance, x.Part, x.Positions)} {TyCtxt.RawStated(KeptLayer(types, x.Instance, x.Part, x.Positions))} " +
                 $"{MembersAt(types, x.Instance, x.Part, x.Positions, members)}"));
         Assert.Empty(members);
-        Assert.Same(AdtDef.FieldType(p[13], 0), Kept(13));
+        Assert.Same(AdtDef.FieldType(c.Types, p[13], 0), Kept(13));
         (BoundType Instance, int Part, int[] Positions)[] broken = [(option, some, []), (Kept(12), 0, [0]), (Kept(12), 0, [5])];
         Assert.All(broken, x => Assert.Contains(
             "InternalInvariant", Assert.Throws<InvalidOperationException>(() => types.StoredStep(x.Instance, x.Part, x.Positions)).Message, StringComparison.Ordinal));
@@ -900,9 +901,9 @@ public sealed partial class TyCtxtTest
                 "raw/u8 True", "raw/u8 False", "raw/u8 True", "Wrapping<i32> False",
             ],
             holders.Select(x => $"{TyCtxt.Name(Kept(x))} {TyCtxt.RawStated(Kept(x))}"));
-        Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(x, 0)));
-        Assert.All(holders, x => Assert.Same(AdtDef.FieldType(x, 0), c.Binding.StoredType(x.Symbol!.Adt!.Fields[0], x)));
-        Assert.All(holders, x => Assert.False(AdtDef.FieldType(x, 0)!.HasAbstractPart));
+        Assert.All(holders, x => Assert.Same(c.Binding.WithoutRawOrigins(Kept(x)), AdtDef.FieldType(c.Types, x, 0)));
+        Assert.All(holders, x => Assert.Same(AdtDef.FieldType(c.Types, x, 0), c.Binding.StoredType(x.Symbol!.Adt!.Fields[0], x)));
+        Assert.All(holders, x => Assert.False(AdtDef.FieldType(c.Types, x, 0)!.HasAbstractPart));
         var payload = types.StoredParts(u[1], out _)[Array.FindIndex(u[1].Symbol!.Adt!.Cases, static x => x is { Payload.Length: 1 })]!;
         Assert.Equal("(raw/u8) True", $"{TyCtxt.Name(payload)} {TyCtxt.RawStated(payload.Components[0])}");
         Assert.Equal(BoundTypeKind.AssociatedProjection, Kept(u[0]).Kind);
@@ -1033,7 +1034,7 @@ public sealed partial class TyCtxtTest
         Assert.Same(p["wrap"], Part(p["outer"], 0));
         foreach (var holder in p.Values.Where(static x => AdtDef.IsStruct(x) || AdtDef.IsEnum(x)))
         {
-            var erased = Stored(holder).ToArray();
+            var erased = Stored(c.Types, holder).ToArray();
             var parts = types.StoredParts(holder, out var parent).ToArray();
             BoundType?[] kept = AdtDef.IsStruct(holder) ? [.. parts, parent] : parts;
             Assert.Equal(erased.Length, kept.Length);
@@ -1302,7 +1303,7 @@ public sealed partial class TyCtxtTest
         var heights = new List<int> { n.Height };
         for (var step = 0; step < 3; step++)
         {
-            var next = AdtDef.FieldType(n, 0)!;
+            var next = AdtDef.FieldType(c.Types, n, 0)!;
             n = next.Components[0].Components[0];
             Assert.Equal(n.Height + 2, next.Height);
             heights.Add(n.Height);
@@ -1419,7 +1420,7 @@ public sealed partial class TyCtxtTest
 
         // copy, count, first, same (a requirement, whose Self the composition closes) and get bind a Type, a length, an Origin, Self and
         // a declaring Type of the instance.
-        var composed = NestedCalls(direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!).Subst!)).ToArray();
+        var composed = NestedCalls(direct.Binding, direct.Kotonoha).Select(x => (x.Inner.Target.Name, Subst: direct.Types.Compose(direct.Types.SubstOf(x.Inner)!, direct.Types.SubstOf(x.Outer)!).Subst!)).ToArray();
         Assert.Equal(["i32", "bool"], composed.Where(static x => x.Name == "copy").Select(static x => x.Subst.Types[0]!.Name));
         Assert.Equal(3, composed.Single(static x => x.Name == "count").Subst.Lengths[0]!.Value);
         Assert.Contains(composed.Single(static x => x.Name == "first").Subst.Origins.ToArray().Concat(composed.Single(static x => x.Name == "first").Subst.Inputs.ToArray()), static x => x is not null);
@@ -1474,7 +1475,7 @@ public sealed partial class TyCtxtTest
         }
 
         var call = new CallPlan();
-        call.Set(inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
+        call.Set(c.Binding, inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
         Assert.Equal(RequirementTargetKind.Limit, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!).Kind);
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
@@ -1488,7 +1489,7 @@ public sealed partial class TyCtxtTest
         }
 
         var instance = new CallPlan();
-        instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
+        instance.Set(c.Binding, outer.Target, outer.ReturnType, null, [], [nested]);
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
         Assert.Equal((null, Binding.StorageOutcome.Limit), (composed.Subst, composed.Storage));
         Assert.Same(nested, composed.Part);
@@ -1562,7 +1563,7 @@ public sealed partial class TyCtxtTest
         Assert.True(complete.Binding.Result.IsComplete);
         var target = KotoTree.Walk(complete.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).Single(static x => x.Target.Name == "f");
         var call = new CallPlan();
-        call.Set(target.Target, target.ReturnType, null, [], [c.Types.SubstOf(calls[1])!.Types[0]]);
+        call.Set(complete.Binding, target.Target, target.ReturnType, null, [], [c.Types.SubstOf(calls[1])!.Types[0]]);
         var parameter = ((FunctionKoto)target.Target.Declaration).Parameters[0].Type.TypeOf()!;
         Assert.Throws<InvalidOperationException>(() => complete.Types.ReadableInstance(parameter, complete.Types.SubstOf(call)!));
     }
@@ -1708,7 +1709,7 @@ public sealed partial class TyCtxtTest
         var c = MirBuildTest.Compile("enum E\n    A(Missing)\n    B(i32)\n    C\nenum G<T>\n    A(Missing)\n    B(rc/G<(T, T)>)\nfunc f(e: E, g: G<i32>) => ()\n");
         Assert.False(c.Binding.Result.IsComplete);
         var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
-        Assert.Equal([null, c.Types.Tuple([BoundType.I32]), c.Types.Tuple([])], AdtDef.CaseTypes(parameters[0]) ?? []);
+        Assert.Equal([null, c.Types.Tuple([BoundType.I32]), c.Types.Tuple([])], AdtDef.CaseTypes(c.Types, parameters[0]) ?? []);
         Assert.Equal([Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], parameters.Select(c.Binding.PrepareTypeStorage));
     }
 
@@ -1719,16 +1720,16 @@ public sealed partial class TyCtxtTest
     {
         var c = SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto))
-            .SelectMany(static x => Enumerable.Range(0, 8).Select(i => (Node: x, Ordinal: i)).TakeWhile(static y => CallPlan.Of(y.Node, y.Ordinal) is not null))
-            .Where(x => c.Types.SubstOf(CallPlan.Of(x.Node, x.Ordinal)!) is not null).ToArray();
-        var substs = calls.Select(x => c.Types.SubstOf(CallPlan.Of(x.Node, x.Ordinal)!)).ToArray();
+            .SelectMany(x => Enumerable.Range(0, 8).Select(i => (Node: x, Ordinal: i)).TakeWhile(y => CallPlan.Of(c.Binding, y.Node, y.Ordinal) is not null))
+            .Where(x => c.Types.SubstOf(CallPlan.Of(c.Binding, x.Node, x.Ordinal)!) is not null).ToArray();
+        var substs = calls.Select(x => c.Types.SubstOf(CallPlan.Of(c.Binding, x.Node, x.Ordinal)!)).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
             for (var i = 0; i < calls.Length; i++)
             {
-                changed += ReferenceEquals(c.Types.SubstOf(CallPlan.Of(calls[i].Node, calls[i].Ordinal)!), substs[i]) ? 0 : 1;
+                changed += ReferenceEquals(c.Types.SubstOf(CallPlan.Of(c.Binding, calls[i].Node, calls[i].Ordinal)!), substs[i]) ? 0 : 1;
             }
         }));
         Assert.Equal(0, changed);
@@ -1741,7 +1742,7 @@ public sealed partial class TyCtxtTest
     public void WarmComposeIsTheSameAndAllocatesNothing()
     {
         var c = MinimalEmissionTest.Analyze(ComposeSource);
-        var pairs = NestedCalls(c.Kotonoha).ToArray();
+        var pairs = NestedCalls(c.Binding, c.Kotonoha).ToArray();
         var composed = pairs.Select(x => c.Types.Compose(c.Types.SubstOf(x.Inner)!, c.Types.SubstOf(x.Outer)!).Subst).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -1943,7 +1944,7 @@ public sealed partial class TyCtxtTest
             if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
             {
                 instances.Add(type);
-                if (!Stored(type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types.Erase(type))))
+                if (!Stored(types, type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types, types.Erase(type))))
                 {
                     problems.Add(TyCtxt.Name(type));
                 }
@@ -1951,21 +1952,21 @@ public sealed partial class TyCtxtTest
         }
     }
 
-    private static IEnumerable<BoundType?> Stored(BoundType type) => AdtDef.IsStruct(type)
-        ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(type, x)).Append(AdtDef.Base(type)) : AdtDef.CaseTypes(type) ?? [];
+    private static IEnumerable<BoundType?> Stored(TyCtxt types, BoundType type) => AdtDef.IsStruct(type)
+        ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(types, type, x)).Append(AdtDef.Base(types, type)) : AdtDef.CaseTypes(types, type) ?? [];
 
     // Each call in a default a call omits, with that call.
-    private static IEnumerable<(CallPlan Inner, CallPlan Outer)> NestedCalls(Kotonoha module)
+    private static IEnumerable<(CallPlan Inner, CallPlan Outer)> NestedCalls(Binding binding, Kotonoha module)
     {
         foreach (var node in KotoTree.Walk(module.RootKoto))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } outer; i++)
+            for (var i = 0; CallPlan.Of(binding, node, i) is { } outer; i++)
             {
                 foreach (var omitted in outer.DefaultArguments.ToArray())
                 {
                     foreach (var nested in KotoTree.Walk(DefaultDecl.Of(omitted).Expression))
                     {
-                        for (var k = 0; CallPlan.Of(nested, k) is { } inner; k++)
+                        for (var k = 0; CallPlan.Of(binding, nested, k) is { } inner; k++)
                         {
                             if (inner.Kind != CalleeKind.Value)
                             {
@@ -1983,7 +1984,7 @@ public sealed partial class TyCtxtTest
     private static int ComposeProblems(Compilation c, Kotonoha module, List<string> problems)
     {
         var count = 0;
-        foreach (var (inner, outer) in NestedCalls(module))
+        foreach (var (inner, outer) in NestedCalls(c.Binding, module))
         {
             count++;
             var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst;
@@ -2044,7 +2045,7 @@ public sealed partial class TyCtxtTest
         var calls = 0;
         foreach (var node in KotoTree.Walk(root))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+            for (var i = 0; CallPlan.Of(c.Binding, node, i) is { } call; i++)
             {
                 if (c.Types.SubstOf(call) is { } subst && subst.Target.Declaration is FunctionKoto callee)
                 {
@@ -2102,7 +2103,7 @@ public sealed partial class TyCtxtTest
         var bodies = new Dictionary<FunctionKoto, CallPlan[]>();
         foreach (var node in KotoTree.Walk(module.RootKoto))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } outer; i++)
+            for (var i = 0; CallPlan.Of(c.Binding, node, i) is { } outer; i++)
             {
                 if (outer.Kind != CalleeKind.Function || outer.Target.Declaration is not FunctionKoto callee || !c.Types.Instantiates(outer.Target))
                 {
@@ -2112,7 +2113,7 @@ public sealed partial class TyCtxtTest
                 if (!bodies.TryGetValue(callee, out var inner))
                 {
                     inner = KotoTree.Walk(callee).Where(x => ReferenceEquals(Binder(x), callee))
-                        .SelectMany(static x => Enumerable.Range(0, 8).Select(k => CallPlan.Of(x, k)).TakeWhile(static y => y is not null).OfType<CallPlan>())
+                        .SelectMany(x => Enumerable.Range(0, 8).Select(k => CallPlan.Of(c.Binding, x, k)).TakeWhile(static y => y is not null).OfType<CallPlan>())
                         .Where(static x => x.Kind == CalleeKind.Requirement).ToArray();
                     bodies.Add(callee, inner);
                 }

@@ -394,7 +394,7 @@ public sealed partial class Binding
         // Unsupported_Kd.
         private bool ContractWritesThrough(Koto place)
         {
-            if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto { BoundCall: { } call } invocation ||
+            if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto invocation || binding.CallOf(invocation) is not { } call ||
                 ArgumentOf(call.ArgumentOperations, place) is not { } argument)
             {
                 return false;
@@ -475,7 +475,7 @@ public sealed partial class Binding
             }
 
             var consumer = target.Parent!;
-            while (consumer.Parent is { } outer && Covers(outer, consumer))
+            while (consumer.Parent is { } outer && binding.Covers(outer, consumer))
             {
                 consumer = outer;
             }

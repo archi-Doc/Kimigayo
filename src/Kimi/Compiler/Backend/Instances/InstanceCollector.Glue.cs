@@ -36,7 +36,7 @@ internal sealed partial class InstanceCollector
         }
 
         var start = this.steps.Count;
-        DropGlue.Destroyed(drops, body.Ordinal, group, closed, this.walk, this.steps);
+        DropGlue.Destroyed(this.types, drops, body.Ordinal, group, closed, this.walk, this.steps);
         this.Destroys(program, item, subject, site, start);
     }
 
@@ -63,7 +63,7 @@ internal sealed partial class InstanceCollector
     // (MirTypes.MayNeedDrop), a call's in-place destruction's too (SPEC 15.7.1, 16.3.2; DECISIONS R5-M116: replace's published row). -1 for
     // a Type with nothing to destroy or a refused edge.
     private int GlueOf(int item, SourceRef subject, BoundType closed)
-        => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, this.GlueKey(closed), closed, null) : -1;
+        => MirTypes.MayNeedDrop(this.types, closed, this.seen) ? this.AdmitType(item, subject, this.GlueKey(closed), closed, null) : -1;
 
     // DECISIONS R5-M60 (amended by U11 and G372): the key of a glue item, what its function reads: its erased Type (AdmitType), except for a
     // Function value, whose glue (FunctionCodegen.Erasures' DestroyErased) reads only the one layout row of every Function Type, keyed by
@@ -95,7 +95,7 @@ internal sealed partial class InstanceCollector
         DropGlue.Parts(this.types, closed, parts);
         var payload = parts.Count > start ? parts[start].Type : null;
         parts.RemoveRange(start, parts.Count - start);
-        key = payload is not null && MirTypes.MayNeedDrop(payload, this.seen) ? key
+        key = payload is not null && MirTypes.MayNeedDrop(this.types, payload, this.seen) ? key
             : key with { Type = this.types.Rebuild(closed, [BoundType.Unit], null, []), Variant = payload is null ? (byte)1 : (byte)0 };
         this.glueKeys.Add(closed, key);
         return key;
@@ -162,7 +162,7 @@ internal sealed partial class InstanceCollector
             return this.Declared(program, item, site, array, this.types.Synthesized(array, null, [components[0]], []));
         }
 
-        if (!MirTypes.MayNeedDrop(components[0], this.seen) && !MirTypes.MayNeedDrop(components[1], this.seen))
+        if (!MirTypes.MayNeedDrop(this.types, components[0], this.seen) && !MirTypes.MayNeedDrop(this.types, components[1], this.seen))
         {
             return this.Declared(program, item, site, this.types.Declaration(KimiDeclarationId.StorageReleaseDictionary)!, null);
         }

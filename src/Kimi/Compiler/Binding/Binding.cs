@@ -265,6 +265,9 @@ public sealed partial class Binding
 
     internal bool IsRunning => this.running;
 
+    // Whether a node's plans are the current pass's: the node resolved by the running or the last completed pass, not an earlier one.
+    internal bool IsCurrent(Koto node) => HirTables.State(node) == BindingState.Resolved && (this.running || this.Result != default);
+
     internal void Invalidate()
     {
         // A Bind in progress rebuilds everything it published; clearing its state midway would lose its own issues.

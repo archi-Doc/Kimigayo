@@ -1268,7 +1268,7 @@ public sealed partial class MirBorrowsTest
                 }
             }
 
-            var (into, scope) = form == "viaE" ? (body.Project(p, MirProjectionKind.Deref, 0), copy) : (cell, outer);
+            var (into, scope) = form == "viaE" ? (body.Project(c.Types, p, MirProjectionKind.Deref, 0), copy) : (cell, outer);
             Assign(loop, into, MirRvalue.Use(body.AddOperand(MirOperand.Copy(k))), 14, scope);
             if (form == "closure")
             {
