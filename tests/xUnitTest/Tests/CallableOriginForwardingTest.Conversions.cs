@@ -209,6 +209,20 @@ public partial class CallableOriginForwardingTest
     // tw5-refc2's candidates: the first refuted by its own clause for an `i32` argument, beside a generic one; a `var` over a parameter.
     private const string RunRefuted = "func run<T>(q: ref/i32, f: (ref/i32 during q) -> i32, t: T) -> i32\n    T is i64\n    return 0\nfunc run<F, T>(q: ref/i32, f: F, t: T) -> i32 => 1\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    var v = p\n";
 
+    // The Middle's C3 (C-387) candidates: the Function Type at a Tuple literal's, a nested Tuple literal's or an Array literal's element
+    // position, beside a generic one that takes the literal.
+    private const string RunTupleOne = "func run(q: ref/i32, t: ((ref/i32 during q) -> i32, ref/i32 during q)) -> i32 => 0\n";
+
+    private const string RunTuple = RunTupleOne + "func run<T>(q: ref/i32, t: T) -> i32 => 1\n";
+
+    private const string RunTuple2 = "func run(q: ref/i32, t: (((ref/i32 during q) -> i32, ref/i32 during q), ref/i32 during q)) -> i32 => 0\nfunc run<T>(q: ref/i32, t: T) -> i32 => 1\n";
+
+    private const string RunArray = "func run(q: ref/i32, t: Array<(ref/i32 during q) -> i32>) -> i32 => 0\nfunc run<T>(q: ref/i32, t: Array<T>) -> i32 => 1\n";
+
+    private const string OwnCp = "    let c = func [r] (x: ref/i32 during p) -> i32 => 0\n";
+
+    private const string OwnCq = "    let c = func [r] (x: ref/i32 during q) -> i32 => 0\n";
+
     private const string HOsel2 = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: i32) -> i32 => 0\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: T) -> i32 => 1\n";
 
     private const string LetCOsel2 = "    let c = func [] (z: ref/i32 during b) -> i32 => z@follow\n    let v: i32 = 1\n";
@@ -739,6 +753,23 @@ public partial class CallableOriginForwardingTest
     [InlineData("tw5-refc2", RunRefuted + "    let c = func [v] (x: ref/i32 during q) -> i32 => 0\n    let n: i32 = 3\n    return run(q, c@move, n)\n", "")]
     [InlineData("tw5-refc2-ok", RunRefuted + "    let c = func [] (x: ref/i32 during q) -> i32 => 0\n    let n: i32 = 3\n    return run(q, c@move, n)\n", "")]
     [InlineData("tw5-refc2-i", RunRefuted + "    let c = func [v] (x: ref/i32 during q) -> i32 => 0\n    let n: i64 = 3\n    return run(q, c@move, n)\n", "Unsupported_Kd c@move")]
+    // SPEC 10.5.1, 10.1 step 5, 7.7.4 (the Middle's C3 on C-387; B's rulings-j 10): each element of a Tuple or array literal argument,
+    // recursively, is an argument at its element position, so its erasure's environment decides applicability there as at a direct
+    // argument (e-owr, e-owr0): a Closure holding a borrow of a body local is not Owned and run<T> is selected, with an Origin difference
+    // (n-tup-p, n-arr-p, n-tup2-p; dev accepted them, cdb04ab61 gave AmbiguousBinding_Kd) or without (n-tup-q, n-arr-q, n-tup2-q; dev and
+    // cdb04ab61 gave AmbiguousBinding_Kd); a `var` region with no refuting bound is the located limit at the element (n-tupF-q, O-406
+    // (a); was AmbiguousBinding_Kd), also with a lone candidate (c-ntup, the Middle's s2c at an element; was the conversion's Constraint
+    // record there, UnprovenConstraint_Kd), and alone a refuted element leaves no candidate applicable (n-tup-lone; was the conversion's
+    // Constraint record at the element).
+    [InlineData("n-tup-p", RunTuple + OwnK + OwnCp + "    return run(q, (c@move, q))\n", "")]
+    [InlineData("n-arr-p", RunArray + OwnK + OwnCp + "    return run(q, [c@move])\n", "")]
+    [InlineData("n-tup2-p", RunTuple2 + OwnK + OwnCp + "    return run(q, ((c@move, q), q))\n", "")]
+    [InlineData("n-tup-q", RunTuple + OwnK + OwnCq + "    return run(q, (c@move, q))\n", "")]
+    [InlineData("n-arr-q", RunArray + OwnK + OwnCq + "    return run(q, [c@move])\n", "")]
+    [InlineData("n-tup2-q", RunTuple2 + OwnK + OwnCq + "    return run(q, ((c@move, q), q))\n", "")]
+    [InlineData("n-tupF-q", RunTuple + "func k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    var r = p\n" + OwnCq + "    return run(q, (c@move, q))\n", "Unsupported_Kd c@move")]
+    [InlineData("n-tup-lone", RunTupleOne + OwnK + OwnCq + "    return run(q, (c@move, q))\n", "NoApplicableOverload_Kd run(q, (c@move, q))")]
+    [InlineData("c-ntup", "func two(t: (() -> ref/i32 during static, i32)) => ()\nfunc t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    two((c@move, 1))\n", "Unsupported_Kd c@move")]
     public void ApplicabilityJudgesTheErasureRowsConditions(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

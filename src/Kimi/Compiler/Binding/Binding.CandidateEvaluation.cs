@@ -10,9 +10,11 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<EvaluatedCandidate> candidateScratch = new();
 
-    // SPEC 10.4 step 1: the adaptation classes of the element positions of each candidate's Tuple and array literal arguments, in each
-    // fit's order (BoundArgumentOperation.Positions; FitElement appends them); a candidate evaluation removes what it appended when it ends.
-    private readonly List<ArgumentAdaptation> positionClasses = new();
+    // SPEC 10.5.1: the operations of the element positions of each candidate's Tuple and array literal arguments, each element fitted as
+    // an argument at its position, in each fit's order (BoundArgumentOperation.Positions; FitElement appends them): ranked by their
+    // classes (SPEC 10.4 step 1) and read by step 5 as the arguments' (ErasedArgumentsEnvironment); a candidate evaluation removes what
+    // it appended when it ends.
+    private readonly List<BoundArgumentOperation> positionOperations = new();
 
     // The pending judgment of a call that a single Pending candidate blocks (FailPendingJudgment), for its record (DECISIONS BU-86).
     private Dictionary<Koto, PendingJudgment>? pendingJudgments;
@@ -207,11 +209,11 @@ public sealed partial class Binding
     {
         var better = false;
         var worse = false;
-        var classes = CollectionsMarshal.AsSpan(this.positionClasses);
+        var positions = CollectionsMarshal.AsSpan(this.positionOperations);
         for (var i = 0; i < left.Length; i++)
         {
-            var x = classes[left[i].Positions];
-            var y = classes[right[i].Positions];
+            var x = positions[left[i].Positions];
+            var y = positions[right[i].Positions];
             if (!CompareClasses(left[i].Adaptation, right[i].Adaptation, ref better, ref worse))
             {
                 return false;
@@ -230,7 +232,7 @@ public sealed partial class Binding
 
             for (var p = 0; p < x.Length; p++)
             {
-                if (!CompareClasses(x[p], y[p], ref better, ref worse))
+                if (!CompareClasses(x[p].Adaptation, y[p].Adaptation, ref better, ref worse))
                 {
                     return false;
                 }

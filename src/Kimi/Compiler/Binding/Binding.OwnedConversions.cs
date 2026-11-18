@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -9,7 +10,8 @@ namespace Kimi.Compiler;
 // DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (an
 // OwnedConversionFact), chosen where the erasure decides (OwnedMember), at the converted value (DECISIONS BU-107). Before the capability
 // engine judges (an inferred Field's header), a subject no work judged is the located limit. A call's applicability reads the same
-// fact for its erased arguments (ErasedArgumentsEnvironment, SPEC 10.1 step 5).
+// fact for its erased arguments at every argument position, a Tuple or array literal's elements included (ErasedArgumentsEnvironment,
+// SPEC 10.1 step 5, 10.5.1).
 // Input: the erasure's Owned proof with its rest (the subject's work, whose parts the capability engine records at every path,
 // CapabilityWork.Part; R4-M161), each leaf Origin judged by the relation judge at the use (JudgeOriginRelation with `static` as the
 // shorter end, SPEC 15.6.5); the call's retention for the result's independence of the receiver (ReceiverIndependence); the erasure's
@@ -175,17 +177,35 @@ public sealed partial class Binding
     // A part walk's visited works (OwnedMember), kept across walks so a warm rebind allocates nothing.
     private readonly HashSet<CapabilityWork> ownedWalk = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 7.7.4's second bullet, 10.1 step 5, 15.6.1: the erased arguments' environment conditions at applicability, each argument's
-    // verdict computed once (ErasedArgumentEnvironment): a refuted argument makes the candidate inapplicable whatever another argument's
-    // limit says; else a limited argument is the located limit at that argument (LimitErasedArgument); else every verdict is judged
-    // after selection, an Unknown an obligation.
-    private ConstraintProof ErasedArgumentsEnvironment(ReadOnlySpan<BoundArgumentOperation> operations)
+    // SPEC 7.7.4's second bullet, 10.1 step 5, 10.5.1, 15.6.1: the erased arguments' environment conditions at applicability, at every
+    // argument position: each argument, then the element positions each fit recorded (Positions: each element of a Tuple or array literal
+    // argument, recursively, is an argument at its position), each verdict computed once (ErasedArgumentEnvironment): a refuted one makes
+    // the candidate inapplicable whatever another's limit says; else a limited one is the located limit at its source
+    // (LimitErasedArgument); else every verdict is judged after selection, an Unknown an obligation.
+    private ConstraintProof ErasedArgumentsEnvironment(ReadOnlySpan<BoundArgumentOperation> arguments)
     {
-        var limits = this.flagScratch.Rent(operations.Length); // Whether each argument's verdict is the limit.
+        var positions = CollectionsMarshal.AsSpan(this.positionOperations);
+        var count = arguments.Length;
+        foreach (ref readonly var argument in arguments)
+        {
+            count += positions[argument.Positions].Length;
+        }
+
+        var operations = this.argumentOperationScratch.Rent(count); // The arguments, then each one's element positions.
+        var limits = this.flagScratch.Rent(count); // Whether each position's verdict is the limit.
         try
         {
+            arguments.CopyTo(operations);
+            count = arguments.Length;
+            foreach (ref readonly var argument in arguments)
+            {
+                var elements = positions[argument.Positions];
+                elements.CopyTo(operations.AsSpan(count));
+                count += elements.Length;
+            }
+
             var limited = false;
-            for (var i = 0; i < operations.Length; i++)
+            for (var i = 0; i < count; i++)
             {
                 var verdict = this.ErasedArgumentEnvironment(operations[i]);
                 if (verdict == ConstraintProof.Refuted)
@@ -197,7 +217,7 @@ public sealed partial class Binding
                 limited |= limits[i];
             }
 
-            for (var i = 0; limited && i < operations.Length; i++)
+            for (var i = 0; limited && i < count; i++)
             {
                 if (limits[i])
                 {
@@ -210,6 +230,7 @@ public sealed partial class Binding
         finally
         {
             this.flagScratch.Return(limits, clearArray: true);
+            this.argumentOperationScratch.Return(operations, clearArray: true);
         }
     }
 
