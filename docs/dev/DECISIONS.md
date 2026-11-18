@@ -9334,6 +9334,8 @@ resumed by R4-M86 (2026-10-20).
     - BuildMir's own walks over these shapes are exponential (R5's W1 and R4's W2); W3, TyCtxt.Retains for A5, is O1's and closed.
     - Inline-cycle diagnostics depend on declaration order and duplicated parts, as in (a)'s example (pinned), and
       `struct R {r: C<i32>}; struct C<T> {t: (C<i32>, u8)}` is accepted with no InvalidInlineLayout_Kd (on dev too; G310).
+  - Superseded in part by BU-218 (PLAN G945): for `CheckTypeConstraints`, "each entry call a query" holds for a call outside every
+    running per-use walk of its scope; a call nested in one reads that walk's parts decided on settled verdicts and stores none.
 
 - **BU-57 A declaration's closed-clause check has one owner, `Binding.SourceStates`** (2026-10-30; PLAN G170 N6 under C1 §5, unit U0,
   bu73) `Binding.SourceStates` owns declarations' closed-clause checking and, from U1, their published source states (C1 §5's N6). U0
@@ -14027,6 +14029,36 @@ resumed by R4-M86 (2026-10-20).
   - Kept, with its removal condition: `CheckTypeUseCore`'s own shape test (a second copy of `SameShape`, differing on Closure
     contexts and inferred lengths); a part whose walk ended at the pair itself stops the decomposition. Removal: the unit that
     rewrites the fit path's shape decision (PLAN G940).
+- **BU-218 A per-use formation call nested in a running per-use walk of its scope reads that walk's parts decided on settled
+  verdicts, and stores none** (Front, 2026-11-16; supersedes in part BU-55's "each entry call a query" for `CheckTypeConstraints`;
+  PLAN G945, unit basewalk; W-261) SPEC 8.3.2, 8.6.1, 8.3.3 Recursion and Finality (R7-M33).
+  - Cause: forming `B<X>` forms the component `X` (`FormedPart`), then proves B's clause `A is C` with `A := X` through
+    `ResolveConformance`, whose evidence rests on the instance's formation (`InstanceFormation` -> `CheckTypeConstraints(X, scope)`).
+    That entry began a new query, so the table never answered `X`, decided a moment before in the same scope: T(k) = 2 T(k-1).
+  - Rule: the per-use entry keeps the innermost running per-use walk (its scope and query). A call made while a per-use walk of the
+    same scope runs reads a part that walk decided on settled verdicts (the entry's `Settled`: over its computation neither the
+    engine's `ProvisionalReads` nor Formation's `unsettledReads` grew, the latter counting `ReadPart`'s reads of an unsettled part, so
+    a part that read an unsettled part is unsettled too), by `ReadPart`, `FormedPart`'s read path; any other part it decides in a
+    query of its own, storing nothing in the running walk's query. The walk's table holds only what its own component recursion
+    decided.
+  - Carrier: `ProvisionalReads` (Capabilities.cs) = `reentryReads` (an open obligation's re-entry reads) + the running coinductive
+    step's assumption reads (`assumedReads`, counted where an assumed work is read at the step's obligation depth, reset when a step
+    begins, 0 outside a step). An answer computed with it unchanged rests on settled verdicts and holds at any deeper obligation. The
+    engine owns the assumption fact; Formation reads the count and owns `unsettledReads`. All four (`assumedReads`,
+    `ProvisionalReads`, `Settled`, `unsettledReads`) are temporary with `reentryReads`, each stating it in code (removal: R7-C2e2
+    e2-5b, with e2-3's Completion on the answer, which then says whether a part rests on a provisional verdict).
+  - Rejected: (1) the nested call computing into the running walk's query (6dc2351b1): inside a capability request's inductive step
+    it stored an answer formed from a work's provisional Unknown and TypeDagScalingTest's ring of Owned works was rejected; (2)
+    reading any entry the walk decided (143b7178d): an entry formed under the coinductive assumption of `D is Owned` was read through
+    the newer `(S<D>, C)` obligation, where the assumption may not be read (Capabilities.cs's depth rule), and `zmin` (invalid by
+    8.3.3, R7-M33) was accepted; (3) a table across top-level uses (each written instantiation stays its own judgment, its records at
+    its node), a depth cap, a per-form skip.
+  - Bound: each distinct part is formed once per query where its formation reads no provisional verdict; a k-deep written Type costs
+    about k^2 / 2 steps over its k instantiations (plain k = 34: +1,152 steps over the library's 2,998; dev k = 16: +147,423).
+  - Code: `Binding.ConstraintValidation.Formation.cs` (`openFormation`, the two-argument `CheckTypeConstraints`, the entry's
+    `Settled`, `unsettledReads`, `ReadPart`; the header's Invariants state the rule), `Binding.Capabilities.cs` (`assumedReads`,
+    `ProvisionalReads`). Tests: TypeDagScalingTest.ANestedConstrainedInstanceIsFormedOncePerQuery (40 levels, 60 s deadline; dev
+    runs past 90 s) and the assumption boundary rows beside the ring row (`AnAssumedOwnedWorkIsNotReadThroughANewerObligation`).
 - **BU-219 The library is bound once: the library pass, the program pass and the library layer (PLAN G949)** (2026-11-16; Front,
   Binding; Major, behavior-preserving; the owner's order 「「ライブラリを 1 回だけ束縛する」作業を進めましょう」 (K, 11-16), the survey's proposal 1
   「提案の1と2と3を、進めて下さい」, O-376 (a) 「O-376 a」 with its four approvals, O-377 (a) 「O-377 a」 and O-381 (b) 「O-381 b」; the Back's consent
