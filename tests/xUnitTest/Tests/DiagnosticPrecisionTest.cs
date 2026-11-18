@@ -577,7 +577,10 @@ public class DiagnosticPrecisionTest
         Assert.False(c.Check());
         var record = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), record.Code);
-        Assert.Contains("ZProbe", record.Text, StringComparison.Ordinal);
+        Assert.Equal(c.Library.Kotonoha.Name, record.Path); // The library's document, not the program's.
+        var library = UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n";
+        Assert.Equal(new(library.IndexOf("ref/::ZProbe.Inner", StringComparison.Ordinal) + "ref/::".Length, "ZProbe".Length), record.Span);
+        Assert.Equal("ZProbe", record.Text); // The use's location, as the program rows' Unsupported_Kd (z01x-z05x) has it.
     }
 
     // SPEC 6.7, 19.4 (R8-G1 row A6): excluded syntax is checked syntactically only, so an implementation Attribute there is not

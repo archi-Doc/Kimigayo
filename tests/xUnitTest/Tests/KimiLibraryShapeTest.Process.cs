@@ -47,7 +47,7 @@ public partial class KimiLibraryShapeTest
     public void ADirectFreezeIsNotCachedAndHoldsItsOwnLibrary()
     {
         var target = TargetTriple.Parse("x86_64-unknown-linux-gnu");
-        var freeze = Unfrozen(target, debug: false);
+        var freeze = Unfrozen(target, debugAndSetting: false);
         var library = KimiLibrary.Freeze(freeze);
         Assert.Same(freeze.Library, library);
         Assert.Same(library, freeze.Binding.Library);
@@ -56,14 +56,16 @@ public partial class KimiLibraryShapeTest
         Assert.False(store.ContainsKey(target));
     }
 
-    // s2a and s2b (R8-M32's Debug row, N10): Of's library equals an uncached freeze, with the default preparation and with Debug on.
+    // s2a and s2b (R8-M32's Debug row, N10): Of's library equals an uncached freeze, with the default preparation for windows-x64 and
+    // without a target, and with Debug on and a compile-time setting.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void OfEqualsAnUncachedFreeze(bool debug)
+    [InlineData("x86_64-pc-windows-msvc", false)]
+    [InlineData("", false)]
+    [InlineData("x86_64-pc-windows-msvc", true)]
+    public void OfEqualsAnUncachedFreeze(string target, bool debugAndSetting)
     {
-        var target = TargetTriple.Parse(WindowsProfile.Target);
-        Assert.Equal(FrozenDump(KimiLibrary.Of(target)), FrozenDump(KimiLibrary.Freeze(Unfrozen(target, debug))));
+        var key = target.Length == 0 ? TargetTriple.Invalid : TargetTriple.Parse(target);
+        Assert.Equal(FrozenDump(KimiLibrary.Of(key)), FrozenDump(KimiLibrary.Freeze(Unfrozen(key, debugAndSetting))));
     }
 
     // s6a and s6d's seam half (C3): a library with records frozen through the seam is refused as a value, never thrown: its refusal
@@ -71,7 +73,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AFreezeOfADefectiveLibraryIsARefusal()
     {
-        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debug: false);
+        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
         freeze.Library.Kotonoha.CreateCodeContext().Parse(freeze.Library.Kotonoha.RootKoto, ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n    public func zuse2(v: ref/::ZProbe) => ()\n");
         var library = KimiLibrary.Freeze(freeze);
         var refusal = Assert.IsType<Kimi.Compiler.LibraryLayer.Refused>(library.Layer.Refusal);
@@ -117,12 +119,17 @@ public partial class KimiLibraryShapeTest
         Assert.NotEqual(0, calls);
     }
 
-    // A freeze compilation over the seam's preparation: an empty project, with Debug on where the row asks.
-    private static Compilation Unfrozen(TargetTriple target, bool debug)
+    // A freeze compilation over the seam's preparation: an empty project, with Debug on and a compile-time setting where the row asks.
+    private static Compilation Unfrozen(TargetTriple target, bool debugAndSetting)
     {
         var kimigayo = Compilation.CreateForTest().Kimigayo; // A console-less compiler service, as Of's default preparation has.
         var project = new Project(kimigayo);
-        project.KimiOptions.Debug = debug;
+        if (debugAndSetting)
+        {
+            project.KimiOptions.Debug = true;
+            project.ProjectFile.CompileTimeSettings["feature"] = new() { Bool = true };
+        }
+
         return KimiLibrary.Unfrozen(target, kimigayo, project);
     }
 

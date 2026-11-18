@@ -36,6 +36,9 @@ public partial class Compilation
     private readonly List<PairBinder> caseBinders = []; // The binders the first member's case text names.
     private readonly List<PairBinder> memberBinders = []; // Another member's.
 
+    // The store of a library subject's record (Core's store decision, StoreOf; PLAN G949 Stage 2 U2a): this compilation's root collection.
+    private DiagnosticCollection LibraryStore => this.Kotonoha.DiagnosticCollection;
+
     /// <summary>Publishes one merged problem of a program's report (R6-check H3-2, design 3.1-3.4): a located problem by its location, any
     /// other at its subject with its Ordinal as the condition, a derived one as <c>PrerequisiteUnavailable_Kd</c> naming its causes' keys;
     /// a broken contract as <c>InternalInvariant_Kd</c> at the subject.</summary>
@@ -134,7 +137,7 @@ public partial class Compilation
         {
             if (record is { Document: { } document, Span: { } span })
             {
-                this.Kotonoha.DiagnosticCollection.ReportLocation(record.Requirement, span, DiagnosticCode.InternalInvariant_Kd, document);
+                this.LibraryStore.ReportLocation(record.Requirement, span, DiagnosticCode.InternalInvariant_Kd, document);
             }
             else
             {
@@ -256,7 +259,7 @@ public partial class Compilation
     // U2b); any other subject's to its node's collection. Locate and PublishRefusal go through it; Publish still reports through the
     // node until U3's first commit (B's ruling 32: routing Koto.Report would need a larger parameter exception).
     private DiagnosticCollection? StoreOf(SourceRef subject)
-        => subject.IsLibrary ? this.Kotonoha.DiagnosticCollection : this.SyntaxOf(subject).DiagnosticCollection;
+        => subject.IsLibrary ? this.LibraryStore : this.SyntaxOf(subject).DiagnosticCollection;
 
     // The key a merged problem is published under, by Publish's form, so a derived problem names it as its cause (design 3.2).
     private DiagnosticKey KeyOf(Mir.MirProgram program, int merged)

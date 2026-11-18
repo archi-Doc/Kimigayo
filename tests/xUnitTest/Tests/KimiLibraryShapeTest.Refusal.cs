@@ -37,13 +37,20 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TwoLibraryRecordsAreBothPublishedAtTheirLocations()
     {
-        var c = RefusedLibrary(ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n    public func zuse2(v: ref/::ZProbe) => ()\n");
+        var library = ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n    public func zuse2(v: ref/::ZProbe) => ()\n";
+        var c = RefusedLibrary(library);
         Assert.Equal(2, c.Library.Layer.Refusal!.Records.Length);
         Assert.False(c.Check());
         var published = TestDiagnostics.Of(c);
         Assert.Equal(2, published.Length);
-        Assert.All(published, static x => Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code));
-        Assert.Equal(2, published.Select(static x => x.Span).Distinct().Count());
+        Assert.All(published, x =>
+        {
+            Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code);
+            Assert.Equal(c.Library.Kotonoha.Name, x.Path); // The library's document.
+            Assert.Equal("ZProbe", x.Text);
+        });
+        int[] uses = [library.IndexOf("ref/::ZProbe.Inner", StringComparison.Ordinal) + "ref/::".Length, library.IndexOf("ref/::ZProbe)", StringComparison.Ordinal) + "ref/::".Length];
+        Assert.Equal(uses, published.Select(static x => x.Span.Start).Order().ToArray());
     }
 
     // s6b and s6p (C1 (x); form (R)): a library whose only defect is a syntax error (here a parameter list without its `)`, which the parser
