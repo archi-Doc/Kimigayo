@@ -272,7 +272,7 @@ func make<T>(action: () -> T) -> T => action()
 func makeLarge() -> i64 => 2
 let large = make(makeLarge)               // T = i64 from makeLarge's signature; then erased.
 let written = make(func () -> i64 => 2)   // T = i64 from the written result Type.
-// let unwritten = make(func () => 2)     // Error: only the body could fix T.
+// let open = make(func () => 2)          // Error: only the body could fix T.
 ```
 
 ### 10.5.3. Function references
