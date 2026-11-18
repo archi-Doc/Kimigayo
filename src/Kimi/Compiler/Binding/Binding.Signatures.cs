@@ -4,24 +4,32 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Signatures: a declaration's header and the signature rules of a member group.
+// Signatures: a declaration's header, its declared signature (FnSig) and the signature rules of a member group.
 // - Responsibility: BindHeader, the owner of Binding.DeclQuery's Signature kind, binds a function's, property's or annotated variable's
 //   header when first demanded (BindDeclarations' header loop forces the rest), once per pass, except while a pending associated Type
 //   keeps a function's header open: BindFunctionHeader then leaves it unbound (AbandonQuery), and a later BindHeader binds it again. A
 //   demand while the header is being bound returns, and an anonymous function's header belongs to its expression context.
-//   ValidateSignatures checks a member group's one receiver shape (SPEC 7.3), its duplicate overloads (SPEC 7.4, by SignatureEquals)
+//   FnSig is the one read of a callable's declared signature (SPEC 9.1: generic count and ordered parameter Types, the receiver
+//   included; with its result, Origin count and binder): a view over what the header published, read by every signature comparison,
+//   the 7.3 receiver shape and the 7.4 checker's correspondence (Binding.ParameterShapes) included; the generic slots' kinds are the
+//   bound Schema's (SameGenericShape) and the syntax's (SameExplicitArgumentShape, SameSlotKinds), read once their counts compared equal.
+//   ValidateSignatures checks a member group's one receiver shape (SPEC 7.3), its duplicate overloads (SPEC 9.1, by SignatureEquals)
 //   and a Contract's same-name requirements with those they inherit (SPEC 8.4.2).
 // - Inputs: the declared symbols and scopes; the bound parameter Types. Outputs: each header's Type, its Signature state (BeginQuery,
-//   CompleteQuery, AbandonQuery), and the ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are
+//   CompleteQuery, AbandonQuery), FnSig, and the ReceiverShapeMismatch and Duplicate failures; the parameter-shape checks are
 //   Binding.ParameterShapes.cs's.
-// - Invariants: a header is its declaration's, never the body that demands it (BindHeader binds it outside any body).
-// - Prohibitions: no call is selected and no overload ranked here; ValidateSignatures only fails declarations.
+// - Invariants: a header is its declaration's, never the body that demands it (BindHeader binds it outside any body). FnSig copies
+//   nothing: a function's parameter Types are the ones BindType published on its parameters (each as soon as it is bound, also while a
+//   pending associated Type keeps the header open), its result the symbol's Type (BindType's partial value while the header is open),
+//   its receiver index the declaration's `self` parameter (Binding.Indexing); an accessor's are its BoundAccessor's (BindPropertyHeader).
+// - Prohibitions: no call is selected and no overload ranked here; ValidateSignatures only fails declarations; no signature
+//   comparison reads a function's parameter Types, receiver index, result or generic count other than through FnSig.
 public sealed partial class Binding
 {
     /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
-        => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
-            function.Parameters[symbol.ReceiverIndex].Type.BoundType is { } receiver ? receiver.Semantics : null;
+        => symbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsSpecialization: false } function } &&
+            new FnSig(function) is { ReceiverIndex: >= 0 } signature && signature.Input(signature.ReceiverIndex) is { } receiver ? receiver.Semantics : null;
 
     private static bool SignatureSlotEquals(BindingSymbol? a, BindingSymbol? b, Koto aBinder, Koto bBinder)
         => ReferenceEquals(a, b) || (a is not null && b is not null && ReferenceEquals(a.Scope.Owner, aBinder) && ReferenceEquals(b.Scope.Owner, bBinder) && a.Slot == b.Slot);
@@ -131,6 +139,8 @@ public sealed partial class Binding
                         continue;
                     }
 
+                    var sa = new FnSig(fa);
+
                     // SPEC 7.3: every function with a receiver in one member group shares one receiver shape.
                     if (ReceiverShape(a) is { } shape)
                     {
@@ -146,17 +156,23 @@ public sealed partial class Binding
 
                     for (var b = a.Next; b is not null; b = b.Next)
                     {
-                        if (b.Declaration is not FunctionKoto fb || fb.IsSpecialization || fa.GenericArguments.Count != fb.GenericArguments.Count || fa.Parameters.Count != fb.Parameters.Count)
+                        if (b.Declaration is not FunctionKoto { IsSpecialization: false } fb)
+                        {
+                            continue;
+                        }
+
+                        var sb = new FnSig(fb);
+                        if (sa.GenericCount != sb.GenericCount || sa.InputCount != sb.InputCount)
                         {
                             continue;
                         }
 
                         var equal = true;
-                        for (var i = 0; i < fa.Parameters.Count; i++)
+                        for (var i = 0; i < sa.InputCount; i++)
                         {
-                            var ta = fa.Parameters[i].Type.BoundType;
-                            var tb = fb.Parameters[i].Type.BoundType;
-                            if (ta is null || tb is null || !SignatureEquals(ta, tb, fa, fb))
+                            var ta = sa.Input(i);
+                            var tb = sb.Input(i);
+                            if (ta is null || tb is null || !SignatureEquals(ta, tb, sa.Binder, sb.Binder))
                             {
                                 equal = false;
                                 break;
@@ -206,5 +222,31 @@ public sealed partial class Binding
                 }
             }
         }
+    }
+
+    // A callable's declared signature (SPEC 9.1, 8.6.3): a view over a function's or an accessor's published header (no temporary
+    // FunctionKoto or copied parameter lists). An accessor has no generic parameter and two inputs, its receiver and its value input.
+    private readonly struct FnSig
+    {
+        private readonly FunctionKoto? function;
+        private readonly BoundAccessor? accessor;
+
+        internal FnSig(FunctionKoto function) => this.function = function;
+
+        internal FnSig(BoundAccessor accessor) => this.accessor = accessor;
+
+        internal Koto Binder => (Koto?)this.function ?? this.accessor!.Binder;
+
+        internal int GenericCount => this.function?.GenericArguments.Count ?? 0;
+
+        internal int OriginCount => this.function?.Origins.Count ?? this.accessor?.Declaration?.Origins.Count ?? 0;
+
+        internal int InputCount => this.function?.Parameters.Count ?? 2;
+
+        internal int ReceiverIndex => this.function is { } f ? f.BoundSymbol!.ReceiverIndex : this.accessor!.Receiver is null ? -1 : 0;
+
+        internal BoundType? Result => this.function is { } f ? f.BoundSymbol?.Type : this.accessor!.Result;
+
+        internal BoundType? Input(int index) => this.function is { } f ? f.Parameters[index].Type.BoundType : index == 0 ? this.accessor!.Receiver : this.accessor!.Input;
     }
 }

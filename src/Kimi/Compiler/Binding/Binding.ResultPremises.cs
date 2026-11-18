@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 15.3.7, 15.6.1, 15.6.4 step 3: a signature's intrinsic well-formedness (every Origin stored below a borrow layer outlives that
-// layer's Origin, and for an input its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
+// layer's Origin, and its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
 // result, a relation that the callee's inputs and declared relations already prove needs no premise; only the others, which the
 // definition would otherwise fail, are carried to the uses: each call solves its Origins with them and proves them for its substituted
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
@@ -461,14 +461,14 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2 row 2, 15.3.6 (PLAN G585): a part that waits at `ref/U during a` for a value call's solve is a borrowed owner temporary,
-    // of U (TemporaryTarget) or of its own Type (a fill, a mixed range), at a root or nested row: its Place Origin is an input bound of
+    // of U (Materialization) or of its own Type (a fill, a mixed range), at a root or nested row: its Place Origin is an input bound of
     // `a`, by the key of a named call's evidence walk (InferComposite's Aggregate part, InferLiteral: InferTemporary). A part of Join
     // kind at `ref/(...)`, which InferComposite borrows too, is PLAN G729's exception and no key here: whether a value call takes it
     // is the question of a temporary carried out of its arm.
     private void AddTemporaryBound(Koto part, BoundType pattern, OriginInference inference, BindingScope scope)
     {
         if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } origin } &&
-            (this.KindOf(part) == PartKind.Aggregate || this.TemporaryTarget(part, pattern, scope) is not null))
+            (this.KindOf(part) == PartKind.Aggregate || this.Materialization(part, pattern, scope) is not null))
         {
             AddInputBound(inference, origin, this.PlaceOrigin(part));
         }

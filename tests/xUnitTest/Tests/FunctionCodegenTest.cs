@@ -1338,15 +1338,19 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // SPEC 22.5.2 (DECISIONS R5-M92): each of the 7 fixed codes MIR's Fail carries, the five the served compiler functions name and the
+    // SPEC 22.5.2 (DECISIONS R5-M92): each of the 8 fixed codes MIR's Fail carries, the six the served compiler functions name and the
     // builder's duplicate key and format codes, names its Abort reason (AbortReasons.Of), whose text begins with the code.
     [Fact]
     public void EveryMirFailCodeHasAReason()
     {
-        string[] served = ["Storage.indexBounds", "Storage.missingDictionaryKey", "Storage.argumentOutOfRange", "Storage.countOverflow", "Storage.allocationSizeExceeded"];
+        string[] served =
+        [
+            "Storage.indexBounds", "Storage.missingDictionaryKey", "Storage.argumentOutOfRange", "Storage.countOverflow", "Storage.allocationSizeExceeded",
+            "Storage.clockFailure",
+        ];
         var library = Compilation.CreateForTest().Library;
         string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
-        Assert.Equal(7, codes.Distinct().Count());
+        Assert.Equal(8, codes.Distinct().Count());
         Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
         Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
     }

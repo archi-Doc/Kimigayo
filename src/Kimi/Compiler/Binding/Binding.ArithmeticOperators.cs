@@ -132,7 +132,7 @@ public sealed partial class Binding
 
         var requirement = selected.Contract!.MembersByName[ArithmeticContractSyntax.Method(id)][0];
         plan.Call = this.BindSelectedRequirement(binary, plan.Call, [binary.Left, binary.Right], self, requirement.Contract, requirement.Symbol, scope);
-        plan.Active = plan.Call.BoundCall is not null;
+        plan.Active = this.CallOf(plan.Call) is not null;
         // A compound assignment's route gives its result; BindBinary completes the assignment at its destination (CompleteRoutedUpdate).
         result = plan.Active ? plan.Call.BoundType : null;
         if (!compound)
@@ -185,7 +185,7 @@ public sealed partial class Binding
 
         var requirement = selected.Contract!.MembersByName["negated"][0];
         plan.Call = this.BindSelectedRequirement(unary, plan.Call, [unary.Operand], self, requirement.Contract, requirement.Symbol, scope);
-        plan.Active = plan.Call.BoundCall is not null;
+        plan.Active = this.CallOf(plan.Call) is not null;
         result = Complete(unary, plan.Active ? plan.Call.BoundType : null);
         return true;
     }
@@ -230,7 +230,7 @@ public sealed partial class Binding
             if (other is not null)
             {
                 var expected = candidate.Type!.Components[0];
-                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !FitsStructuralPart(counterpart, expected))
+                if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) : counterpart is not null && !this.FitsStructuralPart(counterpart, expected))
                 {
                     continue;
                 }
