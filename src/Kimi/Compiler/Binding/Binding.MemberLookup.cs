@@ -390,10 +390,8 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 9.6: the layer walk of a member lookup in a role (SPEC 9.2), its namespace the role's: the first layer with an accessible
-    // declaration. Until R7-N1 c2 the role's eligibility is its callers', after the walk (ResolveMember's AddTypeCandidates, the Case
-    // formers' HasLookupRole); c2 moves it into the walk (9.6: "accessible, role-compatible"). Receiver/argument/accessor checks never
-    // reopen it.
+    // SPEC 9.6: the layer walk of a member lookup in a role (SPEC 9.2), its namespace the role's: the first layer with accessible,
+    // role-compatible declarations. Receiver/argument/accessor checks never reopen it.
     private MemberSelection LookupMember(BoundType type, string name, BindingScope use, LookupRole role, BoundType? receiver = null, BoundMemberPath? path = null)
     {
         // SPEC 22.1 (PLAN G32): a fixed array has no declaration; its members are the functions of the Kimi member group.
@@ -422,7 +420,7 @@ public sealed partial class Binding
             var scope = this.scopes[symbol.Declaration];
             for (var candidate = (values ? scope.Values : scope.Types).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
-                if (IsGenericParameter(candidate))
+                if (IsGenericParameter(candidate) || !HasLookupRole(candidate, role))
                 {
                     continue;
                 }

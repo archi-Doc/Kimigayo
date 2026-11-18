@@ -533,7 +533,7 @@ public sealed partial class Binding
         }
 
         var symbol = this.LookupMember(expected, name, scope, LookupRole.EnumCase).Member;
-        if (symbol is null || !HasLookupRole(symbol, LookupRole.EnumCase))
+        if (symbol is null)
         {
             return null;
         }

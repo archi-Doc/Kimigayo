@@ -187,52 +187,74 @@ public sealed partial class Binding
     // differing ones are Ambiguous: an implementation limit, not SPEC's rule (PLAN). A default alias's segment may fail here (part e).
     private ResolvedPath ResolveImportedValue(string name, BindingScope scope, Koto use, int step)
     {
-        BindingSymbol? imported = null;
-        var import = default(AliasImport);
-        var ambiguous = false;
+        var stage = default(ValueImports);
         var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
-        for (var i = 0; !ambiguous && documentAliases is not null && i < documentAliases.Count; i++)
+        for (var i = 0; !stage.Ambiguous && documentAliases is not null && i < documentAliases.Count; i++)
         {
             var alias = documentAliases[i];
-            var target = this.AliasTarget(alias.Declaration!);
-            if (target is null || !target.Values.TryGetValue(name, out var candidate) || this.AccessibleImport(candidate, scope) is not { } accessible)
-            {
-                continue;
-            }
-
-            ambiguous = !this.MergeImport(use, accessible, ref imported) ||
-                (alias.Environment is { } environment && import.Environment is { } previous && !ReferenceEquals(previous, environment));
-            if (!ambiguous && alias.Environment is not null)
-            {
-                import = import.Environment is null ? alias : import.MergeWitness(alias);
-            }
+            this.AddImport(ref stage, this.AliasTarget(alias.Declaration!), alias, name, scope, use);
         }
 
         // The sources merged before an ambiguity keep their environment as the use's import, as the table did.
-        if (import.Environment is not null)
+        if (stage.Import.Environment is not null)
         {
-            this.nameSteps[step] = this.nameSteps[step] with { Import = import };
+            this.nameSteps[step] = this.nameSteps[step] with { Import = stage.Import };
         }
 
-        if (ambiguous || imported is not null)
+        if (stage.Imported is not null)
         {
-            return new(ambiguous ? PathEnd.Ambiguous : PathEnd.Selected, ambiguous ? null : imported, use);
+            return this.ImportStageEnd(stage, name, scope, use);
         }
 
         foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
         {
-            var target = this.DefaultAliasTarget(use, path);
-            if (target is null || !target.Values.TryGetValue(name, out var candidate) || this.AccessibleImport(candidate, scope) is not { } accessible)
+            if (stage.Ambiguous)
             {
-                continue;
+                break;
             }
 
-            if (!this.MergeImport(use, accessible, ref imported))
-            {
-                return new(PathEnd.Ambiguous, null, use);
-            }
+            this.AddImport(ref stage, this.DefaultAliasTarget(use, path), default, name, scope, use);
         }
 
-        return new(imported is null ? PathEnd.Unresolved : PathEnd.Selected, imported, use);
+        return this.ImportStageEnd(stage, name, scope, use);
     }
+
+    // One opened source's same-name declarations join its stage (SPEC 9.5, 9.5.1): every accessible one takes part in the stage's
+    // conflict check, Cases and members needing a receiver too (9.2: the Value role admits all value declarations).
+    private void AddImport(ref ValueImports stage, BindingScope? target, in AliasImport alias, string name, BindingScope scope, Koto use)
+    {
+        if (target is null || !target.Values.TryGetValue(name, out var candidate) || this.AccessibleImport(candidate, scope) is not { } accessible)
+        {
+            return;
+        }
+
+        var imported = stage.Imported;
+        var ambiguous = !this.MergeImport(use, accessible, ref imported) ||
+            (alias.Environment is { } environment && stage.Import.Environment is { } previous && !ReferenceEquals(previous, environment));
+        stage = stage with
+        {
+            Imported = imported,
+            Source = stage.Source ?? target,
+            Selectable = stage.Selectable || this.HasUnqualifiedCandidate(candidate, scope),
+            Ambiguous = ambiguous,
+        };
+
+        if (!ambiguous && alias.Environment is not null)
+        {
+            stage = stage with { Import = stage.Import.Environment is null ? alias : stage.Import.MergeWitness(alias) };
+        }
+    }
+
+    // SPEC 9.5, 9.5.1, 18.2.1 (PLAN G632): an import stage's end, once its same-name declarations are merged. The conflict first (a
+    // function and another value kind, or two other values: the ordinary same-name ambiguity); then 9.5's stop, the stage having only
+    // Cases and members needing a receiver (none Selectable); else the merged selection.
+    private ResolvedPath ImportStageEnd(in ValueImports stage, string name, BindingScope scope, Koto use)
+        => stage.Ambiguous ? new(PathEnd.Ambiguous, null, use)
+            : stage.Imported is not { } imported ? new(PathEnd.Unresolved, null, use)
+            : stage.Selectable ? new(PathEnd.Selected, imported, use)
+            : new(PathEnd.QualificationStop, null, use, new(stage.Source!, scope, imported, name, LookupRole.Value, 0));
+
+    // One import stage's same-name value declarations merged so far: the selection (a gathered group's first source), the merged
+    // environment, the first source, whether any candidate may be selected unqualified (HasUnqualifiedCandidate) and a conflict.
+    private readonly record struct ValueImports(BindingSymbol? Imported, AliasImport Import, BindingScope? Source, bool Selectable, bool Ambiguous);
 }

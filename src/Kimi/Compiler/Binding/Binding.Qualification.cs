@@ -20,6 +20,7 @@ public sealed partial class Binding
     {
         Receiver,
         Inherited,
+        Case,
     }
 
     private readonly record struct QualificationFact(
@@ -37,6 +38,10 @@ public sealed partial class Binding
 
     private static bool IsInstanceMember(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 || (symbol.Kind == BindingSymbolKind.Property && symbol.Scope.Owner is StructKoto or ContractKoto or EnumKoto);
+
+    // SPEC 9.5, 18.2.1 (PLAN G632; R7-N1 c2): what an unqualified Name never selects at any stage, opened members included: a Case or a
+    // member that needs a receiver (an inherited declaration is InheritedStop's).
+    private static bool NeedsQualification(BindingSymbol symbol) => symbol.EnumCase is not null || IsInstanceMember(symbol);
 
     private string? RootQualifier(BindingScope scope, QualificationFact fact)
     {
@@ -85,11 +90,27 @@ public sealed partial class Binding
         return null;
     }
 
+    // A candidate qualified by its Type (no receiver): the repair's `Self.` or `Container.` (ReportQualification).
     private bool HasReceiverlessCandidate(BindingSymbol head, BindingScope scope, LookupRole role)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
             if (!IsInstanceMember(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 9.5: a candidate an unqualified value Name may select at a Container or import stage: 9.5's stop's one predicate, read by
+    // ValueStage and, through AddImport's Selectable, ImportStageEnd (the repair's question is HasReceiverlessCandidate).
+    private bool HasUnqualifiedCandidate(BindingSymbol head, BindingScope scope)
+    {
+        for (var candidate = head; candidate is not null; candidate = candidate.Next)
+        {
+            if (!NeedsQualification(candidate) && this.Accessible(candidate, scope))
             {
                 return true;
             }
@@ -239,7 +260,7 @@ public sealed partial class Binding
             fact.Name,
             container.Name,
             at: at,
-            evidence: fact.BaseClause is null ? [nameSpace, QualificationCause.Receiver, instance] : [nameSpace, QualificationCause.Inherited, instance, fact.Member.Scope.Owner.BoundSymbol!.Name],
+            evidence: fact.BaseClause is null ? [nameSpace, fact.Member.EnumCase is null ? QualificationCause.Receiver : QualificationCause.Case, instance] : [nameSpace, QualificationCause.Inherited, instance, fact.Member.Scope.Owner.BoundSymbol!.Name],
             related: fact.BaseClause is null ? [("declaration", fact.Member.Declaration, "declaration requiring qualification")] : [("declaration", fact.Member.Declaration, "inherited declaration"), ("base", fact.BaseClause, "base clause of " + container.Name)],
             repairs: repairs?.ToArray());
 

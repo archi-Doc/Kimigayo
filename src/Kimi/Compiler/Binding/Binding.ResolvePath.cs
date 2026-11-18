@@ -549,8 +549,8 @@ public sealed partial class Binding
         return candidates.First is not null ? this.SelectedPath(candidates, use, step) : new(PathEnd.Unresolved, null, use);
     }
 
-    // SPEC 9.3, 9.5: a stage's first visible, accessible value; an instance member with no receiverless candidate beside it at a Container
-    // stops the lookup (qualification required).
+    // SPEC 9.3, 9.5: a stage's first visible, accessible value; a Container stage whose candidates are all Cases or members needing a
+    // receiver (none HasUnqualifiedCandidate) stops the lookup (qualification required).
     private ResolvedPath ValueStage(BindingScope current, BindingScope scope, Koto use, string name)
     {
         var head = current.Values.GetValueOrDefault(name);
@@ -562,7 +562,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (current.Owner is DeclarationContainerKoto && IsInstanceMember(candidate) && !this.HasReceiverlessCandidate(head!, scope, LookupRole.Value))
+            if (current.Owner is DeclarationContainerKoto && !this.HasUnqualifiedCandidate(head!, scope))
             {
                 return new(PathEnd.QualificationStop, null, use, new(current, scope, candidate, name, LookupRole.Value, 0));
             }
