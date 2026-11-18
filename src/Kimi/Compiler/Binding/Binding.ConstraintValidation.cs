@@ -187,7 +187,7 @@ public sealed partial class Binding
     // their projections. Reuse the ordinary validation until declaration states stop changing.
     private void InvalidateProjectionCertificates(BindingMode mode)
     {
-        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(mode, sourcesOnly: true))
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(mode))
         {
             this.ClearCapabilityResults();
             this.ValidateBaseDeclarations(mode);
@@ -198,14 +198,14 @@ public sealed partial class Binding
         this.ClearCapabilityResults();
     }
 
-    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
-    // already judged them.
-    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
+    // The running pass's environments, its own modules' scopes (In, PLAN G949 S1-r2), judged at the validation step and again in each
+    // certificate round.
+    private bool ValidateConstraintEnvironments(BindingMode mode)
     {
         var changed = false;
         foreach (var scope in this.scopes.Values.In(this.pass))
         {
-            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
+            if (scope.Constraints is not { } environment)
             {
                 continue;
             }
