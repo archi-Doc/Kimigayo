@@ -247,8 +247,10 @@ public class UserArithmeticOperatorTest
     // by `L is W`, one level deep, its identity written; k2n's contradiction is in Contract K's own environment, whose `Self is
     // ObjectPayload` reads K itself: no record at K beside the contradiction (a self-read is no failed input). Pinned as they are: k2n's
     // four ICs at its premises' projections (5:5, 5:27, 6:5, 6:31: later checks reading K's failed environment, dev's records); d2n, a
-    // clause instance at a class mate's prefix, until PLAN G881's row (5) (EnumerateMates); a6n, a6k and a6v without 8.3.2's
-    // closed-world record (G853, c2-4).
+    // clause instance at a class mate's prefix, until PLAN G881's row (5) (EnumerateMates). a6n, a6k and a6v have 8.3.2's closed-world
+    // record, dev's own (an identity premise makes `Option<i32> is LeftAddable<L>`, `Option<i32> is Addable<R>` in a6k, `Option<u8> is
+    // LeftAddable<L>` in a6v, directly available evidence that the closed world refutes: contradictory evidence at f, SPEC 8.3.1, 8.3.2,
+    // 8.2.3): a6n and a6k beside their contradiction (SPEC 23.1.2), a6v (invalid by 8.3.2 alone) with no direction record.
     [Theory]
     [InlineData("a0n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
     [InlineData("a0r", "func f<L, R>(left: ref/L, right: ref/R)\n    R is LeftAddable<L>\n    L is Addable<R>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
@@ -272,9 +274,9 @@ public class UserArithmeticOperatorTest
     [InlineData("a3iv", "contract P\n    associate A\n    Self.(P).A is LeftAddable<i32>\nfunc f<L, R>(left: ref/L, right: ref/R)\n    L is P\n    L is Addable<R>\n    R is L.(P).A\n    ()\npublic func main() => ()\n", "clean", null)]
     [InlineData("d2r", "contract P\n    associate A\n    Self.(P).A is LeftAddable<Self>\ncontract P2\n    associate B is P\nfunc f<L>(left: ref/L)\n    L is P2\n    L.(P2).B is Addable<L.(P2).B.(P).A>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 3*InvalidConstraint_Kd", "f<")]
     [InlineData("d2n", "contract P\n    associate A\n    Self.(P).A is LeftAddable<Self>\ncontract P2\n    associate B is P\nfunc f<L, R>(left: ref/L, right: ref/R)\n    L is P2\n    L.(P2).B is Addable<R>\n    R is L.(P2).B.(P).A\n    ()\npublic func main() => ()\n", "clean", null)]
-    [InlineData("a6n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
-    [InlineData("a6k", "func f<L, R, K>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<K>\n    L is Option<i32>\n    K is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
-    [InlineData("a6v", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<u8>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a6n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
+    [InlineData("a6k", "func f<L, R, K>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<K>\n    L is Option<i32>\n    K is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
+    [InlineData("a6v", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<u8>\n    ()\npublic func main() => ()\n", "1*InvalidConstraint_Kd", null)]
     [InlineData("n1n", "struct Box<L, R, S>\n    L is Addable<R>\n    S is LeftAddable<L>\n    public func g(self)\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
     [InlineData("n1v", "struct Box<L, R, S>\n    L is Addable<R>\n    S is LeftAddable<L>\n    public func g(self)\n        ()\npublic func main() => ()\n", "clean", null)]
     [InlineData("n2n", "struct Box<L, R, S>\n    L is Addable<R>\n    public func g(self)\n        S is LeftAddable<L>\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
