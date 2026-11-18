@@ -59,6 +59,14 @@ public sealed partial class Binding
         {
             group = this.InferredCase(inferred, scope, expected);
         }
+        else if (callee.BindingState == BindingState.Resolved)
+        {
+            // A callee Resolved before its call is bound is its creator's binding (Ranges, Views, ObjectCreation, Interpolation, a
+            // selected requirement): its group is the symbol it pinned. Binding it again would only adapt it to a position, and a
+            // compiler-only callee's parent is the source root, so it would read as a value use and form a function item the call
+            // never keeps.
+            group = callee.BoundSymbol;
+        }
         else
         {
             this.BindNode(callee, scope);
