@@ -62,7 +62,59 @@ public sealed partial class Binding
 
     internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
 
-    private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
+    // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
+    // function and is no Container that the function is a member of below the body.
+    private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
+        => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
+
+    // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
+    // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
+    private static Koto? EnclosingBody(Koto declaration)
+    {
+        for (var current = declaration.Parent; current is not null; current = current.Parent)
+        {
+            if (current is FunctionKoto or PropertyAccessorKoto)
+            {
+                return current;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
+    // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
+    // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
+    // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
+    // arguments are its whole dependence.
+    // A signature is unreadable, none, where its header did not bind (an Item's function, the Type BindConcreteClosure starts with) or
+    // BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300).
+    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
+    {
+        if (type.Kind == BoundTypeKind.Function)
+        {
+            return type.Binder is { } binder ? (type, binder) : null;
+        }
+
+        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
+        {
+            return null;
+        }
+
+        if (type.Symbol?.Declaration is not FunctionKoto definition)
+        {
+            throw new InvalidOperationException($"Callable Type `{type}` names no function (InternalInvariant; BU-73).");
+        }
+
+        if (type.Kind == BoundTypeKind.FunctionItem)
+        {
+            return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
+        }
+
+        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
+    }
+
+    private bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
         if (kind == IntrinsicKind.PrimitiveInteger)
@@ -92,7 +144,7 @@ public sealed partial class Binding
             }
 
             // The judgment is shallow: outer owner Semantics, a Core other than Never, and no inherited opt-out.
-            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || type.Symbol?.ObjectPayloadOptOut is not null
+            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || this.ObjectPayloadOptOut(type.Symbol) is not null
                 ? ConstraintProof.Refuted : ConstraintProof.Proven;
             return true;
         }
@@ -157,58 +209,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
-    // function and is no Container that the function is a member of below the body.
-    private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
-        => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
-
-    // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
-    // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
-    private static Koto? EnclosingBody(Koto declaration)
-    {
-        for (var current = declaration.Parent; current is not null; current = current.Parent)
-        {
-            if (current is FunctionKoto or PropertyAccessorKoto)
-            {
-                return current;
-            }
-        }
-
-        return null;
-    }
-
-    // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
-    // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
-    // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
-    // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
-    // arguments are its whole dependence.
-    // A signature is unreadable, none, where its header did not bind (an Item's function, the Type BindConcreteClosure starts with) or
-    // BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300).
-    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
-    {
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            return type.Binder is { } binder ? (type, binder) : null;
-        }
-
-        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
-        {
-            return null;
-        }
-
-        if (type.Symbol?.Declaration is not FunctionKoto definition)
-        {
-            throw new InvalidOperationException($"Callable Type `{type}` names no function (InternalInvariant; BU-73).");
-        }
-
-        if (type.Kind == BoundTypeKind.FunctionItem)
-        {
-            return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
-        }
-
-        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
-    }
-
     private void ResetCapabilities(BindingMode mode)
     {
         this.capabilitiesReady = false;
@@ -248,7 +248,7 @@ public sealed partial class Binding
 
         if (!this.capabilitiesReady)
         {
-            if (this.running && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
+            if (this.running && !derivation && this.TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
             {
                 return concrete;
             }
@@ -256,7 +256,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (!derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
+        if (!derivation && this.TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
         {
             return leaf;
         }
@@ -643,7 +643,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (TryLeafCapability(type, work.Intrinsic.Intrinsic, out var leaf))
+        if (this.TryLeafCapability(type, work.Intrinsic.Intrinsic, out var leaf))
         {
             return leaf;
         }

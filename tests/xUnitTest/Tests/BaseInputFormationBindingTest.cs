@@ -227,6 +227,9 @@ public class BaseInputFormationBindingTest
         Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid));
     }
 
+    // R7-N2d: j4, whose first Bind runs its declarations twice.
+    internal const string J4 = "contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.(HasBase).Parent\n    Self is K<D.N>\n    public init(): base() => ()";
+
     private const string Rx4Contracts = "contract K<T>\ncontract HasBase\n    associate Parent\n";
 
     private const string Rx4Source = "struct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\n";
@@ -238,9 +241,6 @@ public class BaseInputFormationBindingTest
     private const string Rx4T = "    struct T: Source.(HasBase).Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n";
 
     private const string Paradox = "contract HasBase\n    associate Parent\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public init(): base() => ()\n    public init() => ()\n    struct T: T.S.(HasBase).Parent\n        public init(): base() => ()\n        struct S\n            Self is HasBase\n            associate HasBase.Parent is Q.N";
-
-    // R7-N2d: j4, whose first Bind runs its declarations twice.
-    private const string J4 = "contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.(HasBase).Parent\n    Self is K<D.N>\n    public init(): base() => ()";
 
     private const string Prefix = "open struct Base\ncontract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is Base\n";
 

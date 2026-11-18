@@ -341,9 +341,9 @@ public sealed partial class Binding
         var unverified = false;
         for (var i = 0; i < identities.Count; i++)
         {
-            for (var p = 0; p < identities[i].PathStorage.Count; p++)
+            for (var p = 0; p < this.impls.PathsOf(identities[i]).Count; p++)
             {
-                var path = identities[i].PathStorage[p];
+                var path = this.impls.PathsOf(identities[i])[p];
                 if (!path.IsVerified)
                 {
                     unverified = true; // The conformance reports its own failure.
