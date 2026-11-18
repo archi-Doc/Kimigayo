@@ -514,8 +514,10 @@ public sealed partial class MirBorrowsTest
     // is the outer function's (nestIdBad; fail-before on b826b8c05: accepted), the components swapped alike (nestId2Bad), as with no
     // premise (nestPlainBad), not without it (nestNoIdOk); outer's `T is U` holds in g's view, its instantiated reading at outer's S
     // included (nestOuterIdBad, nestOuterNoIdOk). U's requirement setQ, handed to fReq's body, may store q through PlainR's own raw
-    // layer in storage the body does not own, so `y = 5` conflicts (rvNoIdReqOk, G964's twin, I by SPEC 15.6.4; its `var o` record
-    // is dev's and b826b8c05's too, not judged here).
+    // layer in storage the body does not own, so `y = 5` conflicts (rvNoIdReqOk, G964's twin, I by SPEC 15.6.4). Its `var o` record is
+    // a known pre-existing over-retention, dev's and b826b8c05's too (open issue PLAN G989): o is recorded as retaining its own `o@uniq`
+    // Loan, though 15.6.4 excludes the own value of the argument through which the call writes and a self-link is no retention, so no
+    // storage retains that Loan; the record goes when G989 is fixed, a correction and not a weakening.
     [Fact]
     public void AKeptTypeIsReadInItsFunctionsView()
     {
