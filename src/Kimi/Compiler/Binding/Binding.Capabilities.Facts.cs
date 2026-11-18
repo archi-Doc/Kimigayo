@@ -79,9 +79,13 @@ public sealed partial class Binding
         var proposition = this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned));
         var scope = this.ConstraintScope(context);
         var proof = this.ProveConstraint(proposition, scope);
-        rest = this.capabilityNodes.TryGetValue((proposition, scope, false), out var work) ? new(true, work.Parts) : default;
+        rest = new(this.OwnedWork(type, scope), scope);
         return proof;
     }
+
+    // The work of Owned over `type` in `scope`, whose rest a part's walk reads (OwnedMember); none if no work judged it.
+    private CapabilityWork? OwnedWork(BoundType type, BindingScope scope)
+        => this.capabilityNodes.TryGetValue((this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), scope, false), out var work) ? work : null;
 
     private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
     {
@@ -156,23 +160,27 @@ public sealed partial class Binding
             this.Dependents.Clear();
         }
 
-        // A part read by an Owned judgment: one that is not Proven is kept with its member and Origin; returns the work's Origin so far.
-        internal BoundOrigin? Part(int member, ConstraintProof proof, BoundOrigin? origin, BoundOrigin? first)
+        // A part read by an Owned judgment, on every path that combines one (G379 R5: a layer's own Origin, a structure's components,
+        // Origin parts and call signature, a declaration's Type and Origin arguments and projections, an abstract Type's evidence): one
+        // that is not Proven is kept with its member, Origin and Type; returns the work's Origin so far.
+        internal BoundOrigin? Part(int member, ConstraintProof proof, BoundOrigin? origin, BoundOrigin? first, BoundType? type)
         {
             if (proof == ConstraintProof.Proven || this.Intrinsic.Intrinsic != IntrinsicKind.Owned)
             {
                 return first;
             }
 
-            (this.Parts ??= new()).Add(new(member, origin));
+            (this.Parts ??= new()).Add(new(member, origin, type));
             return first ?? origin;
         }
     }
 
-    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1; a Closure's
-    // call signature is member Components.Count, which the erasure, judging the environment alone, never reads) and Origin.
-    private readonly record struct CapabilityPart(int Member, BoundOrigin? Origin);
+    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1; an Origin part
+    // follows the components, a layer's own Origin first; a Closure's call signature is member Components.Count, which the erasure,
+    // judging the environment alone, never reads), its first Origin, and its Type, whose own work holds its parts (OwnedWork); an Origin
+    // part and a limit have none.
+    private readonly record struct CapabilityPart(int Member, BoundOrigin? Origin, BoundType? Type);
 
-    // An Owned query's subject rest (ProveOwned): whether a work judged it, and the parts it found not Proven.
-    private readonly record struct OwnedRest(bool Judged, List<CapabilityPart>? Parts);
+    // An Owned query's subject rest (ProveOwned): the work that judged it (none when no work did) and its scope.
+    private readonly record struct OwnedRest(CapabilityWork? Work, BindingScope Scope);
 }

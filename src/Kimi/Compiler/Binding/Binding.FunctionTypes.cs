@@ -14,7 +14,7 @@ namespace Kimi.Compiler;
 //   Closure's erasure, its call's retention (TyCtxt.Retains).
 // - Outputs: the verdicts and, for ContractFits, the solved Origins and argument operations.
 // - Invariants: an erasure's Shared receiver (SharedReceiver), the structural part of its signature and its Owned environment over an
-//   Origin the forming body refutes (ErasedArgumentsOwned) decide applicability; its Origin part, its other Owned verdicts and its
+//   Origin the forming body refutes (ErasedArgumentsEnvironment) decide applicability; its Origin part, its other Owned verdicts and its
 //   receiver-free result are judged after selection.
 // - Prohibitions: the Type relation's walk stays in Binding.TypeRelations.Walk.cs; these judgments call its entries.
 public sealed partial class Binding
@@ -118,7 +118,7 @@ public sealed partial class Binding
 
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
-    // not depend on its receiver (ResultDependsOnReceiver). Initializations, returns and call arguments share this judgment. A failure
+    // not depend on its receiver (ReceiverIndependence). Initializations, returns and call arguments share this judgment. A failure
     // publishes its first failed part for its record and Note (erasureOutcomes): the receiver, the signature's structure and the
     // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
     // condition, the value's own failure, recorded here at `node` (FailOwnedConversion, RecordCondition; DECISIONS BU-107), on which every
@@ -130,12 +130,18 @@ public sealed partial class Binding
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
         var fits = this.ErasureFits(actual, expected, node, out failure);
         OwnedFact owned = default;
+        var independence = ConstraintProof.Proven;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
         var part = !SharedReceiver(actual) ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
             : this.ProveErasedOwned(actual, node, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
-            : fits && this.ResultDependsOnReceiver(node, actual) ? ErasurePart.Dependence
+            : fits && (independence = this.ReceiverIndependence(actual)) != ConstraintProof.Proven ? ErasurePart.Dependence
             : ErasurePart.Condition;
+        if (independence == ConstraintProof.Error)
+        {
+            this.Fail(node, BindingFailure.Unsupported); // A retention past its limits decides nothing: the located limit at `node`.
+        }
+
         if (part == ErasurePart.Condition && fits)
         {
             return true;
@@ -157,22 +163,18 @@ public sealed partial class Binding
     // SPEC 7.7.4, 15.6.4 (the owner's O-28 (a), DECISIONS BU-116): whether a concrete Closure's result contract depends on its call
     // receiver: its call's retention (TyCtxt.Retains, the one source, whose rule A keeps every input at a raw layer without an Origin that
     // the call writes in its result) has the result retain the receiver, input 0, by its own value. A Function Item has no receiver
-    // input (TyCtxt.HasReceiverInput). A retention past its limits decides nothing: the erasure is the located Unsupported_Kd at `node`.
-    private bool ResultDependsOnReceiver(Koto node, BoundType actual)
+    // input (TyCtxt.HasReceiverInput). Proven when independent, Refuted when it depends; a retention past its limits decides nothing
+    // (Error): the located limit, at applicability (ErasedArgumentsEnvironment) and at the erasure's value (ErasesToFunction) alike.
+    private ConstraintProof ReceiverIndependence(BoundType actual)
     {
         if (!this.types.HasReceiverInput(actual))
         {
-            return false;
+            return ConstraintProof.Proven;
         }
 
         var retention = this.types.Retains(actual, this.ClosureDefinitionSignature(actual)!, null);
-        if (retention.IsLimit)
-        {
-            this.Fail(node, BindingFailure.Unsupported);
-            return true;
-        }
-
-        return (retention.Result.Kinds[0] & RetentionKind.Value) != 0;
+        return retention.IsLimit ? ConstraintProof.Error
+            : (retention.Result.Kinds[0] & RetentionKind.Value) != 0 ? ConstraintProof.Refuted : ConstraintProof.Proven;
     }
 
     // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
@@ -213,7 +215,7 @@ public sealed partial class Binding
     // SPEC 7.7.4, 10.5, 10.7, 10.8, 15.6.1: the signature part of an erasure, which a call's applicability uses. A Closure's is the
     // structural part of its signature's compatibility (FitsStructuralPartAt, every pre-selection fit's one entry, DECISIONS R4-M155)
     // with its Shared receiver (SharedReceiver, a fact of its bound body); its Owned environment is a Constraint of the candidate
-    // (ErasedArgumentsOwned), and its Origin part is judged after selection, at the argument (ErasesToFunction), where a failure never
+    // (ErasedArgumentsEnvironment), and its Origin part is judged after selection, at the argument (ErasesToFunction), where a failure never
     // selects another candidate. A Function Item's Origin conditions still belong to its signature, proven from the required contract at
     // `use` (SPEC 15.3.7; PLAN G379's Item half).
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)

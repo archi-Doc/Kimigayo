@@ -383,7 +383,7 @@ public sealed partial class Binding
         if (this.ErasureSignatureFits(actual, type, node, out _))
         {
             // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an initialization; its Owned
-            // environment is a Constraint of the candidate (ErasedArgumentsOwned, SPEC 10.1 step 5), its rest judged once the call is
+            // environment is a Constraint of the candidate (ErasedArgumentsEnvironment, SPEC 10.1 step 5), its rest judged once the call is
             // selected (SPEC 10.5).
             operation = new(part, actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
             return CandidateApplicability.Applicable;
