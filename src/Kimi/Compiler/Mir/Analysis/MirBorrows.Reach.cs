@@ -426,8 +426,9 @@ internal sealed partial class MirBorrows
     // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent
     // store, which takes W's first step alone, its row's destruction composed at the call (Referents; MirBorrows.Destructions;
     // DECISIONS R4-M150).
-    // The walk's state is its arguments: the output whose store it is (`output`: its records name the entries, the Φ_E rule's key condition
-    // reads its Kept) and the first step's guard (`root`: Named where its input key lies wholly in the kept binding, Referents).
+    // The walk's state: its arguments, the output whose store it is (`output`: its records name the entries, the Φ_E rule's key condition
+    // reads its Kept) and the first step's guard (`root`: Named where its input key lies wholly in the kept binding, Referents), and
+    // walkComposes, which Keep sets from the plan before the walk begins.
     private (bool Limit, bool Deep) Writes(ulong[] state, in MirTerminator call, int position, OutputRetention output, MirWrites root)
     {
         var set = this.argValues[position];
@@ -789,7 +790,8 @@ internal sealed partial class MirBorrows
     // adds no reach of its own, but writes past the holder what the named step writes (Write at Named, R4-M147), once per (part, key):
     // each holder its non-shared direct Loans and addresses name, E included, and E where it carries Φ_W, raw and safe parts alike (the
     // address of storage the body does not own, a parameter's referent's, is E's in A5's value, which does not tell it from a pointer of
-    // unknown provenance). Where the call composes, each local holder named may afterwards hold the call's own pointer (OwnWrite).
+    // unknown provenance). Where the call composes, each holder the pun rule's entries of the part name (PunEntry, the store rule's
+    // selection: no own-step entry, never E) may afterwards hold the call's own pointer (OwnWrite).
     private void HiddenCarried(int part, int key)
     {
         if (part == 0 || !this.nodeParts.Add((part, -2 - key)))
@@ -806,10 +808,9 @@ internal sealed partial class MirBorrows
         this.Work += this.sets.Count(part);
         foreach (var element in this.sets.Elements(part))
         {
-            if (element >= this.loanBase &&
-                this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 and not Escaped, Mode: not MirRefKind.Shared } loan)
+            if (this.PunEntry(element) is >= 0 and var entry)
             {
-                this.Pun(loan.Named, this.OwnWrite(element - this.loanBase));
+                this.Pun(this.loans[entry].Named, this.OwnWrite(entry));
             }
         }
     }
@@ -1013,8 +1014,9 @@ internal sealed partial class MirBorrows
     // (a punned reading's layers, Punned and Unowned; the call's own pointer's layer, OwnPointer; Written).
     private bool ChangesUnowned() => this.writing[Escaped] != this.walks || !this.writingPlace[Escaped].Several;
 
-    // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast) by the holder's guard (`past`, Through at the
-    // first step): the holder each direct Loan not shared or address names (R4-M177), and E where it carries Φ_E, past Named Φ_W. A value
+    // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast) by the holder's guard (`past`: at the first
+    // step Through, or Named where its key lies wholly in the kept binding, Referents): the holder each direct Loan not shared or address
+    // names (R4-M177), and E where it carries Φ_E, past Named Φ_W. A value
     // that may refer to storage the body does not own carries Φ_E and Φ_W where it is formed (an untied result or store, an integer's
     // pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
     private void Write(int set, byte via, MirWrites past)
