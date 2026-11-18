@@ -324,9 +324,11 @@ public sealed partial class TyCtxtTest
 
     // SPEC 15.6.4 (PLAN G935; the Middle's C-370, F's ruling 47): a hidden layer names the kept Type whose binding it lies in
     // (OwnLayer.Kept), the same interned Type OutputRetention.Handed lists, so a reader of the layer asks Handed for it by identity. One
-    // output meeting T and U at the key `(T, U)` past slot's layer: the Middle's handedOtherOk (V: the writer writes T, U's raw layer stays
-    // hidden), handedSameBad and handedBothBad (I: the writer writes U, or the pair); hidPunOtherOk (V: the writer writes U, T's raw layer
-    // stays hidden) and hidPunSameBad (I: the writer writes T). A layer the declaration shows has no kept Type. Fail-before: no Kept member
+    // output meeting T and U at the key `(T, U)` past slot's layer: the Middle's handedOtherOk (V: the writer writes T; U's hidden raw
+    // layer carries cell's address, which route 1 reaches (the owner's O-312 (a)), but cell is used only before `y = 5`), handedSameBad
+    // and handedBothBad (I: the writer writes U, or the pair); hidPunOtherOk (I by O-312 (a): T's hidden raw layer carries an address
+    // the read reaches, route 1; A5 rejects it after the landing hunk's T1 fix; this row asserts Binding's listing only) and
+    // hidPunSameBad (I: the writer writes T). A layer the declaration shows has no kept Type. Fail-before: no Kept member
     // on 110b7ff24. Under `T is U` (SPEC 8.2.3; G935's review H1, twin K1) a writer of U writes both layers' kept Types: T listed (fail-
     // before on 3a8f2e251: `T not listed`).
     [Theory]
