@@ -69,9 +69,10 @@ public sealed partial class Binding
     private bool FreshBelow(BoundType type, in Hold entry)
         => this.FreshPast(type, entry.Step) && (this.ByValue(type, entry) || entry.Step == HoldStep.Own || (entry.Flags & HoldFlags.Raw) != 0);
 
-    // The layer half of FreshBelow: no callable, no borrow, and no raw layer but at the steps Own (`self`), Address (no Origin) and
-    // Static (`step`, the layer's at its position): a layer stating a borrow's Origin addresses only storage that Origin covers (SPEC
-    // 5.7), which is no part of a value the call stores anew.
+    // The layer half of FreshBelow, which the atom walk reads too (RetentionWalk, RetentionParts: an occurrence below a written invariant
+    // position is writable past a layer only where a fresh value passes it, BU-1 narrowed by PLAN G993): no callable, no borrow, and no
+    // raw layer but at the steps Own (`self`), Address (no Origin) and Static (`step`, the layer's at its position): a layer stating a
+    // borrow's Origin addresses only storage that Origin covers (SPEC 5.7), which is no part of a value the call stores anew.
     private bool FreshPast(BoundType type, HoldStep step)
         => !IsCallable(type) && this.BorrowReferent(type, out _, out _) is null &&
             (!ReferenceTypes.IsPointer(type) || step is HoldStep.Own or HoldStep.Address or HoldStep.Static);
@@ -206,7 +207,7 @@ public sealed partial class Binding
             var written = this.SignaturePast(at.Signature, type, default);
             var below = at with
             {
-                Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer, Signature = written,
+                Writable = (here.Writable && this.FreshPast(type, default)) || (at.Writable && exclusive), Layer = slot ?? at.Layer, Signature = written,
                 HiddenWritable = at.HiddenWritable && this.HiddenWritableBelow(type, default),
             };
             this.RetentionWalk(target, below, inner, callable);
@@ -258,7 +259,7 @@ public sealed partial class Binding
         var through = raw ? !past && step is HoldStep.Address or HoldStep.Static : at.Writable && !shared;
         var below = at with
         {
-            Layer = layer, Writable = !inside && (through || writable), Place = past ? at.Place | RetentionPlace.Shared : at.Place,
+            Layer = layer, Writable = !inside && (through || (writable && this.FreshPast(type, step))), Place = past ? at.Place | RetentionPlace.Shared : at.Place,
             HiddenWritable = at.HiddenWritable && !callable && !at.Shared && this.HiddenWritableBelow(type, step),
         };
         if (raw && !inside && !past && step == HoldStep.Exclusive && at.Input >= 0)
