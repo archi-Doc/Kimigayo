@@ -10757,6 +10757,31 @@ resumed by R4-M86 (2026-10-20).
     an alias no Bind count reaches); an Error state before its writer (d2); memoizing the abandoned header (a wait, not a failure); a
     `SourceCheck` kind now (its rounds recompute a Running declaration, not once per pass); a `Variable` kind now (its callers re-bind
     a failed local on each use; d4); a state read at BU-95's site (a second copy of the entry rule).
+  - Amended by BU-219 (PLAN G949 S1-1; L1 F-B2 staged before L1 U2, the owner's O-376 (a)): a state set in an earlier pass reads
+    NotStarted, except one stamped `Frozen`, which reads as set in every pass of its compilation (from L1 U2: of every compilation
+    reading the frozen library). `Frozen` is a reserved value of the stamp's width, outside its counter's cycle and its reset marker
+    (the counter skips it), not a second epoch: the rejection above stands.
+    - Only the library pass writes `Frozen` (Stage 2: the freeze), and only when it completes: its stamps turn `Frozen` in one step
+      at its end, with the library's publication version (BU-81's line, `HirTables.LibraryVersion`), which is then constant for the
+      compilation. A library pass that throws leaves no `Frozen` state; the next Bind's run reruns it under a new counter value,
+      where it computes everything, at a new version.
+    - A `DeclQuery` on a `Frozen` library symbol writes no state and computes nothing: its output is the library pass's. This holds
+      for every kind row (Signature; SignatureVerdict, BU-120; DirectBase, R7-M9). A SignatureVerdict demand before
+      `contractHeadersReady` does not consult the query (BU-120's line, PLAN G949 S1-r2), so a `Frozen` Done answers only from the
+      gate on; before the gate the demand forms the signature as it does today. A `Frozen` SignatureVerdict that is not Done (a
+      library function whose declared signature is not Proven in the library pass) is formed at each use in the user's scope,
+      outside the query, as PLAN G375 forms every non-Proven verdict: never a kept "nothing".
+    - The stamp also marks the library pass's other pass-stamped facts (L1 F-B2): a library `AdtDef`'s and VTable's `Version`,
+      ImplTable's base store and its identities and paths, the library's base stores, a library region's sources, a library
+      declaration's Origin requirement work, a library slot's keepers. A fact a program pass derives from a frozen input (an
+      instance such as `Option<Foo>`) carries the program pass's stamp.
+    - As implemented: one reserved value per stamp width, `Frozen`, `Frozen32` and `FrozenRegion` (`ulong.MaxValue`,
+      `uint.MaxValue`, `int.MaxValue`; `Binding.Passes.cs`); each kind's answer for a `Frozen` state that is not Done is a column of
+      DeclQuery's kind rows, stated in `Binding.DeclQuery.cs`'s contract (SignatureVerdict: formed at each use; every other kind:
+      `InternalInvariant_Kd`, since the library's facts are complete at the freeze); the freeze stamps every library symbol the
+      layer reaches (`LibraryQuerySymbols`), each with the state the library pass left (G949 ruling 200).
+    - The reason that no longer holds: a state was valid only in its pass because every pass rebound every declaration; a library
+      declaration is now bound once, by the library pass.
 - **BU-120 A declared signature's Proven is a declaration query, `DeclQueryKind.SignatureVerdict`; any other answer is computed at each read**
   (2026-11-07; R7-V1, plan §5.1, PLAN G375; ruling 3, the owner's O-44 for contract matching) SPEC 8.1.3, 8.3.3, 15.3.7, 15.6.1, 23.1.2.
   Supersedes in part R4-M163: its "Stays: the per-use re-proof" holds now only for an answer other than Proven and for contract matching.
@@ -13991,6 +14016,10 @@ resumed by R4-M86 (2026-10-20).
       parsing, and `Invalidate` revokes the program pass only.
     - A library pass that throws leaves no layer (BU-105's line: no `Frozen` state before it completes); the next Bind reruns it at
       a new library publication version, so a consumer keys a kept library fact by that version, never by "the first build".
+    - **The library version** (C-379, the owner's O-396 (a); G949 ruling 174) is per compilation (`HirTables.LibraryVersion`, the
+      run of the compilation's own Binding that froze the library; a process-wide value first appears with Stage 2's shared layer),
+      and the library HIR is identical in every Bind of a compilation after the freeze, by construction (the library pass once,
+      published once; a later library-column write is `InternalInvariant_Kd`, the Refusal below).
     - From S1-1 the library's `SyntaxTable` is closed: every writer refuses with `InternalInvariant_Kd` (L1 U2's refusal). It lands
       only once the library pass numbers every library node a later phase reads, as the first MIR build does for some today.
     - `Binding.EffectObligations`' lazy `EnsureEffectBounds` is program-independent in Stage 1; Stage 2 makes it eager (L1 §6).
@@ -13998,9 +14027,23 @@ resumed by R4-M86 (2026-10-20).
     library location, and writes no column of the library's table (L1 §4's rule for a frozen library). The recorder (`Fail` and its
     siblings) decides it once, by the node's table, never its callers; a program record resting on it names the site by its key (Q13
     rule W's `DerivedFrom`). From S1-r1b its record is the program's (`CountStates` reads the program part's foreign failures); from
-    S1-1 no library column is written. A program pass writes no library object either: each such write today (symbol setters, scope
-    writes, `AdtDef` instances, `FillVTable`, `EnsureEffectBounds`, owner-keyed origins, lazy names) is made eager in the library
-    pass or moved to the reader's store. A record the rule moves is classified by Q13.
+    S1-1 no library column is written: the program part's `ForeignFailures` entry of such a node holds (Node, Before, State,
+    Failure), the recorder's writers (`Fail`, `MarkUnresolved`, `ClearFailure`, `CompleteDependent`) write the entry, never the
+    node's columns, and its readers (`RecordedState`, `RecordedFailure`) read it, so the prerequisite publication and the pass's
+    counts and records see the program's failure while every other reader of the library node reads the library's final state. A
+    program pass writes no library object either: each such write today (symbol setters, scope writes, `AdtDef` instances,
+    `FillVTable`, `EnsureEffectBounds`, owner-keyed origins, lazy names) is made eager in the library pass or moved to the reader's
+    store. A record the rule moves is classified by Q13.
+  - **Refusal (from S1-1).** No step after the freeze writes the library layer: each writer of the library's syntax table (a new id,
+    an edit, a HIR row through `HirTables.Of`, so every column and node-family write, an existing plan row, a row's reset, the HIR
+    publisher's entry; one `SyntaxTable.Frozen` flag set by the freeze) and of the base conformance store (`ImplTable.Begin`,
+    `Register`), each write of a query state of a declaration of the frozen table (whether or not the freeze stamped its symbol) and
+    each new parent or solution on a library region row (BU-220's `localRegions` contract) throws the internal-invariant form
+    (`InternalInvariant_Kd`); a region row of library atoms only made after the freeze is refused too (that contract's create-time
+    assertion).
+    - The slots' keepers refuse by construction, with no create-time check: `Keep` writes the running pass's part only, which after
+      the freeze is never the layer's, and a program-part row keyed by a library slot is unreachable, since `Keep`'s schema is the
+      visited declaration's, a program one (a row there would be shadowed by `Find`, layer first).
   - **Owner (a responsibility moved inside Binding).** Binding's pass driver alone decides which pass binds what; each step keeps
     its owner. The library's binding, checks and publication move from every pass to the library pass, and at Stage 2 to
     `KimiLibrary`, which owns the library's identity and frozen stores. A reader tells a library node by its module
@@ -14009,9 +14052,11 @@ resumed by R4-M86 (2026-10-20).
     embedded sources and the target (R8-M32's rows rest on this); yet every Bind pass rebound, revalidated and republished the whole
     library, most of a warm Bind on a small program. SPEC 23.1.2 holds: the library has no records (errors or warnings), on one
     target triple per pointer width (16, 32, 64) and the default `x86_64-pc-windows-msvc` (`KimiLibraryShapeTest`'s library fact
-    rows; `IrTarget.Create` accepts any triple of those widths, so the set is one per width), and from S1-1 the library pass's
-    freeze refuses a library with records (`InternalInvariant_Kd`), so no program's Bind reports a library record (G949 ruling 81,
-    review-s11 RC4/RC5).
+    rows; from S1-1 the Theory `TheLibraryPassCompletesEveryQuery` over `x86_64-pc-windows-msvc`, `i686-unknown-linux-gnu` and
+    `avr-unknown-unknown`; `IrTarget.Create` accepts any triple of those widths, so the set is one per width), and from S1-1 the
+    library pass's freeze refuses a library with records of any kind (`InternalInvariant_Kd`; a library use of an `#Unsupported`
+    declaration is such a broken build, `DiagnosticPrecisionTest.ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild`, G949 ruling
+    199), so no program's Bind reports a library record (G949 ruling 81, review-s11 RC4/RC5).
   - **Order (supersedes L1's F condition 2 and the plan's order for R8-L1).** Stage 2 is R8-L1 U2, U3+U4, U5b, U5c, U6 and M without
     R7-D2 d1-d4 and g. U3+U4 keeps only the cross-compilation layer (the two-level interners, the reads of the frozen stores, the
     detachment's consumers), since Stage 1 already makes a program pass skip the library.
@@ -14175,6 +14220,10 @@ resumed by R4-M86 (2026-10-20).
     slot. Rejected: a key by the recording body (a meet is shared across bodies; every reader would need the body); a dense Origin
     id (a new representation for one table that is not hot); a store decided by a meet's operands (a second rule deciding an
     Origin's store beside the recording pass's part).
+    - Amended by BU-219 (PLAN G949 S1-1): from the freeze an atom a later step interns at a binder of the frozen library table (an
+      Item's call context at MIR time interns a library requirement member's Input atoms) is a row of the program's store
+      (`programAtoms`, a `PagedColumn` by library id, emptied with the item contexts whose plans hold its atoms, at an edit: G949
+      ruling 205 N4), found after the binder's column; the frozen column holds no row a later step made.
   - Amended by PLAN G949 D-9 (N5-5, the Origin families; the Front's design, the Back's seats): a composite column's row whose
     entries have an ordered key is sorted and found by binary search; an identity-keyed row is scanned. The sorted row is one
     helper, `KeyedRow` in `PagedColumn.cs` (Find and Put by binary search, room that doubles; `originAtoms`' rows by an atom's kind
@@ -14258,6 +14307,13 @@ resumed by R4-M86 (2026-10-20).
       does `overrideEntries` (the library declares no `virtual`), and a library container's source state that `ResetSourceStates`
       reset is proven again to the library pass's state by the program pass's fixpoint; for these three, `In` keeps the rule for the
       day the library declares such a row.
+  - Amended by BU-219 (PLAN G949 S1-1): the bound Contract references (`boundContracts`) are a per-pass part (`PassPart`): the
+    library part holds exactly the entries the library pass made, complete with their effect bounds, and is found first; a program
+    pass inserts into and resets its own part only. So an entry the library made references only entries the library made. The
+    reason: this was a memo the program pass rebuilt in place (S1-0b's disposition (o)); from the freeze a library entry is
+    reachable from frozen library facts (path Contracts, requirements) and must not be rewritten (census O15). The library pass also
+    completes the effect bounds of every Contract the library declares, those no node of the pass holds included (the `#Lang`
+    markers), so no later pass forms them.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
