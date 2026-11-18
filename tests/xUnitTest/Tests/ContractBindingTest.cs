@@ -189,7 +189,6 @@ public class ContractBindingTest
     [InlineData("contract D\n    associate Item\n    associate Self.Item is i32", false)]
     [InlineData("contract D\n    associate Item\n    associate ::D.Item is i32", false)]
     [InlineData("contract D\n    associate Item\n    associate (D).Item is i32", false)]
-    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ((C)).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (Self).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\ncontract E: C\n    associate D.Item is i32", false)]
     [InlineData("group G\n    contract C\n        associate Item\n    contract D: C\n        associate (G.D).Item is i32", false)]
@@ -222,17 +221,14 @@ public class ContractBindingTest
     [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate (C<i64>).Item is i32", false)]
     [InlineData("contract C<U>\n    associate Item\nstruct S<T>\n    Self is C<T>\n    associate (C<i32>).Item is i32", false)]
     [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (Self).Item is i32", false)]
-    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ((C)).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nstruct S\n    Self is C\n    associate (D).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nstruct S\n    Self is C\n    associate D.Item is i32", false)]
     [InlineData("struct C\n    let v: i32 = 0\ncontract D\n    associate Item\nstruct S\n    Self is D\n    associate (C).Item is i32", false)]
     [InlineData("contract C\n    associate Item\nenum E\n    A\n    associate (C).Item is i32", false)]
     [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate Self.Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nenum E\n    A\n    Self is C\n    associate (D).Item is i32", false)]
-    [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate ((C)).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract K\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate (K).Item is T", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nstruct W<T>\n    Self is C when T is Copy\n        associate (D).Item is T", false)]
-    [InlineData("contract C\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate ((C)).Item is T", false)]
     public void ATypesAssociatedSpecificationNamesAConformance(string source, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
@@ -280,16 +276,32 @@ public class ContractBindingTest
     // in a signature, a function's Constraint region or a Contract's Constraint.
     [Theory]
     [InlineData("func one<T>(source: ref/T) -> T.(C).Item\n    T is C\n    return source.get()", true)]
-    [InlineData("func one<T>(source: ref/T) -> T.((C)).Item\n    T is C\n    return source.get()", false)]
     [InlineData("func one<T>(source: ref/T) -> T.(::C).Item\n    T is C\n    return source.get()", true)]
     [InlineData("func f<T>(x: ref/T) -> i32\n    T is C\n    T.(C).Item is i32\n    return 0", true)]
-    [InlineData("func f<T>(x: ref/T) -> i32\n    T is C\n    T.((C)).Item is i32\n    return 0", false)]
     [InlineData("contract D: C\n    Self.(C).Item is i32", true)]
-    [InlineData("contract D: C\n    Self.((C)).Item is i32", false)]
     public void AProjectionsContractIsOneGroupedReference(string use, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\n" + use);
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
+    }
+
+    // SPEC F.6.2 (PB3, F's ruling 16): a grouped Contract holds a ContractReference, a NamedReference, so a group inside it, `((C))`, in an
+    // associate selector or a `.(C).` suffix is Parsing's record at the inner group (ContractReference); Binding rejected it on base.
+    [Theory]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ((C)).Item is i32")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ((C)).Item is i32")]
+    [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate ((C)).Item is i32")]
+    [InlineData("contract C\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate ((C)).Item is T")]
+    [InlineData("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\nfunc one<T>(source: ref/T) -> T.((C)).Item\n    T is C\n    return source.get()")]
+    [InlineData("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\nfunc f<T>(x: ref/T) -> i32\n    T is C\n    T.((C)).Item is i32\n    return 0")]
+    [InlineData("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\ncontract D: C\n    Self.((C)).Item is i32")]
+    public void AGroupInAGroupedContractIsOneParsingRecord(string source)
+    {
+        var record = Assert.Single(TestDiagnostics.Of(CompilationTestHelper.Parse(source, "Hello.kimi"), "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains("Expected contract reference", record.Message, StringComparison.Ordinal);
+        Assert.Equal(source.IndexOf("((C))", StringComparison.Ordinal) + 1, record.Span.Start);
+        Assert.Equal(3, record.Span.Length);
     }
 
     // SPEC 8.5.1 Qualification, 8.5.2, 9.7 (PLAN G705): a Contract qualifier is a bound Contract reference, so a Contract with Type
