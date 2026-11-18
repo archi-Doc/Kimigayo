@@ -688,15 +688,15 @@ public sealed partial class Binding
         return this.Occurs(position, callable.Components[1], view);
     }
 
-    // Whether a handed callable may write a value of a position's Type (Fill.Writes; SPEC 15.6.4 "never through a shared Loan", 5.2.1
-    // condition 3): one of its parameters reaches such a value through no shared layer (WrittenThrough).
+    // Whether a handed callable may write a position's Type (Fill.Writes; SPEC 15.6.4 "through its writes", "never through a shared
+    // Loan", 5.2.1 condition 3): one of its parameters reaches it so (WrittenThrough), starting in the parameter's own value.
     private bool Writes(BoundType callable, BoundType position, BindingScope? view)
     {
         var parameters = callable.Components[0];
-        this.retentionWalked.Clear();
+        this.retentionReaches.Clear();
         for (var j = 0; !ReferenceEquals(parameters, BoundType.Unit) && j < parameters.Components.Count; j++)
         {
-            if (this.WrittenThrough(parameters.Components[j], position, 0, view))
+            if (this.WrittenThrough(parameters.Components[j], position, HoldStep.Inline, 0, view))
             {
                 return true;
             }
@@ -705,20 +705,24 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether a value of a Type is, or reaches through no shared layer, a value of `position`'s Type, Origins erased and under the
-    // identity premises of the reading's view (Identical; SPEC 8.2.3: under `T is U` a writer of U writes T): by the entries the hold
-    // walk steps through (Holdings): a part held by value, an exclusive layer's referent, a raw layer's pointee, each where BU-225's
-    // predicate passes the layer (HiddenWritableBelow, the atom walk's: never past a shared borrow or a shared handle's payload, which a
-    // call reaches for reads only, a raw layer stepping Shared or a callable; PLAN G963, so a by-value `set: (T, E)` writes T).
-    // Each Type entered at the shallowest depth it is met at (Enters, retentionWalked).
-    private bool WrittenThrough(BoundType? type, BoundType position, int depth, BindingScope? view)
+    // Whether a value of a Type is, or reaches, a value of `position`'s Type that a call writes, Origins erased and under the identity
+    // premises of the reading's view (Identical; SPEC 8.2.3: under `T is U` a writer of U writes T), by the entries the hold walk steps
+    // through (Holdings). Two facts, each decided by its own predicate at every layer (WriteReach): the call writes what the Type hides
+    // wherever the walk meets it through no shared layer (BU-225, HiddenWritableBelow: a part held by value, the parameter's own value
+    // included, so a by-value `set: (T, E)` writes T; an exclusive layer's referent; a raw layer's pointee), and it writes a value of the
+    // Type wherever the walk meets it in a value the call stores anew (BU-1, FreshBelow: past an owning handle in storage the call writes,
+    // a fresh handle brings a new payload, `set: (uniq/(rc/T) during u, E)`; never past a borrow, `set: (uniq/(ref/T during a) during u,
+    // E)`, whose referent is never fresh, PLAN G993). `reach` is the step into the storage the walk stands in: Inline in the parameter's
+    // own value, Exclusive in storage the call writes, Own in a value it stores there anew. Each (Type, reach) entered at the shallowest
+    // depth it is met at (Enters, retentionReaches).
+    private bool WrittenThrough(BoundType? type, BoundType position, HoldStep reach, int depth, BindingScope? view)
     {
         if (type is null || depth > StorageBound)
         {
             return false;
         }
 
-        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionWalked, (type, null, null), out var met);
+        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionReaches, (type, reach), out var met);
         if (!Enters(ref shallowest, met, depth))
         {
             return false;
@@ -736,13 +740,30 @@ public sealed partial class Binding
             for (var i = start; !found && i < end; i++)
             {
                 var entry = this.retentionHeld[i];
-                var through = this.ByValue(type, entry) || entry.Step == HoldStep.Exclusive || (entry.Flags & HoldFlags.Raw) != 0;
-                found = through && this.HiddenWritableBelow(type, entry.Step) && this.WrittenThrough(entry.Part, position, depth + 1, view);
+                found = this.WriteReach(type, entry, reach) is { } next && this.WrittenThrough(entry.Part, position, next, depth + 1, view);
             }
         }
 
         this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
         return found;
+    }
+
+    // The reach past one entry of WrittenThrough's walk, null where the walk stops; only Inline, Exclusive and Own occur: in a value stored
+    // anew, Own where FreshBelow passes; elsewhere, where HiddenWritableBelow passes, the same reach past a part held by value and Exclusive
+    // past an exclusive or raw layer; in storage the call writes, Own past an owning handle (rc, arc; HiddenWritableBelow stops there: its
+    // payload is read only).
+    private HoldStep? WriteReach(BoundType type, in Hold entry, HoldStep reach)
+    {
+        if (reach == HoldStep.Own)
+        {
+            return this.FreshBelow(type, entry) ? HoldStep.Own : null;
+        }
+
+        var through = this.HiddenWritableBelow(type, entry.Step);
+        return this.ByValue(type, entry) && through ? reach
+            : (entry.Step == HoldStep.Exclusive || (entry.Flags & HoldFlags.Raw) != 0) && through ? HoldStep.Exclusive
+            : reach == HoldStep.Exclusive && entry.Step == HoldStep.Own && (entry.Flags & HoldFlags.ReadOnly) != 0 ? HoldStep.Own
+            : null;
     }
 
     // R (PLAN G935; the owner's O-359 (a); SPEC 15.6.4 "decided per argument, never per Origin"): a position that names no Origin holds each

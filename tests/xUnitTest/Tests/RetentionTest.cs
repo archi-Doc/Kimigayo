@@ -1445,6 +1445,22 @@ public sealed partial class RetentionTest
     public void WhatAPartHidesIsWrittenWhereverAnInputsWalkMeetsIt(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(HiddenWritableShapes + function + "\n    return\n"), "f"));
 
+    // PLAN G935, G993 (SPEC 15.6.4 "through its writes"; DECISIONS BU-1 as narrowed by G993): a handed writer that may store a fresh owning
+    // handle in storage it writes writes a value of the handle's payload Type, so `*x`, storage of f's kept T, keeps y (`store 0`) where
+    // that payload holds T: a Function value through `uniq/(rc/T)`, a requirement of a Contract premise through `uniq/(rc/Self)`, a fresh
+    // `Bx<raw/T>` whose raw layer states no Origin; never past a borrow (`uniq/(ref/T during a)`), a shared layer (`ref/(rc/Self)`) or
+    // a raw layer stating a borrow's Origin (`raw/T during a`, SPEC 5.7). The rows of A5's verdicts are MirBorrowsTest's
+    // AWriterOfAFreshValueOfTheTypeKeepsTheArgumentThere. Fails on f7e5308d3: the rows with a fresh T keep nothing in `*x`.
+    [Theory]
+    [InlineData("func f<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: (uniq/(rc/T) during u, E) -> ())\n    T is ObjectPayload", "store 0: own {0 Content, 1 Value, 2 Value, 3 Value}, reached {}, store 1: own {}, reached {0 Content, 1 Value, 2 Value, 3 Value}")]
+    [InlineData("func f<T, E>(x: uniq/T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, E) -> ())", "store 0: own {0 Content}, reached {}, store 1: own {}, reached {0 Content, 1 Value, 2 Value, 3 Value, 4 Value}")]
+    [InlineData("contract PutRc<E>\n    Self is ObjectPayload\n    func put(slot: uniq/(rc/Self), r: E) -> ()\nfunc f<T, E>(x: uniq/T, y: E)\n    T is PutRc<E>", "store 0: own {0 Content, 1 Value}, reached {}, store 1: own {}, reached {0 Content, 1 Value}")]
+    [InlineData("contract PutRc<E>\n    Self is ObjectPayload\n    func put(slot: ref/(rc/Self), r: E) -> ()\nfunc f<T, E>(x: uniq/T, y: E)\n    T is PutRc<E>", "store 0: own {0 Content}, reached {}, store 1: own {}, reached {0 Content, 1 Value}")]
+    [InlineData("func f<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: (uniq/(rc/Bx<raw/T>) during u, E) -> ())\n    T is ObjectPayload", "store 0: own {0 Content, 1 Value, 2 Value, 3 Value}, reached {}, store 1: own {}, reached {0 Content, 1 Value, 2 Value, 3 Value}")]
+    [InlineData("func f<T, E>(x: uniq/T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(rc/Bx<raw/T during a>) during u, E) -> ())\n    T is ObjectPayload", "store 0: own {0 Content}, reached {}, store 1: own {}, reached {0 Content, 1 Value, 2 Value, 3 Value, 4 Value}")]
+    public void AWriterOfAFreshValueOfTheTypeWritesItsStorage(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(HiddenWritableShapes + function + "\n    return\n"), "f"));
+
     // The same at a call: a Closure capturing the caller's T by move and passed by value, with a writer through `uniq/T` handed, keeps the
     // child in what the captured T hides; without the writer nothing.
     [Fact]

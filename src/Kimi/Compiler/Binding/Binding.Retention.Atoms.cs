@@ -60,6 +60,22 @@ public sealed partial class Binding
         => TryPairLayer(type, out _, out _) ? IsInvariantLayer(type, this, null, default)
             : !IsCallable(type) && !SharedLayer(type) && step != HoldStep.Shared;
 
+    // BU-1's fresh value at a layer (PLAN G993, G935): a value a call stores anew brings its whole Type, so what lies past one of its entries
+    // is new too past a part held by value (ByValue), an own step (an owning handle's payload, rc and arc included: a fresh handle brings
+    // a new payload; an object's; a collection's elements) and a raw layer's pointee where FreshPast passes the layer (a fresh pointer
+    // stating no Origin, `self` or `static` may address storage the call allocates); never past a borrow, whose referent is no storage
+    // the call makes (none is valid during the borrow's Origin), a raw layer stating a borrow's Origin, a callable, or an erased or
+    // abstract part. WrittenThrough reads it for "writes a value of T"; HiddenWritableBelow is "writes what T hides".
+    private bool FreshBelow(BoundType type, in Hold entry)
+        => this.FreshPast(type, entry.Step) && (this.ByValue(type, entry) || entry.Step == HoldStep.Own || (entry.Flags & HoldFlags.Raw) != 0);
+
+    // The layer half of FreshBelow: no callable, no borrow, and no raw layer but at the steps Own (`self`), Address (no Origin) and
+    // Static (`step`, the layer's at its position): a layer stating a borrow's Origin addresses only storage that Origin covers (SPEC
+    // 5.7), which is no part of a value the call stores anew.
+    private bool FreshPast(BoundType type, HoldStep step)
+        => !IsCallable(type) && this.BorrowReferent(type, out _, out _) is null &&
+            (!ReferenceTypes.IsPointer(type) || step is HoldStep.Own or HoldStep.Address or HoldStep.Static);
+
     // A borrow of storage a value of the Type refers to, with its outer Origin and referent: a ref, uniq, objref or objuniq layer; a
     // pair layer whose binder admits only those, a borrow in each admitted case, its slot the outer Origin (SPEC 8.1.2) and exclusive when
     // an exclusive borrow is admitted (DECISIONS BU-3); a Slice, a shared borrow of its elements (SPEC 4.8.1); a UniqSlice, an exclusive
