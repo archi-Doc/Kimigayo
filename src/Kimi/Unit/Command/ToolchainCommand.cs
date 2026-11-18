@@ -31,10 +31,18 @@ public sealed class ToolchainCommand : ISimpleCommand<ToolchainCommand.Options>
         {
             if (args.Length != 1 || args[0] != "verify")
             {
-                throw new InvalidDataException("Use kimi toolchain verify [--ToolchainRoot <path>] [--LlvmBin <path>] [--Report <path>].");
+                throw new CommandInputException("Use kimi toolchain verify [--ToolchainRoot <path>] [--LlvmBin <path>] [--Report <path>].");
             }
 
-            await NativeToolchain.Verify(options.ToolchainRoot, options.LlvmBin, options.Report, this.kimigayo.WriteLine, cancellationToken);
+            if (await CommandExecution.Toolchain(this.kimigayo, async () =>
+            {
+                await NativeToolchain.Verify(options.ToolchainRoot, options.LlvmBin, options.Report, this.kimigayo.WriteLine, cancellationToken);
+                return 0;
+            }) != 0)
+            {
+                return 1;
+            }
+
             this.kimigayo.WriteLine(DiagnosticSeverity.Information, "Toolchain verification passed.");
             return 0;
         });

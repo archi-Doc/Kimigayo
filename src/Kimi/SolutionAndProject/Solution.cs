@@ -60,8 +60,10 @@ public class Solution
 
             this.SolutionFile = file;
         }
-        catch
+        catch (Exception ex) when (IsInputFailure(ex) || ex is TinyhandException)
         {
+            // The solution file's read, its format and its project paths are the selection's input (IMPL 20.3.1); any other exception is
+            // the compiler's and propagates.
             logger?.GetWriter()?.Write(Hashed.Solution.NotLoaded, path);
             return false;
         }
@@ -109,14 +111,14 @@ public class Solution
     {
         if (!this.AllProjectsLoaded() || this.Projects.Count != 1)
         {
-            throw new InvalidDataException("Run requires exactly one loaded project or an explicit .exe path.");
+            throw new CommandInputException("Run requires exactly one loaded project or an explicit .exe path.");
         }
 
         var project = this.Projects.Values.Single();
         if ((this.KimiOptions.Target.Length != 0 && this.KimiOptions.Target != Compiler.WindowsProfile.Target) ||
             !project.ProjectFile.Targets.Contains(Compiler.WindowsProfile.Target, StringComparer.Ordinal))
         {
-            throw new InvalidDataException("Run requires the Windows x64 target.");
+            throw new CommandInputException("Run requires the Windows x64 target.");
         }
 
         return project.Run(cancellationToken);
@@ -154,7 +156,7 @@ public class Solution
             {// *.kimisln
                 if (!this.TryReadFile(x, logger))
                 {
-                    throw new InvalidDataException("Cannot load solution: " + x);
+                    throw new CommandInputException("Cannot load solution: " + x);
                 }
 
                 goto SolutionLoaed;
@@ -166,11 +168,11 @@ public class Solution
         {
             if (Directory.Exists(x))
             {
-                foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiSolutionExtension}", SearchOption.TopDirectoryOnly))
+                foreach (var y in ListFiles(x, $"*{Constants.KimiSolutionExtension}"))
                 {
                     if (!this.TryReadFile(Path.GetFullPath(y), logger))
                     {
-                        throw new InvalidDataException("Cannot load solution: " + y);
+                        throw new CommandInputException("Cannot load solution: " + y);
                     }
 
                     goto SolutionLoaed;
@@ -178,14 +180,14 @@ public class Solution
 
                 // Load project file in directory
                 var previousCount = projectList.Count;
-                foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiProjectExtension}", SearchOption.TopDirectoryOnly))
+                foreach (var y in ListFiles(x, $"*{Constants.KimiProjectExtension}"))
                 {
                     projectList.Add(Path.GetFullPath(y));
                 }
 
                 if (projectList.Count == previousCount)
                 {
-                    throw new InvalidDataException("No solution or project files found in directory: " + x);
+                    throw new CommandInputException("No solution or project files found in directory: " + x);
                 }
             }
         }
@@ -234,10 +236,18 @@ SolutionLoaed:
             {
                 if (!File.Exists(x))
                 {
-                    throw new FileNotFoundException("Source file not found: " + x, x);
+                    throw new CommandInputException("Source file not found: " + x);
                 }
 
-                this.Projects[x] = Project.CreateFromSource(this.kimigayo, x, this.KimiOptions);
+                try
+                {
+                    this.Projects[x] = Project.CreateFromSource(this.kimigayo, x, this.KimiOptions);
+                }
+                catch (PlatformNotSupportedException ex)
+                {
+                    // IMPL 20.3.1: the implicit project's host target cannot be established (as CheckJsonOutput and WorkspaceCheck classify it).
+                    throw new CommandInputException(ex.Message);
+                }
             }
             else if (Project.TryCreate(this.kimigayo, logger, x, out var project))
             {
@@ -256,7 +266,25 @@ SolutionLoaed:
         }
     }
 
+    // IMPL 20.3.1: a selected input that cannot be named or read is the command's Input error, as a missing or unsupported one is.
     internal static string ResolveInputPath(string input)
+    {
+        try
+        {
+            return Resolve(input);
+        }
+        catch (Exception ex) when (IsInputFailure(ex))
+        {
+            throw new CommandInputException(ex.Message);
+        }
+    }
+
+    // A failure to name, list or read a selected input (SPEC 23.2.3, IMPL 20.3.1), which the selection reports as its Input error; the
+    // predicate applies only around the selection's own reads.
+    internal static bool IsInputFailure(Exception ex)
+        => ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
+
+    private static string Resolve(string input)
     {
         var path = Path.GetFullPath(input);
         if (!TryGetAttributes(path, out var attributes))
@@ -275,10 +303,10 @@ SolutionLoaed:
                     return source;
                 }
 
-                throw new FileNotFoundException($"Input not found. Tried '{path}', '{project}', and '{source}'.", path);
+                throw new CommandInputException($"Input not found. Tried '{path}', '{project}', and '{source}'.");
             }
 
-            throw new FileNotFoundException("Input not found: " + path, path);
+            throw new CommandInputException("Input not found: " + path);
         }
 
         if ((attributes & FileAttributes.Directory) == 0 &&
@@ -286,10 +314,23 @@ SolutionLoaed:
             !path.EndsWith(Constants.KimiSolutionExtension, StringComparison.OrdinalIgnoreCase) &&
             !path.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("Unsupported input file: " + path + ". Expected .kimiproj, .kimisln, or .kimi.");
+            throw new CommandInputException("Unsupported input file: " + path + ". Expected .kimiproj, .kimisln, or .kimi.");
         }
 
         return path;
+    }
+
+    // A selected directory's listing (IMPL 20.3.1); its read failure is the command's Input error.
+    private static string[] ListFiles(string directory, string pattern)
+    {
+        try
+        {
+            return Directory.GetFiles(directory, pattern, SearchOption.TopDirectoryOnly);
+        }
+        catch (Exception ex) when (IsInputFailure(ex))
+        {
+            throw new CommandInputException(ex.Message);
+        }
     }
 
     private static bool TryGetAttributes(string path, out FileAttributes attributes)

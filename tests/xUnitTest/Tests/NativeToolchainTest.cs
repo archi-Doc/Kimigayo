@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Kimi;
 using Kimi.Build;
+using Kimi.Command;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Xunit;
@@ -146,7 +147,7 @@ public sealed class NativeToolchainTest : IDisposable
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
     }
 
     [Fact]
@@ -173,7 +174,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Ir));
         Assert.False(File.Exists(paths.Manifest));
         Assert.False(File.Exists(paths.Executable));
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
     }
 
     [Theory]
@@ -251,12 +252,12 @@ public sealed class NativeToolchainTest : IDisposable
     {
         var project = this.Create();
         var paths = ArtifactPaths.Create(project);
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
         Assert.False(File.Exists(paths.Ir));
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
         File.WriteAllText(paths.Executable, "changed executable");
         File.WriteAllText(paths.Record, "{\"status\":\"linked\",\"optimization\":\"O2\",\"executableSha256\":\"wrong\"}");
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken)); // The toolchain refuses the run before launch (IMPL 20.3).
         Assert.False(File.Exists(paths.Ir));
     }
 
@@ -266,7 +267,7 @@ public sealed class NativeToolchainTest : IDisposable
         var solution = new Solution(Compilation.CreateForTest().Kimigayo);
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
         Assert.False(await solution.Build(TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<CommandInputException>(() => solution.Run(TestContext.Current.CancellationToken));
     }
 
     [Theory]
