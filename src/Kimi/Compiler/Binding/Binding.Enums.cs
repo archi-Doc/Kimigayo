@@ -158,8 +158,8 @@ public sealed partial class Binding
             return null;
         }
 
-        var member = this.LookupTypeMember(expected, name.IdentifierName, scope).Member;
-        if (member?.EnumCase is null)
+        var member = this.LookupMember(expected, name.IdentifierName, scope, LookupRole.EnumCase).Member;
+        if (member is null || !HasLookupRole(member, LookupRole.EnumCase))
         {
             this.Fail(reference, BindingFailure.MissingName);
             return null;

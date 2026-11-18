@@ -32,7 +32,7 @@ public sealed partial class Binding
         Koto? At = null,
         Koto? BaseClause = null)
     {
-        internal bool Type => this.Role != LookupRole.Value;
+        internal bool Type => !InValueNamespace(this.Role);
     }
 
     private static bool IsInstanceMember(BindingSymbol symbol)
@@ -148,7 +148,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var names = role == LookupRole.Value ? members.Values : members.Types;
+            var names = InValueNamespace(role) ? members.Values : members.Types;
             for (var candidate = names.GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
                 if (!IsGenericParameter(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))

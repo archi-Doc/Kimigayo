@@ -349,11 +349,7 @@ public sealed partial class Binding
             return null;
         }
 
-        member.Right.BindingState = BindingState.Resolved;
-        member.Right.BoundSymbol = constructor;
-        member.BoundSymbol = constructor;
-        this.memberSides[member] = MemberSide.Type; // SPEC 6.3.2: a constructor is never called on a receiver.
-        return constructor;
+        return this.PublishMemberAccess(member, constructor, null, LookupRole.Qualifier, null); // SPEC 6.3.2: never on a receiver; no lookup.
     }
 
     private BoundType? ConstructorQualifierType(Koto syntax, BindingSymbol symbol, BindingScope scope)
