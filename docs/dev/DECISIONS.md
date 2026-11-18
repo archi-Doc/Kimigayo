@@ -10896,6 +10896,9 @@ resumed by R4-M86 (2026-10-20).
     superseded in part (a SyntaxId column written once, not a Koto-keyed cache).
   - Amended by BU-151 (R7-N1e2-2a): the rows are SPEC 9.2's roles, chosen by `UseRow` alone; the published column is the lookup's
     end (`PathEnd[]`).
+  - Amended by BU-226 (R7-N1 c-a): the member step's layer walk is `LookupMember`, whose namespace is the role's, and a member access
+    a former selects is published by `PublishPath`'s `MemberAccess` step (except the qualified Case pattern's and a projection's
+    member, until R7-N1 c-b).
 - **BU-104 A candidate's position rows are composed once, at its first solve, and every later reading reads them** (2026-11-05;
   G216 (a) U3a, the Position Rows proposal §3 rule 4, §4; the planning session's design `artifacts\verify\g216a-oracle\U3-design.md`,
   third amendment, M's design review 3 ACCEPT; the owner's decision, 2026-11-05, verbatim 「案Aを採用します。ただし、以下の提案を検討して、
@@ -11147,6 +11150,9 @@ resumed by R4-M86 (2026-10-20).
   - Removal stage: R7 N1 (`ResolvePath` evaluates both paths before either publishes).
   - Rejected: AmbiguousBinding_Kd or UnresolvedBinding_Kd for the found-neither class (a Language error on valid forms, d01);
     AmbiguousBinding_Kd for the found-both class (O-32 (b), keeping the split: a Language error on the valid d12, d13 and s12).
+  - Amended by BU-226 (PLAN G632, R7-N1 c2): a value path that 9.5's stop ends at stage 5 or 6 finds nothing, so the Type path is
+    the sole success (9.6) and the interim no longer fires there (w15v, w16v, w19v, q11v accepted; w17i QualificationRequired_Kd at
+    the qualifier); the rest of the class stays until R7-N1 c-b's c3.
 
 - **BU-112 Parsing bounds syntax nesting at L = 1,024: `SyntaxNesting` and `NestingLimit_Kd`** (2026-11-06; PLAN G444 U2a, unit
   bu191; Major, G444's design (a) reviewed; the owner (board O-20), verbatim 「推奨どおり承認」: Q1 a new Resource code, Q2 L = 1,024
@@ -14629,6 +14635,40 @@ resumed by R4-M86 (2026-10-20).
     making the carrier atom's `Writable` true for a by-value T (it would relate E to the carrier's own node: an over-report);
     narrowing `AddErasedRelations`' carrier-node edge at every shared layer (prototype p5 accepted the invalid uniqTUniqRcFnBad;
     that edge is PLAN G993's).
+- **BU-226 Member lookup is the path walk's member step: the role's namespace, SPEC 9.2's Enum Case row, 9.6's role-compatible
+  layer and 9.5's stop at every stage (PLAN G632)** (2026-11-18; Front, Binding; Major; R7-N1 c-a: c1 9df423746, behaviour-preserving,
+  and c2 8bb4df4b8, records and support moved by code; design review REVISE (B1), re-check ACCEPT WITH CONDITIONS; implementation
+  review REVISE (B1), delta check ACCEPT (F's N1c rulings 2-9); the Middle's RP17 consent C-393; W-261) SPEC 9.2, 9.5, 9.6, 18.2.1.
+  Amends BU-122 and BU-117.
+  - Rule: a stage's end decides, in order: a conflict (Ambiguous), no eligible declaration (the next stage), 9.5's stop (every
+    eligible declaration an enum Case or a member that needs a receiver: QualificationRequired_Kd), the selection. One predicate,
+    `HasUnqualifiedCandidate`, at stages 1-3 and 5-6; at stages 5-6 every opened source's accessible declarations take part in the
+    conflict check. `QualificationCause.Case` records a Case stop (`QualificationCause` is no closed vocabulary). Rejected: a
+    per-source skip before the conflict check (an invalid program accepted, an independent record lost). Support moved by the same
+    predicate (ruling 5's C1 (a)): `X.m` whose value path stops at stage 5 or 6 (an opened instance member or Case named `X`)
+    selects the Type path, as at stages 2-3, so BU-117's found-both Unsupported_Kd no longer fires there (w15v, w16v, w19v accepted;
+    w17i Unsupported_Kd -> QualificationRequired_Kd at `X`).
+  - c1 (9df423746, behaviour-preserving; c-a2, ruling 7): `LookupMember(type, name, use, role, receiver, path)` is the one member
+    layer walk: its namespace is the role's (`InValueNamespace`: the Value and Enum Case rows), replacing `LookupTypeMember`'s
+    `typeRole` bool. SPEC 9.2's Enum Case row is `LookupRole.EnumCase` (`HasLookupRole`: a Case), read by `.Case` (`InferredCase`)
+    and the qualified Case pattern. A member access a former selects (`SelectMember`, `BaseMember`, `ConstructorMember`, a length
+    argument's group member) is published by `PublishPath`'s `MemberAccess` step (member, lookup, side, the Type path's qualifier); a
+    second publication keeps the side. Two formers still write their own member until c-b: the qualified Case pattern (until c3,
+    the member step; routing it changes the HIR: the step marks the pattern's Name Resolved before the pattern completes it, so it
+    keeps no Type) and a projection's member (`BindAssociatedProjection`, until c4, rule 6's projection step).
+    ArchitectureRulesTest's census of name evaluations in `Binding.ResolvePath.cs` goes 20 -> 21: the 21st is
+    `PublishMemberAccess`'s one `PublishPath` call, which evaluates nothing; the row is the owner's own count, not an exception row
+    (as 939bb5d45, 0b3b84dcd), the formers' old writes were plain assignments never counted, and no file outside the owner gains a
+    row. Rejected: a namespace parameter beside the role (a mode, BU-131); the role filter inside the walk in c1 (it moves q14i's
+    record and q15v's acceptance).
+  - c2 (8bb4df4b8, with the rule above; c-a2): `LookupMember` keeps a layer only for an accessible declaration `HasLookupRole`
+    admits in the walk's role (SPEC 9.6: the first layer with accessible, role-compatible declarations); the Case formers' post-walk
+    checks go. Moves: q15v (a Core use passes a nearer layer's group and selects the base's private struct: `UnresolvedBinding_Kd` ->
+    accepted), q14i (its `UnresolvedBinding_Kd` at the use removed; SPEC selects the base's struct). Records moved by the rule above,
+    by code, all to `QualificationRequired_Kd` at the Name: from PrerequisiteUnavailable_Kd (c04i, c05i, r07i, r14i, w04i, q08i),
+    NotCallable_Kd (c05j, r05i, r08i, w05i, q04i), NoApplicableOverload_Kd (c15i, r06j, w03i), InvalidAssignment_Kd (q03i),
+    Unsupported_Kd (q05i, q06i, q07i; w17i at `X`), InternalInvariant_Kd (r04i, w09i, q09i); support: w15v, w16v, w19v, q11v
+    (BU-117's Unsupported_Kd -> accepted), and D11 alike (a Type path found at stage 6; its row 72b22eb33, C-393's N1).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
