@@ -179,8 +179,10 @@ public partial class KimiLibraryShapeTest
     // Final Bind each refusing writer throws the internal-invariant form on a library node, row or base store, which the compilation
     // reports as InternalInvariant_Kd: a new id (Allocate, so EnsureId), an edit (NoteSyntaxEdit, so no renumbering), a HIR row (Of, so
     // every column and node-family write), an existing plan row (PlanFor), a row's reset, the publisher's entry, the base ImplTable's
-    // Begin and Register, a query state of a library declaration whether or not the freeze stamped it (its table decides), and a new
-    // parent on a library region row; an identical re-record writes nothing and is not refused. The program table's writers still work.
+    // Begin and Register, a query state of a library declaration whether or not the freeze stamped it (its table decides), a new
+    // parent (RecordRegionBound) or a new solution (RecordOpening) on a library region row, and a region row of frozen library atoms only
+    // (contract C's create-time assertion, n55 rule 6; G949 ruling 205 N3); an identical re-record writes nothing and is not refused. The
+    // program table's writers still work.
     [Fact]
     public void EveryWriteToTheFrozenLibraryIsRefused()
     {
@@ -213,6 +215,28 @@ public partial class KimiLibraryShapeTest
         _ = record.Invoke(c.Binding, [row.Parents[0], target, row.Values[0]]);
         Refused(() => record.Invoke(c.Binding, [source, target, node]));
         Assert.DoesNotContain(source, row.Parents);
+
+        // A new solution: RecordOpening on a library row and one of its parents, so its bound is an identical re-record and only the
+        // solution is written. The library opens no region (no row is keyed by the meet of a row and a parent), so the solution's row is
+        // made here as the library pass would make it, frozen, and removed after the refusal.
+        var regions = c.Library.Layer.Part.Regions;
+        var meet = typeof(Binding).GetMethod("Meet", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var (region, bound, solution) = regions.SelectMany(static x => x.Value.Parents.Select(p => (Region: x.Key, Bound: p)))
+            .Select(x => (x.Region, x.Bound, Solution: (BoundOrigin)meet.Invoke(c.Binding, [x.Bound, x.Region])!))
+            .First(x => !ReferenceEquals(x.Solution, x.Region) && !regions.ContainsKey(x.Solution));
+        var solved = new Binding.LocalRegion { Version = Binding.FrozenRegion };
+        regions.Add(solution, solved);
+        var opening = typeof(Binding).GetMethod("RecordOpening", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Refused(() => opening.Invoke(c.Binding, [region, bound, node]));
+        Assert.Null(solved.Solved);
+        Assert.True(regions.Remove(solution));
+
+        // A row of frozen library atoms only: a bound on a library atom that has no row makes none, in either part.
+        var atom = LibraryLayer.Families().Where(static x => x.Name == "OriginAtoms")
+            .SelectMany(x => LibraryLayer.RowObjects(x.GetValue(table.Hir.Families)!, c.Binding)).OfType<BoundOrigin>().First(x => x.Binder is not null && !regions.ContainsKey(x));
+        Refused(() => record.Invoke(c.Binding, [source, atom, node]));
+        var program = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.False(regions.ContainsKey(atom) || program.Regions.ContainsKey(atom));
 
         var impls = (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         var path = impls.Paths.ToArray().First(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
