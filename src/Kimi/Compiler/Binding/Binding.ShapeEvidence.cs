@@ -78,7 +78,7 @@ public sealed partial class Binding
             var kind = end - start == 1 ? this.KindOf(node) : this.PositionKind(start, end, out type);
             if (kind is PartKind.Aggregate or PartKind.Join)
             {
-                return Composite(start, end, ExpectedTypeOf(a), ExpectedTypeOf(b));
+                return Composite(start, end, this.ExpectedTypeOf(a), this.ExpectedTypeOf(b));
             }
 
             if (end - start == 1 && kind != PartKind.Literal)
@@ -389,7 +389,7 @@ public sealed partial class Binding
                         return;
                     }
 
-                    pattern = ExpectedTypeOf(pattern);
+                    pattern = this.ExpectedTypeOf(pattern);
                     if (source is TupleLiteralKoto tuple && TupleShapeAt(tuple, pattern))
                     {
                         for (var e = 0; e < tuple.Elements.Count; e++)

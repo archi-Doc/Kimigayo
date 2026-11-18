@@ -60,15 +60,6 @@ public sealed partial class Binding
         _ => throw new InvalidOperationException("A child position belongs to a literal, a range or a join (InternalInvariant)."),
     };
 
-    // SPEC 10.2 row 2, 3.4.1, 3.6: the expected Type of a value part at a position of Type `position`: at `ref/U` the referent U, the
-    // owner temporary's Type (Materialization, its one reader for a part; a call's returned value, TryCandidateCore), else the
-    // position's own. A U with a borrow value's outer Semantics has no owner temporary (its value is a borrow value, which is never
-    // borrowed again implicitly), so there the position's own (10.2.2 item 2; PLAN G924, the owner's O-407 (a)).
-    [return: NotNullIfNotNull(nameof(position))]
-    private static BoundType? ExpectedTypeOf(BoundType? position)
-        => position is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } &&
-            !(referent.Kind == BoundTypeKind.Semantics && IsBorrow(referent.Semantics)) ? referent : position;
-
     // SPEC 10.5.1 (the owner, 2026-10-31, reading I): an aggregate literal part's child positions by index, as an argument's elements
     // are classified one by one: a Tuple's or array's elements, a Dictionary's key and value.
     private static int IndexedChildren(Koto part) => part switch
@@ -78,6 +69,16 @@ public sealed partial class Binding
         DictionaryLiteralKoto => 2,
         _ => throw new InvalidOperationException("An aggregate part is a Tuple, array or Dictionary literal."),
     };
+
+    // SPEC 10.2 row 2, 3.4.1, 3.6: the expected Type of a value part at a position of Type `position`: at `ref/U` the referent U, the
+    // owner temporary's Type (Materialization, its one reader for a part; a call's returned value, TryCandidateCore), else the
+    // position's own. A U with a borrow value's outer Semantics (HasBorrowSemantics: a pair `s/X` whose binder's admitted set lies
+    // within `borrow` included) has no owner temporary (its value is a borrow value, which is never borrowed again implicitly), so there
+    // the position's own (10.2.2 item 2; PLAN G924, the owner's O-407 (a) and O-416 (b)).
+    [return: NotNullIfNotNull(nameof(position))]
+    private BoundType? ExpectedTypeOf(BoundType? position)
+        => position is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } &&
+            !this.HasBorrowSemantics(referent) ? referent : position;
 
     // A walk's position of one argument part; ClosePosition removes it with every part appended after it.
     private int OpenPosition(Koto part)

@@ -292,7 +292,7 @@ public sealed partial class Binding
                 // `ref/U` a returned value that is no borrow value (OwnerResult) is the owner temporary of U, so the expected result is
                 // U, which inverts nothing; a returned `ref/T` is matched against `ref/U`. A bare slot is what its evidence bound it
                 // to, and while unbound a returned value, which U then fills.
-                var referent = ExpectedTypeOf(expected);
+                var referent = this.ExpectedTypeOf(expected);
                 var resultExpected = !ReferenceEquals(referent, expected) &&
                     OwnerResult(returnPattern.Kind == BoundTypeKind.Parameter ? solution.Type(returnPattern) ?? returnPattern : returnPattern) ? referent : expected;
                 expectedStructure = this.Infer(returnPattern, resultExpected, CallSlotOwner(function), frame, true, true);

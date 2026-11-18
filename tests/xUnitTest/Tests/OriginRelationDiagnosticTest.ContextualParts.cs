@@ -39,6 +39,10 @@ public partial class OriginRelationDiagnosticTest
 
     private const string MkAnyCall = "func mkAny<U>() -> U => $abort(\"any\")\n";
 
+    private const string PairK = "func k<s/X>(a: ref/(s/X)) -> i32\n";
+
+    private const string PairLet = "    let y: ref/(s/X) during a = mkAny()\n    return 0\n";
+
     private const string RunCall = "func run<T>(f: (T) -> i32, s: T) -> i32 => 0\n";
 
     private const string NnHead = "func k(q: ref/i32, r: ref/i32, c: bool, d: bool) -> ref/i32 during r\n";
@@ -303,6 +307,22 @@ public partial class OriginRelationDiagnosticTest
     // temporary to fail at the `let`; a result that needs another Origin then fails at the return (q1_bor_i), its twin passes (q1_bor).
     [InlineData("guard", "q1_bor", MkAnyCall + "func k(a: ref/i32, b: ref/i32) -> ref/(ref/i32 during a) during a\n    let y: ref/(ref/i32 during a) during a = mkAny()\n    return y\n", "")]
     [InlineData("guard", "q1_bor_i", MkAnyCall + "func k(a: ref/i32, b: ref/i32) -> ref/(ref/i32 during b) during b\n    let y: ref/(ref/i32 during a) during a = mkAny()\n    return y\n", "UnprovenOriginRelation_Kd: return y")]
+
+    // SPEC 10.2.2 item 2, 8.3.4 (PLAN G924, the owner's O-416 (b); K's revision 12): a pair `s/X` has a borrow value's outer Semantics
+    // exactly when its binder's admitted set lies within `borrow`: then there is no owner temporary and the returned value is matched
+    // against `ref/U` by structure (o_ref, o_refuniq), as at their concrete spellings (o_ref_c, o_refuniq_c); a set admitting `owner`
+    // (o_ownref, o_none) or another Semantics outside `borrow` (o_refraw, o_refobj) is matched against U, whose statement temporary does
+    // not outlive `a`, as at the owner and raw spellings (o_owner_c, o_raw_c).
+    [InlineData("guard", "o_ref", MkAnyCall + PairK + "    s is ref\n" + PairLet, "")]
+    [InlineData("guard", "o_ref_c", MkAnyCall + "func k<X>(a: ref/X) -> i32\n    let y: ref/(ref/X during a) during a = mkAny()\n    return 0\n", "")]
+    [InlineData("guard", "o_refuniq", MkAnyCall + PairK + "    s is ref or uniq\n" + PairLet, "")]
+    [InlineData("guard", "o_refuniq_c", MkAnyCall + "func k<X>(a: uniq/X) -> i32\n    let y: ref/(uniq/X during a) during a = mkAny()\n    return 0\n", "")]
+    [InlineData("guard", "o_ownref", MkAnyCall + PairK + "    s is owner or ref\n" + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_none", MkAnyCall + PairK + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_refraw", MkAnyCall + PairK + "    s is ref or raw\n" + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_refobj", MkAnyCall + PairK + "    s is ref or obj\n" + PairLet, "UnsatisfiedOriginRelation_Kd: let y: ref/(s/X) during a = mkAny()")]
+    [InlineData("guard", "o_owner_c", MkAnyCall + "func k<X>(a: ref/X) -> i32\n    let y: ref/X during a = mkAny()\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/X during a = mkAny()")]
+    [InlineData("guard", "o_raw_c", MkAnyCall + "func k<X>(a: ref/(raw/X)) -> i32\n    let y: ref/(raw/X) during a = mkAny()\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/(raw/X) during a = mkAny()")]
 
     // SPEC 10.5.1, 14.9.2, 15.6.1 (PLAN G390, closed): the selected call judges a nested join's positions (nn in a Tuple, nd alone).
     [InlineData("guard", "nn", NnHead + NnInner + "    return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)\n", "UnprovenOriginRelation_Kd: return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)")]

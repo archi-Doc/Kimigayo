@@ -179,7 +179,7 @@ public sealed partial class Binding
             try
             {
                 met = memberPattern;
-                return binding.Infer(ExpectedTypeOf(met), shape, this.SlotOwner, this.Frame);
+                return binding.Infer(binding.ExpectedTypeOf(met), shape, this.SlotOwner, this.Frame);
             }
             finally
             {

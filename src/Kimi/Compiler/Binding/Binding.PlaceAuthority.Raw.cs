@@ -127,10 +127,7 @@ public sealed partial class Binding
             return new(true, layer.RawOrigin);
         }
 
-        var borrow = TryPairLayer(layer, out _, out _)
-            ? this.LayerAdmitted(layer) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0
-            : layer.Kind == BoundTypeKind.Semantics && IsBorrow(layer.Semantics);
-        return new(borrow ? true : null, this.OuterOrigin(layer));
+        return new(this.HasBorrowSemantics(layer) ? true : null, this.OuterOrigin(layer));
     }
 
     // SPEC 5.7, 6.3.4, 16.3.1 (DECISIONS BU-23): the Origin of a constructor's or destructor's receiver `self`, its Place's atom.

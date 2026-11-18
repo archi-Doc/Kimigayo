@@ -33,7 +33,7 @@ public sealed partial class Binding
     private BoundType? Materialization(Koto part, BoundType? type, BindingScope scope)
     {
         var core = KotoHelper.UnwrapParentheses(part);
-        if (ExpectedTypeOf(type) is not { } referent || ReferenceEquals(referent, type) || DeliveredOperand(core) is not null)
+        if (this.ExpectedTypeOf(type) is not { } referent || ReferenceEquals(referent, type) || DeliveredOperand(core) is not null)
         {
             return null;
         }
