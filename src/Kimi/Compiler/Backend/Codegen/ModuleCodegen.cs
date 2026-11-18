@@ -4,7 +4,9 @@
 // one per Compilation.
 // Responsibility: one module of a program version from its checked set: every Generated item in admission order, a body item written by
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body to
-// its definition and every call (Signature), a called #LibraryImport function's C signature and declaration (Import), the output form
+// its definition and every call (Signature), a called #LibraryImport function's C signature and declaration (Import), the native
+// libraries the module requires, the library and Kind of every validated #LibraryImport, called or not, one per library (Libraries; SPEC
+// 22.6: resolved when the program is built; moved here from the toolchain's publication, R9-B1), the output form
 // around the output roots (IMPL 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry, a
 // test build's is the test runtime's, which runs the case the runner selects, each test root called in catalog order; DECISIONS R5-M136) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
@@ -22,7 +24,8 @@
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection; the test catalog, a test build's cases, identity and verification site
-// numbers (Compilation.Tests, discovered for the version; DECISIONS R5-M136).
+// numbers (Compilation.Tests, discovered for the version; DECISIONS R5-M136); Binding's validated #LibraryImport declarations
+// (Binding.LibraryImports), whose called ones it declares and whose libraries it requires.
 // Output: the complete module written to the caller's writer with what it states for its link (Externals, Libraries; R9-B1), which are
 // the module's only after a Write that returned true, until the next Write: a failed Write leaves nothing readable (Externals holds its
 // partial list, Libraries the previous module's), since the generation entry publishes them only for a written module
@@ -38,8 +41,8 @@
 // partial module, use LINQ, Supports* or catch-alls, or do file I/O but through the caller's writer (it reads embedded templates), whose
 // I/O exceptions are therefore the output's (DECISIONS R5-M169); a broken contract it throws is the command's fault.
 // Files: the items and the records (this file); the body, glue, Builtin, ensure and virtual slot signatures and the signature caches
-// (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations (ModuleCodegen.Imports.cs), the common Function values'
-// entries (ModuleCodegen.Erasures.cs), the object descriptors
+// (ModuleCodegen.Signatures.cs), the called imports' C signatures and declarations and the required libraries (ModuleCodegen.Imports.cs),
+// the common Function values' entries (ModuleCodegen.Erasures.cs), the object descriptors
 // with their virtual tables (ModuleCodegen.Objects.cs), and the Dictionary rows' routines and helpers
 // (ModuleCodegen.Dictionaries.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
 
