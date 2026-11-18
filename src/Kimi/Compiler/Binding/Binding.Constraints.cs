@@ -567,7 +567,7 @@ public sealed partial class Binding
             var environment = scope.Constraints ??= new();
             if (this.AddConstraintFact(environment, requirement))
             {
-                environment.Fail(clause); // The clause failed, or holds a recovery.
+                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
             }
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
