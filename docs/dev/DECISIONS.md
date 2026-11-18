@@ -411,6 +411,40 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Effect: a review finding that rests only on a removed limit is dropped; PLAN rows that rest only on one close (G438).
   - Supersedes in part Q2 (the limits it put in COMPILER_ARCHITECTURE), Q6 (the commit message's length) and Q9 (PD21's no-growth clause for Binding files over the token limit).
 
+- **Q20 One Session per window, more native workers, shared ratchet rows and a context handoff** (2026-11-18, the owner in K's
+  dialog, verbatim 「推奨どおり（A をすべて実施、B をセッションに伝達、C1〜C4 を採用）で、進めてください」, to the Coordinator's measures C1-C4 after the
+  owner's analysis of 11-18's limiting factors; [WORKFLOW](WORKFLOW.md) "Sessions", "Windows"; [VERIFICATION](VERIFICATION.md)
+  "Feedback and completion", "Native fixtures").
+  - Rule 1 (C1): a unit that lands in a window runs no Session of its own. Its checks are VERIFICATION's Unit verification of the
+    related checks, with the diagnostic snapshot against the shared base, the relevant native fixtures and milestones selected
+    explicitly, and, for a behaviour-preserving claim, the semantic HIR and MIR comparison; the window's Session is its final Session.
+    A refresh merge reruns those Unit checks only.
+  - Rule 2 (C2): native fixture workers: `verify.ps1`'s default is up to 8 (was 4); a window's Session runs 16 (was 6), since the
+    window holds new heavy runs.
+  - Rule 3 (C3): units of one window may share a ratchet or pin test file (`ArchitectureRulesTest`, `KimiLibraryShapeTest`) when they
+    change separate named constants or rows and `git merge-tree` merges them cleanly, as PLAN's table end; the window's build and
+    Session check the merged file.
+  - Rule 4 (C4): a planning session whose context reaches 40% (the Coordinator's hourly check) starts no new agent, lets its running
+    agents end their current step, writes its handoff and posts it on the board; the Coordinator starts a fresh session from it. At
+    40% the Coordinator writes its own handoff and asks the owner for a fresh Coordinator. Supersedes in part the owner's rule of
+    2026-11-16 that handoffs are revised only on the owner's or a USAGE STOP's order.
+  - Reason: on 11-18 weekly usage went from 51% to 97% between 15:20 and 22:25 (about 6.5% an hour). Each unit ran a full Session
+    (40 minutes to 2 hours) and its window ran another, and every window from W-253 to W-259 passed on its first run. A library change's
+    native step took about 80 minutes at 4 workers on 32 cores. Three Ready units (R8-X1, G984, R7-N1 c-a) each waited a window
+    behind one ratchet file in which they change separate constants. A session's every wake rereads its whole context, so a large
+    context multiplies each wake's cost.
+  - Risk accepted: without unit Sessions a window fails more often; a failure that names no unit splits the window in halves
+    (WORKFLOW). Base freshness (two windows) is unchanged, since a clean merge broke twice before (W-243, G1-2).
+  - Applied with it, without a rule change (the Coordinator's and the sessions' operation): the Coordinator wakes only on lines
+    addressed to it, CLOSED, USAGE and G-O lines, and sends requests on the board, not by message; a window with no unit that
+    R7-M21 (2) times books no RP8 slot (R7-M36); the next window opens at the previous one's CLOSED line. Before review, the planning
+    sessions check a scaling row of shared shape (a diamond or tree chain, N of 30 or more, timed before and after) for a new
+    recursion; every test class that uses a changed type, plus the semantic comparison, for a behaviour-preserving claim; and no
+    `InternalInvariant_Kd` on the valid programs and their twins.
+  - Rejected: RP8 over several windows (R7-M36's timed-unit rule suffices); refreshing only on overlapping files (the two clean-merge
+    breaks above); a consent seat (close to the latency proposals the owner withdrew on 2026-11-18); emitting only the used Abort
+    reasons (a design unit of the Back's, not a process rule).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.

@@ -73,7 +73,8 @@ The build uses parallel project builds and the shared compiler server; the scrip
 Unit Verify adds the common compiler check `ArchitectureRulesTest` to every class or
 method selection, once; the purpose filter applies to them too. Purpose-filtered runs such as the allocation example
 supplement, rather than replace, the remaining required checks. Commit each unit after its checks pass, associate the
-evidence (below) and push; run the final Session at the end of the working session. Ordinary Verify does not check
+evidence (below) and push; run the final Session at the end of the working session. A unit that lands in a window runs no Session of its own: the
+window's Session is its final Session (DECISIONS Q20). Ordinary Verify does not check
 native-toolchain identity: check it at setup/update or with `-VerifyToolchain`. CLI tests use `run --no-build` for
 built CLI artifacts, except when testing automatic builds.
 
@@ -242,7 +243,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 
 ## Native fixtures
 
-`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit-code and dependency oracles are checked at each level.
+`verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to eight workers, and a window's Session runs 16 (DECISIONS Q20); 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit-code and dependency oracles are checked at each level.
 
 Each fixture owns its output names and log. Workers publish status (passed, failed or incomplete), completed optimization levels and per-level execution measurements; the parent waits for every worker, preserves failure logs and fails the step if any fixture fails, is incomplete or has no result. Verify stores per-fixture logs and `results.json` under its evidence directory, with generated binaries under `temp/`. Fixture patterns are still processed in order, and parallelism is bounded within each pattern.
 
