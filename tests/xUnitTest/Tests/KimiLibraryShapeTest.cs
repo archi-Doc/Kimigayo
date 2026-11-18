@@ -432,7 +432,7 @@ public partial class KimiLibraryShapeTest
                 var writes = c.Types.Retains(symbol, null, null).Writes.ToArray();
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
+                    var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(c.Types.Signature(symbol, null, i, out _)!) &&
                         writes.Any(x => x.Output == symbol.ReceiverIndex && (x.Own.Kinds[i] | x.All.Kinds[i]) != RetentionKind.None);
                     Assert.True(stored == KimiLibraryCatalog.Added(symbol, i), $"{Line(function)}: input {i}");
                     if (stored)
@@ -628,7 +628,7 @@ public partial class KimiLibraryShapeTest
         var lines = new List<string> { Line(Record(path)) };
         for (var i = 0; i < AdtDef.Count(type); i++)
         {
-            Assert.NotNull(AdtDef.FieldType(type, i));
+            Assert.NotNull(AdtDef.FieldType(c.Types, type, i));
             lines.Add(Line(AdtDef.Field(type, i)));
         }
 

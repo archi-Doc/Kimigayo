@@ -53,7 +53,7 @@ internal sealed partial class ModuleCodegen
         {
             if (items[item].Key is { Kind: MonoKind.ObjectDescriptor, Type: { } payload } && this.set.IsGenerated(item))
             {
-                for (var layer = (BoundType?)payload; layer is not null; layer = AdtDef.Base(layer))
+                for (var layer = (BoundType?)payload; layer is not null; layer = AdtDef.Base(this.types, layer))
                 {
                     _ = this.numbers.TryAdd(this.types.Erase(layer), this.numbers.Count + 1);
                 }
@@ -89,7 +89,7 @@ internal sealed partial class ModuleCodegen
         var token = this.Token(entry.Key.Type!);
         var slots = targets.Length > 0 && this.set.Items[targets[^1].Item].Key.Kind == MonoKind.VTable ? this.Table(targets[^1].Item) : [];
         this.chain.Clear();
-        for (var layer = AdtDef.Base(entry.Key.Type!); layer is not null; layer = AdtDef.Base(layer))
+        for (var layer = AdtDef.Base(this.types, entry.Key.Type!); layer is not null; layer = AdtDef.Base(this.types, layer))
         {
             this.chain.Add(this.Token(layer));
         }

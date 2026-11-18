@@ -214,7 +214,7 @@ internal sealed partial class MirBuilder
     {
         var make = compilation.Library.GetSymbol(KimiDeclarationId.TextFixed)!;
         var subst = compilation.Types.Synthesized(make, null, [null], [length]);
-        return (make, subst, TyCtxt.Signature(make, subst, -1, out _)!);
+        return (make, subst, compilation.Types.Signature(make, subst, -1, out _)!);
     }
 
     // A direct line's fixed end (Line), after the writer's last use: text() over a shared borrow of the FixedBuffer, its Ok view to
@@ -227,7 +227,7 @@ internal sealed partial class MirBuilder
         var result = this.Synthesized(KimiDeclarationId.FixedBufferText, this.body.TypeOf(fixedBuffer), at, node);
         this.CaseTest(result, 0, done, node);
         at = this.arguments.Count;
-        this.arguments.Add(MirOperand.Copy(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)));
+        this.arguments.Add(MirOperand.Copy(this.body.Project(compilation.Types, this.body.Project(compilation.Types, result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)));
         var line = compilation.Library.GetSymbol(KimiDeclarationId.WriteLineUtf8)!; // A body since R8-W1c-3.
         this.Invoke(destination, new(MirCalleeKind.Fn, line, compilation.Types.Synthesized(line, null, [], [])), at, node);
         this.CloseScope(scope);
@@ -303,7 +303,7 @@ internal sealed partial class MirBuilder
     private void Writes(Koto node, MirPlace writer, long bytes, int start, ref int done)
     {
         var storage = CallPlan.Of(node, 2)!.ArgumentOperations[0].Source!;
-        var hint = this.body.Project(writer, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(writer)!, "hint"));
+        var hint = this.body.Project(compilation.Types, writer, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(writer)!, "hint"));
         var (later, values) = (bytes, start);
         for (var k = 2; CallPlan.Of(node, k) is { } write; k++)
         {
@@ -362,7 +362,7 @@ internal sealed partial class MirBuilder
         this.arguments.Add(MirOperand.Move(buffer));
         var result = this.Synthesized(KimiDeclarationId.HeapBufferIntoString, this.body.TypeOf(buffer), at, node);
         this.CaseTest(result, 0, done, node);
-        this.Use(destination, MirOperand.Move(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)), node);
+        this.Use(destination, MirOperand.Move(this.body.Project(compilation.Types, this.body.Project(compilation.Types, result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)), node);
         this.CloseScope(scope);
     }
 
@@ -376,7 +376,7 @@ internal sealed partial class MirBuilder
     {
         var function = compilation.Library.GetSymbol(id)!;
         var subst = compilation.Types.Synthesized(function, declaring, [], []);
-        var result = this.Hold(TyCtxt.Signature(function, subst, -1, out _)!, node);
+        var result = this.Hold(compilation.Types.Signature(function, subst, -1, out _)!, node);
         this.Invoke(result, new(MirCalleeKind.Fn, function, subst), at, node);
         return this.Made(result);
     }

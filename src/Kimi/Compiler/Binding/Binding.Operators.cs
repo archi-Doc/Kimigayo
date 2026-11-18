@@ -115,7 +115,7 @@ public sealed partial class Binding
         switch (unary.Akind)
         {
             case KotoKind.Not:
-                return Compatible(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.FitsType(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlus or KotoKind.PrefixMinus:
                 var decision = this.OperatorApplicabilityOf(unary, operand, null, scope);
                 return decision.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, decision);
@@ -182,7 +182,7 @@ public sealed partial class Binding
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
         if (assignment && kind == KotoKind.Equals && left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            right is not null && !Compatible(right, left) && Compatible(right, left.Components[0]) &&
+            right is not null && !this.FitsType(right, left) && this.FitsType(right, left.Components[0]) &&
             ReferenceBindingAssignment(binary.Left) is { } valueBinding)
         {
             return this.Fail(binary, valueBinding);
@@ -332,8 +332,8 @@ public sealed partial class Binding
 
         if (operation is KotoKind.And or KotoKind.Or)
         {
-            return !Compatible(left, BoundType.Boolean) ? this.FailMismatch(binary, binary.Left, left, BoundType.Boolean, ComparisonFailure.Shape)
-                : !Compatible(right, BoundType.Boolean) ? this.FailMismatch(binary, binary.Right, right, BoundType.Boolean, ComparisonFailure.Shape)
+            return !this.FitsType(left, BoundType.Boolean) ? this.FailMismatch(binary, binary.Left, left, BoundType.Boolean, ComparisonFailure.Shape)
+                : !this.FitsType(right, BoundType.Boolean) ? this.FailMismatch(binary, binary.Right, right, BoundType.Boolean, ComparisonFailure.Shape)
                 : Complete(binary, BoundType.Boolean);
         }
 

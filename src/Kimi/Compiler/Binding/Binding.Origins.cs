@@ -20,6 +20,11 @@ public sealed partial class Binding
     private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
     private long originRowProbes;
 
+    // The program's atoms at binders of the frozen library table (OriginAtomRows; ruling 203 (4)): the family's column form over the
+    // library's ids (DECISIONS BU-220), outside the frozen layer; emptied where the item contexts are (Invalidate), whose memoized plans
+    // hold its atoms, never per pass, so one key keeps one atom object across Binds until an edit (G949 ruling 205 N4).
+    private PagedColumn<BoundOrigin?[]?> programAtoms;
+
     /// <summary>Gets the entries the owner-keyed Origin interners' row searches (KeyedRow: originAtoms, openOrigins) probed over the
     /// Binding's lifetime, which a scaling check reads.</summary>
     internal long OriginRowWork => this.originRowProbes;
@@ -269,17 +274,42 @@ public sealed partial class Binding
     }
 
     /// <summary>The `originAtoms` family's one accessor (DECISIONS BU-220): a kept interner, a binder's atoms in its module's NodeColumns
-    /// at its SyntaxId, one KeyedRow of them by kind and slot, never reset; a renumbering moves the row with its binder. Its members keep
-    /// the names and the tuple key its readers use.</summary>
+    /// at its SyntaxId, one KeyedRow of them by kind and slot, never reset; a renumbering moves the row with its binder. From the freeze
+    /// (PLAN G949 S1-1; ruling 203 (4)) an atom a later step interns at a binder of the frozen library table, such as a library
+    /// requirement member's Input atoms that an Item's call context interns at MIR time (RequirementItemContext, `Body` the forming body),
+    /// is a program fact: a row of the program's (programAtoms: the same KeyedRow form at the binder's library id, emptied with the item
+    /// contexts at an edit), found after the library's column, so the frozen layer holds no row a later step made. Its members keep the
+    /// names and the tuple key its readers use.</summary>
     private readonly struct OriginAtomRows(Binding binding)
     {
         internal BoundOrigin this[(Koto Binder, OriginKind Kind, int Slot) key]
         {
-            set => KeyedRow.Put(ref HirTables.Of(key.Binder).Families.OriginAtoms.Ref(key.Binder.SyntaxId), Interned(value, key.Binder, (key.Kind, key.Slot)), AtomKey, ref binding.originRowProbes);
+            set
+            {
+                var atom = Interned(value, key.Binder, (key.Kind, key.Slot));
+                if (key.Binder.SyntaxOwner is { Frozen: true } library)
+                {
+                    binding.programAtoms.Grow(library.Count); // A frozen table's count is final.
+                    KeyedRow.Put(ref binding.programAtoms.Ref(key.Binder.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
+                }
+                else
+                {
+                    KeyedRow.Put(ref HirTables.Of(key.Binder).Families.OriginAtoms.Ref(key.Binder.SyntaxId), atom, AtomKey, ref binding.originRowProbes);
+                }
+            }
         }
 
         internal bool TryGetValue((Koto Binder, OriginKind Kind, int Slot) key, [NotNullWhen(true)] out BoundOrigin? origin)
-            => (origin = key.Binder.SyntaxOwner is { } table ? KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes) : null) is not null;
+        {
+            var table = key.Binder.SyntaxOwner;
+            origin = table is null ? null : KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
+            if (origin is null && table is { Frozen: true })
+            {
+                origin = KeyedRow.Find(binding.programAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes);
+            }
+
+            return origin is not null;
+        }
 
         internal void Add((Koto Binder, OriginKind Kind, int Slot) key, BoundOrigin origin)
         {

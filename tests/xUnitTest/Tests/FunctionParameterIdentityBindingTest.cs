@@ -46,8 +46,8 @@ public class FunctionParameterIdentityBindingTest
         var a = function.Parameters[0].Type.TypeOf()!;
         var b = function.Parameters[1].Type.TypeOf()!;
         Assert.Equal(same, Binding.SameType(a, b));
-        Assert.Equal(same, Binding.FitsType(a, b));
-        Assert.Equal(same, Binding.FitsType(b, a));
+        Assert.Equal(same, c.Binding.FitsType(a, b));
+        Assert.Equal(same, c.Binding.FitsType(b, a));
     }
 
     [Theory]

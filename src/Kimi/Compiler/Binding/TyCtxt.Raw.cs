@@ -269,10 +269,14 @@ internal sealed partial class TyCtxt
             return [];
         }
 
-        var storage = binding.Instance(instance);
+        var storage = this.Storage(instance);
         parent = storage.PartsBase;
         return storage.Parts;
     }
+
+    // SPEC 8.15: an instance's stored Types, Binding's one substitution per instance and pass (Binding.Instance): the one entry to them
+    // outside Binding, which AdtDef's instance readers and StoredParts read.
+    internal AdtDef.InstanceStorage Storage(BoundType instance) => binding.Instance(instance);
 
     // RawPlaces' whitelist, read from Holdings' one form table (SPEC 3.3.4; Binding.Holdings, its rows at the key; O-228 (a)): a form is
     // decided where every row is one of: a layer's or a collection's referent, a Type argument, an erased environment (none of them
