@@ -813,6 +813,27 @@ internal sealed class BindingScope(Koto owner)
 
     internal Koto Owner { get; } = owner;
 
+    // SPEC 8.2.1, 8.3.3: the declaration whose premises the requests made in this scope close, the one that reaches a limit of that
+    // closure: the nearest owner on the chain with a Constraint region of its own, a named function, an accessor, a Container or a
+    // conditional conformance's scope. A block, an `if`, `do`, `while` or `for` body, a match arm and an anonymous function (its body an
+    // ExecutableBody, SPEC F.9.1, with no generic parameters, 7.7.1) state no premises, so their requests are their definition's. A
+    // chain's root is a module's or a declaration's, so the walk ends at a declaration. Not TyCtxt.EnclosingDeclaration, the
+    // declaration whose instance the code holds, which passes a conditional conformance's scope (a constrained declaration of its own).
+    internal Koto Declaration
+    {
+        get
+        {
+            var scope = this;
+            while (scope.Owner is not (FunctionKoto { IsAnonymous: false } or PropertyAccessorKoto or DeclarationContainerKoto or
+                SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && scope.parent is { } outer)
+            {
+                scope = outer;
+            }
+
+            return scope.Owner;
+        }
+    }
+
     internal BindingScope? Parent
     {
         get => this.parent;

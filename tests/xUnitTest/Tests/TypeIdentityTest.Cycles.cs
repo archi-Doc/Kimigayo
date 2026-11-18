@@ -446,6 +446,33 @@ public partial class TypeIdentityTest
         Assert.True(codes == found, row + ": " + found);
     }
 
+    private const string PqUses = "func f<T>(x: ref/T.(Pq).Up, y: ref/T.(Pq).Up)\n    T is Pq\n";
+
+    // PLAN G881b, F's ruling 216 (SPEC 8.3.3 Limits: the limit "is reported once ... at the declaration that reaches it"; 8.2.1,
+    // 7.5): the declaration whose premise closure reaches the bound is the nearest one with a Constraint region, so a refused use in
+    // an `if`, `do`, `while` or `for` body, a match arm or a Closure (none states premises: a Closure's body is an ExecutableBody,
+    // F.9.1) is its definition's and rests on the definition's one record, at its first refused use (the review's tw-blk, tw-blk2,
+    // tw-do, tw-while with the nested use on `y`, so the record's line names the use: N1); a named function written in the body is
+    // its own declaration (tw-local: two records); a Copy judged with no check frame open records at the declaration (tw-copyblk).
+    // Each row is a whole declaration after CyclePrelude and Pq; b0cec6e90 gave the block's, arm's or Closure's own record too.
+    public static TheoryData<string, string, string> RoundBoundDeclarationRows => new()
+    {
+        { "tw-blk", PqUses + "    need(x)\n    if true\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-blk2", PqUses + "    if true\n        need(y)\n    need(x)\n", "PremiseClosureLimit_Kd: need(y)" },
+        { "tw-do", PqUses + "    need(x)\n    do\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-while", PqUses + "    need(x)\n    while true\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-for", PqUses + "    need(x)\n    for _ in 0..2\n        need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-arm", PqUses + "    need(x)\n    match 1\n        1 => need(y)\n        _ => ()\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-closure", PqUses + "    need(x)\n    let g = func () => need(y)\n", "PremiseClosureLimit_Kd: need(x)" },
+        { "tw-local", PqUses + "    need(x)\n    func g<U>(z: ref/U.(Pq).Up)\n        U is Pq\n        need(z)\n", "PremiseClosureLimit_Kd: need(x) | PremiseClosureLimit_Kd: need(z)" },
+        { "tw-copyblk", "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    if true\n        return x\n    return x\n", "PremiseClosureLimit_Kd: func f<T>(x: T.(Pq).Up) -> T.(Pq).Up" },
+    };
+
+    [Theory]
+    [MemberData(nameof(RoundBoundDeclarationRows))]
+    public void ADeclarationsLimitIsRecordedOnceAtItsFirstRefusedUse(string row, string source, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(row, CyclePrelude + Pq + source + "public func main() => ()\n", records);
+
     // PLAN G881 with G881b: a query made after the pass has counted its failures fails no node. MIR's destruction analysis asks Copy
     // of `T.(Pq).Up` (pqcallv, valid), a request that reaches the round bound: it keeps Unknown, as before the bound's rounds, and a
     // re-check finds the pass as it was counted (a version that failed `func f` there left a node failed after the count).

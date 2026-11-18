@@ -372,10 +372,11 @@ public sealed partial class Binding
 
     // SPEC 8.3.3 (Limits), 23.1.1 (DECISIONS BU-22's L): an analysis a judgment needs reached an implementation limit (`limit`, a
     // failure whose record's category is Resource), so its negative answer is a resource failure, never Unknown or Refuted. The
-    // limit is the declaration's that reaches it, `owner` (the owner of the scope whose premises the analysis read), and is
-    // reported once (SPEC 8.3.3): its record is at the first refused request's site in the run, the open consultation frame's
-    // node (the use; the owner's O-321 (b)), else `owner`, and a later request of the run rests on that record
-    // (Refusal.Reach), so no refusal is without a node. Inside a proof the answer joins it
+    // limit is the declaration's that reaches it, the declaration whose premises the analysis read (`scope`'s Declaration: a block,
+    // a loop body, a match arm or a Closure inside a definition is the definition's), and is reported once (SPEC 8.3.3): its record
+    // is at the first refused request's site in the run, the open consultation frame's node (the use; the owner's O-321 (b)), else
+    // the declaration, and a later request of the run, in any of the declaration's bodies, rests on that record (Refusal.Reach),
+    // so no refusal is without a node. Inside a proof the answer joins it
     // as a limit whose Use is that node: an Unknown resting on it is Error wherever it is read again (a capability result, a
     // memo, a source state), and the node is failed where such an answer is no longer combined (EndProof), so the record exists
     // whoever reads the Error and a check failing on it derives from the record; a judgment other evidence proves stands and
@@ -384,12 +385,14 @@ public sealed partial class Binding
     // held for its selection (Refusal.Settle): only the selected candidate's Unknown judgments are obligations (SPEC 10.1). All of it
     // while the pass produces its failures (producing): a query after the pass (a lint, MIR, emission, the editor) fails no node, so
     // its request answers Unknown, as without the analysis (PLAN G651 U2 gives the after-run queries their outcome).
-    private void RefuseProof(Koto owner, BindingFailure limit)
+    private void RefuseProof(BindingScope scope, BindingFailure limit)
     {
         if (!this.producing)
         {
             return;
         }
+
+        var owner = scope.Declaration;
 
         // The declaration's refusal, its row of the kept family NodeColumns.Refusals (DECISIONS BU-220), read and written here alone:
         // one cause a declaration, so an answer computed again rests on the same cause (the capability engine's fixpoint compares causes
