@@ -25,14 +25,14 @@ public sealed partial class Binding
             return Complete(conversion, null);
         }
 
-        if (IsNeverValue(conversion.Left, stored))
+        if (this.IsNeverValue(conversion.Left, stored))
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, stored);
         }
 
         BoundType borrowed;
-        if (ElementAccess.IsRawRooted(conversion.Left))
+        if (ElementAccess.IsRawRooted(this, conversion.Left))
         {
             // SPEC 5.4, 5.2.2: the address of a raw Place or a part of one borrows that Place as a fresh anchor.
             borrowed = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);
@@ -84,9 +84,9 @@ public sealed partial class Binding
     // the pointee: no raw Origin denies an access (SPEC 5.7).
     private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
     {
-        if (semantics == SemanticsKind.Uniq && ReachedThroughShared(conversion.Left))
+        if (semantics == SemanticsKind.Uniq && this.ReachedThroughShared(conversion.Left))
         {
-            return this.Fail(conversion, AccessFailure(conversion.Left, out _));
+            return this.Fail(conversion, this.AccessFailure(conversion.Left, out _));
         }
 
         var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: this.RawAnchor(conversion, conversion.Left));

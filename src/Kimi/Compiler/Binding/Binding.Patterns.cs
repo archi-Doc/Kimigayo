@@ -249,13 +249,13 @@ public sealed partial class Binding
     // and any other acquisition, including @move and a temporary, yields an owned ByValue Subject.
     private SubjectMode SubjectModeOf(Koto expression, BoundType? type)
     {
-        var bare = IsBarePlace(expression);
+        var bare = this.IsBarePlace(expression);
         if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 })
         {
             return bare ? SubjectMode.Shared : SubjectMode.ByValue;
         }
 
-        if (bare && ReachedThroughShared(expression))
+        if (bare && this.ReachedThroughShared(expression))
         {
             return SubjectMode.Shared;
         }
@@ -283,7 +283,7 @@ public sealed partial class Binding
     {
         borrow = null;
         mode = this.SubjectModeOf(expression, type);
-        if (type is null || ReferenceEquals(type, BoundType.Never) || !IsBarePlace(expression))
+        if (type is null || ReferenceEquals(type, BoundType.Never) || !this.IsBarePlace(expression))
         {
             return type;
         }

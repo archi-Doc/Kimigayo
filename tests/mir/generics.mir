@@ -22,7 +22,7 @@ fn largest @4
   _14: ref/T temp @28 s3
   _15: ref/T temp @29 s3
   _16: () temp @31 s4
-  _17: T temp @32 s4
+  _17: T temp (Assigned) @32 s4
   _18: isize temp @108 s1
   _19: T temp @37 s1
   _20: T temp (Result) @4

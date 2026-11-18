@@ -178,7 +178,7 @@ public sealed partial class Binding
                 uses.Use((node as TestVerificationKoto)?.Message);
                 break;
             case MatchKoto match:
-                var plan = BoundMatch.Of(match);
+                var plan = BoundMatch.Of(this, match);
                 Subject(match.Expression, plan?.SubjectBorrow, ref uses);
                 Bindings(plan, ref uses);
                 for (var i = 0; i < match.Arms.Count; i++)
@@ -190,7 +190,7 @@ public sealed partial class Binding
                 break;
             case ForKoto loop:
                 uses.Use(loop.Iterable);
-                Bindings(BoundMatch.Of(loop), ref uses);
+                Bindings(BoundMatch.Of(this, loop), ref uses);
                 break;
             case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
                 uses.Use(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
@@ -249,7 +249,7 @@ public sealed partial class Binding
     // other than a literal in its temporary.
     private HirAdjust ChildAdjust(Koto child, HirAdaptation adaptation, UseKind kind, bool claimed)
     {
-        var recordedWins = this.adaptations.TryGetValue(child, out var recorded) && !(ElementAccess.IsSynthesizedAccess(child) &&
+        var recordedWins = this.adaptations.TryGetValue(child, out var recorded) && !(ElementAccess.IsSynthesizedAccess(this, child) &&
             (adaptation == HirAdaptation.ExclusiveBorrow || claimed));
         adaptation = recordedWins ? HirAdjust.Of(recorded, child.BoundType)
             : HirTables.ErasedType(child) is not null ? HirAdaptation.Erasure : adaptation;
@@ -295,7 +295,7 @@ public sealed partial class Binding
 
     // A bare Place (SPEC 3.5; a raw Place and its parts included, SPEC 3.4.1, 5.2), a static, or the storage a formatting plan prepared
     // (its buffer, its writer).
-    private bool IsPlace(Koto child) => IsBarePlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
+    private bool IsPlace(Koto child) => this.IsBarePlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
         IsStatic(KotoHelper.UnwrapParentheses(child).BoundSymbol);
 
     // What a take needs of what it takes, a Place storing the Type, acquired at the node (SPEC 10.2, 4.7.2, 8.14, 7.7.2): a pair-case
@@ -326,7 +326,7 @@ public sealed partial class Binding
         {
             ConversionKoto conversion => ReferenceEquals(conversion.Left, child) && this.BorrowsExclusively(conversion),
             ForKoto loop => ReferenceEquals(loop.Iterable, child) && loop.Mode == SubjectMode.Exclusive,
-            MatchKoto match => ReferenceEquals(match.Expression, child) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
+            MatchKoto match => ReferenceEquals(match.Expression, child) && BoundMatch.Of(this, match) is { Mode: SubjectMode.Exclusive },
             _ => parentOp is HirOp.Assign or HirOp.CompoundAssign && ReferenceEquals(Operand(parent), child),
         };
 
@@ -424,7 +424,7 @@ public sealed partial class Binding
         // its path does not decide (SPEC 5.2).
         private bool ExclusiveUse(Koto node, Koto? parent, HirOp parentOp, bool exclusive)
             => this.uses.UseOf(node, parent, parentOp) is PlaceUse.ByCase or PlaceUse.Exclusive ||
-            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !ElementAccess.IsRawRooted(parent!) &&
+            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !ElementAccess.IsRawRooted(binding, parent!) &&
                 ReferenceEquals(Operand(parent), node));
     }
 }
