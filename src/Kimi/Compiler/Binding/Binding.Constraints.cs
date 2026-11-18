@@ -6,7 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Constraints));
+    // The compilation's level of the interned constraints (PLAN G949 Stage 2 U4): those interned after the library's seal; the library's
+    // are LibraryLayer.Constraints, found first (InternConstraint).
+    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedRoom);
 
     private readonly DeferredConstraintRows deferredConstraints;
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
@@ -251,19 +253,41 @@ public sealed partial class Binding
         return proposition.Contract is { } contract ? this.ProveConformance(proposition.Subject!, contract, scope) : ConstraintProof.Unknown;
     }
 
+    // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4; C-380 F3 (a)): content in no level is inserted at the
+    // open one, so a program's constraint equal to a frozen one is that object.
     private BoundConstraint InternConstraint(ConstraintKey key)
     {
-        if (!this.constraints.TryGetValue(key, out var result))
+        var levels = PassPart.Interned(this.Library, this.Library.Layer.Constraints, this.constraints);
+        if (PassPart.Find(levels, key, out var result) is null)
         {
             result = new(key, this.ContainsAssociatedProjection(key.Subject) || this.ContainsAssociatedProjection(key.RequiredType));
-            this.constraints.Add(key, result);
+            levels.Open.Add(key, result);
         }
 
-        return result;
+        return result!;
     }
 
+    // A frozen constraint's negation is set before the seal (D-4, U2b's eager step), so `??` forms only a compilation-level one: a frozen
+    // constraint without it would hold a compilation-level object (U4's invariant), the internal-invariant form.
     private BoundConstraint NegateConstraint(BoundConstraint value)
-        => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ??= this.InternConstraint(new(ConstraintKind.Not, left: value));
+        => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ?? (value.Negation = this.FormNegation(value));
+
+    private BoundConstraint FormNegation(BoundConstraint value)
+        => this.Library.Frozen && this.Library.Layer.Constraints.ContainsKey(ConstraintKey.Of(value))
+            ? throw new InvalidOperationException("A frozen constraint has no negation after the library's seal (InternalInvariant; PLAN G949 Stage 2 U4).")
+            : this.InternConstraint(new(ConstraintKind.Not, left: value));
+
+    // D-4 (PLAN G949 Stage 2 U2b; C-380 F3 (b) as O-U2-4 narrows it): the library pass forms the negation of every constraint it interned,
+    // so no later pass writes a library constraint's Negation (a Not constraint's negation is its operand, never stored). The library's
+    // constraints are the layer's level (PLAN G949 Stage 2 U4), the open level during the library pass, so each negation is inserted
+    // there before the seal, which the FormNegation refusal rests on.
+    private void CompleteNegations()
+    {
+        foreach (var constraint in this.Library.Layer.Constraints.Values.ToArray())
+        {
+            _ = this.NegateConstraint(constraint);
+        }
+    }
 
     private void BindConstraints()
     {
@@ -543,7 +567,7 @@ public sealed partial class Binding
             var environment = scope.Constraints ??= new();
             if (this.AddConstraintFact(environment, requirement))
             {
-                environment.Fail(clause); // The clause failed, or holds a recovery.
+                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
             }
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)

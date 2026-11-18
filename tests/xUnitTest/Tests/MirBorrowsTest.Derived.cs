@@ -25,7 +25,7 @@ public sealed partial class MirBorrowsTest
 
     // PLAN G1022's writes: a holder whose update has a custom set and a standard get over S.Output (HS<bool> is ill-formed: bool is not
     // Addable<bool>), and f's locals a write's right side reads, moves or borrows.
-    private const string Writes = "func take(x: string) -> i32 => 5\nfunc k(x: i32) -> i32 => x\nfunc use(x: string) => ()\nstruct HS<S>\n" +
+    private const string Writes = "func take(x: string) -> i32 => 5\nfunc at(x: string) -> isize => 0\nfunc k(x: i32) -> i32 => x\nfunc use(x: string) => ()\nstruct HS<S>\n" +
         "    S is Addable<S>\n    public var x: S.Output\n        set(value: S.Output) -> ()\n            storage = value@move\n" +
         "    public init(x: S.Output) => self.x = x@move\nfunc f(c: bool, h: uniq/HS<HOLDER>)\n    var t = \"t\"\n    var s = \"s\"\n" +
         "    var u = \"u\"\n    var y = 1\n    var m = 0\n    var xs: [2 of i32] = [0, 0]\n    var p = Pair.init()\n";
@@ -134,9 +134,11 @@ public sealed partial class MirBorrowsTest
     // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2 (PLAN G1022): a write whose target Binding rejected (an unresolved name, its index or
     // referent, a missing member, an update of a Property over an ill-formed holder Type) is derived from that failure after its right
     // side, which is evaluated first, so the right side's own failures stay: a second Move (A1) and a read under a live exclusive Loan (A5)
-    // (fail-before: neither). A right side that reads only the failed target adds nothing, and the twin whose target resolves is accepted
-    // with none; no row has a construction record (Unsupported_Kd, InternalInvariant_Kd). Each row: the holder's Type argument, the body,
-    // the problems, and whether Binding accepts the program.
+    // (fail-before: neither), also where locating a Place right side evaluates its index. The write's securing of the right side at the
+    // destination Type (a Place's Copy or Reborrow) rests on the failure and adds nothing (before the rule, a Reborrow's InternalInvariant_Kd),
+    // nor does a right side that reads only the failed target, and the twin whose target resolves is accepted with none; no row has a
+    // construction record (Unsupported_Kd, InternalInvariant_Kd). Each row: the holder's Type argument, the body, the problems, and whether
+    // Binding accepts the program.
     [Theory]
     [InlineData("i32", "missing = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
     [InlineData("i32", "m = take(t@move)", "", true)]
@@ -159,6 +161,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("bool", "h.x += take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
     [InlineData("i32", "h.x += take(t@move)", "", true)]
     [InlineData("bool", "h.x += h.x", "", false)]
+    [InlineData("i32", "let q = m@uniq\n    missing = q", "", false)]
+    [InlineData("i32", "let r = y@uniq\n    missing = y\n    r@follow = 2", "", false)]
+    [InlineData("i32", "missing = xs[at(t@move)]\n    use(t@move)", "f: t MovedPlace_Kd", false)]
     public void AWriteWhoseTargetBindingRejectedBuildsItsRightSide(string holder, string body, string expected, bool accepted)
     {
         var c = MirBuildTest.Compile(Prelude + Writes.Replace("HOLDER", holder, StringComparison.Ordinal) + "    " + body + "\n");

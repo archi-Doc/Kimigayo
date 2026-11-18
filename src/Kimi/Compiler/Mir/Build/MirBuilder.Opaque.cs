@@ -57,18 +57,17 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2: an assignment or update whose target Binding rejected is derived from that error, after
-    // its right side, published with its facts and resting on no failure of the target, is evaluated by its Adjust and secured, as the
-    // accepted update's is (an accepted assignment holds it at the destination Type, which a rejected target does not give: here at its
-    // own), so its own failures are checked; the site names its root as a part located already (SiteRoots) and the target's. A right
-    // side no consumer takes (its acquisition Unset: Binding left it to the failed target, DECISIONS BU-103, R4-M145) rests on that
-    // failure and is not built: the site names its syntax roots, as for any derived value (rule W).
+    // its right side is evaluated, as Operand evaluates it (its value where its published Acquire is Temporary, else its Place located),
+    // so its own failures are checked; the site names the result as a part located already (SiteRoots) and the target's roots. The
+    // write's own taking, securing the value at the destination Type (its acquisition and adaptation), rests on the failure (rule W) and
+    // is not built: the failed target gives no Type, and Binding decides no taking for a consumer with failure causes but a bare one
+    // (DECISIONS R4-M145 C2, BU-27), so a Closure's receiver counts none of a capture's.
     private void DerivedWrite(Koto node, MirPlace destination)
     {
         var mark = this.located.Count;
-        if (node is BinaryKoto { Right: { } right } && HirTables.AdjustOf(right).Acquire != HirAcquire.Unset &&
-            this.Secure(this.Operand(right, expected: null), right) is { Kind: MirOperandKind.Move } value)
+        if (node is BinaryKoto { Right: { } right })
         {
-            this.located.Add((right, value.Place));
+            this.located.Add((right, HirTables.AdjustOf(right).Acquire == HirAcquire.Temporary ? this.Value(right) : this.Place(right)));
         }
 
         this.Opaque(node, destination);

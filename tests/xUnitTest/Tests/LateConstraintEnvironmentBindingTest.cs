@@ -77,6 +77,57 @@ public class LateConstraintEnvironmentBindingTest
         AssertConsumers(c, false);
     }
 
+    // SPEC 8.3.2 (Contract refinement, Error), 3.1.2 (`owner/string` is Non-Copy); PLAN G949 S1-1c: a late failure reaches its consumer
+    // through a diamond chain of 32 refinements (M(i) refines M(i-1) and L(i-1), L(i) refines M(i-1)). M0's Constraint `string is Copy` is
+    // Refuted, so `T is M32`, which supplies M0's facts, names an invalid declaration: an Error, `caller` invalid, which the certificate
+    // round's judgment of its environment finds after the closed Constraint failed; with `string is not Copy` every declaration is valid.
+    // A walk that followed each path would meet about 2^23 of them; the chain binds within the deadline either way.
+    [Theory]
+    [InlineData("string is Copy", false)]
+    [InlineData("string is not Copy", true)]
+    public async Task ALateFailureReachesItsConsumerThroughADiamondChain(string clause, bool valid)
+    {
+        const int n = 32;
+        var source = "public contract M0: Copy\n    " + clause + "\npublic contract L0: M0\n" +
+            string.Concat(Enumerable.Range(1, n).Select(static i => $"public contract M{i}: M{i - 1}, L{i - 1}\npublic contract L{i}: M{i - 1}\n")) +
+            Consumers.Replace("T is Marker", $"T is M{n}", StringComparison.Ordinal);
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(() => MinimalEmissionTest.Analyze(source), cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+        var c = await run;
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.Equal(valid, c.Binding.Result.IsComplete);
+        AssertConsumers(c, valid);
+        Assert.Equal(valid, c.Bind().IsComplete);
+        AssertConsumers(c, valid);
+    }
+
+    // SPEC 8.3.2 (directly available `P` and `not P` is contradictory evidence, an Error); PLAN G949 S1-1c: each pass's first walk
+    // judges every environment, so an edit that makes an environment contradictory, with nothing failed before the walk, is found on
+    // the next Bind: valid with `T is Copy` and `T is Owned`, invalid once the second premise reads `T is not Copy`, valid again when
+    // it is restored.
+    [Fact]
+    public void AnEditedEnvironmentIsJudgedOnTheNextBind()
+    {
+        const string source = "group G\n    func take<T>(value: T)\n        T is Copy\n        T is Owned\n        ()";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var function = Take(c);
+        var clause = Assert.IsType<IsKoto>(function.TypeConstraints[1]);
+        var original = clause.Right!;
+        var donor = MinimalEmissionTest.Analyze(source.Replace("T is Owned", "T is not Copy", StringComparison.Ordinal));
+        var replacement = Assert.IsType<IsKoto>(Take(donor).TypeConstraints[1]).Right!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
+        Assert.True(KotoHelper.Replace(clause, original, replacement));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(BindingState.Invalid, function.StateOf());
+        Assert.True(KotoHelper.Replace(clause, replacement, original));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+
+        static FunctionKoto Take(Compilation c)
+            => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "take");
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEnvironmentRevalidationAllocatesNothing()

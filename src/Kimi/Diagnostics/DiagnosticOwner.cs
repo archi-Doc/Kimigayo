@@ -383,6 +383,78 @@ public sealed partial class DiagnosticOwner
     internal void AddInput(SourceDocument document, Kotonoha module)
         => this.DocumentSource(document, this.ModuleIndex(module), true);
 
+    /// <summary>Gets a value indicating whether a module's syntax holds a record of any severity (PLAN G949 Stage 2 U2a: the library's
+    /// freeze refuses a library with any record, C1 (x)).</summary>
+    /// <param name="module">The module.</param>
+    /// <returns><see langword="true"/> when the module's lexical or syntax list holds a record.</returns>
+    internal bool HasSyntaxRecords(Kotonoha module)
+        => this.modules.TryGetValue(module, out var index) && index < this.syntax.Count && this.syntax[index].Facts.Count != 0;
+
+    /// <summary>Gets the first record of a module's syntax list as a located fact (PLAN G949 Stage 2 U2a, B's ruling 40: a refused library's
+    /// own record is published at the first record its freeze counted, the syntax list's first).</summary>
+    /// <param name="module">The module.</param>
+    /// <returns>The record, or null for an empty list.</returns>
+    internal LocatedRecord? FirstSyntaxRecord(Kotonoha module)
+    {
+        if (!this.modules.TryGetValue(module, out var index) || index >= this.syntax.Count || this.syntax[index].Facts.Count == 0)
+        {
+            return null;
+        }
+
+        var fact = this.syntax[index].Facts[0];
+        var document = fact.Source >= 0 ? this.sources[fact.Source].Document : null;
+        return new(fact.Code, fact.Key.Requirement, document, document is null ? null : new SourceSpan(fact.Start, fact.Length));
+    }
+
+    /// <summary>Takes a partition's records out as located facts (code, requirement, document and span; none for a record about an input
+    /// without a document) and discards the partition (PLAN G949 Stage 2 U2a: a refused library pass's records become its refusal's). The
+    /// records are those <see cref="Finalize"/> would publish: a derived one whose prerequisites all lead to published direct Errors, in this
+    /// partition or an earlier one such as the syntax its source failed, is left out by the same rule (SPEC 23.1.2).</summary>
+    /// <param name="partition">A partition other than syntax.</param>
+    /// <returns>The records, in their recorded order.</returns>
+    internal LocatedRecord[] TakeLocated(DiagnosticPartition partition)
+    {
+        var facts = this.Candidates(DiagnosticPartition.Input, partition);
+        var explained = Explain(facts);
+        var records = new List<LocatedRecord>();
+        for (var i = facts.Count - this.partitions[(int)partition].Facts.Count; i < facts.Count; i++)
+        {
+            if (!explained[i])
+            {
+                var fact = facts[i];
+                var document = fact.Source >= 0 ? this.sources[fact.Source].Document : null;
+                records.Add(new(fact.Code, fact.Key.Requirement, document, document is null ? null : new SourceSpan(fact.Start, fact.Length)));
+            }
+        }
+
+        this.Invalidate(partition);
+        return [.. records];
+    }
+
+    /// <summary>Takes a module's syntax records out of this owner as detached data (PLAN G949 Stage 2 U2b; form (R)): the frozen library
+    /// carries its own syntax list, which its freeze compilation's owner no longer holds (moved, never copied). Each record keeps its
+    /// document, since a later owner numbers its sources itself.</summary>
+    /// <param name="module">The module.</param>
+    /// <returns>The module's syntax records.</returns>
+    internal DetachedSyntax TakeSyntax(Kotonoha module)
+    {
+        if (!this.modules.TryGetValue(module, out var index) || index >= this.syntax.Count)
+        {
+            return DetachedSyntax.Empty;
+        }
+
+        var facts = this.syntax[index].Facts;
+        var documents = new SourceDocument?[facts.Count];
+        for (var i = 0; i < documents.Length; i++)
+        {
+            documents[i] = facts[i].Source >= 0 ? this.sources[facts[i].Source].Document : null;
+        }
+
+        var taken = new DetachedSyntax([.. facts], documents);
+        this.InvalidateSyntax(index);
+        return taken;
+    }
+
     /// <summary>Gets a value indicating whether the syntax of one document holds an Error; a decision inside one parse uses it.</summary>
     /// <param name="document">The document.</param>
     /// <returns><see langword="true"/> when lexing or parsing the document recorded an Error.</returns>
