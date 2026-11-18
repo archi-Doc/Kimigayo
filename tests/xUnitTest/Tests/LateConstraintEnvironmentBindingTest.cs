@@ -102,6 +102,32 @@ public class LateConstraintEnvironmentBindingTest
         AssertConsumers(c, valid);
     }
 
+    // SPEC 8.3.2 (directly available `P` and `not P` is contradictory evidence, an Error); PLAN G949 S1-1c: each pass's first walk
+    // judges every environment, so an edit that makes an environment contradictory, with nothing failed before the walk, is found on
+    // the next Bind: valid with `T is Copy` and `T is Owned`, invalid once the second premise reads `T is not Copy`, valid again when
+    // it is restored.
+    [Fact]
+    public void AnEditedEnvironmentIsJudgedOnTheNextBind()
+    {
+        const string source = "group G\n    func take<T>(value: T)\n        T is Copy\n        T is Owned\n        ()";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var function = Take(c);
+        var clause = Assert.IsType<IsKoto>(function.TypeConstraints[1]);
+        var original = clause.Right!;
+        var donor = MinimalEmissionTest.Analyze(source.Replace("T is Owned", "T is not Copy", StringComparison.Ordinal));
+        var replacement = Assert.IsType<IsKoto>(Take(donor).TypeConstraints[1]).Right!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
+        Assert.True(KotoHelper.Replace(clause, original, replacement));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(BindingState.Invalid, function.StateOf());
+        Assert.True(KotoHelper.Replace(clause, replacement, original));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+
+        static FunctionKoto Take(Compilation c)
+            => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "take");
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEnvironmentRevalidationAllocatesNothing()

@@ -18,8 +18,8 @@ public sealed partial class Binding
     // The conformance uses whose completeness rests on a specification, settled at publication (SettleSpecificationLinks).
     private List<Koto>? specificationLinks;
 
-    // The failure count (Fail) at the start of the latest walk of the pass's environments that changed nothing: -1 at the pass's start
-    // (ResetPass) and after a walk that changed the binding (ValidateConstraintEnvironments).
+    // The change signal (invalidations) at the start of the latest walk of the pass's environments, -1 at the pass's start (ResetPass):
+    // a walk that changed the binding moved the signal past it (ValidateConstraintEnvironments).
     private int environmentsJudged = -1;
 
     // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).
@@ -188,7 +188,9 @@ public sealed partial class Binding
     }
 
     // Late witness/Effect failures invalidate declarations even when normalization already erased
-    // their projections. Reuse the ordinary validation until declaration states stop changing.
+    // their projections. Reuse the ordinary validation until declaration states stop changing. The closed clauses are judged before
+    // the environments in each round (the condition's order): a source state published since (PublishSourceStates) reaches a walk's
+    // Error only through the failure ValidateClosedTypeConstraints records first (invalidations).
     private void InvalidateProjectionCertificates(BindingMode mode)
     {
         while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(mode))
@@ -204,17 +206,16 @@ public sealed partial class Binding
 
     // The running pass's environments, its own modules' scopes (In, PLAN G949 S1-r2), judged at the validation step and again in a
     // certificate round only when a judgment's inputs may have changed since the last walk: a judgment acts on an Error, which rests on a
-    // failed input or on contradictory evidence that only a failure changes (the rounds' contract), so the walk runs again when a node
-    // was failed (Fail) since the last walk began or that walk changed the binding itself (an environment it made Invalid under an owner
-    // already failed calls no Fail).
+    // failed input or on contradictory evidence that only a failure changes (the rounds' contract), and every write of either advances
+    // the change signal (invalidations), the walk's own included, so the walk runs again when the signal moved since the last one began.
     private bool ValidateConstraintEnvironments(BindingMode mode)
     {
-        if (this.environmentsJudged == this.failures)
+        if (this.environmentsJudged == this.invalidations)
         {
             return false;
         }
 
-        var start = this.failures;
+        this.environmentsJudged = this.invalidations;
         var changed = false;
         foreach (var scope in this.scopes.Values.In(this.pass))
         {
@@ -225,7 +226,7 @@ public sealed partial class Binding
 
             if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
             {
-                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
+                this.FailEnvironment(environment, scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;
                 continue;
             }
@@ -245,7 +246,7 @@ public sealed partial class Binding
 
                 var previous = scope.Owner.BindingState;
                 changed |= !environment.Invalid;
-                environment.Fail(scope.Owner);
+                this.FailEnvironment(environment, scope.Owner);
                 // Other input facts can have independent contradictions. Record a
                 // sole missing-name cause only when this is the entire environment.
                 this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
@@ -254,7 +255,6 @@ public sealed partial class Binding
             }
         }
 
-        this.environmentsJudged = changed ? -1 : start;
         return changed;
     }
 
@@ -424,7 +424,7 @@ public sealed partial class Binding
                     {
                         if (parent is IsKoto { BoundConstraint: not null })
                         {
-                            (scope.Constraints ??= new()).Fail(node);
+                            this.FailEnvironment(scope.Constraints ??= new(), node);
                             break;
                         }
 
