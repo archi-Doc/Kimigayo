@@ -16,6 +16,19 @@ public class LibraryAbortContextTest
         Assert.True(KimiLibraryCatalog.RequiresCallerLocation(LibrarySource.Symbol(c.Library, "RangeIterator.starting")));
     }
 
+    // SPEC 22.5.1 (O-405): every destructor of the Kimi Kotonoha takes the caller location, the location its drop glue receives; a user
+    // destructor reports its own locations (the second bullet).
+    [Fact]
+    public void KimiDestructorsTakeTheCallerLocation()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Guard\n    public init() => ()\n    drop => ()\nlet guard = Guard.init()");
+        var library = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor).ToArray();
+        Assert.Equal(4, library.Length); // HeapBuffer, ArrayOwningIterator, DictionaryOwnedRemainder, FixedOwnedRemainder.
+        Assert.All(library, static x => Assert.True(KimiLibraryCatalog.RequiresCallerLocation(x.SymbolOf())));
+        var user = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor);
+        Assert.False(KimiLibraryCatalog.RequiresCallerLocation(user.SymbolOf()));
+    }
+
     [Theory]
     [InlineData("HalfOpenShared", "let r = 3..1\nlet it = r.iterate()", "Hello.kimi:2:10")]
     [InlineData("HalfOpenExclusive", "var r = 3..1\nlet it = r.iterateUniq()", "Hello.kimi:2:10")]
@@ -55,6 +68,35 @@ public class LibraryAbortContextTest
     [InlineData("DictionaryClear", "var entries: Dictionary<i32, Array<i32>> = [:]\n_ = entries.tryInsert(1, [1, 2])\nentries.clear()", "Hello.kimi:3:1")]
     public void ReleaseFailureReportsTheSourceOperation(string name, string source, string location)
         => ReleaseFails("LibraryAbortContextRelease" + name, source, location);
+
+    // SPEC 22.5.1 (O-405 (a)): a release failure inside a Kimi destructor run implicitly (SPEC 16.2, 16.3.2, 16.4, 22.2.2) reports the
+    // destruction point in user code, the location the Drop carries, whatever reaches the destructor: a local at a return, a block's
+    // end or a reassignment, a temporary, an unconsumed remainder, a Field, an element, a generic body, a Closure's environment or an
+    // object's payload. The first release fails, so each program's first release is the destructor's.
+    [Theory]
+    [InlineData("HeapReturn", "func build() -> isize\n    let buffer = Text.heap(16)\n    return buffer.capacity\nlet n = build()", "Hello.kimi:2:5")]
+    [InlineData("HeapBlockEnd", "func build()\n    let buffer = Text.heap(16)\n    require buffer.capacity == 16 else => $abort(\"capacity\")\nbuild()", "Hello.kimi:2:5")]
+    [InlineData("HeapReassignment", "var buffer = Text.heap(16)\nbuffer = Text.heap(8)", "Hello.kimi:2:1")]
+    [InlineData("HeapTemporary", "let n = Text.heap(16).capacity", "Hello.kimi:1:9")]
+    [InlineData("HeapField", "struct Holder\n    var buffer: Text.HeapBuffer\n    public init(buffer: Text.HeapBuffer) => self.buffer = buffer@move\nfunc run() -> i32\n    let holder = Holder.init(buffer: Text.heap(16))\n    return 0\nlet n = run()", "Hello.kimi:5:5")]
+    [InlineData("HeapFieldAfterDrop", "struct Holder\n    var buffer: Text.HeapBuffer\n    public init(buffer: Text.HeapBuffer) => self.buffer = buffer@move\n    drop => ()\nfunc run() -> i32\n    let holder = Holder.init(buffer: Text.heap(16))\n    return 0\nlet n = run()", "Hello.kimi:4:5")]
+    [InlineData("HeapTupleElement", "func run() -> i32\n    let pair = (Text.heap(16), 1)\n    return 0\nlet n = run()", "Hello.kimi:2:5")]
+    [InlineData("HeapArrayElement", "func run() -> i32\n    let buffers: Array<Text.HeapBuffer> = [Text.heap(16)]\n    return 0\nlet n = run()", "Hello.kimi:2:5")]
+    [InlineData("HeapFixedElement", "func run() -> i32\n    let buffers: [1 of Text.HeapBuffer] = [Text.heap(16)]\n    return 0\nlet n = run()", "Hello.kimi:2:5")]
+    [InlineData("HeapGeneric", "func hold<T>(value: T) -> i32\n    return 0\nlet n = hold(Text.heap(16))", "Hello.kimi:1:21")]
+    [InlineData("HeapClosure", "func run() -> i32\n    let buffer = Text.heap(16)\n    let job = func [buffer@move] () => ()\n    return 0\nlet n = run()", "Hello.kimi:3:5")]
+    [InlineData("HeapErasedClosure", "func run() -> i32\n    let buffer = Text.heap(16)\n    let job: () -> () = func [buffer@move] () => ()\n    return 0\nlet n = run()", "Hello.kimi:3:5")]
+    [InlineData("HeapObjectPayload", "func run() -> i32\n    let handle = Kimi.Intrinsics.makeRc(Text.heap(16))\n    return 0\nlet n = run()", "Hello.kimi:2:5")]
+    [InlineData("ArrayIteratorRemainder", "func run() -> i32\n    let values: Array<i32> = [1, 2]\n    let it = values@move.intoIterator()\n    return 0\nlet n = run()", "Hello.kimi:3:5")]
+    [InlineData("ArrayIteratorFor", "let values: Array<i32> = [1, 2]\nfor value in values@move\n    exit", "Hello.kimi:2:1")]
+    [InlineData("DictionaryRemainder", "func run() -> i32\n    var entries: Dictionary<i32, i32> = [:]\n    _ = entries.tryInsert(1, 2)\n    let it = entries@move.intoIterator()\n    return 0\nlet n = run()", "Hello.kimi:4:5")]
+    [InlineData("FixedRemainder", "func keep<C>(items: C) -> i32\n    C is IntoIterable\n    let it = items@move.intoIterator()\n    return 0\nlet values: [2 of Array<i32>] = [[1], [2]]\nlet n = keep(values@move)", "Hello.kimi:3:5")]
+    [InlineData("HeapRemoveAll", "var buffers: Array<Text.HeapBuffer> = [Text.heap(16)]\nbuffers.removeAll(matching: func (b) => b@follow.capacity > 0)", "Hello.kimi:2:1")]
+    [InlineData("HeapDictionaryClear", "var entries: Dictionary<i32, Text.HeapBuffer> = [:]\n_ = entries.tryInsert(1, Text.heap(16))\nentries.clear()", "Hello.kimi:3:1")]
+    [InlineData("HeapReplace", "var buffer = Text.heap(16)\nKimi.Intrinsics.replace(buffer@uniq, with: Text.heap(8))", "Hello.kimi:2:1")]
+    [InlineData("ArrayControl", "func run() -> i32\n    let values: Array<i32> = [1, 2]\n    return 0\nlet n = run()", "Hello.kimi:2:5")]
+    public void ImplicitDestructionReportsTheDestructionPoint(string name, string source, string location)
+        => ReleaseFails("LibraryAbortContextDestruction" + name, source, location);
 
     [Fact]
     public void UserAbortAndSameSpelledHelpersKeepTheirOwnMeaning()
