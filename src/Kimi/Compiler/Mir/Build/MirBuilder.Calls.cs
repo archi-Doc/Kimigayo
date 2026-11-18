@@ -10,9 +10,9 @@ internal sealed partial class MirBuilder
 {
     // SPEC 7.3: the parameters a function's signature declares, an accessor's self and value included (TyCtxt.Signature's count; a slot
     // past them asks for no Type).
-    private static int Arity(BindingSymbol function)
+    private int Arity(BindingSymbol function)
     {
-        _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+        _ = compilation.Types.Signature(function, null, int.MaxValue, out var count);
         return count;
     }
 
@@ -52,7 +52,7 @@ internal sealed partial class MirBuilder
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
-        var count = function is null ? call.Signature.Components[0].Components.Count : Arity(function);
+        var count = function is null ? call.Signature.Components[0].Components.Count : this.Arity(function);
         var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
             (receiver is not null && function!.ReceiverIndex < 0))
@@ -80,7 +80,7 @@ internal sealed partial class MirBuilder
         if (receiver is not null)
         {
             // A direct base call's receiver is its implementation's (the selection adapted it to the slot's declaring Type).
-            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : TyCtxt.Signature(
+            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : compilation.Types.Signature(
                 direct!,
                 subst,
                 direct!.ReceiverIndex,

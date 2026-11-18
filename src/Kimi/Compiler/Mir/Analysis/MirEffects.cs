@@ -155,7 +155,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // DECISIONS R4-M139), Rejected storage included; null where the substitution does not instantiate it or its storage is a Limit.
     internal BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
     {
-        var declared = TyCtxt.Signature(callee, null, slot, out _);
+        var declared = types.Signature(callee, null, slot, out _);
         var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
         _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
         return below;
@@ -329,7 +329,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         // Each part the group destroys whole (MirDropTable.Destroyed: a Keep or Flag row's, a part's without a row, a fixed array's
         // run of elements). The items are a set: the walk's order and an array's several Runs of one element Type read alike. An Open
         // level has no drop of its own, an Elide row no step.
-        program.Drops.Destroyed(body.Ordinal, group, type, this.destroyed);
+        program.Drops.Destroyed(types, body.Ordinal, group, type, this.destroyed);
         foreach (var step in this.destroyed)
         {
             if (step.Kind is MirDropStepKind.Whole or MirDropStepKind.Run)

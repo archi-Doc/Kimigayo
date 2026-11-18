@@ -44,8 +44,8 @@ public class GenericCaptureTest
         Assert.Same(first, c.Binding.InstantiateStorageType(closure, calls[1]));
         var other = c.Binding.InstantiateStorageType(closure, calls[2])!;
         Assert.NotSame(first, other);
-        Assert.False(Binding.FitsType(first, other));
-        Assert.False(Binding.FitsType(other, first));
+        Assert.False(c.Binding.FitsType(first, other));
+        Assert.False(c.Binding.FitsType(other, first));
         Assert.Empty(first.Components);
     }
 

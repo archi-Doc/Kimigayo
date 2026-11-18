@@ -319,7 +319,7 @@ internal sealed partial class MirValidator
             }
             else if (terminator.Kind == MirTerminatorKind.Return && body.Locals.Length > 0)
             {
-                this.Agree(Result(body.Key), body.Locals[0].Type);
+                this.Agree(this.Result(body.Key), body.Locals[0].Type);
             }
 
             if (terminator.Kind == MirTerminatorKind.Call && !this.Call(terminator))
