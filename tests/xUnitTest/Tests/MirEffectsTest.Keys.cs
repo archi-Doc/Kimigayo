@@ -152,7 +152,7 @@ public sealed partial class MirEffectsTest
     // A fresh A4 over a compilation's program after the driver's A4 rows (Analyze).
     private static (MirEffects Effects, MirDataflow Flow, MirProgram Program) Analyzed(Compilation c)
     {
-        var program = c.BuildMir();
+        var program = MirBuildTest.LibraryRange(c); // The library's bodies too (PLAN G951 U2-T).
         var (cases, report) = (new MirCases(c.Types), new MirReport());
         var flow = new MirDataflow(new MirReach());
         var effects = new MirEffects(c.Types, cases, flow);

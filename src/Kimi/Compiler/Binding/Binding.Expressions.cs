@@ -16,8 +16,6 @@ public sealed partial class Binding
                 (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
             ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
 
-    private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
-
     // SPEC 7.6, 22.6: the functions that support direct calls only: an unsafe function and a #LibraryImport function, the latter by
     // its Attribute whatever the Attribute's verdict. A requirement is never an import, so a requirement's Item is a value whatever
     // its witness.
@@ -142,11 +140,16 @@ public sealed partial class Binding
         node.BoundType = type;
         if (node.BindingState != BindingState.Invalid)
         {
-            node.BindingState = type is null ? BindingState.Unresolved : BindingState.Resolved;
+            node.BindingState = CompletedState(node.BindingState, type);
         }
 
         return type;
     }
+
+    // The state Complete gives: an invalid node stays invalid, any other is resolved with a Type and unresolved without one; the
+    // recorder gives it to a dependent of a module the pass does not bind in its entry (CompleteDependent).
+    private static BindingState CompletedState(BindingState state, BoundType? type)
+        => state == BindingState.Invalid ? state : type is null ? BindingState.Unresolved : BindingState.Resolved;
 
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
@@ -307,7 +310,7 @@ public sealed partial class Binding
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
         // reference is Reborrowed (SPEC 3.5.1, 10.2.2), as at a bare acquisition position.
         if (expected is not null && actual is not null && node.ErasedFunctionType is null &&
-            (!Compatible(actual, expected) || StoresExclusiveReference(node, actual)) &&
+            (!this.FitsType(actual, expected) || this.StoresExclusiveReference(node, actual)) &&
             this.ExpectedAdaptation(node, actual, expected) is { } adaptation)
         {
             this.adaptations[node] = adaptation;
@@ -325,7 +328,7 @@ public sealed partial class Binding
 
     private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (this.patternNodes.Contains(node))
+        if (this.pass.Part.PatternNodes.Contains(node))
         {
             throw new InvalidOperationException("Pattern syntax must be handled by the positional Pattern binder.");
         }
@@ -355,7 +358,7 @@ public sealed partial class Binding
             return node.BoundType;
         }
 
-        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(testDefinition))
+        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(this.compilation, testDefinition))
         {
             return testDefinition.BoundType;
         }

@@ -67,6 +67,7 @@ public struct Dictionary<K, V>
 
     /// Destroys entries in reverse insertion order, each value before its key, retaining the allocation for reuse.
     #Lang("DictionaryClear")
+    #CallerLocation
     public func clear(self: uniq/Self)
         DictionaryStorage.clearEntries(self)
 

@@ -87,7 +87,7 @@ internal sealed partial class TyCtxt
         var use = binding.DefinitionUse(definition);
         (object Callee, Subst? Types, object? Scope, int Regions) key = closure is null
             ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RegionVersion)
-            : (signature, closure.ClosureContext, owner, binding.RegionVersion);
+            : (signature, closure.InstanceContext, owner, binding.RegionVersion);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -152,7 +152,7 @@ internal sealed partial class TyCtxt
             return closure;
         }
 
-        return ClosureInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
+        return NestedInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
     }
 
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the
@@ -237,13 +237,13 @@ internal sealed partial class TyCtxt
     }
 
     // A callee's declared parameter and result Types, in its own terms.
-    private static BoundType[] Declared(BindingSymbol callee)
+    private BoundType[] Declared(BindingSymbol callee)
     {
-        var result = Signature(callee, null, -1, out var count)!;
+        var result = this.Signature(callee, null, -1, out var count)!;
         var declared = new BoundType[count + 1];
         for (var i = 0; i < count; i++)
         {
-            declared[i] = Signature(callee, null, i, out _)!;
+            declared[i] = this.Signature(callee, null, i, out _)!;
         }
 
         declared[count] = result;
@@ -265,7 +265,7 @@ internal sealed partial class TyCtxt
         BoundType[] inputs;
         if (declaration.IsDestructor)
         {
-            if (this.Instance(AdtDef.ReceiverType(declaration)!, types, scope) is not { } layer)
+            if (this.Instance(AdtDef.ReceiverType(binding, declaration)!, types, scope) is not { } layer)
             {
                 return null;
             }
@@ -292,7 +292,7 @@ internal sealed partial class TyCtxt
         }
 
         var bounds = this.retentionBounds;
-        if (!binding.HandedSignatures(declaration, Declared(callee), bounds))
+        if (!binding.HandedSignatures(declaration, this.Declared(callee), bounds))
         {
             return null;
         }
@@ -318,7 +318,7 @@ internal sealed partial class TyCtxt
     // the Type is a broken contract: MIR's validator reads the same Signature.
     private BoundType? Instance(BindingSymbol callee, Subst? types, int slot, BindingScope? scope, out int count)
     {
-        var declared = Signature(callee, null, slot, out count) ?? throw new InvalidOperationException($"{callee.Name}'s signature has no Type at {slot}.");
+        var declared = this.Signature(callee, null, slot, out count) ?? throw new InvalidOperationException($"{callee.Name}'s signature has no Type at {slot}.");
         return this.Instance(declared, types, scope);
     }
 

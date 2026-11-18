@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 15.3.7, 15.6.1, 15.6.4 step 3: a signature's intrinsic well-formedness (every Origin stored below a borrow layer outlives that
-// layer's Origin, and for an input its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
+// layer's Origin, and its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
 // result, a relation that the callee's inputs and declared relations already prove needs no premise; only the others, which the
 // definition would otherwise fail, are carried to the uses: each call solves its Origins with them and proves them for its substituted
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
@@ -250,13 +250,16 @@ public sealed partial class Binding
         return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
     }
 
-    // SPEC 15.3.7: the selected call's obligations for its substituted result.
+    // SPEC 15.3.7: the selected call's obligations for its substituted result; SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): with them
+    // the declared relations over the call's region of the result's Types, down to its slots, as rows of the call (VisitTypeClause),
+    // published with the call's other rows (step 3 has published its own before the result is formed).
     private void RequireResultPremises(FunctionKoto function, BoundType result, Koto use)
     {
         if (CarriesResultPremises(function))
         {
             var visit = new WellFormedVisit(WellFormedSubject.NamedResult, function, use, WellFormedAction.Require);
             this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, visit);
+            this.PublishCallRelations();
         }
     }
 
@@ -533,7 +536,8 @@ public sealed partial class Binding
     // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution
     // at a use; false only when Prove fails. The visit stops at a nested Function Type, as the premise does (AddResultPremises). An
     // input's visit also covers its Types' own clauses (SPEC 15.3.3), as the input premise does (AddTypePremises); beside `actual`, the
-    // argument's own Type, which is well formed, it covers only the positions that the fit replaced. Each entry call is one query of
+    // argument's own Type, which is well formed, it covers only the positions that the fit replaced; a selected call's result visit
+    // (Require) covers them too, down to its slots (VisitTypeClause keeps the call-region class there). Each entry call is one query of
     // wellFormedParts, each borrow layer's stored visit one of storedParts: a part met again beside the same parts only repeats what its
     // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
     // once per distinct argument part beside it (TypeMemo's pair) and change of its substituted part between consecutive meets of that
@@ -566,7 +570,7 @@ public sealed partial class Binding
             actual = null; // Every position is covered when the shapes differ.
         }
 
-        if (visit.Subject == WellFormedSubject.Input && result.Symbol is { } symbol && result.OriginArguments.Count != 0 &&
+        if ((visit.Subject == WellFormedSubject.Input || visit.Action == WellFormedAction.Require) && result.Symbol is { } symbol && result.OriginArguments.Count != 0 &&
             !SameOriginArguments(result, actual) &&
             this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.Completed)
         {
@@ -755,12 +759,20 @@ public sealed partial class Binding
     }
 
     // An input Type's own clause, substituted with the Origins of its occurrence: a bound of the call's inference, at a selected call a
-    // `declared` relation at the input, or proven by a whole-contract comparison.
+    // `declared` relation at the input, or proven by a whole-contract comparison. A selected call's result Type's clause (a
+    // constructor's construction Type included, JudgeCallClauses) is a `declared` relation at the call when it is over the call's
+    // region (CallRowRelation: SPEC 15.6.4 step 3, DECISIONS BU-104); every other one stays the formation proof's
+    // (CheckTypeOriginRelations). This is the one judge of such a relation: a Type derived from an input, a slot's solution or the
+    // result holds the call's region only through them.
     private bool VisitTypeClause(BoundOrigin longer, BoundOrigin shorter, bool equality, Koto clause, in WellFormedVisit visit)
     {
         if (visit.Action == WellFormedAction.Require)
         {
-            this.JudgeCallPosition(visit.Use, longer, shorter, equality, null, clause, declared: true);
+            if (visit.Subject == WellFormedSubject.Input || CallRowRelation(longer, shorter))
+            {
+                this.JudgeCallPosition(visit.Use, longer, shorter, equality, null, clause, declared: true);
+            }
+
             return true;
         }
 

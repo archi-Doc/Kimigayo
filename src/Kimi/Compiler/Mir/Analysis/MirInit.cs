@@ -13,7 +13,10 @@
 // definition initializes a path's subtree but its Never parts and what a temp it takes left unplaced on the path (MirMoveData's
 // NeverParts and Carries, SPEC 14.10.3; a fact on a Move Path is MaybeUninit, its complement Unplaced), clearing Unplaced first: a
 // carry gives its destination its fact where its source's own bit is set, and one onto the defined path itself (a Use of a whole temp
-// that holds nothing there places nothing) keeps the destination's state instead,
+// that holds nothing there places nothing) keeps the destination's state instead, which is exact only where the value's construct
+// cannot touch the destination, a first placement (a builder temp, or a binding whose lifetime starts at the Use: a let or var
+// initialization or binding, the return local): its state is then the same on the paths that hold the value and on those that do
+// not, though not on every path (a result temp in a loop keeps what an earlier iteration left),
 // a Move or a Drop uninitializes it and clears Unplaced, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
 // every incoming path, its own bit being the construction fact, and no Unplaced bit in it; a use through a runtime Index of storage reports on its receiver under
 // the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
@@ -34,7 +37,9 @@
 // Invariants: no Unplaced bit is set in a Move Path's subtree at a Drop the runtime edges reach, which A2 destroys whole by its own bit,
 // and no definition the runtime edges reach keeps its path's state (a Use of a temp that holds nothing would set MaybeInit, A2's lane,
 // where nothing was placed): a construction leaves a part unplaced, and a temp holds nothing, only after a Never form, which ends the
-// runtime paths (SPEC 14.9.3, 14.10.3); a broken one is InternalInvariant_Kd at the location.
+// runtime paths (SPEC 14.9.3, 14.10.3); and no path, assumed too, reaches an overwrite's Use without its value (the Use of a temp
+// MirBuilder.Replace published as MirLocalRole.Assigned), as a path without it goes around the overwrite (SPEC 13.7.1; DECISIONS
+// R4-M62), so a kept definition is a first placement; a broken one is InternalInvariant_Kd at the location.
 // Must not judge Take eligibility (Binding's), decide a Drop (A2's), apply a derived-problem rule (MirReport's) or copy the body per view.
 
 using Kimi.Diagnostics;
@@ -168,7 +173,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
                 this.placing = data.Terminator.Places;
                 var key = moves.Insertion(block);
-                this.Uses(this.placing ? moves.Carries(key) : default, this.placing ? moves.NeverParts(key) : default, -1);
+                this.Uses(this.placing ? moves.Carries(key) : default, this.placing ? moves.NeverParts(key) : default, int.MinValue);
             }
         }
 
@@ -254,9 +259,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 var held = source >= 0 ? MirDataflow.Any(state, Lanes, Uninit, source, source + 1) : MirDataflow.Any(state, Lanes, Unplaced, ~source, ~source + 1);
                 var kept = held && carries[k + 1] == defined;
                 (this.Held[k >> 1], this.kept) = (held && !kept, kept ? defined : this.kept);
-                if (kept && this.runtime && this.Checks)
+                if (kept && (this.runtime || body.Locals[moves.Paths[source >= 0 ? source : ~source].Local].Role == MirLocalRole.Assigned) && this.Checks)
                 {
-                    this.Broken(); // The header's invariant: MaybeInit would be set where nothing was placed, which A2 would destroy.
+                    this.Broken(); // The header's invariants: MaybeInit would be set where nothing was placed; an overwrite's value is placed.
                 }
             }
 

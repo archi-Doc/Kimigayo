@@ -114,9 +114,9 @@ public sealed partial class Binding
         }
 
         var proof = ConstraintProof.Proven;
-        for (var i = 0; i < identity.PathStorage.Count; i++)
+        for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
-            var a = identity.PathStorage[i];
+            var a = this.impls.PathsOf(identity)[i];
             var available = this.VerifyConformance(a);
             if (a.InheritedFrom is not null && available != ConstraintProof.Proven)
             {
@@ -131,7 +131,7 @@ public sealed partial class Binding
             proof = CombineProof(proof, available, true);
             for (var j = 0; j < i; j++)
             {
-                var b = identity.PathStorage[j];
+                var b = this.impls.PathsOf(identity)[j];
                 if (b.InheritedFrom is not null && !b.IsVerified)
                 {
                     continue;
@@ -404,7 +404,7 @@ public sealed partial class Binding
             }
         }
 
-        if (identity is null || identity.PathStorage.Count == 0)
+        if (identity is null || this.impls.PathsOf(identity).Count == 0)
         {
             return !this.DependentType(type) && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
@@ -424,9 +424,9 @@ public sealed partial class Binding
         {
             this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
-            for (var i = 0; i < identity.PathStorage.Count; i++)
+            for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
-                var path = identity.PathStorage[i];
+                var path = this.impls.PathsOf(identity)[i];
                 var definition = this.VerifyConformance(path);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
@@ -604,9 +604,9 @@ public sealed partial class Binding
                 if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
                     !this.IdentityRefuted(instance, required, scope, type))
                 {
-                    for (var p = 0; p < bindings[i].PathStorage.Count; p++)
+                    for (var p = 0; p < this.impls.PathsOf(bindings[i]).Count; p++)
                     {
-                        if (this.ProveConformanceConditions(bindings[i].PathStorage[p], type, scope) != ConstraintProof.Refuted)
+                        if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope) != ConstraintProof.Refuted)
                         {
                             return true;
                         }

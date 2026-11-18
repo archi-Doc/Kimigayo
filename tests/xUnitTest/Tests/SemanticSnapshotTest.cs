@@ -163,7 +163,9 @@ public sealed class SemanticSnapshotTest
                 HirTables.Publish(c);
             }
 
-            var program = mir ? c.BuildMir() : null;
+            // The library case dumps every library body, as the library check builds them (PLAN G951 U2-T: Compilation's own build holds
+            // only the library bodies its program reaches); a program's case dumps Compilation's build.
+            var program = !mir ? null : module == c.Library.Kotonoha ? MirBuildTest.LibraryRange(c) : c.BuildMir();
             c.Analyze();
             if (program is not null)
             {
@@ -216,6 +218,7 @@ public sealed class SemanticSnapshotTest
         private readonly Dictionary<object, string> types = new(ReferenceEqualityComparer.Instance);
         private int depth;
         private Koto? generated;
+        private Binding? binding; // The printed compilation's, whose HIR plans a node's row reads; written only by Attach.
 
         internal string Hir => this.hir?.ToString() ?? string.Empty;
 
@@ -257,10 +260,16 @@ public sealed class SemanticSnapshotTest
             return builder.ToString();
         }
 
+        // Attaches the compilation whose nodes the printer visits: a HIR row reads that compilation's Binding (its plans). Print attaches
+        // its compilation; a caller visiting nodes directly with HIR attaches first.
+        internal void Attach(Compilation compilation) => this.binding = compilation.Binding;
+
         // The tree, the outcome of each phase, the MIR side (MirTargetSide.MirSide: Binding's records without the twins, then the MIR's
         // rows; R6-check H10a D8) and the published records.
         internal void Print(Compilation compilation, Kotonoha kotonoha)
         {
+            this.Attach(compilation);
+
             // The generated function of top-level statements is printed once: where the tree holds it, or else after the tree.
             this.generated = kotonoha.GeneratedFunction;
             this.Visit(kotonoha.RootKoto);
@@ -388,7 +397,7 @@ public sealed class SemanticSnapshotTest
                     }
                 }
 
-                if (ExpansionPlan.Of(node) is { } expansion)
+                if (ExpansionPlan.Of(this.binding ?? throw new InvalidOperationException("A HIR row is printed before Attach."), node) is { } expansion)
                 {
                     hir.Append(" !").Append(expansion.Kind);
                     if (expansion.First is not null || expansion.Second is not null)

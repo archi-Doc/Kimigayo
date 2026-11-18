@@ -1072,13 +1072,21 @@ public sealed partial class InstanceCollectorTest
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G856): a Closure erased in `adder<T>` holds T in its instantiation,
+    // so `T is Copy` alone leaves the erasure invalid (AnErasureIsItsAdapterItem's program until G856, accepted then).
+    [Fact]
+    public void AnErasureInAGenericFunctionNeedsItsParameterOwned()
+        => Assert.Equal(
+            "UnprovenConstraint_Kd f",
+            CheckRecords("func adder<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n    return e(x)\nrequire adder(1) == 1 else => $abort(\"erasure\")\n"));
+
     // K 4.5 row 13: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
     // erased Type and the erased Function Type (DECISIONS R5-M108) and represented by the first Type that requests it, whose target is the
     // body the Closure or Item runs; a call of the Function Type value has no target.
     [Fact]
     public void AnErasureIsItsAdapterItem()
     {
-        var c = MirBuildTest.Compile("func adder<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n" +
+        var c = MirBuildTest.Compile("func adder<T>(x: T) -> T\n    T is Copy and Owned\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n" +
             "    return e(x)\n" +
             "func pick<T>(value: T) -> T => value@move\nlet h: (i32) -> i32 = pick<i32>\nrequire adder(1) == 1 and h(2) == 2 else => $abort(\"erasure\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -1174,9 +1182,10 @@ public sealed partial class InstanceCollectorTest
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
     }
 
-    // SPEC 15.7.1, 16.3.2 (R8-U1): replace is a body whose destroyValues call destroys the old value in place, so each of its instances
-    // over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one its direct calls and its Item's
-    // Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and swap's instances destroy nothing.
+    // SPEC 15.7.1, 16.3.2, 5.2.3 (R8-U1, R8-M17): replace is a body whose discarded Take `_ = (*place)@move` destroys the old value in
+    // place, so each of its instances over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one
+    // its direct calls and its Item's Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and
+    // swap's instances destroy nothing.
     [Fact]
     public void ReplacesBodyTargetsTheGlueOfTheValueItDestroysInPlace()
     {
@@ -1667,9 +1676,9 @@ public sealed partial class InstanceCollectorTest
         {
             var (function, representative) = (set.Items[shim].Key.Symbol!, set.Items[shim].Representative);
             Assert.Same(set.Items[shim].RepresentativeType, representative?.Self);
-            _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+            _ = c.Types.Signature(function, null, int.MaxValue, out var count);
             var expected = TyCtxt.Contract(function).LibraryDeclaration == KimiDeclarationId.Equatable ? "bool" : "i32";
-            var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, TyCtxt.Signature(function, null, x, out _)!)!));
+            var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, c.Types.Signature(function, null, x, out _)!)!));
             Assert.Equal([expected, "ref/i32", "ref/i32"], types);
         }
     }
@@ -1781,9 +1790,9 @@ public sealed partial class InstanceCollectorTest
             DropGlue.Level(c.Types, type, [], [], steps); // A glue function's level: Mir's level of an aggregate, the Backend's own parts.
             parts.AddRange(steps.Where(static x => x.Kind is MirDropStepKind.Whole or MirDropStepKind.Run).Select(static x => x.Part));
             var walk = new Descents(descents);
-            _ = MirTypes.Destruction(type, ref walk);
+            _ = MirTypes.Destruction(c.Types, type, ref walk);
             Assert.Equal(Expected(c.Types, type, descents), parts.Select(static x => x.Type));
-            Assert.All(parts, x => Assert.Same(Component(type, x), x.Type));
+            Assert.All(parts, x => Assert.Same(Component(c.Types, type, x), x.Type));
             names.Add(TyCtxt.Name(type));
         }
 
@@ -2781,13 +2790,13 @@ public sealed partial class InstanceCollectorTest
             return descents.SelectMany(static x => x.Components.Reverse());
         }
 
-        var fields = AdtDef.Base(type) is null ? descents.Count : descents.Count - 1;
+        var fields = AdtDef.Base(types, type) is null ? descents.Count : descents.Count - 1;
         return descents.Take(fields).Reverse().Concat(descents.Skip(fields));
     }
 
     // The component a part's position names in the aggregate writer's numbering (FunctionCodegen.Component), or the part's own Type for a
     // part without one (Index -1).
-    private static BoundType Component(BoundType type, DropPart part)
+    private static BoundType Component(TyCtxt types, BoundType type, DropPart part)
     {
         if (part.Index < 0)
         {
@@ -2796,7 +2805,7 @@ public sealed partial class InstanceCollectorTest
 
         if (AdtDef.IsEnum(type))
         {
-            return AdtDef.CaseTypes(type)![part.Ordinal]!.Components[part.Index];
+            return AdtDef.CaseTypes(types, type)![part.Ordinal]!.Components[part.Index];
         }
 
         if (!AdtDef.IsStruct(type))
@@ -2804,8 +2813,8 @@ public sealed partial class InstanceCollectorTest
             return type.Components[part.Index];
         }
 
-        var parent = AdtDef.Base(type);
-        return parent is not null && part.Index == 0 ? parent : AdtDef.FieldType(type, parent is null ? part.Index : part.Index - 1)!;
+        var parent = AdtDef.Base(types, type);
+        return parent is not null && part.Index == 0 ? parent : AdtDef.FieldType(types, type, parent is null ? part.Index : part.Index - 1)!;
     }
 
     // The destruction walk's direct descents below its root: each Type it enters after the root, none entered further.

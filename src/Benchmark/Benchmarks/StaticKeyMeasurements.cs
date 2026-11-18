@@ -14,7 +14,11 @@ namespace Benchmark;
 
 // A4's static keys on large programs (PLAN G93, DECISIONS R4-M38, R4-M91): N members of a call chain and F mutable static Fields. A cold A4 is a
 // fresh MirEffects over a built program whose case views and dataflow are warm (A1-A3 warm them in the driver): Local per view, Run (the
-// fixed point, then Spread), then a Keys query at every Call and Drop, as A5 reads them. The MIR build is outside every interval.
+// fixed point, then Spread), then a Keys query at every Call and Drop, as A5 reads them. The MIR build is outside every interval: every body, the
+// library's included (the library check's root range, so the workload's library locals stay A4's library store, PLAN G951 U2-T),
+// analyzed with the source modules as roots, as Compilation built and analyzed it before U2's switch. Unlike BuildMir's, the program is
+// not Sealed, so a lookup of a bodyless key in the timed Run takes MirBuilder.Demand's early return instead of the Sealed table's null:
+// equal results, a few checks per miss more than before U2-T.
 // "--static-keys" reports each phase's allocation (three fresh instances), the managed heap a fresh instance retains and a warm re-run's
 // allocation; "--static-keys timing" reports pinned times per phase, the F programs of one shape and size interleaved.
 internal static class StaticKeyMeasurements
@@ -212,7 +216,7 @@ internal static class StaticKeyMeasurements
         effects.BeginLibrary();
         Local(w.Program.LibraryBodies);
         effects.BeginProgram();
-        Local(w.Program.ProgramBodies);
+        Local(w.Program.VersionBodies);
         w.Report.Clear();
         var (runBytes, runTicks) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
         _ = effects.Run(w.Program, w.Report, Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1);
@@ -291,7 +295,7 @@ internal static class StaticKeyMeasurements
             Require(c.Prepare("x86_64-pc-windows-msvc"), "Target preparation failed.");
             c.Kotonoha.AddSource(new SourceDocument("StaticKeys.kimi", Source(shape, size, fields)));
             Require(c.Bind().IsComplete, "Binding failed.");
-            var program = c.BuildMir();
+            var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
             Require(program.Findings.Count == 0 && !program.Records(MirRecordClass.Construction).Any(), "The MIR build failed.");
             var w = new Workload(fields, c, program, new(c.Types), new(new MirReach()), new());
             _ = Measure(w.Effects(), w);

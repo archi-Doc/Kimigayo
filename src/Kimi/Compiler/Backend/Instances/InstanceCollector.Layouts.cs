@@ -74,10 +74,10 @@ internal sealed partial class InstanceCollector
                 continue;
             }
 
-            _ = TyCtxt.Signature(function, null, -1, out var count);
+            _ = this.types.Signature(function, null, -1, out var count);
             for (var slot = -1; slot < count; slot++)
             {
-                if (TyCtxt.Signature(function, null, slot, out _) is { } type &&
+                if (this.types.Signature(function, null, slot, out _) is { } type &&
                     SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, slot)) is var site && this.Verdict(site, type).IsLimit)
                 {
                     this.Limit(this.types.Erase(type), new(function, MirBodyKind.Fn), site); // The import is its own declaration.

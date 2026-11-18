@@ -1,9 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns construction and validation of one MIR body per definition or closure.
-// Input: syntax children, published HIR/plans, declaration views, TyCtxt and one Binding view, the guessed completion nodes of a require's
-// failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated MirProgram: the bodies of a root range built
-// eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each with its program pass where it is built.
+// Input: syntax children, published HIR/plans, declaration views, TyCtxt; the compilation's Binding as the reader the plan entries take
+// (CallPlan.Of, ExpansionPlan.Of, BoundMatch.Of, BoundEnumConstruction.Of, PairBinder.Collect, AdtDef.ReceiverType), and one Binding view,
+// the guessed completion nodes of a require's failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated
+// MirProgram: the bodies of a root range built eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each
+// with its program pass where it is built.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
 // Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
@@ -37,7 +39,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private MirBody body = null!;
     private Koto declaration = null!;
-    private int named; // The bodies of the version whose program pass ran, in build order (Name).
+    private int named; // The bodies of the version whose program pass ran: a position of the build-order list (Name).
     private SourceInfo entry; // The body's declaration in its own scope: where _0 without a written result Type and the drop tree's edges are.
     private Koto? constructed; // A constructor's body, whose completion requests its exit (SPEC 6.3.5); null in other bodies.
     private int current; // The block being built.
@@ -48,19 +50,27 @@ internal sealed partial class MirBuilder(Compilation compilation)
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (PLAN G951): every module's default templates, the
     /// bodies of the modules below the root range, then each body's program pass, the library segment's once per library version before
     /// the program segment's (PLAN G950); the version's lookups build any other body on demand (<see cref="Demand"/>) until it is sealed.
-    /// One version is built with one range: a version asked for with another range is a broken contract, since the analyses and the
-    /// collector keep a version's facts by its <see cref="MirProgram.Version"/>. Version 0 is no version: before any Binding pass the
-    /// program is empty, whatever the range.</summary>
+    /// One version is built with one range, and every version of a builder with the library on one side of its range (D1 per builder,
+    /// PLAN G951 U2): a version asked for with another range, or a later version with the library on the other side, is a broken
+    /// contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/> and a kept library
+    /// segment (<see cref="MirProgram.LibraryVersion"/>, which holds no range) has the shape of its builder's side: every library body
+    /// inside, the library's templates only outside. A range that grows (a module added) keeps the side. Version 0 is no version: before
+    /// any Binding pass the program is empty, whatever the range.</summary>
     /// <param name="rootModules">The root range: <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 builds every body eagerly, the
     /// source modules' count the program's.</param>
     /// <returns>The program, with its construction records and validator findings.</returns>
     internal MirProgram Build(int rootModules)
     {
         var version = HirTables.Publish(compilation);
+        var (library, built) = (compilation.Library.Kotonoha.Syntax, this.program.RootModules);
+        if (this.program.Version != 0 && (version == this.program.Version ? rootModules != built : (library.Module < rootModules) != (library.Module < built)))
+        {
+            throw new InvalidOperationException($"Version {version} asks for the root range {rootModules} after version {this.program.Version} was built with {built} (InternalInvariant).");
+        }
+
         if (version == this.program.Version)
         {
-            return version == 0 || rootModules == this.program.RootModules ? this.program
-                : throw new InvalidOperationException($"Version {version} was built with the root range {this.program.RootModules}, not {rootModules} (InternalInvariant).");
+            return this.program;
         }
 
         this.program.Open(this, rootModules);
@@ -75,7 +85,6 @@ internal sealed partial class MirBuilder(Compilation compilation)
             // the bodies that omit them copy: a library body omits the library's only, so the library's nodes of the omission graph are its
             // prefix. The templates are built in every build, a demanded body's included (G951 M2). A library body names library bodies
             // only (SPEC 18), so the library segment's program passes run here, before the program's (G191).
-            var library = compilation.Library.Kotonoha.Syntax;
             this.Module(library, templates: true);
             if (library.Module < rootModules)
             {
@@ -90,7 +99,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         {
             this.program.ClearProgram();
             this.ClearProgramOmissions();
-            this.named = this.program.LibraryCount; // The kept library segment's bodies had their program pass.
+            this.named = this.program.LibraryBodies.Length; // The kept library list's bodies had their program pass.
         }
 
         for (var pass = 0; pass < 2; pass++)
@@ -123,7 +132,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             return null;
         }
 
-        if (Definition(node, table) is not { } definition || definition.Key != key)
+        if (this.Definition(node, table) is not { } definition || definition.Key != key)
         {
             return null;
         }
@@ -160,7 +169,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // function's Fn body, a #Test function's Test body, a Closure's keyed by its own symbol, a module's top-level statements by the module's
     // ordinal; an accessor's Getter or Setter keyed by the function its calls target (SPEC 11.3); a static's initializer; null for another
     // node.
-    private static (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
+    private (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
     {
         var symbol = HirTables.Symbol(node);
         switch (symbol?.Kind)
@@ -182,7 +191,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 return (new(symbol, kind, symbol is null ? table.Module : 0), symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
             case BindingSymbolKind.PropertyAccessor:
                 var accessor = (PropertyAccessorKoto)node;
-                var executing = CallPlan.Accessor(accessor); // SPEC 11.3: the function its calls target.
+                var executing = CallPlan.Accessor(compilation.Binding, accessor); // SPEC 11.3: the function its calls target.
                 kind = accessor.AccessorKind == PropertyAccessorKind.Get ? MirBodyKind.Getter : MirBodyKind.Setter;
                 return (new(executing, kind), executing, executing.Type ?? BoundType.Unit, accessor.Body!);
             case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
@@ -228,7 +237,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var nodes = table.Nodes;
         for (var id = 1; id < nodes.Length; id++)
         {
-            if (nodes[id] is { } node && ReferenceEquals(node.SyntaxOwner, table) && Published(node) && Definition(node, table) is { } definition)
+            if (nodes[id] is { } node && ReferenceEquals(node.SyntaxOwner, table) && Published(node) && this.Definition(node, table) is { } definition)
             {
                 this.Body(definition.Key, node, definition.Function, definition.Result, definition.Value);
             }
@@ -241,7 +250,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     {
         while (this.named < this.program.Bodies.Length)
         {
-            this.validator.Validate(this.program, this.program.Body(this.named++));
+            this.validator.Validate(this.program, this.program.Bodies[this.named++]);
         }
     }
 
@@ -270,9 +279,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.registrations.Clear();
         this.trees.Clear();
         var parameters = this.OpenScope(block: true);
-        PairBinder.Collect(declaration, body.Binders);
-        var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
-        var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType((FunctionKoto)declaration) : null;
+        PairBinder.Collect(compilation.Binding, declaration, body.Binders);
+        var special = template || function is null ? null : CallPlan.Parameter(compilation.Binding, function, -1); // A constructor's or destructor's self.
+        var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType(compilation.Binding, (FunctionKoto)declaration) : null;
         this.entry = this.Info(declaration, local: true);
         body.AddLocal(self is null
             ? new(result, MirLocalKind.Return, template ? this.entry : this.Info(TyCtxt.SignatureSite(declaration, -1), local: true))
@@ -296,7 +305,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         for (var i = 0; template && i < key.Index; i++)
         {
-            var parameter = CallPlan.Parameter(function!, i)!;
+            var parameter = CallPlan.Parameter(compilation.Binding, function!, i)!;
             this.locals[parameter] = this.Argument(
                 compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
                 parameter.Name,
@@ -326,10 +335,10 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each at its written Type occurrence
         // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration.
-        for (var position = 0; !template && function is not null && position < Arity(function); position++)
+        for (var position = 0; !template && function is not null && position < this.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
-            var parameter = CallPlan.Parameter(function, slot)!;
+            var parameter = CallPlan.Parameter(compilation.Binding, function, slot)!;
             this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, TyCtxt.SignatureSite(declaration, slot), parameters);
         }
 

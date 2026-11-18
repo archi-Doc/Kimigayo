@@ -31,7 +31,7 @@ internal sealed partial class MirBuilder
 
         sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
         var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
-        var key = ExpansionPlan.Of(index)?.First;
+        var key = ExpansionPlan.Of(compilation.Binding, index)?.First;
         MirPlace position;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
@@ -44,7 +44,7 @@ internal sealed partial class MirBuilder
             var start = this.body.AddOperand(MirOperand.Copy(sequence));
             this.body.AddOperand(count);
             this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, proven: true), index);
-            return this.body.Project(offset, MirProjectionKind.Deref, 0);
+            return this.body.Project(compilation.Types, offset, MirProjectionKind.Deref, 0);
         }
         else
         {
@@ -56,7 +56,7 @@ internal sealed partial class MirBuilder
             this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, lent, this.Info(index)));
         }
 
-        return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
+        return this.body.Project(compilation.Types, sequence, MirProjectionKind.Index, position.Root);
     }
 
     // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a ^x applied directly, Op Range, as Boundary
@@ -170,7 +170,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            var resolved = this.FollowTo(ExpansionPlan.Of(index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right), null);
+            var resolved = this.FollowTo(ExpansionPlan.Of(compilation.Binding, index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right), null);
             (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
                 this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));
         }
@@ -285,7 +285,7 @@ internal sealed partial class MirBuilder
     {
         var length = this.Length(sequence, index);
         var result = this.Hold(key.ReturnType, index);
-        this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(index)!.Value.Evaluated].Source, MirOperand.Copy(length));
+        this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(compilation.Binding, index)!.Value.Evaluated].Source, MirOperand.Copy(length));
         return this.Made(result);
     }
 
@@ -298,5 +298,5 @@ internal sealed partial class MirBuilder
     }
 
     // A boundary Field of a ResolvedRange.
-    private MirPlace Bound(MirPlace range, string name) => this.body.Project(range, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(range)!, name));
+    private MirPlace Bound(MirPlace range, string name) => this.body.Project(compilation.Types, range, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(range)!, name));
 }

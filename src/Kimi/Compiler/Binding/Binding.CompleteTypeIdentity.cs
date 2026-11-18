@@ -26,7 +26,7 @@ public sealed partial class Binding
             ((BoundOrigin[])left.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])right.OriginArguments);
         if (equal && left.Kind == BoundTypeKind.Function)
         {
-            equal = IsSubtype(left, right) && IsSubtype(right, left);
+            equal = this.IsSubtype(left, right) && this.IsSubtype(right, left);
         }
         else
         {

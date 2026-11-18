@@ -205,29 +205,18 @@ public sealed partial class Binding
             if (node is VariableKoto { InitializerKoto: { } value } variable && variable.NameKoto.BoundSymbol is { Kind: BindingSymbolKind.Local } declared &&
                 ReferenceTypes.IsPointer(declared.Type))
             {
-                this.definitions.Add((declared, RootOf(value)));
+                this.definitions.Add((declared, this.RootOf(value)));
                 this.holds.TryAdd(declared, Holds.None);
             }
             else if (node is BinaryKoto { Akind: KotoKind.Equals } assignment &&
                 KotoHelper.UnwrapParentheses(assignment.Left).BoundSymbol is { Kind: BindingSymbolKind.Local } assigned &&
                 ReferenceTypes.IsPointer(assigned.Type))
             {
-                this.definitions.Add((assigned, RootOf(assignment.Right)));
+                this.definitions.Add((assigned, this.RootOf(assignment.Right)));
                 this.holds.TryAdd(assigned, Holds.None);
             }
 
             node.VisitChildren(this);
-        }
-
-        // The root a value is reached from, Below's steps descended: a call's result, a literal or a binding (SPEC 5.2.1 condition 3).
-        private static Koto RootOf(Koto value)
-        {
-            while (Below(value, out _) is { } below)
-            {
-                value = below;
-            }
-
-            return value;
         }
 
         // The operation by which a call takes the Place as an argument, or null.
@@ -244,14 +233,25 @@ public sealed partial class Binding
             return null;
         }
 
+        // The root a value is reached from, Below's steps descended: a call's result, a literal or a binding (SPEC 5.2.1 condition 3).
+        private Koto RootOf(Koto value)
+        {
+            while (this.Below(value, out _) is { } below)
+            {
+                value = below;
+            }
+
+            return value;
+        }
+
         // One step of the walk from a node toward what it is reached from (UsesExclusively climbs it): a group's operand, the path's next
         // Place (NextPathStep, step), or a derived pointer's operand, SPEC 5.2.1 condition 3's closed list (5.3, 5.4): a displacement
         // `p + n` or `p - n`, a conversion between raw pointer Types, an Origin-stating or Origin-dropping conversion or fit, or an identity
         // conversion, each keeping the operand's provenance; null where none. No other form derives: a `usize` round trip has none (5.5), and
         // a pointer a call with a body returns is not derived from its arguments (the owner's O-76 (b) (i)).
-        private static Koto? Below(Koto node, out PathStep step)
+        private Koto? Below(Koto node, out PathStep step)
         {
-            step = NextPathStep(node, out var next);
+            step = binding.NextPathStep(node, out var next);
             return node switch
             {
                 ParenthesizedKoto group => group.Operand,
@@ -340,7 +340,7 @@ public sealed partial class Binding
                 // SPEC 7.7.3: past a raw pointer's pointee the environment's write authority is what an access needs. A pointer derived
                 // from an environment pointer (Below) is that pointer, and a pointer read through a raw Place the environment reaches is
                 // read from the environment (the owner's O-76 (c) (i)), so the walk continues past a raw step.
-                if (!ReferenceEquals(Below(place.Parent!, out var step), place))
+                if (!ReferenceEquals(this.Below(place.Parent!, out var step), place))
                 {
                     return new(PlaceUse.Shared, listed);
                 }
@@ -394,7 +394,7 @@ public sealed partial class Binding
         // Unsupported_Kd.
         private bool ContractWritesThrough(Koto place)
         {
-            if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto { BoundCall: { } call } invocation ||
+            if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto invocation || binding.CallOf(invocation) is not { } call ||
                 ArgumentOf(call.ArgumentOperations, place) is not { } argument)
             {
                 return false;
@@ -475,7 +475,7 @@ public sealed partial class Binding
             }
 
             var consumer = target.Parent!;
-            while (consumer.Parent is { } outer && Covers(outer, consumer))
+            while (consumer.Parent is { } outer && binding.Covers(outer, consumer))
             {
                 consumer = outer;
             }

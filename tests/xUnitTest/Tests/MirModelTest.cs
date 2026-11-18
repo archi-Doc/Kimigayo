@@ -50,47 +50,47 @@ public sealed class MirModelTest
         var body = NewBody(types);
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
         var (a, b) = (Local(body, tuple), Local(body, tuple));
-        var second = body.Project(a, MirProjectionKind.Field, 1);
-        Assert.Equal(second, body.Project(a, MirProjectionKind.Field, 1));
-        Assert.Equal(second.Projection, body.Project(b, MirProjectionKind.Field, 1).Projection);
+        var second = body.Project(c.Types, a, MirProjectionKind.Field, 1);
+        Assert.Equal(second, body.Project(c.Types, a, MirProjectionKind.Field, 1));
+        Assert.Equal(second.Projection, body.Project(c.Types, b, MirProjectionKind.Field, 1).Projection);
         Assert.Same(BoundType.Boolean, body.TypeOf(second));
 
-        var deref = body.Project(Local(body, c.Types.Reference(SemanticsKind.Ref, tuple)), MirProjectionKind.Deref, 0);
-        var first = body.Project(deref, MirProjectionKind.Field, 0);
+        var deref = body.Project(c.Types, Local(body, c.Types.Reference(SemanticsKind.Ref, tuple)), MirProjectionKind.Deref, 0);
+        var first = body.Project(c.Types, deref, MirProjectionKind.Field, 0);
         Assert.Equal(deref.Projection, body.Projections[first.Projection].Prefix);
         Assert.Same(BoundType.I32, body.TypeOf(first));
-        Assert.Same(BoundType.I32, body.TypeOf(body.Project(Local(body, c.Types.Pointer(BoundType.I32)), MirProjectionKind.Deref, 0)));
+        Assert.Same(BoundType.I32, body.TypeOf(body.Project(c.Types, Local(body, c.Types.Pointer(BoundType.I32)), MirProjectionKind.Deref, 0)));
 
         var point = Local(body, types.Point);
-        Assert.Same(BoundType.Boolean, body.TypeOf(body.Project(point, MirProjectionKind.Field, 1)));
-        Assert.Same(types.Base, body.TypeOf(body.Project(point, MirProjectionKind.Base, 1)));
-        Assert.Same(BoundType.I32, body.TypeOf(body.Project(body.Project(point, MirProjectionKind.Base, 1), MirProjectionKind.Field, 0)));
-        Assert.Null(body.TypeOf(body.Project(point, MirProjectionKind.Field, 2)));
-        Assert.Null(body.TypeOf(body.Project(point, MirProjectionKind.Base, 2)));
+        Assert.Same(BoundType.Boolean, body.TypeOf(body.Project(c.Types, point, MirProjectionKind.Field, 1)));
+        Assert.Same(types.Base, body.TypeOf(body.Project(c.Types, point, MirProjectionKind.Base, 1)));
+        Assert.Same(BoundType.I32, body.TypeOf(body.Project(c.Types, body.Project(c.Types, point, MirProjectionKind.Base, 1), MirProjectionKind.Field, 0)));
+        Assert.Null(body.TypeOf(body.Project(c.Types, point, MirProjectionKind.Field, 2)));
+        Assert.Null(body.TypeOf(body.Project(c.Types, point, MirProjectionKind.Base, 2)));
 
-        var line = body.Project(Local(body, types.Shape), MirProjectionKind.Downcast, 1);
+        var line = body.Project(c.Types, Local(body, types.Shape), MirProjectionKind.Downcast, 1);
         Assert.Equal(2, body.TypeOf(line)!.Components.Count);
-        Assert.Same(BoundType.I32, body.TypeOf(body.Project(line, MirProjectionKind.Field, 1)));
-        Assert.Null(body.TypeOf(body.Project(Local(body, types.Shape), MirProjectionKind.Downcast, 2)));
+        Assert.Same(BoundType.I32, body.TypeOf(body.Project(c.Types, line, MirProjectionKind.Field, 1)));
+        Assert.Null(body.TypeOf(body.Project(c.Types, Local(body, types.Shape), MirProjectionKind.Downcast, 2)));
 
         var array = Local(body, types.Array);
-        Assert.Same(BoundType.I32, body.TypeOf(body.Project(array, MirProjectionKind.ConstIndex, 2)));
-        Assert.Null(body.TypeOf(body.Project(array, MirProjectionKind.ConstIndex, 3)));
-        Assert.Same(BoundType.I32, body.TypeOf(body.Project(array, MirProjectionKind.Index, Local(body, BoundType.ISize).Root)));
-        Assert.Null(body.TypeOf(body.Project(array, MirProjectionKind.Index, Local(body, BoundType.I32).Root)));
+        Assert.Same(BoundType.I32, body.TypeOf(body.Project(c.Types, array, MirProjectionKind.ConstIndex, 2)));
+        Assert.Null(body.TypeOf(body.Project(c.Types, array, MirProjectionKind.ConstIndex, 3)));
+        Assert.Same(BoundType.I32, body.TypeOf(body.Project(c.Types, array, MirProjectionKind.Index, Local(body, BoundType.ISize).Root)));
+        Assert.Null(body.TypeOf(body.Project(c.Types, array, MirProjectionKind.Index, Local(body, BoundType.I32).Root)));
 
         var count = body.Projections.Length;
-        var invalid = body.Project(Local(body, BoundType.I32), MirProjectionKind.Field, 0);
+        var invalid = body.Project(c.Types, Local(body, BoundType.I32), MirProjectionKind.Field, 0);
         Assert.Null(body.TypeOf(invalid));
-        Assert.Equal(invalid.Projection, body.Project(Local(body, BoundType.I32), MirProjectionKind.Field, 0).Projection);
+        Assert.Equal(invalid.Projection, body.Project(c.Types, Local(body, BoundType.I32), MirProjectionKind.Field, 0).Projection);
         Assert.Equal(count + 1, body.Projections.Length);
-        Assert.Null(body.TypeOf(body.Project(Local(body, BoundType.I32), MirProjectionKind.PairLayer, 0)));
+        Assert.Null(body.TypeOf(body.Project(c.Types, Local(body, BoundType.I32), MirProjectionKind.PairLayer, 0)));
         var pair = Local(body, types.Pair);
-        Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
-        PairBinder.Collect(types.Generic, body.Binders);
+        Assert.Null(body.TypeOf(body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0)));
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         _ = TyCtxt.Layer(types.Pair, out var target, out _);
-        Assert.Same(target, body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
-        Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 1)));
+        Assert.Same(target, body.TypeOf(body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0)));
+        Assert.Null(body.TypeOf(body.Project(c.Types, pair, MirProjectionKind.PairLayer, 1)));
     }
 
     // Equal constants share an id; the Type, the kind and the value tell constants apart, a string by its text.
@@ -199,9 +199,10 @@ public sealed class MirModelTest
         Assert.Equal(closure, first.Key);
     }
 
-    // PLAN G950: a program version over a kept library segment (ClearProgram) returns the program's bodies to the pool and removes their
-    // keys only: the library's bodies, keys, version, findings and construction records stay, the records first in the report again, and
-    // the next program body is stored in the program's pooled body.
+    // PLAN G950: a program version over a kept library segment (ClearProgram) returns the version's bodies to the pool and removes their
+    // keys only: the library list's bodies, keys, version, segment count, findings and construction records stay, the records first in
+    // the report again, and the next body is stored in its ordinal's pooled body. A read by ordinal (Body) fails for a returned body's
+    // ordinal (PLAN G951 U2-K, the design review's N5): never null or the earlier version's body.
     [Fact]
     public void ClearProgramKeepsTheLibrarySegment()
     {
@@ -221,7 +222,10 @@ public sealed class MirModelTest
         program.ClearProgram();
         Assert.Equal((7UL, 1), (program.LibraryVersion, program.LibraryCount));
         Assert.Equal(new[] { library }, program.Bodies.ToArray());
-        Assert.Equal(0, program.ProgramBodies.Length);
+        Assert.Equal(0, program.VersionBodies.Length);
+        Assert.Equal((1, 1), (program.LibrarySegment, program.LibraryBodies.Length));
+        Assert.Same(library, program.Body(0));
+        Assert.Throws<InvalidOperationException>(() => program.Body(1));
         Assert.Same(library, program[fn]);
         Assert.Null(program[closure]);
         Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, librarySite) }, program.Records(MirRecordClass.Construction));
@@ -230,6 +234,7 @@ public sealed class MirModelTest
         Assert.Same(made, program.End());
         Assert.Same(made, program[closure]);
         Assert.Equal(new[] { library, made }, program.Bodies.ToArray());
+        Assert.Same(made, program.Body(1));
     }
 
     // V11: rebuilding a pooled body of the same shape allocates nothing.
@@ -251,7 +256,7 @@ public sealed class MirModelTest
             for (var i = 0; i < 64; i++)
             {
                 var block = body.AddBlock();
-                var field = body.Project(pair, MirProjectionKind.Field, i & 1);
+                var field = body.Project(c.Types, pair, MirProjectionKind.Field, i & 1);
                 var start = body.AddOperand(MirOperand.Copy(field));
                 body.AddOperand(MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, i))));
                 body.Push(block, MirStatement.Assign(new(0), MirRvalue.Binary(MirBinaryOp.Add, start, false), At));

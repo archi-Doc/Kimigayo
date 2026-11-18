@@ -61,7 +61,8 @@ public class ContractBindingTest
         "    var slot: Option<ref/T.(Tree).Child.(Tree).Child> = .None\n    put<T.(Tree).Child.(Tree).Child>(v@ref, slot@uniq)\n    match slot\n" +
         "        .Some(let s) => return s.peek()\n        .None => return 0\n";
 
-    // A depth-3 chain of clause rows (CL1 -> CL2 -> CL3) used by a member call, a copy, a capture and an erasure, instantiated with S1.
+    // A depth-3 chain of clause rows (CL1 -> CL2 -> CL3) used by a member call, a copy, a capture and an erasure, instantiated with S1:
+    // DepthThreeChain ends at `cap<T>`'s clause `T is CL1`; DepthThreeCap is `cap`'s body, which erases a Closure formed in it, and main.
     private const string DepthThreeChain = "contract L3\n    associate Item\ncontract CL3: L3\n    Self.(L3).Item is Copy\n    Self.(L3).Item is Owned\n" +
         "    func get(self: ref/Self) -> i32\ncontract L2\n    associate Inner is L3\ncontract CL2: L2\n    Self.(L2).Inner is CL3\ncontract L1\n" +
         "    associate Mid is L2\ncontract CL1: L1\n    Self.(L1).Mid is CL2\nstruct P\n    Self is Copy\n    public let x: i32\n" +
@@ -71,8 +72,9 @@ public class ContractBindingTest
         "func keep<V>(x: ref/V) -> i32\n    V is CL3\n    return x.get()\n" +
         "func dup<T>(v: T.(L1).Mid.(L2).Inner.(L3).Item) -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item)\n    T is CL1\n" +
         "    return (v, v)\nfunc read<T>(v: T.(L1).Mid.(L2).Inner) -> i32\n    T is CL1\n    let n = keep<T.(L1).Mid.(L2).Inner>(v@ref)\n" +
-        "    return n + v.get()\nfunc cap<T>(v: T.(L1).Mid.(L2).Inner.(L3).Item) -> i32\n    T is CL1\n" +
-        "    let c = func () -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item) => (v, v)\n    let d = c\n    let p = c()\n" +
+        "    return n + v.get()\nfunc cap<T>(v: T.(L1).Mid.(L2).Inner.(L3).Item) -> i32\n    T is CL1";
+
+    private const string DepthThreeCap = "\n    let c = func () -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item) => (v, v)\n    let d = c\n    let p = c()\n" +
         "    let q = d()\n    let f: () -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item) = c\n    let s = f()\n" +
         "    return need(v) + need(s.0)\npublic func main() -> ()\n    let p = dup<S1>(P.init(x: 3))\n    let n = read<S1>(S3.init(5))\n" +
         "    let m = cap<S1>(P.init(x: 4))\n    if p.0.x + p.1.x == 6 and n == 10 and m == 2 => Console.writeLine(\"ok\")\n    else => Console.writeLine(\"bad\")\n";
@@ -878,11 +880,15 @@ public class ContractBindingTest
     // SPEC 8.3.2, 8.6.4, 15.6: a Contract a clause row proves at depth gives its members (the Middle's R7-C2a a1 consent, R1; an
     // UnresolvedBinding_Kd before R7-C2c2 c2-3a read Enumerate's rows): a member call (f-member-v), one through a stored reference
     // (f-store-v) and a depth-3 chain (r-l3) are accepted; a write while the call's Loan is live is the Loan's conflict (f-member-n).
+    // r-l3's `cap<T>` erases a Closure formed in it, whose instantiation holds the inherited `T` (SPEC 3.2.1, 6.1.3), so the erasure
+    // needs `T is Owned` beside the capture's row at depth (7.7.4, 15.2.3; PLAN G856, the owner's O-249 Q4 (a)); with `T is CL1` alone,
+    // as c2-3a wrote it, the erasure is the Constraint failure (r-l3-unowned).
     [Theory]
     [InlineData(PeekTree + PeekProbe + "    let r = v.peek()\n    return r\n" + PeekMain, "")]
     [InlineData(PeekTree + PeekProbe + "    let r = v.peek()\n    v = b\n    return r\n" + PeekMain, "ComparisonLoanConflict_Kd")]
     [InlineData(PeekTree + PeekStore + PeekMain, "")]
-    [InlineData(DepthThreeChain, "")]
+    [InlineData(DepthThreeChain + " and Owned" + DepthThreeCap, "")]
+    [InlineData(DepthThreeChain + DepthThreeCap, "UnprovenConstraint_Kd")]
     public void AConformanceProvenAtDepthGivesItsMembers(string source, string codes)
     {
         var c = MinimalEmissionTest.Check(source);
@@ -906,26 +912,31 @@ public class ContractBindingTest
     }
 
     // PLAN G949 S1-r2 (s1r1-design 1.4; review-s1r2 C1): ImplTable's pass view lists only the stores of the pass's modules. Begun again
-    // at the run's own value (so no row goes stale) with the source modules alone, it lists the program's paths, identities and Type
-    // lists and no library one; with the library alone, the library's; with both, the composed lists.
+    // at the overlay's own value (the run's, so no row goes stale) with the source modules alone, it lists the program's paths,
+    // identities and Type lists and no library one; at the pass's last registrar step the composed lists are that view, then the base's
+    // rows, each a library Type's, and they equal the composed lists after the Bind. PLAN G949 S1-1 (B6; ruling 203 (3b)): no pass
+    // begins the frozen base again (its Begin clears the base's admission points, a write to the frozen layer), so the base's rows are
+    // read through a program pass's composed lists, not a library-only view.
     [Fact]
     public void ThePassViewListsOnlyThePassModulesStores()
     {
         var c = Sources("Self is C");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var impls = Impls(c);
+        var (paths, identities) = (impls.Paths.ToList(), impls.Identities.ToList());
         impls.Begin(impls.Pass, new(c.SourceModules, null, new(0)));
         Assert.NotEmpty(impls.InPass.Paths);
         Assert.All(impls.InPass.Paths, static x => Assert.False(Library(x.Type)));
         Assert.All(impls.InPass.Identities, static x => Assert.False(Library(x.Type)));
         Assert.All(impls.InPass.ByType, static x => Assert.All(x, static y => Assert.False(Library(y.Type))));
-        impls.Begin(impls.Pass, new([], c.Binding.Library.Kotonoha, new(0)));
-        Assert.NotEmpty(impls.InPass.Paths);
-        Assert.All(impls.InPass.Paths, static x => Assert.True(Library(x.Type)));
-        Assert.All(impls.InPass.Identities, static x => Assert.True(Library(x.Type)));
-        impls.Begin(impls.Pass, new(c.SourceModules, c.Binding.Library.Kotonoha, new(0)));
-        Assert.Equal(impls.Paths.ToList(), impls.InPass.Paths.ToList());
-        Assert.Equal(impls.Identities.ToList(), impls.InPass.Identities.ToList());
+        var (programPaths, programIdentities) = (impls.InPass.Paths.ToList(), impls.InPass.Identities.ToList());
+        impls.Advance(ImplTable.AdmissionPoint.AssociatedBindings);
+        var (libraryPaths, libraryIdentities) = (impls.Paths.Skip(programPaths.Count).ToList(), impls.Identities.Skip(programIdentities.Count).ToList());
+        Assert.NotEmpty(libraryPaths);
+        Assert.All(libraryPaths, static x => Assert.True(Library(x.Type)));
+        Assert.All(libraryIdentities, static x => Assert.True(Library(x.Type)));
+        Assert.Equal(paths, [.. programPaths, .. libraryPaths]);
+        Assert.Equal(identities, [.. programIdentities, .. libraryIdentities]);
 
         static bool Library(BindingSymbol type) => type.Declaration.Kotonoha.Syntax.IsLibrary;
     }
@@ -967,6 +978,38 @@ public class ContractBindingTest
         var first = paths.FindIndex(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
         Assert.Equal(["B: C", "G: C", "H: C"], paths.Take(first).Select(static x => x.Type.Name + ": " + x.Contract.Name));
         Assert.DoesNotContain(paths.Skip(first), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
+    }
+
+    // PLAN G949 S1-r1b (c15's extension, F's ruling 65; s1r1-design 8.8): EffectObligations reads three per-pass sources in order:
+    // ImplTable's paths, the virtual declarations and the selected uses of bounded Callable clauses, each list Binding's own part's
+    // entries, then LibraryLayer.Part's (S1-b2's commits 3a-3c). From the split the library pass fills the layer's part and the program
+    // pass Binding's own; the library declares no `virtual` and no bounded Callable clause, so the layer's three lists (the virtual
+    // declarations, the uses and the clauses) are empty and Binding's own part holds every row: the program's obligations stand in the
+    // three sources' order, and AvailableCallableEffects finds apply's bound in the program part's clause. Fails on a head that hands
+    // the program pass the layer's lists or composes them first. Valid: each confined body is confined (SPEC 8.11.2-8.11.4).
+    [Fact]
+    public void TheEffectSourcesAreTheProgramPartsInTheirOrder()
+    {
+        const string Contract = "contract C\n    func get(self: ref/Self) -> i32\n        effect confined\n";
+        var c = CompilationTestHelper.ParseSuccess(Contract + "struct S\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => 1\n" +
+            "open struct Base\n    public init() => ()\n    public virtual func score(self: objref/Self) -> i32\n        effect confined\n        return 1\n" +
+            "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n" +
+            "func entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(["S: Self is C get", "Base: public virtual func score(self: objref/Self) -> i32 score", ": f@ref entry"], EffectRows(c).Where(static x => !x.Library).Select(static x => x.Row));
+        var (layer, own) = (c.Library.Layer.Part, (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        Assert.Equal((0, 0, 0), (layer.VirtualDeclarations.Count, layer.CallableEffectUses.Count, layer.CallableEffectClauses.Count));
+        Assert.Equal("score", Assert.Single(own.VirtualDeclarations).Name);
+        var clause = Assert.Single(own.CallableEffectClauses);
+        var use = Assert.Single(own.CallableEffectUses);
+        Assert.Equal("f@ref", use.At.ToString());
+        Assert.Same(clause, use.Clause);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.ValueCallOf() is not null);
+        var plan = call.ValueCallOf()!;
+        var evidence = new List<EffectEvidence>();
+        Assert.True(c.Binding.AvailableCallableEffects(plan.CalleeType.Components[0], plan.DeclaredSignature, plan.ReceiverKind, c.Binding.ConstraintScope(call), evidence));
+        Assert.Same(clause, Assert.Single(evidence).Clause);
     }
 
     // PLAN G949 S1-b1 (the Front's RR2): a path the sweep removed is taken from the pool for the next new key, emptied of the
@@ -1017,6 +1060,77 @@ public class ContractBindingTest
         Assert.Same(identity, path.Identity);
         Assert.NotSame(scope, path.Scope);
         Assert.Same(path, path.Scope.ConformancePath);
+    }
+
+    // PLAN G949 S1-r1b, rule (a) (F's rulings 169 and 170; the S1-r2 note's v6: R5, R6, R10; SPEC 8.6.1, 8.5.2, 9.6): a program pass reads a
+    // library Type's conformances as registered only from its own registrar's step. A Self clause binds before the program's conformance
+    // declarations register (pass 0), so a projection over a library Type there finds no associated Type yet; it is an early read judged
+    // again at point 1 (VerifyEarlyProjections, G621: a member it finds then rests on its location-only Unsupported_Kd, R5, R6), and a
+    // conditional conformance (Range's Iterable when S is PrimitiveInteger) is not registered at point 1 either (R10: no IteratorType).
+    // These are today's records; from the split the library pass registers the base before the program pass, and a program pass that read
+    // the base from its start would find Array's Element at once (R5 and R6 lose their Unsupported_Kd) and Range's IteratorType at point 1
+    // (R10 moves: on the trial split it read three InvalidConstraint_Kd and an AmbiguousBinding_Kd).
+    [Theory]
+    [InlineData("contract K<T>\nstruct W\n    Self is K<Kimi.Array<i32>.Element>", "InvalidConstraint_Kd Unsupported_Kd")]
+    [InlineData("contract K<T>\nstruct V\n    Self is K<i32>\nstruct W\n    Self is K<Kimi.Dictionary<i32, i32>.Element>", "InvalidConstraint_Kd Unsupported_Kd")]
+    [InlineData("contract K<T>\nstruct W\n    Self is K<Kimi.Range<i32, i32>.IteratorType>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    public void ALibraryConformanceIsReadFromItsRegistrarsStep(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // PLAN G949 S1-r1b, rule (a) at ImplTable's lookups (F's ruling 170 condition (2), and g9 of the S1-r2 note's C7): a reader that does not
+    // bind the library reads a library identity with the paths of the registrar steps it reached. OwningIterator's and BorrowingIterator's
+    // LendingIterator identity has its direct path from the Self-clause registrar (point 1) and the ancestor path of `Self is Iterator when
+    // I is Iterator` from the conditional registrar (point 2): one path at point 1, two at point 2. Range's Iterable is conditional only: not
+    // found and not in Range's list at point 1, found with its path at point 2. The reader's step is set on the compilation's overlay after a
+    // Bind (the one pass binds the library, so its own reads are every row's).
+    [Fact]
+    public void ALibraryIdentityReadsThePathsOfTheStepsItsReaderReached()
+    {
+        var c = CompilationTestHelper.ParseSuccess(string.Empty);
+        Assert.True(c.Bind().IsComplete);
+        var impls = Impls(c);
+        var identities = impls.Identities.ToArray();
+        var (owning, lending) = Named("OwningIterator", "LendingIterator");
+        var (borrowing, _) = Named("BorrowingIterator", "LendingIterator");
+        var (range, iterable) = Named("Range", "Iterable");
+        var direct = impls.PathsOf(impls.Find(owning, lending)!)[0];
+        var all = (impls.Paths.Count, impls.Identities.Count, impls.ByType.Count);
+        typeof(ImplTable).GetField("holdsBase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, false);
+        var counts = new List<(int, int, int)>();
+        foreach (var point in Enum.GetValues<ImplTable.AdmissionPoint>())
+        {
+            // Every step (review-s1r1b Part 2, N1): the composed lists' base parts are their prefixes at the step, and a path is found
+            // by its key from its point on.
+            typeof(ImplTable).GetField("step", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, point);
+            counts.Add((impls.Paths.Count, impls.Identities.Count, impls.ByType.Count));
+            Assert.Equal(point != ImplTable.AdmissionPoint.PassStart, impls.TryPath(direct.Type, direct.Contract, direct.Declaration, direct.RootContract) is not null);
+            if (point is ImplTable.AdmissionPoint.PassStart or ImplTable.AdmissionPoint.AssociatedBindings)
+            {
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.Find(owning, lending) is null);
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.OfType(range) is not { Count: not 0 });
+                continue;
+            }
+
+            var first = point == ImplTable.AdmissionPoint.SelfClauses;
+            foreach (var adapter in (BindingSymbol[])[owning, borrowing])
+            {
+                var identity = impls.Find(adapter, lending);
+                Assert.NotNull(identity);
+                Assert.Equal(first ? 1 : 2, impls.PathsOf(identity).Count);
+            }
+
+            var conditional = impls.Find(range, iterable);
+            Assert.Equal(first, conditional is null);
+            Assert.Equal(first ? 0 : 1, conditional is null ? 0 : impls.PathsOf(conditional).Count);
+            Assert.Equal(!first, impls.OfType(range)?.Exists(x => ReferenceEquals(x.Contract, iterable)) == true);
+        }
+
+        Assert.Equal((0, 0, 0), counts[0]);
+        Assert.Equal(all, counts[^1]);
+        Assert.All(counts.Zip(counts.Skip(1)), x => Assert.True(x.First.Item1 <= x.Second.Item1 && x.First.Item2 <= x.Second.Item2 && x.First.Item3 <= x.Second.Item3, string.Join(", ", counts)));
+        Assert.True(counts[1].Item1 < counts[2].Item1, $"point 2 adds paths: {string.Join(", ", counts)}");
+
+        (BindingSymbol Type, BindingSymbol Contract) Named(string type, string contract)
+            => identities.Where(x => x.Type.Name == type && x.Contract.Name == contract).Select(static x => (x.Type, x.Contract)).Single();
     }
 
     // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.
@@ -1094,7 +1208,7 @@ public class ContractBindingTest
             }
             else if (property.GetSetMethod(true) is { } setter)
             {
-                var value = type == typeof(bool) ? true : type == typeof(int) ? 1
+                var value = type == typeof(bool) ? true : type == typeof(int) ? 1 : type.IsEnum ? Enum.ToObject(type, 1)
                     : values.FirstOrDefault(type.IsInstanceOfType) ?? (type.IsAbstract || type.IsValueType ? null : RuntimeHelpers.GetUninitializedObject(type));
                 setter.Invoke(model, [value]);
             }
@@ -1107,7 +1221,7 @@ public class ContractBindingTest
         foreach (var property in PassState(model))
         {
             var value = property.GetValue(model);
-            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 }, $"{model.GetType().Name}.{property.Name}: {value}");
+            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 } || (value is Enum e && Convert.ToInt64(e) == 0), $"{model.GetType().Name}.{property.Name}: {value}");
         }
     }
 

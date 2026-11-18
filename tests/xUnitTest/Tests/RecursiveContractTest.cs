@@ -73,7 +73,7 @@ public sealed partial class RecursiveContractTest
     {
         var c = Bind(declarations + $"func probe<T>(value: {projection})\n    {premise}\n    ()\n");
         var probe = Probe(c);
-        var type = TyCtxt.Signature(probe, null, 0, out _)!;
+        var type = c.Types.Signature(probe, null, 0, out _)!;
         Assert.Equal(BoundTypeKind.AssociatedProjection, type.Kind);
         Assert.Equal(expected, c.Types.RecursiveBase(probe, type));
     }
@@ -84,7 +84,7 @@ public sealed partial class RecursiveContractTest
     {
         var c = Bind(Tree + "func probe<T>(value: T)\n    T is Tree\n    ()\n");
         var probe = Probe(c);
-        Assert.False(c.Types.RecursiveBase(probe, TyCtxt.Signature(probe, null, 0, out _)!));
+        Assert.False(c.Types.RecursiveBase(probe, c.Types.Signature(probe, null, 0, out _)!));
     }
 
     // Immutable after Bind and pooled: a warm rebind, which revokes the pass's recursive Contracts, and the queries that find them again
@@ -97,7 +97,7 @@ public sealed partial class RecursiveContractTest
             "func probe<T, U, V>(value: T.(Forest).Root.(Tree).Child, other: U.(A).X, next: V.(Seq<i32>).Next)\n    T is Forest\n    U is A\n" +
             "    V is Seq<i32>\n    ()\n");
         var probe = Probe(c);
-        var types = Enumerable.Range(0, 3).Select(i => TyCtxt.Signature(probe, null, i, out _)!).ToArray();
+        var types = Enumerable.Range(0, 3).Select(i => c.Types.Signature(probe, null, i, out _)!).ToArray();
         Assert.All(types, x => Assert.True(c.Types.RecursiveBase(probe, x)));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

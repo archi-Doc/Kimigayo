@@ -81,7 +81,7 @@ public sealed partial class Binding
     private bool ValidPropertyWritePath(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        while (node is BinaryKoto projection && (projection is MemberAccessKoto || ElementAccess.IsSyntax(projection)))
+        while (node is BinaryKoto projection && (projection is MemberAccessKoto || ElementAccess.IsSyntax(this, projection)))
         {
             node = KotoHelper.UnwrapParentheses(projection.Left);
             if (node.BoundType?.Semantics != SemanticsKind.Owner)
@@ -157,7 +157,7 @@ public sealed partial class Binding
     // `get`'s result (the read Type).
     private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
         => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
-            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind)) is { } setter && this.CallOf(setter) is { ArgumentOperations.Length: > 0 } call
                 ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
@@ -327,7 +327,7 @@ public sealed partial class Binding
 
                 result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
 
-                call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
+                call.CallStorage!.Set(this, function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
                 for (var i = 0; i < count; i++)
                 {

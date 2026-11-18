@@ -105,7 +105,7 @@ internal sealed partial class TyCtxt
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             if (entry.Row is { Calls: >= 0 and var calls } && library.GetSymbol(entry.Id) is { } operation &&
-                binding.CallableReceiver(operation, Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
+                binding.CallableReceiver(operation, this.Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
             {
                 throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
             }

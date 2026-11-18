@@ -79,8 +79,12 @@ public sealed partial class Binding
     /// selects no candidate no other table holds it (a resolved call's is CallPlan.ReceiverOperation).</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
     /// <param name="operation">The selected operation; an Unknown proof is not permission to execute.</param>
-    /// <returns>Whether this pass selected an operation for the use.</returns>
-    public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation) => this.receiverOperations.TryGetValue(use, out operation);
+    /// <returns>Whether this pass selected an operation for the use; a node of the frozen library is refused (EnsurePassNode).</returns>
+    public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation)
+    {
+        EnsurePassNode(use, nameof(this.TryGetReceiverOperation));
+        return this.receiverOperations.TryGetValue(use, out operation);
+    }
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);
@@ -201,7 +205,7 @@ public sealed partial class Binding
     // SPEC 3.5, 10.1: whether a bare input is acquired by value. A bare Place never Moves, so a Place whose bare acquisition of `judged`,
     // the Type it stores, needs a Move is not, unless its acquisition is required on `arriving`, the Type that arrives at the parameter.
     private bool AcquiresBare(Koto source, BoundType judged, BoundType arriving, BoundType pattern, bool deferAcquisition)
-        => judged.Semantics is not (SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) || !IsBarePlace(source) ||
+        => judged.Semantics is not (SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) || !this.IsBarePlace(source) ||
             this.BareAcquire(judged, source, out _) != HirAcquire.Move ||
             this.RequireAcquisition(source, arriving, pattern, BindingFailure.TransferRequired, @object: false, fixedExpectation: false, deferAcquisition);
 
@@ -316,7 +320,7 @@ public sealed partial class Binding
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!receiver && StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
+            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
             {
                 // SPEC 3.5.1, 8.14, 10.1 step 1 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T` or
                 // `objuniq/T` or a pair layer in an exclusive case, is Reborrowed in its own Semantics before inference, so a parameter that
@@ -380,7 +384,7 @@ public sealed partial class Binding
             // SPEC 13.5.6: an explicit @ref/@uniq on a slot storing a reference or handle borrows that slot and
             // adds one layer; a temporary reference value is materialized first (SPEC 3.6).
             // A getter result is lent only shared (SPEC 11.5), as every Temporary Value is admitted (BorrowableTemporary).
-            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) && !BorrowableTemporary(source, target == SemanticsKind.Uniq, true, fixedExpectation))
+            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) && !this.BorrowableTemporary(source, target == SemanticsKind.Uniq, true, fixedExpectation))
             {
                 return false;
             }
@@ -411,7 +415,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || ReachedThroughShared(source)))
+            if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || this.ReachedThroughShared(source)))
             {
                 // SPEC 3.5.1: a stored uniq reached through a shared path has no Reborrow, so its bare acquisition needs the Move a bare
                 // Place never makes (TransferRequired, DECISIONS BU-45), deferred as every bare acquisition's; a written one is its own.
@@ -452,7 +456,7 @@ public sealed partial class Binding
                     }
                 }
             }
-            else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
+            else if (!this.BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
                 !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal))
             {
                 return false;
@@ -495,7 +499,7 @@ public sealed partial class Binding
         var exclusive = pattern.Semantics == SemanticsKind.ObjUniq;
         if (receiver && ReferenceTypes.IsStorage(actual) && actual.Components[0].HandleMode is { } stored)
         {
-            if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || ReachedThroughShared(source)))
+            if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || this.ReachedThroughShared(source)))
             {
                 return false;
             }
@@ -509,7 +513,7 @@ public sealed partial class Binding
 
         if (actual.IsObjectBorrow)
         {
-            if (!LendsView(source, actual, exclusive))
+            if (!this.LendsView(source, actual, exclusive))
             {
                 // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
                 return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&
@@ -526,7 +530,7 @@ public sealed partial class Binding
         }
         else if (actual.HandleMode is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
             ((explicitOwner && !receiver ? this.BorrowablePlace(source, scope, exclusive) : this.LendsPlace(source, scope, exclusive, out _)) ||
-            BorrowableTemporary(source, exclusive, explicitOwner || receiver, fixedExpectation)))
+            this.BorrowableTemporary(source, exclusive, explicitOwner || receiver, fixedExpectation)))
         {
             // SPEC 13.5.5, 13.5.6: a handle lends its object from a Place, as Binding lends it to a written Borrow and as SPEC does to an
             // implicit one (BorrowablePlace), or from a Temporary Value.

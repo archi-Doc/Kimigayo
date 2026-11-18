@@ -5,8 +5,10 @@ namespace Kimi.Compiler;
 // KimiLibrarySize (DECISIONS R8-M28): the one statement of the embedded library's size, by which every compilation sizes the tables
 // that hold the library's entries beside the program's.
 // - Responsibility: the library's entry count in each sized table (Stated), the room a program has in a table of each kind (NodeRoom
-//   in the node table, KeyedRoom in a keyed table, none in a library-only table) and the capacity a table starts at (NodeCapacity,
-//   KeyedCapacity; a library-only table starts at its stated count). A per-compilation table is sized when, grown by doubling from
+//   in the node table, KeyedRoom in a keyed table, none in a library-only table) and the capacity a table starts at (KeyedCapacity; a
+//   library-only table starts at its stated count). The node table is two lists (PLAN G949 S1-r1b): the library pass's
+//   (LibraryLayer.Part) starts at the library's stated count and the program pass's (Binding's own part) at NodeRoom, so their sum,
+//   the free slots and the room's guarantee are a single table's. A per-compilation table is sized when, grown by doubling from
 //   empty, the doubling that follows the library's fill would allocate more than 64 KB (its new slots times its bytes per slot):
 //   three such doublings together stay inside the smallest margin of the cold scaling rows.
 // - Limit, the library-only kind (member selections and sides, capability nodes): chosen because no cold scaling row's program adds an
@@ -24,9 +26,9 @@ namespace Kimi.Compiler;
 //   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
 //   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
 //   slots are its arena's.
-// - Inputs: none; the counts are stated here and KimiLibraryShapeTest compares them with what a Bind of the empty program fills
-//   (Binding.TableCounts), so a library change that moves a count past its Granule fails there and restates it.
-// - Outputs: Stated (a library-only table starts at its count there), NodeRoom, KeyedRoom, NodeCapacity, KeyedCapacity.
+// - Inputs: none; the counts are stated here and KimiLibraryShapeTest compares them with what the library pass fills (LibraryLayer.Size,
+//   its table counts at its end), so a library change that moves a count past its Granule fails there and restates it.
+// - Outputs: Stated (a library-only table starts at its count there), NodeRoom, KeyedRoom, KeyedCapacity.
 // - Invariants: each stated count is the library's count rounded up to the Granule, a node column's to the ColumnGranule
 //   (Tables.Rounded), so after a Bind of the library
 //   alone each table with a room keeps at least that room free (Binding.TableFree; KimiLibraryShapeTest): a program that adds fewer
@@ -85,11 +87,6 @@ internal static class KimiLibrarySize
         CapabilityNodes: 1024,
         SubstitutedParts: 1024);
 
-    /// <summary>Gives the capacity the node table starts at.</summary>
-    /// <param name="stated">The library's stated nodes.</param>
-    /// <returns>The stated count and the node room.</returns>
-    internal static int NodeCapacity(int stated) => stated + NodeRoom;
-
     /// <summary>Gives the capacity a keyed table with a room starts at.</summary>
     /// <param name="stated">The library's stated entries in the table.</param>
     /// <returns>The stated count and the keyed room.</returns>
@@ -121,7 +118,7 @@ internal static class KimiLibrarySize
         int RangeCalls, // The library's rangeCalls column: the slots its pages hold.
         int ResolvedKeys, // The library's resolvedKeys column: the slots its pages hold.
         int MatchPlans, // The library's matchPlans column: the slots its pages hold.
-        int TypeKeys, // TyCtxt's keys of the interned Types.
+        int TypeKeys, // TyCtxt's interned Types, the entries of its keyed table (TyCtxt.KeyCount).
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
         int MemberSelections, // Binding's member selections: library-only.

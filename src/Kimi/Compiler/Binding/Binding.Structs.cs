@@ -96,7 +96,7 @@ public sealed partial class Binding
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
         }
 
-        return result is null ? null : this.CloseClosureTypes(result, subst);
+        return result is null ? null : this.CloseNestedTypes(result, subst);
     }
 
     // SPEC 6.3.4, 15.1.5, 16.3.1: what the receiver `self` of a constructor or destructor grants, the one decision the Place checks read
@@ -127,8 +127,8 @@ public sealed partial class Binding
     private static bool RefusedReceiver(Koto? node) => Receiver(node) is { Whole: false } && node!.BindingFailure != BindingFailure.None;
 
     // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
-    private static ReceiverAuthority? ReceiverOfPart(Koto place)
-        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(ElementAccess.OwnedPathRoot(part)) : null;
+    private ReceiverAuthority? ReceiverOfPart(Koto place)
+        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(ElementAccess.OwnedPathRoot(this, part)) : null;
 
     // One row of the special-receiver table (Receiver).
     private readonly record struct ReceiverAuthority(SemanticsKind Parts, bool Whole, bool LendsFields);
@@ -402,7 +402,7 @@ public sealed partial class Binding
     // SPEC 6.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
     private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
     {
-        parent = AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
+        parent = AdtDef.Base(this.types, this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
@@ -496,7 +496,7 @@ public sealed partial class Binding
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
         var type = baseInitializer
-            ? AdtDef.Base(this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
+            ? AdtDef.Base(this.types, this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
             : ((MemberAccessKoto)call.Method).Left.BoundType!;
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)

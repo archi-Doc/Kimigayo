@@ -53,21 +53,26 @@ public class DynamicArrayBorrowTest
     }
 
     // SPEC 4.8.4, 15.6.3, 22.2 (R8-A1d): a view keeps the Loan its function's `during a` states, also over an empty Array or `[0 of E]`, where no
-    // element backs it, reborrowed, in a generic body and through an owning iterator; each program labelled from SPEC.
+    // element backs it, reborrowed, in a generic body and through an owning iterator; each program labelled from SPEC. A function returning
+    // a UniqSlice with no direct borrowed input omits the view's slot `source`, which requires uniq: SPEC 15.4.3 rule 3 gives an aggregate
+    // slot the static default only when its Loan requirement is none or ref, else it needs an explicit contract, so the record is the
+    // omission's (MissingOriginBinding_Kd at the result Type); the `return`'s relation and a call of that function read the failed
+    // signature and add no record (SPEC 23.1.2). The one pass bound the program before the library and so read the slot's requirement
+    // before the library formed it (G949 S1-r1b; F's ruling 193).
     [Theory]
     [InlineData("public func main()\n    var a: Array<i32> = []\n    var v = a.sliceUniq()\n    a.append(1)\n    Console.writeLine(\"\\(v.length)\")\n", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var a: Array<i32> = []\n    var it = a.iterate()\n    a.append(1)\n    _ = it.next()\n", "CallActivationConflict_Kd")]
     [InlineData("public func main()\n    var a: [0 of i32] = []\n    var v = a.sliceUniq()\n    let n = a.length\n    let w = a.sliceUniq()\n    Console.writeLine(\"\\(v.length) \\(n) \\(w.length)\")\n", "ComparisonLoanConflict_Kd ComparisonLoanConflict_Kd")]
     [InlineData("func f(a: uniq/Array<i32>) -> uniq/i32 during a\n    var it = a.iterateUniq()\n    match it.next()\n        .Some(let first) => return first@move\n        .None => $abort(\"none\")\npublic func main()\n    var a: Array<i32> = [1]\n    let r = f(a@uniq)\n    a.append(2)\n    r@follow = 3\n", "ComparisonLoanConflict_Kd")]
     [InlineData("func f() -> Slice<i32>\n    var a: Array<i32> = [1]\n    return a[..]\npublic func main()\n    Console.writeLine(\"\\(f().length)\")\n", "UnsatisfiedOriginRelation_Kd UnsatisfiedOriginRelation_Kd")]
-    [InlineData("func f(n: i32) -> UniqSlice<i32>\n    var a: Array<i32> = [n]\n    return a.sliceUniq()\npublic func main()\n    _ = f(1)\n", "InvalidOriginBinding_Kd UnsatisfiedOriginRelation_Kd")]
+    [InlineData("func f(n: i32) -> UniqSlice<i32>\n    var a: Array<i32> = [n]\n    return a.sliceUniq()\npublic func main()\n    _ = f(1)\n", "MissingOriginBinding_Kd")]
     [InlineData("func f() -> ArrayIterator<i32>\n    var a: Array<i32> = [1]\n    return a.iterate()\npublic func main()\n    _ = f()\n", "UnsatisfiedOriginRelation_Kd UnsatisfiedOriginRelation_Kd")]
     [InlineData("public func main()\n    var a: Array<i32> = []\n    var v = a.sliceUniq()\n    var w = a.sliceUniq()\n    Console.writeLine(\"\\(v.length) \\(w.length)\")\n", "ComparisonLoanConflict_Kd")]
     [InlineData("func f() -> isize\n    var keep: Array<i32> = [1]\n    var v = keep.sliceUniq()\n    if v.length > 0\n        var inner: Array<i32> = []\n        v = inner.sliceUniq()\n    return v.length\npublic func main()\n    _ = f()\n", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var a: Array<i32> = []\n    let p = a.tryGetPairUniq(first: 0, second: 1)\n    a.append(1)\n    match p\n        .Some(let q) => q.0@follow = 2\n        .None => ()\n", "ComparisonLoanConflict_Kd SharedPathAccess_Kd")]
     [InlineData("public func main()\n    var a: Array<i32> = []\n    let p = a.tryGetPairUniq(first: 0, second: 1)\n    let r = a.tryGetPairUniq(first: 0, second: 1)\n    match p\n        .Some(let q) => q.0@follow = 2\n        .None => ()\n    match r\n        .Some(let q) => q.0@follow = 2\n        .None => ()\n", "ComparisonLoanConflict_Kd SharedPathAccess_Kd SharedPathAccess_Kd")]
     [InlineData("func f<T>(a: uniq/Array<T>) -> isize\n    var it = a.iterate()\n    a.clear()\n    _ = it.next()\n    return 0\npublic func main()\n    var a: Array<i32> = []\n    Console.writeLine(\"\\(f(a@uniq))\")\n", "CallActivationConflict_Kd")]
-    [InlineData("func f<T>() -> UniqSlice<T>\n    var a: Array<T> = []\n    return a.sliceUniq()\npublic func main()\n    _ = f<i32>()\n", "InvalidOriginBinding_Kd InvalidOriginBinding_Kd UnsatisfiedOriginRelation_Kd")]
+    [InlineData("func f<T>() -> UniqSlice<T>\n    var a: Array<T> = []\n    return a.sliceUniq()\npublic func main()\n    _ = f<i32>()\n", "MissingOriginBinding_Kd")]
     [InlineData("func f<T>(a: uniq/Array<T>) -> isize\n    var v = a.sliceUniq()\n    var w = a.sliceUniq()\n    return v.length + w.length\npublic func main()\n    var a: Array<i32> = []\n    Console.writeLine(\"\\(f(a@uniq))\")\n", "ComparisonLoanConflict_Kd")]
     [InlineData("func f<T>(a: uniq/Array<T>, item: T) -> isize\n    var v = a.sliceUniq()\n    a.append(item@move)\n    return v.length\npublic func main()\n    var a: Array<i32> = []\n    Console.writeLine(\"\\(f(a@uniq, 1))\")\n", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var x: i32 = 1\n    var a: Array<ref/i32> = []\n    if x > 0\n        a.append(x@ref)\n    var it = a@move.intoIterator()\n    x = 2\n    _ = it.next()\n", "ComparisonLoanConflict_Kd")]

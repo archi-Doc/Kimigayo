@@ -69,7 +69,7 @@ public sealed partial class Binding
             return [];
         }
 
-        if (region.Version != this.regionVersion)
+        if (!Current(region.Version, this.regionVersion))
         {
             region.Sources.Clear();
             this.regionWork.Clear();
@@ -177,6 +177,59 @@ public sealed partial class Binding
             => value is null || parent is null ? null : (value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value, parent);
     }
 
+    // An Origin of atoms of the frozen library table only: such an atom, or a meet of such (contract C's library-only key).
+    private static bool LibraryOnly(BoundOrigin origin)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return origin.Binder?.SyntaxOwner is { Frozen: true };
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (!LibraryOnly(origin.Operands[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Contract C (PLAN G949 S1-1, s11-design 4.1): a row of the layer's part is frozen (FrozenRegion, FreezeLocalRegions; a program row
+    // never is), so a new parent or solution on it, which the region graph's two mutations would write, is the internal-invariant form.
+    // An identical re-record writes nothing and is not refused.
+    private static void EnsureWritable(LocalRegion region)
+    {
+        if (region.Version == FrozenRegion)
+        {
+            throw new InvalidOperationException("A pass wrote a frozen library region (InternalInvariant; PLAN G949 S1-1).");
+        }
+    }
+
+    // O25 (PLAN G949 S1-1, R): every row of the running part has its sources for the run's version, so no later pass forms a source
+    // list on a row another pass made.
+    private void CompleteLocalRegions()
+    {
+        foreach (var origin in this.localRegions.Keys)
+        {
+            this.LocalRegionSources(origin);
+        }
+    }
+
+    // PLAN G949 S1-1's freeze of the layer's part (FreezeLibrary, after CompleteLocalRegions): each row with its sources for the run
+    // reads current in every later pass (FrozenRegion, never the "never computed" -1).
+    private void FreezeLocalRegions()
+    {
+        foreach (var region in this.localRegions.Values)
+        {
+            if (region.Version == this.regionVersion)
+            {
+                region.Version = FrozenRegion;
+            }
+        }
+    }
+
     // The running pass's rows, emptied in place; the version starts again per run (BeginRun).
     private void ResetLocalRegions()
     {
@@ -186,6 +239,7 @@ public sealed partial class Binding
             region.Values.Clear();
             region.Sources.Clear();
             region.Version = -1;
+            region.Solved = null;
         }
 
         this.regionWork.Clear();
@@ -209,6 +263,13 @@ public sealed partial class Binding
         }
 
         region = new();
+        if (LibraryOnly(origin))
+        {
+            // Contract C (s11-design 4.1; n55-design 2.3 rule 6): no pass after the freeze records a bound on a target of frozen library
+            // atoms only, whose row the layer's part would hold; a frozen Sources would miss it silently.
+            throw new InvalidOperationException("A pass after the freeze made a region row of library atoms only (InternalInvariant; PLAN G949 S1-1).");
+        }
+
         this.localRegions.Add(origin, region);
         return region;
     }
@@ -260,9 +321,48 @@ public sealed partial class Binding
         var region = this.WrittenRegion(target);
         if (!region.Parents.Contains(source))
         {
+            EnsureWritable(region);
             region.Parents.Add(source);
             region.Values.Add(evidence);
             this.regionVersion++;
+        }
+
+        // J2: a bound of a waited variable's own solution `(E and region)` bounds its region too (RecordOpening).
+        if (region.Solved is { } solved && BoundsSolved(source, target, solved))
+        {
+            this.RecordRegionBound(source, solved, evidence);
+        }
+    }
+
+    // J2 (SPEC 15.3.6, 15.2.2; the owner's O-358 (a), O-362 (a); PLAN G936): the record of a region the selected call's late solve
+    // opened beside the evidence candidate `bound` (OriginInference.Opened). The region lies within `bound`, and within the longer
+    // end of every relation whose shorter end is the variable's own solution `(bound and region)`: the waiting part's fit, recorded
+    // at its completion before this, a well-formedness relation over the solution, and any relation formed later
+    // (RecordRegionBound reads Solved). Both are free: with the shorter end exactly the solution, replacing the region by its meet
+    // with the longer end keeps every requirement over the solution (SPEC 15.2.2). So the region has the sources that the oracle's
+    // reading of a region needs (UniversalRelations.Outlives, SourcesIn), and no row is added. A trial records nothing.
+    private void RecordOpening(BoundOrigin region, BoundOrigin bound, Koto call)
+    {
+        this.RecordRegionBound(bound, region, call);
+        var solution = this.Meet(bound, region);
+        if (ReferenceEquals(solution, region))
+        {
+            return; // `bound` is static: the solution is the region itself, whose bounds are recorded on it.
+        }
+
+        var entry = this.WrittenRegion(solution);
+        if (!ReferenceEquals(entry.Solved, region))
+        {
+            EnsureWritable(entry);
+            entry.Solved = region;
+        }
+
+        for (var i = 0; i < entry.Parents.Count; i++)
+        {
+            if (BoundsSolved(entry.Parents[i], solution, region))
+            {
+                this.RecordRegionBound(entry.Parents[i], region, entry.Values[i]);
+            }
         }
     }
 
@@ -303,5 +403,8 @@ public sealed partial class Binding
         internal List<Koto> Values { get; } = new();
 
         internal int Version { get; set; } = -1;
+
+        // J2: for a waited variable's own solution `(E and region)`, its region (RecordOpening); null for any other Origin.
+        internal BoundOrigin? Solved { get; set; }
     }
 }

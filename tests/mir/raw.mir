@@ -4,9 +4,9 @@ fn init @9
   _2: i32 arg y @11
   _3: () temp @12
   _4: () temp @13 s1
-  _5: i32 temp @14 s1
+  _5: i32 temp (Assigned) @14 s1
   _6: () temp @18 s1
-  _7: i32 temp @19 s1
+  _7: i32 temp (Assigned) @19 s1
   s1: lexical in s0 @12
   bb0:
       StorageLive(_3) @12
@@ -40,7 +40,7 @@ fn addresses @25
   _2: raw/Point var p @30 s1
   _3: () temp @37 s1
   _4: () temp @39 s2
-  _5: i32 temp @40 s2
+  _5: i32 temp (Assigned) @40 s2
   _6: i32 var second @46 s2
   _7: raw/Point temp @49 s2
   _8: raw/i32 var field @53 s2

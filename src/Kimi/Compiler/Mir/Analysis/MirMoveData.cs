@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the move paths of one MIR body (SPEC 15.1.3; DECISIONS R4-M21).
-// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor). Output:
+// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor); the
+// programs' TyCtxt (MirAnalysis's), whose instances' stored Types the paths read. Output:
 // the paths numbered in pre-order, so a subtree is the range [path, End), each with its step from its parent, and the path of each Place.
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and
 // argument; a constructor's _0 has a child per Field with a stored Type, the Fields it places (MirBuilder.Stored; SPEC 23.1.2), and its
@@ -14,7 +15,8 @@
 // Each placing location's facts (SPEC 14.10.3; DECISIONS R4-M175), which A1 applies: an Assign's Never parts, the components of its
 // destination that its construction leaves unplaced, as their operand is the Never value, and its carries, the paths of a temp it takes
 // whose own state A1 copies onto the destination's counterpart on each path: the temp's tracked parts and, for a whole temp that may hold
-// nothing there (Absent), the temp itself (a Use's counterpart is its destination), a Fill's components being the elements a Place can
+// nothing there (Absent), the temp itself (a Use's counterpart is its destination, of whatever kind: A1 keeps its state, exact for a
+// first placement, and an overwrite's Use takes a MirLocalRole.Assigned temp, placed on every path), a Fill's components being the elements a Place can
 // name alone and, for the others, the destination's Unplaced lane (Elements); a Places Call's, at the construction it inserts into
 // (its entry not inserted, SPEC 12.4.3). Only Move Paths are numbered: a root, a constructor's Field or base, a path a Place of the body
 // resolves to, and on the source side of a carry the counterpart of the destination's nearest Move Path at or below the component
@@ -47,7 +49,8 @@ internal readonly record struct MirMovePath(int Local, int Parent, int End, bool
 /// <summary>The move paths of one body (SPEC 15.1.3, DECISIONS R4-M21), view-independent: <see cref="Build"/> collects them in one walk of
 /// the body's uses, and <see cref="Find"/> gives a Place's path and whether the Place is the path itself, a raw Place below it or a Place
 /// without a Move Path below it.</summary>
-internal sealed class MirMoveData
+/// <param name="types">The Type context of the programs, whose instances' stored Types the paths read.</param>
+internal sealed class MirMoveData(TyCtxt types)
 {
     /// <summary>The Place is its path.</summary>
     internal const int Direct = 0;
@@ -137,16 +140,17 @@ internal sealed class MirMoveData
             var self = body.Locals[0].Type;
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
-                if (AdtDef.FieldType(self, i) is not null)
+                if (AdtDef.FieldType(types, self, i) is not null)
                 {
                     var field = this.Child(0, MirProjectionKind.Field, i);
                     (this.once[field], this.named[field]) = (AdtDef.PlacedOnce(self, i), true);
                 }
             }
 
-            if (AdtDef.Base(self) is not null)
+            if (AdtDef.Base(types, self) is not null)
             {
-                this.named[this.Child(0, MirProjectionKind.Base, 1)] = true;
+                var layer = this.Child(0, MirProjectionKind.Base, 1); // Adding grows the arrays first.
+                this.named[layer] = true;
             }
         }
 
@@ -298,9 +302,10 @@ internal sealed class MirMoveData
     // (Elements). A carry pairs each tracked path below the temp Place an operand or a Use takes (whole or a part) with the same path at
     // the component, so A1 copies the temp's state there on each path, and a whole temp that may hold nothing (Absent) with the component
     // itself: a form without a value on an assumed path places nothing, into every element of a Fill (SPEC 4.3.3). A Use's component is
-    // its destination, which then keeps its state (MirInit): one that takes one placement in its lifetime, a temp, which then may hold
-    // nothing too (so the Use does not place it for its chain), or a let binding; a Place a Use overwrites has its old value's Drop
-    // before the Use (MirBuilder.Overwrite), which that path must not take either (PLAN open issue). A temp's tracked paths are those its
+    // its destination, whatever it is, which then keeps its state (MirInit): a first placement's, a destination the value's construct
+    // cannot touch (a temp, which then may hold nothing too, so the Use does not place it for its chain, a let or var initialization or
+    // binding, the return local), as an overwrite's Use is reached only by the paths that placed its value (MirBuilder.Replace,
+    // MirLocalRole.Assigned, which MirInit checks); no kind of destination is read here. A temp's tracked paths are those its
     // Never parts and carries created below it (its runs): structure only; a Closure environment has no component path. An Array
     // literal's element has one, as a fixed array's, which no Place names (an Array's Index ends the path), so a whole use or an indexed
     // one sees it (SPEC 15.1.2, 15.1.3).
@@ -316,8 +321,6 @@ internal sealed class MirMoveData
 
         var fill = rvalue.Kind == MirRvalueKind.Aggregate && kind == MirAggregateKind.Fill;
         var whole = destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp;
-        var first = whole || (destination.Projection == 0 && this.once[destination.Root]); // A temp or a let binding: placed once.
-        var takes = rvalue.Kind == MirRvalueKind.Aggregate || first; // Whether a whole temp's own state has a component to go to.
         var copies = fill ? -1 : 1; // A Fill's components, listed where a fact first needs them (Elements).
         var parts = this.Open();
         for (var i = 0; i < rvalue.Count; i++)
@@ -337,7 +340,7 @@ internal sealed class MirMoveData
         {
             var taken = this.Taken(rvalue, i);
             var temp = taken < 0 ? -1 : this.body.Operands[rvalue.Start + i].Place.Root;
-            var absent = temp >= 0 && takes && this.Absent(temp, taken, chain);
+            var absent = temp >= 0 && this.Absent(temp, taken, chain);
             var carried = temp >= 0 && (absent || this.nevers.TryGetValue(~temp, out _));
             copies = carried && copies < 0 ? this.Elements(found >> 2, rvalue) : copies;
             for (var k = 0; carried && k < copies; k++)
@@ -580,7 +583,7 @@ internal sealed class MirMoveData
         MirAggregateKind.Tuple => this.Child(path, MirProjectionKind.Field, i),
         MirAggregateKind.FixedArray or MirAggregateKind.Array => this.Child(path, MirProjectionKind.ConstIndex, i),
         _ when AdtDef.IsEnum(aggregate.Type) => this.Child(this.Child(path, MirProjectionKind.Downcast, aggregate.Arg), MirProjectionKind.Field, i),
-        _ when AdtDef.Base(aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
+        _ when AdtDef.Base(types, aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
         _ => this.Child(path, MirProjectionKind.Field, i),
     };
 
