@@ -152,8 +152,8 @@ internal static class DropGlue
         if (Row(type) == DropGlueRow.Parts && AdtDef.Destructor(type) is null && !AdtDef.IsInlineStorage(type))
         {
             var first = walk.Count;
-            MirDropTable.Level(type, walk);
-            _ = Glue(walk, first, null, 0, into);
+            MirDropTable.Level(types, type, walk);
+            _ = Glue(types, walk, first, null, 0, into);
             walk.RemoveRange(first, walk.Count - first);
             return;
         }
@@ -177,19 +177,20 @@ internal static class DropGlue
     /// base 0 and its Fields after it), a fixed array's element by its position, and an enum's Case payload, which has no glue of its
     /// own, as its parts under the payload's rows: an Open payload's steps, a payload destroyed whole the parts of Mir's level of the
     /// payload Tuple (<see cref="MirDropTable.Level"/>).</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="drops">The drop table.</param>
     /// <param name="body">The ordinal of the body whose row it is.</param>
     /// <param name="row">The row.</param>
     /// <param name="type">The row's closed Type.</param>
     /// <param name="walk">The scratch list of Mir's steps, left as it was.</param>
     /// <param name="into">The list the steps are appended to.</param>
-    internal static void Destroyed(MirDropTable drops, int body, int row, BoundType type, List<MirDropStep> walk, List<DropStep> into)
+    internal static void Destroyed(TyCtxt types, MirDropTable drops, int body, int row, BoundType type, List<MirDropStep> walk, List<DropStep> into)
     {
         var start = walk.Count;
-        drops.Destroyed(body, row, type, walk);
+        drops.Destroyed(types, body, row, type, walk);
         for (var i = start; i < walk.Count;)
         {
-            i = Glue(walk, i, null, 0, into);
+            i = Glue(types, walk, i, null, 0, into);
         }
 
         walk.RemoveRange(start, walk.Count - start);
@@ -197,7 +198,7 @@ internal static class DropGlue
 
     // Maps Mir's step at an index, a part of its level's Type (null at the top) under a Case ordinal (a payload's element's, else 0), and
     // an Open step's level with it; the index after it.
-    private static int Glue(List<MirDropStep> walk, int index, BoundType? owner, int ordinal, List<DropStep> into)
+    private static int Glue(TyCtxt types, List<MirDropStep> walk, int index, BoundType? owner, int ordinal, List<DropStep> into)
     {
         var step = walk[index];
         var (type, payload) = (step.Type, owner is not null && step.Step == MirProjectionKind.Downcast);
@@ -206,10 +207,10 @@ internal static class DropGlue
             // A payload destroyed whole has no glue of its own: the parts of Mir's level of the payload Tuple, which no row governs,
             // each mapped under the Case's ordinal, then governed as the payload is (its row, or its parent's own bit).
             var (level, mapped) = (walk.Count, into.Count);
-            MirDropTable.Level(type, walk);
+            MirDropTable.Level(types, type, walk);
             for (var i = level + 1; walk[i].Kind != MirDropStepKind.End;)
             {
-                i = Glue(walk, i, type, (int)step.Arg, into);
+                i = Glue(types, walk, i, type, (int)step.Arg, into);
             }
 
             walk.RemoveRange(level, walk.Count - level);
@@ -223,7 +224,7 @@ internal static class DropGlue
 
         // The aggregate writer's numbering: a struct's base first, then its Fields; a fixed array's element at its position.
         var array = owner?.Kind == BoundTypeKind.FixedArray;
-        var based = owner is not null && AdtDef.Base(owner) is not null ? 1 : 0;
+        var based = owner is not null && AdtDef.Base(types, owner) is not null ? 1 : 0;
         var position = step.Step == MirProjectionKind.Base ? 0 : (int)step.Arg + based;
         if (owner is null || array)
         {
@@ -244,7 +245,7 @@ internal static class DropGlue
 
         for (index++; walk[index].Kind != MirDropStepKind.End;)
         {
-            index = Glue(walk, index, type, payload ? (int)step.Arg : 0, into);
+            index = Glue(types, walk, index, type, payload ? (int)step.Arg : 0, into);
         }
 
         if (!payload)

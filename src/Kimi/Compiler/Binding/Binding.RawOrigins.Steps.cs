@@ -166,10 +166,10 @@ public sealed partial class Binding
 
         var inputs = this.retentionBinderInputs;
         inputs.Clear();
-        _ = TyCtxt.Signature(function, null, -1, out var count);
+        _ = this.types.Signature(function, null, -1, out var count);
         for (var i = 0; i < count; i++)
         {
-            if (TyCtxt.Signature(function, null, i, out _) is { } input)
+            if (this.types.Signature(function, null, i, out _) is { } input)
             {
                 inputs.Add(input);
             }

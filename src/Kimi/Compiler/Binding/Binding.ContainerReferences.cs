@@ -315,7 +315,7 @@ public sealed partial class Binding
 
                 if (!ReferenceEquals(container, parent))
                 {
-                    var selected = this.LookupTypeMember(environment, symbol.Name, scope, typeRole: true);
+                    var selected = this.LookupMember(environment, symbol.Name, scope, UseRow(UseNode(syntax))); // The row the path selected it in.
                     environment = ReferenceEquals(selected.Member, symbol) ? selected.DeclaringType : null;
                 }
             }

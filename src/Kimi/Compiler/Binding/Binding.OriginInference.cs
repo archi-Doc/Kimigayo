@@ -34,17 +34,26 @@ public sealed partial class Binding
         return new(kind, longer, shorter, equality, comparison) { Clause = clause, Path = member, Depth = (byte)(member == 0 ? 0 : 1) };
     }
 
-    private OriginInference BeginOriginInference(Koto use, Koto binder)
+    // The solve state of `binder`'s candidacy at `use`, retained for every run of the candidate; a candidate that solves no Origin of
+    // its own reads and writes only its openings there (OriginInference.Opened), without beginning a solve.
+    private OriginInference InferenceOf(Koto use, Koto binder)
     {
         if (!this.originInferences.TryGetValue((use, binder), out var inference))
         {
             this.originInferences.Add((use, binder), inference = new(use, binder));
         }
 
+        return inference;
+    }
+
+    private OriginInference BeginOriginInference(Koto use, Koto binder)
+    {
+        var inference = this.InferenceOf(use, binder);
         inference.Bounds.Clear();
         inference.Variables.Clear();
         inference.WellFormed.Clear();
         inference.PremiseSolved.Clear();
+        inference.WaitingNamed.Clear();
         inference.Quantifiers.Clear();
         inference.Comparison = default;
         inference.Conditional = false;
@@ -59,7 +68,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (pattern.Origin is { } p && actual.Origin is { } a && !InactiveOuterOrigin(pattern, this, null, inference.Comparison))
+        if (pattern.Origin is { } p && actual.Origin is { } a && !this.InactiveOuterOrigin(pattern, this, null, inference.Comparison))
         {
             // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, as the walk's (SlotCondition).
             Add(p, a, polarity, SlotCondition(actual, this, inference.Use, inference.Comparison));
@@ -67,8 +76,8 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
-            var variance = OriginArgumentVariance(pattern, i, this);
-            Add(pattern.OriginArguments[i], actual.OriginArguments[i], Compose(polarity, variance), 0);
+            var variance = this.OriginArgumentVariance(pattern, i, this);
+            Add(pattern.OriginArguments[i], actual.OriginArguments[i], ComposePolarity(polarity, variance), 0);
         }
 
         // SPEC 15.3.4, 10.7: inside a Function Type pair, each side's own per-call Origins (an Input Origin of its BoundType.Binder) are
@@ -87,15 +96,13 @@ public sealed partial class Binding
                 pattern.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema)
             {
-                sign = Compose(polarity, schema.GenericSlots[i].OriginVariance);
+                sign = ComposePolarity(polarity, schema.GenericSlots[i].OriginVariance);
             }
 
             this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result, known);
         }
 
         inference.Quantifiers.RemoveRange(enclosing, inference.Quantifiers.Count - enclosing);
-
-        static int Compose(int sign, OriginVariance variance) => variance == OriginVariance.Covariant ? sign : variance == OriginVariance.Contravariant ? -sign : 0;
 
         void Add(BoundOrigin parameter, BoundOrigin value, int sign, ulong condition)
         {
@@ -233,6 +240,21 @@ public sealed partial class Binding
             finally
             {
                 this.originScratch.Return(representatives, clearArray: true);
+            }
+        }
+
+        // J2 (SPEC 15.3.6, 10.5.1; the owner's O-362 (a)): a waited variable's solution is the covariant candidate written out, the meet
+        // of its evidence candidate E, solved above as any covariant variable's (so a variable its clauses bound through it is solved
+        // as without the waiting part), and the call's region (CallRegion), which stands for the bounds the waiting part gives after
+        // selection. E is kept beside the region at its opening (OriginInference.Open); a later run of the candidate, where the
+        // completed waiting part is evidence and the solved value holds the region, writes the kept E's meet again, so the variable
+        // has one spelling in every run (SPEC 10.5.4). Without an evidence candidate it is the region alone.
+        foreach (var variable in inference.Variables)
+        {
+            if (Waited(variable))
+            {
+                var region = this.CallRegion(use, variable.Origin.Slot);
+                Set(variable.Origin, Get(variable.Origin) is { } solved ? this.Meet(inference.Open(region, solved), region) : region);
             }
         }
 
@@ -376,6 +398,12 @@ public sealed partial class Binding
             return upper ?? lower;
         }
 
+        // J2 (SPEC 15.3.6; the owner's O-362 (a)): a covariant variable that an evidence position and a position without evidence both
+        // name (WaitingNamed) is a variable the waiting part's check bounds too, which the solve does not see: its solution is its
+        // evidence candidate met with the region of the call, judged after selection by each fit at its source.
+        bool Waited((BoundOrigin Origin, int Polarity) variable)
+            => variable is { Polarity: 1, Origin.Kind: OriginKind.Parameter } && ReferenceEquals(variable.Origin.Binder, binder) && inference.WaitingNamed.Contains(variable.Origin.Slot);
+
         BoundOrigin Project(BoundOrigin origin) => declaringType?.Symbol is { } owner ?
             this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments) : origin;
 
@@ -466,6 +494,18 @@ public sealed partial class Binding
         // position fixes this Origin" fact: U4's Decided column takes it over (its removal condition).
         internal List<BoundOrigin> PremiseSolved { get; } = new();
 
+        // J2 (SPEC 15.3.6; the owner's O-362 (a); PLAN G936): the slots of the callee's own Origin parameters that an evidence position
+        // and a position without evidence both name (SlotSolution.OpenWaited, the one writer, a candidate's late solve only): the solve
+        // writes a covariant one as its evidence candidate met with the call's region (CallRegion), which the waiting part's check
+        // bounds as the evidence's fit does; empty for any other solve.
+        internal HashSet<int> WaitingNamed { get; } = new();
+
+        // J2 (SPEC 15.3.6; PLAN G936): the candidate's openings: each region its late solve opened (a Type slot's SlotRegion,
+        // OpenSlotOrigins; a waited Origin's CallRegion, the solve) with the evidence candidate E it stands beside, so the variable's
+        // solution is `(E and region)`. Written at the opening (Open), cleared at the candidate's first solve (OpenWaited) and kept for
+        // its later runs; the selected candidate's are the region graph's records (RecordOpenings). E is never read back from a meet.
+        internal List<(BoundOrigin Region, BoundOrigin Bound)> Opened { get; } = new();
+
         // SPEC 15.3.4: the per-call binders (BoundType.Binder) of the Function Types the collection is inside, on either side
         // (CollectOriginInference, the one writer); empty between collections.
         internal List<Koto> Quantifiers { get; } = new();
@@ -482,6 +522,34 @@ public sealed partial class Binding
 
         // Whether a bound was added with a condition, so a solve folds conditional limits (SolveOriginInference).
         internal bool Conditional { get; set; }
+
+        // The evidence candidate of `region`'s variable: `solved`, kept at its opening; the kept one where `solved` already holds the
+        // region, a later run's value that the completed waiting part has entered. Where such a value has no kept candidate, the
+        // variable had none at its opening (the first run wrote the region alone), so there is no E to read back: `solved` is that
+        // run's own solve over the region and is returned as it is.
+        internal BoundOrigin Open(BoundOrigin region, BoundOrigin solved)
+        {
+            var later = HoldsOrigin(solved, region);
+            for (var i = 0; i < this.Opened.Count; i++)
+            {
+                if (ReferenceEquals(this.Opened[i].Region, region))
+                {
+                    if (!later)
+                    {
+                        this.Opened[i] = (region, solved);
+                    }
+
+                    return this.Opened[i].Bound;
+                }
+            }
+
+            if (!later)
+            {
+                this.Opened.Add((region, solved));
+            }
+
+            return solved;
+        }
 
         internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true, ulong condition = 0)
         {

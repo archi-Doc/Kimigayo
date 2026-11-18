@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 //   composed once per candidate at its first solve (RetainChildRows, the probe's state) and retained, which every later solve of the
 //   candidate (CollectPositionPremises) and its selected call's judgment (JudgePositionRows) read, each leaf at its own sub-Type; both
 //   readers stay here until U5's shared relation judge. Its evidence leaves (IsEvidenceLeaf) are read by EvidenceNames and by a value
-//   call's solve (SolveValueCallOrigins, PLAN G504).
+//   call's solve (SolveValueCallOrigins, PLAN G504); the variables its rows name, by CollectPositionNames (J2, PLAN G936).
 // - Inputs: the arguments, the candidate's parameter patterns, solution and contributions (SlotSolution.Contribute, ContributePayloads);
 //   the position composition (Binding.ArgumentKinds.Positions.cs) and each part's contribution (PartContribution) for child rows.
 // - Outputs: PositionRow; SlotSolution.Rows, the candidate's root rows, a slice of CallEvaluation.Rows (rowScratch); childRows, the
@@ -51,6 +51,23 @@ public sealed partial class Binding
         slice[0] = 0;
         slice[1] = -1;
         return slice.AsSpan(0, 2);
+    }
+
+    // A callee variable's name at its polarity's set (AddNames).
+    private static void AddName(int index, int polarity, ref SlotSet covariant, ref SlotSet other, ref SlotSet contract)
+    {
+        if (polarity == ContractPolarity)
+        {
+            contract.Add(index);
+        }
+        else if (polarity > 0)
+        {
+            covariant.Add(index);
+        }
+        else
+        {
+            other.Add(index);
+        }
     }
 
     // Whether retained row `j` of a slice ending at `end` has no child row: the next row is not its child (pre-order).
@@ -153,6 +170,130 @@ public sealed partial class Binding
         }
     }
 
+    // J2 (SPEC 10.5.1, 10.8, 15.3.6, 15.3.7; the owner's O-358 (a), O-362 (a); PLAN G936): the callee variables that the candidate's
+    // positions name, a Type slot g at index g and an Origin parameter k at index CallSlotCount + k, by what each position contributes
+    // and the variance there (SlotComponentPolarity), in one walk of the retained rows: a position without evidence (a Signature leaf
+    // row, or a Signature root without child rows) names into `waiting`; an evidence position (an Evidence leaf row, an Evidence root
+    // without child rows, the receiver: EvidenceNames' reading) at a covariant position into `covariant`; an evidence position at another
+    // variance, and any position inside a Function Type (compared as a contract, its required Origins rigid), into `blocked`. A variable
+    // in `waiting` and `covariant` and not in `blocked` is one that the waiting part's check bounds as well as the evidence's fit, which
+    // the candidate opens as a region of the call (SlotSolution.OpenWaited).
+    private void CollectPositionNames(in SlotSolution solution, ref SlotSet waiting, ref SlotSet covariant, ref SlotSet blocked)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            this.ChildGroup(solution, i, out var start, out var end);
+            if (start == end && solution.Rows[i] is { Pattern: { } pattern } root)
+            {
+                this.AddPositionNames(pattern, root.Contribution, solution, ref waiting, ref covariant, ref blocked);
+            }
+
+            for (var j = start; j < end; j++)
+            {
+                if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Pattern: { } leaf } row)
+                {
+                    this.AddPositionNames(leaf, row.Contribution, solution, ref waiting, ref covariant, ref blocked);
+                }
+            }
+        }
+
+        if (solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
+            function.Parameters[receiver].Type.BoundType is { } receiverPattern)
+        {
+            this.AddPositionNames(receiverPattern, Contribution.Evidence, solution, ref waiting, ref covariant, ref blocked);
+        }
+
+        // O-368 (a): a variable that a Constraint of the callee reads is judged by its proof from premises (SPEC 8.3, 10.1 step 5), which
+        // reads no bound of a region, so it keeps the evidence's binding (`T is Owned`, `F is Callable<() -> T>`). The Constraints are
+        // the lists step five proves for the candidate (CandidateClauses): its own and, at a constructor, its owner Type's.
+        for (var list = 0; list < 2; list++)
+        {
+            var clauses = CandidateClauses(solution.Binder, solution.SlotOwner, list);
+            for (var c = 0; clauses is not null && c < clauses.Count; c++)
+            {
+                if (clauses[c] is IsKoto { BoundConstraint: { } constraint })
+                {
+                    this.AddConstraintNames(constraint, solution, ref blocked);
+                }
+            }
+        }
+    }
+
+    // The callee variables a Constraint's Types name (its subject, its required Type, its operands'), all into `blocked`.
+    private void AddConstraintNames(BoundConstraint? constraint, in SlotSolution solution, ref SlotSet blocked)
+    {
+        if (constraint is null)
+        {
+            return;
+        }
+
+        foreach (var type in (ReadOnlySpan<BoundType?>)[constraint.Subject, constraint.RequiredType])
+        {
+            if (type is not null)
+            {
+                this.AddNames(type, ContractPolarity, solution, ref blocked, ref blocked, ref blocked);
+            }
+        }
+
+        this.AddConstraintNames(constraint.Left, solution, ref blocked);
+        this.AddConstraintNames(constraint.Right, solution, ref blocked);
+    }
+
+    private void AddPositionNames(BoundType pattern, Contribution contribution, in SlotSolution solution, ref SlotSet waiting, ref SlotSet covariant, ref SlotSet blocked)
+    {
+        if (contribution == Contribution.Signature)
+        {
+            this.AddNames(pattern, 1, solution, ref waiting, ref waiting, ref blocked);
+        }
+        else
+        {
+            this.AddNames(pattern, 1, solution, ref covariant, ref blocked, ref blocked);
+        }
+    }
+
+    // The callee variables `type` names at `polarity` (1, -1 or 0; ContractPolarity inside a Function Type): into `covariant` at 1,
+    // `other` at -1 or 0, `contract` at ContractPolarity (CollectPositionNames' indices).
+    private void AddNames(BoundType type, int polarity, in SlotSolution solution, ref SlotSet covariant, ref SlotSet other, ref SlotSet contract)
+    {
+        if (OwnSlot(type, solution.SlotOwner) is >= 0 and var slot)
+        {
+            AddName(slot, polarity, ref covariant, ref other, ref contract);
+        }
+
+        if (type.CarriesOrigin)
+        {
+            this.AddOriginNames(type.Origin, polarity, solution, ref covariant, ref other, ref contract);
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                this.AddOriginNames(type.OriginArguments[i], OriginArgumentPolarity(type, i, polarity, this), solution, ref covariant, ref other, ref contract);
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.AddNames(type.Components[i], this.SlotComponentPolarity(type, i, polarity), solution, ref covariant, ref other, ref contract);
+        }
+    }
+
+    // The callee's own Origin parameters `origin` names (a meet's operands included), at CallSlotCount + its slot.
+    private void AddOriginNames(BoundOrigin? origin, int polarity, in SlotSolution solution, ref SlotSet covariant, ref SlotSet other, ref SlotSet contract)
+    {
+        if (origin is null)
+        {
+            return;
+        }
+
+        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, solution.Binder))
+        {
+            AddName(CallSlotCount(solution.Binder) + origin.Slot, polarity, ref covariant, ref other, ref contract);
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            this.AddOriginNames(origin.Operands[i], polarity, solution, ref covariant, ref other, ref contract);
+        }
+    }
+
     private void CollectLeafPremises(ref SlotSolution solution, in PositionRow row)
     {
         if (row is { Contribution: Contribution.Signature, Pattern: { StoresOrigin: true } pattern, Type: { } type })
@@ -189,7 +330,7 @@ public sealed partial class Binding
         {
             var row = this.childRows[j];
             var parent = row.Parent < 0 ? root : this.positionRows[first + (row.Parent - (start - sliceStart))];
-            var type = PartChildPattern(KotoHelper.UnwrapParentheses(parent.Part), row.Index, parent.Type);
+            var type = ExpectedChild(KotoHelper.UnwrapParentheses(parent.Part), row.Index, parent.Type);
             this.positionRows.Add(row with { Type = type });
             derived = type is not null;
         }
@@ -226,7 +367,7 @@ public sealed partial class Binding
         {
             var child = this.positionParts.Count;
             var element = this.AddChildPosition(start, start + 1, i, type);
-            var elementPattern = PartChildPattern(core, i, pattern);
+            var elementPattern = ExpectedChild(core, i, pattern);
             for (int j = child, end = this.positionParts.Count; element is not null && j < end; j++)
             {
                 var node = this.positionParts[j];

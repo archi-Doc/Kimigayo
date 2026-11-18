@@ -6,25 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // An independent array literal defaults differently from a contextual call argument.
-    private static bool IsCallArgument(Koto node)
-    {
-        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-        {
-            if (parent is InvocationKoto)
-            {
-                return true;
-            }
-
-            if (parent is not (LabeledKoto or ParenthesizedKoto))
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
 
@@ -81,8 +62,8 @@ public sealed partial class Binding
 
     // SPEC 14.9.3, 14.10.3 (DECISIONS BU-6): an operand of Type Never that is no Place is a Never value, which a conversion only passes
     // on (Abrupt); an explicit acquisition of a Place of Type Never (a move, a copy, a borrow) keeps its operation and its effect.
-    private static bool IsNeverValue(Koto operand, BoundType type)
-        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand);
+    private bool IsNeverValue(Koto operand, BoundType type)
+        => ReferenceEquals(type, BoundType.Never) && !this.IsBarePlace(operand);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
@@ -94,7 +75,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(type, scope))
+        if (this.IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(type, scope))
         {
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
@@ -108,8 +89,8 @@ public sealed partial class Binding
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
-        if (!OffersTake(conversion.Left) ||
-            (ReceiverOfPart(conversion.Left) is not null && !this.CopiesInEveryCase(type, this.ConstraintScope(conversion))))
+        if (!this.OffersTake(conversion.Left) ||
+            (this.ReceiverOfPart(conversion.Left) is not null && !this.CopiesInEveryCase(type, this.ConstraintScope(conversion))))
         {
             return this.FailTake(conversion, conversion.Left);
         }
@@ -138,7 +119,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || ElementAccess.IsSyntax(projection)) ||
+            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || ElementAccess.IsSyntax(this, projection)) ||
                 projection.Left.BoundType?.Semantics != SemanticsKind.Owner)
             {
                 break;
@@ -147,7 +128,7 @@ public sealed partial class Binding
             source = KotoHelper.UnwrapParentheses(projection.Left);
         }
 
-        conversion.ConversionBinding = IsNeverValue(conversion.Left, type) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
+        conversion.ConversionBinding = this.IsNeverValue(conversion.Left, type) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
         return Complete(conversion, type);
     }
 
@@ -262,7 +243,7 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
-            if (IsNeverValue(conversion.Left, actual))
+            if (this.IsNeverValue(conversion.Left, actual))
             {
                 conversion.ConversionBinding = ConversionBinding.Abrupt;
                 return Complete(conversion, actual);
@@ -294,7 +275,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawRooted(conversion.Left))
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawRooted(this, conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
@@ -314,7 +295,7 @@ public sealed partial class Binding
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
                 : this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
-                !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
+                !this.IsSubtype(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
             {
                 return failure.IsCondition ? this.RecordMismatch(conversion, conversion, adapted, pattern, failure)
@@ -355,7 +336,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }
 
-            conversion.ConversionBinding = IsNeverValue(conversion.Left, copied) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
+            conversion.ConversionBinding = this.IsNeverValue(conversion.Left, copied) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
             return Complete(conversion, copied);
         }
 
@@ -375,7 +356,7 @@ public sealed partial class Binding
 
             // SPEC 14.9.3: an object creation of a Never operand and a borrow of a Never value only pass it on (IsNeverValue).
             if ((semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && ReferenceEquals(operandType, BoundType.Never)) ||
-                (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && IsNeverValue(conversion.Left, operandType)))
+                (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && this.IsNeverValue(conversion.Left, operandType)))
             {
                 Complete(conversion.Right, operandType);
                 conversion.ConversionBinding = ConversionBinding.Abrupt;
@@ -407,7 +388,7 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawRooted(conversion.Left))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawRooted(this, conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, semantics, operandType);
             }
@@ -436,7 +417,7 @@ public sealed partial class Binding
             }
 
             // SPEC 13.5.6: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.
-            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !IsNeverValue(conversion.Left, operandType))
+            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !this.IsNeverValue(conversion.Left, operandType))
             {
                 Complete(conversion.Right, operandType);
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
@@ -497,7 +478,7 @@ public sealed partial class Binding
         }
 
         // A conversion of a Never operand passes it on (Abrupt); its same-Type acquisition of a Place is an Identity (IsNeverValue).
-        if (ReferenceEquals(source, BoundType.Never) && (!ReferenceEquals(target, source) || IsNeverValue(conversion.Left, source)))
+        if (ReferenceEquals(source, BoundType.Never) && (!ReferenceEquals(target, source) || this.IsNeverValue(conversion.Left, source)))
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, BoundType.Never);

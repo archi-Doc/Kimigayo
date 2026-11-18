@@ -50,8 +50,12 @@ internal static partial class NativeToolchain
         {
             var installationFile = RequireInstalledFile(Path.Combine(root, "installation.json"));
             using var installation = JsonDocument.Parse(await File.ReadAllBytesAsync(installationFile, cancellationToken));
+            // The record's shape before any tool: schema 1 of this profile, with the tools' and the supporting DLLs' hashes by name.
             var installed = installation.RootElement;
-            if (installed.GetProperty("schemaVersion").GetInt32() != 1 || installed.GetProperty("profile").GetString() != WindowsProfile.Name)
+            var tools = Member(installed, "tools");
+            var supportingDlls = Member(installed, "supportingDlls");
+            if (Number(Member(installed, "schemaVersion")) != 1 || Text(Member(installed, "profile")) != WindowsProfile.Name ||
+                tools.ValueKind != JsonValueKind.Object || supportingDlls.ValueKind != JsonValueKind.Object)
             {
                 throw new InvalidDataException("Invalid toolchain installation record. Run setup.ps1 again.");
             }
@@ -77,7 +81,7 @@ internal static partial class NativeToolchain
                     }
                 }
 
-                var expected = installed.GetProperty("tools").GetProperty(name).GetString();
+                var expected = Text(Member(tools, name));
                 identity["expectedSha256"] = expected;
                 identity["hashMatched"] = hash == expected;
                 if (hash != expected || (name == Kernel32Imports.Generator && hash != Kernel32Imports.DlltoolSha256))
@@ -88,9 +92,9 @@ internal static partial class NativeToolchain
 
             record["reportedVersionsMatched"] = true;
             // Supporting DLLs are part of the installed tool inputs, not project inputs.
-            foreach (var dll in installed.GetProperty("supportingDlls").EnumerateObject())
+            foreach (var dll in supportingDlls.EnumerateObject())
             {
-                if (Path.GetFileName(dll.Name) != dll.Name || Hash(RequireInstalledFile(Path.Combine(bin, dll.Name))) != dll.Value.GetString())
+                if (Path.GetFileName(dll.Name) != dll.Name || Hash(RequireInstalledFile(Path.Combine(bin, dll.Name))) != Text(dll.Value))
                 {
                     throw new InvalidDataException("Toolchain supporting DLL SHA-256 mismatch: " + dll.Name);
                 }

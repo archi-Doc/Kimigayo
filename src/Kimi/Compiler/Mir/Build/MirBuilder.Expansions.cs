@@ -19,9 +19,9 @@ internal sealed partial class MirBuilder
     // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject.
     private void For(MirPlace destination, ForKoto loop)
     {
-        var plan = BoundMatch.Of(loop)!;
-        var entry = CallPlan.Of(loop)!;
-        var step = CallPlan.Of(loop, 1)!;
+        var plan = BoundMatch.Of(compilation.Binding, loop)!;
+        var entry = CallPlan.Of(compilation.Binding, loop)!;
+        var step = CallPlan.Of(compilation.Binding, loop, 1)!;
         var iterator = this.Hold(entry.ReturnType, loop);
         this.Call(iterator, entry, loop, first: null);
         this.locals[HirTables.Symbol(step.Receiver!)!] = this.Made(iterator).Root;
@@ -72,8 +72,8 @@ internal sealed partial class MirBuilder
     private void Update(MirPlace destination, Koto node)
     {
         var (target, right) = node is BinaryKoto update ? (update.Left, update.Right) : (((UnaryKoto)node).Operand, null);
-        var plan = ExpansionPlan.Of(node)!.Value;
-        var arithmetic = CallPlan.Of(node);
+        var plan = ExpansionPlan.Of(compilation.Binding, node)!.Value;
+        var arithmetic = CallPlan.Of(compilation.Binding, node);
         var mark = this.located.Count;
         var value = right is null ? default : this.Secure(this.Operand(right, expected: null), right);
         // A Property's accessors take its receiver, located once; a static Property's have none. Binding designates the Property through
@@ -192,7 +192,7 @@ internal sealed partial class MirBuilder
         var reference = compilation.Types.Reference(SemanticsKind.Uniq, this.body.TypeOf(destination) ?? BoundType.Unit);
         var reservation = this.Temp(reference, node);
         this.Set(reservation, this.Ref(destination, reference, input: true), node);
-        return this.body.Project(reservation, MirProjectionKind.Deref, 0);
+        return this.body.Project(compilation.Types, reservation, MirProjectionKind.Deref, 0);
     }
 
     // A check's comparison into a bool: building goes on where it holds, else at the failure.
@@ -248,7 +248,7 @@ internal sealed partial class MirBuilder
     // failing with KIMI_E_DUPLICATE_KEY before the value is evaluated, located at the key.
     private void Absent(DictionaryLiteralKoto dictionary, MirPlace built, MirPlace key, Koto node)
     {
-        var find = CallPlan.Of(dictionary)!;
+        var find = CallPlan.Of(compilation.Binding, dictionary)!;
         var link = this.Hold(BoundType.ISize, node);
         var test = this.Hold(BoundType.Boolean, node);
         var fail = this.body.AddBlock();

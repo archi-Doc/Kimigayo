@@ -41,6 +41,14 @@ public sealed partial class Binding
     private static Koto CallSlotOwner(Koto binder)
         => binder is FunctionKoto { IsConstructor: true } constructor ? constructor.BoundSymbol!.Scope.Owner : binder;
 
+    // SPEC 10.1 step 5, 10.8.1, 10.9: the Constraint clause lists a candidate is proven under, in order: 0 its own, 1 its owner
+    // structure's, a constructor's, whose slots are the owner's (`slotOwner`, CallSlotOwner); null where it has none. The one
+    // enumeration of StepFiveConjunction, which proves them, and of J2's CollectPositionNames, which reads the variables they name
+    // (the owner's O-368 (a)).
+    private static IReadOnlyList<Koto>? CandidateClauses(Koto binder, Koto? slotOwner, int list)
+        => list == 0 ? (binder as FunctionKoto)?.TypeConstraints
+            : list == 1 && slotOwner is StructKoto owner && !ReferenceEquals(owner, binder) ? owner.ConstraintNodes : null;
+
     private static IReadOnlyList<TypeKoto> CallOwnSlots(FunctionKoto function)
         => function.IsConstructor ? ((StructKoto)CallSlotOwner(function)).GenericParameterNodes : function.GenericArguments;
 
@@ -411,7 +419,7 @@ public sealed partial class Binding
             // with it in structure and Semantics (SPEC 10.8; Origins are judged after selection). A binding is the caller's Type and never a
             // pattern: in a recursive call or a construction of the enclosing structure its symbols are the callee's own slots.
             return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
-                (this.DirectTarget(whole) is var target && (ReferenceEquals(target, actual) || (FitsStructuralPart(actual, target) && FitsStructuralPart(target, actual)))));
+                (this.DirectTarget(whole) is var target && (ReferenceEquals(target, actual) || (this.FitsStructuralPart(actual, target) && this.FitsStructuralPart(target, actual)))));
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication)
@@ -455,7 +463,7 @@ public sealed partial class Binding
             {
                 // An incomplete annotation cannot become a generic argument. Established argument evidence is checked
                 // against it at the ordinary result fit; without such evidence the slot remains unsolved.
-                return arguments[slot] is not { } establishedArray || FitsStructuralPart(establishedArray, actual);
+                return arguments[slot] is not { } establishedArray || this.FitsStructuralPart(establishedArray, actual);
             }
 
             // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
@@ -495,7 +503,7 @@ public sealed partial class Binding
                 }
 
                 if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
-                    FitsStructuralPart(actual, previous) && FitsStructuralPart(previous, actual))
+                    this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))
                 {
                     // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
                     // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
@@ -512,7 +520,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        frame.SetType(slot, IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous);
+                        frame.SetType(slot, this.IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous);
                     }
 
                     return true;
@@ -520,9 +528,9 @@ public sealed partial class Binding
 
                 // SPEC 10.8: structural matching compares normalized Types, so two spellings of one Function Type, whose per-call
                 // inputs have distinct binders, are one binding.
-                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && IsSubtype(actual, previous)) ||
+                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && this.IsSubtype(actual, previous)) ||
                     (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function &&
-                    IsSubtype(actual, previous) && IsSubtype(previous, actual)))
+                    this.IsSubtype(actual, previous) && this.IsSubtype(previous, actual)))
                 {
                     frame.SetType(slot, previous);
                     return true;
@@ -555,7 +563,7 @@ public sealed partial class Binding
         // where Origins are not compared here: a pair layer's outer slot is such an Origin (SPEC 8.1.2, 15.3.6; PLAN G758).
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
             !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, frame) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
-            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0 && (ReferenceEquals(pattern.Origin, actual.Origin) || !ReferenceEquals(pattern.ClosureContext, actual.ClosureContext))))
+            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0 && (ReferenceEquals(pattern.Origin, actual.Origin) || !ReferenceEquals(pattern.InstanceContext, actual.InstanceContext))))
         {
             return false;
         }

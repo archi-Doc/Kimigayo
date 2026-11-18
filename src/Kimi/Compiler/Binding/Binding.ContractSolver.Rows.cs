@@ -15,11 +15,10 @@ public sealed partial class Binding
     // the rows of a link of the subject's chain in a view (null while the link is open) and the pooled lists.
     private readonly Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateMemo = new();
 
-    // Closure(view) (the class header's): the entry of each (view scope, requirement Contract), the entries the outermost request formed
-    // (dropped when it returns unless Kept), and the free entries, each with its lists and their capacity.
-    private readonly Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex = new();
+    // Closure(view) (the class header's): the entries the outermost request formed (dropped when it returns unless Kept); the running
+    // pass's entry of each (view scope, requirement Contract) and its free entries, each with its lists and their capacity, are the
+    // pass's part's, handed over by EnterPass (enumerateIndex, enumerateIndexPool below; PassPart.EnumerateIndex).
     private readonly List<(EvidenceView, BindingSymbol?)> enumerateOwned = new();
-    private readonly Stack<ViewIndex> enumerateIndexPool = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
     // The kept tables (the class header's Kept rows), emptied by ClearKeptRows as their epoch ends, capacity and pooled lists kept:
@@ -31,6 +30,8 @@ public sealed partial class Binding
     private readonly List<List<PremiseRow>> enumeratePool = new();
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<(BoundType A, BoundType B)> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows
+    private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
+    private Stack<ViewIndex> enumerateIndexPool; // The running pass's free entries.
     private int enumeratePoolNext;
     private int enumerateDepth;
     private int enumerateWalking;
@@ -181,7 +182,7 @@ public sealed partial class Binding
         for (var i = start; !supplied && i < this.premiseRows.Count; i++)
         {
             supplied = this.premiseRows[i] is { Available: true, Clause: { Kind: ConstraintKind.Callable } clause } && clause.Mask == atom.Mask &&
-                SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
+                this.SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
@@ -459,7 +460,7 @@ public sealed partial class Binding
         this.enumerateOwned.Clear();
     }
 
-    // The pass ended (ResetCapabilities): every entry goes back to the pool.
+    // The pass ended (ResetCapabilities, as the pass runs again): every entry of the pass goes back to the pass's pool.
     private void ClearClosure()
     {
         foreach (var index in this.enumerateIndex.Values)
@@ -511,7 +512,7 @@ public sealed partial class Binding
 
     // An entry of Closure(view) (the class header's): the serial it was formed at, whether it is Kept, and its buckets by (chain scope,
     // kind, SubjectKey). Its lists stay with it, capacity kept.
-    private sealed class ViewIndex
+    internal sealed class ViewIndex
     {
         private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> lists = new();
         private int used;

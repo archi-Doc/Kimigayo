@@ -74,7 +74,7 @@ public sealed partial class Binding
         this.resultLocalEvidence.Clear();
         this.FindResultEvidence(target, scope, context);
         var survey = new ResultSurvey(
-            context.HasLiteral, context.Evidence.Count > 0, context.PartialEvidence, context.HasNever, !context.LiteralMisfit, context.LiteralDefault);
+            context.HasLiteral, context.HasValue, context.Evidence.Count > 0, context.PartialEvidence, context.HasNever, !context.LiteralMisfit, context.LiteralDefault);
         if (this.resultCursor == cursor + 1)
         {
             this.resultCursor = cursor;
@@ -144,6 +144,13 @@ public sealed partial class Binding
         if (conflict)
         {
             context.Conflict();
+        }
+
+        // SPEC 10.5.1 ¶1, 4.3.1 Places (PLAN G924 B2, F's ruling 46): under a call's argument probe a join with an aggregate source takes
+        // no Type from its typed sources: its call classifies it (WaitsForItsCall), and its sources meet at the parameter's places.
+        if (context.HasValue && this.UnderArgumentProbe(target))
+        {
+            context.Expected = null;
         }
 
         context.HasTyped = context.Evidence.Count > 0;
@@ -396,6 +403,8 @@ public sealed partial class Binding
             return;
         }
 
+        context.HasValue |= IsAggregateArgument(expression) || expression is DictionaryLiteralKoto;
+
         var evidence = this.ResultEvidence(expression, scope, context.HasLiteral);
         if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
         {
@@ -455,11 +464,12 @@ public sealed partial class Binding
         this.resultChildren.RemoveRange(start, end - start);
     }
 
-    // A survey of result sources (SPEC 14.9.1): whether one is a literal, whether one is typed, whether one is not known without
+    // A survey of result sources (SPEC 14.9.1): whether one is a literal, whether one is an owner value of a literal form (Value,
+    // Materialization's join row), whether one is typed, whether one is not known without
     // binding, whether one is Never, whether every literal fits the surveyed Type, and the first literal's default. SPEC 10.5.1's
     // Literal control flow is every source other than Never a literal (the owner, 2026-10-26: Never supplies nothing at any position);
     // AllLiteral, an arithmetic operand's Literal control flow (SPEC 12.3.3, 13.3.4), is every source a literal.
-    private readonly record struct ResultSurvey(bool Literal, bool Typed, bool Unknown, bool Never, bool Fits, BoundType? Default)
+    private readonly record struct ResultSurvey(bool Literal, bool Value, bool Typed, bool Unknown, bool Never, bool Fits, BoundType? Default)
     {
         internal bool AllLiteral => this.Literal && !this.Typed && !this.Unknown && !this.Never;
     }

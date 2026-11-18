@@ -72,6 +72,15 @@ public sealed partial class RetentionTest
 
     private const string Cell = "struct Cell<T> {s}\n    var item: uniq/T during s\n";
 
+    private const string HiddenWritableShapes = "struct Bx<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n" +
+        "struct Wr<T, E>\n    public var w: (uniq/T, E) -> ()\n    public init(w: (uniq/T, E) -> ()) => self.w = w@move\n" +
+        "contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\n" +
+        "struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n" +
+        "    public init(peer: ref/i32 during a)\n        self.data = null\n        self.peer = peer\n" +
+        "struct H2\n    public var data: raw/i32 during self\n    public var n: i32\n    public init()\n        self.data = null\n        self.n = 0\n" +
+        "contract HoldsR<E>\n    associate Box\ncontract HoldsRC<E>\n    associate Box is Copy\n" +
+        "struct Plain\n    public var p: raw/u8\n    public init() => self.p = null\n";
+
     private const string View = "struct View<T> {source}\n    let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
         "    public func read(self: ref/Self) -> ref/T during self.source => self.data\n    public func whole(self: ref/Self) -> ref/Self during self => self\n";
 
@@ -716,7 +725,7 @@ public sealed partial class RetentionTest
             "let ku = k@uniq\n_ = ku(a@ref)\n");
         Assert.Equal(
             [false, false, false, true, true, true],
-            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => CallPlan.Of(x, 0)).OfType<CallPlan>()
+            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => CallPlan.Of(c.Binding, x, 0)).OfType<CallPlan>()
                 .Where(static x => x.Kind == CalleeKind.Value).Select(x => c.Types.HasReceiverInput(x.CalleeType)).ToArray());
 
         var m = MirBuildTest.Compile("func marked<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n" +
@@ -763,7 +772,8 @@ public sealed partial class RetentionTest
     // The same rule for a Callable bound (SPEC 8.10): a value of a bounded Type parameter is erased (C8), and a callee's bounds are
     // erased callables its body may call: with Origin sets its clauses relate to `x` and the result (which retains `g` without the
     // bound too); with carriers, whose hidden Origins are fixed too (R4-M36), `map`'s result retains `x`, in its contract, through `g`
-    // in its body and as a call instantiates it.
+    // in its body and as a call instantiates it. `g` takes the T by value, so it writes what x's T hides, where it may store a part of
+    // x (PLAN G963: `store 1` of map's contract, `store 0` of its body's call); the concrete call (T = `ref/i32`) has no such part.
     [Fact]
     public void CallableBoundsRelateTheirFixedOrigins()
     {
@@ -774,8 +784,8 @@ public sealed partial class RetentionTest
         Assert.Equal(["result {0 Value}"], ValueCalls(sets));
         var map = Bind("func map<F, T, U>(g: ref/F, x: T) -> U\n    F is Callable<(T) -> U>\n    return g(x@move)\n" +
             "var n = 1\nlet k = func (z: ref/i32) -> ref/i32 => z\nlet r = map(k@ref, n@ref)\n");
-        Assert.Equal("result {1 Value}", Declared(map, "map"));
-        Assert.Equal(["result {0 Value}"], ValueCalls(map));
+        Assert.Equal("result {1 Value}, store 1: own {}, reached {1 Value}", Declared(map, "map"));
+        Assert.Equal(["result {0 Value}, store 0: own {}, reached {0 Value}"], ValueCalls(map));
         Assert.Equal(["result {1 Value}"], Calls(map, "map"));
     }
 
@@ -783,12 +793,15 @@ public sealed partial class RetentionTest
     // requirement of a Contract premise on its subject with the Contract reference's bindings (a builder of Self from a Contract Type
     // argument, a writer through `uniq/Self`, one returning an associated Type) and a Function value in a nominal Field retain `y` in
     // `slot`'s referent beside its own Content (and `m`'s carriers); a requirement whose borrowed input's Origin is its own relates nothing
-    // (SPEC 15.3.7). A requirement call on an abstract Self is erased itself: `T.mk(y)`'s result retains `y`, or nothing, untied.
+    // (SPEC 15.3.7). A requirement call on an abstract Self is erased itself: `T.mk(y)`'s result retains `y`, or nothing, untied. Each
+    // callable that takes `y: E` (or `r: E`) by value writes what that E hides (PLAN G963: SPEC 15.6.4 route 2 for its own parameter),
+    // where it may store a part of its argument (`*r.0 = r.1`) and what it reaches through `uniq/Self`: `store 1` (and `T.mk`'s `store 0`);
+    // Holds' slot hides that storage too, its `T.Box` built over E (per carrier, R4-M154 Revision 3).
     [Theory]
-    [InlineData("contract MkE<E>\n    func mk(r: E) -> Self\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is MkE<E>\n    slot@follow = T.mk(y@move)", "store 0: own {0 Content, 1 Value}, reached {}", "result {0 Value}")]
-    [InlineData("contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is Absorb<E>\n    slot.absorb(y@move)", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}", "")]
-    [InlineData("contract Holds<E>\n    associate Box\n    func wrap(r: E) -> Self.Box\nfunc f<T, E>(slot: uniq/T.Box, y: E) -> ()\n    T is Holds<E>\n    slot@follow = T.wrap(y@move)", "store 0: own {0 Content, 1 Value}, reached {}", "")]
-    [InlineData("struct Maker<E, T>\n    public var make: (E) -> T\nfunc f<T, E>(slot: uniq/T, y: E, m: Maker<E, T>) -> ()\n    slot@follow = m.make(y@move)", "store 0: own {0 Content, 1 Value, 2 Value}, reached {}", "")]
+    [InlineData("contract MkE<E>\n    func mk(r: E) -> Self\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is MkE<E>\n    slot@follow = T.mk(y@move)", "store 0: own {0 Content, 1 Value}, reached {}, store 1: own {}, reached {1 Value}", "result {0 Value}, store 0: own {}, reached {0 Value}")]
+    [InlineData("contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\nfunc f<T, E>(slot: uniq/T, y: E) -> ()\n    T is Absorb<E>\n    slot.absorb(y@move)", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}, store 1: own {}, reached {0 Content, 1 Value}", "")]
+    [InlineData("contract Holds<E>\n    associate Box\n    func wrap(r: E) -> Self.Box\nfunc f<T, E>(slot: uniq/T.Box, y: E) -> ()\n    T is Holds<E>\n    slot@follow = T.wrap(y@move)", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}, store 1: own {}, reached {0 Content, 1 Value}", "")]
+    [InlineData("struct Maker<E, T>\n    public var make: (E) -> T\nfunc f<T, E>(slot: uniq/T, y: E, m: Maker<E, T>) -> ()\n    slot@follow = m.make(y@move)", "store 0: own {0 Content, 1 Value, 2 Value}, reached {}, store 1: own {}, reached {1 Value, 2 Value}", "")]
     [InlineData("contract Mk\n    func mk(r: ref/i32) -> Self\nfunc f<T>(slot: uniq/T, y: ref/i32 during o) -> ()\n    T is Mk\n    slot@follow = T.mk(y)", "store 0: own {0 Content}, reached {}", "untied")]
     public void PremisesAndInputsHandTheirCallables(string function, string expected, string call)
     {
@@ -798,7 +811,8 @@ public sealed partial class RetentionTest
 
     // Review r3's B3: an erased callable's carrier output is a fixed Origin its fixed inputs reach, so `mk`'s result `a` retains the
     // View borrowing `*q` (under `v.source == c`, `use`'s result retains `q`), and a generic caller passing its own carriers to `map`
-    // retains `a` through the bound `map`'s call instantiates.
+    // retains `a` through the bound `map`'s call instantiates; `g` takes the T by value and writes what it hides (PLAN G963: the
+    // generic call's `store 1`, map's body call's `store 0`).
     [Fact]
     public void ErasedCarriersAreFixedOrigins()
     {
@@ -809,8 +823,8 @@ public sealed partial class RetentionTest
         var generic = Bind(View + "func map<F, T, U>(g: ref/F, x: T) -> U\n    F is Callable<(T) -> U>\n    return g(x@move)\n" +
             "func use<M, G, A, B>(mk: ref/M, g: ref/G, q: uniq/i32 during c) -> B\n    M is Callable<(View<i32>{v}) -> A>\n    G is Callable<(A) -> B>\n" +
             "    origin v.source == c\n    let a = mk(View<i32>.init(data: q@follow@ref))\n    let r = map(g, a@move)\n    q@follow = 5\n    return r@move\n");
-        Assert.Equal(["result {1 Value}"], Calls(generic, "map"));
-        Assert.Equal(["result {0 Value}", "result {0 Value}"], ValueCalls(generic));
+        Assert.Equal(["result {1 Value}, store 1: own {}, reached {1 Value}"], Calls(generic, "map"));
+        Assert.Equal(["result {0 Value}, store 0: own {}, reached {0 Value}", "result {0 Value}"], ValueCalls(generic));
     }
 
     // SPEC 15.6.4, 15.6.3, 8.11.3: a generic callee and a requirement are read under the call's Subst: an Iterator's `next` retains its
@@ -1151,6 +1165,60 @@ public sealed partial class RetentionTest
         Assert.Equal(["result {0 Value, 1 Value}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied"], Calls(c, "make"));
     }
 
+    // PLAN G963 (SPEC 15.6.4: the abstract-Type sentence, route 2; 5.7 Calls; DECISIONS R4-M154 as amended by G963): what a part hides is
+    // storage the call may write wherever an input's walk meets the part through no shared layer and outside a callable, a position or
+    // not. A by-value abstract input (a bare T, a Field, a Tuple element, an Option payload, a nested Type argument) has the Abstract
+    // storage, which a callable the contract hands the body fills where it writes what the part hides (`1 Value`: y): a Function value
+    // through `uniq/T`, one in a Field, a requirement with a `uniq/Self` receiver, one that takes the T by value, one through exclusive
+    // layers; one past a shared layer (`ref/T` in its slot) writes none of it (no `store 0`), one handed nothing of y keeps no `1`, and
+    // with no callable there is no record. A by-value holder's `during self` layer admitting any value at `o` (Q2 (a)) keeps y in what
+    // such a value may refer to; one admitting nothing has no record. What a by-value part hides takes rule 3's fill alone, never a hold
+    // walk of the part (C-386's F2): a by-value `T.Box` whose Contract argument holds a raw layer (`raw/u8`, a Plain Field), with no
+    // callable, has no record (SPEC 15.6.4: a raw layer the abstract Type does not show adds no reach of its own; rule A's record on
+    // aefb3194d), and with a writer of the Box handed keeps y, a raw `y` by rule 3. The rows of A5's verdicts are MirBorrowsTest's
+    // AWriterOfWhatAPartHidesKeepsTheArgumentThere. Fails on 0658a2b82: every row but the two without a record (no callable, H2)
+    // has no record there (no position for a by-value part).
+    [Theory]
+    [InlineData("func f<T, E>(x: T, y: E, set: (uniq/T, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T, E>(x: Bx<T>, y: E, set: (uniq/T, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T, E>(x: (T, i32), y: E, set: (uniq/T, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T, E>(x: Option<T>, y: E, set: (uniq/T, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T, E>(x: Bx<Bx<T>>, y: E, set: (uniq/T, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T, E>(x: T, y: E, h: Wr<T, E>)", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T, E>(x: T, y: E)\n    T is Absorb<E>", "store 0: own {}, reached {0 Value, 1 Value}, store 1: own {}, reached {0 Value, 1 Value}")]
+    [InlineData("func f<T, E>(x: T, y: E, set: (T, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T, E>(x: T, y: E, set: (uniq/T) -> ())", "store 0: own {}, reached {0 Value, 2 Content}")]
+    [InlineData("func f<T, E>(x: T, y: E)", "")]
+    [InlineData("func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value, 3 Value, 4 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value, 3 Value, 4 Value}")]
+    [InlineData("func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, E) -> ())", "store 1: own {}, reached {0 Value, 1 Value, 2 Value, 3 Value, 4 Value}")]
+    [InlineData("func f(h: H during o, y: uniq/i32 during o)", "store 0: own {}, reached {0 Value, 1 Value}")]
+    [InlineData("func f(h: H2, y: uniq/i32 during o)", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q)\n    T is HoldsR<raw/u8>", "")]
+    [InlineData("func f<T>(x: T.Box, y: raw/u8)\n    T is HoldsR<raw/u8>", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q)\n    T is HoldsRC<raw/u8>", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q)\n    T is HoldsR<Plain>", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q, set: (uniq/T.Box, uniq/i32 during q) -> ())\n    T is HoldsR<raw/u8>", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T>(x: T.Box, y: raw/u8, set: (uniq/T.Box, raw/u8) -> ())\n    T is HoldsR<raw/u8>", "store 0: own {1 Value}, reached {0 Value, 1 Value, 2 Content}")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q, set: (uniq/T.Box, uniq/i32 during q) -> ())\n    T is HoldsRC<raw/u8>", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q, set: (uniq/T.Box, uniq/i32 during q) -> ())\n    T is HoldsR<Plain>", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    public void WhatAPartHidesIsWrittenWhereverAnInputsWalkMeetsIt(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(HiddenWritableShapes + function + "\n    return\n"), "f"));
+
+    // The same at a call: a Closure capturing the caller's T by move and passed by value, with a writer through `uniq/T` handed, keeps the
+    // child in what the captured T hides; without the writer nothing.
+    [Fact]
+    public void ACapturedAbstractPartHidesStorageTheCallMayWrite()
+    {
+        var c = Bind("func f<C, T, E>(c: C, y: E, set: (uniq/T, E) -> ()) -> ()\n    return\n" +
+            "func g<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n" +
+            "    let child: uniq/i32 during o = v\n    let c = func [other@move] () => ()\n    f(c@move, child@move, set@move)\n");
+        Assert.Equal(["store 0: own {}, reached {0 Value, 1 Value, 2 Value}"], Calls(c, "f"));
+        var unwritten = Bind("func f<C, E>(c: C, y: E) -> ()\n    return\n" +
+            "func g<T>(value: uniq/i32 during o, other: T) -> ()\n    var v = value@move\n" +
+            "    let child: uniq/i32 during o = v\n    let c = func [other@move] () => ()\n    f(c@move, child@move)\n");
+        Assert.Equal([string.Empty], Calls(unwritten, "f"));
+    }
+
     // The rule above at the raw source (DECISIONS BU-66, the owner's Q11 ruling of 2026-11-04): a raw layer an argument holds by value
     // without passing a shared layer, a Tuple element, a Type argument (an Option's payload) or one past an exclusive layer, is retained as
     // a raw argument is, by the argument's own value (R4-M154's grain), so `T.make`'s abstract result keeps it (fails before: no row; the
@@ -1461,7 +1529,7 @@ public sealed partial class RetentionTest
         var c = Bind(source);
         var drop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!;
         var at = Function(c, "at").SymbolOf()!;
-        var layer = TyCtxt.Signature(at, null, 0, out _)!.Components[0];
+        var layer = c.Types.Signature(at, null, 0, out _)!.Components[0];
         Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null)), Declared(c, "flush")));
         Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, [], []), at)), Calls(c, "flush").Single()));
     }
@@ -1491,7 +1559,7 @@ public sealed partial class RetentionTest
         string[] expected = ["store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Content}, reached {0 Content}", string.Empty];
         Assert.Equal(expected, ValueCalls(c));
         var parts = new[] { "callWB", "callOWB", "callT", "callFn" }.Select(x => Function(c, x).SymbolOf()!)
-            .Select(static x => (Part: TyCtxt.Signature(x, null, 0, out _)!.Components[0], Definition: x)).ToArray();
+            .Select(x => (Part: c.Types.Signature(x, null, 0, out _)!.Components[0], Definition: x)).ToArray();
         Assert.Equal(expected, parts.Select(x => Show(c.Types.RetainsErasedDestruction(x.Part, x.Definition))));
         Assert.Same(c.Types.RetainsErasedDestruction(parts[2].Part, parts[2].Definition), c.Types.RetainsErasedDestruction(parts[2].Part, parts[2].Definition));
     }
@@ -1598,7 +1666,7 @@ public sealed partial class RetentionTest
         var calls = 0;
         foreach (var node in KotoTree.Walk(module.RootKoto))
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } call; i++, calls++)
+            for (var i = 0; CallPlan.Of(c.Binding, node, i) is { } call; i++, calls++)
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
@@ -1607,9 +1675,9 @@ public sealed partial class RetentionTest
                     continue; // The compiler-only $abort has no declaration MIR names (SPEC 17.4).
                 }
 
-                var retention = value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, Definition(node))
-                    : c.Types.Retains(callee, c.Types.SubstOf(call), Definition(node));
-                var count = value ? call.DeclaredSignature.Components[0].Components.Count : Slots(callee);
+                var retention = value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, Definition(c.Binding, node))
+                    : c.Types.Retains(callee, c.Types.SubstOf(call), Definition(c.Binding, node));
+                var count = value ? call.DeclaredSignature.Components[0].Components.Count : Slots(c.Types, callee);
                 Assert.True(
                     retention.IsLimit || (retention.Result.Kinds.Length == count &&
                         retention.Writes.ToArray().All(x => x.Output >= 0 && x.Output < count && x.Own.Kinds.Length == count && x.All.Kinds.Length == count)),
@@ -1681,19 +1749,19 @@ public sealed partial class RetentionTest
             "func first<T>(x: ref/T, y: ref/T) -> ref/T during x => x\nfunc both<T>(v: ref/T) -> ref/T => first(v, v)\n" + RawPointerSyntaxTest.PairHolder +
             "func id<s/T>(v: s/T) -> s/T => v@move\nfunc hold(x: ref/i32, q: raw/i32) -> raw/i32\n    let h = Holder<raw/i32 during x>.init(v: q)\n" +
             "    let g = id<raw/i32 during x>\n    return g(h.value)\nvar a = 1\nlet p = first(a@ref, a@ref)\n" + Writer + "func gen<T>(x: uniq/T) => ()\n");
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Definition: Definition(x))).ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => (Node: x, Definition: Definition(c.Binding, x))).ToArray();
         Assert.True(calls.Length >= 4);
         var destructor = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor);
         var drop = destructor.SymbolOf()!;
-        var writer = AdtDef.ReceiverType(destructor)!;
+        var writer = AdtDef.ReceiverType(c.Binding, destructor)!;
         var gen = Function(c, "gen").SymbolOf()!;
-        var part = TyCtxt.Signature(gen, null, 0, out _)!.Components[0];
+        var part = c.Types.Signature(gen, null, 0, out _)!.Components[0];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
             foreach (var (node, definition) in calls)
             {
-                var call = CallPlan.Of(node, 0)!;
+                var call = CallPlan.Of(c.Binding, node, 0)!;
                 _ = call.Kind == CalleeKind.Value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, definition)
                     : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
             }
@@ -1782,20 +1850,20 @@ public sealed partial class RetentionTest
     private static FunctionKoto Function(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
 
-    private static int Slots(BindingSymbol function)
+    private static int Slots(TyCtxt types, BindingSymbol function)
     {
-        _ = TyCtxt.Signature(function, null, -1, out var count);
+        _ = types.Signature(function, null, -1, out var count);
         return count;
     }
 
     // The definition a call's MIR body belongs to: its enclosing function, Closure or accessor; null for top-level statements.
-    private static BindingSymbol? Definition(Koto node)
+    private static BindingSymbol? Definition(Binding binding, Koto node)
     {
         for (var current = node.Parent; current is not null; current = current.Parent)
         {
             if (current is PropertyAccessorKoto accessor)
             {
-                return CallPlan.Accessor(accessor);
+                return CallPlan.Accessor(binding, accessor);
             }
 
             if (current is FunctionKoto function)
@@ -1809,13 +1877,13 @@ public sealed partial class RetentionTest
 
     // Each call of a named callee under its substitution, in its definition, in source order; a loop's entry is its call (SPEC 14.6.2).
     private static string[] Calls(Compilation c, string name)
-        => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
-            .Select(x => Show(c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(x.Node)))).ToArray();
+        => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
+            .Select(x => Show(c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(c.Binding, x.Node)))).ToArray();
 
     // Each Value call over its declared Callable signature, in its definition, in source order.
     private static string[] ValueCalls(Compilation c)
-        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
-            .Select(x => Show(c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(x.Node)))).ToArray();
+        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => (Node: x, Call: CallPlan.Of(c.Binding, x, 0))).Where(static x => x.Call is { Kind: CalleeKind.Value })
+            .Select(x => Show(c.Types.Retains(x.Call!.CalleeType, x.Call.DeclaredSignature, Definition(c.Binding, x.Node)))).ToArray();
 
     // A retention as the records spell it (DECISIONS R4-M154): the result's kinds and whether it is untied, then per output it writes its
     // root's kinds (own) and those past it (reached, every Reached entry joined), each with its pairs (`if {i Value: longer > shorter}`),

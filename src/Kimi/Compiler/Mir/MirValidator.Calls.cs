@@ -81,7 +81,7 @@ internal sealed partial class MirValidator
         // its declaration (its row's Retained), and nothing is built with a record at a Requirement or Virtual call.
         private readonly bool Clears(in MirCallee callee, int position)
             => callee is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: { } function } && MirCallee.Slot(function, position) is var slot &&
-                TyCtxt.Signature(function, callee.Subst, slot, out _) is { Origin.Kind: not OriginKind.Static } &&
+                types.Signature(function, callee.Subst, slot, out _) is { Origin.Kind: not OriginKind.Static } &&
                 !types.Retains(function, callee.Subst, body.Key.Decl).Keeps(slot);
 
         // False when the arguments are out of range.

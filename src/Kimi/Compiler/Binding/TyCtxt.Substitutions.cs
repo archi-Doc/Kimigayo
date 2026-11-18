@@ -8,8 +8,9 @@
 // storage verdict (Instance; Compose with the part deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
 // Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict, guarded by
 // it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
-// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
-// arrays Fit grows are reused.
+// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
+// compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
+// grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
 
 using System.Runtime.CompilerServices;
@@ -36,17 +37,18 @@ internal sealed partial class TyCtxt
     // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and the C1-F4 view's (BU-102).
     internal bool BindingComplete => binding.Result.IsComplete;
 
-    // DECISIONS BU-60: the Type instance a Closure Type's context holds (HeldContext); null for a context a function's instance made, and
-    // for none.
-    internal static BoundType? HeldType(BoundType closure)
-        => closure.ClosureContext is { Declaring: { } held } context && ReferenceEquals(context.Target, closure.Symbol) ? held : null;
+    // DECISIONS BU-60: the Type instance a nested definition's Type (a Closure Type, the Item of a function declared in a body) holds
+    // as its context (HeldContext); null for a context a function's instance made, and for none.
+    internal static BoundType? HeldType(BoundType nested)
+        => nested.InstanceContext is { Declaring: { } held } context && ReferenceEquals(context.Target, nested.Symbol) ? held : null;
 
-    // SPEC 6.1.3, 15.8.2 (DECISIONS BU-60): the substitution a Closure Type's readers apply, the one view of its context that its signature
-    // (Binding.ClosureDefinitionSignature), its environment (ClosureEnvironment) and its body (SubstOfClosure) read: the context, except a
+    // SPEC 6.1.3, 15.8.2 (DECISIONS BU-60): the substitution a nested definition's Type's readers apply, the one view of its context that
+    // a Closure's signature (Binding.ClosureDefinitionSignature), environment (ClosureEnvironment) and body (SubstOfClosure), an Item's
+    // declaring Type (Binding.ItemDeclaringType) and the inherited arguments (Binding.InheritedArguments) read: the context, except a
     // held instance with an Origin position (HasOriginPosition), which is closed in no instance, the EnclosingInstance gap until PLAN G300's
     // per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
-    internal static Subst? ClosureInstance(BoundType closure)
-        => HeldType(closure) is { } held && HasOriginPosition(held) ? null : closure.ClosureContext;
+    internal static Subst? NestedInstance(BoundType nested)
+        => HeldType(nested) is { } held && HasOriginPosition(held) ? null : nested.InstanceContext;
 
     // Whether a reader of an instance may read a Type whose storage has this verdict (Binding.Readable; DECISIONS BU-36, R4-M139):
     // Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract.
@@ -64,7 +66,7 @@ internal sealed partial class TyCtxt
             ? this.Intern(implementation, null, call.VirtualImplementingType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins)
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
-    // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it as its readers see it (ClosureInstance); a
+    // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it as its readers see it (NestedInstance); a
     // closure no instance closed is in the identity of the declaration whose instance it holds (EnclosingDeclaration), a function or a
     // Type, else in its own, as a held instance its readers do not see is (DECISIONS BU-60) and a generic container's group static is,
     // whose group has no instance (R5-M82, X33 (a)), so the instance collector reports either as the EnclosingInstance gap (R5-M157). The
@@ -76,12 +78,12 @@ internal sealed partial class TyCtxt
             return null;
         }
 
-        if (ClosureInstance(closure) is { } instance)
+        if (NestedInstance(closure) is { } instance)
         {
             return instance;
         }
 
-        var frame = closure.ClosureContext is null &&
+        var frame = closure.InstanceContext is null &&
             this.EnclosingDeclaration(symbol) is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Type } enclosing ? enclosing : symbol;
         return this.Identity(frame.Declaration);
     }
@@ -283,9 +285,16 @@ internal sealed partial class TyCtxt
             hash.Add(RuntimeHelpers.GetHashCode(input));
         }
 
+        // The one find over the two levels (Binding.PassPart.Levels; PLAN G949 Stage 2 U4).
         var key = hash.ToHashCode();
-        if (this.substs.TryGetValue(key, out var bucket))
+        var levels = Binding.PassPart.Interned(library, library.Layer.Substs, this.substs);
+        foreach (var level in levels)
         {
+            if (!level.TryGetValue(key, out var bucket))
+            {
+                continue;
+            }
+
             for (var i = 0; i < bucket.Count; i++)
             {
                 var subst = bucket[i];
@@ -296,13 +305,15 @@ internal sealed partial class TyCtxt
                 }
             }
         }
-        else
+
+        var open = levels.Open;
+        if (!open.TryGetValue(key, out var into))
         {
-            this.substs.Add(key, bucket = new(1));
+            open.Add(key, into = new(1));
         }
 
         var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray());
-        bucket.Add(created);
+        into.Add(created);
         return created;
     }
 }

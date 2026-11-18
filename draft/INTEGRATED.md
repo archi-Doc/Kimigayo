@@ -1384,6 +1384,28 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 84 (2026-11-15, plan §14; the Front's D-659, with R7-C2c2 c2-3): §5.0's C2 row: e2 also completes name discovery through
   the view's identity closure (dm1); c2-5's and c2-4's completion conditions (c2-3b's staged removal, the Callable rows' identity
   normalization); e2-2c's entry (e2-2's index takes c2-3b's `RowKind`); c2-3's Semantics part is c2-3e. Nothing frozen.
+- Revision 88 (2026-11-17, plan §14; the Back's D-750): R8-SP1 is absorbed with no SPEC or IMPL text. PLAN10 §11's SP1 row went as
+  follows: the layout into IMPL §21.1.3 (DECISIONS R8-M1, O-41 (a)); the private primitives and intrinsics into SPEC §22.1's
+  paragraph and IMPL §21.3.4 (R8-SP2), with no per-section statement since no section claims a supplied definition; `writeLine` a
+  body with no text, §22.7 stating behaviour only. §22.9.1, §22.10.5 and IMPL §21.4.4 already match the bodies; W2 kept §22.10.5's
+  closed list. Nothing frozen; no SPECJ change.
+- Revision 89 (2026-11-18, plan §14; the Back's D-754, with R8-I1): §5.2's I1 row records the landing (DECISIONS R8-M52); RQ16
+  takes its else branch, since R8's formatter does not format i128, so `FormatInteger128` is removed in a post-reduction unit by
+  measurement; RQ16's rows unchanged. Nothing frozen.
+- Revision 90 (2026-11-18, plan §14; the Back's D-752): §10.2 item 3 names `IntrinsicDisposition.Of` and `Effect`, which R8-M45
+  deleted, as RP20 does; the record stays. Revision 30's `IntrinsicId` 27 replaces the 28 left in §0's summary, §1.1's R8 row and
+  §12's COMPILER_ARCHITECTURE row; RQ9 and RP18 unchanged. Nothing frozen.
+- Revision 91 (2026-11-18, plan §14; the Middle's D-773): B1's row after R9-B1 landed in W-256 (DECISIONS R9-M11), with its true size.
+  Nothing frozen.
+- Revision 92 (2026-11-18, plan §14; the Back's D-788, with G949 Stage 2's U0b-P3): Y4's row counts 32 properties, since U0b-P3
+  deleted the four call and conversion currency getters with `HirTables.HasCurrentBinding`'s forwarding, `Koto.HasCurrentBinding`
+  (DECISIONS R8-M51). Nothing frozen.
+- Revision 93 (2026-11-19, plan §14; the Front's Q-499, with R7-I4): I4's row after its landing in W-261, its stale text corrected:
+  `Binding.Interpolation` never tested `EvaluatedKoto`, `ExpansionPlan`'s part landed with R5 Q15 (c2005bd44), and I4's size is +5/−2,
+  not +40/−60. Nothing frozen.
+- Revision 94 (2026-11-19, plan §14; the Front's Q-503, with R7-V2d): V2's row records V2d's landing in W-262 (DECISIONS R7-M37,
+  `FnSig`); the 71 syntax reads of a declared parameter Type and the name contract's receiver read it staged go to P3's row (the call
+  forms' 47) and Y4's row (the other 25). Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

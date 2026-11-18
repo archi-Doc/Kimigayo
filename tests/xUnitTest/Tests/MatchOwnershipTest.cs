@@ -116,14 +116,14 @@ public class MatchOwnershipTest
     {
         var c = Parse("enum E\n    One(i32)\nfunc f(x: E) => match x@move\n    .One(let a) => ()\n    _ => ()");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var originalCases = AdtDef.CaseTypes(SubjectType(c))!;
+        var originalCases = AdtDef.CaseTypes(c.Types, SubjectType(c))!;
         c.Kotonoha.CreateCodeContext().Parse(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<EnumKoto>().Single(), "Borrowed(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var rebuilt = SubjectType(c);
         Assert.Single(originalCases);
-        Assert.NotSame(originalCases, AdtDef.CaseTypes(rebuilt));
-        Assert.Equal(2, AdtDef.CaseTypes(rebuilt)!.Length);
+        Assert.NotSame(originalCases, AdtDef.CaseTypes(c.Types, rebuilt));
+        Assert.Equal(2, AdtDef.CaseTypes(c.Types, rebuilt)!.Length);
     }
 
     // DECISIONS BU-14 (SPEC 13.5.5, 15.1.6): a Binding that may borrow a part of the owned Subject or item past a pair layer admitting

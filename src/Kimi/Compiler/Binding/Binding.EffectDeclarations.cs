@@ -24,14 +24,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.3: every bound declared in this pass, for requirement calls whose conforming Type is concrete.
-    private readonly List<BoundEffectBound> boundedRequirements = [];
-
     // The confined bound each original virtual function declares, or null (virtual-dispatch 6).
     private readonly VirtualEffectBoundRows virtualEffectBounds;
 
-    // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
-    private readonly List<BoundContract> contractShapes = [];
+    // SPEC 8.11.3: every bound declared in this pass, for requirement calls whose conforming Type is concrete: the running pass's part
+    // (PassPart, EnterPass); a reader outside the pass's own steps reads the composed view.
+    private List<BoundEffectBound> boundedRequirements;
+
+    // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes: the
+    // running pass's part (PassPart, EnterPass).
+    private List<BoundContract> contractShapes;
 
     // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list: the running pass's part (PassPart, EnterPass).
     private List<IsKoto> callableEffectClauses;
@@ -120,9 +122,10 @@ public sealed partial class Binding
         }
 
         var bounded = false;
-        for (var i = 0; !bounded && i < this.boundedRequirements.Count; i++)
+        var bounds = this.boundedRequirementsView; // Every pass's bounds: the requirement may be another pass's (a library Contract's).
+        for (var i = 0; !bounded && i < bounds.Count; i++)
         {
-            bounded = ReferenceEquals(this.boundedRequirements[i].Requirement.Declaration, requirement);
+            bounded = ReferenceEquals(bounds[i].Requirement.Declaration, requirement);
         }
 
         if (!bounded || conforming is null)
@@ -170,9 +173,9 @@ public sealed partial class Binding
             for (var i = 0; i < conformances.Count; i++)
             {
                 var conformance = conformances[i];
-                for (var p = 0; p < conformance.Paths.Count; p++)
+                for (var p = 0; p < this.impls.PathsOf(conformance).Count; p++)
                 {
-                    var path = conformance.Paths[p];
+                    var path = this.impls.PathsOf(conformance)[p];
                     if (path.IsVerified && this.ProveConformanceConditions(path, conforming, scope) == ConstraintProof.Proven)
                     {
                         Add(this.SubstituteRequirementContract(conformance.Contract, conforming).Contract!, type.Declaration, null, path.Declaration);
@@ -218,7 +221,7 @@ public sealed partial class Binding
     /// <param name="at">The call.</param>
     /// <returns>Whether confined is available.</returns>
     internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, Koto at)
-        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: (at as InvocationKoto)?.BoundCall?.RequirementContract);
+        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: at is InvocationKoto invocation ? this.CallOf(invocation)?.RequirementContract : null);
 
     private static EffectBoundKoto? OwnEffectBound(BoundContract shape, BoundRequirement requirement)
     {
@@ -244,6 +247,11 @@ public sealed partial class Binding
             effect.IsSpecification ? EffectRejection.SpecificationOutsideContract : null,
         _ => EffectRejection.OutsideContract,
     };
+
+    // SPEC 23.1.2: a selector Parsing rejected (F.6.2's ContractSelector, or the ContractReference in its group) is judged there; every
+    // reader of the selector's reference (an applying item's target, a misplaced item's own judgment) rests on that record.
+    private static bool SelectorRestsOnParsing(Koto selector)
+        => IsRecovery(selector, out _) || (selector is ParenthesizedTypeKoto { Type: { } written } && IsRecovery(written, out _));
 
     // SPEC 8.11.1: the bounds of every Contract, checked once per pass after the requirement headers are bound and before
     // conformances are verified against them.
@@ -450,6 +458,11 @@ public sealed partial class Binding
     private BoundRequirement? EffectTarget(BoundContract shape, EffectBoundKoto effect, BindingScope scope)
     {
         var selector = effect.Selector!;
+        if (SelectorRestsOnParsing(selector))
+        {
+            return null;
+        }
+
         if (this.SelectorReference(selector, scope, out var named, out var reference) is { } fault)
         {
             this.RejectEffectBound(effect, fault);
@@ -477,7 +490,25 @@ public sealed partial class Binding
         }
 
         CompleteQualifier(selector, named, ancestor);
-        var name = effect.Name is IdentifierNameKoto identifier ? identifier.IdentifierName : null;
+        // The requirement Name: either leaf of one Name (the group reader's or the Type reader's, as IsAssociatedTypeName reads it), or the
+        // Error of a path that failed in Parsing (its record is reported). Parsing builds no other form.
+        string? name;
+        switch (effect.Name)
+        {
+            case IdentifierNameKoto identifier:
+                name = identifier.IdentifierName;
+                break;
+            case TypeSemanticsKoto { Type: null } leaf:
+                name = leaf.Identifier;
+                break;
+            case ErrorKoto:
+                name = null;
+                break;
+            default:
+                this.Fail(effect, BindingFailure.Internal);
+                return null;
+        }
+
         BoundRequirement? target = null;
         var found = 0;
         var requirements = ancestor.Contract!.Requirements;
@@ -517,7 +548,7 @@ public sealed partial class Binding
             // No verdict of the item reads that judgment, so it runs with no frame open (SuspendConsultation), as an applying item's and a
             // Callable list's do: nothing it reads (a syntax Error among its Type arguments) becomes the item's prerequisite.
             this.RejectEffectBound(effect, new(position));
-            if (effect.Selector is { } written)
+            if (effect.Selector is { } written && !SelectorRestsOnParsing(written))
             {
                 var frame = this.SuspendConsultation();
                 var fault = this.SelectorReference(written, this.ConstraintScope(effect), out _, out _);

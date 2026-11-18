@@ -90,6 +90,18 @@ public sealed partial class MirDropTest
         Assert.Contains("drop _3 -> bb9 [open ((_ as case 0) open (.0 flag f0))] [clear f0]", Lines(Decomposed, "f"));
     }
 
+    // SPEC 13.7.1, 14.10.3 (DECISIONS R4-M62; the owner's O-336 (a), O-371 (a)): a path on which an overwrite's value holds nothing goes
+    // around the overwrite and keeps its target's state, so a later check-only Drop sees the old state joined with the placed one: a
+    // Field moved before `return` and overwritten after it by such a value is maybe moved at the scope end (the O-336 unit's row ev3u),
+    // its check-only Flag row read as Keep, where the overwrite's Drop took it before (dev, the redesign's step 5: `[keep]`).
+    [Fact]
+    public void AnOverwriteWhoseValueHoldsNothingKeepsTheOldGroup()
+    {
+        const string Source = "func fail() -> Never => $abort(\"no\")\nfunc takeA(a: Array<i32>) => ()\nfunc f(y: i32, c: bool)\n" +
+            "    var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t.1 = if c => [y] else => fail()\n";
+        Assert.Contains("drop _3 -> bb18 [open (.1 keep)]", Lines(Source, "f"));
+    }
+
     // SPEC 15.1.3, 16.3.2: a layer whose Type declares a drop must be complete wherever that drop runs: a Partial Move not restored on every
     // path to its scope exit or a replacement is MovedPlace_Kd at the Drop, a base layer's own drop included; restored on every path, or
     // without an own drop, the parts are destroyed as they are.
@@ -242,7 +254,7 @@ public sealed partial class MirDropTest
         var problem = Assert.Single(all, static x => x.Subject.Module == 0);
         var bodies = program.Bodies.ToArray();
         var f = bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        Assert.Equal((MirBodyKind.DefaultTemplate, "a.indices"), (bodies[problem.Body].Key.Kind, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal((MirBodyKind.DefaultTemplate, "a.indices"), (program.Body(problem.Body).Key.Kind, c.SyntaxOf(problem.Subject).ToString()));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, problem.Body));
         Assert.Equal((problem.Code, problem.Subject), Mark(program, f.Ordinal));
         Assert.Equal(["own", "copy"], [Owner(program, (problem.Code, problem.Subject, problem.Body)), Owner(program, (problem.Code, problem.Subject, f.Ordinal))]);
@@ -351,13 +363,13 @@ public sealed partial class MirDropTest
             "func elements(c: bool, a: [5 of string])\n    take(a[4]@move)\n    take(a[0]@move)\n    if c => take(a[2]@move)\n" +
             "func based(l: Leaf)\n    take(l.p@move)\n" +
             "func cases(t: Two)\n    match t@move\n        .A(let r, _) => take(r@move)\n        _ => ()\n";
-        var program = Built(Source);
-        Assert.Equal(["_( .2:i32 .1( .1:Array<i32> ) .0:string:Flag )", "_( .2:i32 .1:(string, Array<i32>) .0:string )"], Walks(program, "partly"));
-        Assert.Equal(["_( [3..3]:string [2]:string:Flag [1..1]:string )", "_( [0..4]:string )"], Walks(program, "elements"));
-        Assert.Equal(["_( .0:string base( .1:Array<i32> ) )", "_( .0:string base:Base )"], Walks(program, "based"));
+        var (program, types) = Built(Source);
+        Assert.Equal(["_( .2:i32 .1( .1:Array<i32> ) .0:string:Flag )", "_( .2:i32 .1:(string, Array<i32>) .0:string )"], Walks(types, program, "partly"));
+        Assert.Equal(["_( [3..3]:string [2]:string:Flag [1..1]:string )", "_( [0..4]:string )"], Walks(types, program, "elements"));
+        Assert.Equal(["_( .0:string base( .1:Array<i32> ) )", "_( .0:string base:Base )"], Walks(types, program, "based"));
         Assert.Equal(
             ["_( case 0( .1:Array<i32> .0:string:Flag ) case 1:(string, string) )", "_( case 0:(string, Array<i32>) case 1:(string, string) )"],
-            Walks(program, "cases"));
+            Walks(types, program, "cases"));
     }
 
     // PLAN G702, V16: the walk passes over the rows below the walked row a fixed number of times (their count, their index), never once
@@ -416,13 +428,52 @@ public sealed partial class MirDropTest
         Assert.Equal(marked, Incomplete(c, c.BuildMir(), "f"));
     }
 
-    private static MirProgram Built(string source)
+    // PLAN G951 U2-K (row PE-2): a store keeps each closed body's own entry by its ordinal, closed in any ordinal order and with holes:
+    // a body's rows are the ones added since the last body closed in its store, whatever the ordinals; an ordinal no store closed is not
+    // held and reads empty; the program store's entries go with a new program version and the library's stay. The library store holds
+    // exactly the bodies closed in the library step (LibraryHolds, the one fact), whatever their ordinals: a body closed after it with an
+    // ordinal below the library's is the program store's.
+    [Fact]
+    public void AStoreKeepsEachBodysOwnEntryByOrdinal()
+    {
+        var table = new MirDropTable();
+        table.Clear();
+        Close(5, 1, 3);
+        Close(2, 2, 0); // Below the last closed, with holes at 0, 1, 3 and 4.
+        table.EndLibrary();
+        Close(300, 3, 1);
+        Close(7, 0, 2);
+        Close(3, 1, 5); // Below the library store's greatest ordinal, in the program store.
+        Assert.Equal([(5, 1, 3), (2, 2, 0), (300, 3, 1), (7, 0, 2), (3, 1, 5)], new[] { 5, 2, 300, 7, 3 }.Select(Entry));
+        Assert.Equal([5, 2, 2, 300, 300, 300, 3], new[] { 5, 2, 300, 7, 3 }.SelectMany(x => table.RowsOf(x).ToArray().Select(static row => row.Block)));
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.LibraryHolds));
+        Assert.All(new[] { 0, 1, 4, 6, 8, 299, 301 }, x => Assert.Equal((false, 0, 0, 0L), (table.Holds(x), table.RowsOf(x).Length, table.FlagsOf(x), table.ViewsOf(x))));
+        table.ClearProgram();
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.Holds));
+        Close(7, 1, 4);
+        Assert.Equal([(5, 1, 3), (2, 2, 0), (7, 1, 4)], new[] { 5, 2, 7 }.Select(Entry));
+
+        // Closes a body with a count of rows naming it (their Block) and flags.
+        void Close(int body, int rows, int flags)
+        {
+            for (var i = 0; i < rows; i++)
+            {
+                table.Rows.Add(new(body, 1, MirDropVerdict.Keep, -1, 0, default, 0));
+            }
+
+            table.Close(body, flags, 1, null);
+        }
+
+        (int Body, int Rows, int Flags) Entry(int body) => table.Holds(body) ? (body, table.RowsOf(body).Length, table.FlagsOf(body)) : default;
+    }
+
+    private static (MirProgram Program, TyCtxt Types) Built(string source)
     {
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        return program;
+        return (program, c.Types);
     }
 
     // V16, in KeysKeepTheEvaluationsLinear's form: the rows the walk of the one Open Drop of work reads (MirDropTable.WalkReads), per
@@ -433,9 +484,9 @@ public sealed partial class MirDropTest
         var reads = new long[sizes.Length];
         for (var i = 0; i < sizes.Length; i++)
         {
-            var program = Built(source(sizes[i]));
+            var (program, types) = Built(source(sizes[i]));
             var before = program.Drops.WalkReads;
-            Assert.Equal(2, Walks(program, "work").Length);
+            Assert.Equal(2, Walks(types, program, "work").Length);
             reads[i] = program.Drops.WalkReads - before;
         }
 
@@ -447,7 +498,7 @@ public sealed partial class MirDropTest
     // Type no row governs (MirDropTable.Level). A step is its move-path step (_ at the top) with "(" for an Open step, ")" for an End,
     // else its Type and, under a row, the row's verdict; a Run is its positions and its element Type. Every level of a walk names its
     // parts in the order of its Type's level without rows, less the parts moved out.
-    private static string[] Walks(MirProgram program, string name)
+    private static string[] Walks(TyCtxt types, MirProgram program, string name)
     {
         var body = program.Bodies.ToArray().Single(x => x.Key.Decl?.Name == name && x.Key.Kind == MirBodyKind.Fn);
         var (lines, steps, level) = (new List<string>(), new List<MirDropStep>(), new List<MirDropStep>());
@@ -461,15 +512,15 @@ public sealed partial class MirDropTest
             }
 
             steps.Clear();
-            program.Drops.Destroyed(body.Ordinal, group, body.TypeOf(terminator.Place)!, steps);
+            program.Drops.Destroyed(types, body.Ordinal, group, body.TypeOf(terminator.Place)!, steps);
             for (var open = 0; open < steps.Count; open++)
             {
                 if (steps[open].Kind == MirDropStepKind.Open)
                 {
                     var array = steps[open].Type is { Kind: BoundTypeKind.FixedArray } fixedArray ? fixedArray : null;
-                    Assert.True(array is null || MirTypes.LevelPart(array, 0) == (MirProjectionKind.ConstIndex, array.Length - 1));
+                    Assert.True(array is null || MirTypes.LevelPart(types, array, 0) == (MirProjectionKind.ConstIndex, array.Length - 1));
                     level.Clear();
-                    MirDropTable.Level(steps[open].Type, level);
+                    MirDropTable.Level(types, steps[open].Type, level);
                     var (all, at) = (Places(level, 0), 0);
                     foreach (var place in Places(steps, open))
                     {
@@ -480,7 +531,7 @@ public sealed partial class MirDropTest
             }
 
             level.Clear();
-            MirDropTable.Level(steps[0].Type, level);
+            MirDropTable.Level(types, steps[0].Type, level);
             lines.Add(Text(program, body, steps));
             lines.Add(Text(program, body, level));
         }
@@ -612,8 +663,8 @@ public sealed partial class MirDropTest
 
                 var c = MirBuildTest.Compile(text.ToString());
                 var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(), new MirCases(c.Types), new MirProgram());
-                var drops = new MirDrops(moves, cases);
+                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types), new MirCases(c.Types), new MirProgram());
+                var drops = new MirDrops(c.Types, moves, cases);
                 var init = new MirInit(flow, moves, cases, drops);
                 analyses[i] = (body, sink);
                 return () =>
@@ -629,9 +680,9 @@ public sealed partial class MirDropTest
             });
             for (var i = 0; i < sizes.Length; i++)
             {
-                var (_, sink) = analyses[i];
+                var (body, sink) = analyses[i];
                 Assert.Equal(0, sink.Problems.All.Length);
-                flags[i] = sink.Drops.FlagsOf(0);
+                flags[i] = sink.Drops.FlagsOf(body.Ordinal);
             }
 
             output.WriteLine($"N {string.Join(", ", sizes)}: flags {string.Join(", ", flags)}, cold analysis allocation {string.Join(", ", allocated)}");

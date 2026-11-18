@@ -31,10 +31,12 @@ public sealed partial class Binding
             this.instances.Add(type, instance = new());
         }
 
-        if (instance.Version != this.storageVersion || adt?.Version != this.storageVersion)
+        if (adt is null || instance.Version != this.storageVersion || !Current(adt.Version, this.storageVersion))
         {
+            // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
+            // refreshes it in this run) is never current, so the refreshed ADT forms it again.
             this.Substitute(type, adt, instance);
-            instance.Version = adt?.Version ?? 0;
+            instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
         }
 
         return instance;
@@ -101,6 +103,21 @@ public sealed partial class Binding
         return false;
     }
 
+    // PLAN G949 S1-1's freeze of a library Type's storage shape (FreezeLibrary): an ADT, and its dispatch table, that the run refilled
+    // read current in every later pass; a stale one stays stale.
+    private void FreezeStorage(AdtDef? adt)
+    {
+        if (adt is not null && adt.Version == this.storageVersion)
+        {
+            adt.Version = Frozen;
+        }
+
+        if (adt?.VTable is { } table && table.Version == this.storageVersion)
+        {
+            table.Version = Frozen;
+        }
+    }
+
     private void Substitute(BoundType type, AdtDef? adt, AdtDef.InstanceStorage instance)
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
@@ -159,7 +176,7 @@ public sealed partial class Binding
         }
 
         var stored = this.StoredType(this.WithUnstatedOrigins(declared), owner) is { } substituted ? this.CompleteProjections(substituted, declaration) : null;
-        return stored is { ContainsClosure: true } && this.types.Instantiates(owner.Symbol) ? this.CloseHeldClosures(stored, owner) : stored;
+        return stored is { ContainsNested: true } && this.types.Instantiates(owner.Symbol) ? this.CloseHeldNested(stored, owner) : stored;
     }
 
     // The read form of a member's declared Type under an instance (StoredType's): KeptType without its marks.
@@ -455,6 +472,8 @@ public sealed partial class Binding
 
             (container.BoundSymbol!.Adt ??= new()).SetCases(this.storedCases);
         }
+
+        this.storedCases.Clear(); // The step's scratch is empty at its end (PLAN G949 S1-e's rule): the last container's cases are no fact.
     }
 
     private void PrepareStorage()
@@ -548,6 +567,7 @@ public sealed partial class Binding
             shape.Version = this.storageVersion;
         }
 
+        this.storedFields.Clear(); // The step's scratch is empty at its end (PLAN G949 S1-e's rule).
         this.ValidateEnumProjections();
     }
 
@@ -722,7 +742,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.ClosureContext, lengths.AsSpan(0, type.LengthArguments.Length), type.Binder) : type;
+            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.InstanceContext, lengths.AsSpan(0, type.LengthArguments.Length), type.Binder) : type;
         }
         finally
         {

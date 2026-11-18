@@ -72,6 +72,7 @@ public partial class KimiLibraryShapeTest
         ("Storage.missingDictionaryKey", "internal func missingDictionaryKey() -> Never"),
         ("Storage.countOverflow", "internal func countOverflow() -> Never"),
         ("Storage.allocationSizeExceeded", "internal func allocationSizeExceeded() -> Never"),
+        ("Storage.clockFailure", "internal func clockFailure() -> Never"),
         ("Storage.tryAllocateBytes", "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
         ("Storage.stride", "internal func stride<T>() -> isize"),
         ("Storage.destroyValues", "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
@@ -135,8 +136,10 @@ public partial class KimiLibraryShapeTest
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
         // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
         // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
-        // R8-G1 G1-6 (the owner's O-307 (a)): only the lang items a C# reader identifies are cataloged; 63 other declarations carry
-        // `#Intrinsic` or `#CallerLocation` and are registered unnamed (Storage.reserveDispatch, R8-W2 b2-1, among them).
+        // R8-G1 G1-6 (the owner's O-307 (a)): only the lang items a C# reader identifies are cataloged; 82 other declarations carry
+        // `#Intrinsic` or `#CallerLocation` and are registered unnamed (Storage.reserveDispatch, R8-W2 b2-1, among them; PLAN G71's
+        // three `splitAt`, four position and range `format` bodies, Array `index` and `indexUniq`, and seven Time functions; the Time unit's
+        // `Storage.clockFailure` and `Time.readCounterFrequency`; O-412 (1)'s Array.sort(by:), which destroys `by` inside the operation).
         // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
         Assert.Equal(120, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
@@ -151,18 +154,19 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf());
         }
 
-        Assert.Equal((120, 63), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((120, 82), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
-    // KimiLibrarySize's statement: the library's size is what a Bind of the empty program fills, each count rounded up to the Granule.
-    // A library change that moves a count past its Granule restates KimiLibrarySize.Stated: the message gives the counts.
+    // KimiLibrarySize's statement: the library's size is what the library pass fills (LibraryLayer.Size, its table counts at its end:
+    // the program pass empties the per-pass tables it filled, O8 (a)), each count rounded up to the Granule. A library change that moves
+    // a count past its Granule restates KimiLibrarySize.Stated: the message gives the counts.
     [Fact]
     public void TheStatedSizeIsTheLibrarys()
     {
         // A Bind of the empty program: the shared Library compilation has run later stages, which intern further Types.
         var c = CompilationTestHelper.Parse(string.Empty);
         Assert.True(c.Bind().IsComplete);
-        var counts = c.Binding.TableCounts;
+        var counts = c.Binding.Library.Layer.Size;
         Assert.True(counts.Rounded() == KimiLibrarySize.Stated, $"stated {KimiLibrarySize.Stated}, counted {counts}");
     }
 
@@ -249,7 +253,7 @@ public partial class KimiLibraryShapeTest
     {
         var c = Library.Value;
         var unnamed = c.Library.RegisteredSymbols.ToArray().Where(static x => x.LibraryDeclaration is null).ToArray();
-        Assert.Equal(63, unnamed.Length);
+        Assert.Equal(82, unnamed.Length);
         foreach (var symbol in unnamed)
         {
             var function = Assert.IsType<FunctionKoto>(symbol.Declaration);
@@ -345,7 +349,7 @@ public partial class KimiLibraryShapeTest
             .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
             .. UnnamedCompilerFunctionShapes.Select(x => LibrarySource.Declaration(library, x.Path)),
         ];
-        Assert.Equal((25, 25), (expected.Count, shaped.Length));
+        Assert.Equal((26, 26), (expected.Count, shaped.Length));
         Assert.True(expected.SetEquals(shaped));
     }
 
@@ -370,7 +374,7 @@ public partial class KimiLibraryShapeTest
         var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
-        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 27);
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the
@@ -428,7 +432,7 @@ public partial class KimiLibraryShapeTest
                 var writes = c.Types.Retains(symbol, null, null).Writes.ToArray();
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(TyCtxt.Signature(symbol, null, i, out _)!) &&
+                    var stored = symbol.ReceiverIndex >= 0 && i != symbol.ReceiverIndex && !Borrowed(c.Types.Signature(symbol, null, i, out _)!) &&
                         writes.Any(x => x.Output == symbol.ReceiverIndex && (x.Own.Kinds[i] | x.All.Kinds[i]) != RetentionKind.None);
                     Assert.True(stored == KimiLibraryCatalog.Added(symbol, i), $"{Line(function)}: input {i}");
                     if (stored)
@@ -624,7 +628,7 @@ public partial class KimiLibraryShapeTest
         var lines = new List<string> { Line(Record(path)) };
         for (var i = 0; i < AdtDef.Count(type); i++)
         {
-            Assert.NotNull(AdtDef.FieldType(type, i));
+            Assert.NotNull(AdtDef.FieldType(c.Types, type, i));
             lines.Add(Line(AdtDef.Field(type, i)));
         }
 

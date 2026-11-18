@@ -176,4 +176,104 @@ public class QualificationRequiredTest
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.QualificationRequired_Kd);
     }
+
+    // SPEC 9.5, 18.2.1 (PLAN G632; R7-N1 c2): an unqualified Name never selects an enum Case or a member that needs a receiver, at the
+    // scope stages and at the import stages 5 (document aliases) and 6 (default aliases) alike, so the stop is the use's one record, at
+    // the Name, with the found member's cause. Before, the forbidden selection was made and its consumer's verdict recorded instead
+    // (PrerequisiteUnavailable_Kd, NotCallable_Kd, NoApplicableOverload_Kd, InvalidAssignment_Kd, Unsupported_Kd or InternalInvariant_Kd).
+    [Theory]
+    [InlineData("enum Message\n    Quit\n    Write(string)\n    func bad() -> Message => Quit", "", "Quit", "Case")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\n    func f() -> i32\n        let n = Quit\n        let Quit = 1\n        return Quit", "", "Quit", "Case")]
+    [InlineData("enum Box<T>\n    Empty\n    Full(T)\n    func wrap(x: T) -> Box<T> => Full(x@move)", "", "Full", "Case")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Quit", "", "Quit", "Case")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Write(\"a\")", "", "Write", "Case")]
+    [InlineData("alias Kimi.Option<i32>\nfunc pick() -> Option<i32>\n    return Some(1)", "", "Some", "Case")]
+    [InlineData("alias S\nstruct S\n    public var count: i32 = 0\n    public init() => ()\n    public func make() -> i32 => 1\n    public func read(self) -> i32 => 2\nfunc f() -> i32 => read()", "", "read", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    public var count: i32 = 0\n    public func zero() -> i32 => 0\nfunc g() -> i32 => count", "", "count", "Receiver")]
+    [InlineData("alias P\ncontract P\n    func m(self: ref/Self, x: i32) -> i32\nfunc g() -> i32 => m(1)", "", "m", "Receiver")]
+    [InlineData("alias Counter\nalias Meter\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\nstruct Meter\n    public var value: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.value\nfunc f() -> i32 => read()", "", "read", "Receiver")]
+    [InlineData("alias Message\nalias Tools\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    private func Quit() -> i32 => 1\nfunc f() -> Message => Quit", "", "Quit", "Case")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Quit() -> i32 => 1\nfunc f() -> i32 => Quit()", "Alias=\n  \"Tools\"", "Quit", "Case")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Quit", "Alias=\n  \"Message\"", "Quit", "Case")]
+    [InlineData("struct Counter\n    public var count: i32 = 0\nfunc g() -> i32 => count", "Alias=\n  \"Counter\"", "count", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Nope", "", "Message", "Receiver")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nstruct Counter\n    var Message: i32 = 0\n    func f() -> Message => Message.Nope", "", "Message", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    var stored: i32 = 0\n    public init() => ()\n    public computed total: i32\n        get(self: ref/Self) -> i32 => self.stored\nfunc g() -> i32 => total", "", "total", "Receiver")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nfunc g() -> Message => Write(\"a\")", "Alias=\n  \"Message\"", "Write", "Case")]
+    [InlineData("alias Counter\nstruct Counter\n    public var count: i32 = 0\n    public init() => ()\n    public func read(self: ref/Self) -> i32 => self.count\nfunc g() -> i32\n    let f = read\n    return 0", "", "read", "Receiver")]
+    [InlineData("alias Counter\nstruct Counter\n    public var count: i32 = 0\n    public init() => ()\nfunc g() -> i32\n    count = 1\n    return 0", "", "count", "Receiver")]
+    [InlineData("alias P\ncontract P\n    property value: i32 has get\nfunc g() -> i32 => value", "", "value", "Receiver")]
+    [InlineData("alias Message\nenum Message\n    Quit\nfunc g() -> i32\n    let n = Quit\n    let Quit = 1\n    return Quit", "", "Quit", "Case")]
+    [InlineData("alias Box<i32>\nstruct Box<T>\n    public var item: i32 = 0\n    public init() => ()\nfunc g() -> i32 => item", "", "item", "Receiver")]
+    public void AnUnqualifiedNameNeverSelectsACaseOrAReceiverMember(string source, string settings, string name, string cause)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
+        Assert.Equal("QualificationRequired_Kd", record.Code);
+        Assert.Equal(name, source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
+        Assert.Equal(cause, record.Reason![3].Value);
+    }
+
+    // SPEC 9.5, 9.5.1, 18.2.2 (R7-N1 c2): an import stage's same-name declarations are checked for a conflict before 9.5's stop, Cases
+    // and receiver members among them (9.2's Value role admits them), so a stage mixing them with a function or another value, or two
+    // sources' Cases, is the ordinary same-name ambiguity at the Name.
+    [Theory]
+    [InlineData("alias Message\nalias Tools\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Quit() -> i32 => 1\nfunc f() -> i32 => Quit()", "", "Quit")]
+    [InlineData("alias Message\nalias Tools\nenum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Write(s: string) -> i32 => 1\nfunc f() -> i32 => Write(\"a\")", "", "Write")]
+    [InlineData("alias Counter\nalias Config\nstruct Counter\n    public var count: i32 = 0\ngroup Config\n    public var count: i32 = 3\nfunc f() -> i32 => count", "", "count")]
+    [InlineData("alias A\nalias B\nenum A\n    Quit\nenum B\n    Quit\nfunc f() -> A => Quit", "", "Quit")]
+    [InlineData("alias Message\nalias Counter\nenum Message\n    Quit\n    Write(string)\nstruct Counter\n    public var count: i32 = 0\n    public func Quit(self: ref/Self) -> i32 => 1\nfunc f() -> i32 => Quit()", "", "Quit")]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\ngroup Tools\n    public func count() -> i32 => 1\nfunc f() -> i32 => count()", "", "count")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\ngroup Tools\n    public func Quit() -> i32 => 1\nfunc f() -> i32 => Quit()", "Alias=\n  \"Message\"\n  \"Tools\"", "Quit")]
+    public void AnImportStageChecksItsConflictBeforeTheStop(string source, string settings, string name)
+    {
+        var records = DiagnosticCorpus.Check(source, "Library", settings).Diagnostics;
+        Assert.Contains(records, x => x.Code == "AmbiguousBinding_Kd" && source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == name);
+        Assert.DoesNotContain(records, static x => x.Code == "QualificationRequired_Kd");
+    }
+
+    // SPEC 9.5, 7.4, 18.2.1 (R7-N1 c2): a stage with a selectable candidate selects; its members needing a receiver are never selected
+    // (one group's, or another opened source's beside a free function), and an opened or default-aliased Type function is selectable.
+    [Theory]
+    [InlineData("struct S\n    func f(self: ref/Self) -> i32 => 1\n    func f(x: i32) -> i32 => x\n    func g() -> i32 => f(2)", "")]
+    [InlineData("alias Message\nenum Message\n    Quit\n    public func make() -> Message => .Quit\nfunc f() -> Message => make()", "")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\n    public func make() -> Message => .Quit\nfunc f() -> Message => make()", "Alias=\n  \"Message\"")]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\ngroup Tools\n    public func read() -> i32 => 1\nfunc g() -> i32 => read()", "")]
+    public void AStageWithASelectableCandidateSelectsIt(string source, string settings)
+        => Assert.Empty(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
+
+    // SPEC 9.5, 7.4, 10 (R7-N1 c2): at a stage with a selectable candidate the receiver members of another opened source join the group
+    // but are never selected, so a call no selectable candidate fits has no applicable overload; never 9.5's stop.
+    [Theory]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\ngroup Tools\n    public func read(x: i32) -> i32 => x\nfunc g() -> i32 => read()", "read()")]
+    [InlineData("alias Counter\nalias Tools\nstruct Counter\n    public var count: i32 = 0\n    public func read(self: ref/Self) -> i32 => self.count\ngroup Tools\n    public func read() -> i32 => 1\nfunc g(c: ref/Counter) -> i32 => read(c)", "read(c)")]
+    public void AStageWithASelectableCandidateNeverSelectsItsReceiverMembers(string source, string call)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source, "Library").Diagnostics);
+        Assert.Equal("NoApplicableOverload_Kd", record.Code);
+        Assert.Equal(call, source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
+    }
+
+    // SPEC 9.6, 9.5 (R7-N1 c2): a stop under 9.5 fails the value path of `X.m`, so the Type path is the sole success, at an import stage
+    // as at a scope stage, wherever the Type path finds `X` (stage 6's default alias in the last row). Before, the value path selected the
+    // opened member or Case and BU-117's found-both interim rejected the access with Unsupported_Kd; the invalid twin (neither path finds
+    // `Nope`) keeps the stop's record at `Message`, as at stage 2.
+    [Theory]
+    [InlineData("alias Counter\nstruct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "")]
+    [InlineData("alias Kinds\nenum Kinds\n    Message\n    Other\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "")]
+    [InlineData("struct Counter\n    public var Message: i32 = 0\nenum Message\n    Quit\n    Write(string)\nfunc f() -> Message => Message.Quit", "Alias=\n  \"Counter\"")]
+    [InlineData("enum Message\n    Quit\n    Write(string)\nstruct Counter\n    var Message: i32 = 0\n    func f() -> Message => Message.Quit", "")]
+    [InlineData("alias Counter\nstruct Counter\n    public var Tools: i32 = 0\n    public init() => ()\ngroup Tools\n    public func make() -> i32 => 1\nfunc g() -> i32 => Tools.make()", "")]
+    [InlineData("alias Counter\nstruct Counter\n    public var Tools: i32 = 0\n    public init() => ()\ngroup Lib\n    public group Tools\n        public func make() -> i32 => 1\nfunc g() -> i32 => Tools.make()", "Alias=\n  \"Lib\"")]
+    public void AValuePathStoppedAtAnImportStageLeavesTheTypePath(string source, string settings)
+        => Assert.Empty(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
+
+    // SPEC 9.5, 8.6.4 (PLAN G656): an opened Type-function requirement needs no receiver and is no Case, so 9.5 does not stop it; its
+    // call is rejected after selection, by the requirement call's record (G656's unit).
+    [Fact]
+    public void AnOpenedTypeFunctionRequirementIsNoQualificationStop()
+    {
+        var records = DiagnosticCorpus.Check("alias P\ncontract P\n    func make() -> i32\nfunc g() -> i32 => make()", "Library", string.Empty).Diagnostics;
+        Assert.NotEmpty(records);
+        Assert.DoesNotContain(records, static x => x.Code == "QualificationRequired_Kd");
+    }
 }

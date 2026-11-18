@@ -3,7 +3,7 @@ fn bump @10
   _1: uniq/Counter arg self @11
   _2: i32 arg by @13
   _3: () temp @15 s1
-  _4: i32 temp @16 s1
+  _4: i32 temp (Assigned) @16 s1
   s1: lexical in s0 @14
   bb0:
       StorageLive(_3) @15 s1

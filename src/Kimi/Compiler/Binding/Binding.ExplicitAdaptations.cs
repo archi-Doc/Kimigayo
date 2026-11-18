@@ -8,11 +8,16 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<PairCase> adaptationCaseScratch = new();
 
+    // The plan of a conversion bound as a case adaptation (BindCaseAdaptation below) of the current pass (IsCurrent); null for any other
+    // conversion.
+    internal ExplicitAdaptationPlan? AdaptationOf(ConversionKoto conversion)
+        => this.IsCurrent(conversion) && conversion.ConversionBinding == ConversionBinding.CaseAdaptation ? conversion.AdaptationStorage : null;
+
     // SPEC 13.5.6, 15.1.5, 8.14: whether an explicit adaptation borrows its operand exclusively (AdaptationBorrow), a case adaptation in
     // some admitted case: every case of its plan holds, and a case whose target is an exclusive reference or object view borrows there.
     internal bool BorrowsExclusively(ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.CaseAdaptation
-            ? conversion.Adaptation is { } plan &&
+            ? this.AdaptationOf(conversion) is { } plan &&
                 (this.ResultSemantics(plan.Target, this.ConstraintScope(conversion)) & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0
             : conversion.BoundType is { } target && AdaptationBorrow(conversion.ConversionBinding, target) == true;
 
@@ -21,7 +26,7 @@ public sealed partial class Binding
     {
         var factory = this.Library.GetSymbol(ObjectFactoryId(target.Semantics))!;
         var argument = new BoundArgumentOperation(conversion.Left, source, source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: 0);
-        destination.Set(factory, target, null, [argument.ParameterIndex], [source], inputOrigins: [this.PlaceOrigin(conversion.Left)], operations: [argument]);
+        destination.Set(this, factory, target, null, [argument.ParameterIndex], [source], inputOrigins: [this.PlaceOrigin(conversion.Left)], operations: [argument]);
         destination.AdaptationSource = conversion;
         return destination;
     }
@@ -266,7 +271,7 @@ public sealed partial class Binding
 
         if (operation == ConversionBinding.ObjectCreation)
         {
-            if (source.Symbol?.ObjectPayloadOptOut is { } renounced)
+            if (this.ObjectPayloadOptOut(source.Symbol) is { } renounced)
             {
                 this.FailObjectPayload(conversion, renounced);
                 return false;
@@ -291,8 +296,8 @@ public sealed partial class Binding
             // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, Reborrows an object view that lends its object in its mode
             // (LendsView), as the concrete @objref and @objuniq do (AdaptObjectBorrow), and otherwise borrows a Place that lends in its
             // mode or a Temporary Value.
-            if (source.IsObjectBorrow && target.IsObjectBorrow ? !LendsView(conversion.Left, source, exclusive)
-                : !this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
+            if (source.IsObjectBorrow && target.IsObjectBorrow ? !this.LendsView(conversion.Left, source, exclusive)
+                : !this.BorrowablePlace(conversion.Left, scope, exclusive) && !this.BorrowableTemporary(conversion.Left, exclusive, true, false))
             {
                 var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
                 if (failure == BindingFailure.Unsupported)
@@ -304,7 +309,7 @@ public sealed partial class Binding
                 return false;
             }
         }
-        else if (operation != ConversionBinding.ObjectUpcast && IsBarePlace(conversion.Left) &&
+        else if (operation != ConversionBinding.ObjectUpcast && this.IsBarePlace(conversion.Left) &&
             !this.CopiesInEveryCase(source, this.ConstraintScope(conversion)))
         {
             this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);

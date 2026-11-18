@@ -56,7 +56,7 @@ public sealed partial class Binding
             var fitsAll = true;
             for (var j = 0; j < types.Count && fitsAll; j++)
             {
-                fitsAll = IsSubtype(types[j], candidate);
+                fitsAll = this.IsSubtype(types[j], candidate);
             }
 
             if (fitsAll)
@@ -119,6 +119,37 @@ public sealed partial class Binding
 
         return expected;
     }
+
+    // The first array literal source of a join, through the forms that deliver it (DeliveredOperand), that is still unbound: it awaits
+    // its position; null when there is none.
+    // Temporary path (F's ruling 48): a Tuple literal source keeps step 3 at its typed sources' Type, since classifying it by the call
+    // makes an Origins-only difference an inapplicable candidate (g586h3 would give NoApplicableOverload_Kd on a valid program instead of
+    // G443's located Unsupported_Kd). Removal condition: PLAN G443's landing (R7-I2 d), which then classifies Tuple sources here too.
+    private static Koto? AwaitingAggregateSource(ResultContext context)
+    {
+        foreach (var source in context.SourceNodes)
+        {
+            var core = source;
+            while (core is not null && DeliveredOperand(core) is { } operand)
+            {
+                core = operand;
+            }
+
+            if (core is ArrayLiteralKoto { BoundType: null })
+            {
+                return core;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 10.5.1 (DECISIONS BU-43, BU-78; PLAN G924 B2, F's ruling 46): whether a join that is no conflict is its call's argument probe
+    // control flow, which its call classifies (ClassifiedByCall): a typed one holding a failed source, or one with an array literal
+    // source that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet).
+    private bool WaitsForItsCall(Koto node, ResultContext context, bool awaiting)
+        => context.HasTyped && context.Cause is not null ? this.ClassifiedByCall(node, null)
+            : awaiting && AwaitingAggregateSource(context) is { } shape && this.ClassifiedByCall(node, shape);
 
     // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
@@ -214,7 +245,7 @@ public sealed partial class Binding
     // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
     private StructuralCompletion ResultStructure()
     {
-        var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
+        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence);
         structural.Clear();
         return structural;
     }
@@ -314,9 +345,10 @@ public sealed partial class Binding
         }
 
         // SPEC 10.5.1, 23.1.2: a typed join fixes no complete Type without its call when its typed parts have no common Type (U1.6g
-        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended); under its
-        // call's argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
-        if (conflict ? this.ConflictWaits(node) : context.HasTyped && context.Cause is not null && this.ClassifiedByCall(node, null))
+        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended), or an aggregate
+        // source awaits its position (PLAN G924 B2: its sources meet at the parameter's places, 10.5.1 ¶1, 4.3.1); under its call's
+        // argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
+        if (conflict ? this.ConflictWaits(node) : this.WaitsForItsCall(node, context, awaiting))
         {
             context.Wait(this.SourcesAwait(context));
             return Complete(node, null);
@@ -410,6 +442,10 @@ public sealed partial class Binding
 
         internal bool HasLiteral { get; set; }
 
+        // Whether a source is an owner value of a literal form (SPEC 3.6, 14.9.2; PLAN G924 rule B): a Tuple, array, fill, mixed range or
+        // Dictionary literal, at any depth of nested control flow; an untyped literal is HasLiteral's.
+        internal bool HasValue { get; set; }
+
         // Whether the join holds a typed part (G368 (1)): its survey found one at any depth (its evidence, ResultSurvey.Typed), kept
         // after the survey drops its evidence and whatever Expected it chose, or a collected source is one (ResultCandidates).
         internal bool HasTyped { get; set; }
@@ -427,7 +463,7 @@ public sealed partial class Binding
 
         internal void Clear(BoundType? expected)
         {
-            this.HasLiteral = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.HasLiteral = this.HasValue = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;

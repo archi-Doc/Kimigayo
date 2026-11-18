@@ -239,13 +239,14 @@ public class ArrayBindingTest
     public void TruncateDestroysTheTail(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout);
 
-    // SPEC 4.9.1, 4.9.3: an invalid position Aborts in the Kimigayo entry's resolution, before the collection changes.
+    // SPEC 4.9.1, 4.9.3, 22.5.1 (PLAN G71): an invalid position Aborts in resolution, before the collection changes, at the start of the
+    // invoking user expression.
     [Theory]
-    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "self.insertAt(-1")]
-    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "self.removeAt(position)")]
-    [InlineData("SwapEqualBeyond", "var values: Array<i32> = [1, 2]\nvalues@uniq.swap(5, 5)\nConsole.writeLine(\"after\")", "", "self.swapAt(first: PositionSyntax")]
-    public void PositionOperationsAbortInResolution(string name, string source, string stdout, string anchor)
-        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, LibrarySource.Location("Array.kimi", anchor) + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    [InlineData("InsertBounds", "var values: Array<i32> = []\nvalues@uniq.append(1)\nConsole.writeLine(\"before\")\nvalues@uniq.insert(2, 5)\nConsole.writeLine(\"after\")", "before\n", "Hello.kimi:4:1")]
+    [InlineData("RemoveEmpty", "var values: Array<i32> = []\nlet removed = values@uniq.remove(0)\nConsole.writeLine(\"after\")", "", "Hello.kimi:2:15")]
+    [InlineData("SwapEqualBeyond", "var values: Array<i32> = [1, 2]\nvalues@uniq.swap(5, 5)\nConsole.writeLine(\"after\")", "", "Hello.kimi:2:1")]
+    public void PositionOperationsAbortInResolution(string name, string source, string stdout, string location)
+        => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, location + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     // SPEC 4.9.5: a negative reserve amount Aborts before the collection changes.
     [Theory]

@@ -117,9 +117,11 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
     /// <summary>Collects the pair binders in scope of a body (SPEC 8.15): those of its own declaration, of its containers and, for a
     /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
     /// set; the MIR body's binders, which give its Semantics cases.</summary>
+    /// <remarks>The Semantics cases component's published entry for a body's binders, which Mir/Build reads (COMPILER_ARCHITECTURE).</remarks>
+    /// <param name="binding">The reader's Binding, whose pass bound the body.</param>
     /// <param name="body">The body's declaration.</param>
     /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
-    internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
+    internal static void Collect(Binding binding, Koto body, List<PairBinder> binders) => binding.PairBinders(body, binders);
 
     /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.15).</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
@@ -400,15 +402,40 @@ public sealed class BindingSymbol
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <returns>The state, NotStarted when set in another pass.</returns>
-    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
+    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => Binding.Current(this.queryPass, (uint)pass) ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
 
-    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
+    /// <summary>Gets a value indicating whether the declaration's query states are its library pass's, stamped Frozen by PLAN G949
+    /// S1-1's freeze (Binding.DeclQuery's Frozen column); read only by Binding.DeclQuery and SignatureVerdict's per-use path
+    /// (Binding.CheckSignatureTypeConstraints), which never completes a frozen verdict.</summary>
+    internal bool QueriesFrozen => this.queryPass == Binding.Frozen32;
+
+    /// <summary>Gets whether the declaration's query states were set in a pass, or never (PLAN G949 S1-1's freeze verifies it).</summary>
+    /// <param name="pass">The pass stamp.</param>
+    /// <returns>Whether no earlier pass set them.</returns>
+    internal bool QueriesFrom(ulong pass) => this.queryPass == 0 || Binding.Current(this.queryPass, (uint)pass);
+
+    /// <summary>Stamps the declaration's query states Frozen, kept as they are (PLAN G949 S1-1's freeze; Binding.DeclQuery only).</summary>
+    internal void FreezeQueries() => this.queryPass = Binding.Frozen32;
+
+    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only). A declaration of a frozen table (the library's,
+    /// PLAN G949 S1-1) is never written: a Running or NotStarted write leaves its states, and a Done write is a broken contract (a library
+    /// fact completed in a program pass), whether or not the freeze stamped the symbol (s11-design 3.1, rev. 1 N2).</summary>
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <param name="state">The state.</param>
     internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
     {
-        if ((uint)pass != this.queryPass)
+        if (this.Declaration.SyntaxOwner is { Frozen: true })
+        {
+            if (state == DeclState.Done)
+            {
+                throw new InvalidOperationException($"A program pass completed the {kind} query of the frozen library declaration `{this.Name}` (InternalInvariant; PLAN G949 S1-1).");
+            }
+
+            return;
+        }
+
+        if (!Binding.Current(this.queryPass, (uint)pass))
         {
             this.queries = 0;
             this.queryPass = (uint)pass;
@@ -446,11 +473,11 @@ public sealed class BoundType : IEquatable<BoundType?>
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
-    private readonly bool containsClosure;
+    private readonly bool containsNested;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
-    internal BoundType(int id, string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null, Koto? binder = null)
+    internal BoundType(int id, string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? instanceContext = null, Koto? binder = null)
     {
         this.Id = id;
         this.Name = name;
@@ -471,7 +498,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
-        this.ClosureContext = closureContext;
+        this.InstanceContext = instanceContext;
         (this.numeric, this.width) = kind == BoundTypeKind.Primitive ? Row(name) : default;
         this.underlying = this;
 
@@ -484,8 +511,8 @@ public sealed class BoundType : IEquatable<BoundType?>
         var pair = this.IsPairLayer;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
-        var closure = kind == BoundTypeKind.Closure;
-        var height = closureContext is null ? 0 : closureContext.Height + 1;
+        var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
+        var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
@@ -494,7 +521,7 @@ public sealed class BoundType : IEquatable<BoundType?>
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
-            closure |= components[i].containsClosure;
+            nested |= components[i].containsNested;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -517,7 +544,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
         // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
         // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
-        if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))
+        if (instanceContext is { Declaring: { } held } && ReferenceEquals(instanceContext.Target, symbol))
         {
             parameter |= held.containsParameter;
             pair |= held.containsPairLayer;
@@ -526,7 +553,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
-        this.containsClosure = closure;
+        this.containsNested = nested;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -625,7 +652,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
     // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
-    internal Subst? ClosureContext { get; }
+    internal Subst? InstanceContext { get; }
 
     // SPEC 8.10, 15.3.4: a Function Type's per-call binder, the Function Type syntax that declares it, while it quantifies the outer
     // Origin of one of its own direct inputs; null where it quantifies none and on every other kind. An Input Origin of another
@@ -681,8 +708,10 @@ public sealed class BoundType : IEquatable<BoundType?>
     internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
         (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
-    // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
-    internal bool ContainsClosure => this.containsClosure;
+    // Whether this subtree may contain a nested definition's Type, which an instance closes (Binding.CloseNestedTypes; DECISIONS BU-60,
+    // PLAN G846): a Closure Type, or the Item of a function that is no Container's member. A gate, a superset of the Items
+    // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
+    internal bool ContainsNested => this.containsNested;
 
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
     /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>
@@ -742,7 +771,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     // compared here: no identity treats it as open, omitted or inferred (DECISIONS BU-24).
     internal bool SameExceptOrigins(BoundType other)
         => this.Kind == other.Kind && ReferenceEquals(this.Symbol, other.Symbol) && this.Name == other.Name && this.Semantics == other.Semantics && this.Length == other.Length &&
-            ReferenceEquals(this.LengthExpression, other.LengthExpression) && ReferenceEquals(this.ClosureContext, other.ClosureContext) &&
+            ReferenceEquals(this.LengthExpression, other.LengthExpression) && ReferenceEquals(this.InstanceContext, other.InstanceContext) &&
             this.LengthArguments.AsSpan().SequenceEqual(other.LengthArguments) && this.Components.Count == other.Components.Count &&
             this.OriginArguments.Count == other.OriginArguments.Count && ReferenceEquals(this.RawOrigin, other.RawOrigin);
 

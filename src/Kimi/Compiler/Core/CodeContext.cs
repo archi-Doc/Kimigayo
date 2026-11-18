@@ -22,14 +22,15 @@ public sealed class CodeContext
     private Dictionary<Koto, DiagnosticKey>? recoveries;
     private object? sourceIdentity;
     private Kotonoha? sourceModule;
+    private DiagnosticCollection? diagnosticCollection; // Null once the frozen library is detached (Detach).
 
     /// <summary>
-    /// Gets the diagnostic destination for this context.
+    /// Gets the diagnostic destination for this context; a detached frozen library context has none (the internal-invariant form).
     /// </summary>
     /// <remarks>
     /// Resolved once, because it is read for every node the parser creates.
     /// </remarks>
-    public DiagnosticCollection DiagnosticCollection { get; }
+    public DiagnosticCollection DiagnosticCollection => this.diagnosticCollection ?? throw new InvalidOperationException("A node of the frozen Kimi library has no diagnostic collection (InternalInvariant; PLAN G949 Stage 2 U2b).");
 
     /// <summary>
     /// Gets the current source unit.
@@ -66,7 +67,7 @@ public sealed class CodeContext
 
         this.Kotonoha = kotonoha;
         var diagnostics = customDiagnosticCollection ?? kotonoha.DiagnosticCollection;
-        this.DiagnosticCollection = sourceDocument is null ? diagnostics : diagnostics.For(sourceDocument);
+        this.diagnosticCollection = sourceDocument is null ? diagnostics : diagnostics.For(sourceDocument);
         this.SourceDocument = sourceDocument;
     }
 
@@ -229,4 +230,8 @@ public sealed class CodeContext
     /// <param name="cause">The key of the syntax error.</param>
     internal void RecordRecovery(Koto node, DiagnosticKey cause)
         => (this.recoveries ??= new(ReferenceEqualityComparer.Instance))[node] = cause;
+
+    /// <summary>Detaches a context of the frozen library (PLAN G949 Stage 2 U2b; design 5.2, D-C2): a later read of its diagnostic
+    /// collection is the internal-invariant form.</summary>
+    internal void Detach() => this.diagnosticCollection = null;
 }

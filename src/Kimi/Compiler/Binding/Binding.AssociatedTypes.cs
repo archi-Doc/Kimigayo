@@ -188,7 +188,7 @@ public sealed partial class Binding
     private bool AlsoAssociated(BoundType qualifier, string name, MemberAccessKoto path, BindingScope scope)
     {
         var search = this.SearchAssociated(qualifier, scope, name, null);
-        var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(source) ||
+        var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(this.impls.PathsOf(source)) ||
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope) == ConstraintProof.Proven);
         if (!both && !this.contractHeadersReady)
         {
@@ -197,11 +197,11 @@ public sealed partial class Binding
 
         return both;
 
-        static bool Unconditional(BoundConformance source)
+        static bool Unconditional(List<BoundConformancePath> paths)
         {
-            for (var i = 0; i < source.Paths.Count; i++)
+            for (var i = 0; i < paths.Count; i++)
             {
-                if (source.Paths[i].Premises is null)
+                if (paths[i].Premises is null)
                 {
                     return true;
                 }
@@ -216,7 +216,7 @@ public sealed partial class Binding
     // register (VerifyEarlyProjections).
     private void NoteEarlyProjection(MemberAccessKoto use, BoundType type, BindingScope scope, string name, BindingSymbol? qualifier)
     {
-        if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
+        if (!this.impls.Reached(ImplTable.AdmissionPoint.SelfClauses) && type.Symbol?.Declaration is StructKoto or EnumKoto)
         {
             this.earlyProjections.Add((use, PathEnd.Projection, type, scope, name, qualifier));
         }
@@ -276,7 +276,7 @@ public sealed partial class Binding
 
             // F3 (PLAN G724): a Name after a projection that names a member Type of the projection's normal form (SPEC 9.6) is a selection
             // not implemented yet: a located Unsupported_Kd, never a missing name. One the normal form does not declare stays missing.
-            return receiverPath.End == PathEnd.Projection && this.LookupTypeMember(type, name, scope, typeRole: true).Member is not null
+            return receiverPath.End == PathEnd.Projection && this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is not null
                 ? this.Fail(syntax, BindingFailure.Unsupported, true) : null;
         }
 
@@ -366,7 +366,7 @@ public sealed partial class Binding
             var environment = scope.Constraints ??= new();
             if (this.AddConstraintFact(environment, clause.BoundConstraint))
             {
-                environment.Fail(clause); // The clause failed, or holds a recovery.
+                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
             }
 
             if (requirement is null)
@@ -399,7 +399,7 @@ public sealed partial class Binding
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
-        if (parameters.Length != 0 && HasUnsupportedAssociatedIdentity(requirement))
+        if (parameters.Length != 0 && this.HasUnsupportedAssociatedIdentity(requirement))
         {
             this.Fail(clause, BindingFailure.Unsupported, true);
             return null;
@@ -448,7 +448,7 @@ public sealed partial class Binding
         var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out reference) : null;
         var ambiguous = false;
         if (associated is null || (owner.Declaration is not ContractKoto &&
-            (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)))
+            (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || this.impls.PathsOf(conformance).Count == 0)))
         {
             return this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
         }
@@ -487,7 +487,7 @@ public sealed partial class Binding
     private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract)
         => owner.Declaration is ContractKoto
             ? !ReferenceEquals(contract, owner) && IsRefinement(owner, contract)
-            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is { Paths.Count: > 0 };
+            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is { } declared && this.impls.PathsOf(declared).Count > 0;
 
     private void PrepareAssociatedBindings()
     {
@@ -698,7 +698,7 @@ public sealed partial class Binding
     // A root path's binding of an associated identity, kept with the path (BoundConformancePath.AssociatedBindings); null if none.
     private AssociatedBinding? AssociatedBindingOf(BoundConformancePath path, BoundRequirement associated)
     {
-        if (path.AssociatedBindings is { } bindings)
+        if (path.AssociatedBindings is { } bindings && this.impls.Admits(path.Type, ImplTable.AdmissionPoint.AssociatedBindings))
         {
             for (var i = 0; i < bindings.Count; i++)
             {

@@ -424,13 +424,15 @@ Inference variables are placed only at unresolved positions, constrained by vari
 | Invariant | The proven equality; otherwise the covariant, else the contravariant candidate |
 | Contravariant | A lower bound proven to outlive every other lower bound |
 
-Variables connected by a cycle of `outlives` relations are equal and solved as one. A variable at both covariant and contravariant positions is solved as invariant. Each remaining variable takes its candidate from its row using only bounds of that row's kind; an invariant one without a proven equality uses its upper bounds for the covariant candidate, else its lower bounds for the contravariant candidate. Its other bounds are then checked against the candidate. In a contract comparison with pair binders ([§15.3.7](#1537-contract-comparison)), an upper bound that exists only in some admitted Semantics cases ([§15.6.5](#1565-judging-origin-relations)) joins the meet of the covariant row unless some upper bound exists in every case and, in each admitted case that requires it, the bound is proven from the premises of that case to outlive the meet of the upper bounds that exist in every case. In such a comparison the candidate is one Origin for all admitted cases, and each bound is checked against it in the cases that require it. A variable's bounds are followed through other variables to fixed or finite Origins ([§15.6.5](#1565-judging-origin-relations)) and `static`. If none is reached, the variable has no candidate. If its row has no candidate, the variable is a local region in an executable body ([§15.6](#156-borrow-checking)), never replaced by `static`; elsewhere an annotation is needed. Inference is judged after overload selection and never makes a candidate inapplicable.
+Variables connected by a cycle of `outlives` relations are equal and solved as one. For a per-call Origin of a callable signature in a call or a contract comparison, a position's polarity is the direction of the bound it gives: a position that gives an upper bound is covariant and an input position that gives a lower bound is contravariant; a result reverses the bound, so its contravariant positions are covariant. A lower bound that a result gives makes no variable contravariant; a variable at no covariant or contravariant position takes the covariant candidate, else the contravariant candidate. A variable at both covariant and contravariant positions is solved as invariant. Each remaining variable takes its candidate from its row using only bounds of that row's kind; an invariant one without a proven equality uses its upper bounds for the covariant candidate, else its lower bounds for the contravariant candidate. Each variable's other bounds are then checked against its candidate. In a contract comparison with pair binders ([§15.3.7](#1537-contract-comparison)), an upper bound that exists only in some admitted Semantics cases ([§15.6.5](#1565-judging-origin-relations)) joins the meet of the covariant row unless some upper bound exists in every case and, in each admitted case that requires it, the bound is proven from the premises of that case to outlive the meet of the upper bounds that exist in every case. In such a comparison the candidate is one Origin for all admitted cases, and each bound is checked against it in the cases that require it. A variable's bounds are followed through other variables to fixed or finite Origins ([§15.6.5](#1565-judging-origin-relations)) and `static`. If none is reached, the variable has no candidate. If its row has no candidate, the variable is a local region in an executable body ([§15.6](#156-borrow-checking)), never replaced by `static`; elsewhere an annotation is needed. Inference is judged after overload selection and never makes a candidate inapplicable.
 
 The solver uses exactly these rules: reflexivity; transitivity; `static` outlives every Origin; substitution of `==`; the laws of [§15.2.2](#1522-ordering-and-intersection); `a outlives (a and b)` and `b outlives (a and b)`; and `(a and b) outlives c` exactly when `a outlives c` and `b outlives c`. A meet on the right is never split into separate requirements, but `x outlives a` proves `x outlives (a and b)`. Entailment does not depend on the order or repetition of premises and forms no Origin beyond the queried expressions, the premises and their subexpressions. Unknown is distinct from Refuted and is decided under Finality ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)).
 
 ```kimi
 func choose<T>(x: ref/T, y: ref/T) -> ref/T  // Result Origin: (x and y).
     return x                                 // Valid: x outlives (x and y).
+
+// later(w: ref/i64 during a) -> (ref/i64 during a) -> i32: a is covariant; both positions give an upper bound.
 ```
 
 ### 15.3.7. Contract comparison
@@ -569,6 +571,17 @@ func punnedRef(y: uniq/i32)
     let t = z@ref
     keep(t@raw@raw/(raw/(raw/u8)), w@raw@raw/u8)   // *slot reads t's bytes, which no raw pointer wrote.
     // y@follow = 5                                 // Error: keep may store value in storage the body does not own.
+```
+
+A borrow of a temporary cannot outlive it, wherever the temporary belongs ([§3.6](03-types-and-values.md#36-temporaries)):
+
+```kimi
+// identity<T>(value: T) -> T; inspectPair(values: ref/[2 of i32]); passPair(values: ref/[2 of i32]) -> ref/[2 of i32];
+// inspectWide(value: ref/i64); passWide(value: ref/i64) -> ref/i64.
+inspectPair(if ready => [2 of identity(1)] else => [2 of identity(2)])          // The Loan on the argument temporary ends with the call.
+let view = passPair(if ready => [2 of identity(1)] else => [2 of identity(2)])  // view carries the Loan on passPair's argument temporary.
+// inspectPair(view)                                                            // Error: that temporary ended with the statement above.
+// inspectWide(if ready => passWide(identity(1)) else => passWide(identity(2))) // Error: each source's value borrows its own temporary.
 ```
 
 ### 15.6.1. Origin relations and well-formedness

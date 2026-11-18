@@ -60,7 +60,8 @@ internal sealed partial class MirValidator
                 var typed = local.Type is { } type && !TyCtxt.StatesUnstated(type, parts); // Unstated marks kept parts only (DECISIONS BU-46).
                 var placed = (local.Kind == MirLocalKind.Return) == (i == 0) && (local.Kind != MirLocalKind.Arg || arguments);
                 var roled = (local.Role == MirLocalRole.Receiver) == (i == receiver) && // A Result is a temp of _0's Type (MirLocalRole).
-                    (local.Role != MirLocalRole.Result || (local.Kind == MirLocalKind.Temp && ReferenceEquals(local.Type, locals[0].Type)));
+                    (local.Role != MirLocalRole.Result || (local.Kind == MirLocalKind.Temp && ReferenceEquals(local.Type, locals[0].Type))) &&
+                    (local.Role != MirLocalRole.Assigned || local.Kind == MirLocalKind.Temp); // An Assigned is a temp.
                 if (!typed || !placed || local.Kind > MirLocalKind.DropFlag || !roled)
                 {
                     this.Report(MirViolation.Local);
@@ -161,6 +162,6 @@ internal sealed partial class MirValidator
 
         private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
             row.Type,
-            body.ProjectedType(type, row.Kind, row.Arg));
+            body.ProjectedType(types, type, row.Kind, row.Arg));
     }
 }

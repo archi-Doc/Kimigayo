@@ -77,7 +77,7 @@ public sealed class HoverProjectionTest
             Assert.Empty(closed.Components); // The varying length is only in the hidden instantiation context.
             var inspect = Assert.Single(nodes.OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "inspect");
             var selected = inspect.CallOf()!;
-            selected.Set(selected.Target, selected.ReturnType, null, [0], [closed]);
+            selected.Set(compilation.Binding, selected.Target, selected.ReturnType, null, [0], [closed]);
             return At(HoverBuilder.Create(compilation), text.LastIndexOf("inspect(", StringComparison.Ordinal));
         }
 

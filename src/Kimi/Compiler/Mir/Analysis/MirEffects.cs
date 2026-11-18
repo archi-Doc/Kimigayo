@@ -4,7 +4,10 @@
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
-// and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds), TyCtxt's
+// and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds) and
+// into which store (MirDropTable.LibraryHolds: the driver records a body's local facts in the store it began or continued, BeginLibrary,
+// ContinueLibrary or BeginProgram, in the step that closes the body's A2 entry in A2's store of that segment, so A4's library store and A2's hold the same
+// bodies; a driver that fills one without the other breaks Base), TyCtxt's
 // obligations and callee facts, TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
 // DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12), and the root
 // range.
@@ -20,10 +23,11 @@
 // G128's bound); requirement calls on an abstract Self and virtual calls take the bounds of the caller's own premises, a requirement on
 // another Self what its witnesses run; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing. The local facts are recorded per
-// segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library version holds
-// (BeginLibrary), then the program's, into a store cleared per program version (BeginProgram); each store holds its nodes' and bodies'
-// entries by the node id and the ordinal themselves, and a reader takes the library's store below its node count or MirProgram's
-// LibraryCount (R8-L1 M-B1's split rule; no offset).
+// segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library segment holds
+// (BeginLibrary; ContinueLibrary appends a kept segment's newly listed bodies, PLAN G951 U2-K), then the program's, into a store cleared
+// per program version (BeginProgram); each store holds its nodes' and bodies'
+// entries by the node id and the ordinal themselves, and a reader takes a node's store by the library's node count (its nodes come
+// first) and a body's by A2's fact (MirDropTable.LibraryHolds, PLAN G951 U2-K; no offset, no ordinal tested against LibraryCount).
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
@@ -68,7 +72,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
-    private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while its library version holds.
+    private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while the segment holds.
     private readonly Locals programLocals = new(); // The program segment's, cleared per program version.
     private Locals writing = null!; // The segment Local records into, which a begin call names.
     private byte found; // The classes the current evaluation or local walk found.
@@ -87,13 +91,22 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // The number of nodes recorded: the library segment's, then the program's.
     private int NodeCount => this.writing.End;
 
-    /// <summary>Begins the library segment's local facts for a new library version (driver step 0): both segments' facts and every Field
+    /// <summary>Begins the library segment's local facts for a new library segment (driver step 0): both segments' facts and every Field
     /// number cleared; <see cref="Local"/> records into the library's store until <see cref="BeginProgram"/>.</summary>
     internal void BeginLibrary()
     {
         this.libraryLocals.Clear(0);
         this.programLocals.Clear(0);
         this.fieldIds.Clear();
+        this.writing = this.libraryLocals;
+    }
+
+    /// <summary>Continues the library segment's local facts in a later version of a kept library segment (driver step 0, PLAN G951 U2-K):
+    /// the program's facts and the Field numbers it gave cleared; <see cref="Local"/> records into the library's store after its nodes,
+    /// so the library's nodes stay the first, until <see cref="BeginProgram"/>.</summary>
+    internal void ContinueLibrary()
+    {
+        this.BeginProgram();
         this.writing = this.libraryLocals;
     }
 
@@ -152,7 +165,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // DECISIONS R4-M139), Rejected storage included; null where the substitution does not instantiate it or its storage is a Limit.
     internal BoundType? Below(BindingSymbol callee, Subst? subst, int slot)
     {
-        var declared = TyCtxt.Signature(callee, null, slot, out _);
+        var declared = types.Signature(callee, null, slot, out _);
         var parameter = declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
         _ = TyCtxt.Layer(parameter is null ? null : cases.Type(parameter), out var below, out _);
         return below;
@@ -326,7 +339,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         // Each part the group destroys whole (MirDropTable.Destroyed: a Keep or Flag row's, a part's without a row, a fixed array's
         // run of elements). The items are a set: the walk's order and an array's several Runs of one element Type read alike. An Open
         // level has no drop of its own, an Elide row no step.
-        program.Drops.Destroyed(body.Ordinal, group, type, this.destroyed);
+        program.Drops.Destroyed(types, body.Ordinal, group, type, this.destroyed);
         foreach (var step in this.destroyed)
         {
             if (step.Kind is MirDropStepKind.Whole or MirDropStepKind.Run)
@@ -369,8 +382,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // Where a node's local facts begin in its store: the previous node's ends there, none for a segment's first node.
     private NodeFacts Start(Locals store, int node) => node == 0 || node == this.libraryLocals.End ? default : store[node - 1];
 
-    // The first node of a body of the last Run's program: its store's, the library segment's below MirProgram.LibraryCount (R8-L1 M-B1).
-    private int Base(int body) => (body < this.program.LibraryCount ? this.libraryLocals : this.programLocals).Base(body);
+    // The first node of a body of the last Run's program: its store's, the library's where A2's library store holds the body
+    // (MirDropTable.LibraryHolds, the one fact; the driver's library step wrote both).
+    private int Base(int body) => (this.program.Drops.LibraryHolds(body) ? this.libraryLocals : this.programLocals).Base(body);
 
     // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
     // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).
@@ -407,8 +421,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // in the store.
     private readonly record struct NodeFacts(int Owner, byte Classes, int Items, int Edges, int Keys);
 
-    // A segment's local facts in record order (PLAN G950, the Back's C-378 (1)(a)), data only, so the library segment's are kept while its
-    // library version holds: its nodes' entries by node id and its bodies' first nodes by ordinal, each the id or ordinal itself (the
+    // A segment's local facts in record order (PLAN G950, the Back's C-378 (1)(a)), data only, so the library segment's are kept while the
+    // segment holds: its nodes' entries by node id and its bodies' first nodes by ordinal, each the id or ordinal itself (the
     // program's after the library's, no offset), its nodes' local inputs, calls and keys, and the Fields it numbered (BeginProgram removes
     // the program's numbers).
     private sealed class Locals

@@ -277,7 +277,7 @@ public sealed partial class Binding
             var structure = (StructKoto)constructor.Parent!;
             var decision = this.implicitConstructorDecisions[structure];
             if (this.SelectOmittedBaseConstructor(constructor) != decision ||
-                (decision.Winner is { } winner && constructor.BaseInitializer?.BoundCall is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
+                (decision.Winner is { } winner && constructor.BaseInitializer is { } initializer && this.CallOf(initializer) is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
             {
                 this.Fail(structure.BaseClause!, BindingFailure.Unsupported);
             }
