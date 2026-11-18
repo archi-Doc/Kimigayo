@@ -127,7 +127,7 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("1 / 1");
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Equal(18, AbortReasons.All.Length);
+        Assert.Equal(19, AbortReasons.All.Length);
         var count = AbortReasons.All.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
         var codes = new HashSet<string>(StringComparer.Ordinal);
@@ -153,6 +153,8 @@ public class DivisionEmissionTest
         Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", AbortReasons.All[AbortReasons.ReferenceCount].Text);
         Assert.Equal(17, AbortReasons.StaticCycle);
         Assert.Equal("KIMI_E_STATIC_CYCLE: Static initialization cycle", AbortReasons.All[AbortReasons.StaticCycle].Text);
+        Assert.Equal(18, AbortReasons.Clock);
+        Assert.Equal("KIMI_E_CLOCK: Elapsed-time counter failed", AbortReasons.All[AbortReasons.Clock].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }
