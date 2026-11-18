@@ -257,7 +257,7 @@ public sealed partial class Binding
                 for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
                 {
                     if (Opens(g, waiting, covariant, blocked) && this.Types[g] is { CarriesOrigin: true } solution &&
-                        !binding.invariantSlots.Contains(g) && !this.FixedSlot(g))
+                        !this.Frame.IsInvariant(g) && !this.FixedSlot(g))
                     {
                         var ordinal = 0;
                         this.Frame.SetType(g, binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal, opened));
