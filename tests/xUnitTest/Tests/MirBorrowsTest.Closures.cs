@@ -716,8 +716,11 @@ public sealed partial class MirBorrowsTest
     // capture included (pairStoreRead, pairCellRead: PLAN G276, WK), with the receiver's Content rows. A concrete referent with no
     // Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself). The pair rows' `v@follow = x` conflicts in the
     // uniq view (2), lost when a `var` pair local's slot became a region (PLAN G758, the owner's O-174 (a)), are back: a Closure's
-    // retention reads an enclosing local region as its solved value (PLAN G492-a (ii), N6). A5's limit record at the Closure's store,
-    // PLAN G572's (DECISIONS BU-127), is reported in that view, as for the concrete twin; it is not listed here.
+    // retention reads an enclosing local region as its solved value (PLAN G492-a (ii), N6), in all four pair rows as before G758: in the
+    // uniq view the Exclusive call stores child, a Reborrow of v's referent, into the referent of the captured exclusive reference,
+    // the caller's storage (SPEC 15.6.4, 15.8.2), so the Loan stays live past the local read and `v@follow = x` conflicts with it after
+    // the read as before it (the *Read twins), a failure independent of rule G's record at the read (23.1.2). A5's limit record at the
+    // Closure's store, PLAN G572's (DECISIONS BU-127), is reported in that view, as for the concrete twin; it is not listed here.
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(

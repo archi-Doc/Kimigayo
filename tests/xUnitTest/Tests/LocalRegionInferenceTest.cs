@@ -169,7 +169,7 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
     // layers, which also need the Middle's O-375 Q2 (a) solve) and its one-direction form over `idf`. Each read the stored slot of z
     // back as z's value `p`, so x's sources were `p` alone. The rows are the `var` forms (sib2v, chainv): under the owner's O-400 (b)
     // the `let` forms' comparisons are the located limit (only the region reading decides them), which leaves no Compared row and so
-    // stores no bound (OriginPremiseCatalogTest's sib2 row).
+    // stores no bound (OriginPremiseCatalogTest.StoredReadingRows' sib2 and chain rows pin that limit).
     [Theory]
     [InlineData("sib2v", null)]
     [InlineData("chainv", "func idf(w: ref/i64 during a) -> ref/i64 during a => w\nfunc outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    var w = n@ref\n    var z = p\n    var x = p\n    let f1: (ref/i64 during w) -> ref/i64 during z = idf\n    let f2: (ref/i64 during z) -> ref/i64 during x = idf\n    return 0\n")]
