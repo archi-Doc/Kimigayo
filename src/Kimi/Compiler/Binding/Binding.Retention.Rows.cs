@@ -92,9 +92,10 @@ public sealed partial class Binding
     // premises followed) from one of its targets reaches an occurrence of the input, by Value where the closure from a position's node
     // reaches one of the input's sources that the position can hold (CanHold), and by what the output's hold walk keeps (Held from its
     // holds, the result's whole Type or each position the storage walk names for input j, DECISIONS BU-52; each position once per lent
-    // bit, BU-35, BU-40): a raw source's own value (an input holding a raw layer by value) at a raw layer with an Origin and where a
-    // callable may retain it at an abstract part (DECISIONS BU-66), every input at a raw layer the call writes without an Origin (rule A,
-    // WrittenUnstated, the transfer rule narrowing it), the raw arguments at one the result lends (R′); one stepping Unstated or Static,
+    // bit, BU-35, BU-40; and HiddenFills at an abstract part that is no position): a raw source's own value (an input holding a raw layer
+    // by value) at a raw layer with an Origin and where a callable may retain it at an abstract part (DECISIONS BU-66), every input at a
+    // raw layer the call writes without an Origin (rule A, WrittenUnstated, the transfer rule narrowing it), the raw arguments at one the
+    // result lends (R′); one stepping Unstated or Static,
     // not lent, unties every storage of the output, where a transfer operation writes it (TransferWrites, as for rule A), and a result
     // atom whose non-static Origin reaches no input unties the result. A result the call forms within a raw parameter's storage
     // (`within`) retains that argument's own value. The transfer key by declaring identity
@@ -178,6 +179,7 @@ public sealed partial class Binding
             this.BeginStorages();
             this.RootWalk(environment, inputs[output], this.SignatureInput(output));
             var held = this.Hold(output, CollectionsMarshal.AsSpan(this.storageHolds), inputs, kept, (key, callee, premises), ref transfer);
+            this.HiddenFills(output, kept);
             this.Storages(environment, links, kept);
             if (this.Written(output, held) is { } written)
             {
@@ -591,10 +593,9 @@ public sealed partial class Binding
             hidden |= entry.Step == HoldStep.Abstract;
         }
 
-        var holds = this.retentionRawSources.Count > 0 && (stepped || (hidden && this.HoldsRaw(type)));
-        foreach (var (input, kind) in this.retentionRawSources)
+        if (this.retentionRawSources.Count > 0 && (stepped || (hidden && this.HoldsRaw(type))))
         {
-            kept[input] |= input != output && holds ? kind ?? RetentionKind.Value : RetentionKind.None;
+            this.RawSourcesKept(output, kept);
         }
 
         var met = step switch
@@ -620,6 +621,31 @@ public sealed partial class Binding
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return met;
+    }
+
+    // Rule 3's fill of what each abstract part an input's walk meets at no position hides (storageHidden; PLAN G963): each raw source but
+    // `output` keeps its own value where a callable the call may run may retain it there (HoldsRaw, as the hold walk's at an abstract
+    // part). The part's own value is the callee's, not written, so no hold walk of the part: no rule A at a raw layer among its
+    // components (SPEC 15.6.4: a raw layer the abstract Type does not show adds no reach of its own).
+    private void HiddenFills(int output, RetentionKind[] kept)
+    {
+        for (var i = 0; this.retentionRawSources.Count > 0 && i < this.storageHidden.Count; i++)
+        {
+            if (this.HoldsRaw(this.storageHidden[i]))
+            {
+                this.RawSourcesKept(output, kept);
+                return;
+            }
+        }
+    }
+
+    // Each raw source but `output` keeps its own value (SPEC 15.6.4 at the raw source; DECISIONS BU-66).
+    private void RawSourcesKept(int output, RetentionKind[] kept)
+    {
+        foreach (var (input, kind) in this.retentionRawSources)
+        {
+            kept[input] |= input != output ? kind ?? RetentionKind.Value : RetentionKind.None;
+        }
     }
 
     // An abstract part's components (a projection's base and Contract, an adaptation's cases), which rule A's hold walk goes through though

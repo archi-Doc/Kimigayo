@@ -110,12 +110,12 @@ internal sealed partial class FunctionCodegen
             case MirAggregateKind.Tuple or MirAggregateKind.Closure:
                 return (offsets[index], type.Components[index]);
             case MirAggregateKind.Adt when AdtDef.IsEnum(type):
-                var payload = AdtDef.CaseTypes(type)![ordinal]!;
+                var payload = AdtDef.CaseTypes(this.typeContext, type)![ordinal]!;
                 return this.Laid(payload) is { } tuple ? (offsets[1] + tuple.Layout.FieldOffsets.Span[index], payload.Components[index]) : null;
-            case MirAggregateKind.Adt when AdtDef.Base(type) is { } parent:
-                return index == 0 ? (0, parent) : (offsets[index - 1], AdtDef.FieldType(type, index - 1)!);
+            case MirAggregateKind.Adt when AdtDef.Base(this.typeContext, type) is { } parent:
+                return index == 0 ? (0, parent) : (offsets[index - 1], AdtDef.FieldType(this.typeContext, type, index - 1)!);
             case MirAggregateKind.Adt:
-                return (offsets[index], AdtDef.FieldType(type, index)!);
+                return (offsets[index], AdtDef.FieldType(this.typeContext, type, index)!);
             default:
                 throw new InvalidOperationException($"The MIR aggregate kind {kind} has no parts.");
         }

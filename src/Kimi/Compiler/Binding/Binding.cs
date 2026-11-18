@@ -38,7 +38,7 @@ public sealed partial class Binding
     private List<LibraryImport> libraryImports;
     private List<BindingObligation> obligations;
     private HashSet<BindingObligation> obligationSet;
-    private List<(Koto Node, BindingState Before)> foreignFailures;
+    private List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> foreignFailures;
     private bool running;
 
     // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across
@@ -261,6 +261,9 @@ public sealed partial class Binding
 
     internal bool IsRunning => this.running;
 
+    // Whether a node's plans are the current pass's: the node resolved by the running or the last completed pass, not an earlier one.
+    internal bool IsCurrent(Koto node) => HirTables.State(node) == BindingState.Resolved && (this.running || this.Result != default);
+
     internal void Invalidate()
     {
         // A Bind in progress rebuilds everything it published; clearing its state midway would lose its own issues.
@@ -269,22 +272,25 @@ public sealed partial class Binding
             return;
         }
 
-        // An edit revokes the whole Bind, every pass of it, exactly as the next Bind discards it, unless no pass has finished since the
-        // last revocation.
+        // An edit revokes the program pass of the latest Bind, exactly as the next Bind discards it, unless no pass has finished since the
+        // last revocation; the frozen library is never revoked (PLAN G949 S1-1: a source edit never reaches it). Between Binds the
+        // fields hold the program pass's part.
         if (this.Result != default)
         {
             this.Result = default;
             this.BeginRun();
-            this.ResetPasses();
+            this.ResetPass(BindingMode.Provisional);
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
         // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
-        // module's edit columns stale, StampedColumn), local regions, item contexts and the Type context's view memos.
+        // module's edit columns stale, StampedColumn), local regions, item contexts with the atoms their plans hold at library binders
+        // (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
         this.edit++;
         this.knownBases?.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
+        this.programAtoms.Empty();
         this.types.ResetViews();
     }
 

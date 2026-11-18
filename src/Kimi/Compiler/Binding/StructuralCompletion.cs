@@ -2,9 +2,8 @@
 
 // Owns structural completion: whether a node's evaluation can complete normally and which jumps leave it, from source structure.
 // Input: a node, its creator's Never evidence, optionally the guesses (which reads the composition cannot know), an invocation's
-// omitted default arguments, read through InvocationKoto.BoundCall.DefaultArguments (a Koto forwarding property removed at R7,
-// DECISIONS R5-M9), and each jump's published target (Binding.TransferTarget, BU-101), the one input of a composed form that is not
-// one of its parts.
+// omitted default arguments, read through its creator's Binding (Binding.CallOf), and each jump's published target
+// (Binding.TransferTarget, BU-101), the one input of a composed form that is not one of its parts.
 // Output: CanComplete, read by Binding's result Types and the HIR Completion column.
 // A node still being composed (a recursive default) is assumed to complete. Results stay cached until Clear, which a caller calls
 // whenever its Never evidence may change. The cache and the transfer sets are keyed by Koto reference: ARCH "Syntax identity" debt,
@@ -16,11 +15,12 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 /// <summary>Composes conservative source paths without evaluating constants or Scope Exit cleanup.</summary>
+/// <param name="binding">The Binding that creates it, whose current plans give an invocation's omitted default arguments.</param>
 /// <param name="isNever">Whether an evaluated node has Type Never.</param>
 /// <param name="isGuess">Whether a read the composition makes at a node is unknown, assumed then not to complete normally: asked only
 /// where it reads the node itself, at a block (its items, which the parser may have supplied) and at an evaluated node (its Never
 /// evidence), never at a form it composes from its parts (PLAN G47).</param>
-internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, bool>? isGuess = null)
+internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isNever, Func<Koto, bool>? isGuess = null)
 {
     private readonly Dictionary<Koto, Completion> cache = new(ReferenceEqualityComparer.Instance);
 
@@ -250,7 +250,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         var count = this.children.Count - start;
         var result = this.Sequence(this.children, start, count);
         this.children.RemoveRange(start, count);
-        if (result.Normal && node is InvocationKoto { BoundCall: { } call })
+        if (result.Normal && node is InvocationKoto invocation && binding.CallOf(invocation) is { } call)
         {
             foreach (var omitted in call.DefaultArguments)
             {

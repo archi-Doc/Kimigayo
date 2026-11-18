@@ -358,7 +358,7 @@ public class EnumBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64) -> i32\n    " + statement + "\n    return 0\n");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var construction = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => BoundEnumConstruction.Of(x)).Single(x => x is not null)!;
+        var construction = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => BoundEnumConstruction.Of(c.Binding, x)).Single(x => x is not null)!;
         Assert.Equal("i64", construction.Type.Components[0].Name);
     }
 
