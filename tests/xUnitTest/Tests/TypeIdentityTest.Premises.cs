@@ -12,6 +12,8 @@ public partial class TypeIdentityTest
     private const string Ref3 = "func f<T>(first: ref/i32 during a, mid: ref/i32 during b, second: ref/i32 during c, value: T) -> i32\n";
     private const string CE = "contract C\n    associate E\n";
     private const string Pair3 = "func f<s/W, U, V>(x: s/W, first: ref/i32 during a, u: U, v: V) -> i32\n";
+    private const string FlagBlock = "contract Flag\nstruct Either<A, B>\n    var value: A\n    Self is Flag when A is Option<B>, A is Array<B>\n        public func get(self: ref/Self) -> i32 => 1\n";
+    private const string NameBlock = "contract Flag\ncontract K2\n    func name(self: ref/Self) -> i32\nstruct Either<A, B>\n";
 
     [Theory]
     [InlineData(Ref3 + "    T is ref/i32 during a\n    T is ref/i32 during c\n    origin a outlives b\n    origin b outlives c\n    origin c outlives a\n", "")]
@@ -69,6 +71,19 @@ public partial class TypeIdentityTest
     [InlineData("    Self is Flag when A is Option<B>, A is Array<B>\n    Self is Mark when A is Option<B>\n", "InvalidConstraint_Kd@4")]
     public void AConditionsPremiseErrorIsOneRecord(string conformances, string records)
         => Assert.Equal(records, PremiseRecords("contract Flag\ncontract Mark\nstruct Either<A, B>\n" + conformances + "    var value: A\n"));
+
+    // SPEC 8.8.2, 8.2.3 (G881b C1): a block member's conditions read its conformance's failure as the conformance's own proof does
+    // (ReadFailedDeclaration). A premise error keeps the conformance's context, so a use judges the member's conditions as in a valid
+    // view and keeps its own record: Refuted, the member is inapplicable (a call); Unknown, unproven (a requirement it implements). A
+    // use of a member whose own declaration failed rests on that record.
+    [Theory]
+    [InlineData(FlagBlock + "func g(e: ref/Either<Option<i32>, i32>) -> i32\n    return e.get()\n", "InvalidConstraint_Kd@4 NoApplicableOverload_Kd@7")]
+    [InlineData(FlagBlock, "InvalidConstraint_Kd@4")]
+    [InlineData(NameBlock + "    Self is K2\n    var value: A\n    Self is Flag when A is Option<B>, A is Array<B>\n        public func name(self: ref/Self) -> i32 => 1\n", "InvalidConstraint_Kd@7 UnprovenConstraint_Kd@5")]
+    [InlineData(NameBlock + "    var value: A\n    Self is Flag when A is Option<B>\n        public func name(self: ref/Self) -> i32 => 1\n    Self is K2 when A is Option<B>\n", "")]
+    [InlineData("contract Has1\ncontract Inner\nstruct Box<T>\n    var v: i32\n    Self is Has1 when T is Inner\n        public func m(self: ref/Self, x: Missing) -> i32 => 1\nfunc g<T>(b: ref/Box<T>) -> i32\n    T is Inner\n    return b.m(0)\n", "UnresolvedBinding_Kd@6")]
+    public void AConditionalMembersConditionsReadItsConformanceAsItsOwnProof(string source, string records)
+        => Assert.Equal(records, PremiseRecords(source));
 
     // R7-C2e2-2, SPEC 8.2.3: two identity premises of one projection to different complete Types are the table's premise error like
     // any other: one record at the declaration whose premises form it and none at the clauses' projections or at a use. The forms: a
