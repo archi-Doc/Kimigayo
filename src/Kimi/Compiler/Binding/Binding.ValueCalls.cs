@@ -685,7 +685,7 @@ public sealed partial class Binding
         // ArgumentType includes the already selected expected adaptation. Retain the original syntax
         // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
         operations[i] = new(
-            source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i, AdaptedType: adapted);
+            source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.ExpectedTypeFitting : quality, ParameterIndex: i, AdaptedType: adapted);
         instantiated[i] = adapted;
     }
 

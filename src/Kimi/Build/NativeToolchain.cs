@@ -17,7 +17,8 @@
 // Output: the pair, the build record, the staged libraries, the object with its inspection and the executable, each published by
 // replacement; and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
 // InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception: one IsToolchainFailure classifies is
-// the toolchain's, which its host renders as a message; under Project.Build any other ends the build as Faulted (CheckFaulted_Kd, R9-B2).
+// the toolchain's, which its host renders as a message; any other ends the result it interrupted as Faulted (CheckFaulted_Kd): under
+// Project.Build the build's (R9-B2), under a command the command's own (CommandExecution, PLAN G984).
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
@@ -49,9 +50,9 @@ internal static partial class NativeToolchain
 
     // A failure of a toolchain step (the native build, a Library's record, a run or a toolchain command): publication's kinds (an output,
     // a configuration or a supply), a tool that does not start, or a malformed manifest (LinkManifest's InvalidDataException), record or
-    // installation file (KeyNotFoundException and InvalidOperationException, JsonElement's accessors' over the last two). Project.Build applies it only
-    // around the toolchain's own calls (a compiler step's exception is its result's fault, R9-B2); CommandExecution applies it to every
-    // command's exception and TestCommand around its native build, which spans compiler steps too (a PLAN open issue).
+    // installation file (KeyNotFoundException and InvalidOperationException, JsonElement's accessors' over the last two). Its readers apply it
+    // only around the toolchain's own calls: Project.Build and Project.Run (a compiler step's exception is its result's fault, R9-B2),
+    // CommandExecution.Toolchain (build --Manifest, run <exe>, toolchain verify) and TestCommand around its native build (PLAN G984).
     internal static bool IsToolchainFailure(Exception ex)
         => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
 

@@ -50,6 +50,7 @@ public sealed partial class Binding
         this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
         this.environmentJudgments = this.environmentScratch.Rent(CallSlotCount(solution.Function));
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
+        var wholesMark = this.wholes.Count;
         try
         {
             var result = this.TryCandidateCore(
@@ -82,6 +83,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
             this.CloseTrial(enclosing);
             this.ReturnSlotSet(this.invariantSlots);
             this.invariantSlots = saved;
@@ -220,6 +222,7 @@ public sealed partial class Binding
             var contextualInputs = false;
             var contextualCallables = false;
             var waitingCallables = false;
+            var wholes = this.wholes.Count;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var part = call.ArgumentNodes[i];
@@ -264,7 +267,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!solution.InferCallableSignatures(mapping, operations))
+            if (!solution.BindWholes(wholes, late: false) || !solution.InferCallableSignatures(mapping, operations))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -285,13 +288,19 @@ public sealed partial class Binding
                 returnPattern = this.CallMemberPattern(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), function, declaringType)!;
 
                 // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
-                // the completed result are judged at the destination.
-                expectedStructure = this.Infer(returnPattern, expected, CallSlotOwner(function), frame, true, true);
-                this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
+                // the completed result are judged at the destination. SPEC 10.2.2 item 2, 10.8.1, 12.3.1 (PLAN G924): at an expected
+                // `ref/U` a returned value that is no borrow value (OwnerResult) is the owner temporary of U, so the expected result is
+                // U, which inverts nothing; a returned `ref/T` is matched against `ref/U`. A bare slot is what its evidence bound it
+                // to, and while unbound a returned value, which U then fills.
+                var referent = this.ExpectedTypeOf(expected);
+                var resultExpected = !ReferenceEquals(referent, expected) &&
+                    OwnerResult(returnPattern.Kind == BoundTypeKind.Parameter ? solution.Type(returnPattern) ?? returnPattern : returnPattern) ? referent : expected;
+                expectedStructure = this.Infer(returnPattern, resultExpected, CallSlotOwner(function), frame, true, true);
+                this.MatchResultOrigins(returnPattern, resultExpected, function, origins, inputs);
                 if (returnPattern.CarriesOrigin)
                 {
                     solution.OriginInference ??= this.BeginOriginInference(call, function);
-                    this.CollectOriginInference(returnPattern, expected, solution.OriginInference, result: true);
+                    this.CollectOriginInference(returnPattern, resultExpected, solution.OriginInference, result: true);
                 }
             }
 
@@ -300,7 +309,7 @@ public sealed partial class Binding
                 DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
-            if (!this.SolveLate(ref solution, mapping, defaults))
+            if (!this.SolveLate(ref solution, mapping, defaults, ref unboundSlots))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -399,8 +408,10 @@ public sealed partial class Binding
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
                                 // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
                                 // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
-                                var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument)
-                                    ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
+                                // A part checked against its expected Type ranks as its fit there ranks it (ExpectedTypeClass; PLAN G924,
+                                // G916): the open position's whole literal or join is the same operation as at a closed one.
+                                var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure
+                                    : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join ? ExpectedTypeClass(this.Materialization(argument, pattern, scope)) : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
                                 {
@@ -422,7 +433,7 @@ public sealed partial class Binding
                             if (DifferentRangeShapes(shape, pattern))
                             {
                                 operations[i] = new(
-                                    call.ArgumentNodes[i], shape, pattern, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                    call.ArgumentNodes[i], shape, pattern, ArgumentOperationKind.Value, ArgumentAdaptation.ExpectedTypeFitting, ParameterIndex: mapping[i]);
                             }
 
                             return CandidateApplicability.Inapplicable;
@@ -438,7 +449,7 @@ public sealed partial class Binding
                                 // needs whatever the slot binds: the borrow of its temporary under a ref layer (TemporaryTarget, as FitLiteral
                                 // ranks a closed one), else the Literal fit; so it ties with a candidate that fits the Literal, and step 2 decides.
                                 open.Add(i);
-                                var adaptation = this.TemporaryTarget(argument, met, scope) is null ? ArgumentAdaptation.Literal : ArgumentAdaptation.CrossSemanticsBorrow;
+                                var adaptation = this.Materialization(argument, met, scope) is null ? ArgumentAdaptation.ExpectedTypeFitting : ArgumentAdaptation.CrossSemanticsBorrow;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 continue;
                             }
@@ -609,11 +620,14 @@ public sealed partial class Binding
     // candidate's Origins, which the well-formedness of each Signature position (F1, R4-M164: each leaf row of an argument,
     // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted),
     // after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
-    // inapplicable.
-    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
+    // inapplicable. Before the walk it publishes the slots that steps 3 and 4 left unbound in `left` (SlotSolution.Left): only they take
+    // their literals whole in it (SPEC 4.3.1 Places, 10.8).
+    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet left)
     {
         var call = solution.Call;
         var function = solution.Function;
+        var wholes = this.wholes.Count;
+        solution.LeaveUnbound(ref left);
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if (function.Parameters[mapping[i]].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } latePattern &&
@@ -621,6 +635,11 @@ public sealed partial class Binding
             {
                 return false;
             }
+        }
+
+        if (!solution.BindWholes(wholes, late: true))
+        {
+            return false;
         }
 
         solution.Contribute(mapping);

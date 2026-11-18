@@ -36,7 +36,6 @@ public class StructuredConstraintSubjectBindingTest
     [InlineData("((i32) -> bool) is not Copy")]
     [InlineData("[2 of (i32) -> bool] is not Copy")]
     [InlineData("Box<i32>.Item<i32> is Copy")]
-    [InlineData("Box<i32>.(Copy) is Copy")]
     [InlineData("::i32 is Copy")]
     [InlineData("::string is Copy")]
     [InlineData("::Box<i32> is Copy")]
@@ -46,6 +45,18 @@ public class StructuredConstraintSubjectBindingTest
         var record = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
         Assert.Equal(clause[..clause.LastIndexOf(" is ", StringComparison.Ordinal)], record.Text);
+    }
+
+    // SPEC F.5 PathSuffix (PB3, F's ruling 16): a grouped Contract after "." carries its ". Name", so a subject ending in a lone `.(C)` is
+    // one record at the group (ContractMember); the subject rule reads that failed path and adds none (base's record over the subject).
+    [Fact]
+    public void ASubjectEndingInALoneGroupedContractIsOneRecordAtTheGroup()
+    {
+        var c = MinimalEmissionTest.Analyze(Source("Box<i32>.(Copy) is Copy"));
+        var record = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains("Expected grouped Contract followed by its member Name", record.Message, StringComparison.Ordinal);
+        Assert.Equal("(Copy)", record.Text);
     }
 
     // SPEC F.5, F.6: an AssociatedTypeReference is a subject with or without a leading `::`, whose qualifier may be a constructed Type, in a

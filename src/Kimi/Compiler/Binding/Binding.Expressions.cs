@@ -129,12 +129,6 @@ public sealed partial class Binding
         return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
     }
 
-    // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
-    // operations of its concrete Type.
-    // A shared literal argument constructs an owner temporary before acquiring its borrow.
-    private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
-
     private static BoundType? Complete(Koto node, BoundType? type)
     {
         node.BoundType = type;
@@ -245,15 +239,17 @@ public sealed partial class Binding
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
-        // SPEC 10.2 row 2: a literal at ref/U is bound as its owner temporary at U, which the common adaptation below borrows. Its Type is
-        // U also where it rests on a failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still
-        // takes the borrow its position needs.
+        // SPEC 10.2 row 2, 14.9.2 step 3 (PLAN G924 rule B): a value at ref/U (Materialization: a literal, or a value join waited or not)
+        // is bound as its owner temporary at U, which the common adaptation below borrows once. Its Type is U also where it rests on a
+        // failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still takes the borrow its
+        // position needs.
         BoundType? actual;
+        var temporary = this.Materialization(node, expected, scope);
         if (this.WaitedResult(node) is { } waited)
         {
-            actual = this.DecideWaiting(node, waited, expected);
+            actual = this.DecideWaiting(node, waited, temporary ?? expected);
         }
-        else if (this.TemporaryTarget(node, expected, scope) is { } temporary)
+        else if (temporary is not null)
         {
             actual = this.BindNodeCore(node, scope, temporary);
             if (actual is null && node.BindingFailure == BindingFailure.None && this.prerequisites.ContainsKey(node))
@@ -626,7 +622,7 @@ public sealed partial class Binding
                 return this.CompleteDependent(array, holeCause);
             case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
                 return this.CompleteDependent(array, arrayCause);
-            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
+            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0:
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
@@ -639,12 +635,15 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.Unsupported, true);
     }
 
+    // The node bound at `expected` and fitted to it. SPEC 23.1.2: a node whose fit failed supplies no Type: its record is its own, and
+    // what reads the result rests on it instead of judging the misfitting Type once more.
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
         if (expected is not null && actual is not null && !this.FitsValueAt(actual, expected, node, node, out var failure))
         {
             this.FailMismatch(node, node, actual, expected, failure);
+            return null;
         }
 
         return actual;

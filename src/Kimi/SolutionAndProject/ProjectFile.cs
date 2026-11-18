@@ -82,7 +82,7 @@ public partial record class ProjectFile
         var writer = TinyhandWriter.CreateFromThreadStaticBuffer();
         try
         {
-            TinyhandTreeConverter.FromUtf8ToBinary(utf8, ref writer, true);
+            ConfigurationText.ToBinary(utf8, ref writer);
             var reader = new TinyhandReader(writer);
             List<string>? failures = null;
             var ambiguous = ValidateMapNames(reader, ref failures);

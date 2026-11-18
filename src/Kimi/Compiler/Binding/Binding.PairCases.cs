@@ -105,6 +105,16 @@ public sealed partial class Binding
     internal SemanticsMask LayerAdmitted(BoundType type)
         => TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } ? this.AdmittedSemantics(whole, scope) : SemanticsMask.None;
 
+    /// <summary>Tests whether a Type has a borrow value's outer Semantics (SPEC 3.4.1, 10.2.2 item 2): <c>ref</c>, <c>uniq</c>,
+    /// <c>objref</c> or <c>objuniq</c>, or a pair layer whose binder's admitted set lies within <c>borrow</c> (SPEC 8.3.4,
+    /// <see cref="LayerAdmitted"/>; PLAN G924, the owner's O-416 (b)).</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>Whether its outer Semantics is a borrow's.</returns>
+    internal bool HasBorrowSemantics(BoundType type)
+        => TryPairLayer(type, out _, out _)
+            ? this.LayerAdmitted(type) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0
+            : type.Kind == BoundTypeKind.Semantics && IsBorrow(type.Semantics);
+
     /// <summary>Gets the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1): one fixed Origin per pair binder, shared by every
     /// occurrence of the original <c>s/T</c>, present only in the admitted borrow cases and never written in source. The whole Type
     /// itself keeps no Origin; this atom is the binder's and is obtained only through <see cref="OuterOrigin"/>.</summary>

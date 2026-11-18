@@ -96,9 +96,17 @@ public static partial class Parser
         {
             // SPEC 8.5: a Contract-qualified projection such as I.(LendingIterator).LentItem(step) names its Contract in parentheses.
             var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                ? ParseBareParenthesizedType(ref reader)
+                ? ParseContractGroup(ref reader)
                 : ParseName(ref reader);
             subject = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, member.Span.End), subject, member);
+
+            // F.5's ".(C).Name" rule (ContractMemberCause), read here too as a temporary: this loop also reads a runtime type test's
+            // target and a requirement's head word in the requirement reader's leaves; removed when G489 routes it through ParseTypeSuffixes.
+            if (member is ParenthesizedTypeKoto && ContractMemberCause(ref reader, member) is { } cause)
+            {
+                subject = RecoverRejectedPart(ref reader, subject.Span, subject, cause);
+                break;
+            }
         }
 
         return subject;

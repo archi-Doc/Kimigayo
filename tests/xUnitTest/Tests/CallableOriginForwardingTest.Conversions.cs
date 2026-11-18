@@ -906,9 +906,12 @@ public partial class CallableOriginForwardingTest
     // as fitting every candidate the evidence walk keeps, so a later use of the call's result (a consultation re-selecting it) adds no
     // NoApplicableOverload_Kd beside the argument's one contract (na5a, na5, na5b, st1). A call no candidate admits by another argument
     // keeps its own record (na5d; its Closure is never judged); na1, na5c and st1b (no later use) are unchanged. An untyped failed part
-    // is not this row's (ar2: an operator's untyped Closure keeps the call's NoApplicableOverload_Kd, U1.6h's).
+    // is not this row's (ar2: an operator's untyped Closure keeps the call's NoApplicableOverload_Kd, U1.6h's). The operand is bound
+    // once before selection without its counterpart (SPEC 13.3.4), so its body's independent `missing` is its own record (ar2m), while
+    // its omitted `x` has a Type only from the failed selection and rests on it (SPEC 7.7.1, 23.1.2; PLAN G924 AF-2, F's ruling 100).
     [Theory]
     [InlineData("ar2", "struct Value\n    Self is Addable<(i32) -> i32>\n    associate Output is i32\n    public func added(self: ref/Self, right: ref/((i32) -> i32)) -> i32 => 1\nfunc k() -> i32\n    return Value.init() + func [] (x) => x\n", "NoApplicableOverload_Kd Value.init() + func [] (x) => x")]
+    [InlineData("ar2m", "struct Value\n    Self is Addable<(i32) -> i32>\n    associate Output is i32\n    public func added(self: ref/Self, right: ref/((i32) -> i32)) -> i32 => 1\nfunc k() -> i32\n    return Value.init() + func [] (x) => missing\n", "NoApplicableOverload_Kd Value.init() + func [] (x) => missing; UnresolvedBinding_Kd missing")]
     [InlineData("na5a", UseStatic + "    let n = use(" + WeakClosure + ")\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
     [InlineData("na5", UseStatic + "    let n = use(" + WeakClosure + ")\n    let local = 1\n    let r = local@ref\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]
     [InlineData("na5b", UseStatic + "    let n = use(" + WeakClosure + ")\n    let local = 1\n    return n\n", "UnprovenOriginContract_Kd " + WeakClosure)]

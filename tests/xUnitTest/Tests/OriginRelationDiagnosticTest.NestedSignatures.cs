@@ -61,6 +61,13 @@ public partial class OriginRelationDiagnosticTest
 
     private const string PickHead = "func pick(q: ref/i32, r: ref/i32) -> ref/i32 during r\n    origin q outlives r\n    return q\n";
 
+    // ClauseStruct without its clause.
+    private const string FreeStruct = "struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\n";
+
+    private const string LiteralHead = "func k(p: ref/i32) -> i32\n";
+
+    private const string StaticApp = "func app(f: (ref/i32, U during static) -> i32) -> i32 => 0\n\n";
+
     // Nested inputs (the owner's (A); SPEC 15.6.4 step 3): each call proves its callee's input well-formedness for the instantiated Types,
     // at the argument whose Type it is (DIAGNOSTICS: an instantiated parameter Type's well-formedness is judged at its argument), also
     // for a nested named function, a method relating its struct's slots and a contextually typed `.None`; the enclosing definition
@@ -122,6 +129,45 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U2.2", "h9", PickHead + "func bad() -> i32\n    let long = 1\n    let keep = long@ref\n    var out = long@ref\n    if true\n        let short = 2\n        out = pick(short@ref, keep)\n    return out@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     public void APlanG277FormHasItsVerdict(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
+
+    // PLAN G972 (SPEC 15.3.4 "Nested signatures", 8.10, 3; the owner's O-403 (b)): no written Origin in a nested signature's input names
+    // that signature's per-call Origin, an anonymous function's (its direct borrowed input's omitted Origin, named through the input) or
+    // a Function Type's: not in an aggregate slot (n1, n2, n3, r6, in a meet's operand n9, in any order n10), not in a nested or written
+    // direct borrow layer (g216: G216's OriginRowsTest row; n5, n6), not in a Function Type inside an input (n7, n7r), also under a local
+    // annotation (n8), a header probe (n11b), a generic body (n15, once), with a local clause (loc: LocalOriginClauseTest's row) and in
+    // a converted literal (g905: PLAN G905's f2v, labelled valid before (b)). One InvalidOriginBinding_Kd at the written Origin; it
+    // stays bound, so independent records stay (n8, g905: the conversion). Valid: an outer Origin (v1; v1t, whose clause is a premise of
+    // the literal), x's own slot, a body variable (v4), and the per-call Origin where it is visible: the literal's result (r1), its body
+    // (r14, v10's inner literal), a named signature (v7); v12b is n11b's twin, h2 a Function Type's sibling input over a set fixed by
+    // equality to an outer Origin (8.10).
+    [Theory]
+    [InlineData("n1", ClauseStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: T during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n2", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n3", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: Option<U during x>) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("r6", FreeStruct + LiteralHead + "    let c = func [] (x: ref/U, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n9", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: U during (x and p)) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n10", FreeStruct + LiteralHead + "    let c = func [] (y: U during x, x: ref/i32) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("g216", "func g() -> i32\n    let h = func [] (p: ref/i32, r: ref/(ref/i32 during p)) -> i32 => 1\n    return 0\n", "InvalidOriginBinding_Kd p")]
+    [InlineData("n5", LiteralHead + "    let c = func [] (x: ref/i32, y: Option<ref/i32 during x>) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n6", LiteralHead + "    let c = func [] (x: ref/i32, y: ref/i32 during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n7", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, f: (U during x) -> i32) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n7r", LiteralHead + "    let c = func [] (x: ref/i32, f: () -> ref/i32 during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n8", FreeStruct + LiteralHead + "    let c: (ref/i32, U) -> i32 = func [] (x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x; UnprovenOriginContract_Kd func [] (x: ref/i32, y: U during x) -> i32 => 0")]
+    [InlineData("n11b", FreeStruct + StaticApp + LiteralHead + "    let r = app(func [] (x: ref/i32, y: U during x) -> i32 => 0)\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("n15", FreeStruct + "func mk<V>(v: ref/V) -> i32\n    let c = func [] (x: ref/V, y: U during x) -> i32 => 0\n    return 0\n\n" + LiteralHead + "    let a = mk(p)\n    let bv: bool = true\n    let b = mk(bv@ref)\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("loc", "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\nfunc f() -> i32\n    let g = func (a: ref/i32 during b, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return h.item@follow\n    return 0\n", "InvalidOriginBinding_Kd b")]
+    [InlineData("g905", "func f(c: ref/i32) -> i32\n    let k: (ref/i32 during c, uniq/((ref/i32 during c) -> i32)) -> i32 = func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0\n    return 0\n", "InvalidOriginBinding_Kd b; UnprovenOriginContract_Kd func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0")]
+    [InlineData("v1", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: U during p) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("v1t", ClauseStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: T during p) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("v4", FreeStruct + LiteralHead + "    let c = func [] (x: ref/U, y: U during x.a) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("r1", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32) -> ((U during x) -> i32) => $abort(\"no\")\n    return 0\n", "")]
+    [InlineData("r14", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32) -> i32\n        let g: Option<(U during x) -> i32> = .None\n        return 0\n    return 0\n", "")]
+    [InlineData("v10", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32) -> i32\n        let d = func [] (y: U during x) -> i32 => 0\n        return 0\n    return 0\n", "")]
+    [InlineData("v7", FreeStruct + LiteralHead + "    func inner(x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "")]
+    [InlineData("v12b", FreeStruct + StaticApp + LiteralHead + "    let r = app(func [] (x: ref/i32, y: U during static) -> i32 => 0)\n    return 0\n", "")]
+    [InlineData("h2", FreeStruct + "func h2(x: ref/i32, cb: (U{c}, ref/i32 during c.a) -> ())\n    origin c.a == x\n    return\n\n" + LiteralHead + "    return 0\n", "")]
+    public void ANestedSignaturesInputNamesNoPerCallOriginOfItsSignature(string form, string body, string records)
+        => AssertRecords(form, body, records, null);
 
     // The G216 (a) acceptance check: the program parses without a record, and its Error records are exactly `records` (each `Code text`,
     // ordinal order, "; " between them; empty for a valid program), one of them labelled `label` when it is given.

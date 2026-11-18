@@ -275,8 +275,19 @@ public partial class Project
     /// <summary>Executes the last successfully built Application without rebuilding.</summary>
     /// <param name="cancellationToken">Cancels the child process.</param>
     /// <returns>The application's exit code.</returns>
-    public Task<int> Run(CancellationToken cancellationToken = default)
-        => NativeToolchain.RunProject(this, cancellationToken);
+    public async Task<int> Run(CancellationToken cancellationToken = default)
+    {
+        // The toolchain's classification around its call only (PLAN G984): a failure before launch fails the run with its message (IMPL 20.3).
+        try
+        {
+            return await NativeToolchain.RunProject(this, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+        {
+            this.ToolchainFailed(ex);
+            return 1;
+        }
+    }
 
     /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
