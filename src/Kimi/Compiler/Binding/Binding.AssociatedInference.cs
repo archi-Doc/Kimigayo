@@ -624,6 +624,7 @@ public sealed partial class Binding
                 {
                     consumer.IsVerified = false;
                     consumer.Invalid = true;
+                    this.Invalidated(); // Under its source's own use it fails no node (the rounds' change signal).
                     consumer.Identity.IsVerified = false;
                     if (!ReferenceEquals(consumer.Use, source.Use))
                     {

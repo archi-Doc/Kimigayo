@@ -32,6 +32,14 @@ public sealed partial class Binding
     private int consultationStart = -1;
     private Koto? consultationNode;
 
+    // The pass's change signal (ValidateConstraintEnvironments): advanced by every write of what an environment's judgment reads, in the
+    // step that writes it: each Fail call, whether or not the node held a failure already (a conformance's, an identity's or an Access
+    // path's Invalid is written with one); each environment made Invalid (FailEnvironment); and an inference consumer made Invalid under
+    // its source's use (InvalidateAssociatedEvidence). PublishSourceStates' state, written with no Fail at each ValidateConformances,
+    // only withdraws a premise (AvailableContractPremise); the failure an Error reads (InvalidDeclarationContext) is written through Fail
+    // by ValidateClosedTypeConstraints, which the rounds' condition runs before the walk (InvalidateProjectionCertificates).
+    private int invalidations;
+
     // The running pass's part (PassPart.DerivedIssues), which its Check writes (EnterPass).
     private List<Koto> derivedIssues;
 
@@ -156,8 +164,20 @@ public sealed partial class Binding
         return -1;
     }
 
+    // An environment made Invalid by the failure of `node` (ConstraintEnvironment.Fail), counted in the change signal whether or not the
+    // writer also fails a node: under an owner that held a failure already it calls no Fail.
+    private void FailEnvironment(ConstraintEnvironment environment, Koto node)
+    {
+        environment.Fail(node);
+        this.Invalidated();
+    }
+
+    // The change signal's one writer: Fail, FailEnvironment and an evidence record made Invalid with no failure of its own call it.
+    private void Invalidated() => this.invalidations++;
+
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
+        this.Invalidated();
         if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
         {
             failure = BindingFailure.QualificationRequired;
