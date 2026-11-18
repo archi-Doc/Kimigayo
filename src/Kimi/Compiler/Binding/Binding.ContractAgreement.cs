@@ -160,9 +160,9 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    foreach (var a in left.PathStorage)
+                    foreach (var a in this.impls.PathsOf(left))
                     {
-                        foreach (var b in right.PathStorage)
+                        foreach (var b in this.impls.PathsOf(right))
                         {
                             if (!a.IsVerified || !b.IsVerified || this.ContractOverlapScope(a.Scope, left.Contract, right.Contract) is not { } scope)
                             {
