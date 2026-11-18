@@ -594,8 +594,10 @@ public sealed partial class Binding
 
                 foreach (var fact in environment.Facts)
                 {
+                    // R7-M25 (D), R7-C3 C6: a reading whose subject has no abstract part is not filed; a concrete constructed member's
+                    // conformance is ResolveConformance's (never Unknown), so its row would repeat it or be a premise error.
                     if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } &&
-                        this.Reading(fact, view.Premises, ref after) is { Subject.HasAbstractPart: true } normalized && !ReferenceEquals(normalized, fact)) // R7-M25 (D): a concrete subject's conformance is ResolveConformance's
+                        this.Reading(fact, view.Premises, ref after) is { Subject.HasAbstractPart: true } normalized && !ReferenceEquals(normalized, fact))
                     {
                         this.enumerateNormalized.Add((scope, fact, normalized));
                     }

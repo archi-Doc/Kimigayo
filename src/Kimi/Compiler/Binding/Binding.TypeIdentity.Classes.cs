@@ -517,7 +517,8 @@ public sealed partial class Binding
         // the family of least Order; that family's own entry is this class again, by congruence, so no second hop reads anything new).
         private BoundType? FamilyMember(int root)
         {
-            if (!this.closed || !this.familyMembers.TryGetValue(root, out var answer)) // inside Close's rounds the classes still join: no cache
+            // Inside Close's rounds the classes still join, so the answer is kept only once closed.
+            if (!this.closed || !this.familyMembers.TryGetValue(root, out var answer))
             {
                 var own = this.OwnMember(root);
                 BoundType? family = null;
