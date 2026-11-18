@@ -711,7 +711,7 @@ public sealed partial class Binding
             // A determined Core is judged directly and shallowly, even with unbound Type arguments.
             if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto or EnumKoto)
             {
-                return type.Symbol.ObjectPayloadOptOut is null;
+                return this.ObjectPayloadOptOut(type.Symbol) is null;
             }
 
             if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
@@ -748,7 +748,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && required.Symbol.ObjectPayloadOptOut is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
+                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && this.ObjectPayloadOptOut(required.Symbol) is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
                 {
                     return true;
                 }

@@ -109,6 +109,15 @@ public sealed partial class Binding
             return null;
         }
 
+        // A failure at a node of a module the running pass does not bind (PLAN G949, DECISIONS BU-220's pass driver): the node is not in
+        // the pass's nodes, so the pass lists it, with the state its own pass counted, and CountStates gives it its record and count.
+        // This is the one place a node's failure is first written; a node a check cleared (ClearFailure) and fails again keeps its one
+        // listing with that first state (review-s1r1b N2), so a node enters the list once per pass.
+        if (!this.pass.Binds(node.SyntaxOwner) && !this.ListsForeignFailure(node))
+        {
+            this.foreignFailures.Add((node, node.BindingState));
+        }
+
         if (unresolved)
         {
             this.MarkUnresolved(node);
@@ -120,6 +129,20 @@ public sealed partial class Binding
 
         node.BindingFailure = failure;
         return null;
+    }
+
+    // Whether the running pass has listed a node among its foreign failures: linear in the list, which no program fills today.
+    private bool ListsForeignFailure(Koto node)
+    {
+        foreach (var (listed, _) in this.foreignFailures)
+        {
+            if (ReferenceEquals(listed, node))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // An invalid node with a failed part remains rejected while another check is pending; ordinary retries remain pending.

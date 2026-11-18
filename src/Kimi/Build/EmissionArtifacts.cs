@@ -17,7 +17,8 @@ public static class EmissionArtifacts
     /// throws, is not classified here: it leaves for the command's fault path (DECISIONS R5-M169). The publication inputs are checked
     /// first, since the generation entry writes into the temporary IR file (R5 C0a); code generation never reads them, so it runs once
     /// whatever they found, into no output when they failed (DECISIONS R5-M181); preparation has validated the native configuration
-    /// (DependencyConfiguration).</summary>
+    /// (DependencyConfiguration). The required libraries' supplies are resolved after generation, from the generation result
+    /// (Compilation.Generated, with the output kind and the external declarations the manifest states; R9-B1).</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="paths">The artifact paths, or null for the project's.</param>
     /// <param name="irPath">The published IR path on success.</param>
@@ -34,7 +35,6 @@ public static class EmissionArtifacts
         string directory, destination, manifest, outputDirectory;
         string? tempIr = null, tempManifest = null, llvm = null;
         NativeLibraryInput? backend;
-        List<(string Name, string Kind, string Input, string? Sha256)>? foreign;
         StreamWriter? writer = null;
         try
         {
@@ -49,7 +49,6 @@ public static class EmissionArtifacts
                 manifest = paths.Manifest;
                 outputDirectory = Path.GetDirectoryName(destination)!;
                 backend = ResolveBackend(settings);
-                foreign = ResolveForeignSupplies(compilation, settings);
                 if (backend is not null && HasDirectory(backend.Input) &&
                     !Hash(Path.GetFullPath(backend.Input, directory)).Equals(ToolchainIdentity.BackendSha256, StringComparison.Ordinal))
                 {
@@ -82,15 +81,24 @@ public static class EmissionArtifacts
                     return false;
                 }
 
+                var module = compilation.Generated;
+                var foreign = ResolveForeignSupplies(module.Libraries, settings);
                 var hash = Hash(tempIr);
                 using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
                 {
                     json.WriteStartObject();
-                    WriteProfile(json, settings.Optimization);
-                    WriteOutput(json, Path.GetFileName(destination), hash, compilation.Binding.Startup.OutputKind);
+                    LinkManifest.WriteFixed(json);
+                    json.WriteString("optimization", settings.Optimization);
+                    WriteOutput(json, Path.GetFileName(destination), hash, module);
                     WriteLibraries(json, backend, foreign, directory, outputDirectory);
-                    WriteLinkInputs(json, llvm);
+                    if (llvm is not null)
+                    {
+                        json.WriteStartObject("toolchain"); // The configured LLVM directory.
+                        json.WriteString("llvmBin", llvm);
+                        json.WriteEndObject();
+                    }
+
                     json.WriteEndObject();
                 }
 
@@ -201,42 +209,30 @@ public static class EmissionArtifacts
         return backend;
     }
 
-    // SPEC 20.3.2: libraries required by external declarations, sorted by Ordinal name. Only the root
-    // module's own self-targeted supplies connect yet: a logical name alone cannot identify another
-    // module's requirement, and combined-module native records are not generated, so Binding makes a
-    // dependency module's import, but kernel32's, the located Unsupported_Kd (DECISIONS BU-92).
+    // IMPL 20.4: the supplies of the module's required libraries (the generation result's, one per library) but the reserved kernel32,
+    // sorted by Ordinal name. Only the root module's own self-targeted supplies connect yet: a logical name alone cannot identify another
+    // module's requirement, and combined-module native records are not generated, so Binding makes a dependency module's import, but
+    // kernel32's, the located Unsupported_Kd (DECISIONS BU-92).
     private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(
-        Compilation compilation, ProjectFile settings)
+        IReadOnlyList<(string Library, string Kind)> required, ProjectFile settings)
     {
         List<(string Name, string Kind, string Input, string? Sha256)>? result = null;
-        var imports = compilation.Binding.LibraryImports;
-        for (var i = 0; i < imports.Count; i++)
+        for (var i = 0; i < required.Count; i++)
         {
-            var import = imports[i];
-            if (import.Library == WindowsProfile.Kernel32Library)
+            var (name, kind) = required[i];
+            if (name == WindowsProfile.Kernel32Library)
             {
                 continue;
             }
 
-            var known = false;
-            for (var j = 0; j < (result?.Count ?? 0) && !known; j++)
-            {
-                known = result![j].Name == import.Library;
-            }
-
-            if (known)
-            {
-                continue;
-            }
-
-            var supply = settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries) ? libraries.GetValueOrDefault(import.Library) : null;
+            var supply = settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries) ? libraries.GetValueOrDefault(name) : null;
             if (supply is null)
             {
-                throw new InvalidDataException($"Native requirement '{import.Library}' has no NativeLibraries supply for {WindowsProfile.Target}.");
+                throw new InvalidDataException($"Native requirement '{name}' has no NativeLibraries supply for {WindowsProfile.Target}.");
             }
 
-            var (_, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, import.Library, supply);
-            (result ??= new()).Add((import.Library, import.Kind, supply.Input, sha256));
+            var (_, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, name, supply);
+            (result ??= new()).Add((name, kind, supply.Input, sha256));
         }
 
         result?.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
@@ -252,40 +248,26 @@ public static class EmissionArtifacts
         }
     }
 
-    // The manifest's fixed head (IMPL 20.8.3, schema 3): the target, the profile's code generation settings with the project's
-    // optimization, and the adopted backend supply's identity.
-    private static void WriteProfile(Utf8JsonWriter json, string optimization)
+    // The published module, from the generation result: the IR file with its hash, the output kind with an Application's entry and
+    // subsystem, and the external functions it declares, which the native build's object inspection reads (SPEC 22.6).
+    private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, GeneratedModule module)
     {
-        json.WriteNumber("schemaVersion", 3);
-        json.WriteString("target", WindowsProfile.Target);
-        json.WriteStartObject("codegen");
-        json.WriteString("profile", WindowsProfile.Name);
-        json.WriteString("llvmVersion", ToolchainIdentity.LlvmVersion);
-        json.WriteString("cpu", WindowsProfile.Cpu);
-        WriteStrings(json, "features", [WindowsProfile.Features]);
-        json.WriteString("relocationModel", WindowsProfile.RelocationModel);
-        json.WriteString("codeModel", WindowsProfile.CodeModel);
-        json.WriteString("unwindTables", WindowsProfile.UnwindTables);
-        json.WriteString("optimization", optimization);
-        json.WriteEndObject();
-        json.WriteStartObject("backendSupport");
-        json.WriteString("packageId", ToolchainIdentity.BackendPackageId);
-        json.WriteNumber("abiVersion", ToolchainIdentity.BackendAbiVersion);
-        json.WriteString("packageVersion", ToolchainIdentity.BackendVersion);
-        json.WriteString("library", WindowsProfile.BackendLibrary);
-        json.WriteString("artifactSha256", ToolchainIdentity.BackendSha256);
-        WriteStrings(json, "providedSymbols", WindowsProfile.ProvidedSymbols);
-        json.WriteEndObject();
-    }
-
-    // The published module: the IR file with its hash, and the output kind with an Application's entry and subsystem.
-    private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, OutputKind outputKind)
-    {
+        var library = module.OutputKind == OutputKind.Library;
         json.WriteString("irFile", irFile);
         json.WriteString("irSha256", irHash);
-        json.WriteString("outputKind", outputKind == OutputKind.Library ? "Library" : "Application");
-        json.WriteString("entry", outputKind == OutputKind.Library ? null : WindowsProfile.EntrySymbol);
-        json.WriteString("subsystem", outputKind == OutputKind.Library ? null : WindowsProfile.Subsystem);
+        json.WriteString("outputKind", library ? "Library" : "Application");
+        json.WriteString("entry", library ? null : WindowsProfile.EntrySymbol);
+        json.WriteString("subsystem", library ? null : WindowsProfile.Subsystem);
+        json.WriteStartArray("externalDeclarations");
+        for (var i = 0; i < module.Externals.Count; i++)
+        {
+            json.WriteStartObject();
+            json.WriteString("symbol", module.Externals[i].Symbol);
+            json.WriteBoolean("dllimport", module.Externals[i].DllImport);
+            json.WriteEndObject();
+        }
+
+        json.WriteEndArray();
     }
 
     // The libraries in Ordinal name order (SPEC 20.3.2): the generated kernel32 import library, the backend archive (the toolchain's, or
@@ -344,31 +326,6 @@ public static class EmissionArtifacts
         }
 
         string Relative(string input) => HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input;
-    }
-
-    // What the link takes beside the libraries: the runtime symbols the module provides, no expected undefined symbol, and the
-    // configured LLVM directory.
-    private static void WriteLinkInputs(Utf8JsonWriter json, string? llvm)
-    {
-        WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);
-        WriteStrings(json, "expectedUndefinedSymbols", []);
-        if (llvm is not null)
-        {
-            json.WriteStartObject("toolchain");
-            json.WriteString("llvmBin", llvm);
-            json.WriteEndObject();
-        }
-    }
-
-    private static void WriteStrings(Utf8JsonWriter json, string name, ReadOnlySpan<string> values)
-    {
-        json.WriteStartArray(name);
-        foreach (var value in values)
-        {
-            json.WriteStringValue(value);
-        }
-
-        json.WriteEndArray();
     }
 
     private static void DeleteTemporary(string? path)
