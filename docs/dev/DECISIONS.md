@@ -21370,6 +21370,31 @@ R8-M* and R9-M* by the stage of the recording unit.
     warm pass allocates nothing (RP8's warm bytes; `TypeIdentityTest.AWarmRebindPastTheRoundBoundAllocatesNothing`).
   - **Known limit (the owner's O-345 (b); PLAN G1040).** The bound counts a request's extension rounds from its subject as written,
     so whether it is reached depends on the spelling (spm-a, spm-b); c2-4 makes it count the request of the subject's identity class.
+- **R7-M39 Premise sessions (PLAN G778)** (Front, 2026-11-19; R7-C8 (plan revision 69 (B)); Major, behavior-preserving on every
+  program's acceptance and records; one reviewer for design, implementation and cost (`front\notes\N4O\review.md`): design ACCEPT
+  WITH NOTES, implementation ACCEPT, the cost fix 9fe0e2317 after the owner's O-299 (a), the merge reviews and the delta re-check of
+  102fa4cd7 ACCEPT; commits 0d0f08e39, f21075e32, 9fe0e2317, 69a90e9f2, eeabdb01b, 124687175, f64a41d6a, c885bb4fb, 102fa4cd7).
+  A judge that makes many Origin proof requests (the declaration judge `CollectDeclarationRows`, a well-formedness visit
+  `VisitWellFormedPremises`, an Origin inference `SolveOriginInference`) opens the premise session (`Binding.OriginPremises.cs`,
+  `OriginPremiseSession`; nested openers share it; cleared when its opener returns, so never across passes). Inside it a request at
+  depth 0 outside a Callable comparison reads the environment of its use's **premise anchor** (`PremiseAnchor`: the child on the
+  use's path of the innermost node the environment reads, by `PremiseFrame` (the frames `ExtractOriginPremises` reads), `ScopeStop`
+  (`Binding.Scopes.cs`, the stops `ConstraintScope` uses), `ResolvesAt`, locals and the root; a generated function's block itself;
+  the use itself when it is read or is a generated statement, NodeScope's rule), keyed with the excluded result premise
+  (`resultPremiseExcluded`), built once and rebuilt in place when `originStateVersion` changed. Each request adds its endpoints and
+  R5 over them and closes from its target. `PairSlotCondition`/`StoredSlot`/`WellFormedLayer` take a `UseScope`
+  (`Binding.PairCases.cs`: a use whose constraint scope the first pair layer finds and its holder keeps: a premise environment, a
+  written layer, a call; no walk for any other Type), so a pair form walks once per environment, not per stored part (cost fix
+  9fe0e2317, O-299 (a)). Removes the per-request rebuild (n^2 premises for each of n^2 requests with n nested named Origins).
+  Rejected: a transitive reduction of the layer premises (changes G74's one-premise-one-edge catalog; holds only below
+  unconditional layers); keying on the signature and scope (a local's resolver and a match arm separate uses with one scope); a
+  version bump or no session for a Named request (n^4 again). Named rests for R7-O1 e: the per-request closure (activations n^4/24;
+  the call form at 129 layers: 412 million, 8.5 s in process against 0.48 s at 65, so the `Ocall` timing row may exceed four times
+  65; trigger: the RP8 row) with its option of one closure per target and environment; Origin relations judged outside the three
+  openers (a body fit, e.g. a pair-layer local bound at another Type: edges written grow 7.7x per doubling); the session's
+  invalidation key when R7-O1 f deletes `originStateVersion` (or openers only over settled state). The in-process times above are
+  measured with `OriginProofMetrics` on, whose `Closure` counts every edge of each closure, so they overstate the closure's cost;
+  the RP8 row's `check` times are the measure.
 - **R7-M40 A candidate's trial owns its frame, and a solve's invariant marks are its frame's** (Front, 2026-11-18; R7-I2 c, plan
   §5.0's I2 part c, revision 95; design `front\notes\I2\design-c.md` phases 1-2: design review REVISE (B1-B3), the re-check REVISE
   (R1), the delta check ACCEPT; implementation review ACCEPT WITH CONDITIONS, C1 met; F's I2 ruling-c 1-9; Major: commit 1
