@@ -382,12 +382,12 @@ public sealed partial class Binding
                 return;
             }
 
-            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(input, 0)! : input);
+            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(input)! : input);
         }
 
         if (declared is not null && count == inputs.Length)
         {
-            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(declared, 0)! : declared);
+            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(declared)! : declared);
         }
     }
 
@@ -478,7 +478,7 @@ public sealed partial class Binding
             this.retentionHanded.Add(bound.Signature);
             this.AddErasedSignature(environment, bound);
             this.Handed(bound.Signature, bound.Signature, this.retentionCallables);
-            var own = this.retentionViewed ? this.Viewed(bound.Declared ?? bound.Signature, 0)! : bound.Declared ?? bound.Signature;
+            var own = this.retentionViewed ? this.Viewed(bound.Declared ?? bound.Signature)! : bound.Declared ?? bound.Signature;
             this.retentionOwnHanded.Add(own); // As the callee's declaration states it, in its view.
             this.Handed(own, own, this.retentionOwnCallables);
         }
