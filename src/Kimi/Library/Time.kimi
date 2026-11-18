@@ -2,6 +2,7 @@
 public group Time
     let counterFrequency: i64 = readCounterFrequency()
 
+    #CallerLocation
     func readCounter() -> i64
         var value: i64 = 0
         require Windows.queryPerformanceCounter(value@uniq) != 0 else => $abort("Performance counter query failed")
@@ -14,11 +15,13 @@ public group Time
         require value > 0 else => $abort("Invalid performance counter frequency")
         return value
 
+    #CallerLocation
     func intervalMicroseconds(start: i64, end: i64) -> u64
         require end >= start else => $abort("Performance counter moved backwards")
         return counterMicroseconds((end - start)@u64, counterFrequency@u64)
 
     // The adapter supplies 0 < frequency <= i64.MaxValue. All arithmetic stays within 64 bits.
+    #CallerLocation
     func counterMicroseconds(ticks: u64, frequency: u64) -> u64
         let whole = (ticks / frequency) * 1000000
         let remainder = ticks % frequency
@@ -91,6 +94,7 @@ public group Time
 
         /// Starts or resumes measurement; does nothing while already running.
         /// - abort: The platform clock is unavailable or returns an invalid value.
+        #CallerLocation
         public func start(self: uniq/Self)
             if self.isRunning
                 return
@@ -100,6 +104,7 @@ public group Time
 
         /// Accumulates the current interval and stops; does nothing while already stopped.
         /// - abort: The clock fails or reverses, or the accumulated microseconds exceed u64.
+        #CallerLocation
         public func stop(self: uniq/Self)
             match self.startedAt
                 .Some(let start)
@@ -116,6 +121,7 @@ public group Time
 
         /// Discards accumulated time and starts one new interval.
         /// - abort: The platform clock is unavailable or returns an invalid value.
+        #CallerLocation
         public func restart(self: uniq/Self)
             _ = counterFrequency
             let now = readCounter()
@@ -124,6 +130,7 @@ public group Time
 
         /// Takes a duration snapshot without changing state; truncates the running interval's fraction.
         /// - abort: The clock fails or reverses, or the total microseconds exceed u64.
+        #CallerLocation
         public func elapsed(self) -> Duration
             var microseconds = self.accumulated
             match self.startedAt

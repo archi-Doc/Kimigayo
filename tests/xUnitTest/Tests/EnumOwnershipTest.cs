@@ -92,12 +92,12 @@ public class EnumOwnershipTest
     {
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\nlet x = E.Empty");
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
-        var originalCases = AdtDef.CaseTypes(TypeOfX(c))!;
+        var originalCases = AdtDef.CaseTypes(c.Types, TypeOfX(c))!;
         c.Kotonoha.CreateCodeContext().Parse(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<EnumKoto>().Single(), "Again(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.Single(originalCases);
-        var rebuiltCases = AdtDef.CaseTypes(TypeOfX(c))!;
+        var rebuiltCases = AdtDef.CaseTypes(c.Types, TypeOfX(c))!;
         Assert.NotSame(originalCases, rebuiltCases);
         Assert.Equal(2, rebuiltCases.Length);
         var reference = Assert.Single(rebuiltCases[1]!.Components);

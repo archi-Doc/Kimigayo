@@ -180,8 +180,15 @@ public sealed partial class Binding
                 return ConstraintProof.Unknown; // SPEC 8.3.3: a revisited obligation supplies no evidence.
         }
 
+        // A frozen library verdict (PLAN G949 S1-1; G949 ruling 187 (c)) is read, never written: Done answered above, and one the freeze
+        // left not Done is final too, so its use forms the signature in its own scope (PLAN G375's per-use form) and completes nothing.
         this.signatureWalks++;
         var proof = this.FormSignature(function);
+        if (symbol.QueriesFrozen)
+        {
+            return proof;
+        }
+
         if (proof == ConstraintProof.Proven)
         {
             this.CompleteQuery(symbol, DeclQueryKind.SignatureVerdict);

@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the indexed storage of one MIR body and its projection chains.
-// Input: the forms the builder appends (MirForms.cs) to a body it began (Reset), or a built body stored (Store). Output: reusable arrays
+// Input: the forms the builder appends (MirForms.cs) to a body it began (Reset), or a built body stored (Store); a projection's
+// reader's TyCtxt, which a part's Type reads (Project, ProjectedType), never kept. Output: reusable arrays
 // of locals, blocks, statements and associated records, a stored body's grown only to exactly the rows stored in it; the validator's
 // verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and whether a
 // construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
@@ -106,11 +107,12 @@ internal sealed class MirBody
     /// <summary>Gets the Type a move-path step selects from a value of a Type, the arms of <see cref="ProjectedType"/> that read no fact
     /// of a body: a Field, a base, a fixed array's element at a constant position and a Case's payload (the direct parts a level of
     /// <see cref="MirDropTable"/>'s walk names).</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type of the value.</param>
     /// <param name="kind">The step.</param>
     /// <param name="arg">Its argument.</param>
     /// <returns>The part's Type, or null when the Type does not have the part.</returns>
-    internal static BoundType? PartType(BoundType? type, MirProjectionKind kind, int arg)
+    internal static BoundType? PartType(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg)
     {
         switch (kind)
         {
@@ -120,18 +122,18 @@ internal sealed class MirBody
                     return (uint)arg < (uint)type.Components.Count ? type.Components[arg] : null;
                 }
 
-                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(type!, arg) : null;
+                return AdtDef.IsStruct(type) && (uint)arg < (uint)AdtDef.Count(type!) ? AdtDef.FieldType(types, type!, arg) : null;
             case MirProjectionKind.Base:
                 for (var depth = arg; depth > 0 && type is not null; depth--)
                 {
-                    type = AdtDef.Base(type);
+                    type = AdtDef.Base(types, type);
                 }
 
                 return arg > 0 ? type : null;
             case MirProjectionKind.ConstIndex:
                 return type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } && arg >= 0 && arg < type.Length ? type.Components[0] : null;
             case MirProjectionKind.Downcast:
-                return type is not null && AdtDef.CaseTypes(type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
+                return type is not null && AdtDef.CaseTypes(types, type) is { } payloads && (uint)arg < (uint)payloads.Length ? payloads[arg] : null;
             default:
                 return null;
         }
@@ -228,11 +230,12 @@ internal sealed class MirBody
 
     /// <summary>Gets the Type a projection selects from a Place of a Type (plan 5.4), the one rule the builder interns projections by and the
     /// validator checks them against.</summary>
+    /// <param name="types">The reader's Type context, whose instances' stored Types a part's Type reads.</param>
     /// <param name="type">The Type of the Place projected.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
     /// <returns>The selected Type, or null when the Type does not admit the projection.</returns>
-    internal BoundType? ProjectedType(BoundType? type, MirProjectionKind kind, int arg)
+    internal BoundType? ProjectedType(TyCtxt types, BoundType? type, MirProjectionKind kind, int arg)
     {
         switch (kind)
         {
@@ -255,7 +258,7 @@ internal sealed class MirBody
                 return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;
             default:
-                return PartType(type, kind, arg);
+                return PartType(types, type, kind, arg);
         }
     }
 
@@ -352,14 +355,15 @@ internal sealed class MirBody
     }
 
     /// <summary>Gets a Place extended by one projection, interning the chain with the Type <see cref="ProjectedType"/> gives it.</summary>
+    /// <param name="types">The reader's Type context, whose instances' stored Types a part's Type reads.</param>
     /// <param name="place">The Place.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
     /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports (MirValidator.Tables):
     /// a later step in the projection table, a first step at each Place a location names, a diverging Call's destination included.</returns>
-    internal MirPlace Project(MirPlace place, MirProjectionKind kind, int arg)
+    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg)
     {
-        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(this.TypeOf(place), kind, arg));
+        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg));
         ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds ??= new(), row, out var exists);
         if (!exists)
         {

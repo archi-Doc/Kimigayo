@@ -6,7 +6,8 @@
 // group's rows, and a level no row governs (Level), a glue function's. A4 reads each destroyed part's Type; the Backend maps each
 // step to drop glue (DropGlue.Destroyed, DropGlue.Level) and states no order of its own.
 // Input: a row of a body's drop table and the row's Type in the reader's view of it (the view's case Type for A4, an instance's closed
-// Type for the Backend), or a Type alone. Output: the steps in destruction order, each part named by its move-path step from its
+// Type for the Backend), or a Type alone; the reader's TyCtxt, whose instances' stored Types the walk reads, never kept.
+// Output: the steps in destruction order, each part named by its move-path step from its
 // level's Type with the Type MirBody.PartType gives it, under its governing row or, without one, its parent's own bit.
 // Invariants: a level with rows and the level without rows are one enumeration (Walker.Level over MirTypes.LevelPart), so a group that
 // moved nothing out of a level and a glue function's level give the same parts in the same order; no order is stated here: the index
@@ -103,19 +104,21 @@ internal sealed partial class MirDropTable
     /// <summary>Appends the level of a Type no row governs, a glue function's (SPEC 16.3.2): an Open step, each direct part Whole in
     /// destruction order (<see cref="MirTypes.LevelPart"/>), a fixed array's elements one Run of every element, then the End step:
     /// the level of <see cref="Destroyed"/> with no row.</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type, an aggregate move paths name the parts of.</param>
     /// <param name="into">The list the steps are appended to.</param>
-    internal static void Level(BoundType type, List<MirDropStep> into) => new Walker(default, default, into).Level(type, -1, -1, default, -1);
+    internal static void Level(TyCtxt types, BoundType type, List<MirDropStep> into) => new Walker(types, default, default, into).Level(type, -1, -1, default, -1);
 
     /// <summary>Appends the walk of what destroying a value by a row of a body's drop table destroys, in destruction order: a Keep or a
     /// Flag row the value Whole; an Elide row no step; an Open row an Open step, each direct part of its Type by the part's child row
     /// (that row's walk), a part without one Whole under the Open row's own bit, a fixed array's elements without a row as Run steps
     /// between its element rows, then the End step.</summary>
+    /// <param name="types">The reader's Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="body">The ordinal of the body whose rows the walk reads.</param>
     /// <param name="row">The row, a group's first or a row below it.</param>
     /// <param name="type">The row's Type in the reader's view.</param>
     /// <param name="into">The list the steps are appended to.</param>
-    internal void Destroyed(int body, int row, BoundType type, List<MirDropStep> into)
+    internal void Destroyed(TyCtxt types, int body, int row, BoundType type, List<MirDropStep> into)
     {
         var rows = this.RowsOf(body);
         var (count, indexed) = (0, 0);
@@ -126,7 +129,7 @@ internal sealed partial class MirDropTable
 
         if (count == 0)
         {
-            new Walker(rows, default, into).Step(type, -1, row, default, -1); // No row below: no index (the common Drop).
+            new Walker(types, rows, default, into).Step(type, -1, row, default, -1); // No row below: no index (the common Drop).
             return;
         }
 
@@ -136,7 +139,7 @@ internal sealed partial class MirDropTable
         _ = Index(rows, row, index, ref indexed);
         index.Sort();
         this.WalkReads += count + indexed;
-        new Walker(rows, index, into).Step(type, -1, row, default, -1);
+        new Walker(types, rows, index, into).Step(type, -1, row, default, -1);
         if (rented is not null)
         {
             ArrayPool<Int128>.Shared.Return(rented);
@@ -165,7 +168,7 @@ internal sealed partial class MirDropTable
 
     // A walk: the rows of the body and the index of those below the walked row (none for a level no row governs) and the steps it
     // appends, which every step shares.
-    private readonly ref struct Walker(ReadOnlySpan<MirDropRow> rows, Span<Int128> index, List<MirDropStep> into)
+    private readonly ref struct Walker(TyCtxt types, ReadOnlySpan<MirDropRow> rows, Span<Int128> index, List<MirDropStep> into)
     {
         private readonly ReadOnlySpan<MirDropRow> rows = rows;
         private readonly Span<Int128> index = index;
@@ -191,7 +194,7 @@ internal sealed partial class MirDropTable
         {
             var open = MirDropStep.Open(type, parent, row, step, arg);
             into.Add(open);
-            var count = MirTypes.LevelCount(type);
+            var count = MirTypes.LevelCount(types, type);
             if (type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null })
             {
                 this.Elements(type, row, count);
@@ -200,8 +203,8 @@ internal sealed partial class MirDropTable
 
             for (var rank = 0L; rank < count; rank++)
             {
-                var (kind, at) = MirTypes.LevelPart(type, rank);
-                if (MirBody.PartType(type, kind, (int)at) is { } part)
+                var (kind, at) = MirTypes.LevelPart(types, type, rank);
+                if (MirBody.PartType(types, type, kind, (int)at) is { } part)
                 {
                     this.Step(part, row, this.Child(row, kind, at), kind, at);
                 }
@@ -239,8 +242,8 @@ internal sealed partial class MirDropTable
             }
 
             var children = this.Children(row);
-            var end = MirTypes.LevelPart(type, count - 1).Arg - 1; // Below the last position destroyed.
-            for (var at = MirTypes.LevelPart(type, 0).Arg; ; at--)
+            var end = MirTypes.LevelPart(types, type, count - 1).Arg - 1; // Below the last position destroyed.
+            for (var at = MirTypes.LevelPart(types, type, 0).Arg; ; at--)
             {
                 var stop = children.Length == 0 ? end : (long)((children[^1] >> 32) & uint.MaxValue) - 1; // The run ends above it.
                 if (stop != at)
