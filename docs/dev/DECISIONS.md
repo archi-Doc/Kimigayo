@@ -14187,6 +14187,13 @@ resumed by R4-M86 (2026-10-20).
     per-module id limit, a new contract; a two-level directory (D) adds a load per read; a sparse layout for few-page columns (E)
     adds a second layout chosen by a size mode; a directory sized to the highest written id (B) saves 13%, since library rows
     reach the module's end.
+  - TableCounts' TypeKeys counts interned Types (PLAN G949, the flaky TableCounts row; the Front, 2026-11-18; Minor):
+    `TyCtxt.KeyCount` is the Types `Intern` made (the entries of its table), not the table's keys: a key is a hash of the parts'
+    identity hashes, which the CLR draws from a per-thread generator that earlier work on the thread advances, so two Types share a
+    key at random and a count of keys differed between equal compilations. `KeyFree` is the capacity less the Types, at most the
+    free key slots, so R8-M28's room check stays sound. The interner is unchanged (interners stay content-hash tables). The names
+    `KeyCount` and `TypeKeys` are renamed with the interner proposal (3c266f514). Rejected for now: a set of one entry per Type
+    (3c266f514), a hot-path restructure that needs its RP8 measurement.
   - Amended by PLAN G949 S1-r2 (the Front, 2026-11-17): a step reads and resets only its pass's rows.
     - A node family's accessor enumerates every module's rows (`Values`, for readers outside a pass) or the running pass's
       (`In(pass)`, the same walk over the pass's modules, in the same order). Every per-pass reset and every step loop over a
