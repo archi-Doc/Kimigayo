@@ -184,6 +184,45 @@ public class ForeignEmissionTest
         Assert.Throws<InvalidOperationException>(() => c.Generated);
     }
 
+    // R9-B1 (the Back's C-389 (c)): a warm analysis and generation calling a root module's import, a kernel32 one the runtime declares and
+    // a dependency's (Kimi.Time's Windows counter functions), and the read of every external's symbol and every library through the
+    // result, allocate nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("static")]
+    [InlineData("import")]
+    public void WarmGenerationWithImportsAndItsResultAllocateNothing(string kind)
+    {
+        var c = Analyze(
+            "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
+            "    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+            "public func main()\n    var v: i32 = 0\n    var e: u32 = 0\n    unsafe => v = Native.encode(1)\n    unsafe => e = Native.lastError()\n" +
+            "    var watch = Kimi.Time.Stopwatch.init()\n    watch.start()\n    watch.stop()",
+            kind);
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal(4, c.Generated.Externals.Count); // encode, GetLastError, QueryPerformanceCounter and QueryPerformanceFrequency.
+
+        var (success, read) = (true, 0);
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            success &= c.Analyze().IsVerified;
+            success &= c.Generate(TextWriter.Null);
+            var module = c.Generated;
+            for (var i = 0; i < module.Externals.Count; i++)
+            {
+                read += module.Externals[i].Symbol.Length;
+            }
+
+            for (var i = 0; i < module.Libraries.Count; i++)
+            {
+                read += module.Libraries[i].Library.Length;
+            }
+        });
+        Assert.True(success);
+        Assert.NotEqual(0, read);
+        Assert.Equal(0, bytes);
+    }
+
     [Fact]
     public void PointerSignaturesDeclareOpaquePointers()
     {
