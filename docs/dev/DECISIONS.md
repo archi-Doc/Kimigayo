@@ -444,6 +444,17 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     breaks above); a consent seat (close to the latency proposals the owner withdrew on 2026-11-18); emitting only the used Abort
     reasons (a design unit of the Back's, not a process rule).
 
+- **Q21 Units of one window may share a source file when their hunks are apart** (2026-11-19, the owner in K's dialog, verbatim
+  「質問の回答は、全て推奨通りでお願いします。」 to the Coordinator's O-430, option (a); [WORKFLOW](WORKFLOW.md) "Windows").
+  - Rule: units of one window may share a source file when `git merge-tree` merges them cleanly and no two units' hunks in it
+    overlap or lie within 3 lines of each other, measured in the pair's common base (`k-tools/plan_window.py`); textual conflicts
+    still wait for the next window; the area and mover limits (Q15, Q18) stay; the window's build and Session check the merged
+    file, and a failure that names no unit splits the window in halves.
+  - Reason: on 2026-11-19 the Ready Binding units (G949 U4 and S1-1c, G379, G778, G800, G881b, sa-*) shared `Binding.Constraints.cs`
+    or `Binding.Calls.cs` with disjoint hunks, and the file rule alone spread them over about five windows.
+  - Rejected: keeping the rule (option (b): the windows the disjoint hunks cost); allowing any clean merge (adjacent hunks are where
+    one unit's edit changes the other's context).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
