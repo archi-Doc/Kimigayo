@@ -1106,29 +1106,22 @@ public class ConditionalConformanceBindingTest
         Assert.Equal(source.IndexOf(clause, StringComparison.Ordinal), diagnostic.Span.Start);
     }
 
-    // PLAN G949 S1-b1 (the review's N1; DECISIONS BU-220): a conditional block's declaring path is the path its clause registered in this
-    // pass. An edit making the clause's subject T keeps the conformance's key but registers it no more (SPEC 8.6.2, 8.8.2: a conditional
-    // conformance's subject is Self; InvalidConstraint_Kd): the next pass leaves the block no declaring path, and its records equal a
-    // cold compile's (before: the block kept the unregistered path, which the end-of-Bind sweep then pools).
+    // PLAN G949 S1-b1 (the review's N1; DECISIONS BU-220) guarded a conditional block's declaring path after an edit that keeps its
+    // clause's key but registers the conformance no more: the clause's subject `Self` made `T`. Under SPEC Appendix F (normative) that
+    // program is invalid syntax: F.6.2's ConditionalConformance is `"Self" "is" ContractReference "when" ConformanceConditions` and SPEC
+    // 8.8.1 lets a generic struct or enum declare `Self is C when P`, so `T is K when T is Copy` is Parsing's ExpectedSyntax_Kd at its
+    // subject (PB3). An F.6.2 head in a generic Type registers unless its key changes, so the registration path S1-b1 guarded is
+    // unreachable through valid syntax; S1-b1's rule (the block's path is the one registered in this pass) stands. The row states the
+    // SPEC verdict on the program it edited (F's ruling 182).
     [Fact]
-    public void AnEditThatUnregistersAConditionalConformanceLeavesItsBlockNoDeclaringPath()
+    public void ASubjectOtherThanSelfCannotUnregisterAConditionalConformance()
     {
-        const string Contract = "contract K\n    associate E\n    func get(self: ref/Self) -> i32\n";
-        const string Declared = "struct S<T>\n    Self is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
-        const string Edited = "struct S<T>\n    T is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
-        var c = CompilationTestHelper.ParseSuccess(Contract + Declared);
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        var syntax = Container(c, "S").Members.OfType<SyntaxFormKoto>().Single();
-        Assert.NotNull(c.Binding.ConstraintScope(syntax).ConformancePath);
-        var target = (IsKoto)syntax.Operands[0];
-        var donor = ((IsKoto)Container(CompilationTestHelper.ParseSuccess(Edited), "S").Members.OfType<SyntaxFormKoto>().Single().Operands[0]).Left;
-        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
-        Assert.True(KotoHelper.Replace(target, target.Left, donor));
-        Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Binding.ConstraintScope(syntax).ConformancePath);
-        var cold = CompilationTestHelper.ParseSuccess(Contract + Edited);
-        Assert.False(cold.Bind().IsComplete);
-        Assert.Equal(Records(cold), Records(c));
+        const string Edited = "contract K\n    associate E\n    func get(self: ref/Self) -> i32\nstruct S<T>\n    T is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
+        var record = Assert.Single(TestDiagnostics.Of(CompilationTestHelper.Parse(Edited, "Hello.kimi"), "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains("Self as a conditional conformance's subject", record.Message, StringComparison.Ordinal);
+        Assert.Equal(Edited.IndexOf("T is K", StringComparison.Ordinal), record.Span.Start);
+        Assert.Equal(1, record.Span.Length);
     }
 
     private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);
@@ -1138,8 +1131,4 @@ public class ConditionalConformanceBindingTest
     private static FunctionKoto Function(Compilation c, string name, bool implementation) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name && x.IsRequirement != implementation);
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
-
-    // A bound compilation's Binding records as `Code: node`, sorted (an edited tree holds a donor's document, so its published records
-    // cannot be read by path).
-    private static string[] Records(Compilation c) => [.. c.Binding.Issues.Select(static x => $"{x.Code}: {x.Node}").Order(StringComparer.Ordinal)];
 }

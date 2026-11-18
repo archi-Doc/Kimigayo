@@ -126,6 +126,20 @@ New-Fixture $mixed 'bad-output' -stdout 'wrong'
 New-Fixture $mixed 'bad-error' -stderr 'wrong'
 New-Fixture $mixed 'bad-exit' -exitCode 0
 New-Fixture $mixed 'bad-ir' -source 'not LLVM IR'
+# IR that parses but fails the verifier (a use its definition does not dominate): opt's own input verification rejects it.
+New-Fixture $mixed 'unverified-ir' -source @'
+target triple = "x86_64-pc-windows-msvc"
+define void @__kimi_start() {
+entry:
+  br label %b
+a:
+  %x = add i32 1, 2
+  br label %b
+b:
+  %y = add i32 %x, 1
+  ret void
+}
+'@
 New-Fixture $mixed 'invalid-utf8' -source ($ir.Replace('\E6', '\FF'))
 New-Fixture $mixed 'missing-sidecar'
 Remove-Item -LiteralPath (Join-Path $mixed 'missing-sidecar.stderr')
@@ -135,7 +149,7 @@ New-Fixture $mixed 'returned-divergence'
 New-Fixture $mixed 'nul-output' -stdout "日`0`n"
 New-Fixture $mixed 'normalized-error' -source ($ir.Replace('\E6\97\A5', 'e\CC\81')) -stdout "e$([char]0x301)`n" -stderr "$([char]0xE9)`n"
 New-Fixture $mixed 'bom-output' -stdout "$([char]0xFEFF)日`n"
-$records = Invoke-Case 'mixed-failures' (Join-Path $mixed '*.ll') 4 -expected $false -count 11 -deadline 30000
+$records = Invoke-Case 'mixed-failures' (Join-Path $mixed '*.ll') 4 -expected $false -count 12 -deadline 30000
 if (@($records | Where-Object status -CEQ 'passed').Count -ne 1 -or ($records | Where-Object fixture -eq 'valid.ll').status -cne 'passed') {
     throw 'Failures were lost or affected an independent fixture.'
 }
@@ -154,6 +168,9 @@ if ($sample.violations.Count -ne 2 -or @($sample.violations | Where-Object kind 
     $sample.problems.Count -ne 0 -or $null -ne $sample.unrecoveredProcessId) { throw 'Invalid UTF-8 capture/recovery facts were lost.' }
 $badIr = $records | Where-Object fixture -CEQ 'bad-ir.ll'
 if ($badIr.status -cne 'failed' -or $badIr.tools[0].exitCode -eq 0) { throw 'An observed LLVM failure became incomplete.' }
+$unverified = $records | Where-Object fixture -CEQ 'unverified-ir.ll'
+if ($unverified.status -cne 'failed' -or $unverified.tools.Count -ne 1 -or $unverified.tools[0].exitCode -eq 0 -or
+    $unverified.executions.Count -ne 0) { throw 'IR that fails only the verifier was not rejected by the first opt.' }
 $missingInput = $records | Where-Object fixture -CEQ 'missing-sidecar.ll'
 if ($missingInput.status -cne 'incomplete' -or $missingInput.problems.Count -ne 1 -or
     $missingInput.problems[0].operation -cne 'fixture.input') { throw 'Missing input lost its owning operation.' }
@@ -270,6 +287,22 @@ $dependency = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $con
 if ($dependency.status -cne 'failed' -or $dependency.violations[0].kind -cne 'dependency' -or
     $dependency.problems.Count -ne 0) { throw 'A forbidden dependency became an incomplete observation.' }
 $results.Add(@{ name = 'dependency'; passed = $true; records = @($dependency) })
+
+# The merged llvm-nm names each object by its path; a path the console decodes differently (a non-ASCII folder under code page 932)
+# must make the fixture incomplete, never drop the forbidden dependency and pass.
+$savedEncoding = [Console]::OutputEncoding
+try {
+    [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(932)
+    $context.output = Join-Path $chainWork "nm-$([char]0x51FA)$([char]0x529B)"
+    $context.logs = Join-Path $evidence 'nm-attribution'
+    $null = New-Item -ItemType Directory -Force $context.output, $context.logs
+    $attribution = & $worker (Get-Item -LiteralPath (Join-Path $valid 'one.ll')) $context
+}
+finally { [Console]::OutputEncoding = $savedEncoding }
+$attributed = ($attribution.status -ceq 'failed' -and $attribution.violations[0].kind -ceq 'dependency') -or
+    ($attribution.status -ceq 'incomplete' -and $attribution.problems[0].operation -ceq 'tool.output')
+if (-not $attributed) { throw "A merged llvm-nm line that names no object passed or was misclassified: $($attribution.status)" }
+$results.Add(@{ name = 'nm-attribution'; passed = $true; records = @($attribution) })
 
 # An unwritable log destination aborts the step instead of publishing a failed fixture.
 $context.logs = Join-Path $work 'evidence-file'
