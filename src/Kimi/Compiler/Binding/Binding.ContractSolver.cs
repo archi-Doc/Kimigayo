@@ -322,6 +322,32 @@ public sealed partial class Binding
         return weight;
     }
 
+    // O28 (PLAN G949 S1-1, E7): every scope of the pass's modules, and the scopes of the pass view's base paths (a path's, its
+    // requirements' premises and its overlaps'), denote their current view, so a later pass's read of one of their view serials writes
+    // nothing.
+    private void SettleViewSerials()
+    {
+        foreach (var scope in this.scopes.Values.In(this.pass))
+        {
+            SerialOf(scope);
+        }
+
+        for (var p = 0; p < this.impls.InPass.Paths.Count; p++)
+        {
+            var path = this.impls.InPass.Paths[p];
+            SerialOf(path.Scope);
+            for (var i = 0; path.WitnessScopes is { } witnesses && i < witnesses.Count; i++)
+            {
+                SerialOf(witnesses[i].Premises);
+            }
+
+            for (var i = 0; path.OverlapScopes is { } overlaps && i < overlaps.Count; i++)
+            {
+                SerialOf(overlaps[i].Scope);
+            }
+        }
+    }
+
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
 
     // The kept tables' one phase fact: whether a table may outlive an outermost request. The capability phase (capabilitiesReady,
@@ -396,8 +422,8 @@ public sealed partial class Binding
                     }
 
                     var identity = this.Reading(fact, view.Premises, ref serial);
-                    positive |= SameProofPremise(identity, proposition);
-                    negative |= SameProofPremise(identity, negation);
+                    positive |= this.SameProofPremise(identity, proposition);
+                    negative |= this.SameProofPremise(identity, negation);
                 }
             }
         }

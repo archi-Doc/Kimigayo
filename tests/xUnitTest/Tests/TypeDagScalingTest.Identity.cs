@@ -8,10 +8,13 @@ public partial class TypeDagScalingTest
 {
     // R7-C3a (design review 1, B2): the identity classes are linear in the premises' distinct parts. A Tuple tree of depth d (d premises,
     // 2^d paths) and a chain of n identities cost nodes proportional to d and n; a cycle of n steps is found with no depth bound and
-    // recorded once at the declaration (SPEC 8.2.3 Cycles).
+    // recorded once at the declaration (SPEC 8.2.3 Cycles). PLAN G925: a chain of n originals `si/Ai` (each its edge to its target),
+    // directly and at a Function parameter beside `obj/Ai` (the meets read each original's slot), and its cycle are the same.
     [Theory]
     [InlineData("tree")]
     [InlineData("chain")]
+    [InlineData("pairs")]
+    [InlineData("pairsfn")]
     public void IdentityClassesAreLinearInThePremises(string shape)
     {
         var (small, large) = (Work(shape, 16), Work(shape, 32));
@@ -25,9 +28,11 @@ public partial class TypeDagScalingTest
         }
     }
 
-    [Fact]
-    public void AnIdentityCycleIsFoundWithoutADepthBound()
-        => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(IdentitySource("cycle", 70)));
+    [Theory]
+    [InlineData("cycle")]
+    [InlineData("paircycle")]
+    public void AnIdentityCycleIsFoundWithoutADepthBound(string shape)
+        => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(IdentitySource(shape, 70)));
 
     // R7-C3a (the provisional path's bound, Binding.TypeIdentity's contract): a table read under a Provisional availability (a Contract's
     // supplied identity) is rebuilt at each read, so its work is the reads times the view's premise nodes: linear in the uses, and in
@@ -273,11 +278,16 @@ public partial class TypeDagScalingTest
 
     private static string IdentitySource(string shape, int n)
     {
-        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
+        var binders = shape.StartsWith("pair", StringComparison.Ordinal) ? Enumerable.Range(0, n).Select(static i => $"s{i}/A{i}") : Enumerable.Empty<string>();
+        var parameters = string.Join(", ", binders.Concat(Enumerable.Range(0, n + 1).Select(static i => $"T{i}")));
         var premises = shape switch
         {
             "tree" => Enumerable.Range(0, n).Select(static i => $"    T{i} is (T{i + 1}, T{i + 1})\n"),
             "chain" => Enumerable.Range(0, n).Select(static i => $"    T{i} is T{i + 1}\n").Append($"    T{n} is i32\n"),
+            "pairs" => Enumerable.Range(0, n).Select(static i => $"    s{i} is ref\n    T{i} is s{i}/A{i}\n    A{i} is T{i + 1}\n").Append($"    T{n} is i32\n"),
+            "pairsfn" => Enumerable.Range(0, n).Select(static i => $"    s{i} is obj\n    T{i} is (s{i}/A{i}) -> i32\n    T{i} is (obj/A{i}) -> i32\n    A{i} is T{i + 1}\n")
+                .Append($"    T{n} is i32\n"),
+            "paircycle" => Enumerable.Range(0, n).Select(static i => $"    s{i} is ref\n    T{i} is s{i}/A{i}\n    A{i} is T{i + 1}\n").Append($"    T{n} is T0\n"),
             _ => Enumerable.Range(0, n).Select(static i => $"    T{i} is Option<T{i + 1}>\n").Append($"    T{n} is Option<T0>\n"),
         };
 

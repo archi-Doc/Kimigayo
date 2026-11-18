@@ -8,6 +8,9 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
+    // The plan of a named callee's call (CallStorage.Set below) of the current pass (IsCurrent); null before selection and for a value call.
+    internal CallPlan? CallOf(InvocationKoto call) => this.IsCurrent(call) && call.CallStorage is { Kind: not CalleeKind.Value } plan ? plan : null;
+
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.1, 8.6.4): a call bound inside
@@ -559,7 +562,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
+            (call.CallStorage ??= new()).Set(this, executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.

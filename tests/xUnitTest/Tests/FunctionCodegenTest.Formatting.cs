@@ -387,6 +387,31 @@ public sealed partial class FunctionCodegenTest
         Assert.All(leafCalls, x => Assert.Equal(integer.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
     }
 
+    // SPEC 22.5.1, 22.10.2 (PLAN G71): the position and range Types' format bodies that write carry `#CallerLocation`, so the write
+    // instance passes the location it received to the body, and the body forwards its own to each of its writes, whose reservation
+    // Aborts at the user's write (fail-before: a body without the pair, its writes passing a Core.kimi line).
+    [Theory]
+    [InlineData("FromEnd<i32>")]
+    [InlineData("Range<i32, FromEnd<i32>>")]
+    [InlineData("ClosedRange<i32, i32>")]
+    [InlineData("ResolvedRange")]
+    public void APositionBodyWriteForwardsItsCallersLocation(string type)
+    {
+        var source = $"func wlDirect(writer: uniq/Utf8Writer, v: {type}) -> Result<(), BufferFull> => writer.write(v)\n";
+        var c = Analyze(source, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var bodies = FunctionsOf(ir, c, "format").ToArray();
+        var writes = FunctionsOf(ir, c, "write").ToArray();
+        var direct = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "wlDirect"))), x => writes.Contains(x.Callee!));
+        Assert.EndsWith($", ptr @, i64 {Located(source, "writer.write(v)")})", direct.Shape, StringComparison.Ordinal);
+        var outer = direct.Callee!;
+        var call = Assert.Single(CallsOf(outer), x => bodies.Contains(x.Callee!));
+        Assert.Equal(outer.Parameters.TakeLast(2), call.Operands.TakeLast(2));
+        var inner = CallsOf(call.Callee!).Where(x => writes.Contains(x.Callee!)).ToArray();
+        Assert.NotEmpty(inner);
+        Assert.All(inner, x => Assert.Equal(call.Callee!.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
+    }
+
     // SPEC 22.10.1, 22.9.2, 7.7.4 (R8-W1b-4, W1c): a user formatter runs through the write body and the conversion bodies, a direct write, a
     // conversion, an Item's Value call and an erased Item alike, each given its result slot, its operands (a write's adapter and value, a
     // conversion's value, tryFormat's array) and the user's location (CallerLocation rows), nothing else; the write instance alone calls

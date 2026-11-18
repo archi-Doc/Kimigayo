@@ -138,7 +138,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             foreach (var record in program.Records(MirRecordClass.Construction).Where(x => x.Subject.Module == module.Syntax.Module))
             {
                 counts[2]++;
-                var key = Key(c.SyntaxOf(record.Subject));
+                var key = Key(c.Binding, c.SyntaxOf(record.Subject));
                 sites[key] = sites.GetValueOrDefault(key) + 1;
             }
 
@@ -178,7 +178,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         {
             foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
             {
-                var unmade = Unmade(body);
+                var unmade = Unmade(c.Types, body);
                 Assert.True(unmade is null, $"{name}: {body.Key.Decl?.Name}'s _{unmade} is never dropped");
             }
         }
@@ -363,20 +363,20 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // PLAN G951 U0 (C-g191, M1): in a build whose root range is the program's, a lookup of a library definition the HIR publishes with a
     // value builds its body once, validated, and runs its program pass where it is built, which builds the initializer its staticEnsure
-    // names (Stopwatch.start reads Time.counterFrequency, SPEC 22.4.3); the key then finds the same body. X3 is valid (SPEC 10.5.3: an
-    // erasure at a declared Function Type; 7.7.4).
+    // names (Time.readCounterFrequency, which Stopwatch.start calls, reads Time.counterFrequency, SPEC 22.4.3); the key then finds the
+    // same body. X3 is valid (SPEC 10.5.3: an erasure at a declared Function Type; 7.7.4).
     [Fact]
     public void ADemandedBodyIsBuiltWithItsProgramPass()
     {
         var c = Compile(StopwatchAction);
         var eager = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
-        var (start, frequency) = (Library(eager, MirBodyKind.Fn, "start"), Library(eager, MirBodyKind.StaticInit, "counterFrequency"));
+        var (reader, frequency) = (Library(eager, MirBodyKind.Fn, "readCounterFrequency"), Library(eager, MirBodyKind.StaticInit, "counterFrequency"));
         var program = new MirBuilder(c).Build(c.SourceModules.Length);
         var count = program.Bodies.Length;
         Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
-        var body = program[start];
-        Assert.Equal([start, frequency], program.Bodies[count..].ToArray().Select(static x => x.Key));
-        Assert.Same(body, program[start]);
+        var body = program[reader];
+        Assert.Equal([reader, frequency], program.Bodies[count..].ToArray().Select(static x => x.Key));
+        Assert.Same(body, program[reader]);
         Assert.Same(program.Body(count + 1), program[frequency]);
         Assert.Equal(count + 2, program.Bodies.Length);
         Assert.Empty(program.Findings);
@@ -729,7 +729,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // The census key of a record: its Op, a Name's Res, a call's callee kind or the part of the call not built yet, and an Adjust the
     // builder does not take yet.
-    private static string Key(Koto node)
+    private static string Key(Binding binding, Koto node)
     {
         var op = HirTables.Op(node);
         var key = op.ToString();
@@ -737,11 +737,11 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         {
             key += "." + HirTables.ResOf(node);
         }
-        else if (op == HirOp.Call && CallPlan.Of(node) is { } call)
+        else if (op == HirOp.Call && CallPlan.Of(binding, node) is { } call)
         {
             var disposition = call.Kind == CalleeKind.Value ? default : call.Target.Definition;
             key += "." + (call.Kind != CalleeKind.Function ? call.Kind.ToString() : disposition.Kind != DispositionKind.Body ? disposition.Kind.ToString()
-                : CallPlan.Of(node, 1) is not null ? "Expansion" : !call.DefaultArguments.IsEmpty ? "Default" : CallPlan.Parameter(call.Target, -1) is not null ? "Constructor" : "Receiver");
+                : CallPlan.Of(binding, node, 1) is not null ? "Expansion" : !call.DefaultArguments.IsEmpty ? "Default" : CallPlan.Parameter(binding, call.Target, -1) is not null ? "Constructor" : "Receiver");
         }
 
         var adjust = HirTables.AdjustOf(node);
@@ -756,7 +756,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     }
 
     // The first temp of a body with storage of its own, of a Type that may need drop, written whole and never dropped, or null.
-    private static int? Unmade(MirBody body)
+    private static int? Unmade(TyCtxt types, MirBody body)
     {
         var (live, written, dropped) = (new HashSet<int>(), new HashSet<int>(), new HashSet<int>());
         foreach (var statement in body.Statements)
@@ -782,7 +782,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         for (var local = 0; local < body.Locals.Length; local++)
         {
             if (body.Locals[local].Kind == MirLocalKind.Temp && live.Contains(local) && written.Contains(local) && !dropped.Contains(local) &&
-                MirTypes.MayNeedDrop(body.Locals[local].Type, []))
+                MirTypes.MayNeedDrop(types, body.Locals[local].Type, []))
             {
                 return local;
             }
@@ -876,7 +876,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 var (program, body) = (programs[i], bodies[i]);
                 work[i] = body.Blocks.Length + body.Statements.Length;
                 Assert.True(!body.HasOpaque && program.Records(MirRecordClass.Construction).Count() == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
-                var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+                var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(compilations[i].Types));
                 flow.Begin(body);
                 moves.Build(body, flow);
                 arena[i] = MirInitTest.ArenaWords(body, flow, moves);

@@ -260,7 +260,7 @@ public sealed partial class Binding
 
             // SPEC 10.4 step 2: the structural parts must be identical (Origin bindings never rank, even inside Function Types), or the
             // candidates are incomparable; open slots are never identical.
-            if (x is null || y is null || !FitsStructuralPart(x, y))
+            if (x is null || y is null || !this.FitsStructuralPart(x, y))
             {
                 return false;
             }
