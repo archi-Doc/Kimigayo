@@ -415,14 +415,15 @@ public sealed class BindingSymbol
     /// <summary>Stamps the declaration's query states Frozen, kept as they are (PLAN G949 S1-1's freeze; Binding.DeclQuery only).</summary>
     internal void FreezeQueries() => this.queryPass = Binding.Frozen32;
 
-    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only). Frozen states are never written: a Running or
-    /// NotStarted write leaves them, and a Done write is a broken contract (a library fact completed in a program pass).</summary>
+    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only). A declaration of a frozen table (the library's,
+    /// PLAN G949 S1-1) is never written: a Running or NotStarted write leaves its states, and a Done write is a broken contract (a library
+    /// fact completed in a program pass), whether or not the freeze stamped the symbol (s11-design 3.1, rev. 1 N2).</summary>
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <param name="state">The state.</param>
     internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
     {
-        if (this.QueriesFrozen)
+        if (this.Declaration.SyntaxOwner is { Frozen: true })
         {
             if (state == DeclState.Done)
             {

@@ -159,7 +159,8 @@ internal sealed class ImplTable
         this.step = AdmissionPoint.PassStart;
         if (this.holdsBase)
         {
-            this.library!.Pass = pass;
+            this.library!.EnsureWritable(nameof(this.Begin)); // Its Begin would clear the base's admission points (ruling 203 (3b)).
+            this.library.Pass = pass;
             this.library.ClearPoints();
         }
     }
@@ -255,8 +256,9 @@ internal sealed class ImplTable
     internal BoundConformancePath Register(
         BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
-        var store = this.StoreOf(type).Fresh();
-        var result = store.Named(type, contract, use, root);
+        var store = this.StoreOf(type);
+        store.EnsureWritable(nameof(this.Register));
+        var result = store.Fresh().Named(type, contract, use, root);
         if (!result.Active)
         {
             var identity = result.Identity;
@@ -364,6 +366,17 @@ internal sealed class ImplTable
         }
 
         this.named.RemoveRange(kept, this.named.Count - kept);
+    }
+
+    // PLAN G949 S1-1 (s11-design 3.1): a frozen store (Freeze) is never begun or registered into again; such a write is the
+    // internal-invariant form. Its other writers (Fresh, Touch, Named, Sweep) are reached only from Begin and Register, or write nothing
+    // on a frozen store (its stamps equal the pass), or run on the overlay alone (Sweep).
+    private void EnsureWritable(string writer)
+    {
+        if (this.Pass == Binding.Frozen)
+        {
+            throw new InvalidOperationException($"{writer} wrote the frozen base store (InternalInvariant; PLAN G949 S1-1).");
+        }
     }
 
     // SPEC 8.6.1: the store of a Type's identities and paths is its declaration's module's, the base for a library Type.

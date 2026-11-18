@@ -175,6 +175,61 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    // r1 (s11-design 3.1, 6.3; PLAN G949 S1-1 B6; ruling 203 (3b)): from the freeze no later step writes the library layer. After a
+    // Final Bind each refusing writer throws the internal-invariant form on a library node, row or base store, which the compilation
+    // reports as InternalInvariant_Kd: a new id (Allocate, so EnsureId), an edit (NoteSyntaxEdit, so no renumbering), a HIR row (Of, so
+    // every column and node-family write), an existing plan row (PlanFor), a row's reset, the publisher's entry, the base ImplTable's
+    // Begin and Register, a query state of a library declaration whether or not the freeze stamped it (its table decides), and a new
+    // parent on a library region row; an identical re-record writes nothing and is not refused. The program table's writers still work.
+    [Fact]
+    public void EveryWriteToTheFrozenLibraryIsRefused()
+    {
+        var c = Bound(string.Empty);
+        var table = c.Library.Kotonoha.Syntax;
+        var node = c.Library.Kotonoha.RootKoto;
+        var planned = table.Nodes.ToArray().First(x => x is not null && table.Hir.PlanIndexes[x.SyntaxId] != 0)!;
+        _ = HirTables.Of(c.Kotonoha.RootKoto);
+        var count = table.Count;
+        Refused(() => table.Allocate(node));
+        Refused(() => c.NoteSyntaxEdit(node));
+        Refused(() => { _ = HirTables.Of(node); });
+        Refused(() => { _ = HirTables.PlanFor(planned, written: false); });
+        Refused(() => HirTables.Reset(node));
+        var publisher = typeof(Binding).GetNestedType("HirPublisher", BindingFlags.NonPublic)!;
+        Refused(() => publisher.GetMethod("Publish", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(Activator.CreateInstance(publisher, c.Binding), [table, node]));
+        Assert.Equal(count, table.Count);
+
+        var function = DeclaredSymbols(c).First(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha));
+        var stamp = typeof(BindingSymbol).GetField("queryPass", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        stamp.SetValue(function, 0u); // As if the freeze's stamp had missed it: its table still refuses.
+        var pass = (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)! + 1;
+        function.SetQueryState(DeclQueryKind.Signature, pass, DeclState.Running);
+        Refused(() => function.SetQueryState(DeclQueryKind.Signature, pass, DeclState.Done));
+        Assert.Equal(0u, stamp.GetValue(function));
+
+        var (target, row) = c.Library.Layer.Part.Regions.First(static x => x.Value.Parents.Count != 0);
+        var source = c.Library.Layer.Part.Regions.Keys.First(x => !ReferenceEquals(x, target) && !row.Parents.Contains(x));
+        var record = typeof(Binding).GetMethod("RecordRegionBound", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        _ = record.Invoke(c.Binding, [row.Parents[0], target, row.Values[0]]);
+        Refused(() => record.Invoke(c.Binding, [source, target, node]));
+        Assert.DoesNotContain(source, row.Parents);
+
+        var impls = (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var path = impls.Paths.ToArray().First(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
+        Refused(() => impls.Register(path.Type, path.Contract, path.RootContract, (IsKoto)path.Use, path.Scope.Parent!, path.Premises));
+        Refused(() => impls.Begin(Binding.Frozen, new([], c.Binding.Library.Kotonoha, new(0))));
+
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        Assert.True(c.Bind().IsComplete);
+
+        static void Refused(Action write)
+        {
+            var thrown = Xunit.Record.Exception(write);
+            var refused = thrown is TargetInvocationException { InnerException: { } inner } ? inner : thrown;
+            Assert.Contains("(InternalInvariant; PLAN G949 S1-1)", Assert.IsType<InvalidOperationException>(refused).Message, StringComparison.Ordinal);
+        }
+    }
+
     // e2 (s11-design 5, 6.3; G375; G949 ruling 187 (c)): a frozen library verdict is read, never written, so a program's per-use check
     // over a library function leaves the frozen verdict and the records as the library pass made them; one the freeze left not Done is
     // formed at each use in the user's scope. None is today (EveryLibrarySignatureVerdictIsProven), so the row clears every library

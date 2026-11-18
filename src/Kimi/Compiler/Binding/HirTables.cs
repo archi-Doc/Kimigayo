@@ -164,6 +164,7 @@ internal struct HirTables
     {
         if (node.SyntaxOwner is { } table && table.Hir.PlanIndexes[node.SyntaxId] is var index and not 0)
         {
+            table.EnsureWritable(nameof(PlanFor));
             return ref table.Hir.Plans[index];
         }
 
@@ -185,7 +186,9 @@ internal struct HirTables
     internal static ref HirTables Of(Koto node)
     {
         SyntaxTable.EnsureId(node);
-        return ref node.SyntaxOwner!.Hir;
+        var table = node.SyntaxOwner!;
+        table.EnsureWritable(nameof(Of));
+        return ref table.Hir;
     }
 
     /// <summary>Clears a node's base row, as Binding's first visit of a pass does; its plan row stays for reuse.</summary>
@@ -194,6 +197,7 @@ internal struct HirTables
     {
         if (node.SyntaxOwner is { } table)
         {
+            table.EnsureWritable(nameof(Reset));
             table.Hir.CopyBase(0, table.Hir, node.SyntaxId);
         }
     }

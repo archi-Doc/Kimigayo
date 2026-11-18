@@ -166,6 +166,7 @@ public sealed partial class Binding
 
         internal void Publish(SyntaxTable table, Koto root)
         {
+            table.EnsureWritable(nameof(HirPublisher)); // The one entry of the publisher's direct column writes.
             ref var hir = ref table.Hir;
             if (hir.Ops?.Length != hir.States.Length)
             {

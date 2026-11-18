@@ -18,8 +18,9 @@ namespace Kimi.Compiler;
 //   demand of a Running query is a re-entry, answered by its kind's rule, never by computing again. A state stamped Frozen (PLAN G949
 //   S1-1's freeze of the library pass's declarations; DECISIONS BU-105 as BU-219 amends it) reads as set in every pass and is never
 //   written: BeginQuery answers it and writes nothing, AbandonQuery writes nothing, and CompleteQuery on it is a broken contract
-//   (InternalInvariant: a library fact completed in a program pass). Each kind's answer for a Frozen state that is not Done is its row's
-//   "Frozen" clause.
+//   (InternalInvariant: a library fact completed in a program pass). The same holds for every declaration of the frozen library table,
+//   stamped or not (B6: SetQueryState refuses by the declaration's table). Each kind's answer for a Frozen state that is not Done is its
+//   row's "Frozen" clause.
 // - Kinds (one row each): Signature. Re-entry: an inferred stored Property's is CyclicBinding_Kd at the declaration; another header's
 //   reads no evidence and records nothing. Not ready: a header waiting on an associated Type is abandoned. Frozen: Done (the freeze
 //   verifies every library header Done). No Error state before its writer (R7-D2 d2). SignatureVerdict
@@ -202,7 +203,7 @@ public sealed partial class Binding
 
     private void AbandonQuery(BindingSymbol symbol, DeclQueryKind kind)
     {
-        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running || symbol.QueriesFrozen, "Only a running query, or a frozen one, is abandoned.");
+        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running || symbol.Declaration.SyntaxOwner is { Frozen: true }, "Only a running query, or a frozen one, is abandoned.");
         symbol.SetQueryState(kind, this.storageVersion, DeclState.NotStarted);
     }
 }
