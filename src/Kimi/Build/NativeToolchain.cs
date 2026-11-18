@@ -25,10 +25,10 @@
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
 // The link manifest's fixed fields (one table) and its readers are LinkManifest's: no manifest read raises an accessor's exception (R9-B1).
-// Temporary: IsToolchainFailure's KeyNotFoundException and InvalidOperationException (JsonElement's accessors over the build record and
-// the installation and kernel32 records) end when those readers turn their accessors' failures into InvalidDataException (PLAN G983);
-// until then a listed type raised inside a toolchain call, by the host's report or a defect here, prints as the toolchain's
-// failure (R9-B2's known limit). Publication's kinds stay (R5-M165).
+// The build record's, the installation's and kernel32's readers compare ArtifactFiles' total reads (Member, Text, Number) with what they
+// expect, so a malformed record fails as their InvalidDataException (PLAN G983); IsToolchainFailure lists no contract type, and an
+// exception the toolchain does not raise as its failure (the host's report, a defect here) is a fault. Publication's kinds stay (R5-M165).
+// The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
 
 using System.ComponentModel;
 using System.Diagnostics;
@@ -49,12 +49,12 @@ internal static partial class NativeToolchain
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     // A failure of a toolchain step (the native build, a Library's record, a run or a toolchain command): publication's kinds (an output,
-    // a configuration or a supply), a tool that does not start, or a malformed manifest (LinkManifest's InvalidDataException), record or
-    // installation file (KeyNotFoundException and InvalidOperationException, JsonElement's accessors' over the last two). Its readers apply it
-    // only around the toolchain's own calls: Project.Build and Project.Run (a compiler step's exception is its result's fault, R9-B2),
-    // CommandExecution.Toolchain (build --Manifest, run <exe>, toolchain verify) and TestCommand around its native build (PLAN G984).
+    // a configuration or a supply), a tool that does not start, or a manifest, record or installation file that does not parse (JsonException)
+    // or is not what its reader expects (its InvalidDataException, PLAN G983). Its readers apply it only around the toolchain's own calls:
+    // Project.Build and Project.Run (a compiler step's exception is its result's fault, R9-B2), CommandExecution.Toolchain (build
+    // --Manifest, run <exe>, toolchain verify) and TestCommand around its native build (PLAN G984).
     internal static bool IsToolchainFailure(Exception ex)
-        => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
+        => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException;
 
     internal static void Invalidate(ArtifactPaths paths)
     {
@@ -85,9 +85,9 @@ internal static partial class NativeToolchain
 
         using var record = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Record, cancellationToken));
         var root = record.RootElement;
-        if (root.GetProperty("status").GetString() is not ("linked" or "executed") ||
-            root.GetProperty("optimization").GetString() != project.ProjectFile.Optimization ||
-            root.GetProperty("executableSha256").GetString() != Hash(paths.Executable))
+        if (Text(Member(root, "status")) is not ("linked" or "executed") ||
+            Text(Member(root, "optimization")) != project.ProjectFile.Optimization ||
+            Text(Member(root, "executableSha256")) != Hash(paths.Executable))
         {
             throw new InvalidDataException("The latest build failed or the binary was changed. Run 'kimi build' first.");
         }

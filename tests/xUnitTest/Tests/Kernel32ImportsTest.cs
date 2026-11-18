@@ -232,6 +232,18 @@ public sealed class Kernel32ImportsTest
         Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash"));
     }
 
+    // PLAN G983 (form J): a kernel32 record that is not the JSON its reader expects (a field missing or of another kind, or not an
+    // object) states other generation conditions, InvalidDataException with its repair, never a JSON accessor's failure.
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("{\"generator\":7}")]
+    public void InstallationRejectsAMalformedRecord(string entry)
+    {
+        using var invalid = JsonDocument.Parse(entry);
+        Assert.Contains("Run setup.ps1 again", Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash")).Message);
+    }
+
     [Fact]
     public void InspectionRejectsWrongDllArchitectureMissingAndExtraImports()
     {
