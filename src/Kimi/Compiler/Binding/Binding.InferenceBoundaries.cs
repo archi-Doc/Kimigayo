@@ -181,15 +181,13 @@ public sealed partial class Binding
             return this.positionParts[i];
         }
 
+        // A whole that a bare slot takes keeps the slot at each of its places (SlotSolution.DefaultChildren likewise).
         Koto? failed = null;
         for (var i = 0; i < this.ChildPositions(start, end); i++)
         {
             var child = this.positionParts.Count;
-            if (this.AddChildPosition(start, end, i, pattern) is { } element)
-            {
-                failed = this.RestSlots(child, element, selected, ref unsolved, ref scratch) ?? failed;
-            }
-
+            var element = this.AddChildPosition(start, end, i, pattern) ?? pattern;
+            failed = this.RestSlots(child, element, selected, ref unsolved, ref scratch) ?? failed;
             this.ClosePosition(child);
         }
 

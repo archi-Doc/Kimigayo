@@ -224,8 +224,9 @@ public sealed partial class Binding
         };
     }
 
-    // The first literal part of [start, end), whose default a Literal position takes (SPEC 10.5.1, 10.2.1).
-    private Koto FirstLiteral(int start, int end)
+    // The first literal part of [start, end), whose default a Literal position, or a waiting one beside its literals, takes (SPEC
+    // 10.5.1, 10.2.1); null when it holds none.
+    private Koto? FirstLiteral(int start, int end)
     {
         for (var i = start; i < end; i++)
         {
@@ -235,6 +236,6 @@ public sealed partial class Binding
             }
         }
 
-        throw new InvalidOperationException("A Literal position holds a literal.");
+        return null;
     }
 }

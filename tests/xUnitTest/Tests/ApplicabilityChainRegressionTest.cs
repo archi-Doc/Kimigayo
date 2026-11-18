@@ -27,6 +27,13 @@ public partial class ApplicabilityChainRegressionTest
         "func process<length N>(values: [N of i64]) -> () => ()\nlet r = x@ref\n" +
         "func takeD<T>(value: Dictionary<string, T>) -> () => ()\nfunc takeA<T>(value: Array<T>) -> () => ()\nfunc takeCI(value: (char, i64)) -> () => ()\n";
 
+    // PLAN G924 (the owner's O-408 (a)): the declarations of the rows on the order of the own Types after selection.
+    private const string OwnTypeDeclarations =
+        "func identity<T>(value: T) -> T => value@move\nfunc mkNone<T>() -> Option<T> => .None\nfunc mkT<T>(x: T, w: Option<T>) -> i32 => 0\n" +
+        "func mkZero<T>() -> T => $abort(\"zero\")\nfunc consume<T>(x: Array<T>) -> i32 => 0\nfunc h<T>(x: T, f: (T) -> i32) -> i32 => 0\n" +
+        "func show(x: i32) -> i32 => 0\nfunc show(x: string) -> i32 => 1\nfunc f<T>(a: T, b: Array<T>) -> i32 => 0\n" +
+        "func stop() -> Never => $abort(\"stop\")\nfunc make<T>(action: () -> T) -> T => action()\nenum W<T>\n    Make(T, Option<T>)\n    Empty\n";
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -117,6 +124,16 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("func make<T>() -> Option<T> => .None\nfunc keep(o: Option<i32>) => ()\nfunc keep(o: Option<i64>) => ()\nkeep(make())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "keep(make())")]
     [InlineData("func make<T>() -> Option<T>\n    T is PrimitiveInteger\n    return .None\nfunc keep(o: Option<string>, tag: i32) => ()\nfunc keep(o: Option<i32>, tag: i64) => ()\nkeep(make(), 1@i32)", nameof(DiagnosticCode.NoApplicableOverload_Kd), "make()")]
     [InlineData("func make<T>(value: i32) -> Option<T> => .None\nfunc keep(o: Option<i32>) => ()\nkeep(make(missing))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
+
+    // SPEC 10.5.1, 4.3.1, 10.8 (PLAN G924, the owner's O-408 (a); K's G924 SPEC revision 11): the invalid twins of
+    // LiteralDefaultsBindBeforeANestedCallTakesItsOwnType. A whole a slot takes holds its parts' own Types (`mkZero()` alone fails; the
+    // slot rests on it, SPEC 23.1.2), so does a literal with no selection waiting; conflicting evidence; a Never part and an anonymous
+    // function's body are no evidence (10.5.2's own example).
+    [InlineData(OwnTypeDeclarations + "let a = identity([1, mkZero()])", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkZero()")]
+    [InlineData(OwnTypeDeclarations + "let a = [1, mkZero()]", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkZero()")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1@i32, mkNone<i64>())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "mkT(1@i32, mkNone<i64>())")]
+    [InlineData(OwnTypeDeclarations + "let s = identity(stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity(stop())")]
+    [InlineData(OwnTypeDeclarations + "let o = make(func () => 2)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make(func () => 2)")]
     public void NestedInferenceHasOneBoundary(string source, string code, string at)
     {
         var check = DiagnosticCorpus.Check(source);
@@ -139,6 +156,29 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc mk() -> Box<i32> => Box.init(1@i32)\nfunc mk(seed: i32 = 0) -> Box<i64> => Box.init(2@i64)\nfunc outer<T>(value: Box<T>) => ()\nouter(mk())")]
     [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet a = Box.init(Box.init(42))")]
     public void ANestedCallAtAnUnboundSlotTakesItsOwnType(string source)
+        => Assert.True(DiagnosticCorpus.Check(source).Accepted);
+
+    // SPEC 10.5.1 (PLAN G924, the owner's O-408 (a); K's G924 SPEC revision 11): after selection the untyped literals and literal-only
+    // expressions at positions that hold an unbound slot take their defaults first, also inside an array literal that no slot takes
+    // whole (`consume([1, mkZero()])`); then each waiting nested call, a construction included, at a position whose slot is still
+    // unbound takes its own Type (`identity(1)`), and every other part (an anonymous function, a function reference that needs S, a
+    // leading-dot Case, an empty literal) is checked at the Type now fixed. `mkT(1, .None)` and `mkT(n, mkNone())` are controls; the
+    // invalid twins are NestedInferenceHasOneBoundary's O-408 rows.
+    [Theory]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1, Option.None)")]
+    [InlineData(OwnTypeDeclarations + "let w = W.Make(1, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1, .None)")]
+    [InlineData(OwnTypeDeclarations + "let n: i64 = 2\nlet r = mkT(n, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1 + 1, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(-(1), mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = consume([1, mkZero()])")]
+    [InlineData(OwnTypeDeclarations + "let r = h(1, func (p) => 0)")]
+    [InlineData(OwnTypeDeclarations + "let r = h(identity(1), func (p) => 0)")]
+    [InlineData(OwnTypeDeclarations + "let r = h(identity(1), show)")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(identity(1), .None)")]
+    [InlineData(OwnTypeDeclarations + "let r = f(identity(1), [])")]
+    public void LiteralDefaultsBindBeforeANestedCallTakesItsOwnType(string source)
         => Assert.True(DiagnosticCorpus.Check(source).Accepted);
 
     // SPEC 10.5.1, 14.9.2 (owner decision (1)): a control-flow argument that is no Literal is bound under the argument probe, which

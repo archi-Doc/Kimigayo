@@ -189,6 +189,11 @@ public sealed partial class Binding
     // which gave it the fixed expected call signature S as its context, as WasDeferred does for a Call.
     private bool WasWaitingCallable(Koto node) => this.RecordedPart(node).Kind is PartKind.Function or PartKind.Reference;
 
+    // SPEC 10.5.1 (PLAN G924, the owner's O-408 (a)): the order in which, after selection, the parts at positions that hold a slot still
+    // unsolved take their own Types (SlotSolution.DefaultArguments, DefaultPayloads), each step over the slots the steps before it left
+    // unsolved: the literals' defaults, then the waiting nested calls (constructions included), which do not feed each other.
+    private static readonly PartKind[] OwnTypeSteps = [PartKind.Literal, PartKind.Call];
+
     // SPEC 10.2.1 (PLAN G924, the owner's O-341 (a)): the Type a part that no expected Type reaches takes for the selected candidate of
     // its call (OwnType), once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
@@ -497,10 +502,10 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds or that holds a waiting part, or of a
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
-    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the Literal parts'
-    // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another (its
-    // Constraints are the selected call's obligation, CheckDefaulted), and a slot still unbound is the inference boundary, a failed
-    // argument part included (rule W). False when the call is complete: waiting or failed.
+    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the parts' own Types
+    // apply to the selected candidate step by step (OwnTypeSteps), its checks running once more after each; a failure reports that
+    // candidate, never another (its Constraints are the selected call's obligation, CheckDefaulted), and a slot still unbound is the
+    // inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
         if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
@@ -524,21 +529,24 @@ public sealed partial class Binding
             return true;
         }
 
-        if (solution.DefaultArguments(evaluation.Mapping, out var applied) is { } misfit)
-        {
-            this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
-            return false;
-        }
-
         var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
-        if (applied && !this.CheckDefaulted(ref evaluation, winner, solution, operations))
+        foreach (var kind in OwnTypeSteps)
         {
-            return false;
-        }
+            if (solution.DefaultArguments(evaluation.Mapping, kind, out var applied) is { } misfit)
+            {
+                this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
+                return false;
+            }
 
-        if (!evaluation.Evaluated[winner].Unsolved)
-        {
-            return true;
+            if (applied && !this.CheckDefaulted(ref evaluation, winner, solution, operations))
+            {
+                return false;
+            }
+
+            if (!evaluation.Evaluated[winner].Unsolved)
+            {
+                return true;
+            }
         }
 
         if (this.DeferNestedCall(call, evaluation.Expected))

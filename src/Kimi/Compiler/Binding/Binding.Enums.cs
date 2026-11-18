@@ -399,10 +399,11 @@ public sealed partial class Binding
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. A payload whose
     // payload Type those fixed slots settle (`settled`) is bound only at it, on completion; every other payload is prepared as an argument
     // is and is evidence by its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot that no evidence
-    // binds waits; otherwise the Literal parts' defaults apply to the slots that neither evidence nor a waiting callable at an F binds
-    // (SPEC 10.5, TakeWaiting), and are evidence once applied. Once every other slot is bound, the waiting callables at an F are
-    // completed with S and are evidence (SPEC 10.5.4), as a call's are after selection. False when the construction is complete: failed
-    // or waiting.
+    // binds waits; otherwise the parts' own Types apply step by step (OwnTypeSteps: the literals' defaults, then the waiting nested
+    // calls) to the slots that neither evidence nor a waiting callable at an F binds (SPEC 10.5, TakeWaiting), and are evidence once
+    // applied, each step over the slots the steps before it left unsolved. Once every other slot is bound, the waiting callables at an
+    // F are completed with S and are evidence (SPEC 10.5.4), as a call's are after selection. False when the construction is complete:
+    // failed or waiting.
     private bool SolveConstruction(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, BoundType? expected, ref SlotSet settled)
     {
         for (var i = 0; i < payload.Length; i++)
@@ -431,9 +432,40 @@ public sealed partial class Binding
         var left = this.RentSlotSet(CallSlotCount(solution.Binder));
         try
         {
-            for (var late = 0; late < 2; late++)
+            if (!this.InferPayloads(use, payload, ref solution, settled, false))
             {
-                if (!this.InferPayloads(use, payload, ref solution, settled, late == 1))
+                return false;
+            }
+
+            if (!UnsolvedPayloadSlots(payload, solution, ref unsolved))
+            {
+                return true;
+            }
+
+            // SPEC 10.5.1 (D4): under the argument probe a construction waits while its result, which holds all its slots, holds one
+            // that neither evidence nor a waiting callable fixes, as a nested call does.
+            if (this.HoldsOpenSlot(payload, solution, unsolved) && this.DeferNestedCall(use, expected))
+            {
+                Complete(use, null);
+                return false;
+            }
+
+            solution.LeaveUnbound(ref left);
+            foreach (var kind in OwnTypeSteps)
+            {
+                if (unsolved.IsEmpty)
+                {
+                    break;
+                }
+
+                if (solution.DefaultPayloads(payload, unsolved, kind) is { } misfit)
+                {
+                    this.CompleteDependent(use, misfit); // SPEC 12.3: the literals' own records, on which the construction rests.
+                    return false;
+                }
+
+                // The late pass with the own Types applied so far, over the slots still unsolved.
+                if (!this.InferPayloads(use, payload, ref solution, settled, true))
                 {
                     return false;
                 }
@@ -442,27 +474,6 @@ public sealed partial class Binding
                 {
                     return true;
                 }
-
-                // SPEC 10.5.1 (D4): under the argument probe a construction waits while its result, which holds all its slots, holds one
-                // that neither evidence nor a waiting callable fixes, as a nested call does.
-                if (late == 0 && this.HoldsOpenSlot(payload, solution, unsolved) && this.DeferNestedCall(use, expected))
-                {
-                    Complete(use, null);
-                    return false;
-                }
-
-                if (unsolved.IsEmpty || late == 1)
-                {
-                    break;
-                }
-
-                if (solution.DefaultPayloads(payload, unsolved) is { } misfit)
-                {
-                    this.CompleteDependent(use, misfit); // SPEC 12.3: the literals' own records, on which the construction rests.
-                    return false;
-                }
-
-                solution.LeaveUnbound(ref left);
             }
 
             for (var i = 0; i < payload.Length && unsolved.IsEmpty; i++)
