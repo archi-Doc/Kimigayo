@@ -14928,6 +14928,29 @@ resumed by R4-M86 (2026-10-20).
     registers unless its key changes).
   - Rejected: a lookahead for `when` (it misreads a Type named `when` and scans every item); reusing `ParseInheritanceReference` for a
     ContractReference (it admits a BorrowOrigin; ruling 6); a per-site whitelist copy (the leaf predicate is one).
+- **BU-229 A selection states each Body and Pattern as its part (PLAN G800)** (2026-11-19; Front, Syntax and Binding; Major, a new
+  canonical component, Syntax's selection parts; behavior-preserving on every program's acceptance, records and generated code; one
+  reviewer for design and implementation, `front\notes\G800\review.md` ACCEPT and `review-impl.md` ACCEPT WITH NOTES; D-469; commit
+  63cae2efe). A match's and an if's children did not know their part: `MatchArmKoto` and `ConditionalBranchKoto` are
+  records, so readers recovered a child's role by scanning the parent's arms or branches, once per child (quadratic Binding of an
+  N-arm match: `KotoHelper.IsSelectionBody` through `Binding.IsValueContext`, `Binding.ArmScope`, `HirPublisher.PositionOf`). Syntax
+  now publishes the **selection part** with the parent link: `Koto.SelectionRole` (`None`, `Pattern`, `Body`) and
+  `Koto.SelectionArm` (the arm's or branch's ordinal; an else Body's is the branch count). One writer, `Koto.Adopt(child, role,
+  arm)`, called by `MatchKoto`, `TryKoto` and `IfKoto` where they attach an arm's part; every other attachment clears it and a
+  replacement takes its slot's (`Koto.ReplaceChild`). A Subject, a condition and a guard are `None` until a reader needs them.
+  Readers read the part and scan no arm list. Reason for Syntax's ownership: the role exists before Binding, Syntax's transfer rules
+  read it, and a Binding table keyed by node would be a Koto-keyed side table. Rejected: an arm node between the selection and its
+  parts (changes every `Parent is MatchKoto` reader, `SyntaxId` numbering and `KotoKind`); a Binding column or dictionary; a search
+  of the arms by span (generated and replaced nodes share spans); a reference from the child to its arm record (8 bytes on every
+  node); a role without the ordinal (`ArmScope` keeps its scan); deciding by the child's form.
+- **BU-230 The unreachable-Pattern warning finds structures by key (PLAN G800; SPEC 14.8.4 unchanged)** (2026-11-19; Front,
+  Binding; Major, behavior-preserving; the same reviews as BU-229; commits 201246099 (the warning in its own file,
+  `Binding.Patterns.Containment.cs`) and 5a69b4a1f). A Pattern without a Wildcard or a Binding contains exactly the Patterns of its
+  own structure, so `Binding.WarnContainedPatterns` keeps the earlier unguarded arms of that kind in one dictionary keyed by
+  structure and compares pairwise (`ContainsPattern`, the one containment rule) only against earlier arms that have a Wildcard or a
+  Binding; no arm after the first unguarded whole-position Wildcard or Binding is a candidate. Same warnings, covering arms and
+  order. Worst case: N arms that each have a Wildcard below the root stay pairwise. Rejected: a dictionary of root Literals only
+  (Case and Tuple tables stay quadratic); a hash without an equality; a size threshold keeping the old loop.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
