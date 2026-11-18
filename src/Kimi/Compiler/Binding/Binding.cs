@@ -15,9 +15,10 @@ namespace Kimi.Compiler;
 //   (Semantics; the HIR tables and Plans), and the diagnostics ReportDiagnostics records (Binding.Diagnostics.Report.cs).
 // - Invariants: a pass is never reentered; a pass that does not finish leaves no Result, and the later phases' facts are discarded
 //   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The published per-pass lists (nodes, issues,
-//   derived issues, obligations, imports and the effect obligations' sources) are parts (PassPart, Binding.Passes.cs): a pass writes
-//   the part the driver hands it, Binding's own until the library pass (PLAN G949 S1-r1b) is handed LibraryLayer.Part, and a reader
-//   outside a pass reads the composed views, both parts.
+//   derived issues, obligations, imports, the effect obligations' sources, the Contract shapes, the effect bounds and the import
+//   declarations) and the slots' keepers are parts (PassPart, Binding.Passes.cs): a pass writes the part the driver hands it, the
+//   library pass LibraryLayer.Part and the program pass Binding's own (PLAN G949 S1-r1b), and a reader outside a pass reads the
+//   composed views, both parts.
 // - Prohibitions: no read of Mir or the Backend (COMPILER_ARCHITECTURE "Dependency rules"); readers outside Binding use its published
 //   facts, never its private state.
 
@@ -37,6 +38,7 @@ public sealed partial class Binding
     private List<LibraryImport> libraryImports;
     private List<BindingObligation> obligations;
     private HashSet<BindingObligation> obligationSet;
+    private List<(Koto Node, BindingState Before)> foreignFailures;
     private bool running;
 
     // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across
@@ -97,8 +99,11 @@ public sealed partial class Binding
         this.libraryImportsView = new(own.Imports, layer.Imports);
         this.virtualDeclarationsView = new(own.VirtualDeclarations, layer.VirtualDeclarations);
         this.callableEffectUsesView = new(own.CallableEffectUses, layer.CallableEffectUses);
-        this.callableEffectClausesView = new(own.CallableEffectClauses, layer.CallableEffectClauses);
+        this.contractShapesView = new(own.ContractShapes, layer.ContractShapes);
+        this.boundedRequirementsView = new(own.BoundedRequirements, layer.BoundedRequirements);
+        this.importDeclarationsView = new(own.ImportDeclarations, layer.ImportDeclarations);
         (this.Issues, this.Obligations, this.LibraryImports, this.DerivedIssues) = (this.issuesView, this.obligationsView, this.libraryImportsView, this.derivedIssuesView);
+        this.ImportDeclarations = this.importDeclarationsView;
         this.EnterPass(this.ProgramPass);
     }
 
@@ -209,8 +214,8 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
-        // The program pass's Check publishes both kinds of failure again (until PLAN G949 S1-r1b the one pass's), on the part the
-        // fields hold between Binds, Binding's own.
+        // The program pass's Check publishes both kinds of failure again, on the part the fields hold between Binds, Binding's own; the
+        // library pass's records stay in the layer's part.
         this.issues.Clear();
         this.derivedIssues.Clear();
         this.Check(BindingMode.Final);
@@ -264,12 +269,13 @@ public sealed partial class Binding
             return;
         }
 
-        // An edit revokes the whole pass, exactly as the next Bind discards it, unless no pass has finished since the last revocation.
+        // An edit revokes the whole Bind, every pass of it, exactly as the next Bind discards it, unless no pass has finished since the
+        // last revocation.
         if (this.Result != default)
         {
             this.Result = default;
             this.BeginRun();
-            this.ResetPass(BindingMode.Provisional);
+            this.ResetPasses();
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws

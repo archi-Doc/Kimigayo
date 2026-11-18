@@ -19,6 +19,12 @@ public sealed partial class Binding
     private HirPublisher? hirPublisher;
     private ulong hirVersion;
 
+    // The run whose library pass published the library module (RB1, C-379 F1); 0 before the first.
+    private ulong libraryVersion;
+
+    // The library module's publication version (HirTables.LibraryVersion).
+    internal ulong LibraryVersion => this.libraryVersion;
+
     // The nodes the publisher's jump walk visited (Keeps, DECISIONS BU-106): a scaling check's work measure.
     internal long KeptTargetWork => this.hirPublisher?.TargetWork ?? 0;
 
@@ -27,8 +33,9 @@ public sealed partial class Binding
     // interpolation terms read (DECISIONS R5-M79).
     internal static bool WritesText(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto;
 
-    // Returns the pass the published columns describe (0: none), by which the MIR builder caches its program. A Final pass published
-    // them itself (Check, DECISIONS BU-81); another finished pass publishes here, once.
+    // Returns the pass the published columns of the program pass's modules describe (0: none), by which the MIR builder caches its
+    // program. A Final pass published them itself (Check, DECISIONS BU-81); another finished pass publishes here, once. The library's
+    // module is published by its own pass (PublishLibrary).
     internal ulong PublishHir()
     {
         if (this.running || this.Result == default || this.hirVersion == this.storageVersion)
@@ -38,6 +45,20 @@ public sealed partial class Binding
 
         this.PublishPass();
         return this.hirVersion;
+    }
+
+    // RB1 (PLAN G949 S1-r1b; review-s1r1 Re-check 3; C-379 F1): the library module is published at the end of the pass that binds
+    // it, in every mode, since the program pass empties the per-pass tables the publisher reads for the library's nodes: a Final pass's
+    // Check published it with the pass's modules, another pass publishes it here. Its version is the library's (LibraryVersion), never
+    // hirVersion, which PublishHir compares for the program pass's modules.
+    private void PublishLibrary(Kotonoha library, BindingMode mode)
+    {
+        if (mode != BindingMode.Final)
+        {
+            (this.hirPublisher ??= new(this)).Publish(library.Syntax, library.RootKoto);
+        }
+
+        this.libraryVersion = this.storageVersion;
     }
 
     // The columns of the pass's modules, in their order, from the pass's facts.
