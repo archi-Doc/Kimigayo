@@ -629,8 +629,7 @@ public sealed partial class Binding
             return;
         }
 
-        var owner = origin.Body.Definition?.Declaration?.CodeContext.Compilation.Binding ?? this;
-        if (owner.LocalRegionSources(origin) is { IsEmpty: false } sources)
+        if (this.LocalRegionSources(origin) is { IsEmpty: false } sources)
         {
             var meet = sources[0];
             for (var i = 1; i < sources.Length; i++)

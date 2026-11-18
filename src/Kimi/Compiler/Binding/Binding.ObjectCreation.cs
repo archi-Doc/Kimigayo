@@ -6,6 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The creation call of a conversion bound as an object creation (BindObjectCreationCall below) of the current pass (IsCurrent); null
+    // for any other conversion.
+    internal InvocationKoto? CreationOf(ConversionKoto conversion)
+        => this.IsCurrent(conversion) && conversion.ConversionBinding == ConversionBinding.ObjectCreation ? conversion.CreationStorage : null;
+
     private static KimiDeclarationId ObjectFactoryId(SemanticsKind mode)
         => mode switch
         {
