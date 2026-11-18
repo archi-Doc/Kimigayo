@@ -23,6 +23,13 @@ public sealed partial class MirBorrowsTest
     private const string Written = "    v = 2\n    let k = r@follow\n";
     private const string Moved = "struct S\n    public var n: i32\n    public init(n: i32) => self.n = n\n";
 
+    // PLAN G1022's writes: a holder whose update has a custom set and a standard get over S.Output (HS<bool> is ill-formed: bool is not
+    // Addable<bool>), and f's locals a write's right side reads, moves or borrows.
+    private const string Writes = "func take(x: string) -> i32 => 5\nfunc k(x: i32) -> i32 => x\nfunc use(x: string) => ()\nstruct HS<S>\n" +
+        "    S is Addable<S>\n    public var x: S.Output\n        set(value: S.Output) -> ()\n            storage = value@move\n" +
+        "    public init(x: S.Output) => self.x = x@move\nfunc f(c: bool, h: uniq/HS<HOLDER>)\n    var t = \"t\"\n    var s = \"s\"\n" +
+        "    var u = \"u\"\n    var y = 1\n    var m = 0\n    var xs: [2 of i32] = [0, 0]\n    var p = Pair.init()\n";
+
     // SPEC 23.1.2 (DECISIONS R4-M109): an argument Binding rejects after selection (an Origin relation it cannot prove) is an Opaque of the
     // reference the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside
     // Binding's record, also where the rejected argument keeps a call that moves twice (A1's MovedPlace_Kd stays), while the true conflict of
@@ -119,6 +126,44 @@ public sealed partial class MirBorrowsTest
             new Stratum(c.Types).Run(program);
             Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
         }
+    }
+
+    // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2 (PLAN G1022): a write whose target Binding rejected (an unresolved name, its index or
+    // referent, a missing member, an update of a Property over an ill-formed holder Type) is derived from that failure after its right
+    // side, which is evaluated first, so the right side's own failures stay: a second Move (A1) and a read under a live exclusive Loan (A5)
+    // (fail-before: neither). A right side that reads only the failed target adds nothing, and the twin whose target resolves is accepted
+    // with none. Each row: the holder's Type argument, the body, the problems, and whether Binding accepts the program.
+    [Theory]
+    [InlineData("i32", "missing = take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", false)]
+    [InlineData("i32", "m = take(t@move)", "", true)]
+    [InlineData("i32", "missing = k(missing)", "", false)]
+    [InlineData("i32", "let r = y@uniq\n    missing = k(y)\n    r@follow = 2", "f: k(y)", false)]
+    [InlineData("i32", "let r = y@uniq\n    r@follow = 2\n    m = k(y)", "", true)]
+    [InlineData("i32", "missing += take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", false)]
+    [InlineData("i32", "m += take(t@move)", "", true)]
+    [InlineData("i32", "p.nofield = take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", false)]
+    [InlineData("i32", "p.a = take(t@move)", "", true)]
+    [InlineData("i32", "p.nofield = k(p.nofield)", "", false)]
+    [InlineData("i32", "missing[0] = take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", false)]
+    [InlineData("i32", "xs[0] = take(t@move)", "", true)]
+    [InlineData("i32", "missing@follow = take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", false)]
+    [InlineData("i32", "let q = m@uniq\n    q@follow = take(t@move)", "", true)]
+    [InlineData("i32", "missing = s@move\n    use(s)", "f: use(s) MovedPlace_Kd", false)]
+    [InlineData("i32", "u = s@move", "", true)]
+    [InlineData("i32", "missing = if c => take(t@move) else => 2\n    use(t)", "f: use(t) MovedPlace_Kd", false)]
+    [InlineData("i32", "m = if c => take(t@move) else => 2", "", true)]
+    [InlineData("bool", "h.x += take(t@move)\n    use(t)", "f: use(t) MovedPlace_Kd", false)]
+    [InlineData("i32", "h.x += take(t@move)", "", true)]
+    [InlineData("bool", "h.x += h.x", "", false)]
+    public void AWriteWhoseTargetBindingRejectedBuildsItsRightSide(string holder, string body, string expected, bool accepted)
+    {
+        var c = MirBuildTest.Compile(Prelude + Writes.Replace("HOLDER", holder, StringComparison.Ordinal) + "    " + body + "\n");
+        Assert.Equal(accepted, c.Binding.Issues.Count == 0);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        Assert.Equal(expected.Split(" | ", StringSplitOptions.RemoveEmptyEntries), Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
     }
 
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
