@@ -113,7 +113,7 @@ internal sealed partial class MirBuilder
         {
             var view = this.Temp(compilation.Types.Reference(SemanticsKind.Ref, premised), node);
             this.Set(view, MirRvalue.Use(this.body.AddOperand(this.Borrow(SemanticsKind.Ref, place, node))), node);
-            place = this.body.Project(view, MirProjectionKind.Deref, 0);
+            place = this.body.Project(compilation.Types, view, MirProjectionKind.Deref, 0);
         }
 
         return this.Inspected(this.FollowTo(place, type), node);

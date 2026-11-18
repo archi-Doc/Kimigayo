@@ -126,7 +126,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.NotEmpty(declared);
         foreach (var (row, declaration) in declared)
         {
-            _ = TyCtxt.Signature(declaration!, null, -1, out var count);
+            _ = c.Types.Signature(declaration!, null, -1, out var count);
             Assert.True(count <= row.Arity && (row.Retained < 0 || (row.Retained >= count && row.Retained < row.Arity)), declaration!.Name);
         }
 
@@ -171,11 +171,11 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         void Assign(MirPlace place, MirRvalue rvalue) => body.Push(entry, MirStatement.Assign(place, rvalue, At));
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
         var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
-        Assign(result, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Copy(body.Project(pairs, MirProjectionKind.Field, 0)), one), false));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
+        Assign(result, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Copy(body.Project(c.Types, pairs, MirProjectionKind.Field, 0)), one), false));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, array, MirProjectionKind.Index, index.Root)))));
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, shared, At));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
-        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(pair, MirProjectionKind.PairLayer, 0), At));
+        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0), At));
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, shared, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Cast(MirCastKind.IntToPointer, Operands(MirOperand.Copy(index)), body.TypeOf(pointer)!));
         Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [array.Root])));
@@ -392,13 +392,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var c = MirBuildTest.Compile("func pick(x: ref/i32) -> ref/i32 during x => x\nfunc same<S, E>(a: S, b: E) -> S\n    E is S\n    return b@move\n");
         Assert.Empty(c.BuildMir().Findings);
         BindingSymbol Function(string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name).SymbolOf()!;
-        var held = TyCtxt.Signature(Function("pick"), null, -1, out _)!;
+        var held = c.Types.Signature(Function("pick"), null, -1, out _)!;
         Assert.True(held.CarriesOrigin);
         Assert.True(MirTypes.Agree(held, c.Types.Reference(SemanticsKind.Ref, BoundType.I32)));
         Assert.False(MirTypes.Agree(held, c.Types.Reference(SemanticsKind.Ref, BoundType.Boolean)));
         Assert.False(MirTypes.Agree(held, c.Types.Reference(SemanticsKind.Uniq, BoundType.I32)));
         var same = Function("same");
-        var (s, e) = (TyCtxt.Signature(same, null, 0, out _)!, TyCtxt.Signature(same, null, 1, out _)!);
+        var (s, e) = (c.Types.Signature(same, null, 0, out _)!, c.Types.Signature(same, null, 1, out _)!);
         Assert.False(MirTypes.Agree(s, e));
         Assert.Same(TyCtxt.Premised(same, s), TyCtxt.Premised(same, e));
     }
@@ -441,6 +441,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     [InlineData("field", null)]
     public void ADivergingCallsDestinationIsCheckedAsAPlace(string form, string? rule)
     {
+        var c = Fixture.Value.Compilation;
         var body = Build(null);
         var abort = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Target: -1 });
         var locals = Enumerable.Range(0, body.Locals.Length);
@@ -448,8 +449,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         {
             "root" => new MirPlace(99),
             "chain" => body.Blocks[abort].Terminator.Place with { Projection = 99 },
-            "step" => body.Project(new(locals.First(x => body.Locals[x].Type == BoundType.ISize)), MirProjectionKind.Field, 0),
-            _ => body.Project(new(locals.First(x => body.Locals[x].Type?.Kind == BoundTypeKind.Tuple)), MirProjectionKind.Field, 0),
+            "step" => body.Project(c.Types, new(locals.First(x => body.Locals[x].Type == BoundType.ISize)), MirProjectionKind.Field, 0),
+            _ => body.Project(c.Types, new(locals.First(x => body.Locals[x].Type?.Kind == BoundTypeKind.Tuple)), MirProjectionKind.Field, 0),
         };
         body.Terminate(abort, body.Blocks[abort].Terminator with { Place = destination, Source = Broken });
         MirViolation[] expected = rule is null ? [] : [Enum.Parse<MirViolation>(rule)];
@@ -485,16 +486,16 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Read(MirOperand.PairAcquire(0, a), pa, At);
         Read(MirOperand.PairAcquire(1, b), pb, At);
         Read(MirOperand.PairAcquire(2, y), py, At);
-        Read(MirOperand.Copy(body.Project(a, MirProjectionKind.PairLayer, 0)), t!, At);
-        Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 1)), u!, At);
+        Read(MirOperand.Copy(body.Project(c.Types, a, MirProjectionKind.PairLayer, 0)), t!, At);
+        Read(MirOperand.Copy(body.Project(c.Types, b, MirProjectionKind.PairLayer, 1)), u!, At);
         body.Terminate(block, MirTerminator.Return(At));
         Assert.Empty(Validate(body, c.Types));
 
         // A family is never followed as one layer (it has no single target), so a PairLayer step of it is a finding as well.
         Read(MirOperand.PairAcquire(1, a), pa, Broken);
-        Read(MirOperand.Copy(body.Project(b, MirProjectionKind.PairLayer, 0)), u!, Broken);
+        Read(MirOperand.Copy(body.Project(c.Types, b, MirProjectionKind.PairLayer, 0)), u!, Broken);
         Read(MirOperand.PairAcquire(0, y), py, Broken);
-        Read(MirOperand.Copy(body.Project(y, MirProjectionKind.PairLayer, 2)), py, Broken);
+        Read(MirOperand.Copy(body.Project(c.Types, y, MirProjectionKind.PairLayer, 2)), py, Broken);
         Assert.Equal(
             [(MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax), (MirViolation.Binder, Broken.Syntax), (MirViolation.Projection, Broken.Syntax)],
             Validate(body, c.Types).Select(static x => (x.Rule, x.Subject)));
@@ -532,7 +533,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var mark = broken switch { "unmarked" => MirRefKind.Shared, "raw" => MirRefKind.Raw, _ => MirRefKind.Uniq };
         Assign(first, MirRvalue.Acquire(body.AddOperand(acquire), mark), broken is "unmarked" or "raw" ? broken : string.Empty);
         Assign(second, MirRvalue.Acquire(body.AddOperand(MirOperand.PairAcquire(1, b)), MirRefKind.TwoPhaseUniq), string.Empty);
-        var projected = broken == "projection" ? body.Project(tuple, MirProjectionKind.Field, 0) : first;
+        var projected = broken == "projection" ? body.Project(c.Types, tuple, MirProjectionKind.Field, 0) : first;
         Assign(projected, MirRvalue.Acquire(body.AddOperand(acquire), MirRefKind.Uniq), "projection");
         var elements = AddOperands(body, [broken == "aggregate" ? acquire : MirOperand.Move(first), one]);
         Assign(tuple, MirRvalue.Aggregate(MirAggregateKind.Tuple, elements, 2, body.TypeOf(tuple)!), "aggregate");
@@ -995,7 +996,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
-        MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
+        MirPlace Deref(MirPlace place) => body.Project(c.Types, place, MirProjectionKind.Deref, 0);
         var index = MirModelTest.Local(body, BoundType.ISize, MirLocalKind.Temp);
         var reference = Local(Layer(SemanticsKind.Ref, BoundType.I32));
         var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
@@ -1006,7 +1007,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "unscoped" => Broken with { Scope = 9 },
             _ => Broken,
         };
-        MirPlace Payload(SemanticsKind semantics) => body.Project(Deref(Local(Layer(semantics, types.Point))), MirProjectionKind.Field, 0); // x
+        MirPlace Payload(SemanticsKind semantics) => body.Project(c.Types, Deref(Local(Layer(semantics, types.Point))), MirProjectionKind.Field, 0); // x
         var place = form switch
         {
             "ref" or "ref drop" or "call" or "move" or "shared borrow" or "address" or "inlined" or "unscoped" => Deref(reference),
@@ -1018,13 +1019,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "arc" => Payload(SemanticsKind.Arc),
             "objuniq" => Payload(SemanticsKind.ObjUniq),
             "obj" => Payload(SemanticsKind.Obj),
-            "slice" or "slice drop" => body.Project(Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
-            "array" => body.Project(Local(types.Array), MirProjectionKind.Index, index.Root),
+            "slice" or "slice drop" => body.Project(c.Types, Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
+            "array" => body.Project(c.Types, Local(types.Array), MirProjectionKind.Index, index.Root),
             "uniq" => Deref(Local(Layer(SemanticsKind.Uniq, BoundType.I32))),
-            "ref raw" => Deref(body.Project(Deref(Local(Layer(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
-            "pair ref" or "pair uniq" => body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0),
+            "ref raw" => Deref(body.Project(c.Types, Deref(Local(Layer(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
+            "pair ref" or "pair uniq" => body.Project(c.Types, Local(types.Pair), MirProjectionKind.PairLayer, 0),
             "slot" => Deref(prepared),
-            _ => body.Project(Deref(Deref(prepared)), MirProjectionKind.Field, 0), // slot ref: the parameter's own shared layer past the slot.
+            _ => body.Project(c.Types, Deref(Deref(prepared)), MirProjectionKind.Field, 0), // slot ref: the parameter's own shared layer past the slot.
         };
         var value = form.StartsWith("pair", StringComparison.Ordinal) ? MirOperand.Move(Local(body.TypeOf(place)!)) : one; // A payload f's premises do not make Copy (BU-88).
         var rvalue = form switch
@@ -1069,7 +1070,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var body = MirModelTest.NewBody(types);
         var pair = MirModelTest.Local(body, types.Pair, MirLocalKind.Arg);
         PairBinder.Collect(c.Binding, types.Generic, body.Binders);
-        var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
+        var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var copied = form == "owned" ? MirModelTest.Local(body, types.Point) : MirModelTest.Local(body, BoundType.I32);
         var (entry, exit) = (body.AddBlock(), body.AddBlock());
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, body.TypeOf(layer)!)));
@@ -1137,8 +1138,9 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var exclusive = c.Types.Reference(SemanticsKind.Uniq, BoundType.I32);
         var target = c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [exclusive]); // s/(uniq/i32)
         MirPlace Local(BoundType type) => MirModelTest.Local(body, type);
-        MirPlace Deref(MirPlace place) => body.Project(place, MirProjectionKind.Deref, 0);
+        MirPlace Deref(MirPlace place) => body.Project(c.Types, place, MirProjectionKind.Deref, 0);
         MirPlace Payload(SemanticsKind semantics) => body.Project(
+            c.Types,
             Deref(Local(semantics == SemanticsKind.ObjRef ? c.Types.Reference(semantics, types.Point) : c.Types.Intern(BoundTypeKind.Semantics, null, semantics, [types.Point]))),
             MirProjectionKind.Field,
             0);
@@ -1149,13 +1151,13 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             "uniq objref" => Payload(SemanticsKind.ObjRef),
             "uniq rc" => Payload(SemanticsKind.Rc),
             "uniq arc" => Payload(SemanticsKind.Arc),
-            "uniq slice" => body.Project(Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
-            "uniq pair" or "adapt own" => body.Project(Local(types.Pair), MirProjectionKind.PairLayer, 0),
-            "uniq raw" => Deref(body.Project(Deref(Local(c.Types.Reference(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
+            "uniq slice" => body.Project(c.Types, Local(c.Types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [BoundType.I32])), MirProjectionKind.Index, index.Root),
+            "uniq pair" or "adapt own" => body.Project(c.Types, Local(types.Pair), MirProjectionKind.PairLayer, 0),
+            "uniq raw" => Deref(body.Project(c.Types, Deref(Local(c.Types.Reference(SemanticsKind.Ref, c.Types.Tuple([c.Types.Pointer(BoundType.I32), BoundType.Boolean])))), MirProjectionKind.Field, 0)),
             "acquire ref" or "acquire copy" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, types.Pair))),
             "acquire target past ref" => Deref(Local(c.Types.Reference(SemanticsKind.Ref, target))),
             "acquire target" => Local(target),
-            "acquire own" => body.Project(Local(c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [types.Pair])), MirProjectionKind.PairLayer, 0),
+            "acquire own" => body.Project(c.Types, Local(c.Types.Intern(BoundTypeKind.SemanticsApplication, binder, SemanticsKind.Parameter, [types.Pair])), MirProjectionKind.PairLayer, 0),
             _ => Deref(Local(c.Types.Reference(SemanticsKind.Ref, payload!))), // adapt ref: T of s/T, past ref.
         };
         var type = body.TypeOf(place)!;
@@ -2051,12 +2053,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var storage = MirRvalue.Storage(broken == "storage" ? lent : array, body.TypeOf(pointer)!);
         Assign(pointer, broken == "storage-op" ? storage with { Op = (byte)MirRefKind.Shared } : storage, broken == "storage-op" ? broken : "storage");
         Assign(index, MirRvalue.Discriminant(shape));
-        Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(pair, MirProjectionKind.Field, 0)))), "assign");
+        Assign(a, MirRvalue.Use(Operands(broken == "assign" ? MirOperand.Copy(flag) : MirOperand.Copy(body.Project(c.Types, pair, MirProjectionKind.Field, 0)))), "assign");
         var lost = MirModelTest.Local(body, BoundType.Unit, MirLocalKind.Temp);
         Assign(lost, broken == "opaque" ? MirRvalue.Use(Operands(MirOperand.Const(body.Const(new(MirConstKind.Unit, BoundType.Unit))))) : MirRvalue.Opaque(BoundType.Unit, body.AddOpaque(default, [])));
         Assign(a, MirRvalue.Use(Operands(MirOperand.Move(lost))), "opaque");
         MirOperand Token(BoundType type) => MirOperand.Const(body.Const(new(MirConstKind.TypeToken, type)));
-        var (acquired, payload) = (broken == "token" ? flag : a, body.Project(handle, MirProjectionKind.Deref, 0));
+        var (acquired, payload) = (broken == "token" ? flag : a, body.Project(c.Types, handle, MirProjectionKind.Deref, 0));
         var adapt = MirRvalue.Adapt(Operands(broken == "acquisition" ? one : MirOperand.Copy(acquired), Token(BoundType.I32)), acquired, body.TypeOf(adapted)!, shorthand: false, input: false);
         Assign(adapted, broken == "shorthand" ? adapt with { Op = 4 } : adapt, broken is "acquisition" or "token" or "shorthand" ? broken : "adapt");
         var borrow = MirRvalue.Adapt(Operands(MirOperand.Copy(handle), Token(body.TypeOf(handle)!)), broken == "payload" ? handle : payload, body.TypeOf(borrowed)!, shorthand: false, input: false);
@@ -2125,7 +2127,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (entry, abort, call, drop, exit, ensure, done) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
         var check = body.AddBlock();
         var result = new MirPlace(0);
-        var x = body.Project(pairs, MirProjectionKind.Field, 0);
+        var x = body.Project(c.Types, pairs, MirProjectionKind.Field, 0);
         void Push(MirStatementKind kind, MirPlace place, SourceInfo? source = null) => body.Push(entry, MirStatement.Of(kind, place, source ?? At));
         void Assign(MirPlace place, MirRvalue rvalue, SourceInfo? source = null) => body.Push(entry, MirStatement.Assign(place, rvalue, source ?? At));
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
@@ -2137,12 +2139,12 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(index, MirRvalue.Use(Operands(Const(MirConstKind.Integer, BoundType.ISize, 2))));
         Assign(result, MirRvalue.Binary(MirBinaryOp.Add, Operands(MirOperand.Copy(x), one), false));
         Assign(reference, MirRvalue.Ref(MirRefKind.Shared, x, body.TypeOf(reference)!));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(reference, MirProjectionKind.Deref, 0)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, reference, MirProjectionKind.Deref, 0)))));
         Push(MirStatementKind.EndBorrow, reference);
-        Push(MirStatementKind.FakeRead, body.Project(pair, MirProjectionKind.PairLayer, 0));
+        Push(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.TwoPhaseUniq));
-        var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
+        var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
         Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [point.Root])));
@@ -2154,10 +2156,10 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(), 0, types.Array)); // SPEC 4.3.4 noinit: no element stored.
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.Fill, Operands(one), 1, types.Array)); // SPEC 4.3.3: every element a copy of one.
         Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(MirOperand.Move(parent), one, Const(MirConstKind.Bool, BoundType.Boolean, 1)), 3, types.Point));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.ConstIndex, 2)))));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(body.Project(shape, MirProjectionKind.Downcast, 1), MirProjectionKind.Field, 1)))));
-        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(body.Project(point, MirProjectionKind.Base, 1), MirProjectionKind.Field, 0)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, array, MirProjectionKind.Index, index.Root)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, array, MirProjectionKind.ConstIndex, 2)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, body.Project(c.Types, shape, MirProjectionKind.Downcast, 1), MirProjectionKind.Field, 1)))));
+        Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(c.Types, body.Project(c.Types, point, MirProjectionKind.Base, 1), MirProjectionKind.Field, 0)))));
         Assign(result, MirRvalue.Unary(MirUnaryOp.Neg, Operands(MirOperand.Copy(result)), false));
         Assign(index, MirRvalue.Cast(MirCastKind.Integer, Operands(MirOperand.Copy(result)), BoundType.ISize));
         switch (broken)
@@ -2178,7 +2180,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
                 Push(MirStatementKind.FakeRead, new(99), Broken);
                 break;
             case MirViolation.Projection:
-                Push(MirStatementKind.FakeRead, body.Project(index, MirProjectionKind.Field, 0), Broken);
+                Push(MirStatementKind.FakeRead, body.Project(c.Types, index, MirProjectionKind.Field, 0), Broken);
                 break;
             case MirViolation.Const:
                 Assign(result, MirRvalue.Use(Operands(MirOperand.Const(99))), Broken);
@@ -2214,7 +2216,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
                 Push(MirStatementKind.FakeRead, body.Static(new(types.Generic.SymbolOf()!, BoundType.I32, false, false)), Broken);
                 break;
             case MirViolation.SharedPath: // W1 rule 1: a write through the shared reference.
-                Assign(body.Project(reference, MirProjectionKind.Deref, 0), MirRvalue.Use(Operands(one)), Broken);
+                Assign(body.Project(c.Types, reference, MirProjectionKind.Deref, 0), MirRvalue.Use(Operands(one)), Broken);
                 break;
         }
 

@@ -44,7 +44,7 @@ internal sealed partial class MirBuilder
             var start = this.body.AddOperand(MirOperand.Copy(sequence));
             this.body.AddOperand(count);
             this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, proven: true), index);
-            return this.body.Project(offset, MirProjectionKind.Deref, 0);
+            return this.body.Project(compilation.Types, offset, MirProjectionKind.Deref, 0);
         }
         else
         {
@@ -56,7 +56,7 @@ internal sealed partial class MirBuilder
             this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, lent, this.Info(index)));
         }
 
-        return this.body.Project(sequence, MirProjectionKind.Index, position.Root);
+        return this.body.Project(compilation.Types, sequence, MirProjectionKind.Index, position.Root);
     }
 
     // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a ^x applied directly, Op Range, as Boundary
@@ -298,5 +298,5 @@ internal sealed partial class MirBuilder
     }
 
     // A boundary Field of a ResolvedRange.
-    private MirPlace Bound(MirPlace range, string name) => this.body.Project(range, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(range)!, name));
+    private MirPlace Bound(MirPlace range, string name) => this.body.Project(compilation.Types, range, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(range)!, name));
 }

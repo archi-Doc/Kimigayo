@@ -62,9 +62,9 @@ public sealed partial class MirEffectsTest
         void Check(string name, BindingSymbol operation, MirBody body)
         {
             var row = c.Types.Published(operation)!.Value;
-            var (on, calls, reached) = (Below(operation, row.On), Below(operation, row.Calls), new HashSet<BoundType>(ReferenceEqualityComparer.Instance));
+            var (on, calls, reached) = (Below(c.Types, operation, row.On), Below(c.Types, operation, row.Calls), new HashSet<BoundType>(ReferenceEqualityComparer.Instance));
             var walk = new Reached(reached);
-            MirTypes.Destruction(Below(operation, row.Destroys), ref walk);
+            MirTypes.Destruction(c.Types, Below(c.Types, operation, row.Destroys), ref walk);
             for (var view = 0L; view < MirCases.Count(body); view++)
             {
                 foreach (var atom in effects.Items(body, view, out _))
@@ -140,9 +140,9 @@ public sealed partial class MirEffectsTest
             "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" + call + "        return .Ok(())\n"));
 
     // The Type below an operation's parameter, as A4 reads a row's slot with the operation's own Types; null for no slot (-1).
-    private static BoundType? Below(BindingSymbol operation, int slot)
+    private static BoundType? Below(TyCtxt types, BindingSymbol operation, int slot)
     {
-        _ = TyCtxt.Layer(slot < 0 ? null : TyCtxt.Signature(operation, null, slot, out _), out var below, out _);
+        _ = TyCtxt.Layer(slot < 0 ? null : types.Signature(operation, null, slot, out _), out var below, out _);
         return below;
     }
 

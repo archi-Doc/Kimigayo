@@ -100,8 +100,8 @@ public sealed partial class Binding
     // SPEC 15.3.5: the variance of a Type's Origin argument `index`, the one reading every relation, fit and walk takes: a Closure Type's
     // by its occurrences in its definition's signature (ClosureArgumentVariance, DECISIONS R4-M159); a declared Type's by its schema's
     // inferred variance; an argument without one is invariant.
-    private static OriginVariance OriginArgumentVariance(BoundType type, int index, Binding? binding)
-        => type.Kind == BoundTypeKind.Closure ? ClosureArgumentVariance(type, index, binding)
+    private OriginVariance OriginArgumentVariance(BoundType type, int index, Binding? binding)
+        => type.Kind == BoundTypeKind.Closure ? this.ClosureArgumentVariance(type, index, binding)
             : type.Symbol?.Schema?.Origins[index].Variance ?? OriginVariance.Invariant;
 
     // SPEC 15.3.4: whether a use is a binding set named in a Constraint (not an associated specification) that its declaration holds.
