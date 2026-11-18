@@ -52,7 +52,10 @@ public sealed partial class Binding
     // conditions the receiver meets must agree (PathsAgree), else none. The path the binding comes from is returned with it, its Scope the
     // conformance scope (SPEC 8.8.2, D + P) the binding was formed in, and the path's associated identity it binds, as the outcome's
     // Type (the binding in the subject declaration's terms), Path and Identity. W5: Complete when no chain path names the receiver and no
-    // conformance is registered for it by declaration.
+    // conformance is registered for it by declaration. SPEC 8.3.3 Finality, 8.6.3 (R7-C2e2 e2-3b Revision 4): in a requirement's
+    // evidence, a path the evidence holds pending (PathConditions) names no Type: the projection stays itself there, and only a judgment
+    // that reads that part reads the obligation pending. A formation read uses dev's deferred binding, whose retained obligation the
+    // written site's formation proves after the conformance holds.
     private ProjectionOutcome ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope, BoundType? qualifier)
     {
         var pending = this.AssociatedEvidencePending;
@@ -84,7 +87,7 @@ public sealed partial class Binding
         for (var i = 0; i < identity.PathStorage.Count; i++)
         {
             var path = identity.PathStorage[i];
-            var condition = this.ProveConformanceConditions(path, receiver, scope);
+            var condition = this.PathConditions(path, receiver, scope, out var held);
             if (condition == ConstraintProof.Error)
             {
                 return new(null, null, pending, null, default, Completion.Provisional);
@@ -92,6 +95,12 @@ public sealed partial class Binding
 
             if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier, scope) is not { } selected)
             {
+                continue;
+            }
+
+            if (held)
+            {
+                pending = true;
                 continue;
             }
 
@@ -119,6 +128,25 @@ public sealed partial class Binding
         // The separately retained projection obligation must still prove conformance at finalization.
         return (available ?? (conflicting ? null : unproven)) is { } chosen ? new(chosen.Binding, receiver, false, chosen.Path, chosen.Identity, Completion.Provisional)
             : new(null, null, pending, null, default, Completion.Provisional);
+    }
+
+    // SPEC 8.2.3, 8.6.1, 8.6.3, 8.3.3 Finality (R7-C2e2 e2-5b, e2-3b Revision 4): a path's conditions at a receiver, and whether the
+    // requirement's evidence in progress holds the path pending (`held`): the path's evidence (its conditions and, for a path they do not
+    // rule out, the receiver's formation, one answer) depends on an obligation that evidence holds (EndHeldAnswer). A formation read holds
+    // none, so it reads the conditions alone.
+    private ConstraintProof PathConditions(BoundConformancePath path, BoundType receiver, BindingScope scope, out bool held)
+    {
+        held = false;
+        if (this.FormationRead)
+        {
+            return this.ProveConformanceConditions(path, receiver, scope);
+        }
+
+        var mark = this.BeginAnswer();
+        var condition = this.ProveConformanceConditions(path, receiver, scope);
+        var evidence = condition is ConstraintProof.Proven or ConstraintProof.Unknown ? CombineProof(condition, this.InstanceFormation(receiver, scope), true) : condition;
+        held = this.EndHeldAnswer(mark, evidence);
+        return condition;
     }
 
     // SPEC 8.9.2 (DECISIONS BU-50, revised by bu55): two conformance paths of a receiver agree on an associated Type when their bindings are

@@ -17,6 +17,14 @@ public sealed partial class Binding
     // reader asks at its boundary (BeginAnswer, EndAnswer).
     private int dependence = int.MaxValue;
 
+    // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): how many of the open obligations the innermost requirement's evidence holds
+    // pending: those open when it began (ProveRequirement); 0 in a formation read (a verification's body, the binding cache's formation,
+    // the inferred bindings' collection: what it forms is judged where written, after the conformance holds). A projection whose route's
+    // evidence depends on a held obligation names no Type in that evidence (EndHeldAnswer): its part stays the projection, so exactly the
+    // judgments that read the part read the obligation pending. Written only by this file's brackets (BeginEvidence, BeginVerification,
+    // BeginFormation and their ends) and ResetContracts; read only through HeldPending.
+    private int heldObligations;
+
     // An open obligation's key: an instance's (Type, Contract), or a declaration path being verified.
     private readonly record struct Obligation(BoundType? Type, BindingSymbol? Contract, BoundConformancePath? Path);
 
@@ -475,6 +483,36 @@ public sealed partial class Binding
         return read && verdict == ConstraintProof.Unknown;
     }
 
+    // SPEC 8.6.3: the start of a requirement's evidence, an answer holding pending every obligation open when it began (heldObligations).
+    private (int Depth, int Enclosing, int Held) BeginEvidence()
+    {
+        var mark = this.BeginAnswer();
+        var held = this.heldObligations;
+        this.heldObligations = mark.Depth;
+        return (mark.Depth, mark.Enclosing, held);
+    }
+
+    // The evidence's verdict: Unknown when it depends on an obligation it held pending (EndAnswer), since it then supplies none.
+    private ConstraintProof EndEvidence((int Depth, int Enclosing, int Held) mark, ConstraintProof verdict)
+    {
+        this.heldObligations = mark.Held;
+        return this.EndAnswer((mark.Depth, mark.Enclosing), verdict) ? ConstraintProof.Unknown : verdict;
+    }
+
+    // Whether the evidence in progress holds pending the obligation at `depth` (int.MaxValue: none).
+    private bool HeldPending(int depth) => depth < this.heldObligations;
+
+    // Whether no evidence in progress holds an obligation pending: a formation read (the outermost obligation not held).
+    private bool FormationRead => !this.HeldPending(0);
+
+    // Whether the answer begun at `mark`, with `verdict`, depends (EndAnswer) on an obligation the evidence in progress holds pending: an
+    // answer, such as a path's evidence, that supplies none to that evidence.
+    private bool EndHeldAnswer((int Depth, int Enclosing) mark, ConstraintProof verdict)
+    {
+        var read = this.dependence;
+        return this.EndAnswer(mark, verdict) && this.HeldPending(read);
+    }
+
     // Opens an obligation at the next depth; when it is open already, the request reads no evidence there: false, and the answers in
     // progress read it.
     private bool OpenObligation(Obligation key)
@@ -501,6 +539,34 @@ public sealed partial class Binding
         this.dependence = Math.Min(this.dependence, depth);
         return true;
     }
+
+    // SPEC 8.3.3 Recursion, 8.6.3 (R7-C2e2 e2-3b Revision 4): opens a declaration path's verification (VerifyConformance,
+    // VerifyInheritedConformance); false when it is open already. Its body is a formation read (a specification's identity atom,
+    // signatures, normalization: judged where written, after the conformance holds), so it holds no obligation pending (`held`, the
+    // enclosing count, which EndVerification restores); only its requirements' evidence does (BeginEvidence).
+    private bool BeginVerification(BoundConformancePath path, out int held)
+    {
+        var opened = this.OpenObligation(new(null, null, path));
+        held = opened ? this.BeginFormation() : this.heldObligations;
+        return opened;
+    }
+
+    private void EndVerification(BoundConformancePath path, int held)
+    {
+        this.openObligations.Remove(new(null, null, path));
+        this.EndFormation(held);
+    }
+
+    // SPEC 8.6.3: a formation read inside whatever answer reads it (a verification's body, the binding cache's formation, the inferred
+    // bindings' collection): what it forms is judged where written, so it holds no obligation pending; EndFormation restores the count.
+    private int BeginFormation()
+    {
+        var held = this.heldObligations;
+        this.heldObligations = 0;
+        return held;
+    }
+
+    private void EndFormation(int held) => this.heldObligations = held;
 
     // Whether a declaration path is being verified (its obligation open).
     private bool Verifying(BoundConformancePath path) => this.openObligations.ContainsKey(new(null, null, path));

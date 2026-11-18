@@ -35,7 +35,7 @@ public sealed partial class Binding
         }
 
         var query = this.contractParts.Begin(this.storageVersion);
-        return this.collectingAssociated is null ? this.ContractTypeCore(type, scope, self, normalize, query) : this.BatchedContractType(type, scope, self, normalize, query);
+        return this.Batched ? this.BatchedContractType(type, scope, self, normalize, query) : this.ContractTypeCore(type, scope, self, normalize, query);
     }
 
     // SPEC 8.4, 8.3.2: a Contract reference written in a Contract's declaration (a clause's Contract, an ancestor) for the conforming Type
@@ -96,7 +96,7 @@ public sealed partial class Binding
             return (type, null, Completion.Complete);
         }
 
-        if (this.collectingAssociated is not null)
+        if (this.Batched)
         {
             return this.BatchedContractType(type, scope, self, normalize, query);
         }
@@ -114,6 +114,10 @@ public sealed partial class Binding
 
         return answer;
     }
+
+    // Whether the associated collection's batch answers: one is open, and no requirement's evidence holds obligations pending, an input
+    // its key does not carry (FormationRead; R7-C2e2 e2-3b Revision 4).
+    private bool Batched => this.collectingAssociated is not null && this.FormationRead;
 
     // The associated collection's answer, by every input including the active requirement (Binding.AssociatedInference's batch);
     // Provisional (W4) whatever the batch stored, as the batch is open.
