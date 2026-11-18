@@ -108,9 +108,9 @@
 //   Completion row (R7-C2e2 e2-3).
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
 //   only Reading calls (temporary until R7-C2c2 c2-4 removes its binding completion), and of a Callable row's signature, which only
-//   PremiseCallable calls, as the Callable selection reads it (CallableContractType; its identity normalization is c2-4's row);
+//   PremiseCallable calls, as the Callable selection reads it (CallableContractType, which reads ClassForm);
 //   Enumerate's walk and what it calls never
-//   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity or RequestCapability
+//   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, ClassForm or RequestCapability
 //   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading and the kept rows,
 //   each in the kept region alone, and the view's index when Complete (all below); no second scheduler; no read sets. From C3
 //   (C1 §5), broken until then by the eager derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or
@@ -119,19 +119,20 @@
 //
 // The view and its closure (DECISIONS R7-C2e1). ViewOf names the state of a scope's chain: the serial changes when an environment's
 // Version, a scope's LinkVersion or the parent's serial does (each counted at its writer). Reading is the one caller of the request
-// boundary's normalization of a fact (NormalizeProofConstraint): in the capability phase, with normalizingAssociated and
-// identityExpansions empty, it keeps the reading per (view scope, fact, requirement Contract) under the serial taken before the
-// formation (the caller's, above), for one pass (ResetCapabilities), when its derivation is Complete. Any other request forms its
-// readings itself.
+// boundary's normalization of a fact (NormalizeProofConstraint): in the capability phase, with normalizingAssociated empty, it keeps
+// the reading per (view scope, fact, requirement Contract) under the serial taken before the formation (the caller's, above), for
+// one pass (ResetCapabilities), when its derivation is Complete. Any other request forms its readings itself.
 // - Completion (C1 §5's, without Resource until f): each function of the normalization gives its answer with one; its zero is
 //   Provisional, a composite rule's answer is the meet of its parts', and only these members give Complete (W1-W6;
-//   ArchitectureRulesTest): NormalizeProofConstraint, NormalizeProofType (W1); SubstituteIdentity (W2); IdentityPremise (W3);
+//   ArchitectureRulesTest): NormalizeProofConstraint, NormalizeProofType (W1); ClassForm (as MemberOf: Complete without an identity
+//   premise in the view, else the view's table's W7; a re-entered build answers the Type itself, Provisional, and keeps nothing; forms
+//   are kept by their table alone; R7-C2c2 c2-4b, whose deletion of SubstituteIdentity and IdentityPremise left W7 for W2 and W3);
 //   ContractType, ContractPart, ContractTypeCore, ContractLength, ApplyContractEnvironment, SubstituteContractReference (W4);
 //   ProjectionSpecification, ResolveAssociated(receiver), BuiltinArithmeticOutput's and FixedArrayIteratorType's gates (W5);
 //   AvailableConstraintFact (W6). Provisional is a conservative superset of C1's: the derivation took a route not shown final in the
 //   pass (a derived fact's availability; a projection route past its gate; the batched route; a Callable fact; StoredType's null).
 // - Within a member an unthreaded call counts as Complete, so a member calls only these besides the members above, each pure or
-//   final in the capability phase; each change to a member is reviewed against this list: the view's reads (HasParameterIdentity,
+//   final in the capability phase; each change to a member is reviewed against this list: the view's reads (HasTypeIdentity,
 //   EnclosingContractSelf, a chain environment's sets), FactStates, NegateConstraint, InternConstraint, interning and Type rewriting
 //   (TyCtxt.Rebuild, Intern, HeldContext, HeldType, InterpolationBound, WithContext, RentTypes, StoredType and SubstituteType where
 //   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
@@ -341,8 +342,8 @@ public sealed partial class Binding
     private bool KeepsAcrossRequests => this.capabilitiesReady;
 
     // R7-M20's kept region, the one rule every kept table asks (Reading's readings, PremiseRefines' rows): a table may outlive the
-    // request, and neither an associated normalization nor an identity expansion is under way (their contexts are in no key).
-    private bool KeptRegion => this.KeepsAcrossRequests && this.normalizingAssociated.Count == 0 && this.identityExpansions.Count == 0;
+    // request, and no associated normalization is under way (its context is in no key; a ClassForm starts no request, R7-C2c2 c2-4b).
+    private bool KeptRegion => this.KeepsAcrossRequests && this.normalizingAssociated.Count == 0;
 
     // The reading of `fact` in the view `scope` denotes (the class header's closure). `serial` is the view's serial as the caller last
     // took it (null: not taken). Only a formation can write the chain, so a caller whose loop makes no other write takes it once: a
@@ -380,7 +381,7 @@ public sealed partial class Binding
     {
         var positive = false;
         var negative = false;
-        var parameterIdentity = HasParameterIdentity(view.Premises);
+        var typeIdentity = HasTypeIdentity(view.Premises);
         var negation = this.NegateConstraint(proposition);
         int? serial = null; // The loop writes nothing but through Reading.
         for (var current = view.Premises; current is not null; current = current.Parent)
@@ -397,7 +398,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, proposition, out _);
             negative |= this.AvailableConstraintFact(environment, negation, out _);
-            if (environment.HasAssociatedProjection || parameterIdentity || proposition.Kind == ConstraintKind.Callable || proposition is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
+            if (environment.HasAssociatedProjection || typeIdentity || proposition.Kind == ConstraintKind.Callable || proposition is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
             {
                 foreach (var fact in environment.Facts)
                 {

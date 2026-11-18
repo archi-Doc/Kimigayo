@@ -929,8 +929,7 @@ public sealed partial class Binding
     private ConstraintProof SymbolicCapability(CapabilityWork work)
     {
         var negative = false;
-        var parameterIdentity = HasParameterIdentity(work.Scope);
-        var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true, out _) : work.Type;
+        var subject = work.Type; // its class's Member and rows reach it through RequestCapability's MemberOf and the supply's keys
         var positive = this.PremiseRefines(subject, work.Intrinsic, work.Scope); // SPEC 8.3.2's refinement row (ContractSolver).
         for (var scope = work.Scope; scope is not null; scope = scope.Parent)
         {
@@ -951,8 +950,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                int? serial = null; // The loop's judgments may write the chain: a serial per fact.
-                var fact = parameterIdentity ? this.Reading(available, work.Scope, ref serial) : available;
+                var fact = available;
                 var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
                 if (!this.FactStates(fact, subject, out var stated) && !appliedSemantics)
                 {
@@ -960,11 +958,7 @@ public sealed partial class Binding
                 }
 
                 var evidence = ConstraintProof.Unknown;
-                if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
-                {
-                    evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
-                }
-                else if (fact.Kind == ConstraintKind.Semantics)
+                if (fact.Kind == ConstraintKind.Semantics)
                 {
                     const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
                     const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;

@@ -124,10 +124,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     internal bool HasAssociatedProjection { get; private set; }
 
-    /// <summary>Gets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.2), so that expressions bound in
-    /// its scope substitute one for the other.</summary>
-    internal bool HasParameterIdentity { get; private set; }
-
     // The number of changes of this environment's state.
     internal int Version { get; private set; }
 
@@ -149,7 +145,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         if (added)
         {
             this.HasAssociatedProjection |= fact.HasAssociatedProjection;
-            this.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
             this.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null };
         }
 
@@ -218,7 +213,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.Declared = 0;
         this.Failed = null;
         this.HasAssociatedProjection = false;
-        this.HasParameterIdentity = false;
         this.HasTypeIdentity = false;
     }
 }

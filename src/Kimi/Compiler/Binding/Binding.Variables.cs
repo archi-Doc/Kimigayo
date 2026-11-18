@@ -48,7 +48,7 @@ public sealed partial class Binding
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
         if (symbol.Kind == BindingSymbolKind.Local && declared is { ContainsParameter: true })
         {
-            declared = this.SubstituteIdentityPremises(declared, scope); // SPEC 8.2: one Type in the premise's scope.
+            declared = this.ClassForm(declared, scope, out _); // SPEC 8.2.3: one Type in the premise's scope.
         }
 
         if (originDeclaration is not null)

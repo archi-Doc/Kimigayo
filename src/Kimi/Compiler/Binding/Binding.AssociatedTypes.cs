@@ -658,7 +658,9 @@ public sealed partial class Binding
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
-            valid &= result is null || this.SameCompleteType(result, type);
+            // R7-C2c2 c2-4b (design R4.12b, J2): the candidates' agreement is the identity proposition in the path's view (SPEC 8.2.3:
+            // several bindings of one Type all hold), judged by the identity judge; the binding stores the candidate as written.
+            valid &= result is null || this.IdentityProven(result, type, scope);
             result = type;
         }
 

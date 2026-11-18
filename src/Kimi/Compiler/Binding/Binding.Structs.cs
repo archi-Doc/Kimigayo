@@ -426,7 +426,7 @@ public sealed partial class Binding
         }
 
         if (type is null || structure is { ConstructorAvailability: not (ConstructorAvailability.MissingInitializer or ConstructorAvailability.CompilerManaged) } ||
-            (type.Kind == BoundTypeKind.Parameter && HasParameterIdentity(this.ConstraintScope(node))))
+            (type.Kind == BoundTypeKind.Parameter && HasTypeIdentity(this.ConstraintScope(node))))
         {
             return this.Fail(node, BindingFailure.Unsupported);
         }

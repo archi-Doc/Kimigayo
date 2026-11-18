@@ -132,8 +132,10 @@ public sealed partial class Binding
 
     // The image and its hops: a projection resolved by a specification adds its path and itself, its components normalized, to its
     // subject's (component 0's) hops. W4: the meet of the environment's and the requirement's substitutions, the parts', the held
-    // Type's, the length's, the projection's specification (W5) and every availability the identity loop asks (W6); a Contract Self, a
-    // kind not normalized and the guard's hit (normalizingAssociated, empty when a reading's formation starts) add nothing.
+    // Type's, the length's and the projection's specification (W5); a Contract Self, a kind not normalized and the guard's hit
+    // (normalizingAssociated, empty when a reading's formation starts) add nothing. No identity step (R7-C2c2 c2-4b, design R4.12): a
+    // projection or parameter that (E) and the specification leave unresolved is returned as written, never in a class's form, since
+    // the image is stored and read in other views; a judgment that needs it identified forms it at its own intake (ClassForm's readers).
     private (BoundType Image, ResolutionHops? Hops, Completion Completion) ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize, uint query)
     {
         type = this.ApplyContractEnvironment(type, scope, out var completion);
@@ -223,43 +225,6 @@ public sealed partial class Binding
 
                         var instance = this.ContractTypeAnswer(stored, scope, self);
                         return (instance.Image, hops, Meet(completion, instance.Completion));
-                    }
-                }
-
-                // The first available premise naming the Type completes it, the choice dev's member substitution makes (SubstituteIdentity;
-                // R7-C2c2 replaces both); a Type in a final erroneous identity class stays as written (Binding.TypeIdentity).
-                BoundType? chosen = null;
-                for (var current = scope; current is not null; current = current.Parent)
-                {
-                    if (current.Constraints is not { Invalid: false } environment)
-                    {
-                        continue;
-                    }
-
-                    foreach (var fact in environment.Facts)
-                    {
-                        if (fact.Kind != ConstraintKind.TypeIdentity || !this.FactStates(fact, result, out var required))
-                        {
-                            continue;
-                        }
-
-                        var available = this.AvailableConstraintFact(environment, fact, out var availability);
-                        completion = Meet(completion, availability);
-                        if (available && required is not null && chosen is null)
-                        {
-                            chosen = required;
-                        }
-                    }
-                }
-
-                if (chosen is not null)
-                {
-                    var failed = this.ProjectionClassFailed(result, scope, out var guard);
-                    completion = Meet(completion, guard);
-                    if (!failed)
-                    {
-                        var identity = this.ContractTypeAnswer(chosen, scope, self);
-                        return (identity.Image, null, Meet(completion, identity.Completion));
                     }
                 }
 

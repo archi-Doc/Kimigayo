@@ -11,9 +11,9 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other)> callableSelectionFailures = new(ReferenceEqualityComparer.Instance);
     private readonly List<CallableCandidate> callableSelectionParties = [];
 
-    // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
+    // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and in its identity class's form (ClassForm).
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
-        => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
+        => this.ClassForm(this.ContractType(type, scope), scope, out _);
 
     // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
     private static bool SameCallableSignature(BoundType a, BoundType b)

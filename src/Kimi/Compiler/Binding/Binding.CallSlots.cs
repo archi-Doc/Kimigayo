@@ -275,6 +275,11 @@ public sealed partial class Binding
 
             if (arguments[slot] is { } previous)
             {
+                // R7-C2c2 c2-4b (design R4.12c, J4): a slot's bindings agree (SPEC 10.8 Solving: an explicit Type argument is kept; the
+                // bindings agree in structure and Semantics) over identical Types (8.2.3): the kept binding and the evidence in their
+                // class's form in the solve's view (SlotFrame.View), once, before every comparison below; the Completion unthreaded
+                // (ClassForm's contract). A first binding and a pattern's decomposition read Types as given.
+                (previous, actual) = (this.ClassForm(previous, frame.View, out _), this.ClassForm(actual, frame.View, out _));
                 if (!ReferenceEquals(previous, actual) && (HasOpenOrigin(previous) || HasOpenOrigin(actual)))
                 {
                     // SPEC 10.8: no argument fixes a slot first by traversal order. Another argument's Origin at an open position

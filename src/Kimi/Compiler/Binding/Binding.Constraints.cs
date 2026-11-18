@@ -638,7 +638,7 @@ public sealed partial class Binding
     private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!constraint.HasAssociatedProjection && !HasParameterIdentity(scope))
+        if (!constraint.HasAssociatedProjection && !HasTypeIdentity(scope))
         {
             return constraint;
         }
@@ -661,26 +661,32 @@ public sealed partial class Binding
             return constraint;
         }
 
-        var subject = this.NormalizeProofType(constraint.Subject, scope, out completion);
+        // R7-C2c2 c2-4b (design R4.12b, J1): a proposition is identified by its normalized complete Types (SPEC 8.3.1), each in its
+        // class's form in the proposition's view (8.2.3), its Contract reference's arguments included, so request and facts meet here.
+        var subject = this.ClassForm(this.NormalizeProofType(constraint.Subject, scope, out completion), scope, out var formed);
+        completion = Meet(completion, formed);
         var required = constraint.RequiredType;
         if (required is not null)
         {
             var part = Completion.Provisional;
-            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.NormalizeProofType(required, scope, out part);
-            completion = Meet(completion, part);
+            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.ClassForm(this.NormalizeProofType(required, scope, out part), scope, out formed);
+            completion = Meet(Meet(completion, part), formed);
         }
 
-        return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
+        var contract = constraint.Contract;
+        if (contract is not null && IsBoundContractReference(contract))
+        {
+            var reference = this.ClassForm(contract.Type!, scope, out formed);
+            completion = Meet(completion, formed);
+            contract = ReferenceEquals(reference, contract.Type) ? contract : this.BoundContractReference(reference);
+        }
+
+        return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) && ReferenceEquals(contract, constraint.Contract) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
     }
 
     private BoundType NormalizeProofType(BoundType type, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (type.ContainsParameter && HasParameterIdentity(scope))
-        {
-            type = this.SubstituteIdentity(type, scope, parametersOnly: true, out completion);
-        }
-
         if (type.Kind == BoundTypeKind.AssociatedProjection)
         {
             var projected = this.ContractTypeAnswer(type, scope);

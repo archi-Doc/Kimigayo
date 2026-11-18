@@ -576,7 +576,7 @@ public sealed partial class Binding
     private int IndexNormalized(ViewIndex index, EvidenceView view)
     {
         int? after = index.Serial; // The loop writes nothing but through Reading.
-        if (HasParameterIdentity(view.Premises))
+        if (HasTypeIdentity(view.Premises))
         {
             var start = this.enumerateNormalized.Count;
             for (var scope = view.Premises; scope is not null; scope = scope.Parent)

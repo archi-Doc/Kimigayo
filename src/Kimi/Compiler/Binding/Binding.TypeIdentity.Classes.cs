@@ -97,6 +97,8 @@ public sealed partial class Binding
             this.scanned.Clear();
             this.projections.Clear();
             this.projectionMembers.Clear();
+            this.forms.Clear();
+            this.forming.Clear();
         }
 
         internal void Premise(BoundType a, BoundType b, Completion availability)
