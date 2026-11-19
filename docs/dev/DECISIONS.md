@@ -14577,6 +14577,12 @@ resumed by R4-M86 (2026-10-20).
     reachable from frozen library facts (path Contracts, requirements) and must not be rewritten (census O15). The library pass also
     completes the effect bounds of every Contract the library declares, those no node of the pass holds included (the `#Lang`
     markers), so no later pass forms them.
+  - Amended by PLAN G949 Stage 2 U6 (R8-M55's U6 line): no column is reserved: `PagedColumn.Reserve` and `HirTables.Reserve` are
+    deleted, so the Representation bullet's "the arena reserved from the module's stated size for a library-only column
+    (`KimiLibrarySize`)" and the N5-1 line's "the library-only column's arena reserved at its stated size" end, and every arena starts
+    at one page; the "TableCounts' TypeKeys counts interned Types" line ends with `TableCounts` and `TyCtxt.KeyCount`; S1-r1b's
+    "`LibraryLayer.Size` (its table counts at its end; `KimiLibrarySize`'s statement is compared with it)" and "the layer's part at the
+    library's stated count, Binding's own at `NodeRoom`" end: both node lists start at their default.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -21936,6 +21942,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     2026-11-11): about 935 library nodes raise warm Bind B/A' to 1.034 (Hello), 1.040 (Milestone26) and 1.026 (Strings) against an
     A'/A spread of 0.996-1.010, the per-compilation rebinding of the library (PLAN G337) that R8-L1 removes; the unit's purpose, the
     Dictionary kernel at O2, runs 0.61x.
+  - The RP8 exception closed (PLAN G949 Stage 2 U6, 2026-11-19): its cause, the per-compilation rebinding of the library (PLAN G337),
+    ended with R8-L1 U3 (W-272's RP8: warm Bind B/A' Hello 0.585, Milestone26 0.966, Interpolation 0.973); R8-M55's U6 line.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -22995,39 +23003,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     and displaces), either one a second predicate beside the rule; a position-range check in the validator (the Middle's C-196).
   - **Dump** (the Middle's review of U1, N3). The keyed form is spelled with its operands after the Place: `storage(_n, copy _start,
     const type Kimi.Range<S, Kimi.End>)`; the unkeyed `storage(_n)` is unchanged.
-- **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a, board C-210 (A), the
-  Front's design reviews, re-check and implementation review; the owner's O-136 (a) and O-139 (a)). Every compilation's tables hold
-  the library's entries beside the program's and grew by doubling from small capacities, so each library unit moved a table's
-  doubling into a cold scaling row's window. `KimiLibrarySize` states the library's entry count, rounded up to a Granule of 1,024,
-  in each per-compilation table it sizes, and three kinds of room: `NodeRoom` (8,192) in the node table, `KeyedRoom` (1,024) in a
-  keyed table, and none in a library-only table (member selections, capability nodes), which starts at its stated count. A table
-  with a room starts at its stated count plus that room, so after a Bind of the library alone it keeps the room free;
-  `KimiLibraryShapeTest` checks the statement (`TheStatedSizeIsTheLibrarys`) and the room of the tables that have one
-  (`TheLibraryLeavesEachSizedTableItsRoom`). Selection is by bytes, not by entries: a table is sized when, grown by doubling from
-  empty, the doubling that follows the library's fill would allocate more than 64 KB, of which three fit inside the smallest margin
-  of the cold scaling rows (nine tables). The rooms are sizing facts, not contracts: a program past a room, or one that fills a
-  library-only table's free slots, may double that table.
-  - **The library-only kind, a known limit (the Front's R1; the owner's O-139 (a), verbatim 「(a) e のまま着地する」):** the kind was chosen
-    because no cold scaling row's program adds an entry to either table; that is its reason and no guarantee. Programs fill both: a
-    member access adds one member selection, a Copy struct declaration two capability nodes. So each table's next doubling (139,980
-    B and 102,652 B, above the selection rule's 64 KB) sits where the library's fill puts it, and the unit moves it: a member-read
-    row of the tests' shape (cold Bind bytes at 128, 256 and 512 reads, factor 3) measures 1.100 on dev 53cf29caf and 3.118 on this
-    unit. No row of the suite reads a member or declares a Copy struct. The RP8 exception below covers this limit until the removal
-    condition holds.
-  - Supersedes `DeclarationTableCapacity` (b7488ebfe, board C-124): its reason, one fixed size reviewed when the library grows, no
-    longer holds, since each library unit moved a table's doubling into a scaling row.
-  - **RP8 exception (the owner's O-136 (a), verbatim "(a) Land as exception", and O-139 (a)):** the unit lands although Hello's cold
-    Bind median is slower than RP8 allows. B's T-100, 12 pinned rounds: Hello cold Bind median +4.5% against an A'/A spread up to
-    +1.7%; cold min and warm Bind equal; cold bytes -3.0%, large-object bytes -5.3%, gen2 collections 16 against 17 per 60 Binds;
-    retained bytes +4.8%. By the trace's reading (B's trace; the median's attribution in milliseconds was not measured), the slower
-    cold median is the collector's cadence in a multi-compilation loop, not Bind work: blocking gen1 collections that fall before
-    the next large-object gen2 promote the dropped compilations' graphs, 12-21 MB against 3 MB.
-  - **Removal condition:** R8-L1 (a frozen library: no compilation rebuilds tables holding the library's entries), if RQ13 adopts it
-    (the plan's RQ13 thresholds). Until R8-L1 removes it, this statement, its two tests and the RP8 exception stand.
-  - Rejected: counts measured at run time (a library Bind per process, order-dependent cold allocation); exact counts (restated by
-    every library unit); a capacity or a room per table; one room for every table (U) and two rooms over six tables (H); `KeyedRoom`
-    2,048 with or without the library-only kind (revision 2, d: more large-object bytes and gen2 collections); selection by entry
-    count (it admitted a table whose step is smaller than an excluded table's).
+- **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a; the owner's O-136 (a)
+  and O-139 (a)). Superseded by R8-M55's U6 line (PLAN G949 Stage 2 U6, 2026-11-19): after R8-L1 U3 a compilation's tables hold only
+  its program's entries, so the statement, its two tests and its RP8 exception are deleted. Full text: dev 8a1d8cff6 (first landed in
+  5c243f016).
 - **R8-M29 SPEC 16.3.2's order of a level's parts is one Mir Type fact (`MirTypes.LevelCount`, `MirTypes.LevelPart`); A2's
   destruction walk composes it with a group's rows, and the builder and the Backend read it (PLAN G702)** (Back with the Middle's
   consent, board C-212; Major: a contract across phases; no acceptance, record or IR move).
@@ -24477,6 +24456,23 @@ R8-M* and R9-M* by the stage of the recording unit.
     closure). Moved to libraries of their own, each with its assertions: `KimiLibraryShapeTest`'s
     `W1ComparesTheLibrarysViewSerialsAndConsumersByValue` and `TheSealRefusesAWriteIntoAFrozenObject`, and `BindingTest`'s
     `AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass` and `ALocalRegionInTheLayersPartIsFoundThere`.
+  - **U6: no table states the library's size** (PLAN G949 Stage 2 U6, 2026-11-19; design `back\notes\l1-s2\u6s2-design.md`; the
+    Front's review on C-380; RP8 T-W-277). After U3 every per-compilation table holds only its program's entries (on dev 1ad9abc26:
+    Milestone26 at most 186, the 44 milestones at most 853, the median SPEC example 0 to 30, against stated capacities of 1,103 to
+    8,192), so each starts at its collection's default: `KimiLibrarySize` is deleted, and with it the counts that existed only to
+    compare with it (`Binding.TableCounts` and `TableFree`, `LibraryLayer.Size`, `TyCtxt.KeyCount` and `KeyFree`), the reservation
+    of the library's columns (`HirTables.Reserve`, `PagedColumn.Reserve`; a library column grows by doubling from one page, capped at
+    the module's dense size, as every column does) and the rows `KimiLibraryShapeTest.TheStatedSizeIsTheLibrarys`,
+    `TheLibraryLeavesEachSizedTableItsRoom` and `PagedColumnTest.AReservedColumnStartsAtItsStatedSize`. Each fresh compilation
+    allocates 495,800 B less at its Binding's construction and 56 B (Empty) to 64 KB (Milestone31) more in its first Bind (Milestone26:
+    construct, Bind and Analyze 939,960 -> 458,392 B); warm Bind stays 0 B; the freeze, once per process and target, allocates
+    +0.63 MB and retains +49 KB (the library's columns doubling), a reasonable memory cost (AGENTS "Performance"). Changed by decision:
+    `BindingTest.AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass` compares the composed node view's count instead of
+    `TableCounts` (the only one of its numbers the moved part changes); `TyCtxtTest.TypesWhosePartsShareAnIdentityHashAreCountedApart`
+    counts by `TyCtxt.TypeCount`. Rejected: a fixed start per table (no measurement shows a regrowth it removes; it is a guess of the
+    program, R8-M28's rejected "capacity of a table's own"); the library's counts measured at run time; trimming the frozen columns at
+    the seal (a mechanism for 49 KB per process). Supersedes R8-M28 and BU-220's reservation of a library-only column (BU-220's U6
+    line); closes R8-M2's Scope RP8 exception (its U6 line).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
@@ -24836,6 +24832,16 @@ R8-M* and R9-M* by the stage of the recording unit.
     decisions would land without a reachable path); one range per builder (it forbids adding a module); the range in the kept
     library stamp (G950-R's two rules for kept facts); a step after the clean collector run to give unstepped bodies A1/A2 problems
     (C-378 (3) as amended; hover reads `Holds` instead).
+  - **Measured (unit M, 2026-11-19; PLAN G951 closed).** A fresh compilation builds 0-91 of the library's 319 bodies (Hello 5,
+    Milestone26 5, Milestone31 76; mean 30 over the 67 milestone, example and Benchmark programs; 0-2 over the A5 oracle's 1,764,
+    1,597 none), none by a program pass or the root build: the analyses demand 84 % and the collector 16 %; A4 needs at most one
+    missed round and the collector at most one missed run; a second version demands none, misses none and collects in one run;
+    lazy and eager records are equal on every program. N5's miss on a bodyless key is not memoized (at most 6 per program, 22 µs).
+    Pinned A/B (987ad9c7b, the dev before the switch, against 713fac946; T-315, 12 rounds, B/A'): cold Analyze Hello 0.018,
+    Milestone26 0.082, Milestone31 0.650, Interpolation 0.437; warm Analyze 0.002, 0.041, 0.248, 0.122; cold bytes 11.1-13.8 MB to
+    0.7-4.1 MB. The span also holds U2-K-b with G950-K and G949 Stage 2 U3, whose cold Analyze +7-11 % on Milestone26 and
+    Interpolation is U3's (K's W-272 row). Not attributed: Milestone31's cold Generate 1.116 (1.88 -> 2.10 ms; its whole cold
+    pipeline 42.9 -> 11.1 ms). Evidence: `artifacts/benchmarks/g951m-*`; the switch's own pinned row is K's `rp8w-W-246-e12b222ed-*`.
 - **R9-M10 The toolchain boundary's rule: a compiler exception under `Project.Build` is its result's fault (R9-B2, PLAN G345)**
   (Middle, 2026-11-18; the R7-R9 plan's §5.3 unit B2; Major; under DIAGNOSTICS rule 9, R5-M169 and R9-M6; design review ACCEPT WITH
   NOTES, the Middle's rulings on F1-F8; implementation review ACCEPT)
