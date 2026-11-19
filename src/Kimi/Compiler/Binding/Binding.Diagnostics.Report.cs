@@ -317,7 +317,7 @@ public sealed partial class Binding
             var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
             issue.Node.ReportIn(store, requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, at: at);
         }
-        else if (this.callInferenceFailures?.TryGetValue(issue.Node, out var callInference) == true)
+        else if (this.callInferenceFailures.TryGetValue(issue.Node, out var callInference))
         {
             this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
         }

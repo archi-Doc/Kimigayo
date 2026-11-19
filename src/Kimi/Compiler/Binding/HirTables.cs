@@ -325,6 +325,7 @@ internal struct NodeColumns
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
+    internal StampedColumn<Binding.CallInferenceFailure, Binding.PassCounter> CallInferenceFailures; // Pass: the selection a construction's or shape contract's later check rejected (Binding.ConstructorValidation.cs).
 
     internal void Resize(int length)
     {
@@ -379,6 +380,7 @@ internal struct NodeColumns
         this.EffectBoundRejections.Grow(length);
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
+        this.CallInferenceFailures.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -409,6 +411,7 @@ internal struct NodeColumns
         this.EffectBoundRejections.Freeze(binding);
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
+        this.CallInferenceFailures.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -468,6 +471,7 @@ internal struct NodeColumns
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
+            CallInferenceFailures = this.CallInferenceFailures.Renumbered(length),
         };
         return columns;
     }

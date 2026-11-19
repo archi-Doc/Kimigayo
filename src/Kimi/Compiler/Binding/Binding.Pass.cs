@@ -39,7 +39,6 @@ public sealed partial class Binding
     private void ResetPass(BindingMode mode)
     {
         this.inferredConstructionTargets.Clear();
-        this.callInferenceFailures?.Clear();
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyReads?.Clear();
