@@ -54,6 +54,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.AliasTargets"] = "never written: the library declares no alias",
         ["NodeColumns.ImportedContainers"] = "never written: the library declares no alias, so no qualifier selects an alias import",
         ["NodeColumns.QualificationFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.PerCallOrigins"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its

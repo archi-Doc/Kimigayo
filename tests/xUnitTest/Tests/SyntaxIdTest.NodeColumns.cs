@@ -188,7 +188,8 @@ public partial class SyntaxIdTest
     // inherited Origins; DeferredConstraints: Milestone10's clause decisions; Matches: Milestone10's match plans; Adaptations: Milestone10's
     // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
     // generic container's group whose struct a parameter names; QualificationFailures: a member read without its `self.`, a failure
-    // family's program, which reports its failure at each Bind). Checked after each edit (N5-5's review C1):
+    // family's program, which reports its failure at each Bind; R7-N5's: PerCallOrigins, a call only an argument's own per-call Origin
+    // would satisfy). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -206,6 +207,7 @@ public partial class SyntaxIdTest
     [InlineData("AliasTargets", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
     [InlineData("ImportedContainers", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
     [InlineData("QualificationFailures", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
+    [InlineData("PerCallOrigins", "func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(pick)\n", DiagnosticCode.MissingOriginBinding_Kd)]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
@@ -319,7 +321,8 @@ public partial class SyntaxIdTest
 
         if (!type.IsValueType)
         {
-            return RuntimeHelpers.GetUninitializedObject(type);
+            // An abstract field (a Koto, as PerCallOriginFact's Argument) takes an instance of a concrete derived type.
+            return RuntimeHelpers.GetUninitializedObject(type.IsAbstract ? type.Assembly.GetTypes().First(x => !x.IsAbstract && type.IsAssignableFrom(x)) : type);
         }
 
         if (Nullable.GetUnderlyingType(type) is { } inner)

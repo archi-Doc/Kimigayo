@@ -24,11 +24,11 @@ public sealed partial class Binding
     private readonly OpenOriginRows openOrigins;
 
     // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
-    private Dictionary<Koto, PerCallOriginFact>? perCallOrigins;
+    private readonly PerCallOriginRows perCallOrigins;
 
     // The argument whose own per-call Origin alone would satisfy a slot of the selected callee, and that callee's first Type parameter
     // whose solution holds the argument's open region (-1 when none does, displayed as the Type argument).
-    private readonly record struct PerCallOriginFact(Koto Argument, FunctionKoto Selected, int Slot);
+    internal readonly record struct PerCallOriginFact(Koto Argument, FunctionKoto Selected, int Slot);
 
     // SPEC 10.8: an Origin that the evidence's own binder quantifies, such as a per-call input, never becomes the solution of an Origin
     // inside a slot. The slot keeps the structure and Semantics, and each such Origin is replaced by an open region of the call (SPEC
@@ -445,7 +445,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.FailExplained(ref this.perCallOrigins, call, BindingFailure.MissingOrigin, new PerCallOriginFact(argument, selected, slot));
+        return this.FailExplained(PerCallOriginRows.Family, call, BindingFailure.MissingOrigin, new PerCallOriginFact(argument, selected, slot));
     }
 
     // SPEC 15.3.6, 10.8: `type` with each open region that the known call signature of `source` put in place of its k-th per-call input
@@ -592,5 +592,16 @@ public sealed partial class Binding
 
             KeyedRow.Put(ref HirTables.Of(key.Source).Families.OpenOrigins.Ref(key.Source.SyntaxId), Interned(origin, key.Source, (OriginKind.Inference, key.Key)), AtomKey, ref binding.originRowProbes);
         }
+    }
+
+    /// <summary>The `perCallOrigins` family's one accessor (DECISIONS BU-220): a pass family, a selected call's slot that only an
+    /// argument's own per-call Origin would satisfy, stored with its failure by the recorder (RecordedFact) and written by FailExplained
+    /// (a present row always has its Argument, so the column's default is none). Its members keep the names its readers use.</summary>
+    private readonly struct PerCallOriginRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<PerCallOriginFact, PassCounter> Family(ref NodeColumns columns) => ref columns.PerCallOrigins;
+
+        internal bool TryGetValue(Koto call, out PerCallOriginFact fact) => (fact = binding.RecordedFact(call, Family)).Argument is not null;
     }
 }
