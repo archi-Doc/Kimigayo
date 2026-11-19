@@ -28,8 +28,18 @@ internal static partial class NativeToolchain
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
     // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed.
-    internal static async Task BuildManifest(
+    internal static Task BuildManifest(
         string path, string? toolchainRoot, string? llvmBin, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
+        => BuildManifest(path, toolchainRoot, llvmBin, ExternalToolExecutor.Create, report, cancellationToken);
+
+    // The same build with a given executor's factory: the entry by which tests select Tatara's (TataraExecutor.Create) until unit A4.
+    internal static async Task BuildManifest(
+        string path,
+        string? toolchainRoot,
+        string? llvmBin,
+        Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor,
+        Action<DiagnosticSeverity, string> report,
+        CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(path)!;
@@ -43,7 +53,7 @@ internal static partial class NativeToolchain
         var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
         var configured = llvmBin is null && manifest.TryGetProperty("toolchain", out var toolchain) ? LinkManifest.Text(toolchain, "toolchain.llvmBin") : null;
         var bin = llvmBin is not null ? ResolvePath(llvmBin, Directory.GetCurrentDirectory()) : configured is null ? null : ResolvePath(configured, directory);
-        await new NativeBuild(null, paths, manifest, directory, optimization, ExternalToolExecutor.Create, report, cancellationToken).Run(toolchainRoot, bin);
+        await new NativeBuild(null, paths, manifest, directory, optimization, createExecutor, report, cancellationToken).Run(toolchainRoot, bin);
     }
 
     // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or

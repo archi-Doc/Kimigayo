@@ -3,8 +3,9 @@
 // The contract of Build (src/Kimi/Build, namespace Kimi.Build), P13, outside the compiler (the R7-R9 plan's §5.3, unit M2), stated
 // here, in its entry file, for all its types.
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
-// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs through NativeExecutor's four calls (today ExternalToolExecutor: the
-// toolchain's tools, one process each, through ExecuteTool), the built Application's run and the installed toolchain's verification
+// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs through NativeExecutor's four calls: ExternalToolExecutor (the
+// toolchain's tools, one process each, through ExecuteTool), which every command uses, or TataraExecutor (tatara.dll in process,
+// Tatara), which only tests select until unit A4; the built Application's run and the installed toolchain's verification
 // (NativeToolchain.Verification.cs); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
 // identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles).
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
@@ -31,6 +32,9 @@
 // (KeyNotFoundException, InvalidOperationException). Known limit (R9-M10's, narrowed): inside the toolchain's calls the set still
 // classifies by type whatever raised the exception, so one of its remaining kinds (publication's, R5-M165; Win32Exception;
 // JsonException) raised by the host's report or a defect here prints as the toolchain's failure; any other type is a fault.
+// Tatara's failures (design A2 §5) are the toolchain's: a missing, unloadable or mismatched tatara.dll an InvalidDataException naming the
+// remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
+// "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
 
 using System.ComponentModel;
