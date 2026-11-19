@@ -86,6 +86,14 @@ public class PathCapabilityDiagnosticTest
         "    a@move.v = 1\n    pass(b@move).v = 1\n    _ = look(c@move.v@ref)\n    mut(d@move@follow@uniq)\n    _ = see(e@move@follow@ref)\n    m@move@follow.bump()\n" +
         "    n@move.bump()\nfunc g() => f(1, tw(), tw(), tw(), tw(), tw(), Bc.init(), Bc.init())\n";
 
+    // A struct G with an Origin parameter, a reference Field and a drop, returned by mkG, and a Tuple with a reference element returned
+    // by pr (D-827): f and g write a borrow of another Origin than the temporary's own into its reference part (C-414's C6 and K3), h
+    // one of the temporary's own Origin (K2).
+    private const string RefParts = "struct G {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n    drop\n" +
+        "        Console.writeLine(\"d\")\nfunc mkG(x: ref/i32) -> G{s}\n    origin s.a == x\n    return G.init(x)\nfunc pr(x: ref/i32) -> (ref/i32 during x, i32)\n" +
+        "    return (x, 1)\nfunc f()\n    var x = 1\n    let y = 2\n    mkG(y@ref).r = x@ref\n    x = 3\nfunc g()\n    let x = 1\n    let y = 2\n" +
+        "    pr(y@ref).0 = x@ref\nfunc h()\n    let y = 2\n    mkG(y@ref).r = y@ref\n";
+
     // Enums Color and Shape (a payload of Color) and functions borrowing them or an Option<i32>, shared or exclusively.
     private const string Cases = "enum Color\n    Red\n    Blue\nenum Shape\n    Dot(Color)\n    Box(i32, Color)\n" +
         "func lookc(x: ref/Color) -> i32 => 1\nfunc looks(x: ref/Shape) -> i32 => 2\nfunc lo(x: ref/Option<i32>) -> i32 => 3\n" +
@@ -524,7 +532,10 @@ public class PathCapabilityDiagnosticTest
     // an unspelled exclusive argument, the part being an owned Place outside a Receiver Expression (15.1.5's lending rule); through a
     // pair layer, an owned-Type parameter's or a let local's part in the owner case, also as a uniq/Self Receiver Expression (15.1.5),
     // and a ref case (13.5.5); a Temporary Value itself as an assignment's target, also parenthesized (13.7.1: no Place expression, the
-    // owner's O-438 (a)); a borrow of a temporary's part used after the temporary ends or returned (3.6: it cannot outlive it).
+    // owner's O-438 (a)); a borrow of a temporary's part used after the temporary ends or returned (3.6: it cannot outlive it). A
+    // borrow of another Origin than the temporary's own written into its reference part is valid (3.4.1: a Place in its Temporary
+    // Place; 3.6: writable; 15.6: the written value's Loans are added to the holder) but the located limit (PLAN G1068's open issue):
+    // Binding proves no Origin fit between two resolved local regions (RecordOriginFitFailure), while the temporary's own is accepted.
     // Only the records after the preludes are compared.
     [Theory]
     [InlineData("getter", "func f() => Holder.init().cpt.x = 1\n", "InvalidAssignment_Kd Holder.init().cpt.x")]
@@ -540,6 +551,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("whole", "func f()\n    tw() = Tw.init()\n    (tw()) = Tw.init()\n    1 = 2\n    var u = Tw.init()\n    u@move = Tw.init()\n", "InvalidAssignment_Kd (tw()); InvalidAssignment_Kd 1; InvalidAssignment_Kd tw(); InvalidAssignment_Kd u@move")]
     [InlineData("outlive", "func f()\n    let r = tw().v@uniq\n    take(r)\n    let t = pair().0@uniq\n    t@follow = 3\n", "ComparisonLoanConflict_Kd pair(); ComparisonLoanConflict_Kd tw()")]
     [InlineData("return", "func g(w: uniq/Tw) -> uniq/i32 during w\n    return tw().v@uniq\n", "UnsatisfiedOriginRelation_Kd return tw().v@uniq; UnsatisfiedOriginRelation_Kd tw().v@uniq")]
+    [InlineData("origin_limit", RefParts, "Unsupported_Kd mkG(y@ref).r = x@ref; Unsupported_Kd pr(y@ref).0 = x@ref")]
     public void APartOfATemporaryKeepsItsPermissions(string form, string body, string records)
     {
         var prelude = Take + Made + Temps;
