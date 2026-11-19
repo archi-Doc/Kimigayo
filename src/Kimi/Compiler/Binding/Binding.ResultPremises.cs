@@ -706,11 +706,13 @@ public sealed partial class Binding
     }
 
     // `kept` is the argument's Origin at the same position, which satisfies the relation already when the fit kept it: the argument's
-    // Type is well formed, and the fit, judged on its own, makes its outer Origin outlive the substituted one.
+    // Type is well formed, and the fit, judged on its own, makes its outer Origin outlive the substituted one. The two are compared as
+    // the fit reads them at the use (OriginAtUse, a `let` region of the use's body as its value; PLAN G492-a (ii), B's ruling 28 (2)).
     private bool VisitWellFormedPremise(BoundOrigin longer, BoundOrigin outer, BoundType result, BoundOrigin value, BoundOrigin? kept, BoundOrigin substituted, in WellFormedVisit visit, ulong condition = 0)
     {
         condition |= visit.Condition;
-        if (OriginOutlives(longer, outer) || OriginOutlives(value, substituted) || ReferenceEquals(value, kept))
+        if (OriginOutlives(longer, outer) || OriginOutlives(value, substituted) ||
+            (kept is not null && ReferenceEquals(this.OriginAtUse(value, visit.Use, visit.Comparison), this.OriginAtUse(kept, visit.Use, visit.Comparison))))
         {
             return true;
         }
