@@ -35,6 +35,21 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
+    // R7-E2 E2-1 (SPEC 6.7.1, 23.1.2; P4): a C-layout struct whose stored Fields lie in two fragments fails one requirement, the split
+    // Field's; the struct's layout is that requirement's verdict over the failed Field, so the struct is Invalid resting on the Field with
+    // no failure of its own (RestOnPart), and a function taking it reads the Invalid struct: the Field's record alone.
+    [Fact]
+    public void ASplitCLayoutStructRestsOnItsSplitField()
+    {
+        var c = CompilationTestHelper.ParseSuccess("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\nstruct P\n    var b: i32 = 0\nfunc use(p: P) -> i32 => 0");
+        var type = c.Kotonoha.RootKoto.NestedContainers.Single();
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal((BindingState.Invalid, BindingFailure.None), (type.StateOf(), type.FailureOf()));
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.FailureOf() == BindingFailure.SplitCLayoutStorage);
+        Assert.Equal(field.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(BindingFailure.SplitCLayoutStorage)), Assert.Single(c.Binding.FailureCauses(type)!));
+        Assert.Equal("SplitCLayoutStorage_Kd", Assert.Single(CompilationTestHelper.BindingErrors(c)).Code);
+    }
+
     // A conflicting Layout invalidates its target through its Attribute (InvalidateAttributeTarget) beside a failed Origin clause, which
     // fails only itself (SPEC 15.3.3, 23.1.2; H11b-0 B1): the struct holds no failure of its own and rests on the conflicting Attribute,
     // both records stay, and removing the conflicting Attribute leaves the Origin record alone.

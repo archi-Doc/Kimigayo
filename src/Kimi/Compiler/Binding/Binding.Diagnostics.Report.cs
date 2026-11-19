@@ -513,7 +513,7 @@ public sealed partial class Binding
     // explanation tables stand (PLAN G949 Stage 2 U2a, C1). Generic, so a composed view is read without boxing.
     private void ReportFailures<TIssues, TDerived>(TIssues issues, TDerived derivedIssues)
         where TIssues : IReadOnlyList<BindingIssue>
-        where TDerived : IReadOnlyList<Koto>
+        where TDerived : IReadOnlyList<BindingIssue>
     {
         if (this.sitelessHeightRefusal)
         {
@@ -533,8 +533,9 @@ public sealed partial class Binding
 
         for (var i = 0; i < derivedIssues.Count; i++)
         {
-            var node = derivedIssues[i];
-            node.ReportDerivedIn(this.compilation.StoreOf(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
+            var issue = derivedIssues[i];
+            var condition = issue.Problem >= 0 ? this.report.Problem(issue.Problem).Condition : (ushort)0;
+            issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), condition);
         }
     }
 }

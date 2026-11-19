@@ -55,14 +55,13 @@ public sealed partial class Binding
             _ => '?',
         };
 
-    // A rejected selected attribute is the declaration's failed prerequisite, not another failed requirement.
+    // A rejected selected attribute is the declaration's failed prerequisite, not another failed requirement (RestOnPart).
     // These markers cannot resolve within this pass; removing or replacing them rebuilds the cause on the next Bind.
     private void InvalidateAttributeTarget(AttributeKoto attribute)
     {
         if (AttributeTarget(attribute) is { } target)
         {
-            target.BindingState = BindingState.Invalid;
-            this.AddPrerequisite(target, attribute);
+            this.RestOnPart(target, attribute);
         }
     }
 
@@ -76,7 +75,7 @@ public sealed partial class Binding
 
         if (target is not StructKoto || attribute.LayoutMode is null)
         {
-            this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+            this.Record(attribute, BindingFailure.InvalidLayoutAttribute, []);
             this.InvalidateAttributeTarget(attribute);
         }
         else
@@ -105,7 +104,7 @@ public sealed partial class Binding
                 attribute.Operand is not InvocationKoto { ArgumentNodes.Count: 2 } call ||
                 !IsImportName(call, 0, out var name) || !IsImportName(call, 1, out var symbol) || IsReservedExternalName(symbol))
             {
-                this.Fail(attribute, BindingFailure.InvalidLibraryImport);
+                this.Record(attribute, BindingFailure.InvalidLibraryImport, []);
                 continue;
             }
 
@@ -118,7 +117,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(WindowsProfile.Kernel32Symbols, symbol) < 0)
                 {
                     // SPEC 20.4: the reserved supply exports only the reviewed project-owned definition.
-                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
                 }
             }
             else if (name is WindowsProfile.BackendLibrary)
@@ -127,7 +126,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
                 {
                     // SPEC 21.4.7: the backend archive supplies only its catalog, whose names are reserved above.
-                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
                 }
             }
             else
@@ -138,7 +137,7 @@ public sealed partial class Binding
                 var supply = configuration is not null && configuration.NativeLibraries.TryGetValue(target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
                 if (requirement is null && supply is null)
                 {
-                    this.Fail(attribute, BindingFailure.MissingNativeRequirement);
+                    this.Record(attribute, BindingFailure.MissingNativeRequirement, []);
                 }
                 else
                 {
@@ -408,7 +407,7 @@ public sealed partial class Binding
 
                 if (previousFragment == attribute.FragmentOrdinal)
                 {
-                    this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+                    this.Record(attribute, BindingFailure.InvalidLayoutAttribute, []);
                 }
 
                 if (attribute.BindingState == BindingState.Invalid)
@@ -422,7 +421,7 @@ public sealed partial class Binding
                 {
                     if (mode is not null && mode != explicitMode)
                     {
-                        this.Fail(latestSpecification!, BindingFailure.ConflictingLayout);
+                        this.Record(latestSpecification!, BindingFailure.ConflictingLayout, []);
                         this.InvalidateAttributeTarget(latestSpecification!);
                         valid = false;
                     }
@@ -442,8 +441,8 @@ public sealed partial class Binding
                 {
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
-                        this.Fail(field, BindingFailure.SplitCLayoutStorage);
-                        this.Fail(container, BindingFailure.InvalidTypeFormation);
+                        this.Record(field, BindingFailure.SplitCLayoutStorage, []);
+                        this.RestOnPart(container, field); // The struct's layout is this requirement's verdict over the split Field.
                         valid = false;
                     }
 
