@@ -637,7 +637,7 @@ public sealed partial class Binding
                     this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
                 {
                     this.DiscoverPremiseOrigins(solution, inference, instantiated);
-                    this.CollectInputPremises(pattern, instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
+                    this.CollectInputPremises(pattern, instantiated, null, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
                 }
             }
 

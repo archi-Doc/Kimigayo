@@ -135,10 +135,12 @@ public sealed partial class Binding
         solution.ChildSlice[1] = this.childRows.Count - solution.ChildSlice[0];
     }
 
-    // R2 (SPEC 15.6.4 step 3; DECISIONS BU-99, BU-104): a candidate's solve is bounded by the premise of each leaf row of its arguments
-    // that is a Signature position, at its own sub-Type under this solve's solution: the rows its selected call judges (JudgePositionRows),
-    // read from the retained composition. The first such row begins the solve's inference, and its callee Origins that no evidence names
-    // become premise-solved variables (DiscoverPremiseOrigins).
+    // R2 (SPEC 15.6.4 step 3, 15.3.6; DECISIONS BU-99, BU-104; PLAN G1115): a candidate's solve is bounded by exactly the input premises
+    // its selected call judges (JudgeSelectedCall, JudgePositionRows): each leaf row of its arguments and the receiver, at its own sub-Type
+    // under this solve's solution, beside an Evidence position's own Type, collected once the slots are solved, so a slot's solution that
+    // replaced an argument's Origin bounds the per-call Origin of the layer above it. The first Signature row begins the solve's
+    // inference, and its callee Origins that no evidence names become premise-solved variables (DiscoverPremiseOrigins); an Evidence
+    // position that carries an Origin has begun it (InferFrom).
     private void CollectPositionPremises(ref SlotSolution solution)
     {
         this.RetainChildRows(ref solution);
@@ -167,6 +169,14 @@ public sealed partial class Binding
                     this.CollectLeafPremises(ref solution, row with { Type = this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) });
                 }
             }
+        }
+
+        if (solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var index } function &&
+            this.CallReceiver(solution.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(solution.Call.Method)) is { } receiver &&
+            function.Parameters[index].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } receiverPattern)
+        {
+            var type = this.SubstituteType(receiverPattern, solution.SlotOwner, solution.Types, solution.Lengths);
+            this.CollectLeafPremises(ref solution, new(-1, -1, 0, receiver, receiverPattern, type, Contribution.Evidence));
         }
     }
 
@@ -296,11 +306,22 @@ public sealed partial class Binding
 
     private void CollectLeafPremises(ref SlotSolution solution, in PositionRow row)
     {
-        if (row is { Contribution: Contribution.Signature, Pattern: { StoresOrigin: true } pattern, Type: { } type })
+        if (row is not { Pattern: { StoresOrigin: true } pattern, Type: { } type })
+        {
+            return;
+        }
+
+        if (row.Contribution == Contribution.Signature)
         {
             solution.OriginInference ??= this.BeginOriginInference(solution.Call, solution.Binder);
             this.DiscoverPremiseOrigins(solution, solution.OriginInference, type);
-            this.CollectInputPremises(pattern, type, solution.OriginInference, solution.Call);
+            this.CollectInputPremises(pattern, type, null, solution.OriginInference, solution.Call);
+        }
+        else if (solution.OriginInference is { } inference && KotoHelper.UnwrapParentheses(row.Part).BoundType is var supplied && supplied?.StoresOrigin != false)
+        {
+            // As the judge, an Evidence part that carries no Origin supplies none (RequireInputPremises); one not typed yet, a join's,
+            // is read at its pattern.
+            this.CollectInputPremises(pattern, type, supplied, inference, solution.Call);
         }
     }
 

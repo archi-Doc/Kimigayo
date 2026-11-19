@@ -109,6 +109,15 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // SPEC 8.15.2, 15.6.5 (PLAN G809): a call's solve reads each bound's Semantics cases: `y`'s slot bounds put's `q` only in the `ref`
     // case, where the caller's `x` proves `p outlives q`, so put's `q` is the caller's `q`, valid in each case (rejected before G809);
     // without `x` the relation stays unproven.
+    // PLAN G1115's callees: a slot behind a borrow layer at both inputs, and an invariant binding beside a covariant one.
+    private const string Pick = "func pick<T>(x: ref/T, y: ref/T) -> T => $abort(\"no\")\n";
+
+    private const string PickTwo = Pick + "func two(x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ";
+
+    private const string PickMethod = "struct S\n    public init() => ()\n    public func pickm<U>(self: ref/Self, x: ref/U, y: ref/U) -> U => $abort(\"no\")\n";
+
+    private const string Inv = "func inv<T>(x: uniq/T, y: ref/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n";
+
     [Theory]
     [InlineData("x: t/(ref/i32 during p) during q, ", "clean")]
     [InlineData("", "1*UnprovenOriginRelation_Kd")]
@@ -137,6 +146,27 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal([("p", "requires p outlives static, which is not proven"), ("q", "requires q outlives static, which is not proven")], errors.Select(x => (Text(source, x.Span), x.Label)));
     }
+
+    // SPEC 15.6.4 step 3, 15.3.6, 10.8 (PLAN G1115): an input's well-formedness over a slot's solution bounds the per-call Origin of the
+    // layer above it, so `pick(x, y)` with `T = ref/i32 during (a and b)` (the covariant meet) or an invariant binding beside a longer
+    // covariant one is valid, and an invalid twin keeps only its own failure, never a well-formedness record against the argument's own
+    // outer Origin (`b outlives x`).
+    [Theory]
+    [InlineData(PickTwo + "i32\n    let r = pick(x, y)\n    return 0\n", "clean")]
+    [InlineData(PickTwo + "i32\n    let r = pick(y, x)\n    return 0\n", "clean")]
+    [InlineData(PickTwo + "ref/i32 during (a and b)\n    return pick(x, y)\n", "clean")]
+    [InlineData(PickTwo + "ref/i32 during a\n    return pick(x, y)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PickTwo + "ref/i32 during a\n    return pick(y, x)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func pick1<T>(x: ref/T, y: T) -> T => $abort(\"no\")\nfunc two(x: ref/(ref/i32 during a), y: ref/i32 during b) -> i32\n    let r = pick1(x, y)\n    return 0\n", "clean")]
+    [InlineData(Pick + "func two(o: Option<ref/i32 during a>, p: ref/(Option<ref/i32 during b>)) -> i32\n    let r = pick(o, p)\n    return 0\n", "clean")]
+    [InlineData(Pick + "func two(c: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = pick(if c => x else => x, y)\n    return 0\n", "clean")]
+    [InlineData(PickMethod + "func two(s: ref/S, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = s.pickm(x, y)\n    return 0\n", "clean")]
+    [InlineData(Inv + "    origin b outlives a\n    inv(x, y)\n", "clean")]
+    [InlineData(Inv + "    inv(x, y)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func inv2<T>(y: ref/T, x: uniq/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n    inv2(y, x)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func inv3<T>(x: uniq/T, z: uniq/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), z: uniq/(ref/i32 during b)) -> ()\n    inv3(x, z)\n", "1*UnprovenOriginRelation_Kd")]
+    public void AnInputsWellFormednessOverASlotsSolutionBoundsItsLayer(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload,
     // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch. Beside Binding's record at the
