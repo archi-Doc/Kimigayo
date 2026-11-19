@@ -265,6 +265,12 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.premiseFailure ??= new(owner);
     }
 
+    /// <summary>Gets the environment's premise-failure cause for its declaration's recorded identity premise error (R7-C3 gate 2): the one
+    /// cause a proof that reads a failed premise rests on.</summary>
+    /// <param name="owner">The declaration whose record it is.</param>
+    /// <returns>The cause.</returns>
+    internal PremiseFailure PremiseError(Koto owner) => this.premiseFailure ??= new(owner);
+
     /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
     /// <param name="node">The failed node.</param>
     internal void Fail(Koto node)

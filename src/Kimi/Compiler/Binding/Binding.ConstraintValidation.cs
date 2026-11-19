@@ -65,6 +65,16 @@ public sealed partial class Binding
                     admitted &= SemanticsSet(fact);
                 }
             }
+
+            // R7-C3 gate 2 (SPEC 8.3.4; F's C2 ruling 253): the premises give the set, a failed one included: contradictory Semantics
+            // premises leave the evidence (FailPremise) and still empty the set, which is their Error.
+            for (var i = 0; i < (environment.FailedPremises?.Count ?? 0); i++)
+            {
+                if (SemanticsPremise(environment.FailedPremises![i], whole))
+                {
+                    admitted &= SemanticsSet(environment.FailedPremises[i]);
+                }
+            }
         }
 
         return admitted;
@@ -242,9 +252,7 @@ public sealed partial class Binding
 
             if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
             {
-                this.FailEnvironment(environment, scope.Owner); // ValidateArithmeticDirections failed the owner.
-                changed = true;
-                continue;
+                changed = true; // ValidateArithmeticDirections failed the owner and the pair's facts (R7-C3 gate 2); the rest is judged.
             }
 
             changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.

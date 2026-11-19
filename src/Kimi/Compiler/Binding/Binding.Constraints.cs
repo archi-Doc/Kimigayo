@@ -570,11 +570,10 @@ public sealed partial class Binding
         Complete(clause, BoundType.Boolean);
         if (input || requirement.Kind == ConstraintKind.Error)
         {
+            // R7-C3 gate 2: a clause that failed, or holds a recovery, adds its Error fact; the environment writer fails that premise
+            // alone (ValidateConstraintEnvironments, FailPremise), so nothing else in the environment reads it.
             var environment = scope.Constraints ??= new();
-            if (this.AddConstraintFact(environment, requirement))
-            {
-                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
-            }
+            this.AddConstraintFact(environment, requirement);
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
             {

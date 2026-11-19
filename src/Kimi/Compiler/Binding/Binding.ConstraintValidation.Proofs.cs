@@ -400,10 +400,19 @@ public sealed partial class Binding
     // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the failed premise a judgment of `subject` reads, when the subject is a side of a failed premise of
     // the view (FailPremise), or identical with one in the view; every other judgment is in the valid remainder. Both judge intakes ask
     // it (ProveProposition: the subject as written and in its form; ProveConformance, whose direct callers bypass ProveProposition).
+    // R7-C3 gate 2 (SPEC 8.2.3): a recorded identity premise error is the identity case of a failed premise: a subject with a part in a
+    // final erroneous class of the view reads it (the producer channel's question, IdentityPremiseErrorRead's); the declaration's own
+    // checks (its frame) are the error's sites, never its readers (as UnprovenInputRead's).
     private PremiseFailure? FailedPremiseRead(BoundType? subject, BindingScope scope)
     {
         for (var current = scope; current is not null && subject is not null; current = current.Parent)
         {
+            if (this.identityRecorded.Count != 0 && !ReferenceEquals(current.Owner, this.consultationNode) && this.identityRecorded.TryGetValue(current, out var own) &&
+                own && current.Constraints is { } identities && this.ClassesOf(current, out _) is { } classes && classes.Holds(subject))
+            {
+                return identities.PremiseError(current.Owner);
+            }
+
             if (current.Constraints is not { FailedPremise: { } failure, FailedPremises: { } premises })
             {
                 continue;
