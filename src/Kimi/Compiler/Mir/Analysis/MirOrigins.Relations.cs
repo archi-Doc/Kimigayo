@@ -13,7 +13,7 @@ internal enum MirRelation : byte
     /// its own (SPEC 23.1.2).</summary>
     Rests,
 
-    /// <summary>Not decided: an Unclassed end or a view without a class, the call's located limit.</summary>
+    /// <summary>Not decided: an Unclassed end, the call's located limit.</summary>
     Undecided,
 
     /// <summary>The relation adds one the body could not satisfy.</summary>
@@ -35,7 +35,8 @@ internal enum MirRelation : byte
 //   below the shorter end, and no Finite node above the longer end meets a Fixed one below the shorter end (SPEC 15.6.5); Fails otherwise;
 //   Rests where it reads a recorded failure directly (SPEC 23.1.2): an end that is a Dependent atom (Binding's record), or the class's
 //   meet law over the storage limit (D20), whose one OwnershipStorageLimit_Kd Judge recorded at the body first (JudgeClass forms the same
-//   edges and stops the classes there); Undecided where an end is Unclassed (R7-O3) or the view has no class.
+//   edges and stops the classes there); Undecided where an end is Unclassed (R7-O3). A view Judge did not classify, or another body,
+//   is a broken contract (a throw): Judge classifies each view it is given, the views the Loan stratum then runs.
 // - Invariants: a query reads one class's edges, indexed once until the next class or body; it records no problem and changes no state
 //   Judge's problems read; an oracle it opens is disposed before it returns; Fixed's equality (Pin, MirOrigins.Causes.cs) reads the same
 //   index and walk (IndexClass, Walk).
@@ -80,7 +81,8 @@ internal sealed partial class MirOrigins
 
         if (c == this.classCount)
         {
-            return MirRelation.Undecided;
+            // Judge classifies every view it is given (Classify joins or opens a class per view) and the driver queries only those views.
+            throw new InvalidOperationException($"MirOrigins.Outlives reads view {view}, which Judge did not classify (InternalInvariant).");
         }
 
         var (from, to) = (types.OriginAtom(this.key, longer, site), types.OriginAtom(this.key, shorter, site));
