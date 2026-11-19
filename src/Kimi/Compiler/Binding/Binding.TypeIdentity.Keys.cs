@@ -116,7 +116,9 @@ public sealed partial class Binding
     //   Contract judge's entry ProveConformance (subject after MemberOf, Contract reference). J3, the Type relation at a use: the relation
     //   walk's root with a use (RelationWalk.Fits) and CallableContractType. J4, a slot's bindings agree (10.8 Solving): Infer's
     //   bound-slot branch, in SlotFrame.View. (ii), a use's binding input: BindAndAdaptNode (the expected and the bound Type, BU-72),
-    //   BindVariableCore, BindConversion and BindWrapConversion. J2, the identity proposition, reads the classes (IdentityProven, among
+    //   BindVariableCore, BindConversion and BindWrapConversion. (iii), a member step's receiver (SPEC 9.6; R7-N1 c-b): QualifierSelection's
+    //   receiver Type, in the use's view, and EvaluateProjection's normal form, in the left evaluation's view (its kept layer); each form is
+    //   read by its step alone. J2, the identity proposition, reads the classes (IdentityProven, among
     //   others ResolveAssociated's candidate agreement), no form. Every comparison of identical Types whose inputs are formed is one of
     //   J1-J4; one input is not formed: an anonymous function's written header Types, which the unifier's decomposition, Infer's
     //   TargetProjection and array-length-hole branches and 10.7's fixed parts compare as written (open issue D-779, PLAN G999:

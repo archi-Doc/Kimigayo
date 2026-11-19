@@ -261,9 +261,11 @@ public sealed partial class Binding
 
     // SPEC 9.6, 8.6.4: the Type path's member of `qualifier.name` over `type`, the qualifier's Type or group (formed, a projection's, or its
     // declaration's own when PickReading compares the readings: arguments never change the selection): a nominal member over a
-    // requirement member of the Type; without a Type, a nested declaration of the qualifier's scope.
+    // requirement member of the Type; without a Type, a nested declaration of the qualifier's scope. The member step reads the Type in its
+    // class's form in the use's view (ClassForm, SPEC 8.2.3: a Type's members are those of the Type its identities make it; R7-N1 c-b).
     private SideSelection QualifierSelection(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? type)
     {
+        type = type is null ? null : this.ClassForm(type, scope, out _);
         var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Type;
         var requirement = requirementType is null ? null : this.RequirementMember(member, scope, requirementType, true);
         if (type is not null && (qualifier is null || qualifier.Type is not null || qualifier.Declaration is GroupKoto))

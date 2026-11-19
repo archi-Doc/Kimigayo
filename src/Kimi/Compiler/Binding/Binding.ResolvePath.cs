@@ -752,7 +752,8 @@ public sealed partial class Binding
     // Origin parameters, a receiver no walk selected. The search, the proof and the normalization read what the former's scope holds there
     // (SPEC 8.3.2): the use's scope with the premises each proved projection's Contract supplies (ProjectionEvidence, AddContractPremises),
     // added to the use scope's kept layer (BindingScope.EvaluatedPremises), an inner projection's first, so the use's scope is not written
-    // before the reading is decided and a warm pass forms no layer.
+    // before the reading is decided and a warm pass forms no layer. The normal form is read in its class's form in that view (ClassForm,
+    // the one identity judge: SPEC 8.2.3), never by a first identity premise.
     private BoundType? EvaluateProjection(MemberAccessKoto projection, BindingScope scope, int mark, ref int step)
     {
         if (TypeSpelling(projection.Right) is not { } name)
@@ -807,7 +808,7 @@ public sealed partial class Binding
                 this.AddContractPremises(evidence.Contract!, type, environment);
             }
 
-            return this.NormalizedProjection(this.ProjectionIdentity(type, associated, search.Reference, contract), environment, false);
+            return this.ClassForm(this.NormalizedProjection(this.ProjectionIdentity(type, associated, search.Reference, contract), environment, false), environment, out _);
         }
 
         return end == PathEnd.Projection && contract is null && this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is { } nested ? this.OwnType(nested) : null;
