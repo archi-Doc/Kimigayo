@@ -54,7 +54,7 @@ public sealed partial class Binding
             receiver = receiver!.Components[0];
         }
 
-        var utf8 = FormattingTypes.IsUtf8Slice(receiver);
+        var utf8 = receiver?.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice;
         if (!utf8 && receiver?.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary))
         {
             return false; // A ResolvedRange exposes its fields and computed Properties through the library struct (SPEC 4.6.2).
