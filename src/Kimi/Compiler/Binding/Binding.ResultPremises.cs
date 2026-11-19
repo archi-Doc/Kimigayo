@@ -556,9 +556,19 @@ public sealed partial class Binding
     // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
     // once per distinct argument part beside it (TypeMemo's pair) and change of its substituted part between consecutive meets of that
     // pair; each skip prunes a revisit whose first visit completed in the query. Whether that bounds a form whose argument parts alternate
-    // beside a shared pattern part is unshown (PLAN G387).
+    // beside a shared pattern part is unshown (PLAN G387). The visit's requests share a premise session (PLAN G778).
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
-        => this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+    {
+        var session = this.OpenPremiseSession();
+        try
+        {
+            return this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+        }
+        finally
+        {
+            session?.Close();
+        }
+    }
 
     private bool WellFormedPart(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {
@@ -601,7 +611,8 @@ public sealed partial class Binding
 
         // The layer the substituted part forms at the use (WellFormedLayer), its pair layer's slot in the borrow cases its binder has in
         // the visit's relation (its comparison's scope, else the use's: RelationScope).
-        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, visit.Use, visit.Comparison) is { } layer)
+        var at = new UseScope(visit.Use);
+        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, ref at, visit.Comparison) is { } layer)
         {
             var stored = visit with { Query = this.storedParts.Begin(this.storageVersion), Condition = RequiredCondition(layer.Condition) };
             if (!this.VisitStoredPremises(pattern.Components[0], layer.Target, actual?.Components[0], outer, layer.Outer, stored))
@@ -661,7 +672,8 @@ public sealed partial class Binding
         // SPEC 8.1.1, 8.1.2, 15.6.5: a pair layer's slot, the implicit `o` of an original `s/T` included, is stored only in its binder's
         // borrow cases. At a use it is the slot its substitution stores: a borrow's Origin, a caller's pair slot in that pair's borrow
         // cases, and none for a value binding, which leaves the relation vacuous.
-        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot, visit.Comparison) is { } value &&
+        var at = new UseScope(visit.Use);
+        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, ref at, out var slot, visit.Comparison) is { } value &&
             !this.VisitWellFormedPremise(origin, outer, result, value, actual is null ? null : this.OuterOrigin(actual), substituted, visit, RequiredCondition(slot)))
         {
             return false;

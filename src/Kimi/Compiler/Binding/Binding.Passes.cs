@@ -226,6 +226,7 @@ public sealed partial class Binding
     // declarations asked for a rerun (VerifyEarlyReads).
     private bool RunPass(BindingPass pass, BindingMode mode)
     {
+        this.producing = true; // Each pass produces its failures from its start until its Check has counted them (Binding.Check.cs).
         this.StartPass(pass, mode);
         this.Index();
         if (!this.BindDeclarations(mode))

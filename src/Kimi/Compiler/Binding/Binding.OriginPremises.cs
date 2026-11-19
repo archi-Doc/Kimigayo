@@ -13,26 +13,34 @@ public sealed partial class Binding
 
     // One reusable premise environment per active proof request (PLAN G74).
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
+
+    // PLAN G778: the premise session, open while a judge that makes many requests runs (OpenPremiseSession).
+    private readonly OriginPremiseSession premiseSession = new();
     private int originPremiseDepth;
 
-    // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
-    // whether any of them still references an Origin, a Type, a declaration or syntax.
+    // The retained premise storage between requests (PLAN G74 U5): the environments, a premise session's included, their largest node
+    // and edge capacity, and whether any of them, or the session, still references an Origin, a Type, a declaration or syntax.
     internal (int Environments, int Nodes, int Edges, bool Retains) OriginPremiseStorage
     {
         get
         {
-            var (nodes, edges, retains) = (0, 0, false);
-            foreach (var environment in this.originPremiseEnvironments)
-            {
-                var capacity = environment.Closure.Capacity;
-                nodes = Math.Max(nodes, capacity.Nodes);
-                edges = Math.Max(edges, capacity.Edges);
-                retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null ||
-                    environment.Comparison.Expected is not null || environment.Shorter is not null;
-            }
+            var (nodes, edges, retains) = (0, 0, this.premiseSession.Holds);
+            Measure(this.originPremiseEnvironments);
+            Measure(this.premiseSession.Pool);
+            return (this.originPremiseEnvironments.Count + this.premiseSession.Pool.Count, nodes, edges, retains);
 
-            return (this.originPremiseEnvironments.Count, nodes, edges, retains);
+            void Measure(List<OriginPremiseEnvironment> environments)
+            {
+                foreach (var environment in environments)
+                {
+                    var capacity = environment.Closure.Capacity;
+                    nodes = Math.Max(nodes, capacity.Nodes);
+                    edges = Math.Max(edges, capacity.Edges);
+                    retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 ||
+                        environment.Results.Count != 0 || environment.Resolvers.Count != 0 || environment.Use is not null ||
+                        environment.Comparison.Expected is not null || environment.Shorter is not null;
+                }
+            }
         }
     }
 
@@ -47,6 +55,12 @@ public sealed partial class Binding
     private static PropertyAccessorKoto? HeaderGetter(Koto node, Koto? previous)
         => node is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement, TypeKoto: { } header } property &&
             ReferenceEquals(header, previous) && property.BoundSymbol?.Property is not null ? property.GetAccessor(PropertyAccessorKind.Get) : null;
+
+    // Whether ExtractOriginPremises reads `node`, reached from its child `previous`: an associated requirement or application (R4), a
+    // signature (R2, R3; a computed or requirement Property's header reads its getter's) or a declaration whose clauses it reads (R1).
+    private static bool PremiseFrame(Koto node, Koto? previous)
+        => node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto or DeclarationContainerKoto || AssociatedHead(node) is OriginApplicationKoto ||
+            HeaderGetter(node, previous) is not null;
 
     // The signature whose premises a request at `node` has: the innermost function (an anonymous one included), Function Type or
     // accessor at or above it; null at the top level.
@@ -79,6 +93,12 @@ public sealed partial class Binding
             return false; // Rulings S4: Refuted before any premise node is built.
         }
 
+        // PLAN G778: in a premise session, a top-level request outside a Callable comparison reads its anchor's environment.
+        if (this.premiseSession.Open && this.originPremiseDepth == 0 && !InComparison(comparison))
+        {
+            return this.EntailsInSession(longer, shorter, use, condition);
+        }
+
         var environment = this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
@@ -93,6 +113,7 @@ public sealed partial class Binding
             var candidate = closure.Node(longer, out _);
             this.ExtractOriginPremises(environment, use);
             entailed = closure.Entails(candidate, target, condition);
+            this.OriginProofMetrics?.Construction(closure.EdgeCount, built: true);
             this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
         }
         finally
@@ -132,12 +153,84 @@ public sealed partial class Binding
         return false;
     }
 
+    // PLAN G778: the anchor of a request at `use`, below which its environment reads nothing: the child on the use's path of the
+    // innermost node the environment reads (a premise frame, a witness bridge among them, a scope stop, a resolving declaration, a local
+    // whose R5 the use is within, the root), as a Property's header and a match arm's body read their parent by child; a generated
+    // function's block itself, whose statements alone bind in their source's scope (NodeScope); the use itself when it is read or is such
+    // a statement. Requests outside a comparison whose uses share an anchor have one environment.
+    private Koto PremiseAnchor(Koto use)
+    {
+        if (GeneratedStatement(use))
+        {
+            return use;
+        }
+
+        Koto? child = null;
+        for (var node = use; ; child = node, node = node.Parent!)
+        {
+            if (node is VariableKoto or { Parent: null } || PremiseFrame(node, child) || this.ScopeStop(node, child) is not null || this.ResolvesAt(node))
+            {
+                return child is null || GeneratedStatement(child) ? node : child;
+            }
+        }
+    }
+
+    // PLAN G778: opens the premise session for a judge that makes many requests; null when one is open, which the judge then shares. The
+    // opener closes what it opened (OriginPremiseSession.Close) in a finally block.
+    private OriginPremiseSession? OpenPremiseSession()
+    {
+        if (this.premiseSession.Open)
+        {
+            return null;
+        }
+
+        this.premiseSession.Open = true;
+        return this.premiseSession;
+    }
+
+    // PLAN G778: a session request. Its anchor's environment under the excluded result premise (resultPremiseExcluded) is built on first
+    // use, its construction nested at depth 1 as a rented one's is, and rebuilt in place after a change of Origin state; each request
+    // adds its endpoints and R5 over the nodes they introduce, which only point into them, then closes from its target.
+    private bool EntailsInSession(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition)
+    {
+        var anchor = this.PremiseAnchor(use);
+        var environment = this.premiseSession.Environment(anchor, this.resultPremiseExcluded);
+        var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
+        this.originPremiseDepth++;
+        try
+        {
+            var closure = environment.Closure;
+            var built = environment.Use is null || environment.Version != this.originStateVersion;
+            if (built)
+            {
+                environment.Clear();
+                environment.Use = anchor;
+                environment.Version = this.originStateVersion;
+                this.CollectOriginResolvers(environment);
+                this.ExtractOriginPremises(environment, environment.Use);
+            }
+
+            var edges = built ? 0 : closure.EdgeCount;
+            var target = closure.Node(shorter, out _);
+            var candidate = closure.Node(longer, out _);
+            this.AddLocalPlacePremises(environment);
+            var entailed = closure.Entails(candidate, target, condition);
+            this.OriginProofMetrics?.Construction(closure.EdgeCount - edges, built);
+            this.OriginProofMetrics?.Closure(closure, nested: false, Stopwatch.GetTimestamp() - start);
+            return entailed;
+        }
+        finally
+        {
+            this.originPremiseDepth--;
+        }
+    }
+
     // Whether a request can rent the next nesting level's environment now (RentPremises' condition), asked before a request by a reader
     // that answers Provisional instead of failing where the construction would depend on itself (Binding.TypeIdentity's Origin attribute).
     private bool OriginPremisesAvailable => this.originPremiseDepth < MaxOriginPremiseDepth;
 
     // The environment of the next nesting level for a request at `use`, returned with ReturnPremises; null beyond MaxOriginPremiseDepth,
-    // where the request's construction depends on itself and the requester fails.
+    // where the request's construction depends on itself and the requester fails. A session request's construction starts at depth 1.
     private OriginPremiseEnvironment? RentPremises(Koto use)
     {
         if (!this.OriginPremisesAvailable)
@@ -145,7 +238,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (this.originPremiseDepth == this.originPremiseEnvironments.Count)
+        while (this.originPremiseEnvironments.Count <= this.originPremiseDepth)
         {
             this.originPremiseEnvironments.Add(new());
         }
@@ -178,6 +271,9 @@ public sealed partial class Binding
             }
         }
     }
+
+    // Whether CollectOriginResolvers may read a declaration at `node`.
+    private bool ResolvesAt(Koto node) => this.originDeclarations.ContainsKey(node) || this.initializerOrigins.ContainsKey(node);
 
     // A premise endpoint's node: the endpoint resolved at the use (I5 resolves `==` substitutions before proof), once per endpoint.
     private int PremiseNode(OriginPremiseEnvironment environment, BoundOrigin origin)
@@ -220,6 +316,11 @@ public sealed partial class Binding
         Koto? previous = null;
         for (var node = from; node is not null; previous = node, node = node.Parent)
         {
+            if (!PremiseFrame(node, previous))
+            {
+                continue;
+            }
+
             var requirement = IsAssociatedRequirement(node);
             if (requirement && AssociatedFormationType(node) is { } formation)
             {
@@ -301,11 +402,18 @@ public sealed partial class Binding
             return;
         }
 
-        for (var node = 0; node < closure.NodeCount; node++)
+        this.AddLocalPlacePremises(environment);
+    }
+
+    // R5 outside a comparison at each node from the first one it was not applied to, the nodes its stored Origins introduce included.
+    private void AddLocalPlacePremises(OriginPremiseEnvironment environment)
+    {
+        var body = PremiseSignature(environment.Use);
+        for (var closure = environment.Closure; environment.LocalPlaces < closure.NodeCount; environment.LocalPlaces++)
         {
-            if (this.LocalPlaceType(environment, node, body) is { } stored)
+            if (this.LocalPlaceType(environment, environment.LocalPlaces, body) is { } stored)
             {
-                this.AddStoredPremises(environment, stored, node, OriginPremiseRule.LocalPlace, false);
+                this.AddStoredPremises(environment, stored, environment.LocalPlaces, OriginPremiseRule.LocalPlace, false);
             }
         }
     }
@@ -425,7 +533,7 @@ public sealed partial class Binding
         }
 
         this.AddTypeClausePremises(environment, type, rule);
-        if (this.WellFormedLayer(type, environment.Use, environment.Comparison) is { Target.StoresOrigin: true } layer)
+        if (this.WellFormedLayer(type, ref environment.At, environment.Comparison) is { Target.StoresOrigin: true } layer)
         {
             this.AddStoredPremises(environment, layer.Target, this.PremiseNode(environment, layer.Outer), rule, false, layer.Condition);
         }
@@ -530,7 +638,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.StoredSlot(type, environment.Use, out var slot, environment.Comparison) is { } origin)
+        if (this.StoredSlot(type, ref environment.At, out var slot, environment.Comparison) is { } origin)
         {
             AddPremiseEdge(environment, this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }
@@ -553,6 +661,10 @@ public sealed partial class Binding
     // visited and the resolving declarations. Clear releases every reference and keeps the capacity.
     private sealed class OriginPremiseEnvironment
     {
+        // The use the environment is built for (a request's use, or a premise session's anchor), whose constraint scope the
+        // environment's pair layers find once (UseScope).
+        private UseScope at;
+
         internal OriginPremiseClosure Closure { get; } = new();
 
         internal Dictionary<BoundOrigin, int> Nodes { get; } = new(ReferenceEqualityComparer.Instance);
@@ -563,7 +675,9 @@ public sealed partial class Binding
 
         internal List<OriginDeclaration> Resolvers { get; } = new();
 
-        internal Koto Use { get; set; } = null!;
+        internal Koto Use { get => this.at.Use; set => this.at = new(value); }
+
+        internal ref UseScope At => ref this.at;
 
         // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
         internal CallableInstance Comparison { get; set; }
@@ -574,6 +688,12 @@ public sealed partial class Binding
 
         // In a comparison, R5's Places from the shorter end: its node, then the nodes its stored Origins introduce, each once.
         internal List<int> Places { get; } = new();
+
+        // Outside a comparison, the nodes R5 was applied to, in order (AddLocalPlacePremises).
+        internal int LocalPlaces { get; set; }
+
+        // A session environment's Origin state (originStateVersion) when it was built.
+        internal int Version { get; set; }
 
         // Whether this request is a fit's dependence query (DECISIONS BU-69), which reads a repair of each failed clause of a contract
         // it reads, with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
@@ -592,8 +712,60 @@ public sealed partial class Binding
             this.Comparison = default;
             this.Shorter = null;
             this.Places.Clear();
+            this.LocalPlaces = 0;
             this.Dependence = false;
             this.Repairs.Clear();
+        }
+    }
+
+    // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness visit, an
+    // Origin inference): its environments by anchor and excluded result premise, the storage they reuse, and whether it is open. An
+    // environment lives until the session closes, never across passes, and is rebuilt when the Origin state changed; no opener's request
+    // writes the other premise inputs (scopes, bound input Types, a Closure's classification). The environments are the session's own
+    // scratch (PLAN G949 S1-e's call-scratch rule; F's ruling 187): each found by its key, the anchor and the excluded result premise
+    // (identity keys, scanned from the latest), taken from Pool in order and emptied at Close, which ends the session; no Binding table
+    // holds them, in a program's module or the library's.
+    private sealed class OriginPremiseSession
+    {
+        // The key of each environment the session took from Pool, in Pool's order.
+        private readonly List<(Koto Anchor, Koto? Excluded)> keys = new();
+
+        internal List<OriginPremiseEnvironment> Pool { get; } = new();
+
+        internal bool Open { get; set; }
+
+        // Whether the session holds an environment (OriginPremiseStorage's Retains: only while it is open).
+        internal bool Holds => this.keys.Count != 0;
+
+        // The environment at `anchor` under the excluded result premise `excluded`, taken from Pool at its first request in the session.
+        internal OriginPremiseEnvironment Environment(Koto anchor, Koto? excluded)
+        {
+            for (var i = this.keys.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(this.keys[i].Anchor, anchor) && ReferenceEquals(this.keys[i].Excluded, excluded))
+                {
+                    return this.Pool[i];
+                }
+            }
+
+            if (this.Pool.Count == this.keys.Count)
+            {
+                this.Pool.Add(new());
+            }
+
+            this.keys.Add((anchor, excluded));
+            return this.Pool[this.keys.Count - 1];
+        }
+
+        internal void Close()
+        {
+            for (var i = 0; i < this.keys.Count; i++)
+            {
+                this.Pool[i].Clear();
+            }
+
+            this.keys.Clear();
+            this.Open = false;
         }
     }
 }

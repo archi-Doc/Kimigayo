@@ -456,10 +456,22 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2: an unproven Definition obligation publishes its Language cause, a missing slot before a static exclusive one, and
-    // keeps an unproven target role of the same occurrence as a separate record; every final check recomputes the causes.
+    // keeps an unproven target role of the same occurrence as a separate record; every final check recomputes the causes. The role is
+    // a proof in the use's declaration context, so in a failed one (ReadFailedDeclaration) it rests on that declaration's record and
+    // keeps none of its own; a Language cause stays the occurrence's own.
     private void FailTypeRole(BindingObligation obligation)
     {
         var causes = this.TypeRoleCauses(obligation);
+        if ((causes & TypeRoleCause.Role) != 0 && this.InvalidDeclarationContextCause(obligation.Use) is { } failed)
+        {
+            causes &= ~TypeRoleCause.Role;
+            if (causes == TypeRoleCause.None)
+            {
+                this.CompleteDependent(obligation.Use, failed);
+                return;
+            }
+        }
+
         var failure = (causes & TypeRoleCause.MissingSlot) != 0 ? BindingFailure.MissingOrigin
             : (causes & TypeRoleCause.StaticExclusive) != 0 ? BindingFailure.InvalidOrigin
             : BindingFailure.UnprovenConstraint;

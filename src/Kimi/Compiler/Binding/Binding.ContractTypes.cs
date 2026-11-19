@@ -183,6 +183,24 @@ public sealed partial class Binding
 
             try
             {
+                // R7-C2c2 c2-4 (design (E), S3): a projection whose subject has a constructed Member is specified on it, through the one
+                // unconditional lookup the identity table's grounds read (SPEC 8.2.3 Projections). The table's Completion is met (W4): a
+                // non-Final or re-entered table leaves the projection's form Provisional, specified or not. Hops: the binding's resolution
+                // gives none, so a use keeps the subject's (a named limit for hover and diagnostics' "identical Type it used"). The
+                // Member is formed first, as the subject was (its components' images), so the instance grows only through the binding's
+                // substitution (StoredType's, IMPL A.4's checked growth site, refused at its frame), as a specification's does.
+                if (result.Kind == BoundTypeKind.AssociatedProjection)
+                {
+                    var member = this.MemberOf(result.Components[0], scope, out var table);
+                    completion = Meet(completion, table);
+                    if (!ReferenceEquals(member, result.Components[0]) && this.ContractTypeAnswer(member, scope, self) is var formed &&
+                        this.UnconditionalBinding(formed.Image, result, out var unfinished) is { } grounded)
+                    {
+                        var instance = this.ContractTypeAnswer(grounded, scope, self);
+                        return (instance.Image, inner, Meet(Meet(completion, formed.Completion), unfinished ? Completion.Provisional : instance.Completion));
+                    }
+                }
+
                 if (result.Kind == BoundTypeKind.AssociatedProjection)
                 {
                     var outcome = this.ProjectionSpecification(result, scope);

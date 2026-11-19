@@ -31,11 +31,8 @@ public sealed class TryKoto : MatchKoto
         var arms = (List<MatchArmKoto>)this.Arms;
         arms.Add(new(success, Transfer(ref reader, span, "$try.value")));
         arms.Add(new(this.errorPattern, this.Failure));
-        foreach (var arm in arms)
-        {
-            arm.Pattern.Parent = this;
-            arm.Body.Parent = this;
-        }
+        this.AdoptArm(0);
+        this.AdoptArm(1);
     }
 
     /// <inheritdoc/>
@@ -54,7 +51,7 @@ public sealed class TryKoto : MatchKoto
     {
         this.successName.IdentifierName = option ? "Some" : "Ok";
         this.Arms[1].Pattern = option ? this.nonePattern : this.errorPattern;
-        this.Arms[1].Pattern.Parent = this;
+        this.AdoptArm(1); // The Pattern swapped out is in no slot: no walk reaches it, so its stale Parent and part are never read.
         var value = option ? this.noneValue : this.errorValue;
         if (!ReferenceEquals(this.Failure.Expression, value))
         {

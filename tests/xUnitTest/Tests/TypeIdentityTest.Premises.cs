@@ -12,6 +12,8 @@ public partial class TypeIdentityTest
     private const string Ref3 = "func f<T>(first: ref/i32 during a, mid: ref/i32 during b, second: ref/i32 during c, value: T) -> i32\n";
     private const string CE = "contract C\n    associate E\n";
     private const string Pair3 = "func f<s/W, U, V>(x: s/W, first: ref/i32 during a, u: U, v: V) -> i32\n";
+    private const string FlagBlock = "contract Flag\nstruct Either<A, B>\n    var value: A\n    Self is Flag when A is Option<B>, A is Array<B>\n        public func get(self: ref/Self) -> i32 => 1\n";
+    private const string NameBlock = "contract Flag\ncontract K2\n    func name(self: ref/Self) -> i32\nstruct Either<A, B>\n";
 
     [Theory]
     [InlineData(Ref3 + "    T is ref/i32 during a\n    T is ref/i32 during c\n    origin a outlives b\n    origin b outlives c\n    origin c outlives a\n", "")]
@@ -69,6 +71,19 @@ public partial class TypeIdentityTest
     [InlineData("    Self is Flag when A is Option<B>, A is Array<B>\n    Self is Mark when A is Option<B>\n", "InvalidConstraint_Kd@4")]
     public void AConditionsPremiseErrorIsOneRecord(string conformances, string records)
         => Assert.Equal(records, PremiseRecords("contract Flag\ncontract Mark\nstruct Either<A, B>\n" + conformances + "    var value: A\n"));
+
+    // SPEC 8.8.2, 8.2.3 (G881b C1): a block member's conditions read its conformance's failure as the conformance's own proof does
+    // (ReadFailedDeclaration). A premise error keeps the conformance's context, so a use judges the member's conditions as in a valid
+    // view and keeps its own record: Refuted, the member is inapplicable (a call); Unknown, unproven (a requirement it implements). A
+    // use of a member whose own declaration failed rests on that record.
+    [Theory]
+    [InlineData(FlagBlock + "func g(e: ref/Either<Option<i32>, i32>) -> i32\n    return e.get()\n", "InvalidConstraint_Kd@4 NoApplicableOverload_Kd@7")]
+    [InlineData(FlagBlock, "InvalidConstraint_Kd@4")]
+    [InlineData(NameBlock + "    Self is K2\n    var value: A\n    Self is Flag when A is Option<B>, A is Array<B>\n        public func name(self: ref/Self) -> i32 => 1\n", "InvalidConstraint_Kd@7 UnprovenConstraint_Kd@5")]
+    [InlineData(NameBlock + "    var value: A\n    Self is Flag when A is Option<B>\n        public func name(self: ref/Self) -> i32 => 1\n    Self is K2 when A is Option<B>\n", "")]
+    [InlineData("contract Has1\ncontract Inner\nstruct Box<T>\n    var v: i32\n    Self is Has1 when T is Inner\n        public func m(self: ref/Self, x: Missing) -> i32 => 1\nfunc g<T>(b: ref/Box<T>) -> i32\n    T is Inner\n    return b.m(0)\n", "UnresolvedBinding_Kd@6")]
+    public void AConditionalMembersConditionsReadItsConformanceAsItsOwnProof(string source, string records)
+        => Assert.Equal(records, PremiseRecords(source));
 
     // R7-C2e2-2, SPEC 8.2.3: two identity premises of one projection to different complete Types are the table's premise error like
     // any other: one record at the declaration whose premises form it and none at the clauses' projections or at a use. The forms: a
@@ -252,7 +267,7 @@ public partial class TypeIdentityTest
     [InlineData("x12-conv-pos", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\ncontract Conv<X>\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nfunc needConv<V, X>(v: ref/V)\n    V is Conv<X>\n    ()\nstruct L\n    Self is Conv<(obj/Leaf) -> i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc g<s/A>(x: ref/L)\n    s is obj\n    A is Leaf\n    needConv<L, (s/A) -> i32>(x)\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "")]
     [InlineData("x12x-conv-pos-noA", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\ncontract Conv<X>\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nfunc needConv<V, X>(v: ref/V)\n    V is Conv<X>\n    ()\nstruct L\n    Self is Conv<(obj/Leaf) -> i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc g<s/A>(x: ref/L)\n    s is obj\n    needConv<L, (s/A) -> i32>(x)\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "UnprovenConstraint_Kd: needConv<L, (s/A) -> i32>(x)")]
     [InlineData("x13-use-T", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc needId<X, Y>()\n    X is Y\n    ()\nfunc g<s/A, T>()\n    s is obj\n    T is () -> s/Leaf\n    T is () -> obj/Leaf\n    needId<T, () -> obj/Leaf>()\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "")]
-    [InlineData("x13x-use-T-rc", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc needId<X, Y>()\n    X is Y\n    ()\nfunc g<s/A, T>()\n    s is obj\n    T is () -> s/Leaf\n    T is () -> obj/Leaf\n    needId<T, () -> rc/Leaf>()\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "UnprovenConstraint_Kd: needId<T, () -> rc/Leaf>()")]
+    [InlineData("x13x-use-T-rc", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc needId<X, Y>()\n    X is Y\n    ()\nfunc g<s/A, T>()\n    s is obj\n    T is () -> s/Leaf\n    T is () -> obj/Leaf\n    needId<T, () -> rc/Leaf>()\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "NoApplicableOverload_Kd: needId<T, () -> rc/Leaf>()")] // c2-4a: T is `() -> obj/Leaf`, so the requirement is refuted at selection (8.2.3, 10.1)
     [InlineData("x14-use-T-app", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc needId<X, Y>()\n    X is Y\n    ()\nfunc g<s/A, T>()\n    s is obj\n    T is () -> obj/Leaf\n    needId<T, () -> s/Leaf>()\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "")]
     [InlineData("x14x-use-T-app-rc", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc needId<X, Y>()\n    X is Y\n    ()\nfunc g<s/A, T>()\n    s is obj\n    T is () -> rc/Leaf\n    needId<T, () -> s/Leaf>()\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "UnprovenConstraint_Kd: needId<T, () -> s/Leaf>()")]
     [InlineData("x15-trans-q", "struct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc needId<X, Y>()\n    X is Y\n    ()\nfunc needDiff<X, Y>()\n    X is not Y\n    ()\nfunc g<s/A, T, U>()\n    s is obj\n    A is Leaf\n    T is s/A\n    U is obj/Leaf\n    needId<T, U>()\npublic func main() -> ()\n    Console.writeLine(\"ok\")\n", "")]
