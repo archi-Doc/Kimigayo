@@ -384,10 +384,10 @@ public partial class PairAnnotationBindingTest
         Assert.False(c.Bind().IsComplete);
         HirTables.Publish(c);
         var nodes = HirColumnsTest.Reachable(c.Kotonoha);
-        Assert.DoesNotContain(nodes, static x => x.BoundType is { ContainsOpen: true });
+        Assert.DoesNotContain(nodes, static x => HirTables.TypeOf(x) is { ContainsOpen: true });
         Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
-        var literal = nodes.OfType<NumberLiteralKoto>().First(static x => x.BoundType is not null);
-        literal.BoundType = c.Types.Open(literal.BoundType!);
+        var literal = nodes.OfType<NumberLiteralKoto>().First(static x => HirTables.TypeOf(x) is not null);
+        HirTables.Of(literal).Meanings[literal.SyntaxId] = c.Types.Open(HirTables.TypeOf(literal)!);
         typeof(Binding).GetMethod("PublishPass", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(c.Binding, null);
         Assert.Contains(literal, c.Kotonoha.Syntax.Hir.Broken!);
     }
