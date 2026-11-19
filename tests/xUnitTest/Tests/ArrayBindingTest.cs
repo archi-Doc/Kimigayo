@@ -102,15 +102,16 @@ public class ArrayBindingTest
 
     // SPEC 4.1, 4.3.1, 10.2, 12.4 (PLAN G1116): without a fixed-array or Array expectation, at a constructed Type or none, a list literal
     // takes its own Type by the place rule, as a fill and a Dictionary literal do, and the position's fit reports the mismatch; an empty
-    // one has no element Type. An expected ref/U still reaches the literal through U. At a pair layer (SPEC 8.2.3, 13.5.5), whose admitted
-    // Semantics cases decide its Type, and, empty, at a place decided later (SPEC 4.3.1 Places, 14.9.2), no implemented rule types it
-    // yet: the located limit stays, for the valid owner and ref cases and the invalid uniq one alike.
+    // one has no element Type. An expected ref/U still reaches the literal through U. At an abstract expectation (SPEC 8.2.3: a Type
+    // parameter, a projection, a pair layer or a pair target, still abstract after the identity premises), which has no form to take the
+    // literal's from, and, empty, at a place decided later (SPEC 4.3.1 Places, 14.9.2), no implemented rule types it yet: the located
+    // limit stays, for valid and invalid programs alike (the owner's O-449 (a); PLAN G1123).
     [Theory]
     [InlineData("let s: Slice<i32> = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
     [InlineData("let n: i32 = [1]\n", "TypeMismatch_Kd [1]")]
     [InlineData("let t: (i32, i32) = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
     [InlineData("let u: uniq/[2 of i32] = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
-    [InlineData("func h<T>()\n    let x: T = [1]\nlet done = 0\n", "TypeMismatch_Kd [1]")]
+    [InlineData("func h<T>()\n    let x: T = [1]\nlet done = 0\n", "Unsupported_Kd [1]")]
     [InlineData("func r() -> i32\n    return [1]\nlet done = 0\n", "TypeMismatch_Kd [1]")]
     [InlineData("let nested: Array<i32> = [[1]]\n", "TypeMismatch_Kd [[1]]")]
     [InlineData("let n: i32 = []\n", "UnresolvedBinding_Kd []")]
@@ -120,6 +121,10 @@ public class ArrayBindingTest
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is ref\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is uniq\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: s/i32 = [1]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [1]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = []\n    return 0\nlet done = 0\n", "Unsupported_Kd []")]
     [InlineData("let w = [[1], []]\n", "Unsupported_Kd []")]
     [InlineData("let ready = true\nlet x = if ready => [1] else => []\n", "Unsupported_Kd []")]
     [InlineData("let x = [[]]\n", "Unsupported_Kd []")]

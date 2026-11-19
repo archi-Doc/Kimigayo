@@ -241,12 +241,16 @@ public sealed partial class Binding
 
     // SPEC 4.3.1, 10.2 (PLAN G1116): whether a list literal without a fixed-array or Array expectation takes its own Type by the place
     // rule now (BindIndependentArrayLiteral), the position's fit judging that Type as it judges a fill's or a Dictionary literal's.
-    // Two places decide its Type where no implemented rule does, and keep the located Unsupported_Kd: a pair layer (SPEC 8.2.3, 13.5.5),
-    // whose admitted Semantics cases decide whether it is the array Type itself, a reference to a temporary of it or no array, which
-    // the fit does not resolve; and, for an empty literal, a place decided later (SPEC 4.3.1 Places, 14.9.2 step 3), where only parts
-    // publish a literal as waiting (AwaitsFor), so an empty one would wait with nothing to bind it.
+    // Two places decide its Type where no implemented rule does, and keep the located Unsupported_Kd (the owner's O-449 (a)): an abstract
+    // expectation (BoundType.IsAbstract: a Type parameter, a projection or a pair term, a pair layer or a pair target, still abstract
+    // after the scope's identity premises are substituted), which has no form for SPEC 4.3.1 to take the literal's from (8.2.3: an
+    // abstract Type takes the form its binding, a completed projection or its admitted set fixes, which the fit does not resolve); and,
+    // for an empty literal, a place decided later (SPEC 4.3.1 Places, 14.9.2 step 3), where only parts publish a literal as waiting
+    // (AwaitsFor), so an empty one would wait with nothing to bind it. PLAN G1123 removes both clauses: its (a) publishes an empty
+    // literal's wait; its (b), with a pair target's identity premises substituted before this dispatch as a Type parameter's are,
+    // leaves abstract only an expectation with no array form, which the place rule and the fit then judge.
     private bool TypedByPlaceRule(ArrayLiteralKoto literal, BoundType? expected)
-        => expected?.IsPairLayer != true && (literal.Elements.Count != 0 || !this.DecidedLater(literal));
+        => expected?.IsAbstract != true && (literal.Elements.Count != 0 || !this.DecidedLater(literal));
 
     // SPEC 4.3: without a fixed-array or Array expectation (none, or a constructed Type no array literal has, whose fit then fails at
     // the position; TypedByPlaceRule) an independent literal constructs an Array whose element Type is the
