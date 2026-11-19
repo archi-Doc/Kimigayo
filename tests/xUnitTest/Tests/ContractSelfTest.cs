@@ -61,12 +61,12 @@ public class ContractSelfTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var indexable = c.Binding.Library.Indexable!;
         var index = ((ContractKoto)indexable.Declaration).Members.OfType<FunctionKoto>().Single();
-        var element = index.ReturnType!.TypeOf()!.Components[0];
+        var element = index.ReturnType!.TypeOf(c)!.Components[0];
 
         // `Element` of the requirement is Self's Element declared by Indexable<Key>, the Contract applied to its own Key.
         Assert.True(Binding.IsContractSelf(element.Components[0]));
         Assert.Equal(BoundTypeKind.Constructed, element.Components[1].Kind);
-        Assert.Same(((ContractKoto)indexable.Declaration).GenericParameterNodes[0].TypeOf(), element.Components[1].Components[0]);
+        Assert.Same(((ContractKoto)indexable.Declaration).GenericParameterNodes[0].TypeOf(c), element.Components[1].Components[0]);
 
         var first = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
         var projection = first.ReturnType!.TypeOf()!;

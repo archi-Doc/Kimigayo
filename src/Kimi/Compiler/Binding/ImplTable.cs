@@ -330,6 +330,23 @@ internal sealed class ImplTable
         (this.Pass, this.listPass) = (Binding.Frozen, this.listPass == this.Pass ? Binding.Frozen : this.listPass);
     }
 
+    /// <summary>Gets the first path the pass made current and left unsettled: not verified, or still Checking, or at its OCC-X limit
+    /// (Unsupported). The library's freeze refuses one (Binding.FreezeLibrary; PLAN G949 Stage 2 U3, design R3.7 C1): a frozen path
+    /// stops verification at its IsVerified return, so no reading compilation verifies one on the shared object.</summary>
+    /// <returns>The path, or null when every current path is verified.</returns>
+    internal BoundConformancePath? UnsettledPath()
+    {
+        foreach (var path in this.paths.Values)
+        {
+            if (path.Current && (!path.IsVerified || path.Checking || path.Unsupported))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Ends a Bind in the overlay: every identity and path this pass did not register leaves the table for the pool, so no
     /// conformance an edit removed is kept, and Identities keeps only registered ones.</summary>
     internal void Sweep()

@@ -20,6 +20,8 @@ namespace Kimi.Compiler;
 /// A compilation owns the project's primary <see cref="Kotonoha"/>, records configured
 /// external Kotonoha dependencies, exposes conditional-compilation variables, and carries
 /// the target information used by later LLVM IR and binary-emission stages.
+/// A compilation's library is the one given before its Binding (<see cref="UseLibrary"/>), else the process's library for its
+/// target (<see cref="KimiLibrary"/>'s store, PLAN G949 Stage 2 U3); it is fixed when the Binding is made.
 /// </remarks>
 public partial class Compilation
 {
@@ -112,11 +114,43 @@ public partial class Compilation
     private bool hasParsedSource;
     private Binding? binding;
 
+    // The compilation's library (PLAN G949 Stage 2 U3; DECISIONS R8-M55): the one given before its Binding (UseLibrary: the
+    // freeze compilation's own, made by KimiLibrary.Unfrozen; a test's library frozen through the seam), else, when the Binding is made,
+    // the process's library for its target (KimiLibrary.Of, the key's one reader); fixed when the Binding is made. The default is the
+    // input's definition, not a fallback: a late or second UseLibrary refuses, and so does Prepare once the Binding exists (B4).
+    private KimiLibrary? library;
+
     /// <summary>Gets reusable semantic analysis storage for this compilation.</summary>
-    public Binding Binding => this.binding ??= new(this);
+    public Binding Binding => this.binding ?? this.MakeBinding();
 
     /// <summary>Gets this compilation's compiler-owned Kimi requirement identities.</summary>
     public KimiLibrary Library => this.Binding.Library;
+
+    /// <summary>Gives this compilation its library before its Binding is made (PLAN G949 Stage 2 U3): the freeze compilation's own
+    /// (<see cref="KimiLibrary.Unfrozen"/>) or a library frozen through the seam.</summary>
+    /// <param name="library">The library, made for this compilation's target.</param>
+    /// <exception cref="InvalidOperationException">The Binding exists or a library was given (InternalInvariant).</exception>
+    internal void UseLibrary(KimiLibrary library)
+    {
+        if (this.binding is not null || this.library is not null)
+        {
+            throw new InvalidOperationException("A compilation's library is given once, before its Binding is made (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+
+        this.library = library;
+    }
+
+    /// <summary>Reads a detached library's data into this compilation (PLAN G949 Stage 2 U3; design R2.2): the one reader of a library's
+    /// detached data, called once where the Binding is made over a library given frozen or refused (MakeBinding); Binding reads none. It
+    /// registers the library module's syntax list read-only in this compilation's owner, each record renumbered into its source table
+    /// (<see cref="DiagnosticOwner.AddLibrary"/>), and keeps the library's documentation failures and hover anchors for the composed
+    /// readers (Compilation.Hover.cs). A compilation that made its library reads its own data instead.</summary>
+    /// <param name="library">The library, frozen or refused, so detached.</param>
+    internal void ReadLibrary(KimiLibrary library)
+    {
+        this.Diagnostics.AddLibrary(library.Kotonoha, library.SyntaxRecords);
+        this.ReadHoverData(library);
+    }
 
     /// <summary>Gets the process's current directory, captured once before the root module is created: the base of a project
     /// without a directory (<see cref="Kotonoha.Base"/>), so a later change of the process's directory renames nothing.</summary>
@@ -205,6 +239,7 @@ public partial class Compilation
     public bool Prepare(string target)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
+        this.EnsureNoBinding();
         if (this.hasParsedSource)
         {
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
@@ -379,5 +414,29 @@ public partial class Compilation
         this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, path, name);
         value = default;
         return false;
+    }
+
+    // B4 (PLAN G949 Stage 2 U3): a compilation's library is fixed when its Binding is made, so Prepare after it is a broken contract,
+    // refused before any input changes.
+    private void EnsureNoBinding()
+    {
+        if (this.binding is not null)
+        {
+            throw new InvalidOperationException("Prepare after the Binding is made: the compilation's library is fixed with its Binding (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+    }
+
+    // The Binding's construction (PLAN G949 Stage 2 U3): over the library given, else the process's for this compilation's target;
+    // a library given frozen or refused is detached, so this compilation reads its detached data (ReadLibrary), once.
+    private Binding MakeBinding()
+    {
+        var library = this.library ??= KimiLibrary.Of(this.TargetTriple);
+        var binding = new Binding(this, library);
+        if (library.Frozen || library.Layer.Refusal is not null)
+        {
+            this.ReadLibrary(library);
+        }
+
+        return this.binding = binding;
     }
 }
