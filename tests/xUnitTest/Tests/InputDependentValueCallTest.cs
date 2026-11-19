@@ -151,14 +151,17 @@ public class InputDependentValueCallTest
     // SPEC 15.6.4 (H3b T30): G65's reproduction whose store through the Closure's capture `holder@uniq` keeps the direct Loan naming its
     // own target past layer 1. It is valid, but the MIR rejects it by the SPEC's letter with one record at `return holder@follow`'s
     // operand, not at the store. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2), GXS adopted with its
-    // extension, restores the acceptance and moves the row back to FixedInputsPreserveTheirActualLoans as valid.
+    // extension, restores the acceptance and moves the row back to FixedInputsPreserveTheirActualLoans as valid. Since the A5 landing the
+    // storage end of holder also conflicts, a record added on a program rejected anyway (DECISIONS Q13), as in FixedOriginRetentionTest's
+    // ClosureStoresOfTheActualArgumentAreRefusedPendingGxs.
     [Fact]
     public void AFixedInputStoredThroughACaptureIsRefusedPendingGxs()
     {
         var source = "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n" + "\npublic func main() => ()";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        var at = MirTargetSide.At("return holder@follow", "holder@follow").Resolve(source);
-        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), at.Start, at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+        var (end, at) = (MirTargetSide.At("var holder: ref/i32 during x = x").Resolve(source), MirTargetSide.At("return holder@follow", "holder@follow").Resolve(source));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), end.Start, end.Length), (nameof(DiagnosticCode.ComparisonLoanConflict_Kd), at.Start, at.Length)],
+            DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
     }
 
     // SPEC 15.6.4: a value call through a Function Type whose result is written over an input of the enclosing function binds as an

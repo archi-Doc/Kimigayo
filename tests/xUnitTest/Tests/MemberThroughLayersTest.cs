@@ -18,21 +18,21 @@ public class MemberThroughLayersTest
         "let t: (i32, i32) = (1, 2)\nlet tuples = [t@ref]\nfor r in tuples\n    require r.0 + r.1 == 3 else => $abort(\"tuple\")\nConsole.writeLine(\"ok\")";
 
     // SPEC 15.6.4 (H3b T30): the exclusive iteration over `exclusive`'s uniq elements keeps the direct Loans naming its own targets past
-    // layer 1, so the MIR rejects this valid program by the SPEC's letter (at the ends of `b` and `exclusive` and at the later shared
-    // iteration), and generation refuses it; the old analysis accepted it and ran it to "a\nok\n". H5's (e) list (the owner, 2026-11-03,
-    // 「推奨どおり」, board O-1): PLAN G148 (2), GXS adopted with its extension (exclusive-element collections), restores the acceptance
-    // and re-points this test back to its run.
+    // layer 1 (retention per argument: exclusive's element storage can hold a borrow formed through the iteration's argument), so
+    // exclusive carries the iteration's exclusive Loan on itself and the MIR rejects this valid program by the SPEC's letter at the later
+    // shared iteration, and generation refuses it; the old analysis accepted it and ran it to "a\nok\n". The ends of `b` and `exclusive`
+    // observe no Loan: each storage end replaces its holder, the only value that carries the Loan on it (15.6: "other than those P
+    // replaces"; 15.6.3), and b's storage, of a Type that holds no Loan, retains nothing (MirBorrowsTest's exclusiveElements, the A5 value
+    // redesign's U6; R4-M120's untracked rule had carried the store to storage the body does not own). H5's (e) list (the owner,
+    // 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2), GXS adopted with its extension (exclusive-element collections), restores the
+    // acceptance and re-points this test back to its run.
     [Fact]
     public void FieldsAndTupleElementsAreSelectedThroughLayers()
     {
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Accepts);
-        MirTargetSide.Check(
-            c,
-            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var b = P.init(1, \"b\")")),
-            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var exclusive: [1 of uniq/P] = [b@uniq]")),
-            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("for v in exclusive\n", "exclusive")));
+        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("for v in exclusive\n", "exclusive")));
         Assert.False(c.Generate(TextWriter.Null));
     }
 
