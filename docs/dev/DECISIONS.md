@@ -21882,6 +21882,30 @@ R8-M* and R9-M* by the stage of the recording unit.
     `unsettledReads`; `reentryReads` is gone with e2-3b's commit 1. Rejected: any read of an open obligation (`EndRead`, e2-5a's
     predicate: R4.7's rejected "an answer that read any open obligation depends", a second copy of R1.1's rule).
   - **Unverified:** the engine's coinductive half (O3); RP8's timing (counts only: R4.6).
+- **R7-M48 One enumeration of a signature part's well-formedness premises at a use** (Middle, 2026-11-19; R7-O1 d, Q-534; Major,
+  behaviour-preserving; design `r7-o1-design.md` Revision 1 §2.4, the Front's design review C-410: d ACCEPT WITH CONDITIONS C1, C2)
+  SPEC 8.1.1, 15.3.3, 15.3.7, 15.6.1, 15.6.4 step 3.
+  - **Rule.** `WellFormedPremises` (`Binding.WellFormedPremises.cs`, its contract at the file's head) is the one walk over a signature
+    part's well-formedness premises at a use (premise formation keeps its own walks): a lazy ref-struct enumerator of
+    `WellFormedPremise` items (a stored relation: Longer, Outer in the pattern, Value, Substituted at the use, Condition, Type; or a
+    declared clause: Clause, Equality), with the walk's holds (a relation that holds by itself, the argument's kept Origin, the named
+    definition's proof without its result premise), BU-132's two memos, the G778 premise session and its frames in Binding's scratch.
+    `WellFormedSubject` (Input, NamedResult, CallResult) decides which Type clauses are premises (an input's, a selected call's
+    result's; not a definition's result premise).
+  - **The entries consume it** (`Binding.ResultPremises.cs`): `HasOriginConditions` (whether one exists),
+    `FailedSignatureWellFormedness` (the first the instance does not prove), `ProvesPremises` (the first the premises do not prove; a
+    stored relation's kept in `failedResultPremise`, a clause's not, as before), `SolveCallOriginInference`/`RemoveResultBounds` and
+    `CollectInputPremises` (inference bounds; `AtCall` the member's container substitution), `RequireInputPremises` and
+    `RequireResultPremises` (the selected call's obligations; `RequireResultClause` the one owner of a result Type clause's rule,
+    CallRowRelation, which `JudgeCallClauses`' constructor branch shares).
+  - **Deleted:** `WellFormedAction` (six values), `WellFormedVisit`, `VisitWellFormedPremises`, `WellFormedPart`,
+    `VisitStoredPremises`, `VisitWellFormedPremise`, `VisitTypeClause`.
+  - **Behaviour preserved:** diagnostic snapshot 0, semantic HIR+MIR 0, and the visit counts of
+    `OriginProofScalingTest.WellFormedPremisesVisitEachSharedPartOnce` equal on the recursion and the enumerator. Kept, pre-existing:
+    a whole-contract comparison failing on an input Type's clause carries no failed relation (PLAN G1084).
+  - **Rejected:** the six-valued action (a mode parameter steering one visitor); an eager list of premises (Detect, Instance and Prove
+    stop at the first item, and a bound or obligation a consumer adds is seen by the later holds, in the walk's order); a two-valued
+    subject with every result's Type clauses formed (four of the five result consumers would skip them).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
