@@ -452,6 +452,14 @@ public abstract partial class Koto
         builder.Append("Koto");
     }
 
+    /// <summary>Fills every field of this node that a reader fills on its first read (PLAN G1072; DECISIONS R8-M55: after the seal no
+    /// compilation writes a frozen library object). The library pass's end calls it on every library node
+    /// (<see cref="SyntaxTable.CompleteLazyFields"/>), so a frozen node holds no lazily filled field; a node type with such a field
+    /// overrides it, and a new one joins it there.</summary>
+    internal virtual void CompleteLazyFields()
+    {
+    }
+
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
     [Transitional("R7", Reason = "Semantic forwarding into HIR columns; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     public BindingState BindingState

@@ -168,7 +168,6 @@ public class ArchitectureRulesTest
     [InlineData("Backend reads of Koto semantic slots", "src/Kimi/Compiler/Backend", "*.cs", SemanticSlotReads, 0)]
     // The root helpers, each by its file (SourceFiles recurses), and the other areas outside Binding.
     [InlineData("ElementAccess reads of Koto semantic slots", "src/Kimi/Compiler", "ElementAccess.cs", SemanticSlotReads, 0)]
-    [InlineData("FormattingTypes reads of Koto semantic slots", "src/Kimi/Compiler", "FormattingTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
     [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
@@ -258,12 +257,15 @@ public class ArchitectureRulesTest
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
     [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")]
     [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")]
-    // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W6, the ContractSolver header) give
-    // Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here. Every spelling of Complete is
-    // counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
-    // R7-C3a: W7, the identity classes' Completion member (DECISIONS R7-M20's amendment). R7-C2c2 c2-4a (review-impl-c24a B1, a row
-    // for the review): MemberOf's Complete where the view has no identity premise (no table is read); with one it gives the table's W7.
-    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.cs=2;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1;Binding/Binding.TypeIdentity.cs=2")]
+    // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W8 and an outermost walk, the
+    // ContractSolver header) give Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
+    // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
+    // R7-C3a: W7, the identity classes' Completion member (DECISIONS R7-M20's amendment). R7-C2e2 e2-3a: W8, ReadSourceState
+    // (SourceStates.cs); W6's meets in AvailableContractPremise and AvailableConstraintFact (ContractSolver.cs); and an outermost
+    // walk's start and admission in each keeper, PremiseRefines and FirstRows (ContractSolver.Rows.cs).
+    // R7-C2c2 c2-4a (review-impl-c24a B1, a row for the review): MemberOf's Complete where the view has no identity premise (no
+    // table is read); with one it gives the table's W7.
+    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=4;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1;Binding/Binding.TypeIdentity.cs=2")]
     // R7-C2c2 c2-4a (design §4's Owner row, review-impl-c24a N4): an identity class's Member reaches the judgments only through
     // MemberOf, which the Contract judge, the capability judge, JudgeConstraintAtom's other arms and ContractTypeCore's (E) arm read;
     // IdentityClasses.Member's other reader is Refuted. A further reader fails here until its row is reviewed.
@@ -525,11 +527,13 @@ public class ArchitectureRulesTest
         ];
         string[] allowed =
         [
-            "Add", "AddRow", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey",
-            "ClauseHeads", "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault",
-            "HeadDepth", "Heads", "HoldsOpenLink", "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max",
-            "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "RowContract", "RowKind", "RowWeight",
-            "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
+            "Add", "AddRow", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
+            "AvailableContractPremise", "ClassKey", "ClauseHeads", "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
+            "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
+            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "Meet",
+            "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
+            "RowContract", "RowKind", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
+            "WalkAvailable",
         ];
         var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }
             .Select(static x => File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/Compiler/Binding", x)))

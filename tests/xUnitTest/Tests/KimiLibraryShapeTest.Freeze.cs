@@ -668,9 +668,10 @@ public partial class KimiLibraryShapeTest
         Assert.True(open.Length == 0, removal + string.Join(", ", open));
     }
 
-    // c1 (PLAN G949 Stage 2 U3, design R3.7 C1): the freeze leaves every base conformance path verified, none Checking or at its OCC-X
-    // limit, for every key, so verification stops at every frozen path (VerifyConformance's IsVerified return) and no reading compilation
-    // verifies one on the shared object.
+    // c1 (PLAN G949 Stage 2 U3, design R3.7 C1): the freeze leaves every base conformance path verified and none at its OCC-X limit, for
+    // every key, so verification stops at every frozen path (VerifyConformance's IsVerified return) and no reading compilation verifies
+    // one on the shared object. A path whose verification is open is the obligation table's (R7-C2e2 e2-3b; no path field): it is not
+    // verified, and the freeze refuses an open one (FreezeLibrary's ObligationDepth).
     [Theory]
     [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("i686-pc-windows-msvc")]
@@ -682,7 +683,7 @@ public partial class KimiLibraryShapeTest
         var paths = ((IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(library.Layer.Impls)!)
             .Values.Cast<BoundConformancePath>().Where(static x => x.Current).ToArray();
         Assert.NotEmpty(paths);
-        Assert.Empty(paths.Where(static x => !x.IsVerified || x.Checking || x.Unsupported).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
+        Assert.Empty(paths.Where(static x => !x.IsVerified || x.Unsupported).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
     }
 
     // c1's twin (invalid use: an internal contract; SPEC 12.7, OCC-X): a library whose inherited conformance (an exclusive witness reached

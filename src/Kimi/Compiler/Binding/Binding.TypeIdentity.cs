@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -31,7 +32,7 @@ namespace Kimi.Compiler;
 //   judge's paths and the Callable judge's signature read before they refute (PLAN G866).
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
-//   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one pass, and a table that is not is
+//   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one publication, and a table that is not is
 //   rebuilt per read: the provisional path costs reads times the view's premise nodes (the reads include the premise clauses' own, so
 //   it is quadratic in the premises and linear in the uses); one table per view and pass, rebuilt in place; warm 0 B (pooled tables).
 // - Prohibitions: no premise is withheld, ranked or chosen by order, and no mode parameter; no judgment inside the closure but the
@@ -86,6 +87,15 @@ public sealed partial class Binding
         if (node is MemberAccessKoto or IndexKoto)
         {
             HirTables.PlanFor(node, written: false).Second = null;
+        }
+    }
+
+    // A publication starts (ContractSolver's ForgetKeptTables): every memoized table is rebuilt in place at its view's next read.
+    private void ForgetIdentityClasses()
+    {
+        foreach (var scope in this.identityClasses.Keys)
+        {
+            CollectionsMarshal.GetValueRefOrNullRef(this.identityClasses, scope).Serial = -1;
         }
     }
 

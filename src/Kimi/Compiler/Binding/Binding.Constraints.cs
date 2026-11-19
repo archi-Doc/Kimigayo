@@ -11,7 +11,15 @@ public sealed partial class Binding
     private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedRoom);
 
     private readonly DeferredConstraintRows deferredConstraints;
+
+    // The images of NormalizeProofType's queries (DECISIONS BU-19, BU-64): one outermost call is a query, its scope fixed, so each
+    // distinct part is normalized once per query, a projection leaf's ContractType answer included; a call begun inside it (a proof that
+    // a leaf's answer runs) is a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
+    private readonly TypeMemo<BoundType, (BoundType Image, Completion Completion)> proofParts = new();
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
+
+    // The scaling rows' measure: the parts NormalizeProofType normalized in this compilation (its walk's visits that missed the memo).
+    internal int ProofPartWork { get; private set; }
 
     /// <summary>Queries a bound proposition using the lexical input constraints at a syntax node.</summary>
     /// <param name="constraint">The proposition produced by this compilation's Binding.</param>
@@ -684,8 +692,25 @@ public sealed partial class Binding
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 
+    // A proof's Type with its parameter identities substituted and its projections' images formed in the scope (proofParts' query).
     private BoundType NormalizeProofType(BoundType type, BindingScope scope, out Completion completion)
+        => this.NormalizeProofTypeCore(type, scope, this.proofParts.Begin(this.storageVersion), out completion);
+
+    private BoundType NormalizeProofPart(BoundType type, BindingScope scope, uint query, out Completion completion)
     {
+        if (!this.proofParts.TryGet(type, query, out var answer))
+        {
+            answer.Image = this.NormalizeProofTypeCore(type, scope, query, out answer.Completion);
+            this.proofParts.Set(type, query, answer);
+        }
+
+        completion = answer.Completion;
+        return answer.Image;
+    }
+
+    private BoundType NormalizeProofTypeCore(BoundType type, BindingScope scope, uint query, out Completion completion)
+    {
+        this.ProofPartWork++;
         completion = Completion.Complete;
         if (type.ContainsParameter && HasParameterIdentity(scope))
         {
@@ -713,7 +738,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < count; i++)
             {
-                components[i] = this.NormalizeProofType(type.Components[i], scope, out var part);
+                components[i] = this.NormalizeProofPart(type.Components[i], scope, query, out var part);
                 completion = Meet(completion, part);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }

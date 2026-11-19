@@ -334,8 +334,8 @@ public sealed partial class Binding
     // SPEC 15.2.3, 15.6.5 (BU's n6; G379 R4, R5): the Owned engine's complete fact over the subject's parts that are not Proven, at any
     // depth (a part with a Type through its own work's parts, OwnedWork; every engine path records its parts, CapabilityWork.Part), each
     // leaf Origin classified at `use` (RefutedStatic): Refuted when one is; else Final when one is decided only once the body is bound,
-    // or when no part is known: no work judged the subject, or its work was forgotten (its evaluation read an open obligation,
-    // ForgetPendingCapabilities; rulings-g 3). The member it names is the first member with a refuted leaf, with that leaf, else the
+    // or when no part is known: no work judged the subject, or its work was forgotten (its evaluation's answer depends on an open
+    // obligation, ForgetDependentCapabilities; rulings-g 3). The member it names is the first member with a refuted leaf, with that leaf, else the
     // first member with its first Origin. -1 when no part failed; -2 when no work judged the subject. A part's Origin is read once, at the
     // erasure's use, where it is taken from its part (SuppliedAtUse: a `let` region of the use's own body is its value, PLAN G492-a (ii)),
     // before the receiver resolution, as a record's Supplier is.
@@ -343,7 +343,7 @@ public sealed partial class Binding
     {
         var first = new OwnedFact(cause, rest.Work is null ? -2 : -1, null, false, false);
         var refuted = first;
-        var final = rest.Work is null or { Pending: true };
+        var final = rest.Work is null or { Depends: true };
         var parts = rest.Work?.Parts;
         this.ownedWalk.Clear();
         for (var p = 0; parts is not null && p < parts.Count; p++)

@@ -139,9 +139,12 @@ public sealed partial class RecursiveContractTest
     // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders' after each
     // request, exact: the Tree request forms the entry (24); the Copy request extends as its class's closure (R7-C2c2 c2-4b, DECISIONS
     // R4.13), from its root and again from its re-rooted root under the declaration's table, each walking round reopening the entry
-    // before it files (74); the last request forms the entry again (84), N3's observable: an extension writing into the Kept entry
-    // leaves it Kept for the last request, which then indexes nothing (reopening by the table's finality did: a round with no rows
-    // builds a Final table).
+    // before it files (74); the last request forms the entry again (84). Each publication's start forgets the Kept entries (R7-C2e2
+    // e2-3a, ForgetKeptTables), so a Kept entry of the view is formed again at its next read, 10 pairs each: the capability phase's
+    // first publication adds 10 to each program, the after-bodies one 10 where the last request left the entry Kept (the Tree requests;
+    // the Copy request's own entry went when it returned): 44, 84 and 104 (24, 74 and 84 without the forget). N3's observable: an
+    // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (104 -> 84; reopening by the
+    // table's finality did: a round with no rows builds a Final table).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
@@ -151,7 +154,7 @@ public sealed partial class RecursiveContractTest
         probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
         var copy = Work(Orders + probe) - orders;
         probe += "    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal((24, 74, 84), (tree, copy, Work(Orders + probe) - orders));
+        Assert.Equal((44, 84, 104), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }
