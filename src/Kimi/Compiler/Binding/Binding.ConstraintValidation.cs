@@ -414,9 +414,10 @@ public sealed partial class Binding
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
-                var frame = this.BeginConsultation(node);
+                var use = this.VerdictUse(node); // A synthesized call's Type is its consumer's verdict (PLAN G214).
+                var frame = this.BeginConsultation(use);
                 var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
-                this.RequireConstraintInFrame(node, result, mode, frame);
+                this.RequireConstraintInFrame(use, result, mode, frame);
                 if (node.BindingState == BindingState.Invalid)
                 {
                     // Invalid type formation in a clause must not remain available as evidence.
@@ -538,7 +539,7 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.2: the evidence of a pair occurrence failed with a Language cause.
-    private bool ReportFormationCause(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    private bool ReportFormationCause(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (this.formationCauses?.TryGetValue(node, out var causes) != true || node is not TypeSemanticsKoto { BoundSymbol.Pair: { } pair } application ||
             pair.WholeType is not { } whole)
@@ -552,11 +553,11 @@ public sealed partial class Binding
         var name = application.SemanticsParameter!;
         if ((causes & TypeRoleCause.MissingSlot) != 0)
         {
-            node.Report(requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)");
+            node.ReportIn(store, requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)");
         }
         else
         {
-            node.Report(requirement, code, evidence: [$"{name} admits {text}, which a static Origin never admits"], note: "A static outer-Origin slot admits no exclusive borrow (SPEC 8.1.2)");
+            node.ReportIn(store, requirement, code, evidence: [$"{name} admits {text}, which a static Origin never admits"], note: "A static outer-Origin slot admits no exclusive borrow (SPEC 8.1.2)");
         }
 
         return true;

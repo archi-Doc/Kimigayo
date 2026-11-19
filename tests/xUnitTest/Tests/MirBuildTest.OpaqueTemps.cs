@@ -15,9 +15,11 @@ public sealed partial class MirBuildTest
     // Opaque temp (the derived value of `w`, `h` or `b`, each use of which fails its Type's constraint: S2 is neither a Dictionary key nor
     // Equatable) is its consumer's derived value, an Opaque whose site names the temp. The forms: a Borrow of a Field chain, in
     // parentheses, of the rejected name itself, an address; an upcast's view; a runtime index's guard and its element's Borrow, also with
-    // a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback, also a getter-only Property's
-    // standard side (whose getter takes its own derived value of the receiver located in the temp, DECISIONS R4-M109); a method's receiver;
-    // a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a Place in the temp). The
+    // a write; a Slice's backing and first element; `.capacity`; a runtime Type test; an update's Writeback; a method's receiver;
+    // a Subject; a pair-case acquisition; a case adaptation (fail-before: each a Ref, PairAcquire or Adapt of a Place in the temp). A
+    // getter-only Property's update lends nothing: its read is a call over W<S2>, which reports W<S2>'s constraint at the read as
+    // `w.touch()` does at its call (PLAN G214; before, the getter took its own derived value of the receiver, DECISIONS R4-M109), so the
+    // update is that failed read's derived value, and nothing of it lends (no row). The
     // valid twin (an i32 key) lends the local each time and holds no Opaque value or construction record (R5's guard that a complete
     // compilation never reaches Unlent); a literal's Borrow, valid in both, lends its materialized temporary (implementation review 1's
     // B1). Each row: f's lending rvalues and derived values in order, a lent root by name, `opaque` for a temp an Opaque is assigned to,
@@ -36,7 +38,7 @@ public sealed partial class MirBuildTest
     [InlineData("let n = w.xs.capacity", "derived", "Shared w")]
     [InlineData("let k = w.sq is Square", "derived", "Shared w")]
     [InlineData("w.v += 1", "derived", "TwoPhaseUniq w")]
-    [InlineData("w.q += 1", "derived | derived", "TwoPhaseUniq w | Shared w")]
+    [InlineData("w.q += 1", "", "TwoPhaseUniq w | Shared w")]
     [InlineData("w.inner.mutate()", "derived", "TwoPhaseUniq w")]
     [InlineData("let r = w.inner.pick()", "derived", "Shared w")]
     [InlineData("let r: ref/i32 = match w.inner\n        let x => x.pick()", "derived", "Shared w")]
@@ -56,7 +58,7 @@ public sealed partial class MirBuildTest
             var program = c.BuildMir();
             Assert.Empty(program.Findings);
             var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-            Assert.Equal(expected.Split(" | "), Lending(c, body, RejectedRoots(key).Length));
+            Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Lending(c, body, RejectedRoots(key).Length));
             if (key == "i32")
             {
                 // A complete compilation holds no Opaque value and no construction record, so none of its rvalues reaches Unlent.

@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private void ReportMatchCoverage(MatchKoto node, DiagnosticRequirement requirement)
+    private void ReportMatchCoverage(MatchKoto node, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
         // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
         var coverage = this.matches[node].Coverage;
@@ -23,6 +23,6 @@ public sealed partial class Binding
         };
         object[] evidence = coverage.Requirement is MatchCoverageReason.MissingCase or MatchCoverageReason.WholePayloadRequired
             ? [coverage.Requirement, coverage.CaseIndex] : [coverage.Requirement];
-        node.Report(requirement, DiagnosticCode.NonExhaustiveMatch_Kd, note: note, evidence: evidence);
+        node.ReportIn(store, requirement, DiagnosticCode.NonExhaustiveMatch_Kd, note: note, evidence: evidence);
     }
 }

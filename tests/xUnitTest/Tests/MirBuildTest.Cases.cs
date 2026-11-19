@@ -23,7 +23,9 @@ public sealed partial class MirBuildTest
     // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
     // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a
     // PairAcquire Reborrows in the uniq case and Copies in the others; an owner case acquires its target by SPEC 3.5's rows (R6-check
-    // (b2)): `uniq/i32` Reborrows, and a nested pair layer by its own case.
+    // (b2)): `uniq/i32` Reborrows, and a nested pair layer by its own case. A pair layer whose every case Copies (both's `b` and its
+    // capture, `t is owner or ref` with `U is Copy`) is a plain Copy, no case site (SPEC 8.15.2, 8.14: Copy in every case is the
+    // engine's Proven, the owner's O-417 (a)).
     [Fact]
     public void ViewsResolvePairLayersAndAcquisitions()
     {
@@ -58,10 +60,10 @@ public sealed partial class MirBuildTest
                 "DefaultTemplate peek 1 [Uniq]: @b0 *uniq/U: U",
                 "Fn keep 0 [Owner]: acquire _3 copy, acquire _4 copy, @b0 itself: T",
                 "Fn keep 1 [Uniq]: acquire _3 reborrow, acquire _4 reborrow, @b0 *uniq/T: T",
-                "Fn both 0 [Owner, Owner]: @b0 itself: T, acquire _2 copy, acquire _7 copy",
-                "Fn both 1 [Owner, Ref]: @b0 itself: T, acquire _2 copy, acquire _7 copy",
-                "Fn both 2 [Uniq, Owner]: @b0 *uniq/T: T, acquire _2 copy, acquire _7 copy",
-                "Fn both 3 [Uniq, Ref]: @b0 *uniq/T: T, acquire _2 copy, acquire _7 copy",
+                "Fn both 0 [Owner, Owner]: @b0 itself: T",
+                "Fn both 1 [Owner, Ref]: @b0 itself: T",
+                "Fn both 2 [Uniq, Owner]: @b0 *uniq/T: T",
+                "Fn both 3 [Uniq, Ref]: @b0 *uniq/T: T",
                 "Closure 0 [Owner, Owner]: @b1 itself: U",
                 "Closure 1 [Owner, Ref]: @b1 *ref/U: U",
                 "Closure 2 [Uniq, Owner]: @b1 itself: U",

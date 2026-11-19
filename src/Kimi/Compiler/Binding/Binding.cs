@@ -45,11 +45,16 @@ public sealed partial class Binding
     // passes and reads absent after an edit until its first write.
     private ulong edit;
 
-    internal Binding(Compilation compilation)
+    internal Binding(Compilation compilation, KimiLibrary library)
     {
+        if (library.Target != compilation.TargetTriple)
+        {
+            throw new InvalidOperationException($"A Binding for `{compilation.TargetTriple.Value}` is given the library of `{library.Target.Value}` (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+
         this.compilation = compilation;
         this.indexer = new(this);
-        this.Library = new(compilation);
+        this.Library = library;
         this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
         this.symbols = new(this);
@@ -88,12 +93,6 @@ public sealed partial class Binding
         this.importedContainers = new(this);
         this.qualificationFailures = new(this);
         this.matchPlans = new(this);
-        this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
-        foreach (var symbol in this.Library.RegisteredSymbols)
-        {
-            this.symbols.Add(symbol.Declaration, symbol);
-        }
-
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
         this.issuesView = new(own.Issues, layer.Issues);
