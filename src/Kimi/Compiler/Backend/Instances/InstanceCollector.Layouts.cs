@@ -80,7 +80,7 @@ internal sealed partial class InstanceCollector
                 if (this.types.Signature(function, null, slot, out _) is { } type &&
                     SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, slot)) is var site && this.Verdict(site, type).IsLimit)
                 {
-                    this.Limit(this.types.Erase(type), new(function, MirBodyKind.Fn), site); // The import is its own declaration.
+                    this.Limit(this.types.Erase(type), default, new(function, MirBodyKind.Fn), site); // The import is its own declaration.
                 }
             }
         }
@@ -206,7 +206,7 @@ internal sealed partial class InstanceCollector
         var result = this.Verdict(subject, type);
         if (result.IsLimit)
         {
-            this.Limit(this.types.Erase(type), this.Declaration(item), subject);
+            this.Limit(this.types.Erase(type), default, this.Declaration(item), subject);
         }
 
         return result.Outcome == Layout.Outcome.Ok;
@@ -231,20 +231,22 @@ internal sealed partial class InstanceCollector
         return result;
     }
 
-    // IMPL 21.3.2, DIAGNOSTICS rule 6 (DECISIONS R5-M171): a use of an erased Type over a limit in a declaration, kept
-    // as the least subject of the declaration's uses in SourceRef order (module, then the syntax table's pre-order), whatever the
-    // collection's order; RecordLimits makes each Type's one record per declaration.
-    private void Limit(BoundType erased, MirDefKey declaration, SourceRef subject)
+    // IMPL 21.3.2, DIAGNOSTICS rule 6 (DECISIONS R5-M171): a use over a limit in a declaration, an erased Type's (a Layout limit, the
+    // type-driven height cap) or, where no Type is formed, a forming site's whose substitution passes IMPL A.4's height (erased null;
+    // R7-T1, Formed), kept as the least subject of the declaration's uses in SourceRef order (module, then the syntax table's pre-order),
+    // whatever the collection's order; RecordLimits makes each one record per declaration.
+    private void Limit(BoundType? erased, SourceRef forming, MirDefKey declaration, SourceRef subject)
     {
-        ref var least = ref CollectionsMarshal.GetValueRefOrAddDefault(this.limits, (erased, declaration), out var found);
+        ref var least = ref CollectionsMarshal.GetValueRefOrAddDefault(this.limits, (erased, forming, declaration), out var found);
         if (!found || Order(subject, least) < 0)
         {
             least = subject;
         }
     }
 
-    // IMPL 21.3.2 (DECISIONS R5-M171): the record of each erased Type over a limit in each declaration that uses it, at its least use, in
-    // subject order (DIAGNOSTICS rule 6), after the run, when every use has been seen.
+    // IMPL 21.3.2 (DECISIONS R5-M171): the record of each use over a limit in each declaration, at its least use, in subject order
+    // (DIAGNOSTICS rule 6), after the run, when every use has been seen: a Type's GenerationResourceLimit_Kd, a height's TypeHeightLimit_Kd
+    // with its limit (IMPL A.4; R7-T1).
     private void RecordLimits()
     {
         if (this.limits.Count == 0)
@@ -253,15 +255,22 @@ internal sealed partial class InstanceCollector
         }
 
         this.limitSubjects.Clear();
-        foreach (var subject in this.limits.Values)
+        foreach (var (key, subject) in this.limits)
         {
-            this.limitSubjects.Add(subject);
+            this.limitSubjects.Add((subject, key.Type is null));
         }
 
-        this.limitSubjects.Sort(static (x, y) => Order(x, y));
-        foreach (var subject in this.limitSubjects)
+        this.limitSubjects.Sort(static (x, y) => Order(x.Subject, y.Subject) is var order && order != 0 ? order : x.Height.CompareTo(y.Height));
+        foreach (var (subject, height) in this.limitSubjects)
         {
-            this.Report(DiagnosticCode.GenerationResourceLimit_Kd, subject);
+            if (height)
+            {
+                this.Report(DiagnosticCode.TypeHeightLimit_Kd, subject, [new(ProblemFactKind.Limit, subject, Binding.TypeHeightLimit)]);
+            }
+            else
+            {
+                this.Report(DiagnosticCode.GenerationResourceLimit_Kd, subject);
+            }
         }
     }
 

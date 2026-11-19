@@ -88,8 +88,9 @@ public partial class EffectBoundImplementationTest
     //   comparison: a requirement call on an abstract Self uses the bounds of the Contracts its premises prove, never an
     //   implementation's (SPEC 8.11.3; A4's X2, DECISIONS R4-M22), and Equatable bounds no effect of equals;
     // - for storage nested past the implementation's height (Box65), the limits' records at the call (SPEC 23.1.1; PLAN G128), the
-    //   conformance valid (SPEC 8.11.2): A5's OwnershipDepthLimit_Kd (R4-M153), the instance collector's Unsupported_Kd and its
-    //   GenerationResourceLimit_Kd.
+    //   conformance valid (SPEC 8.11.2): A5's OwnershipDepthLimit_Kd (R4-M153) and the instance collector's GenerationResourceLimit_Kd
+    //   (Layout's); as a Type argument alone (deepArgument), which no walk meets, it is an instance (R7-T1: the collector reads no
+    //   storage verdict; before, its Unsupported_Kd at the call).
     [Theory]
     [InlineData("forward", "")]
     [InlineData("environment", "IncompatibleContractImplementation_Kd @ Self is Reset")]
@@ -99,9 +100,9 @@ public partial class EffectBoundImplementationTest
     [InlineData("format", "")]
     [InlineData("equals", "IncompatibleContractImplementation_Kd @ Self is Reset")]
     [InlineData("quiet", "")]
-    [InlineData("pair", "OwnershipDepthLimit_Kd @ U.pair(self.item@ref, self.big@ref); Unsupported_Kd @ U.pair(self.item@ref, self.big@ref); GenerationResourceLimit_Kd @ self.item@ref")]
-    [InlineData("deep", "OwnershipDepthLimit_Kd @ U.wrap(self.item@ref); Unsupported_Kd @ U.wrap(self.item@ref); GenerationResourceLimit_Kd @ self.item@ref")]
-    [InlineData("deepArgument", "Unsupported_Kd @ U.inner<T>()")]
+    [InlineData("pair", "OwnershipDepthLimit_Kd @ U.pair(self.item@ref, self.big@ref); GenerationResourceLimit_Kd @ self.item@ref")]
+    [InlineData("deep", "OwnershipDepthLimit_Kd @ U.wrap(self.item@ref); GenerationResourceLimit_Kd @ self.item@ref")]
+    [InlineData("deepArgument", "")]
     public void StorageBindingRejectedKeepsItsRepairsRecords(string form, string repaired)
     {
         Assert.Equal(repaired, string.Join("; ", Issues("i32")));

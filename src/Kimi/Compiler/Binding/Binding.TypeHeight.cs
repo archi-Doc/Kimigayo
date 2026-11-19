@@ -20,8 +20,11 @@ namespace Kimi.Compiler;
 //   reading it rests on it (SPEC 23.1.2, 8.3.3 Limits) and a later failure of the same node is not recorded.
 // - Invariants: one compare per check, no table; Binding's walks recurse at most the limit plus a written layer's syntax depth
 //   (BU-112), inside the compile stack's margin (DECISIONS U-D2's entry). A refusal outside every consultation frame is a broken
-//   contract: InternalInvariant_Kd at the project, never a silent null; a substitution within the limit with no frame open writes
-//   nothing (the passes not yet framed: PLAN G651 a1-a4 make the site SubstituteType's input).
+//   contract: InternalInvariant_Kd at the project, never a silent null, but inside an answer frame (R7-T1; PLAN G651's after-run site
+//   kind "the caller records"), which only TyCtxt.Answered, the instance collector's query, opens around one substitution after the
+//   run: there the refusal is answered to that query, which gives TyCtxt.Formation.HeightLimit and whose reader records it at its
+//   requesting site, and Binding writes nothing; a substitution within the limit with no frame open writes nothing (the passes not yet
+//   framed: PLAN G651 a1-a4 make the site SubstituteType's input).
 // - Prohibitions: no check before a walk from its inputs' heights (it over-approximates); no other suppression than SPEC 23.1.2's rests.
 public sealed partial class Binding
 {
@@ -32,15 +35,46 @@ public sealed partial class Binding
     [Transitional("G651 a1", Reason = "A refusal during the run has no site only in a pass not yet framed; a1 makes the site SubstituteType's input (the C# build as the census) and a4 removes the last unframed path; U2 gives the after-run queries their outcome.")]
     private bool sitelessHeightRefusal;
 
+    // The open answer frame (OpenAnswer): whether one is open and whether a refusal inside it was answered.
+    [Transitional("G651 a1", Reason = "The interim form of the after-run site kind \"the caller records\" for the instance collector's query (R7-T1; PLAN G651 U2's collector row): a1 makes the site SubstituteType's input and this frame that site kind.")]
+    private (bool Open, bool Answered) answer;
+
+    /// <summary>Opens an answer frame around one after-run substitution (TyCtxt.Answered, its only opener; R7-T1): a refusal of a Type
+    /// higher than the limit inside it, with no consultation frame open, is answered (<see cref="CloseAnswer"/>), not recorded.</summary>
+    /// <returns>The frame it opens in, which <see cref="CloseAnswer"/> restores.</returns>
+    internal (bool Open, bool Answered) OpenAnswer()
+    {
+        var parent = this.answer;
+        this.answer = (true, false);
+        return parent;
+    }
+
+    /// <summary>Closes the answer frame <see cref="OpenAnswer"/> opened.</summary>
+    /// <param name="parent">The frame it opened in.</param>
+    /// <returns>Whether a refusal inside it was answered.</returns>
+    internal bool CloseAnswer((bool Open, bool Answered) parent)
+    {
+        var answered = this.answer.Answered;
+        this.answer = parent;
+        return answered;
+    }
+
     // A Type higher than the limit.
     private static bool OverHeight(BoundType? type) => type is { Height: > TypeHeightLimit };
 
-    // A refusal of a Type higher than the limit, recorded at the current site; null, the refused formation's image.
+    // A refusal of a Type higher than the limit, recorded at the current site, else answered to an open answer frame; null, the refused
+    // formation's image.
     private BoundType? RefuseHeight()
     {
         if (this.consultationNode is { } site)
         {
             return this.Fail(site, BindingFailure.TypeHeightLimit);
+        }
+
+        if (this.answer.Open)
+        {
+            this.answer.Answered = true; // The query that opened the frame records it (R7-T1).
+            return null;
         }
 
         this.sitelessHeightRefusal = true;

@@ -69,6 +69,22 @@ public class GenericStorageEmissionTest
     public void PairFieldsExecute(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericStoragePair" + name, source, stdout);
 
+    // R7-T1 (IMPL 21.3.1; the Middle's RP17): a program per form of a finite Type past Binding's storage bound that no called signature
+    // carries (InstanceCollectorTest.AFiniteTypePastBindingsBoundIsAnInstance) is generated and runs: a local behind raw over Box^62 and
+    // behind ref over Box^64, behind raw and ref over a 65-ring, a handle in a generic struct's Field, a by-value local over the ring, a
+    // chain of 19 distinct functions forming 8,101 layers and its last function's local forming 8,153.
+    [Theory]
+    [InlineData("raw62")]
+    [InlineData("ref64")]
+    [InlineData("rawRing65")]
+    [InlineData("refRing65")]
+    [InlineData("field64")]
+    [InlineData("valRing65")]
+    [InlineData("chain19")]
+    [InlineData("local50")]
+    public void DeepTypesExecute(string shape)
+        => ScalarEmissionTest.EmitFixture("GenericStorageDeep" + char.ToUpperInvariant(shape[0]) + shape[1..], InstanceCollectorTest.DeepSource(shape), "ok\n");
+
     // The same instances keep the ordinary checks: a Loan the stored reference holds, an escape beyond its Borrow, a bare transfer
     // and a pair application without an Object Target (SPEC 8.1.2: the slot is present, so its formation needs the target). The escape
     // has A5's twin at `return h@move` beside Binding's record at `h@move` until R7 (R6-check H0b §5.4, DECISIONS R4-M108; H3b T50).

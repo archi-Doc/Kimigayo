@@ -241,8 +241,8 @@ public class ComponentSummaryTest
     // Proof that fails on its own (V is K without `T is K`, Unproven; or Wrap stating no K, Refuted over its declared head by the
     // owner's O-344 (a), UnsatisfiedConstraint_Kd). The failed Proof is an independent record at the
     // stored Type, kept beside the family, with a use or not, and in the controls without recursion; any other record is the use's,
-    // resting on R's failed Field. The valid twin (T is K, Wrap is K) has no Language record: only a later phase's located
-    // Unsupported_Kd at the use, as on dev.
+    // resting on R's failed Field. The valid twin (T is K, Wrap is K) has no record: its use's instance is generated (R7-T1, the owner's
+    // RQ12: the collector reads no storage verdict; before, the storage-nesting gap's located Unsupported_Kd at the use).
     [Theory]
     [InlineData("g-mix-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
     [InlineData("g-mix2-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, Wrap<T>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15, "UnsatisfiedConstraint_Kd")] // O-344 (a): Wrap states no K, so `Wrap<T> is K` is Refuted
@@ -258,7 +258,7 @@ public class ComponentSummaryTest
         Assert.All(records, x => Assert.True(x == (code, stored) || x.Line == use, $"{id}: {x.Code}@{x.Line}"));
         if (unproven == 0)
         {
-            Assert.Equal(("Unsupported_Kd", use), Assert.Single(records));
+            Assert.Empty(records);
         }
     }
 
@@ -314,15 +314,14 @@ public class ComponentSummaryTest
     }
 
     // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and check
-    // meets the existing generation limits with it, as with any value of that Type (DECISIONS R5-M156): each call
-    // requesting an instance over Chain<i32>, whose storage walk passes Binding's bound, is the capability table's storage-nesting gap
-    // (PLAN G128, PD30's (e) row), and the value's drop glue grows through its object handle, Chain<(T, T)> at each step, so the collector
-    // stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the acceptance change adds no runtime form. Since the MIR
-    // decides acceptance (R6-check H5), A5's walk over the value also meets its depth bound at each call, a located OwnershipDepthLimit_Kd
-    // there (DECISIONS R4-M153), counted on this program that both sides reject (H3b; class 4 by DECISIONS Q13). A value moved into
-    // `need` is destroyed only in need's instance, which is the gap, so the moved-out `c`'s Drop destroys nothing and asks no glue (PLAN
-    // G641; Q13's false record at it removed); the limit's record is where the value is destroyed: at `c`'s scope exit when it stays, at a
-    // local it is moved into.
+    // meets the existing generation limits with it, as with any value of that Type (DECISIONS R5-M156): each call requesting an instance
+    // over Chain<i32>, whose storage walk passes Binding's bound, is an instance (R7-T1, the owner's RQ12: the collector reads no storage
+    // verdict; before, the storage-nesting gap, PLAN G128, PD30's (e) row), and the value's drop glue grows through its object handle,
+    // Chain<(T, T)> at each step, so the collector stops it at the destroyed value after 16 generations (DECISIONS R5-M170); the
+    // acceptance change adds no runtime form. Since the MIR decides acceptance (R6-check H5), A5's walk over the value meets its depth
+    // bound at each call, a located OwnershipDepthLimit_Kd there (DECISIONS R4-M153), on this program that both sides reject (H3b). A value
+    // moved into `need` is destroyed in need's instance, so the moved-out `c`'s Drop destroys nothing and asks no glue (PLAN G641); the
+    // limit's record is where the value is destroyed: need's parameter, at `c`'s scope exit when it stays, at a local it is moved into.
     [Fact]
     public void ANewlyOwnedNonRegularValueMeetsTheGenerationLimits()
     {
@@ -330,17 +329,17 @@ public class ComponentSummaryTest
         var c = MinimalEmissionTest.Analyze(Chain + Need + "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(
-            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | Unsupported_Kd Chain<i32>.init() | Unsupported_Kd need(c@move)",
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | OwnershipDepthLimit_Kd need(c@move) | GenerationResourceLimit_Kd T",
             MinimalEmissionTest.Problems(c));
         var kept = MinimalEmissionTest.Analyze(Chain + "let c = Chain<i32>.init()\nConsole.writeLine(\"chain\")");
         Assert.True(kept.Binding.Result.IsComplete, Describe(kept));
         Assert.Equal(
-            "OwnershipDepthLimit_Kd Chain<i32>.init() | Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()",
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let c = Chain<i32>.init()",
             MinimalEmissionTest.Problems(kept));
         var destroyed = MinimalEmissionTest.Analyze(Chain + "let c = Chain<i32>.init()\nlet d = c@move\nConsole.writeLine(\"chain\")");
         Assert.True(destroyed.Binding.Result.IsComplete, Describe(destroyed));
         Assert.Equal(
-            "OwnershipDepthLimit_Kd Chain<i32>.init() | Unsupported_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let d = c@move",
+            "OwnershipDepthLimit_Kd Chain<i32>.init() | GenerationResourceLimit_Kd let d = c@move",
             MinimalEmissionTest.Problems(destroyed));
     }
 

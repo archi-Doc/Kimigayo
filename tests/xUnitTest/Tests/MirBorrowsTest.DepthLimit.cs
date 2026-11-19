@@ -46,8 +46,9 @@ public sealed partial class MirBorrowsTest
         """;
 
     // SPEC 8.15.3, IMPL 21.3.2 (R8-A1d): owning iteration's storage-height bound, one operation per program: the last accepted depth of an Array's
-    // and a fixed array's nest, and one deeper the located resource records. An exceeded limit is no invalid program; the bound is where the
-    // compiler-supplied boundary held it. A fixed array's owning iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
+    // and a fixed array's nest, and one deeper A5's located OwnershipDepthLimit_Kd alone (R7-T1: the instance collector reads no storage
+    // verdict, so its Unsupported_Kd beside it goes). An exceeded limit is no invalid program; the bound is where the compiler-supplied
+    // boundary held it. A fixed array's owning iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
     [Theory]
     [InlineData("    for x in a@move\n        Console.writeLine(\"x\")\n", false, 61, 3)]
     [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n", false, 61, 4)]
@@ -59,7 +60,7 @@ public sealed partial class MirBorrowsTest
         var source = Program(last + 1);
         var rejected = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Contains(rejected, static x => x.Code == DepthLimit);
-        Assert.Contains(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+        Assert.DoesNotContain(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
         Assert.All(rejected, x => Assert.Equal(line, source.AsSpan(0, x.Span!.Value.Start).Count('\n') + 1));
 
         string Program(int depth)
@@ -75,14 +76,14 @@ public sealed partial class MirBorrowsTest
     }
 
     // SPEC 8.15.3, IMPL 21.3.2 (R8-K1a): a Dictionary nest's owning iteration keeps dev's storage-height bound though the owned remainder
-    // now holds the consumed Dictionary's Handle whole: 62 levels accepted, one deeper the resource records.
+    // now holds the consumed Dictionary's Handle whole: 62 levels accepted, one deeper A5's resource record alone (R7-T1: no collector record).
     [Fact]
     public void ADictionaryOwningIterationsBoundIsDevs()
     {
         Assert.Empty(DiagnosticCorpus.Check(Program(62)).Diagnostics);
         var rejected = DiagnosticCorpus.Check(Program(63)).Diagnostics;
         Assert.Contains(rejected, static x => x.Code == DepthLimit);
-        Assert.Contains(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
+        Assert.DoesNotContain(rejected, static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
 
         static string Program(int depth)
         {

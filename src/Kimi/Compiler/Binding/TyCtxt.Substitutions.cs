@@ -11,8 +11,9 @@
 // guarded by it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
 // Formation, this file's representation: whether a substitution formed its instance, the cause travelling with a null one (Apply's
 // Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete), HeightLimit (Binding.TypeHeight's
-// refusal answered to the query that opened its answer frame, recorded by that query's reader). A cause is the substitution's alone: it
-// never reads storage, which Instance's verdict publishes beside it.
+// refusal answered to the query that opened its answer frame, Answered, the instance collector's, recorded by that query's reader at its
+// requesting site). A cause is the substitution's alone: it never reads storage, which Instance's verdict publishes beside it. Apply,
+// Instance and Compose open no frame, so an after-run refusal outside Answered stays PLAN G651's site-less record (R7-T1, N1).
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
 // compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
 // grows are reused.
@@ -49,7 +50,8 @@ internal sealed partial class TyCtxt
         Incomplete,
 
         /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered the query that opened its
-        /// answer frame instead of recording it (PLAN G651's after-run site; until R7-T1's collector query opens one, never given).</summary>
+        /// answer frame instead of recording it (PLAN G651's after-run site kind "the caller records": Answered, the instance collector's
+        /// query, whose reader records it).</summary>
         HeightLimit,
     }
 
@@ -184,6 +186,25 @@ internal sealed partial class TyCtxt
     internal (BoundType? Type, Formation Cause) Apply(BoundType type, Subst subst)
         => subst.IsIdentity ? (type, Formation.Formed)
             : binding.StorageInstance(type, subst) is { } instance ? (instance, Formation.Formed) : (null, Formation.Incomplete);
+
+    // R7-T1 (PLAN G651's after-run site kind "the caller records"; R1.1 item 1): Apply inside Binding's answer frame, the instance
+    // collector's query, whose one reader of a cause (InstanceCollector.Formed) records it at its requesting site: a refusal of a Type
+    // above the height limit is answered as HeightLimit, and Binding records nothing; any other result is Apply's.
+    internal (BoundType? Type, Formation Cause) Answered(BoundType type, Subst subst)
+    {
+        var frame = binding.OpenAnswer();
+        var (instance, cause) = this.Apply(type, subst);
+        return binding.CloseAnswer(frame) ? (null, Formation.HeightLimit) : (instance, cause);
+    }
+
+    // R7-T1: Compose inside Binding's answer frame, the instance collector's query for a call's edge (as Answered for a Type): a refused
+    // height is HeightLimit with no Subst; any other result is Compose's.
+    internal (Subst? Subst, Formation Cause, Binding.StorageOutcome Storage, BoundType? Part) Answered(Subst inner, Subst outer)
+    {
+        var frame = binding.OpenAnswer();
+        var (subst, cause, storage, part) = this.Compose(inner, outer);
+        return binding.CloseAnswer(frame) ? (null, Formation.HeightLimit, Binding.StorageOutcome.Limit, null) : (subst, cause, storage, part);
+    }
 
     // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): Apply, then the instance's
     // storage verdict (Verdict).

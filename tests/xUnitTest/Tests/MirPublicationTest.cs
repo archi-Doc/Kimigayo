@@ -333,17 +333,18 @@ public sealed class MirPublicationTest
         Assert.Equal(errors, string.Join("; ", Errors(c).Select(static x => $"{x.Code} {x.Text}").Order(StringComparer.Ordinal)));
     }
 
-    // H0a 5.2 (A; PLAN G128): where one call meets G128's bound, the collector's Unsupported_Kd and A5's OwnershipDepthLimit_Kd both publish,
-    // two located records of one implementation bound at Chain<i32>'s need(c@move) (ComponentSummaryTest's program; built without
-    // Analyze).
+    // H0a 5.2 (A; PLAN G128; R7-T1): where one call meets G128's bound, A5's OwnershipDepthLimit_Kd alone publishes at Chain<i32>'s
+    // need(c@move), the collector reading no storage verdict (before R7-T1: its Unsupported_Kd beside it, two located records of one
+    // implementation bound); the collector's record is the value's growing drop glue at need's parameter (ComponentSummaryTest's program;
+    // built without Analyze).
     [Fact]
-    public void ChainsBoundIsTwoRecordsAtOneCall()
+    public void ChainsBoundIsA5sRecordAtTheCall()
     {
         var c = MirBuildTest.Compile(
             "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" +
             "func need<T>(x: T)\n    T is Owned\n    ()\n" + "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
         Publish(c, c.BuildMir());
-        Assert.Equal(["OwnershipDepthLimit_Kd", "Unsupported_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
+        Assert.Equal(["OwnershipDepthLimit_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
     }
 
     // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording; R6-check H10a D12, design §10 Q7): a MIR problem with Cause facts is
