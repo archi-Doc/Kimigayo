@@ -1111,5 +1111,11 @@
   { "Name": "excluded-static-without-initializer", "Source": "group G\n    #if false\n        public let s: i32\npublic func main() => ()\n", "Intended": "the static initializer rule is a source rule of the declaration's form, so excluded syntax reports it as selected syntax would (SPEC 19.4)",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "let s: i32" } ] },
   { "Name": "valid-static-and-instance-properties", "Source": "group G\n    public let s: i32 = 1\n    public let t = 1\n    public computed x: i32\n        get() -> i32 => 1\nrootgroup A.B\n    public let u: i32 = 2\n    public func g() -> i32 => u\nstruct S\n    public let v: i32\n    public init(v: i32)\n        self.v = v\nfunc f() -> i32\n    return G.s + G.t + G.x\nvar n: i32\nn = f()\n", "Intended": "the valid twins: static stored Properties with initializers, a static computed Property, an instance Field the constructor initializes and a top-level binding without one",
-    "Records": [] }
+    "Records": [] },
+  { "Name": "static-without-initializer-before-inline-accessors", "Source": "group G\n    public let s: i32 has get\npublic func main() => ()\n", "Intended": "the missing static initializer is located at its insertion point and blames no token, so the misplaced has keeps its own record",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "s: i32" }, { "Code": "MisplacedSyntax_Kd", "Form": "InlineAccessors", "At": "has" } ] },
+  { "Name": "static-without-initializer-before-trailing-token", "Source": "group G\n    public let s: i32 junk\npublic func main() => ()\n", "Intended": "a token after a static header without an initializer is still where the line should end",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "s: i32" }, { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "junk", "Found": "junk" } ] },
+  { "Name": "static-without-initializer-before-arrow", "Source": "group G\n    public let s: i32 => 1\npublic func main() => ()\n", "Intended": "an expression body on a static stored Property is no initializer: the line should end at '=>'",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Initializer", "After": "s: i32" }, { "Code": "ExpectedSyntax_Kd", "Form": "LineEnd", "At": "=> 1", "Length": 2, "Found": "=>" } ] }
 ]

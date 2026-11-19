@@ -11,9 +11,10 @@ namespace Kimi.Compiler;
 // Input: a reader after the Property keyword, with the prefix pending, and the Declaration Container the Property is declared in. Output:
 // a PropertyKoto with its accessors, or null after an error.
 // Invariants: SPEC 11.1's initializer column is judged here alone: a computed Property or requirement takes none, and a static stored
-// Property (its container's members are static) requires one, whose missing form a recovery initializer stands for; after an accessor
-// header without its get or set keyword the accessor set is unknown, so its accessor checks rest on the Error; an access modifier on an
-// accessor that takes none is the one Error, with the accessor and its Property kept as recoveries.
+// Property (its container's members are static) requires one, missing at the header's insertion point and blaming no token, which a
+// recovery initializer stands for; after an accessor header without its get or set keyword the accessor set is unknown, so its accessor
+// checks rest on the Error; an access modifier on an accessor that takes none is the one Error, with the accessor and its Property kept
+// as recoveries.
 public static partial class Parser
 {
     /// <summary>Parses a Property declaration and its optional accessor list.</summary>
@@ -55,9 +56,11 @@ public static partial class Parser
         }
         else if (!computed && container.HasStaticMembersOnly)
         {
-            // SPEC 11.1, 11.8: a group's or rootgroup's stored Property needs an initializer; the recovery initializer stands for the
-            // missing one, so the static's value, and without a written Type its Type, rest on this Error (SPEC 23.1.2).
-            initializerKoto = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.Initializer) };
+            // SPEC 11.1, 11.8: a group's or rootgroup's stored Property needs an initializer. The rule expects no token, so the initializer
+            // is missing at the insertion point after the header and a token that follows keeps its own check (SPEC 23.1.2). The recovery
+            // initializer stands for it, so the static's value, and without a written Type its Type, rest on this Error.
+            var at = reader.PreviousSyntaxEnd;
+            initializerKoto = new ErrorKoto(ref reader, new SourceSpan(at, 0)) { Cause = reader.Missing(SyntaxForm.Initializer, at) };
         }
 
         if (!computed && typeKoto is null && initializerKoto is null)
