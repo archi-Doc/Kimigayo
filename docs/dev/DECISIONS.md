@@ -22332,6 +22332,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     term alone (rule L).
   - Amended by R8-M40 (R8-W2 c2t): two term rows; both value-Type sites refold through `TyCtxt.Refold` (`ContractLength` keeps its
     own, PLAN G875); `StackBound` reads `Measure`.
+  - Amended by R7-T2 U4 (2026-11-19, B's T2 ruling 7): `FormattingTypes`' bound is now `TyCtxt.FormatBound`, the limit
+    `TyCtxt.StackLimit`, and the two terms' values `TyCtxt.StackBound` and `TyCtxt.HintBound` over one private walk (`Measure`), in
+    `TyCtxt.Formatting.cs` beside the terms (`InterpolationBound`, `InterpolationHint`); the root `FormattingTypes` is deleted, and
+    its `IsUtf8Slice` wrapper with it (its one reader writes the library-declaration test). The rules are unchanged.
 - **R8-M18 The write window, the writer's leaf and its reservation are Kimigayo bodies; the erased writer's routines are a kept
   runtime** (Back, 2026-11-09; R8-W1b-2, W1b-1 and W1b-3, plan §5.2 W1 b; Major each; the W1 family reviewer: W1b design reviews 1
   REVISE, 2 ACCEPT, W1b-3's design reviews 1-3, implementation reviews ACCEPT; the owner's O-108 (a); the Middle's C-188; on R8-M1,
