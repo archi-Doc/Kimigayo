@@ -140,6 +140,7 @@ public sealed partial class TyCtxtTest
         "    public func put2<U>(self: uniq/Self, p: raw/T, u: raw/U) => ()\n" +
         "struct Box3<T>\n    internal let b: T\n    public func put3<U>(self: uniq/Self, p: raw/U) -> ()\n        U is T\n        return ()\n" +
         "contract HasItem\n    associate Item\n" +
+        "contract HasItemOf<A>\n    associate Item\n" +
         "contract RawItem: HasItem\n    Self.(HasItem).Item is raw/u8\n" +
         "struct HA<S>\n    S is HasItem\n    internal let x: S.Item\n" +
         "struct Src\n    Self is HasItem\n    associate HasItem.Item is raw/u8\n" +
@@ -169,6 +170,13 @@ public sealed partial class TyCtxtTest
         "func r28<U, V>(p: uniq/Wrap<U>) -> ()\n    U is Wrap<V>\n    V is raw/u8\n    return ()\n" +
         "func r29<U, V>(p: uniq/Wrap<U>) -> ()\n    U is Wrap<V>\n    return ()\n" +
         "func r30<U, V>(p: uniq/(U, V)) -> ()\n    U is V\n    return ()\n" +
+        "func cg0<S>(p: uniq/Wrap<S.Item>) -> ()\n    S is HasItem\n    S.Item is raw/u8\n    return ()\n" +
+        "func cg1<S, T>(p: uniq/Wrap<T.Item>) -> ()\n    S is HasItem\n    T is HasItem\n    S is T\n    S.Item is raw/u8\n    return ()\n" +
+        "func cg1n<S, T>(p: uniq/Wrap<T.Item>) -> ()\n    S is HasItem\n    T is HasItem\n    S.Item is raw/u8\n    return ()\n" +
+        "func cg2<S, U, V>(p: uniq/Wrap<S.(HasItemOf<V>).Item>) -> ()\n    S is HasItemOf<U>\n    S is HasItemOf<V>\n    U is V\n" +
+        "    S.(HasItemOf<U>).Item is raw/u8\n    return ()\n" +
+        "func cg2n<S, U, V>(p: uniq/Wrap<S.(HasItemOf<V>).Item>) -> ()\n    S is HasItemOf<U>\n    S is HasItemOf<V>\n" +
+        "    S.(HasItemOf<U>).Item is raw/u8\n    return ()\n" +
         "func rb<U>(p: uniq/DB<U>) => ()\nfunc rbp<U>(p: uniq/DB<U>) -> ()\n    U is raw/u8\n    return ()\n" +
         "func gargs<V>(gv: raw/V) -> ()\n    return ()\n" +
         "func wa<U>(p: raw/U) => ()\nfunc wa2<U>(p: raw/(raw/U)) => ()\nfunc wu<U>(p: uniq/Wrap<U>) => ()\nfunc wu2<U>(p: uniq/Wrap2<U>) => ()\n" +
@@ -194,8 +202,11 @@ public sealed partial class TyCtxtTest
     // the pairing, shown (r5; SPEC labels it hidden). The function's view (SPEC 8.2.3, 8.5.3; the review's View twins i1-i7): a Contract's
     // associated-Type requirement (r20, r20b), a chain of premises (r21; r21c without its last), a pair target under a premise (r22), a
     // Field of a Field (r24; r25 without the premise), a case view then the premise (r26; r27), two premises at depth 2 (r28; r29 with
-    // one), a class of two own abstract Types (r30: no form); a generic caller's own V as the input (r18, r17). Labels: F's G823
-    // labels.md and its reviews' twins.
+    // one), a class of two own abstract Types (r30: no form); a generic caller's own V as the input (r18, r17). A spelling that is no
+    // node of the view's identity table but congruent with one takes its class's form (R7-C2c2 c2-4b commit (1), the class lookup
+    // ClassOf; 8.2.3's closure, BU-202): the subject congruent through `S is T` (cg1) or a Contract argument through `U is V` (cg2)
+    // shows the raw layer as the node spelling does (cg0), and without the identity (cg1n, cg2n) it is hidden (before commit (1)
+    // cg1 and cg2 were hidden). Labels: F's G823 labels.md and its reviews' twins; cg*: the Middle's C-390 probe.
     [Theory]
     [InlineData("wa", "p", "t", "raw/(raw/uniq/u8, raw/raw/raw/u8) S {raw/uniq/u8 H {- S}, raw/raw/raw/u8 H {raw/raw/u8 S {raw/u8 S}}}")]
     [InlineData("wa", "p", "n", "raw/raw/raw/u8 S {raw/raw/u8 H {raw/u8 S}}")]
@@ -234,6 +245,11 @@ public sealed partial class TyCtxtTest
     [InlineData("r29", "p", "a28", "- S {raw/u8 H}")]
     [InlineData("r30", "p", "a9", "- S {raw/u8 H, raw/u8 H}")]
     [InlineData("r18", "p", "gv", "raw/V S {- H {- H {- H}}}")]
+    [InlineData("cg0", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("cg1", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("cg1n", "p", "a13", "- S {raw/u8 H}")]
+    [InlineData("cg2", "p", "a13", "- S {raw/u8 S}")]
+    [InlineData("cg2n", "p", "a13", "- S {raw/u8 H}")]
     public void AParameterKeyHidesTheBindingOfTheCalledFunctionsOwnTypeParameter(string callee, string parameter, string argument, string expected)
     {
         var c = MinimalEmissionTest.Analyze(ParameterKeysSource);

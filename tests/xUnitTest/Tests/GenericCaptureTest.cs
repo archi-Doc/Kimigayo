@@ -40,9 +40,9 @@ public class GenericCaptureTest
         var c = MinimalEmissionTest.Analyze(Source);
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "identity").Select(x => x.CallOf()!).ToArray();
-        var first = c.Binding.InstantiateStorageType(closure, calls[0])!;
-        Assert.Same(first, c.Binding.InstantiateStorageType(closure, calls[1]));
-        var other = c.Binding.InstantiateStorageType(closure, calls[2])!;
+        var first = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[0]))!;
+        Assert.Same(first, c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[1])));
+        var other = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[2]))!;
         Assert.NotSame(first, other);
         Assert.False(c.Binding.FitsType(first, other));
         Assert.False(c.Binding.FitsType(other, first));
