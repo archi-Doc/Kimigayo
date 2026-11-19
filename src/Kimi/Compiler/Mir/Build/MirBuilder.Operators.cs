@@ -53,8 +53,8 @@ internal sealed partial class MirBuilder
                     !negate || type.IsFloatingPoint || type.IsWrappingInteger),
                     node);
                 break;
-            default:
-                this.Unsupported(node, destination);
+            default: // Binding resolves a PrimitiveOp only as one of these (KindOp, HasFacts).
+                this.Invariant(node, destination);
                 break;
         }
     }
@@ -92,7 +92,7 @@ internal sealed partial class MirBuilder
         var form = Binding.FormOf(member);
         if (form == BuiltinForm.None)
         {
-            this.Unsupported(member, destination);
+            this.Invariant(member, destination); // HasFacts' PrimitiveOp row: a member access is published with its BuiltinForm.
             return;
         }
 

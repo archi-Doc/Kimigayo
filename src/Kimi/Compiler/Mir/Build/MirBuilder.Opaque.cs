@@ -39,6 +39,20 @@ internal sealed partial class MirBuilder
         this.Site(node, destination, Completes(value));
     }
 
+    // A broken HIR contract at a node the builder reaches (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR
+    // vocabulary or of a fact a published Op guarantees that no published form takes, InternalInvariant_Kd at the node, unless the lexer
+    // or Binding rejected it, whose error its value is derived from (SPEC 23.1.2); its value an Opaque in its place, as a form without a
+    // building rule has.
+    private void Invariant(Koto node, MirPlace destination)
+    {
+        if (!Rejected(node))
+        {
+            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
+        }
+
+        this.Opaque(node, destination);
+    }
+
     // The one path of a construction record made while a body is built (MirProgram.Report): a code at a node of the body, which marks
     // the body (MirBody.HasConstructionRecord, its one writer; DECISIONS R5-M183's GR-1a line). The module's broken HIR contracts,
     // recorded before its bodies, have no body in hand (Module).
