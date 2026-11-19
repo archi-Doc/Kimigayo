@@ -7922,6 +7922,10 @@ resumed by R4-M86 (2026-10-20).
   counting its internal distance (the longest simple path); a declaration-level expansive-cycle check (it cannot see growth through
   associated projections); inline-only preparation (B: changes G128 and breaks R4-M58, whose growing composed atom `Apply` still
   refuses). Deleted: `InstanceStorage.Prepared` and `Height`. Not temporary (G128's limits go at R7).
+  - Superseded in part by R7-M54 (R7-T1 c2-c3, 2026-11-19): the interim clause ("`Unsupported_Kd` is the owner's interim choice until
+    R7 removes storage preparation from `Apply`") for every collector reading but a requirement call's witness: `TyCtxt.Apply` is the
+    substitution alone, and the collector reads a substitution's formation, never this walk's verdict; a requirement call's witness
+    Limit keeps the clause until R7-T1's c4.
 - **BU-13** (2026-10-19; PLAN G147 (2)'s Open; option A of the BU7 diagnosis) A selection that reaches its element through `indexUniq`
   (a user index or an exclusive view; an owned `Array` element, SPEC 4.7.1) needs its receiver exclusively acquired, which storage
   rooted in a `let` binding or an owned parameter, or reached through a shared layer, cannot be (SPEC 15.1.5, 15.6.2). One predicate
@@ -9083,6 +9087,11 @@ resumed by R4-M86 (2026-10-20).
     a valid program's generic comparison effect-free: a Requirement call on an abstract Self takes the caller's premise bounds, so
     `Equatable.equals`, declaring none, is Unknown under `confined` (SPEC 8.11.3; R4-M22's X2). StorageBinding's `equals` row is 1r at the
     flip (H5 T-12).
+  - Superseded in part by R7-M54 (R7-T1 c2-c3, 2026-11-19): the Collector clause (`InstanceCollector.Made` is deleted; the collector
+    reads a substitution's formation, `Formed`, never a storage verdict, and a part Binding rejected reaches Layout's Rejected row,
+    the rejected option "`Apply` giving Rejected instances to the MIR readers" taken) and the Composition clause's "A Limit has no
+    substitution" (`Compose`'s `Subst` is null only where a part or a length does not form). The Dispatch clause stays until R7-T1's
+    c4.
 
 - **BU-39 TyCtxt keeps only the raw readers of a stored layer** (2026-10-25; PLAN G160, unit bu42) R4-M116 (PQ-7): A5 reads neither
   `RawMembers` nor `RawStep(raw)`, only the step of the raw layer an instance stores, so BU-24's signature reader, added on the owner's
@@ -16748,6 +16757,9 @@ structure is recorded here by the unit that first implements it.
     (PLAN
     G128) with its code. OCC-X's refusal (K6), the generic static storage key (K7) and the operation rows (K9a) join it.
   - Rejected: the storage check by `Erase` (erasure never fails); limits per call site (X19 keys them by definition and chain).
+  - Superseded in part by R7-M54 (R7-T1 c3b, 2026-11-19): the admission gap "a substitution or Type whose storage is a limit" (BU-38's
+    amendment) goes: `Admit` reads a new key's local Types by their formation, each at its local (`Instantiable` through
+    `TyCtxt.Answered`), and the `StorageNesting` row is a requirement call's witness Limit only, until R7-T1's c4.
 - **R5-M41 Collector records under MIR code generation (OD4)** (2026-10-18; plan K4b; under R5-M18; meets R5-M4's "under sel,
   collector records publish from K4"; its run superseded by BU-48, its records by R5-M156) Under MIR code generation (sel),
   `Compilation.MirRecords` counts and lists the records of the checked set of the program version (R5-M40) with the MIR's
@@ -17272,6 +17284,9 @@ structure is recorded here by the unit that first implements it.
   - Rejected: Self's layout skipped for the shims (a shim reads Self's storage); the signature agreement left to C3c (the F package
     places the check at K6, where the key is made); a requirement edge resolved from the forwarded CallPlan (the collector reads no
     plans).
+  - Amended by R7-M54 (R7-T1 c3b, 2026-11-19): a composed substitution is read by its formation (`InstanceCollector.Formed`), not by a
+    verdict (`Made` deleted); the Limit row (Dispatch's Limit target, the storage-nesting row) stays until R7-T1's c4, which
+    supersedes it with BU-38's Dispatch clause.
 - **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19; Q21, PLAN G121, Q8-7 under R5-M23 (DEC Q6 form 1), ask
   A-14; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its children are not published
   as evaluated and a closure inside it is not built"; extended by R5-M84; amended by R4-M88; its residual line superseded for `do`
@@ -20491,6 +20506,11 @@ structure is recorded here by the unit that first implements it.
     chains of the same definitions), which no row covers yet.
   - Amended by R5-M171 (G153 U1b): the height cap is a property of the Type, so its record follows R5-M171's Type rule (one per erased
     Type and declaration, at the least request) and the key enters no `refused`; growth and identity-count refusals keep one record per key.
+  - Amended by R7-M54 (R7-T1 c3b, 2026-11-19), Known limits: the first ("a Type past Binding's storage walk (a 120-struct ring) is
+    G128's `Unsupported_Kd` at the call") is deleted, such a finite Type being an instance; in the third, "meets Binding's storage
+    bound (`Unsupported_Kd`) or SetLimit" becomes "meets SetLimit or the Type height"; added: a body key's substitution past IMPL
+    A.4's Type height (8,192) is `TypeHeightLimit_Kd` at the requesting site, before the 17th generation when a generation adds more
+    than 512 height, and without growth in one call of a chain.
 - **R5-M171 A Type over a layout limit is one record per declaration, at its least use (G153 U1a)** (2026-10-31, PLAN G153 (1); amends
   R5-M44's record clause) SPEC 23.1.2 leaves grouping to the implementation; IMPL 21.3.2 reports a limit at the affected declaration, call
   or token; DIAGNOSTICS rule 6 orders positions by structure, and by analogy with SPEC 8.3.3's limits paragraph (proof and premise limits,
@@ -20525,6 +20545,9 @@ structure is recorded here by the unit that first implements it.
     a comparison presets to a template node) through `Limit`, read again at each request, with no `refused` entry (R5-M170 amended).
     Rows (`AHeightCapIsATypeLimitAndASharedItemKeepsItsFirstRecord`): two functions, two records (one before); two locals of one
     function, one; the Known limit's `Option<S>` pair pinned (one record at `d`; at `e` alone once `d` is gone).
+  - Amended by R7-M54 (R7-T1 c3d, c3e, 2026-11-19): the Limit table's key is a use over a limit per declaration with its record's code
+    and an erased Type (a Layout limit; for Layout's `HeightLimit`, `TypeHeightLimit_Kd`, the instance it names) or, where no Type is
+    formed, a forming site (the collector's height record, `TypeHeightLimit_Kd` with its limit).
 - **R5-M172 The check path builds no code generation text; a cold scaling series is measured in one process state (G350)** (2026-11-01,
   PLAN G350; the owner's 「G350 の本実装 お願いします」 and 「(A) 共通の計測ヘルパー」, with R4's two conditions) AGENTS asks for equivalent workloads under
   fixed conditions and forbids a warm-up added to pass; code generation writes the runtime frame (`ModuleCodegen.Frame`).
@@ -21079,6 +21102,8 @@ structure is recorded here by the unit that first implements it.
     call meets both, the collector's `Unsupported_Kd` and A5's `OwnershipDepthLimit_Kd` both stay, counted, until R7 removes G128's
     bound). Rejected: the design's §4 (B), a located `PrerequisiteUnavailable_Kd` without `DerivedFrom` for a problem resting on a
     Binding failure (it decides dependence beyond the problem's own inputs); a pipeline column (a mir-only publication before H5).
+  - Amended by R7-M54 (R7-T1 c3b, 2026-11-19): where one call meets both, the collector's `Unsupported_Kd` beside A5's
+    `OwnershipDepthLimit_Kd` (H0a-11 (A), "until R7 removes G128's bound") ends: A5's record alone.
 - **R5-M185 MIR decides acceptance (R6-check H5, G:R6-check-flip with H1, H1b and Q8-3)** (2026-11-03, H0b §2.1, §2.3 and §11, the H5
   split plan's unit F; under R5-M182 and Q13) Major.
   - Rule: `Analysis` is verified when the MIR of the version exists and its rows hold no Error. The rows are every `MirReport.Merged`
@@ -22737,6 +22762,120 @@ R8-M* and R9-M* by the stage of the recording unit.
     initialized; Z6's option (a), if it adds a vocabulary entry; Z23, if its design needs a MIR vocabulary entry; O-445 for Z24.
   - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5;
     X1, X2 with P42's Binding part) and those added since R4's X-2, which keep their own rows (PLAN G1106, G1107 among them).
+- **R7-M54 `TyCtxt.Apply` is the substitution alone; the instance collector reads a substitution's formation, never its storage**
+  (Back, 2026-11-19; R7-T1 c2 and c3a-c3e, Q-543, D-864; Major unit T1: design review by the Front (Binding), B's reviewer (the
+  collector) and the Middle (RP17: `Signature`'s MIR readers, the publication rule, the newly accepted class); the Front's code review
+  (C-406: REVISE B1, B2 with C1, C2, answered by c3e's one-level-higher fix, `back\notes\r7-t1\fix-design.md`, B's ruling 17); R7 plan
+  §5.1 T1; the owner's RQ12 approval of T1's record moves m1-m3; PLAN G128, G242, G651 U2) SPEC 6.1, 8.1.3, 8.15.3, 23.1.1, 23.1.2;
+  IMPL A.4, 21.3.1, 21.3.2. One entry for c2 and c3; c4 (the Dispatch hunk, after V2c) adds its part.
+  - **Formation (c2).** `TyCtxt.Apply(type, subst)` is `Binding.StorageInstance` (the identity keeps the Type) and gives
+    `(BoundType? Type, Formation Cause)`; it walks and prepares no storage. `TyCtxt.Formation { Formed, Incomplete, HeightLimit }`
+    (owner `TyCtxt.Substitutions.cs`, contract in its header) is the cause a null instance carries, the substitution's alone:
+    Incomplete, a step that does not complete (BU-36's contract substitution that does not complete) or a height refusal Binding
+    records itself (a consultation's node, else G651's site-less record); HeightLimit, `Binding.TypeHeight`'s refusal answered in the
+    collector's answer frame to `TyCtxt.Answered`, whose reader records it.
+  - **Readers (c2).** `TyCtxt.Instance` is `Apply`, then the verdict (`Verdict`: no instance a Limit for either cause, the identity
+    Prepared without a walk, else `Binding.PrepareTypeStorage`), its readers unchanged. `TyCtxt.Compose` gives
+    `(Subst, Cause, Storage, Part)`: `Subst` is null exactly where a part or a length does not form, with the first such cause; a part
+    whose storage is a Limit keeps the composition with the Limit verdict, which the builder's default copy refuses (`Readable`) and
+    the collector does not read. `Binding.CapabilityParts` (a Container's identity and `InheritedArguments`' slot images) and
+    `Binding.ClosureDefinitionSignature` read `TyCtxt.ReadableInstance` (R4-M139's one rule) where they read the Prepared-only
+    `Apply`: the same on a complete program, a Rejected instance passing through in an incomplete one. `TyCtxt.Signature` reads
+    `Apply`'s Type (the MIR validator and builder, code generation, the collector's `Agrees`).
+  - **The answer frame (c3e; G651's after-run site kind "the caller records").** After Binding's run a Type is formed only by
+    substitution, and `Binding.Substitute`'s `OverHeight` is its one check. Its refusal goes once: inside a consultation frame to the
+    node (`Fail`, unchanged); else, inside the instance collector's answer frame, to the innermost formation owning the Type; else
+    (Binding's run, code generation, the MIR steps) to G651's site-less record. The frame is the collector's run:
+    `InstanceCollector.Run` alone opens it (`TyCtxt.OpenAnswer`) and closes it (`CloseAnswer`) in a `finally`, so no throw leaves it
+    open (the Front's C1). A formation (`Binding.OpenFormation`, ended by `CloseAnswer`) owns refusals only inside the frame, and
+    there are two: a site's substitution (`TyCtxt.Answered`, for `Apply` and `Compose`: `HeightLimit`, recorded at the site) and an
+    instance's stored Types (`Binding.Instance`, whichever reader triggers it: Layout, glue, a witness, a verdict walk), whose cause
+    is published with the cached instance as `AdtDef.InstanceStorage.HeightLimit` (its part null, no record), read by Binding's
+    storage walk as a limit (`StorageParts`: `StorageRefused`, never Rejected) and by Layout as `Layout.Outcome.HeightLimit` (a limit,
+    `IsLimit`: a leaf of `Walk` before placement, its Result naming the instance; `Fold` keeps the first limit's instance). A refusal
+    in the frame that no formation owns is the frame's: `CloseAnswer` records G651's site-less `InternalInvariant_Kd` at the frame's
+    close, never silent. `Apply` reads no storage: Binding's closing step (`ClosePartCore`) reads the closure result's formation, not
+    its storage verdict, so a storage bound no longer makes a substitution Incomplete (the Front's B1) and a height refusal no longer
+    makes a storage verdict Rejected (B2). Row: `InstanceCollectorTest.OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal`. Outside
+    both formations until c4 (behind the Dispatch gate, B's ruling 17 O1): `Agrees`' `Signature(requirement, subst)` and
+    `TyCtxt.Dispatch.Resolve`'s `InstanceContract` and `ResolveRequirementWitness`, where a refusal would be the frame's record.
+  - **The collector (c3b, c3d, c3e).** `Made` is deleted. The collector's one reading of a cause is
+    `InstanceCollector.Formed(cause, item, forming, subject)`: Formed makes the instance; HeightLimit is `TypeHeightLimit_Kd`
+    (Resource, IMPL 21.3.2) with its limit at the requesting site, one record per requesting declaration and forming site at its least
+    use, made at the run's end with the Layout limits (R5-M171 U1b's rule; no refused-set key, the reviewer's N4); Incomplete is a
+    broken contract through `Report` (R5-M151). `In` (a site's Type), `Instantiable` (each local at the local's own site, IMPL
+    21.3.2's written Type) and `Edge`'s composition read through `Answered`; `TypeOf` reads `Apply` (code generation).
+    `Instantiable`'s verdict join goes (G242: `Compose` keeps the only one, for its MIR reader). A part Binding rejected passes
+    through to Layout's Rejected row (`RecordOf`) under R5-M151's guard (BU-38's rejected option "`Apply` giving Rejected instances to
+    the MIR readers", now taken). The limit key (c3d): each use over a limit is keyed by its record's code, its erased Type or forming
+    site and its declaration, and `RecordLimits` reports the key's code (`TypeHeightLimit_Kd` with its Limit fact). An instance's
+    stored height (c3e): Layout's `HeightLimit` maps (`RecordOf`) to `TypeHeightLimit_Kd`, a Layout limit keyed by the erased instance
+    Layout names: one record per instance and declaration at its least use (R5-M171's Layout rule), at the use, not at the Field's or
+    payload's written Type in the declaration, which every instance and requesting declaration shares and which has no item (B's
+    ruling 17 O3, the Front's confirmation); a call whose composition only names the instance records nothing.
+  - **A Type past Binding's bound.** A finite Type past Binding's storage bound is an instance; its growth is R5-M170's rule. Where a
+    retention or effect walk meets the bound, A5's or A4's `OwnershipDepthLimit_Kd` is the program's record (R4-M153), and only there:
+    A5 checks a body only where it holds a Loan (A3 6.1 D5) and joins a call's retention Limit at the call (R4-M51, R4-M153), so
+    `pick(v@move)` over `Option^32<ref/i32>` is accepted in a body that holds no Loan and has A5's record in one that holds one, such
+    as the literal of a statement after the call (the Middle's RP17 C2). Past Layout's 64-level window it is Layout's
+    `GenerationResourceLimit_Kd` at the use (R5-M171).
+  - **Publication (c3a; the Middle's P1-P3).** A problem's facts publish whatever its class: `Compilation.Located(problem, facts)`
+    reads a record class only without facts; a code of category Unsupported, Resource or Internal without message arguments stays
+    located, and a located problem with a fact stays a broken contract. The message arguments follow the code's catalog row
+    (`Arguments`): a Limit fact the last, a Required fact the one before it (`OwnershipStorageLimit_Kd`'s requiredBytes and
+    limitBytes; `TypeHeightLimit_Kd`'s limit); a fact the row has no argument slot for is `InternalInvariant_Kd` at the subject (P1).
+    A record has no body, so no case text. `MirProgram.Report` and the collector's `Report` carry a record's facts.
+  - **The round (c3a).** `MirReport`'s round holds each problem with its facts (`MirReport.Kept` rows, read in two ways: a library
+    segment's kept rows and the open round's held problems, never replayed), and `Commit` adds them as `Add` does.
+  - **Record moves (the owner's RQ12; labels `back\notes\r7-t1\c3\labels.tsv`, the Front's twins `c3de\labels.tsv`).** m1/m3: a
+    growing Type's collector `Unsupported_Kd` becomes R5-M170's `GenerationResourceLimit_Kd` at its site (`Chain<(T, T)>`: one at
+    need's parameter; A5's two `OwnershipDepthLimit_Kd` stay). m2: a valid finite Type past Binding's bound loses the collector's
+    `Unsupported_Kd`: A5's or A4's `OwnershipDepthLimit_Kd` stays where a called signature carries it; past Layout's window, Layout's
+    `GenerationResourceLimit_Kd` at the use; otherwise it is newly accepted and generated (a body local behind raw or ref over Box^n
+    or a 65-ring, a handle in a generic struct's Field, a by-value local over the ring, a chain of distinct functions within the
+    height limit with its last local within it; found by the suite, B's rulings 14-15, labels W1-W4: `pick(v@move)` over
+    `Option^32<ref/i32>` in a body holding no Loan, an override of an object whose base is a doubling Type within the height limit, a
+    ref parameter over an instance family behind Array, a Type argument alone through a forwarded call; each run at O0 and O2). New:
+    `TypeHeightLimit_Kd` once at the forming site past IMPL A.4's 8,192 (growth by more than 512 a generation before R5-M170's 17th; a
+    chain of distinct functions in one call; a body local; a Closure's result or parameter and a nested function's local in the
+    instance; an instance whose stored Field or Case payload passes it, at its least use, where c3b gave `InternalInvariant_Kd` at the
+    project and Layout's Rejected at each use, the Front's B2). Newly accepted with c3e (dev: the collector's `Unsupported_Kd`; c3b:
+    `InternalInvariant_Kd`, the Front's B1): a Closure literal in a generic body whose result or parameter passes Binding's bound or,
+    after a chain, stays within the height (s-clores65, s-clopar65, t2-clores-under), and an instance past the height named only as a
+    call's Type argument (t3-fieldarg-over: no reader needs its storage). No Language or Proof record moves.
+  - **Exposure (the Middle's RP17 C1).** Removing an implementation-limit record can expose another check's named silence, so an
+    invalid program is newly accepted exactly where that silence accepts its direct twin: valring65-deep-v5 (SPEC 5.2.1, 15.6.4; a
+    by-value local over a 65-ring) had only the collector's `Unsupported_Kd` on dev and is accepted now, as its direct twin
+    valring65-shallow-v5 is on dev, by the storing rule's owner-approved silence (O-62 (a), R4-M190, STATUS Raw pointers: a call or
+    drop taking a pointer).
+  - **Supersedes** BU-12's interim clause ("`Unsupported_Kd` is the owner's interim choice until R7 removes storage preparation from
+    `Apply`") for every collector reading but a requirement call's witness; BU-38's Collector clause (`Made`) and its Composition
+    clause's "A Limit has no substitution" (c2: `Subst` is null only where a part or a length does not form); R5-M40's admission gap
+    "a substitution or Type whose storage is a limit"; R9-M9's U1b clause that a round's problems carry no facts (one with facts the
+    recording rule's defect): its reason, that no round problem carried a fact, no longer holds once the collector's height record
+    carries its limit. **At c4 (after V2c), with the Dispatch hunk:** BU-38's Dispatch clause ("`Resolve` refuses a Limit only") and
+    R5-M67's requirement Limit row (B's ruling 5; the Front's O2, a departure from the plan row's "BU-36, BU-38 readers unchanged").
+  - **Amends** R5-M170's Known limits (G128's limit deleted, the Type height added), R5-M171's Limit key (its record's code; a forming
+    site where no Type is formed), R5-M184's two located records of one bound at one call (A5's alone) and R5-M67's composed
+    substitution (read by its formation); each entry's line states the change.
+  - **Rejected.** A result type naming storage (`Apply` keeping a Prepared-only filter, or `Formation` gaining a Limit member): the
+    cause is the substitution's and storage is `Instance`'s verdict, Binding's walk (BU-12), so a reader needing both reads
+    `Instance`; a TyCtxt flag beside a null (Revision 1's prototype `OverHeight`), a side table for one cause; a located row filling
+    the code's constant argument (a second copy of the limit's value); a refused-set key per composition for the height record (N4: a
+    new key shape, no reproducer of a duplicate); opening the frame in `Apply` for every after-run caller (a caller reading only
+    `.Type` would get a silent null, N1); a mode parameter on `Apply` (AGENTS: a mode steering a function); keeping `Made`'s Limit row
+    as `GenerationResourceLimit_Kd` (a collector reading of Binding's bound, which R5-M170 rejected); c3b's per-query frame opened by
+    each reader (an instance's stored Types, formed lazily by whichever reader asks first and cached per pass, could not know they
+    were the collector's, and a throw left the frame open: the Front's B2 and C1); the cause of a refused stored Type carried by the
+    reader that triggered it (the first reader took the record, every later one read the cached null part as Rejected); a per-part
+    cause on the instance (no reader reads a part without the instance's layout); recording a stored Type's height at the Field's
+    written Type in its declaration (shared by every instance, no item; O3).
+  - **Removes.** `Apply`'s Prepared-only filter (G128's one verdict for unlike causes); `Compose`'s null on a storage Limit;
+    `InstanceCollector.Made`, its private `Instance` and `Instantiable`'s verdict join.
+  - **Temporary.** The answer frame (`Binding.answer`, `[Transitional("G651 a1")]`): G651 a1 makes the site `SubstituteType`'s input
+    and the frame that site kind. `CapabilityGap.StorageNesting` (`[Transitional("R7")]`, its reason now c4), read only by the witness
+    Limit rows (`Requirement`, `Comparing`, `Parts`, `Parts`' null node over a height-refused instance included, B's ruling 17 O2)
+    until c4.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -25922,6 +26061,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     0.7-4.1 MB. The span also holds U2-K-b with G950-K and G949 Stage 2 U3, whose cold Analyze +7-11 % on Milestone26 and
     Interpolation is U3's (K's W-272 row). Not attributed: Milestone31's cold Generate 1.116 (1.88 -> 2.10 ms; its whole cold
     pipeline 42.9 -> 11.1 ms). Evidence: `artifacts/benchmarks/g951m-*`; the switch's own pinned row is K's `rp8w-W-246-e12b222ed-*`.
+  - Superseded in part by R7-M54 (R7-T1 c3a, 2026-11-19): U1b's "which carry no facts (one with facts is the recording rule's
+    `InternalInvariant_Kd` defect, held as the round's)": a round holds each problem with its facts (`MirReport.Kept`) and `Commit`
+    adds them as `Add` does; the reason (no round problem carried a fact) no longer holds once the instance collector's height record
+    carries its limit.
 - **R9-M10 The toolchain boundary's rule: a compiler exception under `Project.Build` is its result's fault (R9-B2, PLAN G345)**
   (Middle, 2026-11-18; the R7-R9 plan's §5.3 unit B2; Major; under DIAGNOSTICS rule 9, R5-M169 and R9-M6; design review ACCEPT WITH
   NOTES, the Middle's rulings on F1-F8; implementation review ACCEPT)
