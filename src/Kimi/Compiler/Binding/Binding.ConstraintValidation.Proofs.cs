@@ -359,16 +359,54 @@ public sealed partial class Binding
 
     // The answer of a proof that read an Invalid environment (the one proof read of it): Error resting on the environment, whose Use is
     // the node that made it Invalid; inside a combined proof it joins the proof in progress (ReadVerdict), else the channel.
-    private ConstraintProof InvalidEnvironment(ConstraintEnvironment environment)
+    private ConstraintProof InvalidEnvironment(ConstraintEnvironment environment) => this.RestOnFailure(environment);
+
+    // The one channel of an Error resting on a failed node's record: an Invalid environment's, or a failed premise's (R7-C3 B1').
+    private ConstraintProof RestOnFailure(ICheckCause cause)
     {
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
-            return this.ReadVerdict(ConstraintProof.Error, environment, null);
+            return this.ReadVerdict(ConstraintProof.Error, cause, null);
         }
 
-        this.failedCause ??= environment;
+        this.failedCause ??= cause;
         return ConstraintProof.Error;
     }
+
+    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the failed premise a proposition reads, when one of its operands, as written or in its form, is a
+    // side of a failed premise of the view (FailPremise); every other proposition is judged in the valid remainder.
+    private PremiseFailure? FailedPremiseRead(BoundConstraint written, BoundConstraint normalized, BindingScope scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { FailedPremise: { } failure } environment)
+            {
+                continue;
+            }
+
+            foreach (var premise in environment.FailedPremises)
+            {
+                if (Reads(written, premise) || Reads(normalized, premise))
+                {
+                    return failure;
+                }
+            }
+        }
+
+        return null;
+
+        static bool Reads(BoundConstraint proposition, BoundConstraint premise)
+            => proposition.Subject is { } subject && (ReferenceEquals(subject, premise.Subject) || ReferenceEquals(subject, premise.RequiredType));
+    }
+
+    // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its
+    // proof scope newly read) is derived: it decides the list only when every independent obligation is Proven (DerivedVerdict), so an
+    // independent Unknown or Refuted keeps its own record. One rule for every clause list (CheckConstraints, the conditions).
+    private bool DerivedObligation(ConstraintProof outcome, ICheckCause? before)
+        => outcome == ConstraintProof.Error && this.ScopeReads.Error is { Use.BindingState: BindingState.Invalid } read && !ReferenceEquals(read, before);
+
+    private static ConstraintProof DerivedVerdict(ConstraintProof independent, bool derived)
+        => derived && independent == ConstraintProof.Proven ? ConstraintProof.Error : independent;
 
     // SPEC 8.3.3 (Limits), 23.1.1 (DECISIONS BU-22's L): an analysis a judgment needs reached an implementation limit (`limit`, a
     // failure whose record's category is Resource), so its negative answer is a resource failure, never Unknown or Refuted. The

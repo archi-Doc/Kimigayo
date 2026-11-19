@@ -231,8 +231,8 @@ public sealed partial class Binding
                 }
 
                 var previous = scope.Owner.BindingState;
-                changed |= !environment.Invalid;
-                environment.Fail(scope.Owner);
+                changed = true;
+                environment.FailPremise(fact, scope.Owner); // R7-C3 (B1'): the premise fails itself; the environment stays valid
                 // Other input facts can have independent contradictions. Record a
                 // sole missing-name cause only when this is the entire environment.
                 this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
@@ -259,6 +259,11 @@ public sealed partial class Binding
             var frame = this.BeginConsultation(declaration); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
             this.RequireConstraintInFrame(declaration, proof, mode, frame);
+            if (proof != ConstraintProof.Proven && mode == BindingMode.Final && PremiseClause(use.Use, declaration) is { BoundConstraint: { } premise } &&
+                this.scopes.TryGetValue(declaration, out var premises) && premises.Constraints is { } environment)
+            {
+                environment.FailPremise(premise, declaration); // R7-C3 (B1'): a premise whose projection input is not proven fails itself
+            }
             if (declaration.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional)
             {
                 // The target owns conformance/Copy evidence; the block owns member applicability.
@@ -269,6 +274,20 @@ public sealed partial class Binding
         }
 
         return changed;
+    }
+
+    // The premise clause of `declaration` a node lies in, if any (a projection use in a premise's side).
+    private static IsKoto? PremiseClause(Koto node, Koto declaration)
+    {
+        for (var current = node; current.Parent is { } parent; current = parent)
+        {
+            if (current is IsKoto clause && ReferenceEquals(parent, declaration))
+            {
+                return clause;
+            }
+        }
+
+        return null;
     }
 
     private void ValidateExpressionProjectionInputs(BindingMode mode)

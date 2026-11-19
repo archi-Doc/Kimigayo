@@ -55,6 +55,7 @@ public sealed partial class Binding
         var binder = substitution.Binder;
         this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
+        var derived = false;
         ClauseFact? best = null;
         for (var i = 0; i < clauses.Count; i++)
         {
@@ -85,6 +86,7 @@ public sealed partial class Binding
             substituted = this.ContractConstraint(substituted, scope, self);
             var unknown = this.ScopeReads.Unknown;
             var limit = this.ScopeReads.Limit;
+            var error = this.ScopeReads.Error;
             var proof = this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
@@ -97,6 +99,12 @@ public sealed partial class Binding
             }
 
             var outcome = bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof;
+            if (this.DerivedObligation(outcome, error))
+            {
+                derived = true;
+                continue;
+            }
+
             if (outcome != ConstraintProof.Proven)
             {
                 var onLimit = outcome == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
@@ -106,6 +114,7 @@ public sealed partial class Binding
             result = CombineProof(result, outcome, true);
         }
 
+        result = DerivedVerdict(result, derived);
         var verdict = this.EndProof(result);
         this.LeaveClause(best, result);
         return verdict;

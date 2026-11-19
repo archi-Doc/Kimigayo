@@ -100,6 +100,20 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 // it here; the first one is kept. As an ICheckCause it is what a proof that reads the environment rests on (Binding.InvalidEnvironment,
 // the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
 // otherwise.
+// R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is.
+internal sealed class PremiseFailure(Koto owner) : ICheckCause
+{
+    public Koto Use { get; } = owner;
+
+    public ICheckCause? Next => null;
+
+    public ICheckCause? ReentrySite => null;
+
+    public void Rest()
+    {
+    }
+}
+
 internal sealed class ConstraintEnvironment : ICheckCause
 {
     public Koto Use => this.Failed!;
@@ -121,6 +135,12 @@ internal sealed class ConstraintEnvironment : ICheckCause
     internal Koto? Failed { get; private set; }
 
     internal bool Invalid => this.Failed is not null;
+
+    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the premises whose proof is Error (FailPremise), out of the evidence; and what a proof that reads
+    // one rests on (PremiseFailure, Use = the declaration that holds the record).
+    internal List<BoundConstraint> FailedPremises { get; } = new();
+
+    internal PremiseFailure? FailedPremise { get; private set; }
 
     internal bool HasAssociatedProjection { get; private set; }
 
@@ -184,6 +204,22 @@ internal sealed class ConstraintEnvironment : ICheckCause
         return false;
     }
 
+    /// <summary>Fails a premise whose proof is Error (R7-C3 B1', SPEC 8.2.3's kept premise-error context extended to any failed premise):
+    /// it leaves the evidence, the environment stays valid, and a proof that reads it rests on its declaration's record.</summary>
+    /// <param name="fact">The failed premise.</param>
+    /// <param name="owner">The declaration whose record it is.</param>
+    internal void FailPremise(BoundConstraint fact, Koto owner)
+    {
+        if (this.Facts.Remove(fact))
+        {
+            this.DirectFacts.Remove(fact);
+            this.DerivedFacts.RemoveAll(x => ReferenceEquals(x.Fact, fact));
+            this.FailedPremises.Add(fact);
+            this.FailedPremise ??= new(owner);
+            this.Version++;
+        }
+    }
+
     /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
     /// <param name="node">The failed node.</param>
     internal void Fail(Koto node)
@@ -212,6 +248,8 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.DerivedFacts.Clear();
         this.Declared = 0;
         this.Failed = null;
+        this.FailedPremises.Clear();
+        this.FailedPremise = null;
         this.HasAssociatedProjection = false;
         this.HasTypeIdentity = false;
     }

@@ -272,9 +272,11 @@ public sealed partial class Binding
 
     // SPEC 8.2.3, 23.1.2: a declaration whose own failure is its premise error keeps its context, as a shape violation keeps its signature:
     // the error is reported once, at it, and its other checks are judged as in a valid view.
+    // R7-C3 (B1'): any failed premise is this context's case: an identity premise error recorded at the declaration (identityRecorded),
+    // or a premise whose proof failed and left the evidence (FailPremise), both its own record.
     private bool KeepsPremiseErrorContext(Koto declaration)
-        => this.scopes.TryGetValue(declaration, out var scope) && this.identityRecorded.TryGetValue(scope, out var own) && own &&
-            scope.Constraints is { Invalid: false };
+        => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { Invalid: false } environment &&
+            ((this.identityRecorded.TryGetValue(scope, out var own) && own) || ReferenceEquals(environment.FailedPremise?.Use, declaration));
 
     // SPEC 8.2.3, 23.1.2 (the producer channel): the declaration whose recorded premise error a check at `node` read, when one of the
     // Types it compared has a part in a final erroneous class of the node's view; the outermost scope whose own classes hold it is the

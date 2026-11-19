@@ -597,6 +597,11 @@ public sealed partial class Binding
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
         var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
+        if (this.FailedPremiseRead(proposition, normalized, scope) is { } failed)
+        {
+            return this.RestOnFailure(failed); // R7-C3 (B1'): the proof reads a failed premise and rests on its declaration's record
+        }
+
         var evidence = this.Supply(normalized, this.ViewOf(scope));
         if (evidence.Invalid is { } invalid)
         {
