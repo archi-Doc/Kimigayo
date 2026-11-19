@@ -453,7 +453,7 @@ conditional designs/estimates are planning inputs, not adopted representations. 
 
 ## 2026-10-16 — Complete Polonius A5 plan
 
-- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み (open). The owner
+- [Complete Polonius A5 Plan](Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み (open). The owner
   adopted it for R4's remaining scope on 2026-10-16 and 2026-10-17 (its decisions OD1–OD13: the direction in its status line, the
   2026-10-17 outcomes in its §10; DECISIONS R4-M35) and approved its step 0 design A3 (`Sketches/A5 Step 0/design-A3.md`, §9) on 2026-10-17. It is a working plan:
   no section is integrated into SPEC or IMPL, and no text is frozen.
@@ -489,7 +489,7 @@ adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirme
   - Every item is integrated; none is rejected or transferred. The file moved to `Changes` with only its status sentence
     replaced at closure (adopted, DECISIONS R4-M39, and integrated); its links to files that stay in `Proposals` (S2, the
     A5 plan, PLAN10) are not rewritten. `Sketches/LoanIdentityByBase.mjs` names the new path.
-- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+- [Complete Polonius A5 Plan](Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
   frozen: §5.2's S4 and its Optional row "Mutable-static borrows never leave the body" (P6). The other clauses are
   §5.3's first list as design A3 §2 and §9 word them. The rest of the plan stays a working plan.
   - S4 → the second §15.6 example (`slot`, `r@follow = b@ref`).
@@ -679,7 +679,7 @@ ending) and **P12**.
 
 ## 2026-10-19 — A5 step 2 implementation plan
 
-- [A5 Step 2 Implementation Plan](Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md): 一部取り込み (open). The
+- [A5 Step 2 Implementation Plan](Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md): 一部取り込み (open). The
   owner adopted it on 2026-10-19 as R4's formal plan for A5 step 2, A6 and R4's exit, with its exit gate, and answered all of
   its questions OQ1–OQ13 at once (its status line and §2.2 record the outcomes; DECISIONS R4-M74). It is a working plan: no
   section is integrated into SPEC or IMPL, and no text is frozen.
@@ -747,7 +747,7 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
   - Usage: library, milestones, SPEC examples and xUnit 0 (proposal §4 and §5, H: a grep-level scan). The default
     pipeline keeps its verdicts (OD5); no implementation is claimed. Not refreshed: SPECJ (its §15.6.4 still has the
     pre-P5 open key) and GUIDE.
-- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+- [Complete Polonius A5 Plan](Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
   frozen: §5.2's S3, the clarification the A5 step 2 plan's OQ12 requested before its unit 2a0-3b.
   - S3 → §15.3.6's candidate paragraph, as the plan words it, with a link to §15.6.5 for fixed and finite Origins: a
     variable's bounds are followed through other variables to fixed or finite Origins and `static`, and a variable that
@@ -1572,3 +1572,38 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
     open `Proposals/2026-10-18 A5 Step 2 Implementation Plan.md` keeps its sibling link, which no longer resolves (its text is frozen),
     and the 2026-11-06 entry above keeps the old path as written.
   - No SPEC or IMPL text came from it; the SETTLED revision at H15 is recorded under its intake entry.
+
+## 2026-11-19 — Complete Polonius A5 plan and A5 step 2 implementation plan closed
+
+- `Changes/2026-10-16 Complete Polonius A5 Plan.md` and `Changes/2026-10-18 A5 Step 2 Implementation Plan.md`: 取り込み済み. They moved from
+  `Proposals/` on the owner's instruction (verbatim 「PLAN G396 に移ったものとして、「取り込み済み」で draft/Changes に移してください」, 2026-11-19): their
+  remaining units are PLAN G396's (the 2026-11-06 review above found neither complete, and the R5 and R6 plan's closure above left them
+  in `Proposals/`).
+  - Each file gained a closing status paragraph. The A5 plan's link to PLAN10, which stays in `Proposals/`, follows the move; the step
+    2 plan's links to the A5 plan and to the R5 and R6 plan resolve in `Changes/` unchanged. The R5 and R6 plan's link to the A5 plan
+    follows this move too, and its status paragraph's last sentence says so. Both files are now frozen.
+  - Dispositions:
+    - SPEC items, as the entries above record them: S1 (Loan Identity by Base) and S5 (Effect Atoms Widen) integrated through their
+      proposals, both in `Changes/`; S2 closed as 完了 (superseded by Abstract Calls Reach by Paths, DECISIONS R4-M106); S3 and S4
+      integrated as clarifications; relaxation (c) and the root-most kill not adopted.
+    - The exit rules (the A5 plan's §6.2, the step 2 plan's §5.4) are superseded by the owner's 90% rule (DECISIONS R4-M165); the step
+      2 plan's PD21 and §3.7 by DECISIONS Q9.
+    - The remaining units moved to PLAN G396 (and the R7, R8 and R9 plan's §5.4, "G396's items in the owner's order (R4-M165)"): F7's
+      2c-6 and 2c-7, F8 with the A5 plan's Appendix B U8s, F10, A6's 2g-1 to 2g-7 with G105 and Appendix B's U11, the 25
+      `Unsupported_Kd` producers without a removal stage, G103, G124, G126, G147 (2), G160's remainder, G263, X-5's notes and the step
+      2 plan's OQ8 condition.
+    - 2g-1 remains the removal condition of H3-2's interim records (PLAN).
+  - The old paths are repointed where a live link reads them: PLAN (the A5 and A5 step 2 lines), DECISIONS (the links in R4-M35 and
+    R4-M74, the links only) and the Sketches (`A5 Step 0/README.md`, `A5 Step 1/README.md`, `A5 Step 2/f4-census.md`, `origins.md`,
+    `spec-readings.md` and `step2-base-ledger.md`, and the code paths in `A5 Step 2/preserves-revision.md` and `R5 Step
+    0/deep-dives/q4-evidence-metrics.md`). This file's intake and entry links (2026-10-16, 2026-10-17, 2026-10-19 twice) follow the
+    move, text kept; the old path written in the 2026-10-17 entry and in the 2026-11-06 entries reads the new path.
+  - Not edited (frozen or open text), recorded here: the sibling links to the two plans in `Changes/2026-10-16 Loan Identity by
+    Base.md`, `Changes/2026-10-17 Loan Termination Across Borrow Dereferences.md`, `Changes/2026-10-19 Effect Atoms Widen.md` and
+    `Changes/2026-10-21 Closure Calls as Receiver Calls.md` now resolve (the 2026-10-25 entry's correction no longer applies to the
+    step 2 plan link); `Obsolete/2026-10-16 Preserves Results by Receiver Place.md`'s link to the A5 plan resolves at
+    `../Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md`; the open `Proposals/2026-10-20 M69 Default Loan Correspondence
+    Plan.md` and `Proposals/2026-10-20 S3 Closure Origin Publication Plan.md` link the step 2 plan as a sibling, which resolves at
+    `../Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md`; the code path in `Changes/2026-10-22 Abstract Calls Reach by
+    Paths.md` reads the new path.
+  - No SPEC or IMPL text came from them beyond the items the entries above record.

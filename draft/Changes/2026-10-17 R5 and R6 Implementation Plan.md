@@ -4,8 +4,8 @@ Status (2026-11-19): **closed, 取り込み済み** ([INTEGRATED](../INTEGRATED.
 instruction (verbatim 「上記の3ファイルは完了しましたか？完了していたら、Changesフォルダーに移動してください。」). R5 is done (DECISIONS R5-M148, its exit gate item by item).
 R6 is done: R6-gen (R5-M167) and R6-check (R5-M194). What R6-check left moved to R7 (R5-M194; the R7, R8 and R9 plan's revision 3):
 PD30 to R7-T1 (RQ12), and PD21 is superseded by DECISIONS Q9. Leftovers live in PLAN: H13's V1 review N1, and the Back's rows G121,
-G153 (2), G157, G311, G337, G156 and RZ. Nothing below this paragraph changed except the links to proposals that stay in `Proposals/`;
-those links follow the move.
+G153 (2), G157, G311, G337, G156 and RZ. Nothing below this paragraph changed except its links to the reduction plan, which stays in
+`Proposals/`, and to the A5 plan, which moved to `Changes/` the same day; those links follow the moves.
 
 Date: 2026-10-17
 
@@ -25,7 +25,7 @@ planning figures: the unit that uses a count re-measures it.
 Conventions:
 
 - PLAN10: [2026-10-10 Compiler Size Reduction and Single MIR Plan](../Proposals/2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md);
-  A5P: [2026-10-16 Complete Polonius A5 Plan](../Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md); PRE5:
+  A5P: [2026-10-16 Complete Polonius A5 Plan](2026-10-16%20Complete%20Polonius%20A5%20Plan.md); PRE5:
   [2026-10-12 Pre-R5 Work Items](2026-10-12%20Pre-R5%20Work%20Items.md); DEC, ARCH, PLAN, STATUS, VERIFICATION: the
   documents in `docs/dev/` and `docs/`.
 - PD1–PD32 are this plan's planning-session decisions (§2.1) and OQ1–OQ17 its owner questions (§2.2); O0 and O2 are

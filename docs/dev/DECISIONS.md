@@ -1175,7 +1175,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M35** (owner: the plan's direction, its step 0, OD1–OD7 and OD12 on 2026-10-16; OD8–OD11, OD13's first list and A3 §9
   item 10 on 2026-10-17; supersedes the parts named below; plan §7's M39 Binding part void after OD8's and OD9's non-adoption:
   R4-M74 OQ6 (a), and A5-F9 landed without it, R4-M90) R4's remaining scope
-  follows the [Complete Polonius A5 Plan](../../draft/Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): the Binding facts A5 reads
+  follows the [Complete Polonius A5 Plan](../../draft/Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): the Binding facts A5 reads
   first, then A5 deciding the SPEC rules of plan Appendix A as facts and a fixed set of rules that a C# evaluator runs, then A6 and
   the R4 exit tasks.
   - Adopted (plan §10): OD1 the complete approach against the rules as simplified, with no whitelist, in the order of plan §6 (a needed
@@ -1954,7 +1954,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (V16); a warm run allocates nothing.
   - Found, not this unit: rule G's raw clause misses Loans stored through raw pointers that W does not name (PLAN G160).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19; its PD21 and §3.7 superseded by DEC Q9) The owner's answers to all thirteen questions
-  of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md). Its unit and
+  of the [A5 Step 2 Implementation Plan](../../draft/Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md). Its unit and
   decision names (2x-T1, PD18) are used as there; each planning-session decision PD1–PD31 is recorded by the unit that first implements
   it.
   - OQ1 (a): the plan is R4's formal plan for A5 step 2, A6 and R4's exit, with its exit gate (§5.4), which refines the A5
