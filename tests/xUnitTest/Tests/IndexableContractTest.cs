@@ -31,6 +31,21 @@ public class IndexableContractTest
     [Fact]
     public void ACompoundRightSideDoesNotRunIndexUniq() => ScalarEmissionTest.EmitFixture("IndexUniqCompoundRight", CompoundRight, string.Empty);
 
+    // SPEC 4.7.1 step 3, 5.4 (the owner's O-445 (A); PLAN G147 (2) (e)): `x[k]@raw` through a conformance is a read, so it selects index on
+    // a `var` receiver as on a `let` one, never by whether the path could be acquired exclusively, and the pointer has the selected
+    // reference's shared authority (SPEC 5.2.1 (3)).
+    [Theory]
+    [InlineData("var")]
+    [InlineData("let")]
+    public void ARawAddressOfAnElementSelectsIndex(string binding)
+    {
+        var c = MinimalEmissionTest.Analyze(Counting + $"let seven: i32 = 7\n{binding} two = Two.init(seven)\nlet p = two[0]@raw\n");
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        var element = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single();
+        Assert.Equal("index", ExpansionPlan.Of(c.Binding, element)!.Value.Second!.Target.Name);
+    }
+
     private const string Pair =
         "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
         "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
