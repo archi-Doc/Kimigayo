@@ -452,11 +452,12 @@ public sealed partial class Binding
                         }
                     }
 
-                    var applicability = this.FitArgument(call.ArgumentNodes[i], type, scope, call, out var operation);
-                    if (applicability == CandidateApplicability.Inapplicable && type.Kind == BoundTypeKind.Function)
-                    {
-                        applicability = solution.FitPerCall(call.ArgumentNodes[i], type, out operation);
-                    }
+                    // SPEC 10.7, 10.8: an argument with a per-call stand-in is decided by it (FitPerCall), a fact of the solve, never by
+                    // its fit failing first.
+                    BoundArgumentOperation operation;
+                    var applicability = solution.HasPerCallStandIn(call.ArgumentNodes[i], type)
+                        ? solution.FitPerCall(call.ArgumentNodes[i], type, out operation)
+                        : this.FitArgument(call.ArgumentNodes[i], type, scope, call, out operation);
 
                     if (operation.Source is not null)
                     {
@@ -541,6 +542,14 @@ public sealed partial class Binding
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
                 proof = ConstraintProof.Proven;
+            }
+
+            // SPEC 10.1 step 5, 7.7.4: one ordering for the step: a candidate its own Constraints or premises refute is inapplicable whatever
+            // an erased argument's limit says, so the erasures' environment (which orders its own arguments so) is read only when nothing
+            // has refuted the candidate; the located limit only where nothing does.
+            if (proof != ConstraintProof.Refuted)
+            {
+                proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true);
             }
 
             constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.

@@ -609,10 +609,11 @@ public sealed partial class Binding
     // SPEC 8.3.3 Finality (R7-C2e2 e2-5a, e2-3b): an evaluation whose answer depends on an open obligation (EndAnswer) supplied no
     // evidence there, and that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that
     // proof ends. None is kept past the outermost request, which has answered its requester inside that proof: each returns to its
-    // initial state and is evaluated again when next requested. A work whose last evaluation depends on none stays, unless it read one
-    // that does (a decided reader holds whatever that one settles to, EndAnswer, so evaluating it again changes no verdict: one spread for
-    // every reader). A forgotten work stays in its sources' Dependents and edges: a later change of a source evaluates it again with no
-    // Parent, which only the growth guard reads (no verdict depends on it).
+    // initial state, keeping Depends until it is evaluated again when next requested (read as Final by the erasure's Owned owner,
+    // OwnedMember). A work whose last evaluation depends on none stays, unless it read one that does (a decided reader holds whatever
+    // that one settles to, EndAnswer, so evaluating it again changes no verdict: one spread for every reader). A forgotten work stays in
+    // its sources' Dependents and edges: a later change of a source evaluates it again with no Parent, which only the growth guard reads
+    // (no verdict depends on it).
     private void ForgetDependentCapabilities()
     {
         var dependents = this.dependentCapabilities;
@@ -635,6 +636,7 @@ public sealed partial class Binding
             }
 
             work.Reset();
+            work.Depends = true; // Forgotten, not judged: its last evaluation's answer depends on an open obligation (the erasure's Final, OwnedMember).
         }
 
         dependents.Clear();
@@ -667,7 +669,10 @@ public sealed partial class Binding
             var result = ConstraintProof.Unknown;
             for (var i = 0; i < type.Components.Count; i++)
             {
+                var saved = this.ScopeReads.Origin;
+                this.ScopeReads.Origin = null;
                 var child = this.RequestCapability(type.Components[i], work.Intrinsic, work.Scope);
+                this.ScopeReads.Origin = work.Part(i, child, this.ScopeReads.Origin, saved, type.Components[i]);
                 if (child == ConstraintProof.Error)
                 {
                     return child;
@@ -710,7 +715,10 @@ public sealed partial class Binding
                 return this.StorageFormation(work, type.Symbol!);
             }
 
-            var origin = OwnedOrigin(type) is not { } owned ? ConstraintProof.Proven : this.StaticOrigin(owned, work.Scope);
+            // A layer's own Origin is its first Origin part (CapabilityPart).
+            var own = OwnedOrigin(type);
+            var origin = own is null ? ConstraintProof.Proven : this.StaticOrigin(own, work.Scope);
+            this.ScopeReads.Origin = work.Part(type.Components.Count, origin, own, this.ScopeReads.Origin, null);
             return this.InstanceCapability(work, CombineProof(origin, this.StructuralCapability(work), true));
         }
 
@@ -772,7 +780,12 @@ public sealed partial class Binding
         var call = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.CallSignature(work.Type) : null;
         if (call is { Signature: { } own, Binder: var binder } && ReferenceEquals(own, work.Type))
         {
-            return this.SignatureCapability(work, own, binder);
+            var closed = this.ClosedSignature(own, binder);
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var signature = this.RequestCapability(closed, work.Intrinsic, work.Scope);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, signature, this.ScopeReads.Origin, saved, closed);
+            return signature;
         }
 
         if (work.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
@@ -784,9 +797,17 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _, _) in new CapabilityParts(work.Type, BoundType.Unit))
+            var elements = new CapabilityParts(work.Type, BoundType.Unit);
+            while (elements.MoveNext())
             {
-                owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
+                if (elements.Current.Part is { } element)
+                {
+                    var saved = this.ScopeReads.Origin;
+                    this.ScopeReads.Origin = null;
+                    var proof = this.RequestCapability(element, work.Intrinsic, work.Scope);
+                    owned = CombineProof(owned, proof, true);
+                    this.ScopeReads.Origin = work.Part(elements.Member, proof, this.ScopeReads.Origin, saved, element);
+                }
             }
 
             return owned;
@@ -808,7 +829,7 @@ public sealed partial class Binding
             this.ScopeReads.Origin = null;
             var proof = this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = work.Type.Symbol!.Declaration }, null);
             result = CombineProof(result, proof, true);
-            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved, null);
         }
 
         var parts = new CapabilityParts(work.Type, inherited ?? BoundType.Unit);
@@ -821,7 +842,7 @@ public sealed partial class Binding
                 : argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
-            this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved);
+            this.ScopeReads.Origin = work.Part(parts.Member, proof, this.ScopeReads.Origin, saved, part);
         }
 
         // A Closure's call signature, or what a Function Item inherits (InheritedEnvironment), is a part after its captures or bound
@@ -831,18 +852,20 @@ public sealed partial class Binding
         {
             var saved = this.ScopeReads.Origin;
             this.ScopeReads.Origin = null;
-            var proof = closure.Signature is { } signature ? this.SignatureCapability(work, signature, closure.Binder)
+            var closed = closure.Signature is { } signature ? this.ClosedSignature(signature, closure.Binder) : null;
+            var proof = closed is not null ? this.RequestCapability(closed, work.Intrinsic, work.Scope)
                 : this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = closure.Binder }, null);
             result = CombineProof(result, proof, true);
-            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved, closed);
         }
 
         return result;
     }
 
     // SPEC 15.2.3, 15.8.2 (DECISIONS BU-73): a callable signature is Owned when it is with its own per-call Origins closed to static: its
-    // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed.
-    private ConstraintProof SignatureCapability(CapabilityWork work, BoundType signature, Koto binder)
+    // direct inputs, its receiver and its call result (PerCallImages); every other Origin it names is fixed. The closed signature is the
+    // part Owned judges.
+    private BoundType ClosedSignature(BoundType signature, Koto binder)
     {
         var count = InputOriginCount(binder);
         var inputs = this.originScratch.Rent(count);
@@ -850,7 +873,7 @@ public sealed partial class Binding
         {
             inputs.AsSpan(0, count).Fill(BoundOrigin.Static);
             var images = new PerCallImages(inputs.AsSpan(0, count), BoundOrigin.Static, BoundOrigin.Static);
-            return this.RequestCapability(this.SubstituteStoredOrigins(signature, binder, [], images), work.Intrinsic, work.Scope);
+            return this.SubstituteStoredOrigins(signature, binder, [], images);
         }
         finally
         {
@@ -974,9 +997,12 @@ public sealed partial class Binding
                 }
 
                 var evidence = ConstraintProof.Unknown;
+                BoundType? part = null; // The Type whose verdict is the evidence, an Owned part of the abstract Type (member 0).
+                var saved = this.ScopeReads.Origin;
+                this.ScopeReads.Origin = null;
                 if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
                 {
-                    evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
+                    evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part = required, contract: work.Intrinsic)), work.Scope);
                 }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {
@@ -987,7 +1013,7 @@ public sealed partial class Binding
                         var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
                         if (target is not null && !ReferenceEquals(target, work.Type))
                         {
-                            evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, target, contract: work.Intrinsic)), work.Scope);
+                            evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part = target, contract: work.Intrinsic)), work.Scope);
                         }
                     }
                     else if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy)
@@ -1003,11 +1029,12 @@ public sealed partial class Binding
                         var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
                         if (target is not null && !ReferenceEquals(target, work.Type))
                         {
-                            evidence = this.RequestCapability(target, work.Intrinsic, work.Scope);
+                            evidence = this.RequestCapability(part = target, work.Intrinsic, work.Scope);
                         }
                     }
                 }
 
+                this.ScopeReads.Origin = work.Part(0, part is null ? ConstraintProof.Proven : evidence, this.ScopeReads.Origin, saved, part);
                 if (evidence == ConstraintProof.Error)
                 {
                     return evidence;
