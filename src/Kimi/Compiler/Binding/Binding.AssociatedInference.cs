@@ -19,6 +19,10 @@ public sealed partial class Binding
     private AssociatedInference? collectingAssociated;
     private bool associatedInferenceReady;
 
+    // The scaling rows' measure: the steps 8.5.5's walks of an inferred binding took past their memos in this compilation: the
+    // extraction's positions (ExtractAssociatedEvidence), an evidence's pairs (InferredEvidence) and its joins (JoinEvidence).
+    internal int InferredEvidenceWork { get; private set; }
+
     // Symbolic parameter projections are complete public Types; an unresolved projection on a nominal
     // declaration still needs a Type value. This query never searches bodies or introduces a proof. KimiLibraryShapeTest states with it
     // that no projection of the library's Type syntax is pending (PLAN G949 S1-r2, rule (c)).
@@ -462,6 +466,7 @@ public sealed partial class Binding
             return;
         }
 
+        this.InferredEvidenceWork++;
         var source = batch.Source!;
         if (this.InferenceHoleOf(path, required) is { } identity)
         {
@@ -527,6 +532,7 @@ public sealed partial class Binding
                 return;
             }
 
+            this.InferredEvidenceWork++;
             if (this.InferenceHoleOf(path, required) is { } hole)
             {
                 if (hole == identity)
@@ -570,6 +576,7 @@ public sealed partial class Binding
             return known;
         }
 
+        this.InferredEvidenceWork++;
         var count = normal.Components.Count;
         var components = this.RentTypes(count);
         try
