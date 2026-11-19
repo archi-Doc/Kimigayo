@@ -1419,6 +1419,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 99 (2026-11-19, plan §14; the Middle's R7-O1 design Revision 0 and Q-O1-1, agreed by the Front): H11b's remainder
   becomes O1's phases H1-H2 (the Middle implementing, the Front reviewing every Binding hunk); O1's row: `LocalRegions` stays,
   Begin/Keep/End already gone, size about −700/+300. Nothing frozen.
+- Revision 100 (2026-11-19, plan §14; the Front's Q-518, e2-3a with e2-3b-cached): §5.0's e2 entry names e2-3a and
+  e2-3b-cached as landed (DECISIONS R7-M46, R7-M47), e2-5a's temporaries removed, the inferred half PLAN G1001's.
+  Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

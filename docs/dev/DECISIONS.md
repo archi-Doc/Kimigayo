@@ -21750,6 +21750,132 @@ R8-M* and R9-M* by the stage of the recording unit.
     MemberOf), Same, Failed, Refuted and ListedRoot read it.
   - **Rejected:** any constructed member as the Member (a pair target as the 'closed' Member refused tp-1 and tp-2, valid); a second
     congruence for Types that are no node.
+- **R7-M46 A Complete answer may rest on a published state; every kept table lives for one publication** (Front, 2026-11-14,
+  landed 2026-11-19 with R7-M47; R7-C2e2 part e2-3a; Major; the plan's §5.0 C2 row, e2's entry; c2's design review note B; R7-M27's
+  N3) SPEC 8.3.2, 8.3.3, 23.1.2. Supersedes in part BU-199 item 7's "one lifetime, one epoch" for the kept rows (its reason, that only
+  the epoch bounded what a row read, no longer holds once a row's reads carry Completion) and R7-M20/R7-M28's "for one pass" lifetime
+  of the readings, the entries and the identity tables (their reason, that nothing they rest on changes within a pass, no longer
+  holds once W6 may be Complete on a published state). BU-199 item 7's "Inputs outside the key" argument stands and is extended
+  (below).
+  - W8 (`SourceStates`): `ReadSourceState` gives Complete for a published Proven or Refuted (final in its publication; it joins
+    nothing inside a proof scope), Provisional for Pending (a final Unknown included) and Error. `AvailableContractPremise` is the meet
+    of its reads, a failed or unresolved declaration context Provisional. W6: a derived fact found available is the meet of every
+    source it read (R7-M20's composite rule).
+  - A publication's start (`PublishSourceStates`, the states' one writer, asking ContractSolver's one phase fact
+    `KeepsAcrossRequests`) forgets the kept tables of the capability phase (`ForgetKeptTables`): readings, `Closure(view)` with its
+    rows and the identity memo, each entry and table rebuilt in place at its view's next read (a cleared pool hands a view another
+    view's entry and breaks warm 0 B; the premise error's per-pass record set stays), and head depths.
+  - An outermost walk, `PremiseRefines`' or `FirstRows`' (c2-3b's first walk), has a Completion (`enumerateCompletion`), the meet of
+    its availability reads; its rows are kept only when it is Complete and `keep` holds (the kept region, final keys: an identity
+    table that is not Final or an extension keeps nothing), as a column of the view's Kept entry (`ViewIndex.Rows`), each row c2-3b's
+    `PremiseRow` (with its availability and Source).
+  - The declaration context is an input outside the key, by BU-199 item 7's argument extended from rows in one epoch to every kept
+    table in a publication: a valid context only fails, and (i) the failure's own record rejects the program, so an answer kept
+    across it differs only in a rejected program's dependent records (Q13); (ii) an environment naming the failed Contract goes
+    Invalid, another serial (not shown for an ancestor's or an enclosing declaration's failure, which the read also consults: (i)
+    carries the argument).
+  - Not replayed by a kept answer (records only, dev's own): a read's proof frame outside every proof scope, and the dependent record
+    of a context failed after the walk.
+  - The Complete whitelist gains W8 (`SourceStates.cs`) and six ContractSolver sites: the availability meet and W6's meet
+    (`Binding.ContractSolver.cs`, with the walk and `WalkAvailable`), and the walk's start and its admission in `PremiseRefines` and
+    in `FirstRows` (`Binding.ContractSolver.Rows.cs`, the request boundary, with the kept rows, `KeepRows` and `ForgetKeptTables`).
+  - Moves (count rows only, `NormalizedConstraintProofBindingTest` and `RecursiveContractTest.AnExtensionReopensTheViewsKeptEntryAsItsOwn`):
+    a derived-identity view is Kept, and views are formed again after each publication (`ForgetKeptTables` re-forms the view's Kept
+    entry at each publication; F's e2 rulings 97 and 100); no record, acceptance or MIR moves.
+  - Deleted: `enumerateKept`, its pool, `KeepRows`' table, the rows' clear in `ClearCapabilityResults`; R7-M28's removal condition is
+    met for a view whose derived identity facts' sources are final in the publication; COMPILER_ARCHITECTURE's temporary "Enumerate's
+    kept rows" goes.
+  - Rejected: a published Valid or Invalid as Complete for the pass (F0: every publication resets the states; a final Unknown became
+    Proven later; `SourceStates.cs` resets every state at a publication's start); a second Completion for "final in an epoch"; a
+    context Provisional until the last validation or a failure stamp in the key (nothing kept, or a second invalidation); rows for one
+    epoch (the other tables read the same contexts for the publication); Evidence's Completion now (its reader is a judgment: e2-3b,
+    R7-M47).
+  - Pinned by count rows only: the publication forget, by the count rows above (with `ForgetKeptTables` skipped each returns to dev's
+    value; no program measured loses a Proven state within a pass).
+  - Not pinned by a row (located invariants in ContractSolver's header, Kept rows; the implementation review's mutations `admit`, rows
+    kept whatever the walk's Completion, and `w8`, an Unknown read Complete; the Unit's classes fail nothing under either): the walk's
+    admission and W8's Provisional for a Pending state, in a round as well as for a final Unknown. Both decide only what is kept. Only a
+    walk inside a round can keep a row that differs from a fresh walk's (outside a round a Pending state stays until the next
+    publication's start, which forgets the row); such a row stays stale from the source's settling until that start: the rest of its
+    round, the later rounds and the checks that follow the rounds (the window C3's row must cover). The difference exists under
+    `admit` for `PremiseRefines`' admission (`ClosedConformancePrerequisiteBindingTest`'s cap10 with X before R: `T is Copy` answered no
+    from the stale rows after R settled; `e23rv/stale.txt`), but no record moves: Supply's one-level eager derivation answers the same
+    proposition (it goes at C3; from then on the admission alone keeps such rows out, and C3's unit owes the fail-first row). Under
+    `w8` no admission changes: a walk that reads a Contract Pending also reads the derived facts the eager derivation filed from it,
+    not found and so Provisional by W6. Measured for `PremiseRefines`' admission on 48 programs (`F\C2\e2\e23rv\summary.txt`),
+    outputs byte-equal under both mutations. `FirstRows`' admission: `nofirstadmit` on the W-224 merge review's six twins (d3a, d3ar,
+    d3av, d3b, d3br, d3bv) and 56 programs, no difference, and unobserved (the invalid twins never reach a Provisional `FirstRows`
+    walk: the caller's environment is Invalid and the walk skips it); `FirstRows`' readers (`PremiseCallable`, the Callable and
+    effect-bound readers, `HandedSignatures`) read `Available` directly with no shadow, so a Pending read inside a round by one of them
+    is owed with C3's fail-first row (F's rulings 55-57).
+  - Temporary: none new; R7-C2e2 e2-5a's four (R7-M33) are removed by e2-3b (R7-M47).
+- **R7-M47 An answer depends on the conformance being verified exactly where its evidence rests on it: the evidence image** (Front,
+  2026-11-19; R7-C2e2 parts e2-3b (cached half) and e2-5b's n-forms; Major; the owner's O-415 (a), O-420 (a) and O-427 (c); PLAN G629,
+  G995 (D-774); G1001 (D-780) stays open) SPEC 8.3.3 Recursion and Finality, 8.5.1, 8.5.2, 8.6.1-8.6.3. Supersedes e2-5a's reading
+  that a projection route's binding is evidence however it was formed (its reason, that a binding's formation reads no obligation the
+  reader holds, does not hold when the route's path premises or the receiver's formation read the obligation being verified).
+  - **The exact dependence (R1.1).** `EndAnswer(mark, verdict)`: an answer depends on an obligation open before it began exactly
+    when it read one and is Unknown (8.3.3: a Proven or Refuted answer holds with the obligation's result held pending; the proof
+    rules are monotone in an Unknown operand). The capability engine's two readers pass their result.
+  - **The representation: the evidence image (R4.1, the cache and the route).** In a requirement's evidence (`ProveRequirement`,
+    `BeginEvidence`: the obligations open when it began are held pending, `heldObligations`), a projection whose route's evidence (the
+    path's conditions and the receiver's formation, one answer) depends on a held obligation names no Type: the image keeps the
+    projection at its position, so only a judgment that reads that part reads the obligation, and the evidence is Unknown only then
+    (`EndEvidence`). A formation read (a verification's body, the binding cache's formation, the inferred bindings' collection) holds
+    none: what it forms is judged where written, after the conformance holds. The cache's image is its first candidate (the identity
+    atom it is formed from) formed in the reading evidence, so every associated Type it names is read the same way; the route is
+    `PathConditions`; a specification is below. The batch answers formation reads only (`Batched`: its key carries no held
+    obligation).
+  - **An inferred binding (8.5.5) is read as its normal form by every reader, a requirement's evidence included** (dev's behaviour,
+    unchanged): its evidence image is open, PLAN G1001 (O-427 (c)); the rows `AnInferredBindingIsReadAsItsNormalForm` pin dev's
+    verdicts (the invalid ones accepted say "accepted until G1001: class 1, open").
+  - **Several identity atoms (8.5.1; R4.2).** The identity atom the binding is formed from is the binding (a formation read); every
+    other identity atom for the Item, in the same clause or another, and every other conjunct is an obligation of the conformance,
+    proven as a requirement's evidence; a repeated atom is one proposition (8.3.1).
+  - **No record kept by reads (R4.3).** The evidence image is formed in the reading answer and never stored; `FormBinding` runs once
+    per binding per pass under no held obligation; what a read sees is a function of the obligations open and held at it.
+  - **R2.5.** `InstanceFormation` reads the declaration's Constraints at the instance's arguments (the formation step alone), not the
+    arguments' own formation (their written site's), for every reader: the projection route, ResolveConformance's instance, the
+    capability engine's instance, the component summaries' stored instances (deepv, deepc, deepr V; deepcn I).
+  - **Owner.** `Binding.ConditionalConformances.cs`: `openObligations`, `dependence` and `heldObligations`, and every member that
+    writes them (`OpenObligation`, `BeginAnswer`/`EndAnswer`, `BeginEvidence`/`EndEvidence`, `BeginVerification`/`EndVerification`,
+    `BeginFormation`/`EndFormation`; `ResetContracts` resets them); `HeldPending` the one question (`FormationRead`,
+    `EndHeldAnswer` ask it). The route's per-path decision `PathConditions`: `Binding.AssociatedTypes.Specification.cs`. The cache, its
+    formation and its evidence image: `Binding.AssociatedTypes.cs`. The inferred bindings' collection as a formation read (its
+    `BeginFormation`/`EndFormation` pair): `Binding.AssociatedInference.cs`. The roles of a verification's clauses
+    (`ProveRequirement`, `ProveSpecification`): `Binding.ContractMatching.cs`, read by `Binding.InheritedConformances.cs`. Which
+    ContractType calls the batch answers (`Batched`: formation reads only): `Binding.ContractTypes.cs`. `heldObligations`' brackets are
+    try/finally pairs (review 75 N1).
+  - **Deletes.** e2-5a's reading of a route's deferred binding as evidence inside a requirement; commit 2's (07ee5fe34, not landed)
+    dependent-path skip and spread restriction; Revision 2's `assumption` and Revision 3's `AssociatedBinding.Provisional`,
+    `provisionalRoutes`/`Readers`, `ReadProvisional`, `ProvisionalRoute` (never landed); commit 1's absolute capability count row; c4's
+    and R4.9's inferred writer (`InferredEvidence`, `HolePart`, `WrittenType` and its rows `WrittenPositions`/`WrittenPosition`,
+    `JoinEvidence`, `AssociatedEvidence.Required/DeclaringType`; deleted by the cut before landing, O-427 (c)); and R7-C2e2 e2-5a's
+    four temporaries (R7-M33's removal condition met here, before e2-5b): `reentryReads`, `BoundConformancePath.Reentries`,
+    `CapabilityWork.Pending` and `BoundConformancePath.Checking`.
+  - **Records (Q13; review R4 C3).** A rejected program's independent record is `UnprovenConstraint_Kd` at the conformance; a failure
+    the conformance's implementation check owns keeps `IncompatibleContractImplementation_Kd` at the conformance with the result's
+    formation (impl1). Dependent `InvalidConstraint_Kd` records are not pinned by the rows.
+  - **Rejected options:** an answer that read any open obligation depends (Revision 0: rejects q2f); skip a dependent path in every
+    read (commit 2: rejects C-391 B1's eleven); Pending for a dependent path in every read (P1: the identity atom then compares the
+    cached binding with an unresolved projection); dependence by use (Revision 2's `assumption`: rejects oa1, oa3); routes kept on the
+    cached binding and judged again at each read (Revision 3: rejects oa2, pp1; rr2's reentrant fault); routes per part beside
+    ContractType's image (D-780's form: a second structure threaded through every judgment); the open obligation's key on the cache
+    (P6: accepts ind1, ccq); a memo of `InstanceFormation` per request (review R3 N2: no measured cost; RP8's counts); the inferred
+    writer of c4 and R4.9 (a second walker of 8.5.5's extraction and a second copy of the binders' component layout: the delta check's
+    D1-D4, nst4n accepted, wrap1-wrap2, nst3, nst5 faulting, pj1/pj2 and pos1/pos2 order-dependent, d30 2^N; withdrawn by O-427 (c),
+    G1001 designs it as the extraction's one walk).
+  - **The proof normalization walks each distinct part once per query (X1, e2 ruling 84; BU-19/BU-64).** `NormalizeProofType` takes the
+    per-query `TypeMemo` (`proofParts`), the third such walk after ContractType and SubstituteIdentity: a requirement's evidence keeps a
+    held projection in its subject's image, so NormalizeProofConstraint's early return no longer applies and the walk ran as a tree
+    (x24 86.5 s; now 4.4 s, dev 5.1 s). Rejected: widening the early return (hides the cost); keeping held parts out of the image (undoes
+    R4.1); memoizing ContractType across queries (the formation is linear already).
+  - **The base walk's settled part reads R1.1's exact dependence** (the dev 965a47bd4 merge; DECISIONS BU-218; e2 ruling 87):
+    FormedPart's `Settled` is a proof that depends on no obligation open before it began (`EndAnswer(mark, proof)`: a decided proof
+    holds whatever the obligation settles to) and no growth of `ProvisionalReads` (now the coinductive assumptions alone) or
+    `unsettledReads`; `reentryReads` is gone with e2-3b's commit 1. Rejected: any read of an open obligation (`EndRead`, e2-5a's
+    predicate: R4.7's rejected "an answer that read any open obligation depends", a second copy of R1.1's rule).
+  - **Unverified:** the engine's coinductive half (O3); RP8's timing (counts only: R4.6).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -24328,7 +24454,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Hop`'s). `VerifyConformance`'s two `IsVerified = false` stores before its `IsVerified` return (the invalid path or declaration
     context branch and the unresolved Type declaration context branch) do not run on a frozen path: their predicates read library
     states the library pass left Resolved; a change that lets them read a reading compilation's facts (for example its foreign
-    failures) makes them a frozen-path write.
+    failures) makes them a frozen-path write. A frozen library holds no lazily filled field (R8-L1 U3c, PLAN G1072, 2026-11-19;
+    B's U3 ruling 48): the library pass's end completes each (`Koto.CompleteLazyFields`, `SyntaxTable.CompleteLazyFields`), each
+    by its owner (a node type with such a field overrides `Koto.CompleteLazyFields`, and a new one joins it there;
+    `SourceDocument.CompleteLazyFields` forms a document's line map), at the B1 site before the freeze counts the library's records;
+    `InvocationKoto.ArgumentLabels` forms its list on each read and stores none (no compiler reader). The census is
+    `back\notes\l1-s2\u3c\census.md`; the row `KimiLibraryShapeTest.AReaderAfterTheFreezeFillsNoLazyField`.
   - **Rejected.** A mode or flag choosing the library (its state decides); a per-compilation copy of the frozen library; a test
     editing `Of`'s library (it is shared: tests edit their own through the seam, `CompilationTestHelper.UseEditedLibrary`); the
     record of a library body published through the frozen library's collection (shared across compilations); `WithSource` and
