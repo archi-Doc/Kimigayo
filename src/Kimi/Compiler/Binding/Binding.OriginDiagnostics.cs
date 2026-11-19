@@ -459,7 +459,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (this.phantomRawOrigins?.TryGetValue(node, out var phantom) == true)
+        if (this.phantomRawOrigins.TryGetValue(node, out var phantom))
         {
             var slot = phantom.Slot;
             var found = CaseText(phantom.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(phantom.Cases.Start, phantom.Cases.Count));

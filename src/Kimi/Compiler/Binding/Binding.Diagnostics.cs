@@ -676,7 +676,6 @@ public sealed partial class Binding
         this.arityFailures?.Clear();
         this.constructorAbsences?.Clear();
         this.invalidStaticOriginSlots?.Clear();
-        this.phantomRawOrigins?.Clear();
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
         this.rejectedRows.Clear();
