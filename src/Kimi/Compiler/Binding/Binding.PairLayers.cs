@@ -183,8 +183,9 @@ public sealed partial class Binding
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
     // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability. SPEC 9.6.1: a receiver whose member a base
-    // declares (`projection`, the base, as for a receiver through a reference layer: AdaptInput) is selected below the layers, where
-    // member selection found that base, and lends the base subobject (PLAN G1122).
+    // declares (`projection`, the base, as for a receiver through a reference layer: AdaptInput) is the layer's target, where member
+    // selection found that base (a receiver below further layers is ReceiverThroughLayers' recorded read), and lends the base
+    // subobject (PLAN G1122).
     private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundType? projection, out BoundType adapted, out ArgumentOperationKind kind, bool record)
     {
         adapted = actual;
@@ -197,7 +198,7 @@ public sealed partial class Binding
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         // A layer admitting no case selects no receiver here (stopped: the call, not the receiver, would have to rest; PLAN G750).
         var admitted = this.FollowablePair(actual, scope, out var target) ?? SemanticsMask.None;
-        if (admitted != SemanticsMask.None && (projection is not null || !this.ReceiverTarget(target, pattern.Components[0], scope)))
+        if (admitted != SemanticsMask.None && projection is null && !this.ReceiverTarget(target, pattern.Components[0], scope))
         {
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }

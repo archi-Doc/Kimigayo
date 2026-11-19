@@ -347,6 +347,12 @@ public class PairFollowTest
         "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func load(self: ref/Self) -> i32 => self.weight\n" +
         "func g(v: ref/i32) -> i32 => v + 0\nfunc both(a: ref/i32, b: uniq/i32) -> i32 => 0\n";
 
+    // PLAN G1122: a Meter read, viewed and updated through several layers.
+    private const string Meter =
+        "struct Meter\n    public var n: i32 = 0\n    public computed level: i32\n        get() -> i32 => self.n\n        set(value: i32) -> () => self.n = value\n" +
+        "    public func view(self) -> ref/Self => self\n    public func add(self: uniq/Self, k: i32) => self.n += k\n" +
+        "    public func show(self) -> i32 => self.n\n    public init() => ()\n";
+
     private const string Reached = Layered + Box +
         "struct Outer\n    public var inner: Node\n    public init(inner: Node) => self.inner = inner@move\nfunc look<T>(x: ref/T) => ()\n";
 
@@ -938,7 +944,9 @@ public class PairFollowTest
     // PLAN G794 (SPEC 10.2, 3.4.3, 13.5.5, 15.6.1): the shared-reference row, a ref/Self receiver, a borrowing `for` and a member Borrow
     // through a qualifying pair layer below ref or uniq layers, and an index key through one (SPEC 4.7.1: a Dictionary's and a user
     // Type's ref/Key), as a Non-Copy key through two concrete layers is. Below a met layer the slot of an owner- or uniq-admitting pair is
-    // implied by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted.
+    // implied by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted. PLAN G1122 (labels
+    // from SPEC 13.5.5, 10.2, 15.6.3): a receiver through several layers depends on the Place itself where every layer admits only owner,
+    // and on the path it is reached through (a shared `x` or a ref case), as its concrete `ref/Box<uniq/(uniq/Meter)>` twin does.
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return 0")]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    return 0")]
@@ -960,6 +968,13 @@ public class PairFollowTest
     [InlineData("func f<s/T>(d: uniq/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    d[k] = 5\n    return 0")]
     [InlineData(TwoKeys + "func f<s/T>(m: ref/M, k: ref/(s/i32 during m0), n: s/T) -> i32\n    s is owner or ref\n    return m[k] + 0")]
     [InlineData("func f(d: ref/Dictionary<string, i32>, k: ref/(ref/string during m0)) -> i32\n    return d[k] + 0")]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    return p.show()")]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    var h = p@move\n    h.add(1)\n    return h.n")]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    let r = p.view()\n    return r.n")]
+    [InlineData(Box + Meter + "func f<t/U>(x: ref/Box<uniq/(t/Meter during b) during c>, k: t/U) -> i32\n    t is uniq\n    return x.item.level")]
+    [InlineData(Box + Meter + "func f<t/U>(x: uniq/Box<uniq/(t/Meter during b) during c>, k: t/U) -> i32\n    t is ref or uniq\n    return x.item.show()")]
+    [InlineData(Box + Meter + "func f<s/T, t/U>(x: s/Box<uniq/(t/Meter during b) during c>, m: s/T, k: t/U) -> i32\n    s is ref or uniq\n    t is uniq\n    return x.item.level")]
+    [InlineData(Box + Meter + "func f(x: ref/Box<uniq/(uniq/Meter during b) during c>) -> i32\n    return x.item.level")]
     public void LayeredPairReadsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);
@@ -967,7 +982,8 @@ public class PairFollowTest
     }
 
     // Their invalid twins report the violation itself (an Origin, a Loan, a shared path, a pair admitting raw, a wrong referent); an
-    // Exclusive `for` through such a pair is the loop's located limit (PLAN G162, G179).
+    // Exclusive `for` through such a pair is the loop's located limit (PLAN G162, G179). PLAN G1122: a receiver through owner-only layers
+    // keeps its Loan on the Place (a replacement, an exclusive call, a Move while its view is live).
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> ref/i32 during m0\n    s is owner or ref\n    return x", DiagnosticCode.UnprovenOriginRelation_Kd)]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or raw\n    let r: ref/i32 = x\n    return 0", DiagnosticCode.TypeMismatch_Kd)]
@@ -981,6 +997,9 @@ public class PairFollowTest
     [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or raw\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i64 during m0), m: s/T) -> i32\n    s is owner or ref\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("func f(d: ref/Dictionary<string, i32>, k: ref/(ref/i32 during m0)) -> i32\n    return d[k] + 0", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    var h = p@move\n    let r = h.view()\n    h = Meter.init()\n    return r.n", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    var h = p@move\n    let r = h.view()\n    h.add(1)\n    return r.n", DiagnosticCode.CallActivationConflict_Kd)]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    let r = p.view()\n    let z = p@move\n    return r.n", DiagnosticCode.ComparisonLoanConflict_Kd)]
     public void LayeredPairReadsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);

@@ -43,12 +43,15 @@ public sealed partial class Binding
             return terminal;
         }
 
-        if ((terminal is not { Kind: BoundTypeKind.Tuple } && !AdtDef.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual!, terminal, scope, out _) is not { } shared)
+        if ((terminal is not { Kind: BoundTypeKind.Tuple } && !AdtDef.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual!, terminal, scope, out var layers) is null)
         {
             return null;
         }
 
-        var reference = this.ExclusivelyAcquirable(left) ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin) : shared;
+        // SPEC 10.2, 15.6.3, 13.5.5: the Origin of the shared-reference row (AdaptInput): the layers, then the path reaching the receiver
+        // unless a layer is shared (ReferentOrigin); where nothing on the path is dereferenced, the receiver Place's own.
+        var origin = this.ReferentOrigin(left, actual, layers) ?? this.PlaceOrigin(left);
+        var reference = this.types.Intern(BoundTypeKind.Semantics, null, this.ExclusivelyAcquirable(left) ? SemanticsKind.Uniq : SemanticsKind.Ref, [terminal], origin: origin);
         this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, reference);
         return reference;
     }
