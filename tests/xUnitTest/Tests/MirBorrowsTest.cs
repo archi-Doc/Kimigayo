@@ -1717,6 +1717,108 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     r.n += 1
                 """));
 
+    // SPEC 13.7.2, 11.3.1 (Z11, 2d-2): an update through a setter reserves the setter's receiver where it locates it, the getter or the
+    // standard get reads through the reservation and the setter's call activates it. Shared reads coexist with it (the getter's Borrow, a
+    // user operator's operand Borrows, SPEC 13.7.2's `holder.item += delta`, a shared Borrow ended before the update); a shared Borrow of the
+    // receiver live across the write conflicts at the activation, for every receiver: a local, a parameter's referent, a Field path and an
+    // element, in a compound assignment, an increment and with a standard get; a simple assignment starts no writeback (SPEC 13.7.1).
+    [Fact]
+    public void ASettersReservationProtectsItsReceiverUntilTheWrite()
+        => Assert.Equal(
+            [
+                "iLocal: g.level += 1 CallActivationConflict_Kd", "iParam: g.level += 1 CallActivationConflict_Kd",
+                "iField: h.gauge.level += 1 CallActivationConflict_Kd", "iElement: gs[1].level += 1 CallActivationConflict_Kd",
+                "iPostfix: g.level++ CallActivationConflict_Kd", "iStoredSetter: g.mark += 1 CallActivationConflict_Kd",
+                "iAssign: g.level = 5 CallActivationConflict_Kd",
+            ],
+            Problems("""
+                struct WGauge
+                    var hits: i32 = 0
+                    public var mark: i32 = 0
+                        set(value: i32) -> () => storage = value
+                    public computed level: i32
+                        get() -> i32 => self.hits
+                        set(value: i32) -> () => self.hits = value
+                    public init() => ()
+                struct WRack
+                    public var gauge: WGauge = WGauge.init()
+                    public init() => ()
+                struct WAmount
+                    Self is Addable<WAmount>
+                    associate Addable<WAmount>.Output is WAmount
+                    public let n: i32
+                    public init(n: i32) => self.n = n
+                    public func added(self: ref/Self, right: ref/WAmount) -> WAmount => WAmount.init(self.n + right.n)
+                struct WPurse
+                    var total: i32 = 0
+                    public computed amount: WAmount
+                        get() -> WAmount => WAmount.init(self.total)
+                        set(value: WAmount) -> () => self.total = value.n
+                    public init() => ()
+                func vLocal() -> i32
+                    var g = WGauge.init()
+                    g.level += 2
+                    g.mark *= 3
+                    g.level = 5
+                    _ = ++g.level
+                    return g.level--
+                func vParam(g: uniq/WGauge)
+                    g.level += 1
+                    g.level--
+                func vField()
+                    var h = WRack.init()
+                    h.gauge.level += 1
+                func vElement(i: isize)
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    gs[1].level += 1
+                    var all: Array<WGauge> = [WGauge.init()]
+                    all[i].level += 1
+                func vOperator(delta: WAmount)
+                    var p = WPurse.init()
+                    let other = WPurse.init()
+                    p.amount += delta
+                    p.amount += other.amount
+                func vEnded(g: uniq/WGauge)
+                    let r = g@ref
+                    inspect(r)
+                    g.level += 1
+                func iLocal()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iParam(g: uniq/WGauge)
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iField()
+                    var h = WRack.init()
+                    let r = h.gauge@ref
+                    h.gauge.level += 1
+                    inspect(r)
+                func iElement()
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    let r = gs[1]@ref
+                    gs[1].level += 1
+                    inspect(r)
+                func iPostfix() -> i32
+                    var g = WGauge.init()
+                    let r = g@ref
+                    let old = g.level++
+                    inspect(r)
+                    return old
+                func iStoredSetter()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.mark += 1
+                    inspect(r)
+                func iAssign()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level = 5
+                    inspect(r)
+                """));
+
     // SPEC 15.6.7 (A3 E1, PLAN G119; 36h, 38a–38c, 38e–38i, 107): while a reservation waits for its call, a write or destruction of its
     // Place's prefix reaches it across references, a destroying activation included, but neither a write of what is not on its route nor of
     // a distinct constant index; replacing a cursor ends the Loan of its old route (38f, SPEC 15.6.3's deepest).

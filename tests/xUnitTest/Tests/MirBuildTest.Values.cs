@@ -457,9 +457,10 @@ public sealed partial class MirBuildTest
 
     // SPEC 23.1.2, 13.7.2 (DECISIONS R4-M109; superseded for call positions only, ACallPositionsInputIsBuiltAsAValidOne): an input Binding
     // rejects after selection, here a static Place's Borrow (the located limit until P42, DECISIONS BU-25), is its consumer's derived
-    // value, an Opaque of the Type the consumer takes, moved into it, with no Ref of a temp of the node's own Type; an update locates an
-    // Error receiver once (the index call it keeps evaluated once), and its getter and setter each take their own derived value, whose site
-    // names the located root.
+    // value, an Opaque of the Type the consumer takes, moved into it, with no Ref of a temp of the node's own Type; an update reserves an
+    // Error receiver once where it locates it (SPEC 13.7.2; the index call it keeps evaluated once): the reservation is the setter's
+    // derived value, which the setter takes, and the getter takes its own, whose site names the reservation's root (an Opaque temp, which
+    // nothing lends, R4-M149).
     [Fact]
     public void ARejectedInputIsItsConsumersDerivedValue()
     {
@@ -487,10 +488,12 @@ public sealed partial class MirBuildTest
         Assert.Equal(["ref/i32"], Opaques(field).Select(static x => x.Type));
         var update = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "update");
         var opaques = Opaques(update);
-        Assert.Equal(["Tally", "ref/Tally", "uniq/Tally"], opaques.Select(static x => x.Type));
+        Assert.Equal(["uniq/Tally", "ref/Tally"], opaques.Select(static x => x.Type));
         var located = opaques[0].Root;
-        Assert.All(opaques.Skip(1), x => Assert.Equal([located], x.Roots));
+        Assert.Equal([located], opaques[1].Roots);
         Assert.DoesNotContain(update.Statements.ToArray(), x => x.Rvalue.Kind == MirRvalueKind.Ref && x.Rvalue.Place.Root == located);
+        Assert.Single(update.Blocks.ToArray(), x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "item.Set" } &&
+            update.Operands[x.Terminator.Start] == MirOperand.Move(new MirPlace(located)));
         Assert.Single(update.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "at" });
     }
 

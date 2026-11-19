@@ -15,6 +15,20 @@ internal sealed partial class MirBuilder
     // The Places the expansions being built located, and the right side a derived write built (DerivedWrite), innermost last.
     private readonly List<(Koto Node, MirPlace Place)> located = [];
 
+    // The Type an accessor call takes a node as, its receiver: the argument's adapted Type, else its parameter's.
+    private static BoundType? Input(CallPlan call, Koto node)
+    {
+        foreach (ref readonly var argument in call.ArgumentOperations)
+        {
+            if (ReferenceEquals(argument.Source, node))
+            {
+                return argument.AdaptedType ?? argument.ParameterType;
+            }
+        }
+
+        return null;
+    }
+
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
     // match: Some binds the item for the body, None completes the loop with Unit. The body end and a continue clean the iteration up and call
     // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject.
@@ -67,9 +81,11 @@ internal sealed partial class MirBuilder
     // once. Reading and writing are selected independently: a Property's custom getter (First) and setter (Second, taking the result as its
     // Evaluated argument) are called on its receiver, located once, and a standard accessor reads or writes its storage, as a Place target is
     // read and written in place. The old value is read by a built-in operation, or by a user arithmetic call (CallPlan.Of) with the secured
-    // operand, whose result replaces it. A destination written in place is reserved once located and read and written through that
-    // reservation, which the write activates (writeback protection). A compound assignment gives Unit; an increment or decrement its old
-    // value (postfix) or its result (prefix), SPEC 13.2, the Property not read again.
+    // operand, whose result replaces it. Writeback protection: a destination written in place is reserved once located and read and written
+    // through that reservation, which the write activates; a setter's receiver is reserved once located, as the setter takes it (its
+    // TwoPhaseUniq), read through it by the getter (a shared Borrow) or the standard get, and taken by the setter, whose call activates it.
+    // A compound assignment gives Unit; an increment or decrement its old value (postfix) or its result (prefix), SPEC 13.2, the Property not
+    // read again.
     private void Update(MirPlace destination, Koto node)
     {
         var (target, right) = node is BinaryKoto update ? (update.Left, update.Right) : (((UnaryKoto)node).Operand, null);
@@ -83,9 +99,10 @@ internal sealed partial class MirBuilder
         var property = KotoHelper.UnwrapParentheses(target);
         var storage = accessor is null ? this.Place(target) : default;
         var receiver = accessor is null || HirTables.ResOf(property) == HirRes.Static ? null : (property as MemberAccessKoto)?.Left;
+        var reservation = receiver is null || plan.Second is null ? default : this.Operand(receiver, Input(plan.Second, receiver), input: true);
         if (receiver is not null)
         {
-            this.located.Add((receiver, this.Place(receiver)));
+            this.located.Add((receiver, plan.Second is null ? this.Place(receiver) : this.FollowLayers(reservation.Place, 1)));
         }
 
         if (accessor is not null && (plan.First is null || plan.Second is null))
@@ -106,21 +123,17 @@ internal sealed partial class MirBuilder
 
         if (plan.First is { } getter)
         {
-            // A receiver both accessors take is taken by each as the HIR publishes: the setter by the column's Adjust, the getter by the
-            // receiver's plan-row Adjust where the two differ (SPEC 11.3: shared), else by the column's (DECISIONS R4-M109).
-            var given = plan.Second is null ? null : receiver;
-            var operand = default(MirOperand);
-            foreach (ref readonly var argument in getter.ArgumentOperations)
+            // SPEC 11.3.1: the getter reads a reserved receiver through its reservation, by a shared Borrow of its referent.
+            if (plan.Second is null || receiver is null)
             {
-                if (given is not null && ReferenceEquals(argument.Source, given))
-                {
-                    var adjust = HirTables.PlanOf(given).Adjust;
-                    operand = this.Operand(
-                        given, adjust == default ? HirTables.AdjustOf(given) : adjust, argument.AdaptedType ?? argument.ParameterType, input: true);
-                }
+                this.Call(read, getter, target, null);
+            }
+            else
+            {
+                var shared = Input(getter, receiver)!;
+                this.Call(read, getter, target, null, (receiver, this.Temporary(shared, this.Ref(this.located[mark].Place, shared, input: true), receiver)));
             }
 
-            this.Call(read, getter, target, null, (given, operand));
             this.Made(read);
         }
 
@@ -167,7 +180,7 @@ internal sealed partial class MirBuilder
         if (plan.Second is { } setter)
         {
             var unit = right is null ? this.Hold(BoundType.Unit, node) : destination;
-            this.Call(unit, setter, node, null, (setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result)));
+            this.Call(unit, setter, node, null, (setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result)), (receiver, reservation));
             if (unit != destination)
             {
                 this.Made(unit);
