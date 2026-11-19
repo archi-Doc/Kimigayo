@@ -418,12 +418,12 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records(MirRecordClass.Construction).Select(static x => x.Subject));
     }
 
-    // SPEC 23.1.2, 13.7.2 (DECISIONS R4-M109): an input Binding rejected after selection is its consumer's derived value, an Opaque of the
-    // Type the consumer takes, moved into it, with no Ref of a temp of the node's own Type; an update locates an Error receiver once (the
-    // call it keeps evaluated once), and its getter and setter each take their own derived value, whose site names the located root
-    // (fail-before: an Opaque of the node's own Type borrowed by each consumer).
+    // SPEC 15.6.1, 15.6.5, 13.7.2, 23.1.2 (R7-O1 b1, superseding DECISIONS R4-M109 for call positions): an input whose call-position
+    // relation the premises do not prove is no rejected input (the relation is A5's row), so the MIR builds it as a valid input: `field`
+    // borrows `c.n` for the call (one Ref, no Opaque), and `update` evaluates `chosen(...)` once, its getter and setter each taking the
+    // receiver by its own Ref, with no Opaque (fail-before: an Opaque of each consumer's Type in place of each input).
     [Fact]
-    public void ARejectedInputIsItsConsumersDerivedValue()
+    public void ACallPositionsInputIsBuiltAsAValidOne()
     {
         const string Source = """
             struct Tally
@@ -443,6 +443,45 @@ public sealed partial class MirBuildTest
         var c = Compile(Source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Failure == BindingFailure.OriginRelation);
+        var field = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "field");
+        Assert.Single(field.Statements.ToArray(), static x => x.Rvalue.Kind == MirRvalueKind.Ref);
+        Assert.Empty(Opaques(field));
+        var update = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "update");
+        Assert.Empty(Opaques(update));
+        Assert.Equal(3, update.Statements.ToArray().Count(static x => x.Rvalue.Kind == MirRvalueKind.Ref));
+        Assert.Equal(
+            ["chosen", "item.Get", "item.Set"],
+            update.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Call }).Select(static x => x.Terminator.Callee.Symbol?.Name));
+    }
+
+    // SPEC 23.1.2, 13.7.2 (DECISIONS R4-M109; superseded for call positions only, ACallPositionsInputIsBuiltAsAValidOne): an input Binding
+    // rejects after selection, here a static Place's Borrow (the located limit until P42, DECISIONS BU-25), is its consumer's derived
+    // value, an Opaque of the Type the consumer takes, moved into it, with no Ref of a temp of the node's own Type; an update locates an
+    // Error receiver once (the index call it keeps evaluated once), and its getter and setter each take their own derived value, whose site
+    // names the located root.
+    [Fact]
+    public void ARejectedInputIsItsConsumersDerivedValue()
+    {
+        const string Source = """
+            struct Tally
+                public var n: i32 = 0
+                public var item: i32 = 0
+                    get(self: ref/Self) -> i32 => storage
+                    set(self: uniq/Self, value: i32) -> () => storage = value
+                public init() => ()
+            group State
+                public var tally: Tally = Tally.init()
+                public var tallies: [2 of Tally] = [Tally.init(), Tally.init()]
+            func peek(x: ref/i32) => ()
+            func at() -> isize => 0
+            func field() => peek(State.tally.n)
+            func update() => State.tallies[at()].item += 1
+            """;
+        var c = Compile(Source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(["Unsupported_Kd State.tallies[at()]", "Unsupported_Kd State.tally.n"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal));
         var field = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "field");
         Assert.DoesNotContain(field.Statements.ToArray(), static x => x.Rvalue.Kind == MirRvalueKind.Ref);
         Assert.Equal(["ref/i32"], Opaques(field).Select(static x => x.Type));
@@ -452,7 +491,7 @@ public sealed partial class MirBuildTest
         var located = opaques[0].Root;
         Assert.All(opaques.Skip(1), x => Assert.Equal([located], x.Roots));
         Assert.DoesNotContain(update.Statements.ToArray(), x => x.Rvalue.Kind == MirRvalueKind.Ref && x.Rvalue.Place.Root == located);
-        Assert.Single(update.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "chosen" });
+        Assert.Single(update.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "at" });
     }
 
     // SPEC 6.6, 3.6, 23.1.2 (DECISIONS R4-M125): a local's declaration Binding rejected, whose symbol it typed, declares its local as a

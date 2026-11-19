@@ -271,7 +271,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!this.Writable(target) && ElementAccess.WritableRoot(this, target) is null &&
+        if (!this.WritablePlace(target) &&
             !(write && (CanInitializeLocal(target, scope) || (IsSpecialField(target, out var constructor) && constructor.IsConstructor))))
         {
             this.FailWrite(operation, target);

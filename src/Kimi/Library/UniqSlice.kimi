@@ -5,25 +5,28 @@ public struct UniqSlice<T> {source}
     associate Element is T
 
     internal let storage: raw/T during source
-    public let length: isize
+    internal let count: isize
     internal let loan: Loan<uniq/T during source>
 
+    /// The number of elements in the view.
+    public computed length: isize
+        get() -> isize => self.count
     public computed isEmpty: bool
-        get() -> bool => self.length == 0
+        get() -> bool => self.count == 0
     public computed indices: ResolvedRange
-        get() -> ResolvedRange => (0..self.length).resolve(self.length)
+        get() -> ResolvedRange => (0..self.count).resolve(self.count)
 
     /// Views the remainder's `count` elements from its `storage`, so no element's offset is read (SPEC 8.15.3). The
     /// caller's obligation, which the signature cannot state: the remainder is at its first untaken element, as
     /// `Storage.borrowStorageUniq` and `Storage.sliceUniq` give it (removed with `position` by PLAN G597's L2).
     internal init(state: Storage.UniqRemainder<T> during source)
         self.storage = state.storage
-        self.length = state.count
+        self.count = state.count
         self.loan = state.loan@move
 
     /// Lends this view's elements for shared access, retaining the borrow of this handle.
     public func slice(self: ref/Self) -> Slice<T> during self
-        unsafe => return Raw.slice(self.storage, self.length)
+        unsafe => return Raw.slice(self.storage, self.count)
 
     #CallerLocation
     public func slice<R>(self: ref/Self, range: R) -> Slice<T> during self
@@ -41,14 +44,14 @@ public struct UniqSlice<T> {source}
 
     #CallerLocation
     public func index(self: ref/Self, key: ref/isize) -> ref/T during self
-        require key >= 0 and key < self.length else => Storage.indexBounds()
+        require key >= 0 and key < self.count else => Storage.indexBounds()
         unsafe
             let element = self.storage[key]@ref
             return element
 
     #CallerLocation
     public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-        require key >= 0 and key < self.length else => Storage.indexBounds()
+        require key >= 0 and key < self.count else => Storage.indexBounds()
         unsafe
             let element = self.storage[key]@uniq
             return element@move
@@ -57,9 +60,9 @@ public struct UniqSlice<T> {source}
     #CallerLocation
     internal func indexPosition<P>(self: ref/Self, key: P) -> ref/T during self
         P is Position
-        return self.index(PositionSyntax.resolved(key, self.length))
+        return self.index(PositionSyntax.resolved(key, self.count))
 
     #CallerLocation
     internal func indexPositionUniq<P>(self: uniq/Self, key: P) -> uniq/T during self
         P is Position
-        return self.indexUniq(PositionSyntax.resolved(key, self.length))
+        return self.indexUniq(PositionSyntax.resolved(key, self.count))

@@ -602,8 +602,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("localReachBad", "localReachBad: y = 5")] // Drop at `=`
     [InlineData("quietOk", "")] // Drop at `=`
     [InlineData("nullQOk", "")] // Drop at `=`
-    [InlineData("statedBad", "statedBad: y = 5; statedBad: usep(slot)")] // Drop at `=`, stated raw layers
-    [InlineData("statedSlotBad", "statedSlotBad: usep(slot)")] // Drop at `=`, stated raw layers
+    [InlineData("statedBad", "statedBad: y = 5; statedBad: usep(slot); statedBad: var spare: raw/u8 = null; statedBad: var slot: raw/u8 = null")] // Drop at `=`, stated raw layers; the storage ends are true records (5.7 Calls: a stated layer keeps what it admits; D-757)
+    [InlineData("statedSlotBad", "statedSlotBad: usep(slot); statedSlotBad: y = 5; statedSlotBad: var spare: raw/u8 = null; statedSlotBad: var slot: raw/u8 = null")] // Drop at `=`, stated raw layers; true records as statedBad's (D-757)
     [InlineData("tempOnlyBad", "tempOnlyBad: y = 5")] // a temporary's Drop
     [InlineData("tempOnlyNullOk", "")] // a temporary's Drop
     [InlineData("scopeBad", "scopeBad: y = 5")] // scope end

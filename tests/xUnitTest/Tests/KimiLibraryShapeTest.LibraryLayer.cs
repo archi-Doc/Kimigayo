@@ -376,7 +376,8 @@ public partial class KimiLibraryShapeTest
             // ResetViews drops only TyCtxt's view memos, which a later read forms again, equal).
             ["Binding.instances"] = Rule.Memo, // An ADT's storage at a Type (n9): Fields and parts a function of the Type; Version the run's currency.
             ["Binding.types.instances"] = Rule.Memo, // Whether a definition instantiates: a function of its scope chain.
-            ["Binding.types.copies"] = Rule.Memo, // A premises node's Copy facts, each a function of the node and the Type proven.
+            ["Binding.types.copies"] = Rule.Memo, // A definition's Copy facts, each a function of the definition and the Type proven.
+            ["Binding.types.topLevelCopies"] = Rule.Memo, // The top-level statements' Copy facts (no definition), each a function of the Type proven.
             ["Binding.types.retentions"] = Rule.Memo, // A callee's retention by callee, Subst, premise scope and region version.
             ["Binding.types.handedCallables"] = Rule.Memo, // HandedCallables' answer per interned Type.
             ["Binding.types.comparisons"] = Rule.Memo, // A comparison's composition by Contract, Type and operator form.
@@ -433,10 +434,24 @@ public partial class KimiLibraryShapeTest
             ["Binding.retentionSources"] = Rule.Program, // The retention sources' walk.
             ["Binding.retentionWalked"] = Rule.Program,
             ["Binding.retentionMet"] = Rule.Program, // The retention rows' walk.
+            ["Binding.retentionArguments"] = Rule.Program, // Filled's instantiated inputs, per computation (PLAN G935).
+            ["Binding.retentionFills"] = Rule.Program, // Filled's answers, per computation.
+            ["Binding.retentionHidden"] = Rule.Program, // HiddenKinds' answers per kept Type, per Storages.
+            ["Binding.retentionHiddenSeen"] = Rule.Program, // HiddenKind's walk, per input.
+            ["Binding.retentionReaches"] = Rule.Program, // Writes' walk (WrittenThrough), per handed callable.
+            ["Binding.retentionHandedTypes"] = Rule.Program, // HandedTypes' answer for the output written last.
+            ["Binding.retentionStated"] = Rule.Program, // The stated raw layers one hold walk met (Hold).
+            ["Binding.retentionWrites"] = Rule.Program, // The computation's OutputRetentions (a kept one names its library callee: PLAN G935).
             ["Binding.ownSeen"] = Rule.Program, // OwnLayers' walk.
             ["Binding.storageSeen"] = Rule.Program, // The storage walk (BeginStorages).
             ["Binding.storageHolds"] = Rule.Program,
             ["Binding.storageTargeted"] = Rule.Program,
+            ["Binding.storagePositions"] = Rule.Program, // With the walked signature, and the Origin-free parts' (Node -1; PLAN G935 R1.2).
+            ["Binding.storageTargets"] = Rule.Program, // With the walked signature (Admits; PLAN G935).
+            ["Binding.storageBound"] = Rule.Program, // The kept Type's bindings' written roots (HiddenKinds).
+            ["Binding.storageKept"] = Rule.Program, // The kept abstract Types the output's walk met (Handed).
+            ["Binding.storageResultLeaves"] = Rule.Program, // ResultLeaves' walk and its answer, per computation (PLAN G935).
+            ["Binding.storageResultSeen"] = Rule.Program,
             ["Binding.retentionOccurred"] = Rule.Program,
             ["Binding.types.handedFound"] = Rule.Program, // HandedCallables' walk.
             ["Binding.types.handedSeen"] = Rule.Program,

@@ -202,15 +202,21 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal(("relation", "origin a outlives static"), (related.Role, Text(source, related.Span)));
     }
 
+    // SPEC 15.6.1, 15.6.4 step 3, 23.1.2 (R7-O1 b1; the Middle's ruling of 2026-11-19): the fresh Origin's `==` is one record at the second
+    // input, relating the input that fixed it; the well-formedness of that input's instantiated parameter Type is an independent relation,
+    // its own record at the same input (Q13 rule 3: an independent record added to a rejected program, which HasCallRelation hid before).
     [Fact]
     public void AFreshEqualityRelatesTheInputThatFixedIt()
     {
         var source = Fresh + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(2, errors.Length);
+        var error = Assert.Single(errors, static x => x.Reason![0].Value == "==");
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "requires y == x, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
-        Assert.Equal("==", error.Reason![0].Value);
         var related = Assert.Single(error.Related!);
         Assert.Equal(("relation", "p"), (related.Role, Text(source, related.Span)));
+        var wellFormed = Assert.Single(errors, static x => x.Reason![0].Value != "==");
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "wellFormed"), (wellFormed.Code, Text(source, wellFormed.Span), wellFormed.Reason![3].Value));
     }
 
     // SPEC 10.3, 15.6.1: an expected result never filters by Origins; the result's relation is one record at its destination, and a
@@ -321,14 +327,15 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal([nameof(DiagnosticCode.AmbiguousBinding_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
-    // SPEC 23.3: the console, the language server and JSON carry the call relation with its related location.
+    // SPEC 23.3: the console, the language server and JSON carry the call relation with its related location; Fresh's second record, its
+    // input's well-formedness (SPEC 23.1.2, R7-O1 b1), relates nothing of the call (AFreshEqualityRelatesTheInputThatFixedIt).
     [Theory]
     [InlineData(Clause, "relation", "origin a outlives static")]
     [InlineData(Fresh, "relation", "p")]
     public void EveryOutputCarriesTheCallRelation(string body, string role, string related)
     {
         var check = DiagnosticCorpus.Check(body + Main);
-        var record = Assert.Single(check.Diagnostics);
+        var record = Assert.Single(check.Diagnostics, x => x.Related?.Any(r => r.Role == role) == true);
         var result = new DiagnosticResult(check.Diagnostics, check.Sources);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
@@ -338,9 +345,12 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal(related, Text(body + Main, record.Related![0].Span));
 
         var identity = SourceIdentity.FromPath(check.Sources[record.Source].Path);
-        var plain = Assert.Single(WorkspaceCheck.Place(check, [identity], identity, false)[identity]);
+        var index = Array.IndexOf(check.Diagnostics, record);
+        var placed = WorkspaceCheck.Place(check, [identity], identity, false)[identity];
+        Assert.Equal(check.Diagnostics.Length, placed.Length);
+        var plain = placed[index];
         Assert.Equal((record.Code, record.Display!.Range), (plain.Code, plain.Range));
-        var withRelated = Assert.Single(WorkspaceCheck.Place(check, [identity], identity, true)[identity]);
+        var withRelated = WorkspaceCheck.Place(check, [identity], identity, true)[identity][index];
         Assert.Equal(record.Related![0].Range, Assert.Single(withRelated.RelatedInformation!).Location.Range);
 
         var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
