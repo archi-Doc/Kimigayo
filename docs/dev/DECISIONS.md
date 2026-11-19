@@ -6969,7 +6969,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     elemRefBad, viewRefUseBad, viewRefReborrowBad, tupMixedBad, wrapMixedBad, wrapHopBad, rvFieldSafeBad (I); c84 keeps only
     `CallReservationConflict_Kd`; the Case pins rvCaseFieldResBad, rvCasePayloadFieldBad and rvCaseElementBad stay I.
     FunctionCodegenTest's Arrays program (8 tests) passes.
-  - Cost: one Deref test in `Sources`' walk per step (a Type kind and `Holds`, memoized per Type), O(1).
+  - Cost: one Deref test in `Sources`' walk per step (a Type kind and `Holds`, memoized per Type), O(1). The bound walk itself runs
+    per Read: `MirBorrows.Values`' `Read` asks `Sources`, which re-walks the Place's projections at each evaluation of a transfer (each
+    fixpoint pass and the replay); part of the measured cost on R4-M220, whose repeated part is PLAN G1108.
   - Rejected: an index-only bound (a second rule for one decision); the part rule for every Field or Downcast step (Whole is also the
     Case bound's fact, so it accepts the settled I pins rvCaseFieldResBad, rvCasePayloadFieldBad and rvCaseElementBad against
     O-364 (a)'s Field and element rule).
@@ -7203,6 +7205,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Cost: a call's source slots are found once per call (`SourceSlots`: the input slots whose input is no constant and whose Type
     holds no Loan), `Sourced` is asked only at them, and a call whose retention has no Writes is skipped before the scan; the block
     scan for write sources (`WriteSourced`) adds +0.64 % Work.
+  - Measured cost, accepted by the owner under RQ8 (a) (W-278, dev 5dd6543e6; board D-873): Q-539's analysis code (this entry,
+    R4-M218, R4-M219 and R4-M221) makes warm Analyze 1.10-1.11 times A's on Milestone26 and Interpolation, warm 0 B; on unchanged
+    MIR `MirBorrows.Work` grows 15-26 %: rule H's Flowing and Mixing (linear, once per view), the bounds' `Sources` walk at every
+    Read (R4-M218) and rule W's reading keys (`Keyed`, `Node`, `ReadAt`, `RecordSteps`; R4-M219, R4-M221). Its repeated part,
+    state-independent per-call facts recomputed at each transfer, is PLAN G1108.
   - Rejected: a Copy of a Loan-free exposed holder taking Φ_E; A5 reading a Loan-free argument as retained by every record (a Type
     judgement in a consumer); unit A's Viewing(T) and a Through guard; a static's read as a flow source (no reachable row until
     P42; a static's read is {Φ_E} anyway, RV1-n3); unbounding a result a pointer of the body may write (the review's R4: it
@@ -7282,6 +7289,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reaches past it, BU-46); no E past such a holder's own step (F2: guDeepOk is invalid, O-389 (a)); "never E" at route 1
     (hidRawParamBad, hidRawParamRootBad, hidRawParamDeclBad, invalid, accepted); every route-1 holder taking the call's own pointer
     whatever its Place (`ViaCarried`: a Language error on viaCarriedPinOk, valid, which dev accepts).
+  - Measured cost: R4-M220's measured-cost line (W-278, accepted by the owner under RQ8 (a)); this entry's part is rule W's reading
+    keys.
 - **R4-M222 A comparison's region conjunct is its body's row (PLAN G492-a (iii), one unit with (ii))** (Middle, 2026-11-19; Binding and
   A5's input; Major; landed with G492-a (ii), R8-M56, in Q-542 by the owner's O-384 (a); design `middle\notes\g492a-iii-design.md`
   (Revision 3) and `g492a-iii-q2-design.md` (Revisions 1-4a.1, the Revision 4a design review ACCEPT), the n8 fix (option (b), C-400;
