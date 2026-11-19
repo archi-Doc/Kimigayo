@@ -227,8 +227,10 @@ public sealed partial class Binding
     // columns, its Type's included. SPEC 23.1.2 (D-823): a node that rests after the Places built on it were bound (a late rest, such as
     // Check's on a called declaration validation failed) takes them with it: each enclosing group, and each Place whose path's next step
     // (NextPathStep) is the node, rests on it, so no Resolved Place stands over an untyped node (the HIR's compound Place has a Place
-    // root). The Places are found before any Type is cleared, since a step's form reads its operand's Type. While binding, a node's
-    // consumers are not bound yet, so the walk stops at once.
+    // root). The Places are found before any Type is cleared, since a step's form reads its operand's Type. A walk that ends at a match
+    // (a `try` included) or `for` Subject (SPEC 15.1.6) rests nothing above the node: that Subject Place, and each part of it, is the
+    // construct's, whose own binding owns a resting Subject (BindMatch; open: PLAN G1076, its arms and body published with failed-slot
+    // bindings). While binding, a node's consumers are not bound yet, so the walk stops at once.
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
@@ -241,23 +243,17 @@ public sealed partial class Binding
                 top = parent;
             }
 
+            if (IsSubject(top))
+            {
+                top = node;
+            }
+
             Complete(node, null);
             for (var place = node; !ReferenceEquals(place, top); place = place.Parent!)
             {
                 this.prerequisites[place.Parent!] = (this.prerequisiteStore.Count, 1);
                 this.prerequisiteStore.Add(place);
                 Complete(place.Parent!, null);
-            }
-
-            // The late rest's located limit (D-823, PLAN: one dependency relation every late rest passes through): a bound match, `try`
-            // (a match) or `for` whose Subject (SPEC 15.1.6) is a node the walk rested, the use, a group or a Place built on it, bound its
-            // Pattern trees, arms or body against the Subject's Type, and its bindings' uses are on no parent chain, so it reports one
-            // Unsupported_Kd and HIR publishes it as an Error without them. `top` is the outermost rested node, its groups included: the
-            // node its consumer takes (Grouped, R4-M145). A consumer still binding rests through its own binder (BindMatch).
-            if (top.Parent is { BindingState: BindingState.Resolved } consumer &&
-                ReferenceEquals(top, consumer switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null }))
-            {
-                this.Fail(consumer, BindingFailure.Unsupported, true);
             }
 
             return null;
@@ -272,6 +268,13 @@ public sealed partial class Binding
     // path's forms).
     private bool BuiltOn(Koto parent, Koto place)
         => IsGroup(parent) || (this.NextPathStep(parent, out var next) is not (PathStep.Root or PathStep.Candidate or PathStep.Receiver) && ReferenceEquals(next, place));
+
+    // Whether a match (a `try` included) or `for` takes `node` as its Subject, as its consumer takes it (Grouped, R4-M145).
+    private static bool IsSubject(Koto node)
+    {
+        var taken = Grouped(node);
+        return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
+    }
 
     private (int Start, Koto? Node) BeginConsultation(Koto node)
     {
