@@ -90,6 +90,36 @@ public sealed partial class Binding
         return null;
     }
 
+    // R7-C3 (B1'; SPEC 8.2.3): a declaration's premise clauses whose fact, or an And part of it, failed (FailPremise): its premise
+    // error's related locations, the premises that linked it. A failure path only.
+    private List<(string Role, Koto At, string? Label)>? FailedPremiseClauses(Koto declaration)
+    {
+        if (!this.scopes.TryGetValue(declaration, out var scope) || scope.Constraints is not { FailedPremises: { Count: > 0 } premises })
+        {
+            return null;
+        }
+
+        List<(string Role, Koto At, string? Label)>? related = null;
+        IReadOnlyList<Koto> clauses = declaration switch
+        {
+            FunctionKoto function => function.TypeConstraints,
+            DeclarationContainerKoto container => container.ConstraintNodes,
+            _ => [],
+        };
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            if (clauses[i] is IsKoto { BoundConstraint: { } fact } clause && Failed(fact))
+            {
+                (related ??= new()).Add(("premise", clause, "the premise that linked the error"));
+            }
+        }
+
+        return related;
+
+        bool Failed(BoundConstraint fact)
+            => premises.Contains(fact) || (fact.Kind == ConstraintKind.And && (Failed(fact.Left!) || Failed(fact.Right!)));
+    }
+
     // The record of a clause fact: Refuted is UnsatisfiedConstraint_Kd, Unknown UnprovenConstraint_Kd, each naming the clause.
     private BoundType? FailClauseRecord(Koto use, ReferenceConstraintFailure clause, bool unresolved)
     {

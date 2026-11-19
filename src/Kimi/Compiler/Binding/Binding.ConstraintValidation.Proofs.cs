@@ -396,17 +396,32 @@ public sealed partial class Binding
 
         return null;
 
+        // A projection's binding is its subject's conformance's (8.2.3 Projections), so judging `V.(D).W` reads what judging `V` reads:
+        // the subject and each projection subject under it.
         bool Reads(BoundConstraint premise)
-            => premise.Kind is ConstraintKind.Not or ConstraintKind.And or ConstraintKind.Or
-                ? (premise.Left is { } left && Reads(left)) || (premise.Right is { } right && Reads(right))
-                : Side(premise.Subject) || Side(premise.RequiredType);
+        {
+            if (premise.Kind is ConstraintKind.Not or ConstraintKind.And or ConstraintKind.Or)
+            {
+                return (premise.Left is { } left && Reads(left)) || (premise.Right is { } right && Reads(right));
+            }
+
+            for (var read = subject; read is not null; read = read is { Kind: BoundTypeKind.AssociatedProjection, Components: [var under, ..] } ? under : null)
+            {
+                if (Side(read, premise.Subject) || Side(read, premise.RequiredType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // A side is read as the judge identifies it in the view (8.2.3: a fact about a Type is evidence for an identical one): one Type,
         // identical by the view's classes, or one form (a side only the failed premise held in the table, `T.(Holder).Item` under
         // `T is PH`, still completes to P).
-        bool Side(BoundType? side)
-            => side is not null && (ReferenceEquals(subject, side) || this.IdentityProven(subject!, side, scope) ||
-                ReferenceEquals(this.CallableContractType(subject!, scope), this.CallableContractType(side, scope)));
+        bool Side(BoundType read, BoundType? side)
+            => side is not null && (ReferenceEquals(read, side) || this.IdentityProven(read, side, scope) ||
+                ReferenceEquals(this.CallableContractType(read, scope), this.CallableContractType(side, scope)));
     }
 
     // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its

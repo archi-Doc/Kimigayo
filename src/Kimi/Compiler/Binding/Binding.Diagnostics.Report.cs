@@ -506,6 +506,11 @@ public sealed partial class Binding
         {
             issue.Node.Report(requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
+        else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd && this.FailedPremiseClauses(issue.Node) is { } premises)
+        {
+            // SPEC 8.2.3: a premise error is reported once, at its declaration, showing the premises that linked it.
+            issue.Node.Report(requirement, issue.Code, note: this.OmittedResultNote(issue.Node), related: [.. premises]);
+        }
         else
         {
             issue.Node.Report(requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
