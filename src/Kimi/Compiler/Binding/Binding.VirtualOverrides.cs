@@ -485,11 +485,7 @@ public sealed partial class Binding
             var proof = this.ProveConstraint(bound, premises);
             if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
-                // R7-C3 (F's C2 rulings 271 (1), 273): the inherited premise's own judgment in the override's environment fails it; it
-                // stays there with the state Failed, never as evidence, and a proof that consults it rests.
-                this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
-                premises.Constraints!.Add(bound, null);
-                this.FailPremise(premises.Constraints!, bound, function);
+                this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact)); // R7-C3 (F's C2 ruling 278): no premise of the body
                 continue;
             }
 

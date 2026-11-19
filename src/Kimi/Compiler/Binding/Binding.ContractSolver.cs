@@ -273,9 +273,7 @@ public sealed partial class Binding
         internal BindingScope? Stated { get; init; }
     }
 
-    // Supply's answer: whether the premises supply the proposition (Positive) and its negation (Negative). Invalid (temporary, BU-29;
-    // removed at C3 when B 3.10's declaration validation answers a request reaching a premise error): the chain's Invalid environment,
-    // which ProveProposition answers Error resting on (InvalidEnvironment).
+    // Supply's answer: whether the valid premises supply the proposition (Positive) and its negation (Negative).
     private readonly struct Evidence
     {
         internal bool Positive { get; init; }
@@ -471,6 +469,67 @@ public sealed partial class Binding
         positive = positive || (proposition is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(proposition, view.Premises));
         negative = negative || (negation is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(negation, view.Premises));
         return new() { Positive = positive, Negative = negative };
+    }
+
+    // R7-C3 (F's C2 ruling 278; SPEC 8.3.2 "evidence for both polarities ... is contradictory evidence", 8.2.3 "never again at uses"):
+    // the one rule at the judges' exits (ProveProposition, ProveConformance) for a normalized proposition and the verdict of its valid
+    // facts. A Failed premise of the view speaks to the proposition it would decide: read in the view, the proposition or its negation
+    // (its polarity), or an identity premise of the same subject (identical through the classes, a constructed Type included), which
+    // would decide every proposition about it and gives none of its own. Unless the valid facts give the verdict the speaking premises
+    // give, the answer is Error resting on the declaration's record; where none speaks, the valid facts decide.
+    // The Contract judge's exit: the proposition is interned only in a view that holds a Failed premise.
+    private ConstraintProof SpokenConformance(BoundType type, BindingSymbol contract, BindingScope scope, ConstraintProof verdict)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is { FailedPremise: not null })
+            {
+                return this.SpokenVerdict(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope, verdict);
+            }
+        }
+
+        return verdict;
+    }
+
+    private ConstraintProof SpokenVerdict(BoundConstraint proposition, BindingScope scope, ConstraintProof verdict)
+    {
+        if (verdict == ConstraintProof.Error)
+        {
+            return verdict;
+        }
+
+        var view = this.ViewOf(scope).Premises;
+        var (positive, negative, subject) = (false, false, ClauseSubject(proposition));
+        BoundConstraint? negation = null;
+        PremiseFailure? failure = null;
+        int? serial = null;
+        for (var current = view; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { FailedPremise: not null } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (!environment.IsFailed(fact))
+                {
+                    continue;
+                }
+
+                var reading = this.Reading(fact, view, ref serial);
+                var states = this.SameProofPremise(reading, proposition);
+                var refutes = this.SameProofPremise(reading, negation ??= this.NegateConstraint(proposition));
+                if (states || refutes || (reading is { Kind: ConstraintKind.TypeIdentity } && subject is not null && ReferenceEquals(reading.Subject, subject)))
+                {
+                    (positive, negative) = (positive | states | !refutes, negative | refutes | !states);
+                    failure ??= environment.FailedPremise;
+                }
+            }
+        }
+
+        var spoken = positive ? (negative ? ConstraintProof.Error : ConstraintProof.Proven) : ConstraintProof.Refuted;
+        return failure is not null && verdict != spoken ? this.RestOnFailure(failure) : verdict;
     }
 
     // The walk's stacks: the chain of the subject being walked, its active prefixes and its links' class mates (Enumerate).

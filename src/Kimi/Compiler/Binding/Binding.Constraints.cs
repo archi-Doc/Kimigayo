@@ -652,7 +652,8 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+        var verdict = structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+        return this.SpokenVerdict(normalized, scope, verdict); // R7-C3 (F's C2 ruling 278): the Failed premises that speak to it
     }
 
     // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
