@@ -636,6 +636,7 @@ public sealed partial class Binding
         {
             if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
             {
+                // Every reader reads an inferred binding as its normal form; a requirement's evidence image of it is open (PLAN G1001).
                 this.InferAssociatedTypes(batch);
                 return batch.State == 2 && !ReferenceEquals(batch, this.collectingAssociated) && !binding.InferenceConflict ? binding.Inferred : null;
             }
@@ -647,9 +648,29 @@ public sealed partial class Binding
         {
             binding.State = binding.State == 1 ? (byte)4 : binding.State; // Revisited while it is being resolved.
             pending |= binding.State == 4;
-            return binding.State == 2 ? binding.Result : null;
+        }
+        else
+        {
+            // SPEC 8.6.3: the binding is formed where written, so the cached image is a formation's, whatever the reader.
+            var held = this.BeginFormation();
+            try
+            {
+                this.FormBinding(path, binding);
+            }
+            finally
+            {
+                this.EndFormation(held);
+            }
         }
 
+        // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence reads the binding as its first candidate formed in
+        // that evidence, so each part rests on its own route there (HeldPending), through every associated Type it names.
+        return binding.State != 2 ? null : this.FormationRead ? binding.Result : this.ContractType(binding.Candidates[0], path.Scope, this.ConformanceSelf(path));
+    }
+
+    // The binding's formation from its candidates (ResolveAssociated): one Type, or none.
+    private void FormBinding(BoundConformancePath path, AssociatedBinding binding)
+    {
         binding.State = 1;
         var scope = path.Scope;
         var self = this.ConformanceSelf(path);
@@ -668,8 +689,11 @@ public sealed partial class Binding
         valid &= binding.State != 4 || result is null || !this.PendingAssociatedType(result);
         binding.State = valid ? (byte)2 : (byte)3;
         binding.Result = valid ? result : null;
-        return binding.Result;
     }
+
+    // The first candidate of a conformance's binding of `associated` (the identity atom it is formed from), or null.
+    private BoundType? SpecifiedBinding(BoundConformancePath path, BoundRequirement associated)
+        => this.AssociatedBindingOf(path.RootPath, associated) is { Candidates.Count: > 0 } binding ? binding.Candidates[0] : null;
 
     private BoundRequirement? AssociatedInPath(
         BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier, BindingScope scope)

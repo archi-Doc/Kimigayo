@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
 using Xunit;
 
@@ -298,6 +299,60 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(["a.kimi", "b.kimi"], result.Sources.Select(static x => x.Path).Where(static x => x != "program.kimi"));
         Assert.Equal(["a.kimi", "b.kimi"], result.Diagnostics.Select(x => result.Sources[x.Source].Path));
         Assert.Contains("registered read-only", Assert.Throws<InvalidOperationException>(() => owner.InvalidateSyntax(module)).Message, StringComparison.Ordinal);
+    }
+
+    // PLAN G1072 (G949 Stage 2 U3c; B's U3 ruling 48; DECISIONS R8-M55: after the seal no compilation writes a frozen library object): the
+    // library pass's end fills every lazily filled field of each library node and of each document a node names
+    // (SyntaxTable.CompleteLazyFields), so a reader after the freeze writes none: every library node's ToString and hover header, a
+    // position in its document, a number literal's value, and every property of every node. A library of its own (a direct freeze), so no
+    // other class has read it first and the row does not rest on the suite's order. Before the fix: 357 integer literals' Literal (the
+    // printers), 5 documents' line maps, 2 float literals' parsed values and 2,545 fields of the parser's mutable views (the getters).
+    [Fact]
+    public void AReaderAfterTheFreezeFillsNoLazyField()
+    {
+        var library = KimiLibrary.Freeze(Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false));
+        var reader = Compilation.CreateForTest();
+        Assert.True(reader.Prepare(WindowsProfile.Target));
+        reader.UseLibrary(library);
+        Assert.True(reader.Bind().IsComplete);
+        var nodes = library.Kotonoha.Syntax.Nodes.ToArray().OfType<Koto>().ToArray();
+        var lines = typeof(SourceDocument).GetField("lineStarts", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var documents = nodes.Select(static x => x.CodeContext.SourceDocument).OfType<SourceDocument>().Distinct().ToArray();
+        var maps = documents.Select(lines.GetValue).ToArray();
+        var fields = FieldSnapshot(reader);
+        foreach (var node in nodes)
+        {
+            _ = node.ToString();
+            if (node is FunctionKoto or PropertyKoto or DeclarationContainerKoto)
+            {
+                _ = Kimi.Checking.HoverBuilder.Header(node);
+            }
+
+            _ = node.CodeContext.SourceDocument?.GetPosition(node.Span.Start);
+            if (node is NumberLiteralKoto number)
+            {
+                _ = number.TryGetBasicValue(out _);
+            }
+
+            foreach (var property in node.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (property is { GetMethod: not null, PropertyType.IsByRefLike: false } && property.GetIndexParameters().Length == 0)
+                {
+                    try
+                    {
+                        _ = property.GetValue(node);
+                    }
+                    catch (TargetInvocationException e) when (e.InnerException is InvalidOperationException)
+                    {
+                        // A detached library node's compilation or collection is the internal-invariant form (s7): read, nothing written.
+                    }
+                }
+            }
+        }
+
+        Assert.Empty(FieldChanges(fields, FieldSnapshot(reader)));
+        Assert.DoesNotContain(null, maps);
+        Assert.Equal(maps, documents.Select(lines.GetValue));
     }
 
     // Every source index a fact holds, in the order WithSource names them (a subject primary key's excepted: its node is its identity).
