@@ -152,6 +152,13 @@ public partial class CallableOriginForwardingTest
     public void MixedFixedAndPerCallInputsFit(string name, string source)
         => ScalarEmissionTest.EmitFixture("CallableInstance" + name, source, string.Empty);
 
+    // SPEC 10.4 step 3, 15.6.1, 10.8 (PLAN G379 (a)): a Closure erased at both candidates fits each by its structural part, so step 3 selects
+    // the non-generic candidate and the caller's clause proves its erasure after selection; the base dropped it by the Origin part and ran
+    // the generic one (wrong code: `k` returned 1).
+    [Fact]
+    public void AClosuresOriginPartNeverSelectsACandidate()
+        => ScalarEmissionTest.EmitFixture("CallableOriginForwardSelection", "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: i32) -> i32 => 0\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: T) -> i32 => 1\nfunc k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n    let c = func [] (z: ref/i32 during b) -> i32 => z@follow\n    let v: i32 = 1\n    return h(c@move, a, b, v)\nlet x: i32 = 5\nrequire k(x@ref, x@ref) == 0 else => $abort(\"h1\")", string.Empty);
+
     // SPEC 10.7: a per-call implementation fits a required input written over a fixed Origin by instantiating its call-time Origin.
     [Fact]
     public void APerCallImplementationFitsAFixedInput()

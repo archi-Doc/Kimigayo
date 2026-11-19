@@ -41,12 +41,7 @@ public sealed partial class Binding
                 return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
             }
 
-            if ((current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) is { } armScope)
-            {
-                return this.NodeScope(node, armScope);
-            }
-
-            if (this.scopes.TryGetValue(current, out var scope))
+            if (this.ScopeStop(current, child) is { } scope)
             {
                 return this.NodeScope(node, scope);
             }
@@ -61,6 +56,11 @@ public sealed partial class Binding
         ConstraintProof.Refuted => ConstraintProof.Proven,
         _ => value,
     };
+
+    // R7-C2c2 c2-4 (SPEC 8.3.2): the one join of a premise with a judge's closed world, by polarity: a premise is positive evidence,
+    // the closed world's Refuted negative, both contradictory evidence (Error). ProveConformance and the capability judge read it.
+    private static ConstraintProof PremiseJoin(bool premise, ConstraintProof proof)
+        => !premise || proof == ConstraintProof.Error ? proof : proof == ConstraintProof.Refuted ? ConstraintProof.Error : CombineProof(ConstraintProof.Proven, proof, false);
 
     private static ConstraintProof CombineProof(ConstraintProof left, ConstraintProof right, bool conjunction)
     {
@@ -96,17 +96,7 @@ public sealed partial class Binding
 
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
-    {
-        for (var i = 0; i < match.Arms.Count; i++)
-        {
-            if (ReferenceEquals(match.Arms[i].Body, body))
-            {
-                return this.scopes.GetValueOrDefault(match.Arms[i].Pattern);
-            }
-        }
-
-        return null;
-    }
+        => KotoHelper.IsSelectionBody(match, body) ? this.scopes.GetValueOrDefault(match.Arms[body.SelectionArm].Pattern) : null;
 
     // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
     // Self is an obligation of every conformer rather than a closed proposition. An existence walk: each distinct part visited once
@@ -174,6 +164,14 @@ public sealed partial class Binding
         if (contexts.Unresolved)
         {
             return ConstraintProof.Unknown;
+        }
+
+        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1): an identity, Callable or Semantics atom is judged on its subject's Member
+        // (MemberOf); the Contract and capability judges read it at their own entries (ProveConformance, RequestCapability).
+        if (proposition.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Callable or ConstraintKind.Semantics &&
+            proposition.Subject is { } held && this.MemberOf(held, scope, out _) is var member && !ReferenceEquals(member, held))
+        {
+            return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
         }
 
         if (proposition.Kind == ConstraintKind.TypeIdentity)
@@ -643,33 +641,8 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        // SPEC 8.2.3, 8.3.2 (N9): the proposition's result for the complete constructed Type its subject is identical with is evidence of
-        // the other polarity too. It only detects the contradiction and never joins `positive` or `negative`: as evidence a member's
-        // Proven accepted an invalid program (r2-e3), and that direction is R7-C2c2 c2-4's.
-        if (structural != ConstraintProof.Error && positive != negative && HasTypeIdentity(scope) &&
-            this.MemberVerdict(normalized, scope) == (positive ? ConstraintProof.Refuted : ConstraintProof.Proven))
-        {
-            return ConstraintProof.Error;
-        }
-
         return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
-
-    // SPEC 8.2.3 ("a Contract fact about a Type is evidence for an identical one"), 8.3.2's rows: the proposition's result with each
-    // atom's subject replaced by the complete constructed member of its identity class (TypeIdentity's CompleteMember), judged by the
-    // atom judge and combined by the rows for `and`, `or` and `not`; an atom whose subject has no such member is Unknown. Premises are
-    // not read for it: a constructed member keys to itself (R7-C2c2 c2-1), so the atom judge answers by the closed world. ProveProposition
-    // is its one reader.
-    private ConstraintProof MemberVerdict(BoundConstraint proposition, BindingScope scope)
-        => proposition.Kind switch
-        {
-            ConstraintKind.Not => NegateProof(this.MemberVerdict(proposition.Left!, scope)),
-            ConstraintKind.And => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), true),
-            ConstraintKind.Or => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), false),
-            _ => proposition.Subject is { } subject && this.ClassesOf(scope, out _)?.CompleteMember(subject) is { } member
-                ? this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope)
-                : ConstraintProof.Unknown,
-        };
 
     // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
     // Type (CallableContractType) is Provisional.

@@ -66,13 +66,13 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOverrideCondition_Kd);
     }
 
+    // SPEC 6.4.3 (the owner's O-370): an override of a slot whose substituted condition is Refuted (`string is Copy`) is one declaration
+    // error at the override, not a contradictory premise of its body.
     [Fact]
-    public void ClosedInapplicabilityIsNotAContradictoryDefinitionPremise()
+    public void AClosedInapplicableSlotsOverrideIsOneDeclarationError()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Empty(c.Binding.Issues);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal([DiagnosticCode.InvalidConstraint_Kd], c.Binding.Issues.Select(static x => x.Code));
     }
 
     [Fact]

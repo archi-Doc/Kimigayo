@@ -29,6 +29,9 @@ public sealed partial class Binding
         ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
         : this.symbols.Parameter(function, index);
 
+    // A statement of a generated function's block, which binds in its source document's scope (ScopeOf).
+    private static bool GeneratedStatement(Koto node) => node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } };
+
     private BindingScope GetScope(Koto node, BindingScope? parent) => this.KeptScope(ref KeptScopes.Slot(node), node, parent);
 
     // A document's execution scope (SPEC 6.1.1) in the module whose generated function holds the statement now (AST2): that body owns
@@ -36,10 +39,13 @@ public sealed partial class Binding
     private BindingScope DocumentScope(SourceDocument document, BindingScope parent, Koto owner)
         => this.KeptScope(ref KeptScopes.DocumentSlot(owner.Kotonoha.RootKoto, document), owner, parent);
 
-    // The kept slot is read and written first: a later column write may carve a page and move the arena it points into.
+    // The kept slot is read and written first: a later column write may carve a page and move the arena it points into. A scope of a
+    // constrained declaration, one with a Constraint region of its own (SPEC 8.2.1, 7.5, 8.8.1), is formed for its premises
+    // (BindingScope.Declaration).
     private BindingScope KeptScope(ref BindingScope? kept, Koto owner, BindingScope? parent)
     {
-        var scope = kept ??= new(owner);
+        var scope = kept ??= owner is FunctionKoto { IsAnonymous: false } or PropertyAccessorKoto or DeclarationContainerKoto or
+            SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? new(owner, owner) : new(owner);
         scope.Parent = parent;
         scope.Function = scope.Owner is FunctionKoto function ? function : parent?.Function;
         return scope;
@@ -48,10 +54,14 @@ public sealed partial class Binding
     // The scope a node opens, else for a top-level statement (a node directly in its module's generated function) its document's in
     // that module.
     private BindingScope? ScopeOf(Koto node) => this.scopes.GetValueOrDefault(node) ??
-        (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } body && node.CodeContext.SourceDocument is { } document
-            ? KeptScopes.Document(body.Kotonoha.RootKoto, document) : null);
+        (GeneratedStatement(node) && node.CodeContext.SourceDocument is { } document ? KeptScopes.Document(node.Parent!.Kotonoha.RootKoto, document) : null);
 
     private BindingScope NodeScope(Koto node, BindingScope fallback) => this.ScopeOf(node) ?? fallback;
+
+    // The scope `current`, reached from its child `child`, gives the nodes below it (ConstraintScope): a match arm's body has its
+    // pattern's (SPEC 14.8.2), a scope's owner its own; null when it gives none.
+    private BindingScope? ScopeStop(Koto current, Koto? child)
+        => (current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) ?? this.scopes.GetValueOrDefault(current);
 
     private BindingSymbol Declare(Koto key, string name, BindingSymbolKind kind, Koto node, BindingScope scope)
         => this.DeclareKept(ref DeclaredSymbols.Slot(key), name, kind, node, scope);

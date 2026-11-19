@@ -121,7 +121,7 @@ internal sealed partial class MirBuilder
                 this.Aggregate(destination, node, TypeOf(node));
                 break;
             case HirOp.Assign or HirOp.CompoundAssign when Rejected(Child(node)): // An update of a target Binding rejected is derived from its error.
-                this.Opaque(node, destination);
+                this.DerivedWrite(node, destination);
                 break;
             case HirOp.Assign:
                 this.Replace(destination, (BinaryKoto)node);
