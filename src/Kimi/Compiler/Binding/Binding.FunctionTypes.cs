@@ -157,7 +157,7 @@ public sealed partial class Binding
     private static bool SharedReceiver(BoundType actual) => (BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref) == SemanticsKind.Ref;
 
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
-    // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
+    // its contract fits under its conditions (DefinitionContractFits), its complete environment is Owned and its result contract does
     // not depend on its receiver (ReceiverIndependence). Initializations, returns and call arguments share this judgment. A failure
     // publishes its first failed part for its record and Note (erasureOutcomes): the receiver, the signature's structure and the
     // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
@@ -228,7 +228,7 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
-    // of `use`: a Closure's Shared receiver and its signature (CallableSignatureFits), a Function Item's contract (ErasureSignatureFits).
+    // of `use`: a Closure's Shared receiver and its contract (DefinitionContractFits), a Function Item's contract (ErasureSignatureFits).
     // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it. `rows` takes the
     // comparison's region conjuncts (CallableInstance.Rows).
     private bool ErasureFits(BoundType actual, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
@@ -236,7 +236,7 @@ public sealed partial class Binding
         failure = default;
         return actual.Kind == BoundTypeKind.Closure
             ? expected.Kind == BoundTypeKind.Function && SharedReceiver(actual) &&
-                this.ClosureSignature(actual) is { } signature && this.CallableSignatureFits(signature, expected, SignatureOwner(actual), use, rows, out failure)
+                this.ClosureSignature(actual) is not null && this.DefinitionContractFits(actual, expected, use, rows, out failure)
             : this.ErasureSignatureFits(actual, expected, use, rows, out failure);
     }
 
@@ -286,8 +286,8 @@ public sealed partial class Binding
     {
         failure = default;
         return expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
-            this.ItemContractFits(actual, signature, expected, use, rows, out failure)) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is not null &&
+            this.DefinitionContractFits(actual, expected, use, rows, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && SharedReceiver(actual) && this.ClosureSignature(actual) is { } closureSignature &&
             this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
     }
@@ -295,8 +295,8 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
-    // `container` with `arguments` bound, or those of the Function Item `item`. `comparison` is the query (ContractComparison): the
-    // required signature and the row sink that takes the region conjuncts its premises leave unproven.
+    // `container` with `arguments` bound, or those of `item`, a Function Item or a Closure (its signature). `comparison` is the query
+    // (ContractComparison): the required signature and the row sink that takes the region conjuncts its premises leave unproven.
     private bool ContractFits(
         Koto use,
         BindingSymbol symbol,
@@ -313,12 +313,13 @@ public sealed partial class Binding
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
+        var closure = item is { Kind: BoundTypeKind.Closure } ? this.ClosureSignature(item) : null;
         var inference = this.BeginOriginInference(use, function);
         inference.Comparison = comparison;
         this.contractFailure = default;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
+            if (Input(i) is not { } parameter)
             {
                 return false;
             }
@@ -330,7 +331,7 @@ public sealed partial class Binding
             this.CollectOriginInference(parameter, parameters.Components[i], inference);
         }
 
-        if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
+        if (Output() is { } produced)
         {
             inference.Source = (ComparisonFailure.ResultStep, null, false);
             this.CollectOriginInference(produced, required.Components[1], inference, result: true);
@@ -346,7 +347,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (Substitute(Bound(function.Parameters[i].Type.BoundType!)!) is not { } parameter)
+            if (Input(i) is not { } written || Substitute(written) is not { } parameter)
             {
                 return false;
             }
@@ -388,7 +389,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (symbol.Type is not { } output || Bound(output) is not { } boundResult || Substitute(boundResult) is not { } result)
+        if (Output() is not { } boundResult || Substitute(boundResult) is not { } result)
         {
             return false;
         }
@@ -408,6 +409,15 @@ public sealed partial class Binding
         }
 
         return true;
+
+        // The implementation's input `i` and result as the compared value reads them: a Closure's from its signature, any other's from
+        // the definition's written Types through its item, container or frame (Bound).
+        BoundType? Input(int i)
+            => closure is not null ? this.ContractType(closure.Components[0].Components[i], this.ConstraintScope(use))
+                : function.Parameters[i].Type.BoundType is { } written ? Bound(written) : null;
+
+        BoundType? Output()
+            => closure is not null ? this.ContractType(closure.Components[1], this.ConstraintScope(use)) : symbol.Type is { } written ? Bound(written) : null;
 
         BoundType? Bound(BoundType type)
         {
