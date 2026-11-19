@@ -137,6 +137,28 @@ public class ClosureReceiverClassificationTest
     public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
         => AssertCallReceiver(Places + body + "        return 0\n    let v = f()\n", exclusive);
 
+    private const string CustomGet = "struct W\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public var v: i32 = 0\n    public init() => ()\n";
+
+    // SPEC 13.7.1, 13.7.2, 11.5, 7.7.3 (D-818): the final target of `=`, a compound assignment or `++` whose `set` is standard is the
+    // Field's Place even where the Property's `get` is custom (the target's own getter is not called; an update reads the old value by
+    // the getter and writes the Field), so a body writing it through a captured exclusive reference is Exclusive, a `var` Closure runs
+    // and the call of a `let` one is invalid; a read through the custom get stays Shared. Before D-818 the target was taken as a getter
+    // result, the Closure was Shared and MIR's writeback crossed its shared receiver (InternalInvariant_Kd).
+    [Theory]
+    [InlineData("        w.q += 1\n", true)]
+    [InlineData("        w.q -= 1\n", true)]
+    [InlineData("        w.q = 1\n", true)]
+    [InlineData("        w.q = w.q + 1\n", true)]
+    [InlineData("        w.q++\n", true)]
+    [InlineData("        (w.q) += 1\n", true)]
+    [InlineData("        var g = func [w] () -> ()\n            w.q += 1\n        g()\n", true)]
+    [InlineData("        w.v += w.q\n", true)]
+    [InlineData("        let k = w.q + 1\n", false)]
+    public void AStandardSetTargetBehindACustomGetIsTheFieldsPlace(string body, bool exclusive)
+        => AssertCallReceiver(CustomGetCapture + body + "        return 0\n    let v = f()\n", exclusive);
+
+    private const string CustomGetCapture = CustomGet + "public func main() -> ()\n    var c = W.init()\n    let w = c@uniq\n    let f = func [w] () -> i32\n";
+
     // R8-W3's coverage rows c1 and cx1 (SPEC 7.7.3, 14.6.2; DECISIONS R4-M130) and their Range twins c1r and cx1r: a captured
     // `uniq/ResolvedRange` taken as a bare `for` Subject is Exclusive (its entry iterateUniq), so a `var` Closure runs, called twice, and
     // the call of a `let` one is invalid.

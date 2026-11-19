@@ -27,6 +27,9 @@ public sealed class TupleTypeKoto : TypeKoto
     /// <summary>Gets element types without materializing a mutable list.</summary>
     public IReadOnlyList<Koto> ElementNodes => this.elements;
 
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields() => _ = this.Elements;
+
     /// <summary>Initializes a new instance of the <see cref="TupleTypeKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
