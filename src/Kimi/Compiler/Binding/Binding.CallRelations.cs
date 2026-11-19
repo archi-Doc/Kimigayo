@@ -326,9 +326,7 @@ public sealed partial class Binding
         var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
             : variable is not null ? this.EqualitySource(context, variable, shorter)
             : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
-        this.FormBodyRelation(new(
-            BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality,
-            Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition, FixedBy: fixedBy));
+        this.FormBodyRelation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition, FixedBy: fixedBy));
     }
 
     // The input, other than the failing one, whose parameter names the callee's Origin `variable` and whose adapted Type carries the
