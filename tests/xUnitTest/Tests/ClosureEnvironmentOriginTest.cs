@@ -349,7 +349,7 @@ public class ClosureEnvironmentOriginTest
         "n@ref")]
     [InlineData(
         Main + "    let s = \"x\"\n    let n = 7\n    let take = func [s@move, n] () => (s@move, n@ref)\n",
-        Unsatisfied + " (s@move, n@ref); " + Unsatisfied + " (s@move, n@ref)",
+        nameof(DiagnosticCode.ComparisonLoanConflict_Kd) + " func [s@move, n] () => (s@move, n@ref); " + Unsatisfied + " (s@move, n@ref)", // F-H1-1: the Tuple keeps n's Loan.
         "(s@move, n@ref)",
         "n@ref")]
     [InlineData(Main + "    let f = func (x: i32) => x@ref\n    let r = f(1)\n", Unsatisfied + " x@ref", "x@ref", "x@ref")]
@@ -621,7 +621,9 @@ public class ClosureEnvironmentOriginTest
     [InlineData(G6a, "p[0]@uniq")]
     [InlineData(G6Single + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    _ = c()\n    _ = c()\n    return 0\n", "p\n")]
     [InlineData(G6Single + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n", "p\n")]
-    [InlineData(G6Array + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p[0]@uniq\n        p.append(7)\n        q@follow@follow = 5\n        return 1\n    return c()\n", "p[0]@uniq")]
+    // The array form also shows g6a's use-after-free at `p.append(7)`, which the opaque node hid (R7-O1 H; Q13 rule 3: independent of
+    // the relation, an independent record added to a rejected program).
+    [InlineData(G6Array + "    var c = func [p@move, q@move] () -> i32\n        q@follow = p[0]@uniq\n        p.append(7)\n        q@follow@follow = 5\n        return 1\n    return c()\n", "p[0]@uniq", "p")]
     [InlineData("func use(p: uniq/i32) -> i32\n    var c = func [p@move] () -> uniq/i32 during p => p\n    return 0\n", "p\n")]
     [InlineData("func use(p: uniq/i32) -> i32\n    let c = func [p@move] () -> ref/i32 during p => p@follow@ref\n    return 0\n", "p@follow@ref")]
     [InlineData(LocalView + "    let c = func [u] () -> ref/i32 during u => u@follow@ref\n    return 0\n", "u@follow@ref")]
@@ -629,16 +631,18 @@ public class ClosureEnvironmentOriginTest
     [InlineData(LocalView + "    var outer = func [u] () -> i32\n        let inner = func [u] () -> uniq/i32 during u => u@move\n        return 0\n    return 0\n", "u@move")]
     [InlineData("func use(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func [n] () -> ref/i32 during p => n@ref\n    return c()@follow\n", "n@ref")]
     [InlineData("func use(p: ref/i32) -> i32\n    let n: i32 = 1\n    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref")]
-    public void ABorrowThroughTheEnvironmentIsContainedInTheCallReceiver(string function, string at)
+    public void ABorrowThroughTheEnvironmentIsContainedInTheCallReceiver(string function, string at, string? conflict = null)
     {
         foreach (var beside in new[] { false, true })
         {
             var source = function + (beside ? "func unrelated() -> i32\n    let wrong: Missing = 1\n    return 0\n" : string.Empty) + "public func main() => ()\n";
             var records = ContextualCaptureTest.PublishedRecords(source).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-            var error = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.UnresolvedBinding_Kd));
+            var conflicts = records.Where(static x => x.Code == nameof(DiagnosticCode.ComparisonLoanConflict_Kd)).Select(static x => x.Text);
+            Assert.Equal(conflict is null ? [] : [conflict], conflicts);
+            var error = Assert.Single(records, static x => x.Code is not (nameof(DiagnosticCode.UnresolvedBinding_Kd) or nameof(DiagnosticCode.ComparisonLoanConflict_Kd)));
             Assert.Equal(Unproven, error.Code);
             Assert.StartsWith(at, source[error.Span.Start..], StringComparison.Ordinal);
-            Assert.Equal(beside ? 2 : 1, records.Length);
+            Assert.Equal((beside ? 2 : 1) + (conflict is null ? 0 : 1), records.Length);
         }
     }
 

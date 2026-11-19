@@ -408,8 +408,9 @@ public partial class CallableOriginForwardingTest
     // (each record's text occurs once in its program, so it is the exact span); U-O3 (BU's R7-O3) moves the Language record to Binding at
     // the same site and re-points these rows back.
     [Theory]
-    [InlineData("rv1", ClosureR3 + "    return 0\n", "UnprovenOriginRelation_Kd let x: ref/i32 during r = q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
-    [InlineData("rv1_call", ClosureR3 + "    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd let x: ref/i32 during r = q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    // rv1's local annotation fit is at its initializer (H11b D5, R7-O1 H).
+    [InlineData("rv1", ClosureR3 + "    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
+    [InlineData("rv1_call", ClosureR3 + "    let o = c()\n    return 0\n", "UnprovenOriginRelation_Kd q; UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r")]
     [InlineData("t1c", ChainHead + "i32\n    origin b outlives c\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "")]
     [InlineData("t1c_n", ChainHead + "i32\n    let g: " + ChainTarget + " = f@move\n    return 0\n", "UnprovenOriginContract_Kd f@move")]
     [InlineData("t1d", ChainHead + "i32\n    origin b outlives c\n    func use(g: " + ChainTarget + ") -> i32 => 0\n    return use(f@move)\n", "")]
