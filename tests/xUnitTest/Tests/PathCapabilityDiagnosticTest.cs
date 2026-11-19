@@ -212,7 +212,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Take + Box + "func f() -> ()\n    var b = Box.init()\n    take((b.calc)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Leveled + "func f<T>(t: uniq/T) -> ()\n    T is Leveled\n    take((t.level)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Fixed + "func f(p: uniq/Fixed) -> () => take((p.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
-    [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd, "t.y")]
     // SPEC 15.6.2, 13.7.1, 11.2 (D-818): a write or an update of a standard-set target behind a custom get is denied by the shared layer
     // on its path, as with the standard get (the `w.v` twin); before D-818 the target was taken as a getter result, a root, which gave
     // InvalidAssignment_Kd.
@@ -221,12 +221,15 @@ public class PathCapabilityDiagnosticTest
     [InlineData(CustomGet + "func f(w: ref/W) => w.v = 1", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(CustomGet + "func f(w: ref/W)\n    var h = func [w] (c: bool) -> ()\n        w.q = 1\n    h(true)", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(CustomGetSelf, DiagnosticCode.SharedPathAccess_Kd)]
-    public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
+    public void TheDenyingLayerIsReported(string source, DiagnosticCode code, string? limit = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.DoesNotContain(c.Problems, x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.UninitializedPlace_Kd);
+        // A Field of a Type parameter's open-struct base is the MIR builder's located limit in every position, valid programs included, so
+        // the borrow's kept operand reports it (DECISIONS Z16, G147 ruling 5's row 4).
+        Assert.DoesNotContain(c.Problems, x => x.Code == DiagnosticCode.UninitializedPlace_Kd ||
+            (x.Code == DiagnosticCode.Unsupported_Kd && (limit is null || c.SyntaxOf(x.Subject).ToString() != limit)));
     }
 
     // SPEC 15.6, 15.6.2, 15.6.4, 11.2: a static Field and its parts are lent as their accessors allow, but no analysis models static Loans

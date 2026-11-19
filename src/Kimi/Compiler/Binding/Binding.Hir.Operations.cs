@@ -150,13 +150,17 @@ public sealed partial class Binding
 
     private sealed partial class HirPublisher
     {
-        // SPEC 12, 13.4, 14 (StructuralCompletion composes the same paths): whether a form evaluates a child, where it is evaluated, on every
-        // path through it: not a part it selects, repeats or runs elsewhere, which are a selection's bodies (SelectionRole.Body), a later
-        // branch's condition, a guard, a while's or a for's body, a failure body, a test's message, the right operand of `and` or `or`, the
-        // contents of a form that runs none of them where it is evaluated (StructuralCompletion.RunsNoContents: a defer body, a #switch's
-        // arms), and a block's items, statements its block builds (a rejected block is one the parser supplied).
+        // SPEC 12, 13.4, 13.7, 14 (StructuralCompletion composes the same paths): whether a form evaluates a child as a value, where it is
+        // evaluated, on every path through it: not a part it selects, repeats or runs elsewhere, which are a selection's bodies
+        // (SelectionRole.Body), a later branch's condition, a guard, a while's or a for's body, a failure body, a test's message, the right
+        // operand of `and` or `or`, the contents of a form that runs none of them where it is evaluated (StructuralCompletion.RunsNoContents:
+        // a defer body, a #switch's arms), and a block's items, statements its block builds (a rejected block is one the parser supplied);
+        // nor a write's, an update's or an increment's target, which the write locates once after securing its value (SPEC 13.7.1, 13.7.2),
+        // not a value: a derived write's target is the MIR builder's (DECISIONS G1022's DerivedWrite; G147 ruling 5).
         private static bool Unconditional(Koto parent, Koto child) => child.SelectionRole == SelectionRole.None && !StructuralCompletion.RunsNoContents(parent) && parent switch
         {
+            BinaryKoto { Akind: >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals } write => ReferenceEquals(child, write.Right),
+            UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } => false,
             IfKoto conditional => ReferenceEquals(child, conditional.Branches[0].Condition),
             MatchKoto match => ReferenceEquals(child, match.Expression),
             WhileKoto loop => ReferenceEquals(child, loop.Condition),
@@ -230,29 +234,34 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 12, 14, 23.1.2 (DECISIONS Z16; R4-M88, R5-M63's compound Place and BU-106's do are its cases): the one rule of the children an
-        // Error keeps, evaluated in place before its derived value; the others stay replaced. The parent, a node Binding rejected or left
-        // unresolved, keeps each child its form evaluates on every path through it (Unconditional) that has an Op the builder evaluates: a
-        // part Binding resolved with its Op's facts, or an Error whose form is a value (not Syntax: a rejected Type or container name in
-        // a qualifier is none) and rests on causes (RestingCauses), which keeps its own children by this rule. An Error Binding left
-        // unresolved without causes of its own, such as a closure whose parameters the failed call was to give their Types, rests on the
-        // parent's failure and stays replaced. So do a construct without a Type (Construct), also in parentheses or labeled, since no
-        // destination Type holds it, its parts' problems lost (PLAN G121's kept-construct design), and a part holding a jump published
-        // without failure whose target row is the Error, a form a jump can target (StructuralCompletion.IsTransferTarget), since the builder
-        // resolves such a row against the targets it opened, and an Error opens none (its InternalInvariant_Kd; DECISIONS BU-106).
+        // SPEC 12, 14, 23.1.2 (DECISIONS Z16; R4-M88, R5-M63's compound Place and BU-106's do are its cases; G147 ruling 5): the one rule of
+        // the children an Error keeps, evaluated in place before its derived value; the others stay replaced. The parent, a node Binding
+        // rejected or left unresolved, keeps each child its form evaluates as a value on every path through it (Unconditional) that has an
+        // Op the builder evaluates and that the builder can form, judged at the part itself, under any groups and a label (inner): a part
+        // Binding resolved with its Op's facts and a Type, or an Error whose form is a value (not Syntax: a rejected Type or container name
+        // in a qualifier is none) and rests on causes (RestingCauses), which keeps its own children by this rule. Stay replaced: an Error
+        // Binding left unresolved without causes of its own, such as a closure whose parameters the failed call was to give their Types,
+        // whose value rests on the parent's failure; a part without a Type that is no Error, since no destination Type holds it (a
+        // construct, PLAN G121's kept-construct design, its parts' problems lost; a noinit); a function's name, whose value its consumer
+        // forms (its erasure, which a kept part has none of); and a part holding a jump published without failure whose target row is the Error, a form a jump can
+        // target (StructuralCompletion.IsTransferTarget), since the builder resolves such a row against the targets it opened, and an
+        // Error opens none (its InternalInvariant_Kd; DECISIONS BU-106).
         private bool Keeps(Koto child, Koto parent)
         {
             var op = binding.OpOf(child);
-            if (op is HirOp.Unset or HirOp.Syntax || !Unconditional(parent, child) || (op == HirOp.Error &&
-                (binding.KindOp(child) == HirOp.Syntax || (child.BindingState != BindingState.Resolved && !binding.HasRestingCauses(child)))))
+            if (op is HirOp.Unset or HirOp.Syntax || !Unconditional(parent, child))
             {
                 return false;
             }
 
             var inner = KotoHelper.UnwrapParentheses(child);
             inner = inner is LabeledKoto label ? label.Target : inner;
-            return !(Construct(ReferenceEquals(inner, child) ? op : binding.OpOf(inner)) && HirTables.Meaning(inner) is null && HirTables.Meaning(child) is null) &&
-                !(StructuralCompletion.IsTransferTarget(parent) && (this.targets ??= new(binding)).Targeted(child, parent));
+            var innerOp = ReferenceEquals(inner, child) ? op : binding.OpOf(inner);
+            var formed = innerOp == HirOp.Error
+                ? binding.KindOp(inner) != HirOp.Syntax && (inner.BindingState == BindingState.Resolved || binding.HasRestingCauses(inner))
+                : (HirTables.Meaning(inner) is not null || HirTables.Meaning(child) is not null) &&
+                    !(innerOp == HirOp.Name && HirTables.Symbol(inner) is { Kind: BindingSymbolKind.Function });
+            return formed && !(StructuralCompletion.IsTransferTarget(parent) && (this.targets ??= new(binding)).Targeted(child, parent));
         }
 
         // The Op a node's parts are published under (DECISIONS R5-M63): a closure Binding bound in this pass, at an evaluated or a replaced

@@ -18,9 +18,7 @@ namespace Kimi.Compiler;
 /// the facts it guarantees (<see cref="Binding.HasFacts"/>), which the builder trusts. The operations (<see cref="Binding.Operation"/>:
 /// <see cref="Literal"/>, <see cref="Field"/>, <see cref="Deref"/>, <see cref="Index"/>, <see cref="PrimitiveOp"/>, <see cref="Logical"/>,
 /// <see cref="Borrow"/>, <see cref="Convert"/> and <see cref="RuntimeTypeTest"/>) form their value or Place from Binding's selection for
-/// the node, so their Type is one of their facts; a new member states there whether it is one, and whether it is a construct whose
-/// parts deliver its value (<see cref="Binding.Construct"/>: <see cref="Block"/>, <see cref="Unsafe"/>, <see cref="Do"/>,
-/// <see cref="If"/>, <see cref="Match"/>, <see cref="Try"/> and <see cref="Loop"/>).</summary>
+/// the node, so their Type is one of their facts; a new member states there whether it is one.</summary>
 /// <remarks><see cref="Syntax"/>: not evaluated (a declaration without a buildable body, a Type, a qualifier, the callee of a selected
 /// call or construction, a member name, a binder, a Pattern, which its match plan describes, the text a <c>$tryWrite</c> writes, an
 /// attribute, or the inside of an Error).

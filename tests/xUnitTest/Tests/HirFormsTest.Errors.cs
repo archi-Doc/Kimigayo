@@ -210,9 +210,9 @@ public sealed partial class HirFormsTest
     // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): a plain write Binding rejected for its value's fit after admitting its destination keeps
     // Assign, its target its own Op (a local's Name, a setter's Call) and its value, which Binding resolved, the Error taken as its derived
     // value (Temporary, None); a write its destination check refuses (a Field of a computed Property's value, SPEC 3.4) and a compound
-    // update Binding rejected stay Error, keeping their target and value in place, which a write evaluates on every path (SPEC 13.7.1,
-    // 13.7.2; DECISIONS Z16) (fail-before: the local's and the setter's writes were Error too; the two Errors' children were Syntax until
-    // Z16).
+    // update Binding rejected stay Error, keeping their value in place, which a write evaluates on every path, and replacing their target,
+    // which a write locates, not a value (SPEC 13.7.1, 13.7.2; DECISIONS Z16, G147 ruling 5) (fail-before: the local's and the setter's
+    // writes were Error too; the two Errors' values were Syntax until Z16).
     [Theory]
     [InlineData("func f()\n    var x: i32 = 0\n    x = \"a\"\n", "x = \"a\"", "Assign Name Error Temporary/None")]
     [InlineData(
@@ -224,8 +224,8 @@ public sealed partial class HirFormsTest
         "struct In\n    public var v: i32 = 0\n    public init() => ()\nstruct B\n    public computed inner: In\n        get() -> In => In.init()\n" +
         "    public init() => ()\nfunc h(b: uniq/B)\n    b.inner.v = \"a\"\n",
         "b.inner.v = \"a\"",
-        "Error Field Literal None/None")]
-    [InlineData("func f()\n    var x: i32 = 0\n    x += \"a\"\n", "x += \"a\"", "Error Name Literal None/None")]
+        "Error Syntax Literal None/None")]
+    [InlineData("func f()\n    var x: i32 = 0\n    x += \"a\"\n", "x += \"a\"", "Error Syntax Literal None/None")]
     public void ARejectedWriteKeepsItsWriteWithADerivedValue(string source, string text, string rows)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -373,7 +373,9 @@ public sealed partial class HirFormsTest
     // same rule: a failed call's arguments, a let's initializer, an operator's operands (`and`'s left one only), a Tuple's, an array's,
     // a Case construction's and an interpolation's elements (its text segments too), a match's Subject, a for's Iterable and a rejected
     // if's first condition; `or`'s right operand, a construct without a Type (PLAN G121) and a closure Binding left unbound for the failed
-    // call (an Error without causes of its own) stay replaced.
+    // call (an Error without causes of its own), also in parentheses, and a part without a Type that is no Error (a noinit under a failed
+    // declaration Type) and a function's name, whose value its consumer's erasure forms, stay replaced (G147 ruling 5's rows 1, 2 and 4:
+    // kept, the first two were InternalInvariant_Kd, the last Unsupported_Kd).
     // Fail-before: every row but `x + missing2`'s and `y + missing`'s kept nothing.
     [Theory]
     [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "let z", "k2(x, missing)")]
@@ -394,6 +396,13 @@ public sealed partial class HirFormsTest
     [InlineData(K + "func f() -> bool\n    var x: i32\n    let b = missing or k(x) == 1\n    return true\n", "missing or", "missing")]
     [InlineData("func f(c: bool) -> i32\n    var x: i32\n    let v = if c => missing else => x\n    return 1\n", "let v", "")]
     [InlineData("func f()\n    missing(func (v: i32) -> i32 => v)\n", "missing(", "")]
+    [InlineData("func k(g: (i32) -> i32) -> i32\n    return 0\nfunc f() -> i32\n    return k((func [] (o: bool) => 0))\n", "k((", "")]
+    [InlineData(
+        "func need<T>(x: T) -> i32\n    T is Owned\n    return 0\nfunc h() -> i32\n    if true\n        func q<U>(u: U) -> i32\n            if true\n" +
+        "                func pk() -> i32 => 0\n                return need(pk)\n            return 0\n        return q(1)\n    return 0\n",
+        "need(pk)",
+        "")]
+    [InlineData("func f()\n    unsafe\n        var values: [2 of Missing] = noinit\n", "var values", "")]
     public void ARejectedNodeKeepsWhatItsFormEvaluatesOnEveryPath(string source, string text, string kept)
     {
         var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
