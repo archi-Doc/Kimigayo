@@ -225,7 +225,25 @@ public sealed partial class Binding
     // SPEC 8.2.3: `a is b` holds in the view when the two are one complete Type, or its classes make them one (Verdict's Proven); an
     // erroneous or provisional class proves nothing.
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
-        => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
+    {
+        if (this.SameCompleteType(a, b))
+        {
+            return true;
+        }
+
+        if (!HasTypeIdentity(scope) || this.ClassesOf(scope, out _) is not { } classes)
+        {
+            return false;
+        }
+
+        if (classes.Same(a, b))
+        {
+            return true;
+        }
+
+        this.ReadIdentityPremiseError(scope, a, b);
+        return false;
+    }
 
     // SPEC 8.2.3 (Refuted), 8.3.2 ("absence of proof is not enough"; "Unbound Types ... are never negative results"): whether two
     // Types are known to differ at a corresponding position in the view, `a` in the terms of the conforming Type `self` (a
@@ -287,6 +305,36 @@ public sealed partial class Binding
     private bool KeepsPremiseErrorContext(Koto declaration)
         => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { } environment &&
             ((this.identityRecorded.TryGetValue(scope, out var own) && own) || ReferenceEquals(environment.FailedPremise?.Use, declaration));
+
+    // R7-C3 (F's C2 ruling 276 (4); SPEC 8.2.3, 23.1.2): the class table's erroneous state is the identity premise error's one
+    // representation (dev's producer channel, ruling 245 (ii)). A check that reads Types with a part in a final erroneous class of its
+    // view reads that failed input, as the one consult (AvailableConstraintFact) reads a failed premise: the record of the outermost
+    // scope whose own classes hold it (the producer) is its cause. A proof's read is its limit (an answer the valid facts leave open
+    // rests on it, EndProof); a mismatch's record rests on it (RecordTypeMismatch). Nothing is read without a recorded identity error.
+    private PremiseFailure? IdentityPremiseErrorRead(BindingScope scope, BoundType? a, BoundType? b)
+    {
+        BindingScope? producer = null;
+        for (var current = scope; current is not null && this.identityRecorded.Count != 0; current = current.Parent)
+        {
+            // The producer's own checks (its frame) are the error's sites, never its readers (as UnprovenInputRead's).
+            if (this.identityRecorded.TryGetValue(current, out var own) && own && !ReferenceEquals(current.Owner, this.consultationNode) &&
+                this.ClassesOf(current, out _) is { } classes && (classes.Holds(a) || classes.Holds(b)))
+            {
+                producer = current;
+            }
+        }
+
+        return producer?.Constraints!.Cause(producer.Owner);
+    }
+
+    // A judgment's read of an erroneous class (IdentityPremiseErrorRead) is its proof's limit.
+    private void ReadIdentityPremiseError(BindingScope scope, BoundType a, BoundType? b = null)
+    {
+        if (this.identityRecorded.Count != 0 && this.IdentityPremiseErrorRead(scope, a, b) is { } failure)
+        {
+            this.ScopeReads.Limit ??= failure;
+        }
+    }
 
     // SPEC 8.2.3's Origin attribute, decided by the Origins' owner: OriginDeclaration's `==` (one Origin substituted by the other) and the
     // outlives judgment both ways (EntailsOrigin, SPEC 15.6.5's reachability over the declaration's premises). A "no" is final once the

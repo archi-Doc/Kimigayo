@@ -101,17 +101,12 @@ public sealed partial class Binding
         this.proofScopes[this.proofNesting] = default;
     }
 
-    // R7-C3 (F's C2 rulings 272-273): a judgment that consulted a failed premise (AvailableConstraintFact recorded the read) rests on it,
-    // whatever it found besides: the judge's exits (EndProof, a capability work's evaluation) answer through this one rule.
-    private ConstraintProof ConsultedVerdict(ConstraintProof proof) => this.ScopeReads.Error is PremiseFailure ? ConstraintProof.Error : proof;
-
     // SPEC 8.3.3, 23.1.1, 23.1.2 (DECISIONS BU-22): closes a proof scope with its answer and pops its slot. Inside another scope or the
     // capability engine, the cause the answer rests on joins the enclosing proof, so L combines as P < U < L < R < E; where the answer is
     // no longer combined, an L is Error resting on its site and an Error rests on its cause, in the channel; a check that fails on it takes
     // it (TakeFailedCause), which publishes a site.
     private ConstraintProof EndProof(ConstraintProof proof)
     {
-        proof = this.ConsultedVerdict(proof);
         var cause = this.ProofCause(proof);
         var fact = this.ProofFact(proof);
         var origin = proof == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
@@ -513,7 +508,8 @@ public sealed partial class Binding
     }
 
     // What a proof scope read, of which it keeps what its own answer rests on (EndProof): the first limit (L, an Unknown resting on a
-    // located Unsupported_Kd or on a refusal's Resource record) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
+    // located Unsupported_Kd, on a refusal's Resource record or on a consulted failed premise's record: R7-C3, F's C2 ruling 276's
+    // exit order, so valid facts that prove or refute decide first) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
     // Unknown rests on (design-r2 Amendment 4); the clause fact, the clause a clause list's combined verdict rests on, handed one step
     // outward (G351a); and the first Origin not proven `static` an Owned answer rests on, kept only when the answer is not Proven
     // (R4-M161, r2-1b; CapabilityWork.Origin). All but the causes are diagnostic payload only.

@@ -210,7 +210,7 @@ public class NormalizedConstraintProofBindingTest
     [InlineData("(Source.(Origin).Item, string) or bool", "(i32, string) or bool", ConstraintProof.Proven)]
     [InlineData("Source.(Origin).Item or string", "i32", ConstraintProof.Unknown)]
     [InlineData("Source.(Origin).Item or string\n    T is not i32", "string", ConstraintProof.Unknown)]
-    [InlineData("Source.(Origin).Item\n    T is not i32", "bool", ConstraintProof.Error)]
+    [InlineData("Source.(Origin).Item\n    T is not i32", "bool", ConstraintProof.Refuted)] // R7-C3 (F's C2 ruling 276 (2), DECISIONS Q13): the failed premise is no evidence; T's valid class (i32) refutes bool
     public void EquivalentRequirementSpellingsUseTheSameEvidence(string evidence, string requirement, ConstraintProof expected)
     {
         var c = MinimalEmissionTest.Analyze(Head + "func context<T>(value: T)\n    T is " + evidence + "\n    ()\nfunc query<T>(value: T)\n    T is " + requirement + "\n    ()");

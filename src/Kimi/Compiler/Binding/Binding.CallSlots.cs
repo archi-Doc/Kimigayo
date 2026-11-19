@@ -343,6 +343,14 @@ public sealed partial class Binding
             return true;
         }
 
+        // R7-C3 (F's C2 ruling 276 (1); SPEC 8.2.3): a Type parameter that is no slot of the solve (an enclosing declaration's, as a
+        // nested callee's signature names it) is a Type of the solve's view, so it meets the formed evidence in its class's form there,
+        // by the judge that formed the evidence at the head.
+        if (pattern.Kind == BoundTypeKind.Parameter)
+        {
+            pattern = this.ClassForm(pattern, frame.View, out _);
+        }
+
         if (ReferenceEquals(pattern, actual))
         {
             return true;

@@ -221,7 +221,7 @@ internal sealed class ConstraintEnvironment
         }
 
         (this.FailedPremises ??= new()).Add(fact);
-        this.premiseFailure ??= new(owner);
+        _ = this.Cause(owner);
         this.Version++;
         return true;
     }
@@ -244,8 +244,15 @@ internal sealed class ConstraintEnvironment
         }
 
         this.UnprovenInputs.Add((subject, contract));
-        this.premiseFailure ??= new(owner);
+        _ = this.Cause(owner);
     }
+
+    /// <summary>The cause a proof that reads one of this environment's failures rests on (PremiseFailure): its failed premises, its
+    /// named inputs and its identity premise error (Binding.IdentityPremiseErrorRead; F's C2 ruling 276 (4)). Made once and kept across
+    /// passes (warm Bind allocates nothing, BU-64); not state: no view-keyed table reads it.</summary>
+    /// <param name="owner">The declaration whose record it is.</param>
+    /// <returns>The environment's one cause.</returns>
+    internal PremiseFailure Cause(Koto owner) => this.premiseFailure ??= new(owner);
 
     /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
     /// of the identity relation and the identity classes' input (Binding.TypeIdentity); G721's interim reads it until G170's identity

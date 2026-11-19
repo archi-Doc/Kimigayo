@@ -838,8 +838,9 @@ public sealed partial class Binding
 
     // W6: Complete when the fact is not in the environment or is direct; a derived fact found available is the meet of every source it
     // read (R7-M20's composite rule), and one not found is Provisional (a Pending source may still supply it).
-    // R7-C3 (F's C2 rulings 272-273): the environment's one premise consult. A failed premise is no evidence, and the read is the proof's
-    // Error read (ScopeReads.Error, its PremiseFailure): a proof that consulted it and is not Proven rests on it (EndProof).
+    // R7-C3 (F's C2 rulings 272-273, 276): the environment's one premise consult. A failed premise is no evidence, and the read is the
+    // proof's limit (ScopeReads.Limit, its PremiseFailure; SPEC 23.1.2): an answer the valid facts leave open (Unknown) rests on it where
+    // it is no longer combined (EndProof), and one they prove or refute holds or keeps its own record.
     private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, out Completion completion)
     {
         completion = Completion.Complete;
@@ -850,7 +851,7 @@ public sealed partial class Binding
 
         if (environment.IsFailed(fact))
         {
-            this.ScopeReads.Error ??= environment.FailedPremise;
+            this.ScopeReads.Limit ??= environment.FailedPremise;
             return false;
         }
 

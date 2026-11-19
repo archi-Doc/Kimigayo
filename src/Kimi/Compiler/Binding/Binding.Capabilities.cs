@@ -386,7 +386,7 @@ public sealed partial class Binding
             next.Reads.Clear();
             var mark = this.BeginAnswer();
             this.CapabilityEvaluationWork++;
-            var result = this.ConsultedVerdict(this.ComputeCapability(next));
+            var result = this.ComputeCapability(next);
             next.Depends = this.EndAnswer(mark, result);
             if (next.Depends)
             {
