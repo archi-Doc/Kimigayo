@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // beside it keys its entry by the pair (part, beside), so it decides each distinct pair once per query and stays linear in the distinct
 // pairs; a walk of the part alone keys it by the part. A key compares by its own equality, which for a Type is identity: a Type is
 // interned, and a Closure Type holds its whole context (BU-19, BU-60, BU-71). A walk whose visit depends on a further input stores, as
-// the value, the input the key was last met with (VisitWellFormedPremises' substituted part, DECISIONS R4-M164 U1e): a meet is a hit only
+// the value, the input the key was last met with (WellFormedPremises' substituted part, DECISIONS R4-M164 U1e): a meet is a hit only
 // when the caller's comparison with it holds, and otherwise revisits the key and overwrites it.
 // Input: the key (a part, or a part and the Type beside it) and the stamp of its query. Output: the answer, or the input, that query
 // recorded for the key, if any.

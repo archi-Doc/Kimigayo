@@ -8,8 +8,9 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5 on values derived from Binding's errors (SPEC 23.1.2; docs/dev/DECISIONS.md R4-M109): an input Binding rejected after
-/// selection is its consumer's derived value, which carries no Loan, so A5 reports no conflict derived from it, while the independent
-/// records beside it stay.</summary>
+/// selection (a static Place's Borrow, the located limit) is its consumer's derived value, which carries no Loan, so A5 reports no
+/// conflict derived from it, while the independent records beside it stay; since R7-O1 b1 a call position's relation rejects no input
+/// (its row is A5's).</summary>
 public sealed partial class MirBorrowsTest
 {
     // R4's m1: st's kept row stores x's borrow into c, whose Type argument gives Loan facts only (R4-M147), beside a Bad input, then y
@@ -33,12 +34,35 @@ public sealed partial class MirBorrowsTest
     // The codes PLAN G1022's write rows observe: A5's Loan conflicts and A1's MovedPlace_Kd and UninitializedPlace_Kd.
     private static DiagnosticCode[] WriteCodes => [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.UninitializedPlace_Kd];
 
-    // SPEC 23.1.2 (DECISIONS R4-M109): an argument Binding rejects after selection (an Origin relation it cannot prove) is an Opaque of the
-    // reference the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside
-    // Binding's record, also where the rejected argument keeps a call that moves twice (A1's MovedPlace_Kd stays), while the true conflict of
-    // a literal's temporary borrowed for static stays (fail-before: a conflict at each rejected argument).
+    // SPEC 23.1.2 (DECISIONS R4-M109; superseded for call positions only, ACallPositionsInputIsJudgedAsAValidOne): an argument Binding
+    // rejects after selection, here a static Place's Borrow (the located limit until P42, DECISIONS BU-25), is an Opaque of the reference
+    // the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside Binding's
+    // record, also where the rejected argument keeps an index call that moves twice (A1's MovedPlace_Kd stays).
     [Fact]
     public void ARejectedInputFormsNoLoan()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct Tally
+                public var n: i32 = 0
+                public init() => ()
+            group State
+                public var tallies: [2 of Tally] = [Tally.init(), Tally.init()]
+            func pick(a: string, b: string) -> isize => 0
+            func kept(s: string)
+                let r = keep(State.tallies[pick(s@move, s@move)].n)
+                inspect(r)
+            """);
+        var program = AnalyzeUnsupported(c, ["State.tallies[pick(s@move, s@move)].n"]);
+        Assert.Equal(["kept: s MovedPlace_Kd"], Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
+    }
+
+    // SPEC 15.6.1, 15.6.5, 23.1.2 (R7-O1 b1, superseding DECISIONS R4-M109 for call positions): an argument whose call-position relation the
+    // premises do not prove (`c.n` and `chosen(...).n` outliving static) is no rejected input: the relation is a row the stratum judges, its
+    // record A5's, and the argument is built and judged as a valid one, so its Loans are the records a valid argument's are: none derived
+    // from borrowing through the shared `c`, A1's MovedPlace_Kd of a call that moves twice, and the true conflict of a literal's temporary
+    // borrowed for static.
+    [Fact]
+    public void ACallPositionsInputIsJudgedAsAValidOne()
     {
         var c = MirBuildTest.Compile(Prelude + """
             struct Tally
@@ -56,10 +80,11 @@ public sealed partial class MirBorrowsTest
                 let r = keepStatic(5)
                 inspect(r)
             """);
-        Assert.Equal(2, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         new Stratum(c.Types).Run(program);
+        Assert.Equal(["field", "kept"], Problems(c, program, [DiagnosticCode.UnprovenOriginRelation_Kd]).Select(static x => x.Split(':')[0]));
         Assert.Equal(["kept: s MovedPlace_Kd", "literal: 5"], Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
     }
 

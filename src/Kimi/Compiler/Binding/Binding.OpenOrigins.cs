@@ -163,7 +163,7 @@ public sealed partial class Binding
     // region, or a meet holding one. "Every relation of the call over [its region] is a body row: Binding neither judges nor drops
     // it", so the formation walk leaves it (CheckTypeOriginRelations) to the row the call's step 3 forms for the Type the call
     // instantiates: an input's (RequireInputPremises, JudgePositionRows) or its result's, a constructor's construction Type included
-    // (VisitTypeClause, the other caller: RequireResultPremises, JudgeCallClauses). A Type derived from these holds the call's region
+    // (RequireResultClause, the other caller: RequireResultPremises, JudgeCallClauses). A Type derived from these holds the call's region
     // only through them and rests on their rows. Every other declared relation keeps the formation proof.
     private static bool CallRowRelation(BoundOrigin longer, BoundOrigin shorter) => HoldsCallRegion(longer) || HoldsCallRegion(shorter);
 
