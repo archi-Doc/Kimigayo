@@ -257,6 +257,13 @@ internal struct HirTables
     }
 }
 
+/// <summary>A pass family's column in a <see cref="NodeColumns"/>: a fact family's accessor names its column so the recorder can choose
+/// the columns that hold the fact (Binding.RecordedFact, Binding.SetRecordedFact; DECISIONS G949 S1 as R7-N5 B4 amends it).</summary>
+/// <typeparam name="T">The family's row.</typeparam>
+/// <param name="columns">The columns.</param>
+/// <returns>The family's column.</returns>
+internal delegate ref StampedColumn<T, Binding.PassCounter> FactFamily<T>(ref NodeColumns columns);
+
 /// <summary>
 /// Binding's private node families of one module (DECISIONS BU-220): one column per family, indexed by the SyntaxId of the node that keys
 /// it. A kept family's <see cref="PagedColumn{T}"/> keeps its rows across passes, and a renumbering moves each row with its node
@@ -308,6 +315,14 @@ internal struct NodeColumns
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
+    internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
+    internal StampedColumn<bool, Binding.PassCounter> OriginTwins; // Pass: whether a node's Origin relation records are twins (Binding.OriginFits.cs).
+    internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
+    internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
+    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
+    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
+    internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
+    internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
 
     internal void Resize(int length)
     {
@@ -352,6 +367,14 @@ internal struct NodeColumns
         this.AliasTargets.Grow(length);
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
+        this.PerCallOrigins.Grow(length);
+        this.OriginTwins.Grow(length);
+        this.PairFollows.Grow(length);
+        this.ImplicitPairFollows.Grow(length);
+        this.PhantomRawOrigins.Grow(length);
+        this.InvalidStaticOriginSlots.Grow(length);
+        this.CallablePremiseFailures.Grow(length);
+        this.EffectBoundRejections.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -372,34 +395,14 @@ internal struct NodeColumns
         this.AliasTargets.Freeze(binding);
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
-    }
-
-    // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
-    internal void Reserve(KimiLibrarySize.Tables stated)
-    {
-        this.Symbols.Reserve(stated.Declarations);
-        this.Parameters.Reserve(stated.Parameters);
-        this.Receivers.Reserve(stated.Receivers);
-        this.EnumConstructions.Reserve(stated.EnumConstructions);
-        this.CopyDeclarations.Reserve(stated.CopyDeclarations);
-        this.CopyByType.Reserve(stated.CopyByType);
-        this.InheritedOriginTypes.Reserve(stated.InheritedOriginTypes);
-        this.DeferredConstraints.Reserve(stated.DeferredConstraints);
-        this.Matches.Reserve(stated.Matches);
-        this.Adaptations.Reserve(stated.Adaptations);
-        this.Specializations.Reserve(stated.Specializations);
-        this.SpecializationsByOriginal.Reserve(stated.SpecializationsByOriginal);
-        this.Scopes.Reserve(stated.Scopes);
-        this.OriginAtoms.Reserve(stated.OriginAtoms);
-        this.OpenOrigins.Reserve(stated.OpenOrigins);
-        this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
-        this.OriginDeclarations.Reserve(stated.OriginDeclarations);
-        this.DiscoveredOrigins.Reserve(stated.DiscoveredOrigins);
-        this.OriginRequirementNodes.Reserve(stated.OriginRequirementNodes);
-        this.PropertyCalls.Reserve(stated.PropertyCalls);
-        this.RangeCalls.Reserve(stated.RangeCalls);
-        this.ResolvedKeys.Reserve(stated.ResolvedKeys);
-        this.MatchPlans.Reserve(stated.MatchPlans);
+        this.PerCallOrigins.Freeze(binding);
+        this.OriginTwins.Freeze(binding);
+        this.PairFollows.Freeze(binding);
+        this.ImplicitPairFollows.Freeze(binding);
+        this.PhantomRawOrigins.Freeze(binding);
+        this.InvalidStaticOriginSlots.Freeze(binding);
+        this.CallablePremiseFailures.Freeze(binding);
+        this.EffectBoundRejections.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -449,6 +452,14 @@ internal struct NodeColumns
             AliasTargets = this.AliasTargets.Renumbered(length),
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
+            PerCallOrigins = this.PerCallOrigins.Renumbered(length),
+            OriginTwins = this.OriginTwins.Renumbered(length),
+            PairFollows = this.PairFollows.Renumbered(length),
+            ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
+            PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
+            InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
+            CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
+            EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
         };
         return columns;
     }

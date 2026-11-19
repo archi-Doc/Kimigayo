@@ -456,7 +456,7 @@ public class BindingTest
             Assert.Equal(obligations, c.Binding.Obligations);
             c.Binding.ReportDiagnostics();
             Assert.Equal(Records(twin), Records(c));
-            Assert.Equal(twin.Binding.TableCounts, c.Binding.TableCounts);
+            Assert.Equal(Nodes(twin), Nodes(c));
             Assert.Equal(OriginRows(twin), OriginRows(c));
         }
         finally
@@ -473,6 +473,10 @@ public class BindingTest
 
         // The Origin rows of each body an obligation names, in the obligations' order.
         static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
+
+        // The nodes of the composed view, which the reports and the candidate clauses walk outside a pass; no member publishes its count,
+        // so it is read as Move reaches the parts.
+        static int Nodes(Compilation c) => ((IReadOnlyCollection<Koto>)typeof(Binding).GetField("nodesView", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Count;
     }
 
     // PLAN G949 S1-r1b (s1r1-design 3.3, RC2's recorder): a pass binds the modules of its set, the library's table when it holds the
@@ -565,6 +569,58 @@ public class BindingTest
         Assert.True(other.Bind().IsComplete);
         Assert.Same(c.Library, other.Library);
         Assert.DoesNotContain(other.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+    }
+
+    // DECISIONS G949 S1 as R7-N5 B4 amends it (the Front's C1, B's ruling 10): the fact a failure carries is stored with the failure, by
+    // the recorder's one decision, so a library node the program pass fails with a fact is the program part's entry and its fact the
+    // part's foreign row, which the family's reader reads; no library column is written, and CheckBound gives the node its issue. No
+    // program fails one today (the census), so each row fails one through the private writer after a Final Bind, as a check of the
+    // program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce): a qualification stop's QualificationRequired (B1a's
+    // `qualificationFailures`, written in Fail, where B1a's HirTables.Of refused the frozen library table) and FailExplained's
+    // per-call Origin fact (MissingOrigin).
+    [Fact]
+    public void AFactALibraryNodesFailureCarriesIsRecordedWithIt()
+    {
+        var c = CompilationTestHelper.Parse("struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n");
+        Assert.False(c.Bind().IsComplete);
+        var stops = (Dictionary<(Koto Use, bool Type), Binding.QualificationFact>)typeof(Binding).GetField("qualificationStops", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var stop = Assert.Single(stops).Value;
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        stops[(node, false)] = stop with { At = node };
+        typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, BindingFailure.MissingName, false]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((node, BindingFailure.QualificationRequired), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
+        var rows = typeof(Binding).GetField("qualificationFailures", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal(stop with { At = node }, rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rows, [node]));
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.QualificationFailures.Used);
+        Assert.Empty(c.Library.Layer.Part.ForeignFailures); // So the library part's ForeignFacts has no row a reader reaches.
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.QualificationRequired);
+    }
+
+    [Fact]
+    public void AFailExplainedFactAtALibraryNodeIsRecordedWithItsFailure()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var library = c.Library.Kotonoha.RootKoto;
+        var call = KotoTree.Walk(library).OfType<InvocationKoto>().First(x => x.StateOf(c) == BindingState.Resolved && x.ArgumentNodes.Count != 0);
+        var selected = KotoTree.Walk(library).OfType<FunctionKoto>().First(static x => x.GenericArguments.Count != 0);
+        FactFamily<Binding.PerCallOriginFact> family = static (ref NodeColumns columns) => ref columns.PerCallOrigins;
+        var explain = typeof(Binding).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(static x => x.Name == "FailExplained" && x.GetParameters()[0].ParameterType is { IsGenericType: true } p && p.GetGenericTypeDefinition() == typeof(FactFamily<>))
+            .MakeGenericMethod(typeof(Binding.PerCallOriginFact));
+        explain.Invoke(c.Binding, [family, call, BindingFailure.MissingOrigin, new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), false]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((call, BindingFailure.MissingOrigin), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
+        var rows = typeof(Binding).GetField("perCallOrigins", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        object?[] read = [call, null];
+        Assert.True((bool)rows.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(rows, read)!);
+        Assert.Equal(new Binding.PerCallOriginFact(call.ArgumentNodes[0], selected, 0), read[1]);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.PerCallOrigins.Used);
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
     }
 
     // PLAN G949 S1-r1b (v4; s1r1-design 1.3): CheckBound reruns the program pass's Check only, on Binding's own part, and composes the

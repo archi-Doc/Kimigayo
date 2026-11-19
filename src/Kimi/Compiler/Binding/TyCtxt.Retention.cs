@@ -15,12 +15,14 @@
 // returned, publishes no Value row: it has no Origin a caller names, and rule A keeps only the written-through input's chain.
 // Output: an immutable CallRetention, one per callee, signature or erased destruction's receiver, Type instantiation and the premise
 // scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit (DECISIONS R4-M154): its Result
-// (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), per output it may write (Writes, ascending)
-// an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the
+// (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), the result read as an output
+// (ResultWrites: Own the Result, Reached the storages past the result's written layers; null where it has none; G841's H2), per output it
+// may write (Writes, ascending) an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the
 // argument's direct Loans name, the referent of a borrowed input, a raw input's pointee, or what the exclusive layers and the raw
 // layers the call may write that a by-value input holds refer to, in its Fields, payloads and elements too) and of the storage past its
 // exclusive layers (Reached: one entry per Origin-erased storage Type, joined over that Type's occurrences, an Abstract entry for what
-// an abstract part hides, and All, their join);
+// an abstract part hides, and All, their join), each storage with the hold walk's rows of the raw layers it holds itself (a raw layer
+// the call writes retains in the storage holding it, never in every storage of the output; C-352);
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
 // past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
@@ -49,8 +51,9 @@
 // Shared; a raw parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive
 // what that Origin's borrows admit (their referents, a slot's Keepers) as that input's storage. A raw input is retained as a borrowed
 // one, its pointee as the referent: an Origin inside its pointee is Content, its own layer's Origin gives no row, and its own value is
-// a Value row only of an output that can hold it where the call may write it (a raw layer stating an Origin or `static`, whatever its
-// pointee Type, or an abstract part where a callable the call may run may retain it there, DECISIONS BU-66, at or below a position of
+// a Value row only of an output that can hold it where the call may write it (a raw layer stating an Origin or `static` where one of its
+// own layers states an Origin that one's premise closure reaches, whatever its pointee Type: a raw layer stating none fits it only by a
+// claim, SPEC 5.7, so it is no row there, the owner's O-329 (a); or an abstract part where a callable the call may run may retain it there, DECISIONS BU-66, at or below a position of
 // the output's writable storage: a value
 // stored there brings its whole Type, every layer but a callable's, a struct's or enum's stored content included), of a result the call
 // forms within its storage (Raw.slice), or by the rules below; never of its own pointee, so a raw input may have both rows to one
@@ -80,6 +83,8 @@
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
 // takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
 // a view of its own (A3 9, item 9).
+
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -151,12 +156,36 @@ internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundO
 /// <summary>What a call may retain in the storage it may write through one input (<see cref="Output"/>; DECISIONS R4-M154): its root
 /// storage (<see cref="Own"/>, what the argument's direct Loans name) and the storage past that storage's exclusive layers
 /// (<see cref="Reached"/>: one entry per Origin-erased storage Type, in the contract's terms, and an Abstract entry, Type null, for what an
-/// abstract part hides), with <see cref="All"/>, the join of every Reached entry. Immutable.</summary>
-internal sealed class OutputRetention(int output, StorageRetention own, (BoundType? Type, StorageRetention Retention)[] reached, StorageRetention all)
+/// abstract part hides), with <see cref="All"/>, the join of every Reached entry. Every storage the output's walk enters past a layer has
+/// its entry, also where it retains nothing; a call has no OutputRetention for an output none of whose storages retains anything.
+/// <see cref="Kept"/>: the called function, where this output was read in its terms (SPEC 15.6.4's abstract-storage sentence; PLAN
+/// G935): a storage past a layer that lies in the binding of that function's own kept abstract Type then has its entry under that
+/// Type, a part of a mixed storage included (<c>TyCtxt.EntryType</c> names a storage's entry); null for a callee whose rows SPEC
+/// states, an erased callee and a by-value input that is the kept Type itself, which are read instantiated. A kept Type's entry and
+/// an instantiated Type's are one entry only where the call's Subst names the callee's own Types (a self-recursive generic call, a
+/// Closure or a nested function inside the callee): the Types are then one and their rows are joined. <see cref="Handed"/>: where
+/// <see cref="Kept"/> is not null, the kept Types this output's walk meets that a callable the callee's declaration hands its body
+/// writes (SPEC 15.6.4 "through its result or its writes"; PLAN G935, C-370, the owner's O-398 (a)). Immutable.</summary>
+internal sealed class OutputRetention(int output, StorageRetention own, (BoundType? Type, StorageRetention Retention)[] reached, StorageRetention all, FunctionKoto? kept, BoundType[] handed)
 {
     private readonly (BoundType? Type, StorageRetention Retention)[] reached = reached;
+    private readonly BoundType[] handed = handed;
 
     internal int Output { get; } = output;
+
+    internal FunctionKoto? Kept { get; } = kept;
+
+    /// <summary>Gets the kept Types this output's walk meets (Origins erased, as <c>TyCtxt.EntryType</c> names a kept storage's entry)
+    /// through whose binding a callable the called function's declaration hands its body (a Callable bound, a requirement of a Contract
+    /// premise, a Self receiver's included, or a callable value an input holds; the list Binding's fills read in a kept binding) writes:
+    /// one of its parameters reaches a value of that Type through no shared layer (Binding's Writes). A call through such a callable
+    /// writes past that binding's references by SPEC 15.6.4's routes, so "a raw layer the binding holds adds no reach of its own" is not
+    /// the whole of the call's reach in that Type's binding; it stays so in the binding of a kept Type not listed (the owner's O-398 (a):
+    /// a writer of T leaves U's hidden layers hidden). A reader asks for the kept Type at its key (<c>EntryType</c>'s). The walk meets a
+    /// kept Type at any position it enters, also one the call does not write (a by-value input's part, as <c>Bx&lt;T&gt;</c>'s item): this
+    /// is no claim that the kept Type lies in written storage. Empty where <see cref="Kept"/> is null. Input-agnostic: a writer that takes
+    /// only the kept Type still writes what the value holds.</summary>
+    internal ReadOnlySpan<BoundType> Handed => this.handed;
 
     internal StorageRetention Own { get; } = own;
 
@@ -165,10 +194,10 @@ internal sealed class OutputRetention(int output, StorageRetention own, (BoundTy
     internal StorageRetention All { get; } = all;
 }
 
-/// <summary>A call's retention: what its result retains (<see cref="Result"/>), what the storage it may write through each input retains
-/// (<see cref="Writes"/>, by ascending output), and the stores it writes only in the storage its receiver refers to (BU-42); or
-/// <see cref="Limit"/>, which has none of them.</summary>
-internal sealed class CallRetention(StorageRetention? result, OutputRetention[] writes, int[] referentStores)
+/// <summary>A call's retention: what its result retains (<see cref="Result"/>), the storages past the result's written layers
+/// (<see cref="ResultWrites"/>), what the storage it may write through each input retains (<see cref="Writes"/>, by ascending output),
+/// and the stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them.</summary>
+internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores, bool composes)
 {
     /// <summary>The output slot of a call's result, beside its inputs' slots (0 and up).</summary>
     internal const int ResultOutput = -1;
@@ -178,13 +207,21 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention[] 
     /// member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: nothing is computed, and A5
     /// records a located Unsupported_Kd at the call. Storage a Binding failure left Rejected is not a Limit (DECISIONS BU-36). Reading its
     /// Result, Writes or ReferentStores is a broken contract.</summary>
-    internal static readonly CallRetention Limit = new(null, [], []);
+    internal static readonly CallRetention Limit = new(null, null, [], [], composes: true);
 
     private readonly StorageRetention? result = result;
+    private readonly OutputRetention? resultWrites = resultWrites;
     private readonly OutputRetention[] writes = writes;
     private readonly int[] referentStores = referentStores;
 
     internal bool IsLimit => this.result is null;
+
+    /// <summary>Gets a value indicating whether the call's writes and reads compose within it (SPEC 15.6.4: "Except for the operations whose
+    /// writes SPEC states, ... a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): false for `replace`,
+    /// `exchange`, `swap`, `Raw.initialize` and the operations of SPEC 4.6 to 4.9, by declaring identity (Binding.Retention.Transfers.cs,
+    /// StatesWrites over TransferKey's table), whose stated stores stay in their Reached entries. A5's
+    /// rule 4 (the call's own pointer) and H2 read it before they take any entry.</summary>
+    internal bool Composes { get; } = composes;
 
     /// <summary>Whether the call may keep an input past its end: its result or a storage it may write holds it, and the Limit, which states
     /// nothing, may. False is what an inspection means (SPEC 13.4: the `bool` result keeps none).</summary>
@@ -209,6 +246,12 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention[] 
     }
 
     internal StorageRetention Result => this.result ?? throw new InvalidOperationException("The Limit retention has no result.");
+
+    /// <summary>Gets the result read as an output (G841's H2, PLAN G935): its Own is <see cref="Result"/>, the whole result Type's record,
+    /// and its Reached entries the storages past the result's layers the call may write, each with the rows of the positions and raw
+    /// layers it holds, by the walk an input's output takes (Binding.Retention.Rows.cs); null where the result has no such storage.</summary>
+    internal OutputRetention? ResultWrites
+        => this.result is null ? throw new InvalidOperationException("The Limit retention has no ResultWrites.") : this.resultWrites;
 
     internal ReadOnlySpan<OutputRetention> Writes
         => this.result is null ? throw new InvalidOperationException("The Limit retention has no Writes.") : this.writes;

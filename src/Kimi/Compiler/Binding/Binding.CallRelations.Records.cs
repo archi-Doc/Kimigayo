@@ -5,22 +5,23 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Origin records beyond the first (SPEC 15.6.1: every failed chain; SPEC 23.1.2: independent problems; contract of the concern, the
-// judgment in Binding.CallRelations.cs).
-// - Responsibility: the Origin relation records that one judgment collects (callRelationScratch: a selected call's JudgeCallPosition,
-//   a value call's inputs, OriginClauses' declaration rows), each node failed with its first record or published with its contract
-//   record (FollowsContract; PublishCallRelations); and a node's records beyond its first, Origin relation and Origin contract records
-//   alike, each a problem of the node with its own condition, published after the node's first record (RecordFurtherOriginRecord, also for
-//   RecordOriginFitFailure's other chains; ReportOriginRecords, ReportFurtherOriginRecords); whether a node has a collected record
-//   (HasCallRelation).
+// Origin records beyond the first (SPEC 15.6.1: every failed chain; SPEC 23.1.2: independent problems). A call's relations in a body
+// are rows A5 judges (FormBodyRelation, R7-O1); Binding judges in the declaration frame (JudgeDeclarationPosition,
+// Binding.OriginClauses.cs) and, until R7-O1's H1 and H2, a body's other fits and its local clauses (Binding.OriginFits.cs,
+// Binding.OriginClauses.cs).
+// - Responsibility: the Origin relation records the declaration judge collects (callRelationScratch: JudgeDeclarationPosition's, over
+//   JudgeDeclarationRows' rows and chains), each node failed with its first record or published with its contract record
+//   (FollowsContract; PublishCallRelations); and a node's records beyond its first, Origin relation and Origin contract records alike,
+//   each a problem of the node with its own condition, published after the node's first record (RecordFurtherOriginRecord, also for
+//   RecordOriginFitFailure's other chains; ReportOriginRecords, ReportFurtherOriginRecords).
 // - Inputs: OriginRelationFact and OriginContractFact values with their nodes; the node's first record in originRelations or
 //   originContracts.
 // - Outputs: the OriginRelation failure of each collected node and every node's further records.
 // - Invariants: callRelationScratch is empty after PublishCallRelations; a node's further records exclude its first record and hold no
 //   duplicate; each record keeps its kind, subject and location, and the adapter publishes it by its kind; no record of one kind is
 //   dropped, merged or reordered because of another kind's first record (SPEC 23.1.2).
-// - Prohibitions: no judgment of a relation or a comparison (CallRelations, OriginFits, OriginClauses and the Type relation judge); no
-//   message text.
+// - Prohibitions: no judgment of a relation or a comparison (OriginClauses, OriginFits and the Type relation judge decide; CallRelations
+//   forms rows); no message text.
 public sealed partial class Binding
 {
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
@@ -71,19 +72,6 @@ public sealed partial class Binding
                 ReportOriginContract(node, this.report.Origin(fact).Contract!.Value, requirement, problem.Code, problem.Condition);
             }
         }
-    }
-
-    private bool HasCallRelation(Koto node)
-    {
-        for (var i = 0; i < this.callRelationScratch.Count; i++)
-        {
-            if (ReferenceEquals(this.callRelationScratch[i].Node, node))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     // Fails each node with its first record and keeps the others for publication with it; beside a contract, each is a further record.

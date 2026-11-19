@@ -469,8 +469,10 @@ public sealed partial class MirBorrowsTest
     // arrConsumeBad), so `slot` may keep w's address and with it y's Loan: each errs at `y = 5` as its borrowed twin does (fail-before:
     // accepted). viaUntiedBad leaves `x.p` as `Plain.init` made it, which by that contract may address storage the body does not own, so
     // the write may keep y's Loan there (R4-M116 S2's hiddenInit), however `slot` is used; so do three forms that use it before `y = 5`
-    // by a constructor's contract: genUntiedBad and boxUntiedBad box x after `x.p = slot@raw`, and `Bx.init`'s result is untied, so the
-    // box's `item.p` may address such storage and writeG or writeBP may store w's address there; deepUntiedBad hands `Plain.init(q: w..)`
+    // by a constructor's contract: boxUntiedBad boxes x after `x.p = slot@raw`, and `Bx.init`'s result is untied, so the box's `item.p`
+    // may address such storage and writeBP may store w's address there; genUntiedBad's writeG<T> is a valid program, rejected again since c3-5 as on fcd6a5381 (a known limit of this tree's A5, which maps the key past a hidden layer to storage the body does not own: open issue "A5's Φ_E exclusion past a hidden layer", PLAN G935 c3-5): `x.item` is a T, whose
+    // binding's raw Field adds no reach of its own, and q is no T; slot, the holder that Field addresses, may take q but is used only
+    // before `y = 5` (SPEC 15.6.4, the owner's O-360 (a) and O-312 (a)); deepUntiedBad hands `Plain.init(q: w..)`
     // to `Outer.init`, which may write that chain, y's Loan with it, through `inner.p` as `Plain.init` left it (the reviews' genPOk,
     // boxPlainOk and deepOk). Valid: a Tuple no untied constructor built, used before `y = 5` (tupOk), and arguments whose chain carries
     // no Loan (viaQuietOk, consumeQuietOk).
@@ -642,14 +644,18 @@ public sealed partial class MirBorrowsTest
     // storage that can hold a part or a borrow formed through the argument keeps its Loans, and a stated layer retains as its borrow
     // would (5.7 Calls, PLAN G339). A keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the
     // drop forms of ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of
-    // reads through the argument carries, so that raw layer keeps it. Another argument's storage (keeperOtherBad) and a raw result
-    // (keeperResultBad, keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
+    // reads through the argument carries, so that raw layer keeps it, and slot's own storage end conflicts too (keeperBorrowedBad's
+    // `var slot`, a true record: the layer a declaration states keeps what it admits, 5.7 Calls; D-757; keeperChainBad's the same).
+    // Another argument's storage (keeperOtherBad) and a raw result (keeperResultBad, keeperTupResultBad) keep the by-value argument's
+    // own value, the keeper's Loan with it (keeperOtherBad's `usep(other)` and `var other`: records added with the A5 landing on a
+    // program rejected anyway, DECISIONS Q13).
     [Fact]
     public void AByValueKeeperIsItsArgumentsOwnValue()
         => Assert.Equal(
             [
-                "keeperBorrowedBad: usep(slot)", "keeperChainBad: usep(slot)", "keeperOtherBad: slot = null", "keeperResultBad: usep(slot)",
-                "keeperTupResultBad: usep(slot)",
+                "keeperBorrowedBad: usep(slot)", "keeperBorrowedBad: var slot: raw/u8 = null", "keeperChainBad: usep(slot)",
+                "keeperChainBad: var slot: raw/u8 = null", "keeperOtherBad: slot = null", "keeperOtherBad: usep(other)",
+                "keeperOtherBad: var other: raw/u8 = null", "keeperResultBad: usep(slot)", "keeperTupResultBad: usep(slot)",
             ],
             Problems("""
                 func usep<T>(p: raw/T) => ()
@@ -803,10 +809,14 @@ public sealed partial class MirBorrowsTest
     // holder, so a value an untied constructor made (Plain.init's, Writer.init's or Bx.init's result) reaches it through every raw Field,
     // also after the caller rewrote one. A call that writes through such a value stores there every chain its row retains, y's Loan with
     // it: x's own (viaOk, consumeDrop2Ok, arrConsumeOk; viaRefOk through a borrow) or input 1's (via2Ok; deepQOk two Fields deep, enumBOk
-    // in an enum's payload, optOk in an Option, genPLateOk in a box's Field, arrPlainOk in an Array). Each is a correct error at `y = 5`
+    // in an enum's payload, optOk in an Option, boxPLateOk in a box's Field, arrPlainOk in an Array). genPLateOk, the box passed to
+    // `writeG<T>(x: Bx<T>, q: raw/u8)`, is a valid program, rejected again since c3-5 as on fcd6a5381 (the limit genUntiedBad's row names): `x.item` is storage of writeG's own T, Plain's raw Field lies in T's binding, which adds
+    // no reach of its own beyond the address it carries, and q is no T; slot, the holder that Field addresses, may take q (route 1, the
+    // owner's O-312 (a)) but is used only before `y = 5` (SPEC 15.6.4; the owner's O-360 (a)); its purpose is
+    // boxPLateOk's, whose callee `writeBP(x: Bx<Plain>, ..)` writes the Type. Each other is a correct error at `y = 5`
     // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
     // names keep their earlier suffix. The old analysis read no retention and accepted the program; since the MIR decides acceptance
-    // (R6-check H5, DECISIONS R5-M185) check rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
+    // (R6-check H5, DECISIONS R5-M185) check rejects it with these eleven records, each at its function's `y = 5` (H3b's 1r).
     [Fact]
     public void ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn()
     {
@@ -896,6 +906,15 @@ public sealed partial class MirBorrowsTest
                 writeG(b@move, w@raw@raw/u8)
                 usep(slot)
                 y = 5
+            func boxPLateOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var b = Bx.init(item: Plain.init(q: null))
+                b.item.p = slot@raw
+                writeBP(b@move, w@raw@raw/u8)
+                usep(slot)
+                y = 5
             func arrPlainOk()
                 var y: i32 = 1
                 var w: ref/i32 = y@ref
@@ -914,12 +933,12 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "viaOk: y = 5", "viaRefOk: y = 5", "consumeDrop2Ok: y = 5", "arrConsumeOk: y = 5", "via2Ok: y = 5", "deepQOk: y = 5", "enumBOk: y = 5",
-                "optOk: y = 5", "genPLateOk: y = 5", "arrPlainOk: y = 5",
+                "optOk: y = 5", "genPLateOk: y = 5", "boxPLateOk: y = 5", "arrPlainOk: y = 5",
             ],
             Problems(c, Analyze(c), LoanCodes));
         var analyzed = MinimalEmissionTest.Analyze(Source);
         Assert.False(analyzed.Accepts);
-        Assert.Equal(string.Join(" | ", Enumerable.Repeat("ComparisonLoanConflict_Kd y = 5", 10)), MinimalEmissionTest.Problems(analyzed));
+        Assert.Equal(string.Join(" | ", Enumerable.Repeat("ComparisonLoanConflict_Kd y = 5", 11)), MinimalEmissionTest.Problems(analyzed));
     }
 
     // SPEC 5.7 Reading a Field, 5.2.1 (G184, `during self`): a pointer read from a `during self` Field reaches its holder's own storage, so a
@@ -966,15 +985,17 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6 (condition 5, D6; DECISIONS R4-M116 S2, S3, R-B2, B-B1): a pointer the contract ties to nothing reaches storage the body
     // does not own: in a result's raw Field (hiddenInit, hiddenHolder), written into an input's raw Field by the call (fill, which may also
-    // store what a read through h carries, v's Loan, where h's untied pointer reaches), or formed through a local that holds no Loan
-    // (punCall; punned, the residual: a Loan-free local keeps no Loan, so E does); a raw argument's pointee is read through it into the
-    // result (snap); a pointer that addresses a Loan-free local and stores a value with no Loan is valid.
+    // store what a read through h carries, v's Loan, where h's untied pointer reaches); a pointer formed through a local that holds no
+    // Loan stores y's Loan in that local, and a reference read from it carries the Loan (punCall: z is used after y = 5); a raw
+    // argument's pointee is read through it into the result (snap). A pointer that addresses
+    // a Loan-free local, or carries an exclusive Loan on one, stores y's Loan in that local, an exposed holder, unused after (punBorrow,
+    // punAddress: valid, the A5 value redesign's U6; R4-M120's untracked rule sent the store to E), and one that stores a value with
+    // no Loan is valid.
     [Fact]
     public void AnUntiedPointerReachesStorageTheBodyDoesNotOwn()
         => Assert.Equal(
             [
-                "hiddenInit: y = 5", "hiddenHolder: y = 5", "filled: y = 5", "filled: var v: i32 = 2", "punCall: y = 5", "punBorrow: y = 5",
-                "punAddress: y = 5", "snap: y = 5",
+                "hiddenInit: y = 5", "hiddenHolder: y = 5", "filled: y = 5", "filled: var v: i32 = 2", "punCall: y = 5", "snap: y = 5",
             ],
             Problems(RawShapes + """
                 func hiddenInit()
@@ -1043,12 +1064,19 @@ public sealed partial class MirBorrowsTest
     // parameter reaches it from any local holder that keeps it, and a call storing x's Loan through the holder keeps it there: a raw local,
     // a Tuple, and a Tuple beside a direct part (whose own Loan the call may store there too, SPEC 15.6.4's per-argument letter, and
     // with it the Loan on y two reads through the Tuple's borrow, `t@uniq` -> t -> w, which 15.6.4's chain clause keeps, so y's storage
-    // end conflicts too). Valid twins: the same holders with the pointer formed to a local holder that is dead after the call, and a
-    // value with no Loan of the body stored through the pointer read.
+    // end conflicts too). Valid: a value with no Loan of the body stored through the pointer read (noLoan). The twins with the pointer
+    // formed to a local holder that is dead after the call (formedLocal, formedTuple, formedMixed) are invalid too (A5 value redesign
+    // U3c): the written storage (c2, t.0) is a raw layer without an Origin, so the call may write its own pointer there and store x
+    // through it in storage the body does not own (SPEC 15.6.4's composition, example twoLayers; 5.7 Calls: also as a Tuple element),
+    // with what a chain of reads through the argument carries (the storage ends of v, w and y). Dev accepted them.
     [Fact]
     public void APointerReadFromStorageTheBodyDoesNotOwnReachesIt()
         => Assert.Equal(
-            ["viaUniqLocal: x = 5", "viaUniqTuple: x = 5", "viaUniqMixed: x = 5", "viaUniqMixed: var w: ref/i32 = y@ref", "viaUniqMixed: var y: i32 = 2"],
+            [
+                "viaUniqLocal: x = 5", "viaUniqTuple: x = 5", "viaUniqMixed: x = 5", "viaUniqMixed: var w: ref/i32 = y@ref", "viaUniqMixed: var y: i32 = 2",
+                "formedLocal: x = 5", "formedLocal: var v: i32 = 2", "formedTuple: x = 5", "formedTuple: var v: i32 = 2", "formedMixed: x = 5",
+                "formedMixed: var w: ref/i32 = y@ref", "formedMixed: var v: i32 = 3", "formedMixed: var y: i32 = 2",
+            ],
             Problems(RawShapes + """
                 func storeThrough(c: uniq/(raw/(ref/i32 during a)), x: ref/i32 during a)
                     unsafe => Raw.initialize(c@follow, x)
@@ -1315,13 +1343,18 @@ public sealed partial class MirBorrowsTest
     // after the call: a result two raw layers below the argument (also through a reference), a raw slot written from them, the written
     // argument read through itself, a lent result three raw layers deep, a popped, exchanged or swapped pointer whose pointee is replaced
     // after the call (SPEC 15.6.4's transfer rule keeps the chain), and a chain through E, the storage the body does not own, where an
-    // earlier store left a holder's address (Φ_E read at a later step). Valid twins: each with the result's use before `y = 5`, and viaEOk
-    // without the store.
+    // earlier store left a holder's address (Φ_E read at a later step). Valid twins: the others with the result's use before `y = 5`,
+    // and viaEOk without the store. Four such twins (getRRROk, fRRROk, unlinkROk, lend3Ok) are invalid too (A5 value redesign U3c): the
+    // written storage (h2, h1, h3) is a raw layer without an Origin, so the call may write its own pointer there and store through it, in storage the body does not
+    // own, what a chain of reads through the argument carries (SPEC 15.6.4: "may retain every argument with what any chain of reads
+    // through it carries"; example twoLayers), which is used after every point, whatever the result's use; lend3's other argument
+    // (z@ref) is kept there as well, so z's storage end conflicts. Dev accepted them.
     [Fact]
     public void AChainRowCarriesWhatAnyChainOfReadsThroughItsArgumentCarries()
         => Assert.Equal(
-            ["getRRRRepl: y = 5", "getRFRRepl: y = 5", "fRRRRepl: y = 5", "unlinkRBad: y = 5", "lend3Repl: y = 5", "popLateBad: y = 5",
-                "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5", "viaEBad: y = 5"],
+            ["getRRRRepl: y = 5", "getRRROk: y = 5", "getRFRRepl: y = 5", "fRRRRepl: y = 5", "fRRROk: y = 5", "unlinkRBad: y = 5",
+                "unlinkROk: y = 5", "lend3Repl: y = 5", "lend3Repl: var z: i32 = 0", "lend3Ok: y = 5", "lend3Ok: var z: i32 = 0",
+                "popLateBad: y = 5", "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5", "viaEBad: y = 5"],
             Problems(RawShapes + ChainShapes + ChainForms));
 
     // SPEC 23.1.2: the chain's error stands beside an unrelated error.

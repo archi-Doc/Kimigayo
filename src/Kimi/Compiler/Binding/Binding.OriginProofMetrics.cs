@@ -61,6 +61,10 @@ internal sealed class OriginProofMetrics
     /// the minimal-condition rule at a last edge is quadratic in its key's conditions by design (at most 64 binders), as the copy's was.</summary>
     internal long ChainWork { get; private set; }
 
+    /// <summary>Gets the parts the well-formedness walks visited: a pattern part beside its Type at the use, above a borrow layer or
+    /// below one (R7-O1 d).</summary>
+    internal long WellFormedParts { get; private set; }
+
     /// <summary>Gets the worklist insertions of all closures.</summary>
     internal long Insertions { get; private set; }
 
@@ -104,6 +108,7 @@ internal sealed class OriginProofMetrics
         this.BoundViolations = 0;
         this.ClosureTicks = 0;
         this.ChainWork = 0;
+        this.WellFormedParts = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
     }
@@ -111,6 +116,8 @@ internal sealed class OriginProofMetrics
     internal void RegionRead() => this.RegionReads++;
 
     internal void Chained(long work) => this.ChainWork += work;
+
+    internal void WellFormedPart() => this.WellFormedParts++;
 
     internal void Enter(BoundOrigin longer, BoundOrigin shorter, Koto use, int depth)
     {
