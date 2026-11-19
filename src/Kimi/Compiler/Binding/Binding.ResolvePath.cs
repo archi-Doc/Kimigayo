@@ -11,8 +11,10 @@ namespace Kimi.Compiler;
 // - Inputs: the name's syntax, the use's scope, the role (its namespace with it) and the written Type-argument count.
 // - Outputs: a ResolvedPath (how the path ended, the selected symbol, a stage stop's typed facts); its steps stand on nameSteps.
 // - Invariants: evaluation writes nothing on the use's nodes or in a table keyed by them, and reads no state a publication writes. It may
-//   force a declaration query (a base clause, an alias target), whose facts and records are that declaration's own. PublishPath alone
-//   writes, once. One path stands above a mark, but for an adaptation target, whose roles are compared (ResolveAdaptationTarget). A
+//   force a declaration query (a base clause, an alias target), whose facts and records are that declaration's own. An evaluation forms
+//   no input whose form depends on the undecided reading; an input every reading forms alike (a written Contract reference) is formed by
+//   its own former first. PublishPath alone writes, once. One path stands above a mark, but for an adaptation target, whose roles are
+//   compared (ResolveAdaptationTarget). A
 //   Container's members are read through MemberTypes (SPEC 9.6, 18.2.1): no path, `::` member step or import stage reaches a formal
 //   parameter, which only the scope walk finds.
 // - A component returns through the use verdict (Supported, SPEC 22.1) as the walk completes it, before it is handed on as a qualifier
@@ -27,9 +29,11 @@ namespace Kimi.Compiler;
 //   publication keeps the side (R7-N1c). A projection path's selection (an associated Type, a member Type of its normal form) is its
 //   ProjectionMember step, an inaccessible member a lookup met where it selected none its HiddenMember step (R7-N1 c-b). A call's
 //   overload selection rewrites the member's Name later (BindCall).
-// - A member access's left reading (ReadLeft, SPEC 9.6) is decided here before either reading publishes; a left whose Type walk ends
-//   Projection is first formed by the projection's former (BindAssociatedProjection: a projection names no value, so every reading
-//   reads it), and the evaluation (LeftValue) reads only what is published.
+// - A member access's left reading (ReadLeft, SPEC 9.6) is decided here before either reading publishes. A projection path in the left
+//   is evaluated, not formed (EvaluateProjection: the associated search alone, ProjectionIdentity and NormalizedProjection, the former's
+//   own steps), its written Contract reference formed first by its former (ProjectionQualifier); BindAssociatedProjection forms the
+//   projection after the reading is decided, so every question (ReadLeft, ResultSurvey's MayBeValueQualifier) gives one answer
+//   whatever was published before it.
 
 // SPEC 9.2's Lookup Roles: a use's syntactic position chooses one (UseRow), the row alone decides eligibility (HasLookupRole), and
 // Qualifier alone reaches stage 4 (SPEC 9.5). Type legality rejects the rest after selection, never resuming lookup.
@@ -490,12 +494,13 @@ public sealed partial class Binding
     // the value reading. The Type reading's lookup is published here; a failed Type walk beside the value reading publishes its
     // outcome too (true facts the inner accesses read, so the chain is walked once), but for the head's own steps when the head is a
     // value; the value reading is published by its former (BindNode), its own stage's failure by Lookup (ValueFailure).
-    private LeftReading ReadLeft(MemberAccessKoto member, string name, BindingScope scope, out ResolvedPath qualifierPath, out BoundType? projected)
+    private LeftReading ReadLeft(MemberAccessKoto member, string name, BindingScope scope, out ResolvedPath qualifierPath)
     {
         var mark = this.nameSteps.Count;
         qualifierPath = this.EvaluateUse(member.Left, scope, 0, out var early);
-        projected = qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection ? this.BindAssociatedProjection(projection, scope) : null;
-        var typed = qualifierPath.End == PathEnd.Selected || projected is not null;
+        var step = this.nameSteps.Count;
+        var typed = qualifierPath.End == PathEnd.Selected ||
+            (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.EvaluateProjection(projection, scope, mark, ref step) is not null);
         var value = this.LeftValue(member.Left, scope, mark, out var valuePath, out var walkFrom, out var walkReceiver);
         if (value == LeftValueKind.Possible && typed && walkFrom is not null)
         {
@@ -700,7 +705,7 @@ public sealed partial class Binding
             }
 
             var type = qualifier is not null ? this.OwnType(qualifier)
-                : end == PathEnd.Projection && prefix is MemberAccessKoto { Right: not ParenthesizedTypeKoto } && HirTables.LookupOf(prefix) == PathEnd.Projection ? prefix.BoundType : null;
+                : end == PathEnd.Projection && prefix is MemberAccessKoto { Right: not ParenthesizedTypeKoto } projection ? this.EvaluateProjection(projection, scope, mark, ref step) : null;
             if ((qualifier is not null || type is not null) && member.Right is IdentifierNameKoto right &&
                 this.TypePathMember(member, qualifier, type, right.IdentifierName, scope) is { Kind: not BindingSymbolKind.Function } start)
             {
@@ -737,6 +742,60 @@ public sealed partial class Binding
         walkFrom = first;
         walkReceiver = this.HeadReceiver(first, headPath);
         return walkReceiver is null ? LeftValueKind.StepFailure : LeftValueKind.Possible;
+    }
+
+    // SPEC 8.5.2, 9.6: the Type a projection path names, evaluated without forming it (BindAssociatedProjection, its former, forms it
+    // once the reading is decided): over the receiver's Type (its walk's selection's own Type, or a projection receiver's, evaluated), the
+    // written Contract's declaration, the associated search alone (SearchAssociated, recording nothing) normalized; else a member Type of
+    // a projection receiver's normal form (x08). None where that does not decide it: no or several matches, an associated family with
+    // Origin parameters, a receiver no walk selected.
+    private BoundType? EvaluateProjection(MemberAccessKoto projection, BindingScope scope, int mark, ref int step)
+    {
+        if (TypeSpelling(projection.Right) is not { } name)
+        {
+            return null;
+        }
+
+        var receiver = projection.Left;
+        BindingSymbol? contract = null;
+        if (receiver is MemberAccessKoto { Right: ParenthesizedTypeKoto } qualified)
+        {
+            contract = this.ProjectionQualifier(qualified, scope); // Every reading forms the written reference alike (ruling 24).
+            if (contract is not { IsContract: true })
+            {
+                return null;
+            }
+
+            receiver = qualified.Left;
+        }
+
+        var prefix = UseNode(receiver);
+        BindingSymbol? selected;
+        var end = HirTables.LookupOf(prefix);
+        if (end == PathEnd.None)
+        {
+            end = this.WalkEnd(prefix, mark, ref step, out selected);
+        }
+        else
+        {
+            selected = end == PathEnd.Selected ? prefix.BoundSymbol : null;
+        }
+
+        var type = selected is not null ? (selected.Kind == BindingSymbolKind.TypeParameter ? selected.Type : this.OwnType(selected))
+            : end == PathEnd.Projection && prefix is MemberAccessKoto { Right: not ParenthesizedTypeKoto } inner ? this.EvaluateProjection(inner, scope, mark, ref step) : null;
+        if (type is null)
+        {
+            return null;
+        }
+
+        var search = this.SearchAssociated(type, scope, name, contract);
+        if (search is { Found: { } associated, Alternative: null })
+        {
+            return this.UnappliedFamily(associated.Declaration, false) ? null
+                : this.NormalizedProjection(this.ProjectionIdentity(type, associated, search.Reference, contract), scope, false);
+        }
+
+        return end == PathEnd.Projection && contract is null && this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is { } nested ? this.OwnType(nested) : null;
     }
 
     // How the Type walk above `mark` ended for a path's left `prefix` and what it selected (its Qualifier step), searched below `step`,

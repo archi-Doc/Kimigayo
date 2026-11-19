@@ -30,6 +30,18 @@ public class InheritedReceiverBindingTest
         Assert.False(c.Binding.TryGetReceiverOperation(Call(c), out _));
     }
 
+    // SPEC 9.6, 6.2.2 (R7-N1 c-b, O-431 (a)): an inherited Type function reached as the Type reading and through a value of the derived
+    // Type counts once (rb71v); an inherited receiver function reached with a receiver and without one is two paths (rb72i).
+    [Theory]
+    [InlineData("open struct Base\n    public init() => ()\n    public func m() -> i32 => 1\nstruct T : Base\n    public init() : base() => ()\nfunc f(T: ref/T) -> i32 => T.m()\n", "")]
+    [InlineData("open struct Base\n    public init() => ()\n    public func f(self) -> i32 => 1\nstruct T : Base\n    public init() : base() => ()\nfunc g(T: ref/T) -> i32 => T.f()\n", "AmbiguousBinding_Kd T.f")]
+    public void AnInheritedMemberOfBothReadingsCountsItsPathsOnce(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
     [Fact]
     public void ATypeDeclarationDoesNotStopValueMemberLookup()
     {

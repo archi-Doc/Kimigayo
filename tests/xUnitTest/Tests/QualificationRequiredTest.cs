@@ -213,6 +213,25 @@ public class QualificationRequiredTest
         Assert.Equal(cause, record.Reason![3].Value);
     }
 
+    // SPEC 9.6, 9.5, 23.1.2 (R7-N1 c-b, Q2 (b)): when no reading of a member access's left succeeds, a reading that failed at its own
+    // stage keeps its record and the other's failure is not reported: an ambiguous import stage (k18i, rb42i, rb52i; rb42v its valid
+    // twin) and a stopped value path (rb09i, rb11i, rb43i, rb51i: the value reading's failure published through its lookup, B3).
+    [Theory]
+    [InlineData("alias A\nalias B\ngroup A\n    public let X: i32 = 1\ngroup B\n    public let X: i32 = 2\nstruct X\n    public func k() -> i32 => 1\nfunc f() -> i32 => X.m()\n", "AmbiguousBinding_Kd X")]
+    [InlineData("alias A\nalias C\ngroup A\n    public let B: i32 = 1\ngroup C\n    public let B: i32 = 2\nstruct B<T>\n    public func k() -> i32 => 1\nfunc f() -> i32 => B<i32>.m()\n", "AmbiguousBinding_Kd B")]
+    [InlineData("alias A\nalias C\ngroup A\n    public let B: i32 = 1\ngroup C\n    public let B: i32 = 2\nfunc f() -> i32 => B<i32>.m()\n", "AmbiguousBinding_Kd B")]
+    [InlineData("alias A\nalias C\ngroup A\n    public let B: i32 = 1\ngroup C\n    public let B: i32 = 2\nstruct B<T>\n    public func k() -> i32 => 1\nfunc f() -> i32 => B<i32>.k()\n", "")]
+    [InlineData("struct T\n    public func m() -> i32 => 1\nstruct S\n    public let T: i32\n    public init() => self.T = 1\n    public func g() -> i32 => T.zz()\n", "QualificationRequired_Kd T.zz")]
+    [InlineData("struct H\n    public init() => ()\n    public func k(self) -> i32 => 2\nopen struct Base\n    public init() => ()\n    public struct T\n        public init() => ()\n        public func k() -> i32 => 1\nstruct D : Base\n    public init() : base() => ()\n    public func g(T: ref/H) -> i32 => T.zz()\n", "QualificationRequired_Kd T.zz")]
+    [InlineData("struct B<T>\n    public func k() -> i32 => 1\nstruct S\n    public let B: i32\n    public init() => self.B = 1\n    public func g() -> i32 => B<i32>.m()\n", "QualificationRequired_Kd B<i32>.m")]
+    [InlineData("struct T\n    public group G\n        public let n: i32 = 1\nstruct S\n    public let T: i32\n    public init() => self.T = 1\n    public func g() -> i32 => T.G.m\n", "QualificationRequired_Kd T.G.m")]
+    public void AFailedLeftKeepsItsOwnStagesRecord(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
     // SPEC 9.5, 9.5.1, 18.2.2 (R7-N1 c2): an import stage's same-name declarations are checked for a conflict before 9.5's stop, Cases
     // and receiver members among them (9.2's Value role admits them), so a stage mixing them with a function or another value, or two
     // sources' Cases, is the ordinary same-name ambiguity at the Name.

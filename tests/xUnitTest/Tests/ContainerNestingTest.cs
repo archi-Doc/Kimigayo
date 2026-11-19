@@ -175,6 +175,45 @@ public class ContainerNestingTest
         Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
+    // SPEC 9.6, 7.3.4, 6.5.2 (R7-N1 c-b): a member access's left is read by its sole successful path, each reading evaluated before
+    // either publishes. A Type function reached as the Type reading and through a value of the Type counts once (k20v, rb06v, rb35v);
+    // a receiver function reached with a receiver and without one is two paths (O-431 (a): k20i, rb07a, rb07b, rb34g, rb73i). Q1's
+    // exact remainder: a left both of whose readings succeed at the left is one located Unsupported_Kd (k16v, k16i, rb21v, rb69i,
+    // rb80i), against lefts one reading leaves (rb18v, rb19v, rb48v, rb50v, rb53v). The value walk reads each step's Type: a computed
+    // property, a generic field, an inferred field (rb77v-rb79v). An uncalled function member at a step forms no value (7.3.4: t01v,
+    // t01i); an uncalled receiver function is the Type path's member (t05v).
+    [Theory]
+    [InlineData("struct T\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f(T: T) -> i32 => T.m()\n", "")]
+    [InlineData("struct T\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f(T: ref/T) -> i32 => T.m()\n", "")]
+    [InlineData("struct T\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f() -> i32\n    let T = T.init()\n    return T.m()\n", "")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: T) -> i32 => T.f()\n", "AmbiguousBinding_Kd T.f")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: ref/T) -> i32 => T.f()\n", "AmbiguousBinding_Kd T.f")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: ref/T) -> i32 => T.f(T)\n", "AmbiguousBinding_Kd T.f")]
+    [InlineData("struct B<T>\n    public init() => ()\n    public func m() -> i32 => 1\nfunc f(B: B<i32>) -> i32 => B.m()\n", "InvalidTypeFormation_Kd B")]
+    [InlineData("struct B<U>\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(B: ref/B<i32>) -> i32 => B.f()\n", "AmbiguousBinding_Kd B.f|InvalidTypeFormation_Kd B")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public group G\n        public let value: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public struct G\n        public func n() -> i32 => 1\nfunc f(T: V) -> i32 => T.G.n()\n", "Unsupported_Kd T.G")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V<U>\n    public let G: U\n    public init(g: U) => self.G = g@move\nstruct X\n    public group G\n        public let n: i32 = 1\nfunc f(X: ref/V<W>) -> i32 => X.G.n\n", "Unsupported_Kd X.G")]
+    [InlineData("struct X\n    public let n: i32\n    public init() => self.n = 1\nstruct W\n    public let H: X\n    public init() => self.H = X.init()\nstruct V<U>\n    public let G: U\n    public init(g: U) => self.G = g@move\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V<W>) -> i32 => T.G.H.n\n", "Unsupported_Kd T.G.H")]
+    [InlineData("contract C\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C\n    associate C.Item is P\nstruct H\n    public init() => ()\nfunc g(S: ref/H) -> i32 => S.(C).Item.make()\n", "")]
+    [InlineData("struct V\n    public init() => ()\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct V\n    public init() => ()\n    public func G(self) -> i32 => 1\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\nstruct B<U>\n    public struct G\n        public func n() -> i32 => 1\nfunc f(B: V) -> i32 => B<i32>.G.n()\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public init() => ()\n    public computed G: W\n        get(self: ref/Self) -> W => W.init()\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V<U>\n    public let G: U\n    public init(g: U) => self.G = g@move\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V<W>) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public init() => ()\nstruct V\n    public let G = W.init()\n    public init() => ()\nstruct T\n    public group G\n        public group H\n            public let n: i32 = 1\nfunc f(T: ref/V) -> i32 => T.G.H.n\n", "")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public init() => ()\n    public func G() -> W => W.init()\nstruct T\n    public group G\n        public let n: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public init() => ()\n    public func G() -> W => W.init()\nstruct T\n    public group G\n        public let k: i32 = 1\nfunc f(T: V) -> i32 => T.G.n\n", "UnresolvedBinding_Kd T.G.n")]
+    [InlineData("struct T\n    public init() => ()\n    public func f(self) -> i32 => 1\nfunc g(T: T) -> i32\n    let h = T.f\n    return h(T)\n", "")]
+    public void AMemberAccessLeftIsReadByItsSoleSuccessfulPath(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+    }
+
     // SPEC 9.7, 9.7.1, 6.5.2 steps 2-3 (PLAN G745): a nested enum's qualifier with its own list omitted before a Case reference takes its
     // environment from the path and infers only its own slots, as `Outer<i32>.Inner.init(value)` does: from the payloads (the environment
     // fixed before any evidence, so a payload at it is read as a value), from the expected Type or from the Pattern position, at any

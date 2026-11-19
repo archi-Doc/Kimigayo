@@ -179,7 +179,7 @@ public sealed partial class Binding
 
         // SPEC 9.6: the left's reading is decided before either publishes (ReadLeft); its former then selects the member.
         var name = right.IdentifierName;
-        switch (this.ReadLeft(member, name, scope, out var qualifierPath, out var projected))
+        switch (this.ReadLeft(member, name, scope, out var qualifierPath))
         {
             case LeftReading.Value:
                 return this.ValueSideMember(member, name, scope) is { } valueSide ? this.SelectMember(member, null, default, valueSide, scope) : null;
@@ -198,7 +198,7 @@ public sealed partial class Binding
         }
 
         var qualifier = qualifierPath.Symbol;
-        if (projected is not null && UseNode(member.Left) is MemberAccessKoto projection)
+        if (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.BindAssociatedProjection(projection, scope) is { } projected)
         {
             // SPEC 8.5.2, 9.6 (PLAN G724 (a)): a projection qualifier is a Type whose members are its normal form's and its Constraints'
             // requirements: the Type path over the formed projection; construction (`.init`) is ConstructorMember's. A member missing

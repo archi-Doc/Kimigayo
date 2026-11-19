@@ -306,8 +306,7 @@ public sealed partial class Binding
             this.AddContractPremises(evidence.Contract!, type, scope);
         }
 
-        // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
-        var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
+        var projection = this.ProjectionIdentity(type, associated, reference, qualifier);
         this.PublishProjectionMember(syntax, associated);
         Complete(syntax.Right, projection);
         if (!ReferenceEquals(receiver, syntax.Left))
@@ -317,6 +316,11 @@ public sealed partial class Binding
 
         return this.NormalizedProjection(projection, scope, applyingOrigins);
     }
+
+    // SPEC 8.6.1: a projection's Type, an associated Type identified by its receiver and its declaring Contract reference: the one identity
+    // the former (BindAssociatedProjection) and the evaluation (ResolvePath's EvaluateProjection) form, before NormalizedProjection.
+    private BoundType ProjectionIdentity(BoundType type, BindingSymbol associated, BindingSymbol? reference, BindingSymbol? qualifier)
+        => this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;
