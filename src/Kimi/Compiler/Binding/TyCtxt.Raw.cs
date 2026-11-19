@@ -79,15 +79,15 @@ internal sealed partial class TyCtxt
     // its source); false for every other callee and slot: a function with a body, a foreign import, a missing row. Static; allocates nothing.
     internal static bool NoStore(BindingSymbol? callee, int input) => KimiLibraryCatalog.NoStore(callee, input);
 
-    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (ScalarTypes'
-    // one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
+    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (BoundType.IsScalar,
+    // the one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
     // part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them; PLAN G792), so it is punnable. Any other Type is
     // not. Readers: A5's pun rule (MirBorrows.PunTypes, whose own fact is how much of a Scalar a punnable Type holds). A function of the
     // interned Type, each composite one decided once (`punnable`, kept like the interning: a Type's answer never changes); a walk that
     // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
     internal bool Punnable(BoundType type)
     {
-        if (ScalarTypes.Supports(type) || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        if (type.IsScalar || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
         {
             return true;
         }

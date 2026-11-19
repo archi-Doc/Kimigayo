@@ -366,14 +366,14 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
-                !this.Infer(parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+                !this.Infer(parameter, parameters.Components[i], new(function), frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
             {
                 return false;
             }
         }
 
         return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
-            this.Infer(bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
+            this.Infer(bound, required.Components[1], new(function), frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent
@@ -483,7 +483,7 @@ public sealed partial class Binding
             fromResult.ClearTypes(count);
             fromResult.ClearLengths(count);
             if (symbol.Type is not { } writtenResult || this.MemberType(writtenResult, container) is not { } result ||
-                !this.Infer(result, required.Components[1], function, fromResult, inferOrigins: true, lengths: true, commonOrigins: true, structural: true))
+                !this.Infer(result, required.Components[1], new(function), fromResult, inferOrigins: true, lengths: true, commonOrigins: true, structural: true))
             {
                 return null;
             }

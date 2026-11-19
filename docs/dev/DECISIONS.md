@@ -5607,6 +5607,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
   - Superseded in part by Q22 (2026-11-19): the owner abolished the 90% rule, so a later stage exits only when every exit task is
     done; G396's remaining items, the Exceptions above and X-2's 25 producers among them, are R7 exit conditions. R4's exit stands.
+  - Superseded in part by R7-M53 (2026-11-19): X-2's DEC O4 line and the Exceptions list for A5-F7, A5-F8, A5-F10, A6's 2g units
+    with G105, G126 and G147 (2): their stage is the R7 plan's stream Z, and each of the 25 producers is removed, not excepted.
 - **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
   「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; BU's review REVISE B1, the fix round under the owner's 「GO」)
   - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
@@ -6282,6 +6284,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - What remains of `ScalarTypes` for R7-T2: `SizeWidth` (the profile's constant from `IrTarget`'s row; its one reader is `Row`),
     `Supports` (SPEC 3.1's Scalar predicate, which reads `IsNumeric`; PLAN G289 (1)'s rename), `Normalize`, `TryLiteral` and
     `TryFloatLiteral`. R5-M148's rejected (b) stands until T2 moves the predicate.
+  - Amended by R7-T2 U5: `ScalarTypes` is deleted. SPEC 3.1's Scalar is `BoundType.IsScalar` (bool, char or `IsNumeric`; PLAN
+    G289 (1)'s rename), a Type's own fact beside `IsSigned` and `Width` that Binding, the MIR builder, `MirValidator`, A5's pun Types
+    and the Backend read; `SizeWidth` is a private static of `BoundType`, read only by `Row`; `Normalize` is `TyCtxt.Normalize`
+    (BU-133's encoding, which Binding writes and `MirValidator` checks); `TryLiteral` and `TryFloatLiteral` are private statics of
+    Binding's literal fitting (`Binding.NumericConversions.cs`), read by Binding alone.
   - `BoundType` does not grow: `width` is a byte beside `numeric`, 96 data bytes and 112-byte objects before and after (measured by
     the design reviewer). It takes the last padding byte: a later one-byte field costs 8 bytes per instance and should pack the row
     then.
@@ -6962,7 +6969,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     elemRefBad, viewRefUseBad, viewRefReborrowBad, tupMixedBad, wrapMixedBad, wrapHopBad, rvFieldSafeBad (I); c84 keeps only
     `CallReservationConflict_Kd`; the Case pins rvCaseFieldResBad, rvCasePayloadFieldBad and rvCaseElementBad stay I.
     FunctionCodegenTest's Arrays program (8 tests) passes.
-  - Cost: one Deref test in `Sources`' walk per step (a Type kind and `Holds`, memoized per Type), O(1).
+  - Cost: one Deref test in `Sources`' walk per step (a Type kind and `Holds`, memoized per Type), O(1). The bound walk itself runs
+    per Read: `MirBorrows.Values`' `Read` asks `Sources`, which re-walks the Place's projections at each evaluation of a transfer (each
+    fixpoint pass and the replay); part of the measured cost on R4-M220, whose repeated part is PLAN G1108.
   - Rejected: an index-only bound (a second rule for one decision); the part rule for every Field or Downcast step (Whole is also the
     Case bound's fact, so it accepts the settled I pins rvCaseFieldResBad, rvCasePayloadFieldBad and rvCaseElementBad against
     O-364 (a)'s Field and element rule).
@@ -7196,6 +7205,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Cost: a call's source slots are found once per call (`SourceSlots`: the input slots whose input is no constant and whose Type
     holds no Loan), `Sourced` is asked only at them, and a call whose retention has no Writes is skipped before the scan; the block
     scan for write sources (`WriteSourced`) adds +0.64 % Work.
+  - Measured cost, accepted by the owner under RQ8 (a) (W-278, dev 5dd6543e6; board D-873): Q-539's analysis code (this entry,
+    R4-M218, R4-M219 and R4-M221) makes warm Analyze 1.10-1.11 times A's on Milestone26 and Interpolation, warm 0 B; on unchanged
+    MIR `MirBorrows.Work` grows 15-26 %: rule H's Flowing and Mixing (linear, once per view), the bounds' `Sources` walk at every
+    Read (R4-M218) and rule W's reading keys (`Keyed`, `Node`, `ReadAt`, `RecordSteps`; R4-M219, R4-M221). Its repeated part,
+    state-independent per-call facts recomputed at each transfer, is PLAN G1108.
   - Rejected: a Copy of a Loan-free exposed holder taking Φ_E; A5 reading a Loan-free argument as retained by every record (a Type
     judgement in a consumer); unit A's Viewing(T) and a Through guard; a static's read as a flow source (no reachable row until
     P42; a static's read is {Φ_E} anyway, RV1-n3); unbounding a result a pointer of the body may write (the review's R4: it
@@ -7275,6 +7289,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reaches past it, BU-46); no E past such a holder's own step (F2: guDeepOk is invalid, O-389 (a)); "never E" at route 1
     (hidRawParamBad, hidRawParamRootBad, hidRawParamDeclBad, invalid, accepted); every route-1 holder taking the call's own pointer
     whatever its Place (`ViaCarried`: a Language error on viaCarriedPinOk, valid, which dev accepts).
+  - Measured cost: R4-M220's measured-cost line (W-278, accepted by the owner under RQ8 (a)); this entry's part is rule W's reading
+    keys.
 - **R4-M222 A comparison's region conjunct is its body's row (PLAN G492-a (iii), one unit with (ii))** (Middle, 2026-11-19; Binding and
   A5's input; Major; landed with G492-a (ii), R8-M56, in Q-542 by the owner's O-384 (a); design `middle\notes\g492a-iii-design.md`
   (Revision 3) and `g492a-iii-q2-design.md` (Revisions 1-4a.1, the Revision 4a design review ACCEPT), the n8 fix (option (b), C-400;
@@ -11026,6 +11042,9 @@ resumed by R4-M86 (2026-10-20).
     `make<F>(f: ref/F, u: i64)`). A Literal at T is no evidence (SPEC 10.2.1), so `make(c@ref, 1)` keeps the fact. Open: an environment
     judgment on an unsolved slot still makes the candidate Pending before an independent Constraint's refutation. L531's
     unsubstituted-Origin return stays fact-less: valid programs reach it.
+  - Amended by R7-M52 (R7-P2 commit 1, 2026-11-19): the per-slot judgment is the solve's frame's (`SlotFrame.EnvironmentJudgment`),
+    written by `Infer` in its own frame and read by the candidate's trial; the Binding fields `environmentJudgments` and
+    `environmentScratch` are deleted.
 
 - **BU-84 TransferRequired is judged in Binding** (2026-11-03; superseded in part by R5-M185; R6-check H1; the owner's Q8 approval
   「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-package.md` §3.7 and `Q8-design-2.md` §2.7; H0's division, R5-M182; Q14's runs 1
@@ -12220,6 +12239,8 @@ resumed by R4-M86 (2026-10-20).
     `usize`; Binding and the MIR builder read the width of either Core, like any integer Type's, as `BoundType.Width`.
     `ScalarTypes.Width` is deleted; `TryLiteral` stays the one literal-fit predicate. R5-M174's "what the phases share" is now the
     Type's `Width`.
+  - Amended by R7-T2 U5 (R4-M196's line): `SizeWidth` is `BoundType`'s private constant and `TryLiteral` Binding's
+    (`Binding.NumericConversions.cs`); the rules are unchanged.
 - **BU-131 A value name resolves through ResolveName: the role names the namespace** (2026-11-08; R7-N1b; Major; design
   review 1 ACCEPT) SPEC 9.2, 9.5, 9.5.1.
   - Rule: `ResolveName(name, scope, use, role, arity)` is the one stage walk of both namespaces; the role names the namespace
@@ -12296,6 +12317,8 @@ resumed by R4-M86 (2026-10-20).
     choice, C-177), so no widthless constant leaves 0..127. `Binding.Hir.Payload`, a second copy of the row, is deleted. The target of
     `@wrap<U>` and `@bits<U>` substitutes the identity premises like `@Type`'s (BU-72's per-site substitution, PLAN G542's position), so
     the fold's width is the published Type's.
+  - Amended by R7-T2 U5: the encoding's one function is `TyCtxt.Normalize` (was `ScalarTypes.Normalize`), the one place Binding and
+    MIR both read; the rule is unchanged.
 - **BU-134 Binding bounds a Type's height at H = 8,192 where it is formed: `TypeHeightLimit_Kd`**
   (2026-11-08; R7-C8 U-D2; Major, design `F\C8\design-ud.md` "U-D2", implementation review 1 REVISE B1-B2 and its fix round; the
   owner's O-71 (a), O-80 (b) 「b 落とします」, O-82 「O-82 b」, verbatim) IMPL A.4, 21.3.2; SPEC 8.3.3 (Limits), 23.1.1, 23.1.2.
@@ -19601,6 +19624,8 @@ structure is recorded here by the unit that first implements it.
     builder's verification already reads it, and x3b1's `MirValidator` TestRecordValue row reads the same pure predicate (one Scalar
     definition). The row documents an existing read and the producer's validator reading the same predicate. Rejected: (b) moving it into
     Binding.
+    - Amended by R7-T2 U5: the predicate is `BoundType.IsScalar`, a Type's own fact every phase reads (R4-M196's precedent); it is
+      no Binding member, so rejected (b)'s reason stands.
   - Gate (plan §5.3), at X1's dev `17cd554ab` unless stated:
     1. M1: sel fails exactly the 110 decided P42 rows, OQ7 (e) rows that leave with P42 (R5-M144, R5-M145); the pending ledger holds no
        other row (110 tests, 0 fixtures), so none is undecided; sel's `'*.ll'` at O0 and O2, the 40 harnessed milestones and the five CLI
@@ -21469,6 +21494,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Plan: RP7 and RP21 end (Q14); RQ6's units run one prototype-first candidate unless the owner instructs otherwise; R8-R1 and
     R8-G1 are Major units under their approved design.
   - Reason: the middle session ran the windows besides its defect stream, and three sessions edited the same documents.
+  - Amended by T-M2: P13 is the Tatara session's from 2026-11-19; the Back keeps P11–P12.
 - **R7-M5 A struct has one base clause, `StructKoto.BaseClause`, read under the binder's role** (2026-11-08; R7-N2a, b; Major; design review) SPEC 6.2.2, 8.7.3, 9.2, 9.4.2, 9.6.
   - `StructKoto.BaseClause` is a struct's one clause; `.Bases` stays where the container may be an enum or a Contract.
   - A base clause read as a declaration reads `NoContainer`, the binder's role, at every read.
@@ -22326,6 +22352,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     G988.
   - **Cost named:** an N-candidate call rents N frames (N-1 more) and a `frameScratch` array on every call; drops N clears, the
     saves and the restore; warm Bind 0 B at N = 10/20/40. RP8 in c's window (design-c P2.4 N1).
+  - Amended by R7-M52 (R7-P2 commit 1): `SlotFrame` gains the environment-judgment column beside the invariant marks; the store's
+    column list is stated once there.
 - **R7-M41 A judgment about a Type reads its identity class** (Front, 2026-11-19; R7-C2c2 c2-4a, Q-514; Major, an acceptance
   mover; design `design-c24.md` Revision 1 with R1.4 and R1.8: the design review and R1.8's short check ACCEPT WITH NOTES, the
   implementation review ACCEPT WITH NOTES, F's C2 ruling 146; F's C2 rulings 125-234; the owner's O-344 (a), O-345 (b), O-410 (a);
@@ -22652,6 +22680,63 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Deleted:** `HasCallRelation`.
   - **Rejected:** a split by caller (b1a/b1b, a second rule); Binding keeping a judgment for enclosing-call-region ends (a second
     judge); keeping `HasCallRelation` (a suppression that reads no failed input).
+- **R7-M52 A call's evaluation is one explicit argument and a candidate's result is one row** (Back, 2026-11-19; R7-P2, plan §5.1's
+  P2 row; design `back\notes\r7-p2\p2-design.md` Revisions 0-1c, the Front's design review C-408 (commit 1 ACCEPT WITH CONDITIONS),
+  B's rulings 1-13; Major, behaviour-preserving) SPEC 10.2.2, 10.5.2, 10.8, 10.8.1, 8.10, 7.7.4. P2's one entry: each of its commits
+  adds its part here. Supersedes in part BU-86's writer sentence ("records the judgment per slot (`environmentJudgments`, ...)": the
+  judgment is now its solve's frame's) and amends R7-M40's column list.
+  - **Commit 1: the trial's fields leave the Binding** (`4e75e382f`).
+    - **Representation.** (a) The frame's environment-judgment column (BU-86's judgment, under R7-M40's rule that a solve's per-slot
+      marks are its frame's): `SlotFrame.EnvironmentJudgment(slot)` and `SetEnvironmentJudgment(slot, j)`, a typed `PendingJudgment?`
+      column of `InferCtxt`, grown with the frame, cleared by `ClearTypes` (so by `FixCallSlots` at every trial's and re-trial's
+      start) and at Return. Typed, it is outside the store's `object?[]` undo log, so it is written only with no snapshot open
+      (asserted; the store's contract says so). `Infer` writes its own slot's judgment in its own frame when the slot has none; the
+      trial's one read (`EnvironmentJudgment`, `TryCandidateCore`) reads the candidate's frame. (b) `SolveBinder`
+      (`Binding.CallSlots.cs`, beside `CallSlotOwner`), the binder of one solve, which the unifier is given: a candidate's function (a
+      constructor included), an enum constructing a Case, a referenced function. A readonly struct made only from a `FunctionKoto` or
+      an `EnumKoto`, through one private constructor that forms its `SlotOwner` by `CallSlotOwner` once per solve. Its `Declaration`'s
+      Constraints decide a read Type (`InfersReadReferent`, SPEC 10.2.2 step 1, 3.5.3); its `SlotOwner`'s slots are the ones bound
+      (`ContainerSlot`, `InferLength`). It is `Infer`'s fourth parameter, whose meaning changed (slot owner to binder), so its type
+      changed: a caller written for the old meaning does not compile. `SlotSolution.Solve` is a view of its `Binder`, like
+      `SlotOwner`; the function references' solves pass `new(function)`.
+    - **The store's columns, stated once:** a frame's Type slots, length slots, invariant marks and environment judgments, read
+      through read-only views and written only through `SlotFrame`. G812's pair-slot selectors and solve node and R7-C3's view are not
+      on dev at this landing; each joins this list when it lands.
+    - **Rule.** No Binding field carries a trial's value to the unifier: the solve's binder is `Infer`'s argument and a slot's
+      environment judgment is its solve's frame's, so a nested solve under a trial reads its own binder's Constraints and writes its
+      own frame.
+    - **Deleted:** `Binding.activeInferenceFunction`, `environmentJudgments` and `environmentScratch`, with `TryCandidate`'s six
+      bracket lines (save, set, rent, restore, return), and `CallSlotOwner(function)` at the expected-result `Infer`
+      (`TryCandidateCore`). The trial's bracket keeps `OpenTrial`/`CloseTrial`, the `wholes` mark and the acquisition.
+    - **Rejected:** the judgments as a `SlotSolution` member reached through `SignatureEvidence` (a destination that is not
+      evidence); boxed judgments in the logged `object?[]` columns (an allocation per judgment); the argument `Koto` alone in an
+      `object?[]` column (the slot symbol is not derivable from the index); the environment set kept in the trial's bracket or beside
+      the frame; the binder on the frame (`ShapeEvidence`'s frame serves every candidate in turn, `FunctionReferences` takes a frame
+      from outside); the binder as a reordered `Koto` parameter (it breaks the old callers once, but the type then says nothing); a
+      caller census at landing instead of the type (a reading, not a guarantee).
+    - **Cost:** Bind time unchanged within the measurement, warm Bind 0 B, cold first Bind -560 B to +376 B: the judgments move from
+      one pooled array of at least 16 per renting trial depth to one of max(capacity, 4) per pooled frame. Scaling: no new walk.
+  - Commits 2a, 2b0, 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
+- **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
+  and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
+  dev 5dd6543e6, `middle\notes\g396-plan.md` and `front\notes\G147\census.md`). Under Q22, supersedes R4-M165's X-2 line ("the 25
+  without a removal stage stay under DEC O4") and its Exceptions list for these items: their stage is stream Z.
+  - **Rule.** A producer is removed when no located `Unsupported_Kd` stands at its site: a reachable valid form gets its common rule
+    and a regression row; a catch-all over a category Binding's HIR contract (HasFacts, R4-M61) or its enums already close becomes an
+    `InternalInvariant_Kd` arm with its contract test (AGENTS: a broken contract), with the HasFacts rows it reads. These conversions
+    need no owner exception: the owner's order supersedes DEC O4 for them.
+  - **Census.** Of the 25, M3b went with G264 U1 (9d49a47da); of the 24 left, 16 are such catch-alls (B2, B4-B8, B12-B16, E1, E2,
+    E6, M3c, X3: Z1, Z2, Z8), E5, M1, M2 and M3a guard valid forms and get common rules (Z3-Z6), and M4-M7 wait for P42 and A4's
+    `Limit` class (Z7). A5-F7's 2c-6 judged part landed with 2c-5 (R4-M152) and its rest is G216 (b) in R7-O3 (Z9, Z10); A5-F8's
+    2d-2 and coverage remain (Z11, Z12a, Z12b); A5-F10 is rule 22's Loan rows, with no spec variant (Z13); A6's 2g-1 is done for A3
+    only (R5-M186), and 2g-D, 2g-2a and 2g-2 to 2g-7 remain with G105, G126 and G103's term (Z15-Z21). G147 (2): (b), (d) and (f)
+    closed by the census, (c), (a) and (e) are Z22, Z23 and Z24.
+  - **Owners.** The Middle's units but Z5's G212 half and Z22-Z24 (the Front's); the Front reviews every Binding hunk (Z1, Z3, Z4,
+    Z6, Z8, Z9).
+  - **Owner questions, only where named:** OQ-Z7, if SPEC 22.4.3 does not decide whether a live Loan on a static proves it
+    initialized; Z6's option (a), if it adds a vocabulary entry; Z23, if its design needs a MIR vocabulary entry; O-445 for Z24.
+  - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5;
+    X1, X2 with P42's Binding part) and those added since R4's X-2, which keep their own rows (PLAN G1106, G1107 among them).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -25587,6 +25672,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
   - Amended by R9-M10: Build reads `CompilationBuildMetadata` as the value `Project.Build` passes (`RecordLibrary`'s argument), not
     through `Project.BuildMetadata`.
+  - Amended by T-M2: `src/Kimi/Build`, the Middle's under this entry, is the Tatara lane's from 2026-11-19; the Middle reviews its
+    units.
 - **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
   part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
   ACCEPT; the Front's consent C-224 and the Back's C-225)
@@ -25990,3 +26077,26 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends R9-M10 (its known limit (3) closes: outside `Project.Build` the set applies only around a command's own toolchain calls
     and `kimi test`'s native build) and R5-M169 (its rejected catch in `CommandExecution` concerned generation's exceptions, which
     the Emission result owns; the command's own result has this one).
+
+## Tatara (adopted 2026-11-19)
+
+Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
+holds the owner's decisions 1–13). Units of the Tatara lane record their entries here as T-M*.
+
+- **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
+  「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
+  「下書きを承認します。作業を続けて下さい。」 with one addition, now the plan's §6,
+  「LLVMがバージョンアップすることもある。それに合わせて更新できるように、道を準備しておいてください。」)
+  - Rule: the plan is the formal plan for the build chain in one process (generation, inspection and link through `tatara.dll`;
+    `kimi tatara`), with decisions 1–13 as its §2 lists them, each as recommended. Stage A (units A1–A4) replaces only the executor;
+    stage B (B5–B8) changes rules, each unit after its owner question; an LLVM update is one unit under the plan's §6.
+  - Rejected: one stage changing executor and rules together (differences could not be told apart); generation directories for the
+    executable (an output contract change, reclamation and embedded-path rules, for the one gain of rebuilding while the old
+    executable runs; can be added later); switching single-shot `kimi build` first (every session's native checks ride the external
+    path); Tatara as the Middle's work (its seats are full); building LLVM from source by default (hours of CPU); replacing the setup
+    tools too; static linking from the start (two forms); the build procedure in C++ (rules in two languages).
+- **T-M2 The Tatara lane** (owner, 2026-11-19; the plan's decisions 4, 11 and 12)
+  - Rule: the Tatara session (T, the plan's author) plans and implements P13 (`src/Kimi/Build`) and `src/Tatara`; the Middle reviews
+    its units; seats 1+1. AGENTS (Roles), WORKFLOW (Sessions) and COMPILER_ARCHITECTURE (the sessions paragraph, the stage ledger)
+    name it from the plan's adopting commit.
+  - Amends R9-M6 (`src/Kimi/Build` was the Middle's) and R7-M4 (P13 was the Back's).
