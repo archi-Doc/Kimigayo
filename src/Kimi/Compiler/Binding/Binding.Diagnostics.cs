@@ -99,8 +99,10 @@ public sealed partial class Binding
         };
 
     // SPEC 15.6.1, 23.1: the Reason facts and related locations of an Origin relation record, shared by every phase that reports
-    // one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
-    internal (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
+    // one (Binding's ReportOriginRelation, A5's through the publication's Relation row); `source` is `fit` for a fit, `declared` for a
+    // relation clause and `wellFormed` for a Type occurrence. `Spans` are the related syntax without a node of its own: a shorter end
+    // that is an anonymous function's call result is related at its header, from `func` through the parameter list (DIAGNOSTICS).
+    internal (object[] Evidence, (string Role, Koto At, string? Label)[]? Related, (string Role, Koto In, SourceSpan Span, string? Label)[]? Spans) OriginRelationFacts(OriginRelationFact relation, string source)
     {
         // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
         // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
@@ -134,18 +136,20 @@ public sealed partial class Binding
             related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
         }
 
+        (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure }
+            ? [("origin", closure, SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd)), null)] : null;
         if (source != "fit")
         {
             // SPEC 23.1: only a fit names its destination Type; a declared relation relates its clause instead, and well-formedness
             // its Type occurrence, which is the primary location.
-            return ([operation, longer, shorter, source], related);
+            return ([operation, longer, shorter, source], related, spans);
         }
 
         // SPEC 23.1: the destination shows only the Origin at the failed position, also below another borrow layer; a borrow, omitted
         // or closure end is never written as an Origin expression.
         var destination = relation.Destination is not { } type ? $"during {shorter.Text}"
             : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
-        return ([operation, longer, shorter, source, destination], related);
+        return ([operation, longer, shorter, source, destination], related, spans);
     }
 
     private static Koto? Destination(Koto place)
@@ -352,17 +356,10 @@ public sealed partial class Binding
     private void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
     {
         var store = this.compilation.StoreOf(node);
-        var (evidence, related) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
-        if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
-        {
-            // SPEC 23.1: a closure end is related at the anonymous function's header, from `func` through the parameter list.
-            var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
-            var at = relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
-            node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
-            return;
-        }
-
-        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
+        var (evidence, related, spans) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
+        // A closure end's record at a block body is at the Borrow that supplied it.
+        var at = spans is not null && relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
+        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: at, condition: condition);
     }
 
     // The call signature of a Function Item, closure or Function value.
