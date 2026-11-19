@@ -113,11 +113,10 @@ public sealed partial class Binding
 
         internal bool Queued { get; set; }
 
-        // Whether its last evaluation read an open obligation, or a work that did (SPEC 8.3.3 Finality): no fact past the outermost
-        // request, which returns it to its initial state but keeps this flag until its next evaluation (Binding.ForgetPendingCapabilities),
-        // so the erasure's Owned owner reads a forgotten subject as Final (OwnedMember). Temporary carrier with reentryReads; removal:
-        // R7-C2e2 e2-5b, with e2-3's Completion on the answer.
-        internal bool Pending { get; set; }
+        // Whether its last evaluation's answer depends on an open obligation (Binding.EndAnswer), or it read a work that does (SPEC
+        // 8.3.3 Finality): no fact past the outermost request, which returns it to its initial state but keeps this flag until its next
+        // evaluation (Binding.ForgetDependentCapabilities), so the erasure's Owned owner reads a forgotten subject as Final (OwnedMember).
+        internal bool Depends { get; set; }
 
         internal CapabilityWork? Parent { get; set; }
 
@@ -153,7 +152,7 @@ public sealed partial class Binding
             this.Assumed = false;
             this.Evaluated = false;
             this.Queued = false;
-            this.Pending = false;
+            this.Depends = false;
             this.Parent = null;
             this.Cause = null;
             this.OwnCause = null;

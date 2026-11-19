@@ -193,8 +193,8 @@ public sealed partial class Binding
     // is refused: its records are reported by the per-record steps while its tables stand and kept as typed facts in the layer's
     // refusal (LibraryLayer.Refusal; a syntax record stays its module's list's, which the refusal only notes: form (R)), false
     // returned and nothing stamped; its query states are complete (LibraryQueryFault); and every conformance path it made current is
-    // verified, none Checking or at its limit (ImplTable.UnsettledPath; PLAN G949 Stage 2 U3: no reading compilation verifies a frozen
-    // path). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns
+    // verified, none at its limit (ImplTable.UnsettledPath) and no verification open (the obligation table, ObligationDepth; PLAN G949
+    // Stage 2 U3: no reading compilation verifies a frozen path). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns
     // Frozen, so it reads current in every later pass; a stamp of an earlier run stays stale and reads absent, as the library pass left
     // it. Publish, last: L (LibraryLayer.TypeCount, the ids of the Types the library pass made), then the seal (Syntax.Freeze():
     // KimiLibrary.Frozen, from which the library's publication version is Frozen in every compilation, HirTables.LibraryVersion, and the
@@ -223,6 +223,11 @@ public sealed partial class Binding
         if (this.LibraryQueryFault(symbols) is { } incomplete)
         {
             throw new InvalidOperationException($"The library pass left the query states of `{incomplete.Name}` incomplete (InternalInvariant; PLAN G949 S1-1).");
+        }
+
+        if (this.ObligationDepth != 0)
+        {
+            throw new InvalidOperationException("The library pass left a conformance verification open (InternalInvariant; PLAN G949 Stage 2 U3).");
         }
 
         if (this.Library.Layer.Impls.UnsettledPath() is { } unsettled)
