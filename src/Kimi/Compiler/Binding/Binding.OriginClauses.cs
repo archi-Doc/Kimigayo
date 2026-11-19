@@ -266,7 +266,7 @@ public sealed partial class Binding
         // the clause is a twin (R4-M111).
         if (BodyChain(failed.Longer, failed.Shorter, failed.Equality, this.formingBody))
         {
-            (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(use);
+            this.originTwins.Add(use);
             var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, failed.Longer, failed.Shorter);
             this.AddObligation(row with { Equality = failed.Equality, Clause = use });
         }

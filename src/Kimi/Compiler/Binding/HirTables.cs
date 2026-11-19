@@ -316,6 +316,7 @@ internal struct NodeColumns
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
+    internal StampedColumn<bool, Binding.PassCounter> OriginTwins; // Pass: whether a node's Origin relation records are twins (Binding.OriginFits.cs).
 
     internal void Resize(int length)
     {
@@ -361,6 +362,7 @@ internal struct NodeColumns
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
         this.PerCallOrigins.Grow(length);
+        this.OriginTwins.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -382,6 +384,7 @@ internal struct NodeColumns
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
         this.PerCallOrigins.Freeze(binding);
+        this.OriginTwins.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -432,6 +435,7 @@ internal struct NodeColumns
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
             PerCallOrigins = this.PerCallOrigins.Renumbered(length),
+            OriginTwins = this.OriginTwins.Renumbered(length),
         };
         return columns;
     }
