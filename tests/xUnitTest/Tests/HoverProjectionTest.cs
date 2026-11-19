@@ -73,7 +73,7 @@ public sealed class HoverProjectionTest
             var nodes = KotoTree.Walk(compilation.Kotonoha.RootKoto).ToArray();
             var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
             var calls = nodes.OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "identity").Select(static x => x.CallOf()!).ToArray();
-            var closed = compilation.Binding.InstantiateStorageType(closure, calls[index])!;
+            var closed = compilation.Types.ReadableInstance(closure, compilation.Types.StorageSubst(calls[index]))!;
             Assert.Empty(closed.Components); // The varying length is only in the hidden instantiation context.
             var inspect = Assert.Single(nodes.OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "inspect");
             var selected = inspect.CallOf()!;

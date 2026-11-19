@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Verification;
@@ -185,7 +186,9 @@ public partial class SyntaxIdTest
     // parameters; ShapeContractHeads: the shape contracts of an overload group whose every pair shares a slot; ObjectErasures: an
     // override's call through its receiver's erased view, VirtualEntryErasureTest's program; InheritedOriginTypes: Milestone11's omitted
     // inherited Origins; DeferredConstraints: Milestone10's clause decisions; Matches: Milestone10's match plans; Adaptations: Milestone10's
-    // implicit adaptations; VirtualOverrides: that program's override). Checked after each edit (N5-5's review C1):
+    // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
+    // generic container's group whose struct a parameter names; QualificationFailures: a member read without its `self.`, a failure
+    // family's program, which reports its failure at each Bind). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -200,12 +203,15 @@ public partial class SyntaxIdTest
     [InlineData("Specializations", "milestone:Milestone11")]
     [InlineData("ImplicitConstructorDecisions", "open struct Base\n    public init() => ()\nstruct Derived : Base\n    public var y: i32 = 2\nlet d = Derived.init()\n")]
     [InlineData("VirtualEffectBounds", "milestone:Milestone44")]
-    public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program)
+    [InlineData("AliasTargets", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
+    [InlineData("ImportedContainers", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
+    [InlineData("QualificationFailures", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
+    public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
             : program.StartsWith("milestone:", StringComparison.Ordinal) ? Repository.ReadText("tests", "milestones", program["milestone:".Length..] + ".kimi") : program;
         var c = CompilationTestHelper.Parse(source, "Hello.kimi");
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(Bound(), MinimalEmissionTest.Describe(c));
         var field = typeof(NodeColumns).GetField(family, Members)!;
         var (before, used) = (Arena(), Used());
         Assert.NotNull(before);
@@ -213,10 +219,13 @@ public partial class SyntaxIdTest
         for (var i = 0; i < 2; i++)
         {
             c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
-            Assert.True(c.Bind().IsComplete);
+            Assert.True(Bound());
             Assert.Same(before, Arena());
             Assert.Equal(used, Used());
         }
+
+        // A valid program's Bind is complete; a failure family's program reports its failure at each Bind.
+        bool Bound() => c.Bind() is var result && (reported is { } code ? c.Binding.Issues.Any(x => x.Code == code) : result.IsComplete);
 
         Array? Arena() => Read<Array?>(Read<object>(field.GetValue(c.Kotonoha.Syntax.Hir.Families)!, "rows"), "arena");
         int Used() => (int)field.FieldType.GetProperty("Used", Members)!.GetValue(field.GetValue(c.Kotonoha.Syntax.Hir.Families))!;
