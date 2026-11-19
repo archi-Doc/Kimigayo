@@ -193,8 +193,8 @@ public partial class SyntaxIdTest
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; CallablePremiseFailures, an implementation's Callable
     // bound its requirement lacks; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
-    // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection).
-    // Checked after each edit (N5-5's review C1):
+    // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection;
+    // CallableSelectionFailures, a Callable value call no bound applies to). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -223,6 +223,7 @@ public partial class SyntaxIdTest
     [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
     [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
     [InlineData("CallInferenceFailures", "struct C<T>\n    public init(x: ref/i32, y: ref/T) => ()\n    public init(x: ref/T, y: ref/T) => ()\nlet n: i32 = 42\nlet r = n@ref\nlet c = C.init(r@ref, n@ref)", DiagnosticCode.ConstructorSelectionChanged_Kd)]
+    [InlineData("CallableSelectionFailures", "func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i32>\n    return action(true)\n", DiagnosticCode.NoApplicableOverload_Kd)]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

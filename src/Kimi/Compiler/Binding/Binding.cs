@@ -103,6 +103,7 @@ public sealed partial class Binding
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
         this.callInferenceFailures = new(this);
+        this.callableSelectionFailures = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
