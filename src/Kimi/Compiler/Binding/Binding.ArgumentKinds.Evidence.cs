@@ -384,7 +384,7 @@ public sealed partial class Binding
                 }
             }
 
-            pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
+            pattern = binding.SubstituteStoredOrigins(pattern, binder, this.Origins.Slice(0, this.OriginCount), this.InputSpan());
             if (part.Relations)
             {
                 return true;
@@ -631,7 +631,7 @@ public sealed partial class Binding
                 binding.MatchInputOrigins(formed, actual, this.Binder, this.Origins, this.Inputs); // As InferAdapted.
             }
 
-            pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
+            pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.Slice(0, this.OriginCount), this.InputSpan());
             return binding.Infer(pattern, actual, this.Solve, this.Frame, inferOrigins: true, lengths: true);
         }
 

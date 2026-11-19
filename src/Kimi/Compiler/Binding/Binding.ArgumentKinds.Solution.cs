@@ -69,8 +69,8 @@ public sealed partial class Binding
         internal BoundType? Self;
         internal BoundType? DeclaringType;
         internal SlotFrame Frame;
-        internal BoundOrigin[] Origins;
-        internal BoundOrigin[] Inputs;
+        internal Span<BoundOrigin> Origins;
+        internal Span<BoundOrigin> Inputs;
         internal bool FixedConstruction;
 
         // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
@@ -389,7 +389,7 @@ public sealed partial class Binding
         private readonly bool FixedSlot(int slot)
             => slot < this.Fixed.Types.Length && this.Fixed.Types[slot] is { } bound && OwnSlot(bound, this.SlotOwner) != slot;
 
-        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
+        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.Slice(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.
