@@ -94,6 +94,10 @@ public sealed partial class RetentionTest
     // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
     private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
 
+    // A holder whose Type states an Origin and holds a u64 by value (the Middle's pins, MirBorrowsTest.Exposed on the one tree).
+    private const string MixedHolder = "struct RS {s}\n    public let r: ref/u8 during s\n    public let n: u64\n    public init(r: ref/u8 during s, n: u64)\n" +
+        "        self.r = r\n        self.n = n\n";
+
     // PLAN G571's two uses of an `R` whose Fields reach P's borrow of x, `{write}` where the write goes: the input fold (a call that may store
     // d's borrow in *slot) and the hold fit (a result borrowed through d, of a part R holds by value; SPEC 15.6.4, 15.6.3).
     private const string StoreUse = "func make(x: ref/i32 during q) -> R during q => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: R during q) => ()\n" +
@@ -1475,16 +1479,71 @@ public sealed partial class RetentionTest
         Assert.Equal("limit", Declared(c, "f"));
     }
 
-    // SPEC 15.6.4 (the owner's O-435 (a); F's G935 ruling 78; labels first in `...\front\notes\G935\r78\labels.txt`): an argument whose Type
-    // states an Origin is retained only where a position may retain one of its Origins, a raw layer without an Origin included (q's raw/u8
-    // result, rule A: kept); an Origin-free part of it is no source, so pr's i32 result keeps nothing of p; an Origin-free input keeps its
-    // CanHold-alone row (O-364 (a) (2): f's result keeps v).
+    // SPEC 15.6.4 (the owner's O-435 (a); F's G935 rulings 78, 81; labels first in `...\front\notes\G935\r78\labels.txt`): an argument whose
+    // Type states an Origin is retained only by a result or storage that as a whole may retain one of its Origins, a raw layer without an
+    // Origin included (q's raw/u8 result, rule A: kept); pr's i32 result may retain none, so it keeps nothing of p; an Origin-free input
+    // keeps its CanHold-alone row (O-364 (a) (2): f's result keeps v).
     [Theory]
     [InlineData("func pr(p: (ref/i32 during a, i32)) -> i32 => p.1", "pr", "")]
     [InlineData("func q(p: (ref/i32 during a, raw/u8)) -> raw/u8 => p.1", "q", "result {0 Value Chain}, untied")]
     [InlineData("func f(v: i32) -> i32 => v", "f", "result {0 Value}")]
     public void AnOriginFreeResultKeepsNoArgumentWhoseTypeStatesAnOrigin(string function, string name, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), name));
+
+    // SPEC 15.6.4 ("one that may retain any other Origin of an argument carries the argument's Loans where it can hold a value of its
+    // Type, of a part it holds by value, or a borrow formed through it"; F's G935 ruling 81; labels first in
+    // `...\front\notes\G935\r81\labels.txt`): R's Origin test is the result's or written storage's as a whole. mk2's result states s, an
+    // Origin of v, so its u64 Err payload keeps v by Value (v.n, a part v holds by value), as mk3's keeps v.1 and putS's `*dst` v.n: the
+    // calls of the Middle's pins rvResPartMixedBad, rvResTupMixedBad and rvwPartBuiltBad (MirBorrowsTest.Exposed on the one tree, I by
+    // O-364 (a)). With no position for a part of v, v is Content only (mk2i); an Origin-free v keeps CanHold alone (mk2f, O-364 (a) (2));
+    // a result stating only an Origin the contract does not relate to p's keeps nothing of p (prb), and pr's call in F's twin keeps
+    // nothing (O-435 (a)). Fails on ddfe08f7c: the three pins' calls keep v by Content only.
+    [Theory]
+    [InlineData(
+        MixedHolder + "func mk2(x: uniq/i32 during s, v: RS during s) -> Result<uniq/i32 during s, u64> => .Err(v.n)\n" +
+            "func rvResPartMixedBad(c: bool) -> u64\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var a: i32 = 0\n" +
+            "    var res = mk2(a@uniq, s@move)\n    if c => res = .Err(5)\n    match res@move\n        .Ok(_) => return 0\n        .Err(let e)\n" +
+            "            kk = 2\n            let k = e\n            return 0\n",
+        "mk2",
+        "result {0 Value, 1 Value}")]
+    [InlineData(
+        "func mk3(x: uniq/i32 during s, v: (ref/u8 during s, u64)) -> Result<uniq/i32 during s, u64> => .Err(v.1)\n" +
+            "func rvResTupMixedBad(c: bool) -> u64\n    var kk: u8 = 1\n    let t: (ref/u8, u64) = (kk@ref, 3)\n    var a: i32 = 0\n" +
+            "    var res = mk3(a@uniq, t)\n    if c => res = .Err(5)\n    match res@move\n        .Ok(_) => return 0\n        .Err(let e)\n" +
+            "            kk = 2\n            let k = e\n            return 0\n",
+        "mk3",
+        "result {0 Value, 1 Value}")]
+    [InlineData(
+        MixedHolder + "func putS(dst: uniq/Result<uniq/i32 during s, u64>, v: RS during s) => ()\n" +
+            "func rvwPartBuiltBad() -> u64\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var a: i32 = 0\n" +
+            "    var res: Result<uniq/i32, u64> = .Ok(a@uniq)\n    putS(res@uniq, s@move)\n    match res@move\n        .Ok(_) => return 0\n" +
+            "        .Err(let e)\n            kk = 2\n            let k = e\n            return 0\n",
+        "putS",
+        "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(
+        MixedHolder + "func mk2i(x: uniq/i32 during s, v: RS during s) -> Result<uniq/i32 during s, i8> => .Err(1)\n" +
+            "func g() -> ()\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var a: i32 = 0\n    let res = mk2i(a@uniq, s@move)\n",
+        "mk2i",
+        "result {0 Value, 1 Content}")]
+    [InlineData(
+        "func mk2f(x: uniq/i32 during s, v: (u8, u64)) -> Result<uniq/i32 during s, u64> => .Err(v.1)\n" +
+            "func g() -> ()\n    var a: i32 = 0\n    let res = mk2f(a@uniq, (1, 3))\n",
+        "mk2f",
+        "result {0 Value, 1 Value}")]
+    [InlineData(
+        "func prb(p: (ref/i32 during a, i32), y: ref/u8 during b) -> (ref/u8 during b, i32) => (y, p.1)\n" +
+            "func g() -> ()\n    var x: i32 = 1\n    var z: u8 = 2\n    let t = prb((x@ref, 1), z@ref)\n",
+        "prb",
+        "result {1 Value}")]
+    [InlineData(
+        "struct RS {s}\n    public var r: ref/i32 during s\n    public var n: i32\n    public init(r: ref/i32 during s, n: i32)\n" +
+            "        self.r = r\n        self.n = n\nfunc pr(p: (ref/i32 during a, i32)) -> i32 => p.1\nfunc r78PrTwinOk() -> i32\n" +
+            "    var a: i32 = 1\n    var x: i32 = 2\n    let s = RS.init(r: a@ref, n: 3)\n    let n = s.n\n    let m = pr((x@ref, n))\n" +
+            "    a = 2\n    return m\n",
+        "pr",
+        "")]
+    public void AResultOrStorageThatMayRetainAnArgumentsOriginKeepsEveryPartItCanHold(string source, string callee, string expected)
+        => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
     // The same at a call: a Closure capturing the caller's T by move and passed by value, with a writer through `uniq/T` handed, keeps the
     // child in what the captured T hides; without the writer nothing.

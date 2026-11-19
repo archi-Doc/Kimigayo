@@ -465,16 +465,17 @@ public sealed partial class Binding
 
     // The one fills arm (Revision 1's R1.3; SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... may
     // retain the argument there ..., through its result or its writes"): at an abstract part, the storage `kinds` is of keeps each
-    // source the premise closure does not decide (retentionUndecided: a source that names no Origin by its own value, R; a raw source by
-    // its kind) where a handed callable may retain that input there (Filled), and through a write also where a value of the Type reaches
-    // past its hidden references (the Abstract storage, whose entry Written then forms). Outside the kept Type's binding a raw source's
-    // fill is the hold walk's (Held), which walks no hidden binding.
+    // source the premise closure does not decide (retentionUndecided: a source that names no Origin by its own value, R, where R's Origin
+    // test lets the storage keep its input, MayRetain; a raw source by its kind) where a handed callable may retain that input there
+    // (Filled), and through a write also where a value of the Type reaches past its hidden references (the Abstract storage, whose entry
+    // Written then forms). Outside the kept Type's binding a raw source's fill is the hold walk's (Held), which walks no hidden binding.
     private void FilledKinds(RetentionKind[] kinds, BoundType? type, BoundType? signature, int excluded)
     {
         var (reached, own) = (this.retentionKinds[AbstractStorage], this.Parametric(signature));
         for (var i = 0; i < kinds.Length; i++)
         {
-            var kind = own ? this.retentionUndecided[i].Raw | this.retentionUndecided[i].Free : this.retentionUndecided[i].Free;
+            var free = this.MayRetain(kinds, i) ? this.retentionUndecided[i].Free : RetentionKind.None;
+            var kind = own ? this.retentionUndecided[i].Raw | free : free;
             var fill = kind == RetentionKind.None || i == excluded ? Fill.None : this.Filled(type, signature, i);
             if (fill != Fill.None)
             {
@@ -763,22 +764,33 @@ public sealed partial class Binding
     }
 
     // R (PLAN G935; the owner's O-359 (a); SPEC 15.6.4 "decided per argument, never per Origin"): a position that names no Origin holds each
-    // source that names none (an Origin-free input or a part such an input holds by value) where it can hold its value: both are leaves
-    // (R1.2), so the position is the source's Type, Origins erased (Fits); an abstract part keeps such a source by a callable's fill
-    // (FilledKinds), whatever its node; never by a raw layer's pointee holding any Type (CanHold's RawStorage arm is a borrow formed
-    // within raw storage, not a value stored at the layer: a raw layer the call writes keeps its rows by rule A, whose exclusion of the
-    // written-through argument stands: keeperTupOk); `excluded` (an input written through, R's exclusion) none.
+    // source that names none (a part an input holds by value) where it can hold its value and R's Origin test lets the storage keep the
+    // input (MayRetain): both are leaves (R1.2), so the position is the source's Type, Origins erased (Fits); an abstract part keeps such a
+    // source by a callable's fill (FilledKinds), whatever its node; never by a raw layer's pointee holding any Type (CanHold's RawStorage
+    // arm is a borrow formed within raw storage, not a value stored at the layer: a raw layer the call writes keeps its rows by rule A,
+    // whose exclusion of the written-through argument stands: keeperTupOk); `excluded` (an input written through, R's exclusion) none.
     private void UnnamedKinds(RetentionKind[] kinds, BoundType? type, BoundType? signature, int excluded)
     {
         foreach (var source in this.retentionSources)
         {
             if (source.Node < 0 && source.Input != excluded && (kinds[source.Input] & RetentionKind.Value) == 0 && type is not null &&
-                this.Admits(signature, source.Input) && this.Fits(type, source.Own!))
+                this.MayRetain(kinds, source.Input) && this.Admits(signature, source.Input) && this.Fits(type, source.Own!))
             {
                 kinds[source.Input] |= RetentionKind.Value;
             }
         }
     }
+
+    // R's Origin test (SPEC 15.6.4: "one that may retain any other Origin of an argument carries the argument's Loans where it can hold a
+    // value of its Type, of a part it holds by value, or a borrow formed through it"; the owner's O-435 (a), F's G935 ruling 81), whether a
+    // storage (`kinds`, its row so far) may keep an input by a source that names no Origin: always where the input's Type states none
+    // (O-364 (a) (2): CanHold alone); else only where the storage as a whole may retain one of the input's Origins by the contract, the
+    // closure from one of its targets reaching an occurrence of the input (its Content test, which Storages makes before any position; a
+    // raw layer the call writes without an Origin already keeps there every input but the written-through one by Value, rule A). So an
+    // Origin-free result or storage keeps none of such an input's parts (pr's i32 result, `*y: i32`). Read by both readers of such a
+    // source: UnnamedKinds and FilledKinds.
+    private bool MayRetain(RetentionKind[] kinds, int input)
+        => kinds[input] != RetentionKind.None || !this.retentionArguments[input].CarriesAnyOrigin;
 
     // The hold walk's kinds of the walk made (retentionKept, one array per storage, none set), for the computation's input count.
     private List<RetentionKind[]> Kept(int inputs)
