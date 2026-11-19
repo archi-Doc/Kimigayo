@@ -716,8 +716,10 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // (own2) instance twice (two associates) and the instance's formation reads the obligation being proven, `S is C`, in a dead operand
     // (`T is C or D`, S both): the work is decided, so it holds with that obligation pending and is kept for its epoch, and the second
     // request reads it; with the other operand refuted (`T is C or E`, the Unknown twin) it depends and is judged again. The difference
-    // between the twins cancels the library's fixed evaluations. It is 4 on dev 8b49a5dc3's passes (W-264, W-265: PLAN G949 S1-1c's
-    // certificate rounds, which run differently for the rejected Unknown twin than for the accepted decided one); 2 on dev 2626585ee.
+    // between the twins cancels the library's fixed evaluations. It is the dependence's 2 and, since dev's f6324930d (PLAN G949 S1-1c:
+    // a certificate round walks the environments again only after a failure), the program pass's round, which the rejected Unknown twin
+    // runs (its validation walk recorded its failures) and the accepted decided twin skips: 2 evaluations, fixed (1, 15 and 30 such
+    // conformances give 2 each), by that rule.
     [Theory]
     [InlineData("cap2", "contract D\ncontract C\n    associate Item is Copy\n    associate Other is Copy\nstruct Box<T>\n    T is C or D\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n    associate C.Other is Box<S>\n", "contract D\ncontract E\ncontract C\n    associate Item is Copy\n    associate Other is Copy\nstruct Box<T>\n    T is C or E\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n    associate C.Other is Box<S>\n", 4)]
     [InlineData("own2", "contract D\ncontract C\n    associate Item is Owned\n    associate Other is Owned\nstruct Node<T>\n    T is C or D\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n    associate C.Other is Node<S>\n", "contract D\ncontract E\ncontract C\n    associate Item is Owned\n    associate Other is Owned\nstruct Node<T>\n    T is C or E\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n    associate C.Other is Node<S>\n", 4)]

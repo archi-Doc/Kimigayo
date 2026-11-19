@@ -121,7 +121,7 @@ public class NormalizedConstraintProofBindingTest
     // IndexOf's rebuild branch, indexes 68, as does an entry Kept with readings that were not kept.
     [Fact]
     public void ARequestInsideANormalizationIndexesItsViewAgain()
-        => Assert.Equal(106, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty)); // dev 98; 108 with e2-3a's publication lifetime before G949 S1-1c's fewer rounds
+        => Assert.Equal(106, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty)); // dev 98; 108 before f6324930d (below)
 
     // DECISIONS R7-C2e2-2: a closure validator's read forms its view's entry when it has a fact to pair, and the entry goes back when
     // the read ends. The agreement reads f's view (three identities of one projection through K<U>, K<V> and K<i32>, SPEC 8.9.2);
@@ -129,7 +129,7 @@ public class NormalizedConstraintProofBindingTest
     // entries and the requests' index over the library's: exact.
     [Fact]
     public void AValidatorsReadIndexesItsViewOncePerRead()
-        => Assert.Equal(95, ClosureWork(Validated) - ClosureWork(string.Empty)); // dev 89; 97 with e2-3a's publication lifetime before G949 S1-1c's fewer rounds
+        => Assert.Equal(95, ClosureWork(Validated) - ClosureWork(string.Empty)); // dev 89; 97 before f6324930d (below)
 
     // R7-C2c2 c2-3b at R7-C2e2-2's merge (merge review N1): a Callable fact is a row kind's fact, so a request's entry files it under its
     // subject and its class key, and a validator's read (no classes) under its subject alone. In f's view (`U is T`, whose class key is T)
@@ -156,8 +156,12 @@ public class NormalizedConstraintProofBindingTest
     // consistent: with `{joined} is i32` (R7-C2e2-2's l2, l2r) the struct's premise meets i32's closed world in L1's scope, N9's premise
     // error (the owner's O-296 (a); RecursiveContractTest's l2 rows). Q joins the class where i32 did and its own conformance forms no
     // view entry, so the pairs are l2's and l2r's. The pairs over the library's: exact.
+    // These three counts under e2-3a (each publication forgets the Kept entries, ForgetKeptTables, so a walk after one forms its views'
+    // entries again): dev's f6324930d (PLAN G949 S1-1c) skips the program pass's certificate round when its validation walk recorded no
+    // failure, and with it that round's entries: 108 -> 106, 97 -> 95, 28/26 -> 24/22 (dev, whose entries live for the epoch: 98, 89,
+    // 22/20 either way). With the skip disabled the counts are e2-3a's again.
     [Theory]
-    [InlineData("T", "U", 24)] // dev 22 and 20; 28 and 26 with e2-3a (each publication forms the entries again) before G949 S1-1c's fewer rounds
+    [InlineData("T", "U", 24)]
     [InlineData("U", "T", 22)]
     public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
     {
