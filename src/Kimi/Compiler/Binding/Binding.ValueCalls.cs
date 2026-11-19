@@ -359,17 +359,21 @@ public sealed partial class Binding
     }
 
     // SPEC 7.3, 7.7.3: the callee of a value call is a Receiver Expression, acquired in the call's mode on the path of SPEC 3.4.3, which
-    // continues below every ref and uniq layer (ComparisonReferent): through a handle or view there as its payload (TryPayloadReceiver);
-    // a reference callee as its Reborrow through its layers; owned only by the value read of a Copy closure; a Shared or Exclusive call
-    // borrows an owned callee Place as SPEC lends it (LendsPlace), exclusively only where its lending point is exclusively writable, whose
-    // static root is the located limit until P42, final here as a value call selects no other callee: it fails the callee alone, the call
-    // bound on (SPEC 23.1.2; FailStaticBorrow). False when the acquisition fails, its record made.
+    // continues below every ref and uniq layer (ComparisonReferent) and stops at a handle's or view's View Target (CallableCore): a
+    // reference callee as its Reborrow through its layers, in a Shared call through a concrete handle or view below them too (SPEC 13.5.5:
+    // its payload is read through the layer); any other handle or view as its payload (TryPayloadReceiver, whose limit is a handle below a
+    // reference); owned only by the value read of a Copy closure; a Shared or Exclusive call borrows an owned callee Place as SPEC lends it
+    // (LendsPlace), exclusively only where its lending point is exclusively writable, whose static root is the located limit until P42,
+    // final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC 23.1.2; FailStaticBorrow).
+    // False when the acquisition fails, its record made.
     private bool AcquireValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
     {
         var receiverType = call.Method.BoundType!;
         receiverOperation = default;
         var terminal = ComparisonReferent(receiverType, out var layers);
-        var handle = this.ObjectCases(terminal, scope, out _) != SemanticsMask.None ? call.Method
+        var callable = CallableCore(receiverType)!;
+        var read = layers != 0 && receiver == SemanticsKind.Ref && !ReferenceEquals(callable, terminal);
+        var handle = !read && this.ObjectCases(terminal, scope, out _) != SemanticsMask.None ? call.Method
             : receiver != SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } follow ? follow.Left : null;
         if (handle is not null)
         {
@@ -401,17 +405,17 @@ public sealed partial class Binding
             // SPEC 7.7.3, 7.3.3, 3.5.1, 15.6.3 (DECISIONS BU-27): a reference callee is a borrow value, acquired as `p@follow@ref` or
             // `p@follow@uniq` on the path through every layer: one reference in the call's mode to the Callable the layers reach, of the
             // Origin they give (ReferentOrigin, SPEC 10.2), named as every Reborrow is, exclusive only where the path grants exclusive
-            // capability (ReferentAuthority: `ref/F` supplies no Exclusive call). One layer in its own mode is the bare acquisition (SPEC
-            // 3.5): a `ref` Copied (a value operation, as AdaptInput's), a stored `uniq` Reborrowed. The MIR builder types the acquisition
-            // by the operation's AdaptedType.
+            // capability (ReferentAuthority: `ref/F` supplies no Exclusive call). One layer in its own mode over the Callable itself is the
+            // bare acquisition (SPEC 3.5): a `ref` Copied (a value operation, as AdaptInput's), a stored `uniq` Reborrowed. The MIR builder
+            // types the acquisition by the operation's AdaptedType.
             if (receiver == SemanticsKind.Uniq && this.ReferentAuthority(call.Method) == SemanticsKind.Ref)
             {
                 this.FailWrite(call, call.Method);
                 return false;
             }
 
-            var reborrow = this.types.Reference(receiver, terminal, this.ReferentOrigin(call.Method, receiverType, layers));
-            var own = layers == 1 && receiverType.Semantics == receiver;
+            var reborrow = this.types.Reference(receiver, callable, this.ReferentOrigin(call.Method, receiverType, layers));
+            var own = layers == 1 && receiverType.Semantics == receiver && !read;
             receiverOperation = own && receiver == SemanticsKind.Ref
                 ? new(call.Method, receiverType, null, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, AdaptedType: reborrow)
                 : new(call.Method, receiverType, null, ArgumentOperationKind.Reborrow, own ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow, AdaptedType: reborrow);

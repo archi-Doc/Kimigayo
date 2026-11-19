@@ -224,12 +224,13 @@ public class BorrowAcquisitionTest
         Assert.Equal(records.Length == 0, check.Accepted);
     }
 
-    // SPEC 7.7.3, 7.3.3, 3.4.3, 8.10 (PLAN D-888): a value call acquires its callee like a method receiver, on the path that continues
-    // below every ref and uniq layer to the Callable (a Closure, a Function value, a function item, a Callable F): through any number
-    // of layers, also in a `confined` witness, with arguments and a result over its input; exclusively only where every layer and the path
-    // grant exclusive capability (`uniq/ref/F` and `ref/uniq/F` supply no Exclusive call). A raw pointer is no layer the path follows, so
-    // `p()` calls nothing; a handle below a reference is the located limit. Fail-before: NotCallable_Kd or Unsupported_Kd on the valid
-    // forms, `ur()` accepted (and InternalInvariant_Kd at build), `p()` accepted, `ro()` accepted (InternalInvariant_Kd at build). Each
+    // SPEC 7.7.3, 7.3.3, 3.4.3, 8.10, 13.5.5 (PLAN G1120, D-888): a value call acquires its callee like a method receiver, on the path
+    // that continues below every ref and uniq layer to the Callable (a Closure, a Function value, a function item, a Callable F) or to a
+    // handle's View Target: through any number of layers, also in a `confined` witness, with arguments and a result over its input;
+    // exclusively only where every layer and the path grant exclusive capability (`uniq/ref/F` and `ref/uniq/F` supply no Exclusive
+    // call). A Shared call reads an `obj` or `rc` payload through the layers; an Exclusive one through them is the located limit. A raw
+    // pointer is no layer the path follows, so `p()` calls nothing. Fail-before (dev 7979e3a56): NotCallable_Kd or Unsupported_Kd on the
+    // valid forms, `ur()` and `p()` accepted (InternalInvariant_Kd at build); on 11974eb35, Unsupported_Kd at `ro`, `uo` and `ur`. Each
     // row: the published records in order; an accepted program has none.
     [Theory]
     [InlineData("func f() -> i32\n    let g = func () -> i32 => 2\n    let r = g@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr()\n", "")]
@@ -244,7 +245,10 @@ public class BorrowAcquisitionTest
     [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var r = next@ref\n    let ur = r@uniq\n    return ur()\n", "InvalidAssignment_Kd ur")]
     [InlineData("func f<F>(g: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    let r = g@ref\n    return r()\n", "InvalidAssignment_Kd r")]
     [InlineData("func f() -> i32\n    var g = func () -> i32 => 2\n    let p = g@raw\n    return p()\n", "NotCallable_Kd p()")]
-    [InlineData("func f() -> i32\n    let o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let ro = o@ref\n    return ro()\n", "Unsupported_Kd ro")]
+    [InlineData("func f() -> i32\n    let o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let ro = o@ref\n    return ro()\n", "")]
+    [InlineData("func f() -> i32\n    var o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let uo = o@uniq\n    return uo()\n", "")]
+    [InlineData("func f() -> i32\n    var r = Kimi.Intrinsics.makeRc(func () -> i32 => 2)\n    let ur = r@uniq\n    return ur()\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var o = Kimi.Intrinsics.makeObj(next@move)\n    let uo = o@uniq\n    return uo()\n", "Unsupported_Kd uo")]
     public void AValueCalleeIsAcquiredThroughEveryReferenceLayer(string body, string records)
         => this.AValueCallsAcquisitionAndRelationsAreEachRecorded(body, records);
 
