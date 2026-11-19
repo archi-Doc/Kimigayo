@@ -16,7 +16,8 @@
 // range (the library's are the library check's, PLAN G951 E3), added by a clean round only; and for A5 the per-node summaries and a site's
 // key row and classes per view (Keys, Field). A broken contract has one form per place (Broken): one Local meets at a call (a function
 // without a body Binding gives no category, a comparison leaf with no answer) is InternalInvariant_Kd at the call through MirReport, its
-// class Derived; one the solve meets, with no site, throws (DECISIONS BU-102's form: the check ends as CheckFaulted_Kd).
+// class Derived; one the solve meets, with no site, throws (DECISIONS BU-102's form: the check ends as CheckFaulted_Kd). Both only in a
+// complete compilation (TyCtxt.BindingComplete); in an incomplete one either is Derived with no record, resting on Binding's records.
 // The solve runs in rounds (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2 does not hold (one built since the
 // driver's last step, with no local facts) misses; the round goes on to its end, so it demands every body it reads, and commits nothing,
 // and the driver steps and runs the next round until one is clean.
@@ -300,12 +301,18 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // A broken contract Local meets at the call it reads (the class header's one form with a site; DECISIONS R4-M148's path, as A5's
-    // MirBorrows.Reports' Internal): InternalInvariant_Kd at the call in its view under Ownership.Internal; Derived, so every obligation
-    // over it is its dependent and records nothing (SPEC 23.1.2: the other bodies' failures stay reported).
+    // MirBorrows.Reports' Internal): InternalInvariant_Kd at the call in its view under Ownership.Internal, in a complete compilation
+    // (TyCtxt.BindingComplete); Derived, so every obligation over it is its dependent and records nothing (SPEC 23.1.2: the other bodies'
+    // failures stay reported). In an incomplete one the missing body or answer rests on Binding's records, no record of its own (BU-102:
+    // the state rests on a Binding failure; R5-M183: a Closure in a declaration Binding rejected has no body, the collector's Report alike).
     private byte Broken()
     {
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-        _ = this.site.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.site.Subject, this.site.Body, this.site.Views));
+        if (types.BindingComplete)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+            _ = this.site.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.site.Subject, this.site.Body, this.site.Views));
+        }
+
         return Derived;
     }
 
