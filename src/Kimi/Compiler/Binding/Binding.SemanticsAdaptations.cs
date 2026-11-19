@@ -51,6 +51,9 @@ public sealed partial class Binding
     // DECISIONS D3 (G812 rulings 134, 143): what OpenForm's run formed.
     private BoundType? openForm;
 
+    // DECISIONS D3 (G812 ruling 156, SN2): the formations OpenMarked made so far, which a scaling check reads (OpenMarkedWork).
+    private long openMarkedFormations;
+
     // A finite Type family stores complete case Types in SemanticsOrder, packed by its Length mask.
     // Only the selecting binder is a dependency; no source expression or operation plan is retained.
     private enum FamilyTransform : byte
@@ -363,6 +366,7 @@ public sealed partial class Binding
     // Type's shape) is marked whole.
     private BoundType? OpenMarked<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
     {
+        this.openMarkedFormations++;
         var type = this.FormReadsSplit(declared, state, form, out var split);
         var count = declared.Components.Count;
         if (!split || type is null)

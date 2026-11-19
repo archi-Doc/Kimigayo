@@ -99,17 +99,21 @@ public class InferenceSlotScalingTest
         string List(Func<int, string> item) => string.Join(", ", all.Select(item));
     }
 
-    // DECISIONS D3 (G812 rulings 136, 143): a resting part is completed at its open formed parameter (OpenForm, one one-run search per
-    // part), so a tree chain of n Tuple elements each holding a contextual Case whose payload is an anonymous function
-    // (`(.Some(func (x) => true), (...))` at `(Option<(s0/Box) -> i32>, (...))`) takes split runs at most linear in n, and each body
-    // keeps its record (7c04029eb completed none: one run and Unsupported_Kd alone at every n).
+    // DECISIONS D3 (G812 rulings 136, 143, 156): a resting part is completed at its open formed parameter (OpenForm, one one-run search
+    // per part), so a tree chain of n Tuple elements each holding a contextual Case whose payload is an anonymous function
+    // (`(.Some(func (x) => true), (...))` at `(Option<(s0/Box) -> i32>, (...))`) takes split runs and formations of the open formed Type
+    // (OpenMarkedWork: each declared component formed again below its mark; SN2) at most linear in n, and each body keeps its record
+    // (7c04029eb completed none: one run and Unsupported_Kd alone at every n).
     [Fact]
     public void ASplitPartsTreeCompletesItsAnonymousFunctionsInRunsLinearInItsDepth()
     {
-        var runs = new[] { 10, 20, 40 }.Select(Runs).ToArray();
-        Assert.True(MirBorrowsTest.Grows(runs, 2), $"runs {string.Join(", ", runs)}");
+        var work = new[] { 10, 20, 40 }.Select(Work).ToArray();
+        var (runs, formations) = (work.Select(static x => x.Runs).ToArray(), work.Select(static x => x.Formations).ToArray());
+        Assert.True(
+            MirBorrowsTest.Grows(runs, 2) && formations[0] < formations[1] && MirBorrowsTest.Grows(formations, 2),
+            $"runs {string.Join(", ", runs)}; formations {string.Join(", ", formations)}");
 
-        static long Runs(int depth)
+        static (long Runs, long Formations) Work(int depth)
         {
             var (type, argument) = ("i32", "1");
             for (var i = 0; i < depth; i++)
@@ -123,7 +127,8 @@ public class InferenceSlotScalingTest
                 "func call<t0/U0>(k0: t0/U0, u0: U0) -> i32\n    t0 is owner or ref\n    U0 is Owned\n" +
                 $"    let f = putN<U0>\n    return f(u0@move, {argument}, stop())\n";
             Assert.Equal($"{depth}*TypeMismatch_Kd {depth}*UnprovenConstraint_Kd", DiagnosticCorpus.RecordProfile(source));
-            return MinimalEmissionTest.Analyze(source).Binding.SplitCaseRuns;
+            var binding = MinimalEmissionTest.Analyze(source).Binding;
+            return (binding.SplitCaseRuns, binding.OpenMarkedWork);
         }
     }
 
