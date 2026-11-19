@@ -56,7 +56,7 @@ internal sealed partial class MirBuilder
             if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
             {
                 // A composition's verdict is its parts' (TyCtxt.Compose); the guard reads the part deciding it, none when Prepared.
-                if (compilation.Types.Compose(inner, subst) is not ({ } composed, var storage, var part) ||
+                if (compilation.Types.Compose(inner, subst) is not ({ } composed, _, var storage, var part) ||
                     (part is not null && !compilation.Types.Readable(part, storage)))
                 {
                     return false;

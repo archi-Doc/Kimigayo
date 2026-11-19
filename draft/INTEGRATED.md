@@ -1626,3 +1626,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Its specification work goes separately, each as an explicit revision recorded here when it lands: IMPL §20.3 gains a `tatara` row
   with unit A3; IMPL §20.3.2's Toolchain wording changes with unit A4; IMPL §20.3.2 and §20.4 change again with B5 and B6, each after
   its owner question. Nothing in SPEC changes before B7. Adoption implies no implementation support.
+- Revision 1 (2026-11-20, the Middle's design review of unit A1, C-420's C1 and C6b; T's D-878): §5 A1's Build and Done when: setup,
+  `installation.json` and CI take `tatara.dll` in A4, since every worktree shares one `toolchain` directory through a junction; A1's
+  check is `build.ps1`'s own load, not a managed test. §5 A4 gains a bullet for setup, the record and CI, and judges its budget on
+  A1's series run at A4 as an interleaved paired A/B. §6's last rule: `src/Tatara`'s README states the settings a source build must
+  reproduce; none is exercised while the prebuilt archive fits. No decision of the owner changes. Nothing frozen.
