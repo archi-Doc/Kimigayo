@@ -332,12 +332,6 @@ public sealed class BoundConformancePath : ICheckCause
     // Rule (a) (ImplTable): the registrar step's point at the path's registration.
     internal ImplTable.AdmissionPoint Point { get; set; }
 
-    internal bool Checking { get; set; }
-
-    // The requests that reached it while it is being verified (Binding.ReentryRead), until its verification ends. Temporary carrier
-    // with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
-    internal int Reentries { get; set; }
-
     internal bool Invalid { get; set; }
 
     // The pass of the last reset of the per-pass state (ResetPass).
@@ -393,8 +387,15 @@ public sealed class BoundConformancePath : ICheckCause
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
 
     // SPEC 23.1.2: a check resting on a conformance resting on its specification derives its record from Use; one resting on its OCC-X
-    // limit needs that limit published.
-    void ICheckCause.Rest() => this.Needed |= this.Unsupported;
+    // limit needs that limit published. Stored only on a change, so a frozen path, never Unsupported, is never written (PLAN G949 Stage 2
+    // U3).
+    void ICheckCause.Rest()
+    {
+        if (this.Unsupported)
+        {
+            this.Needed = true;
+        }
+    }
 
     internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
 
@@ -409,8 +410,6 @@ public sealed class BoundConformancePath : ICheckCause
         this.Stamp = pass;
         this.Active = false;
         this.IsVerified = false;
-        this.Checking = false;
-        this.Reentries = 0;
         this.RejectedSelfSignature = null;
         this.Invalid = false;
         this.WitnessStorage.Clear();

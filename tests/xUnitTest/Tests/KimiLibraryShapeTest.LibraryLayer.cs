@@ -143,17 +143,23 @@ public partial class KimiLibraryShapeTest
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which the pass driver's RunPass
     // runs first in each pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after
     // it. Each pass's start ends the epoch of the stores it reads: the shared ones and its own part's (the closure index, PassPart), so
-    // the row starts each pass in turn, the library pass's and the program pass's (G949 S1-r1b). Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
-    // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store
-    // is empty. Reset leaves only a work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
+    // the row starts each pass in turn, the library pass's and the program pass's (G949 S1-r1b). Every component summary is stale (its
+    // Epoch is not summaryEpoch); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store is
+    // empty, Enumerate's view index among them, whose entries hold its kept rows (ViewIndex.Rows, R7-C2e2 e2-3a). Reset leaves only a
+    // work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
     // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U fact
     // of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4), and a consumer that requests the work while it waits
     // in the queue reads it beside the reset Unknown (RequestCapability's read of the queued work), for record selection only; Reset
     // empties it since G949 S1-e, so that read never hands out a previous epoch's Fact (S1-0b r2's review, Finding 3).
+    // PLAN G949 Stage 2 U3 (changed by decision): only the freeze compilation binds its library, so the row starts both passes on one,
+    // with Hello as its program; a reading compilation runs no library pass, whose reset would find no work.
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
-        var binding = Bound("example/Hello").Binding;
+        var c = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs", "examples", "Hello", "Hello.kimi")));
+        c.Bind();
+        var binding = c.Binding;
 
         // Hello's works end with no U fact, so one work keeps one as an earlier epoch's Unknown leaves it: without Reset's clear the
         // Fact check below fails.
@@ -168,7 +174,7 @@ public partial class KimiLibraryShapeTest
         }
 
         var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
-        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Pending", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
+        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Depends", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
         {
             var value = (IEnumerable)LibraryLayer.ValueAt(binding, store);
@@ -182,9 +188,6 @@ public partial class KimiLibraryShapeTest
                     Assert.NotEmpty(value);
                     Assert.Empty(((IDictionary)value).Values.Cast<object>()
                         .SelectMany(x => reset.Where(name => Property(x, name) is not (null or false or ConstraintProof.Unknown or ICollection { Count: 0 }))));
-                    break;
-                case "Binding.enumerateKeptPool":
-                    Assert.Equal(0, (int)LibraryLayer.ValueAt(binding, "Binding.enumerateKeptPoolNext"));
                     break;
                 default:
                     Assert.Empty(value);
@@ -289,6 +292,16 @@ public partial class KimiLibraryShapeTest
         return c;
     }
 
+    // Bound's form over a library of the compilation's own (PLAN G949 Stage 2 U3, x1): for a row that writes a library object by reflection
+    // or starts the library's pass itself, so no other compilation reads what it writes.
+    private static Compilation BoundOverItsOwnLibrary(string program)
+    {
+        var c = Prepared(program);
+        CompilationTestHelper.UseEditedLibrary(c, static _ => { });
+        c.Bind();
+        return c;
+    }
+
     // A program read from the repository or the diagnostic corpus, prepared.
     private static Compilation Prepared(string program)
     {
@@ -336,7 +349,7 @@ public partial class KimiLibraryShapeTest
     }
 
     /// <summary>The library layer of a bound compilation as sorted rows (store, key, value).</summary>
-    private sealed class LibraryLayer
+    internal sealed class LibraryLayer
     {
         private const int Depth = 3; // Nesting printed inside a row.
         private const int Nesting = 3; // Objects whose fields are listed as stores below Binding (ImplTable, TyCtxt, their parts).
@@ -373,8 +386,8 @@ public partial class KimiLibraryShapeTest
             ["Binding.types.substs"] = Rule.Memo, // The substitution interner: a row is its own key, keyed by no Type (constraints' class).
             ["Binding.programAtoms"] = Rule.Memo, // The program's atoms at library binders (ruling 203 (4)): a function of the binder, kind and slot, kept as the item contexts holding them are, until an edit (ruling 205 N4).
 
-            // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,
-            // whose pool lends its lists to enumerateKept alone (C1).
+            // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works, Enumerate's view index, whose
+            // entries hold its kept rows (ViewIndex.Rows, R7-C2e2 e2-3a), and a Contract's head depths.
             ["Binding.summaries"] = Rule.Epoch,
             ["Binding.capabilityNodes"] = Rule.Epoch,
             ["Binding.capabilityEdges"] = Rule.Epoch,
@@ -382,8 +395,6 @@ public partial class KimiLibraryShapeTest
             ["Binding.enumerateIndex"] = Rule.Epoch,
             ["Binding.programPart.EnumerateIndex"] = Rule.Epoch, // the same index, each pass's part's (PLAN G949 S1-r1b)
             ["Binding.Library.Layer.Part.EnumerateIndex"] = Rule.Epoch,
-            ["Binding.enumerateKept"] = Rule.Epoch,
-            ["Binding.enumerateKeptPool"] = Rule.Epoch,
             ["Binding.enumerateHeads"] = Rule.Epoch,
             ["Binding.readings"] = Rule.Epoch, // A view's readings (ResetCapabilities; G949 S1-1, w1 (ii)).
             ["Binding.identityClasses"] = Rule.Epoch, // A view's identity tables (ResetIdentityClasses, from ResetCapabilities).

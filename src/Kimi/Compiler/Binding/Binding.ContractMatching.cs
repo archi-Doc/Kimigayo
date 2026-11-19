@@ -95,13 +95,15 @@ public sealed partial class Binding
     // Self.
     private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
-    // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking
-    // answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
+    // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
+    // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state.
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
-        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
-        if (!conformance.Checking)
+        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance). Stored only on
+        // a change, so a verified frozen path, never Unsupported (FreezeLibrary's UnsettledPath check), is never written (PLAN G949
+        // Stage 2 U3).
+        if (!this.Verifying(conformance) && conformance.Unsupported)
         {
             conformance.Unsupported = false;
         }
@@ -148,15 +150,12 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path): the second guard beside the open set
-        // (ResolveConformance), which keys an instance's obligation by (Type, Contract) and so cannot also key a path being verified
-        // without one answer for both; removal: R7-C2e2 e2-5b, when the obligation table keys both (e2-3's Completion carriers).
-        if (conformance.Checking)
+        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path), keyed by the path in the one table.
+        if (!this.BeginVerification(conformance, out var held))
         {
-            return this.ReentryRead(conformance);
+            return ConstraintProof.Unknown;
         }
 
-        conformance.Checking = true;
         this.conformanceChecks++;
         conformance.WitnessStorage.Clear();
         conformance.WitnessMap.Clear();
@@ -168,7 +167,7 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ConformanceSelf(conformance);
-            var declarationProof = this.ReadSourceState(conformance.Type);
+            var declarationProof = this.ReadSourceState(conformance.Type, out _);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
                 return ConstraintProof.Error;
@@ -291,8 +290,9 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var clauseScope = this.AssociatedFormationScope(conformance, this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol), scope);
-                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
+                var associated = this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol);
+                var clauseScope = this.AssociatedFormationScope(conformance, associated, scope);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, clauseScope, self), true);
             }
 
             var container = (DeclarationContainerKoto)conformance.Type.Declaration;
@@ -310,7 +310,7 @@ public sealed partial class Binding
                         if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
                         {
                             var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                            proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
+                            proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
                         }
                     }
                 }
@@ -327,7 +327,7 @@ public sealed partial class Binding
                     }
 
                     var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
-                    proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
+                    proof = CombineProof(proof, this.ProveSpecification(constraint, clauseScope, self, this.SpecifiedBinding(conformance, identity)), true);
                 }
             }
 
@@ -401,7 +401,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.EndChecking(conformance);
+            this.EndVerification(conformance, held);
             conformance.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }
@@ -422,6 +422,44 @@ public sealed partial class Binding
             (this.specificationLinks ??= new()).Add(conformance.Use);
             return Invalid(BindingFailure.InvalidAssociatedType);
         }
+    }
+
+    // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence, that the specified Types meet a Contract clause (or a
+    // specification's obligation): one answer holding pending the obligations open when it began (BeginEvidence), so a part of the
+    // specified Types whose route depends on one stays the projection there (HeldPending) and only a judgment reading that part reads it
+    // pending; Unknown when the answer depends on one (it supplies none). The clause is instantiated for the conforming Type inside it.
+    private ConstraintProof ProveRequirement(BoundConstraint written, BindingScope scope, BoundType self)
+    {
+        var mark = this.BeginEvidence();
+        var verdict = ConstraintProof.Unknown;
+        try
+        {
+            verdict = this.ProveConstraint(this.ContractConstraint(written, scope, self), scope);
+        }
+        finally
+        {
+            verdict = this.EndEvidence(mark, verdict);
+        }
+
+        return verdict;
+    }
+
+    // SPEC 8.5.1, 8.6.3: a conforming Type's specification clause, by conjunction elimination (8.3.2). The identity atom the binding is
+    // formed from (`binding`, its first candidate) is the binding itself, a formation read (the Types it names are formed where written,
+    // after the conformance holds); every other conjunct is an obligation of the conformance, a requirement's evidence: a further identity
+    // atom (its consequence, an identity between Types, is checked and never assumed) or any other conjunct. One proof, as the clause's.
+    private ConstraintProof ProveSpecification(BoundConstraint written, BindingScope scope, BoundType self, BoundType? binding)
+    {
+        this.BeginProof();
+        return this.EndProof(Conjunct(written));
+
+        ConstraintProof Conjunct(BoundConstraint conjunct)
+            => conjunct.Kind switch
+            {
+                ConstraintKind.And => CombineProof(Conjunct(conjunct.Left!), Conjunct(conjunct.Right!), true),
+                ConstraintKind.TypeIdentity when ReferenceEquals(conjunct.RequiredType, binding) => this.ProveConstraint(this.ContractConstraint(conjunct, scope, self), scope),
+                _ => this.ProveRequirement(conjunct, scope, self),
+            };
     }
 
     private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)

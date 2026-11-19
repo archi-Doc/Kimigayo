@@ -47,7 +47,7 @@ public sealed partial class Binding
 
             var call = cached.Call ?? new CallPlan();
             call.Set(this, implementation, implementation.Type!, null, [], [], declaringType: declaring, origins: origins, inputOrigins: inputs);
-            if (this.InstantiateStorageType(implementation.Type!, call) is not { } result)
+            if (this.types.Instance(implementation.Type!, this.types.StorageSubst(call)) is not ({ } result, not StorageOutcome.Limit))
             {
                 return null;
             }

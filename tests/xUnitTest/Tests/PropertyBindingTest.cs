@@ -617,18 +617,20 @@ public partial class PropertyBindingTest
 
     // SPEC 23.1.2 (PLAN G296): an update beside a custom `set` whose standard side has no Type (a rejected instance, an unresolved Field
     // Type) completes unresolved, a dependent of the reported failure that adds no record (before, a direct TypeMismatch_Kd at `h.x`).
-    // Twins: the standard accessors' update, which added none before either.
+    // Twins: the standard accessors' update, which added none before either. The custom `set` is a call over the receiver (SPEC 11.3,
+    // PLAN G214), so over the rejected instance HS<bool> it reports that Type's constraint at the write, as a method call `h.put(1)`
+    // reports it at its call (`added`; before, no record).
     [Theory]
-    [InlineData(RejectedHolder, "h.x += 1")]
-    [InlineData(RejectedHolder, "h.x |= 1")]
-    [InlineData(RejectedHolder, "h.x++")]
-    [InlineData(UnresolvedHolder, "h.x += 1")]
-    [InlineData(RejectedStandard, "h.x += 1")]
-    [InlineData(UnresolvedStandard, "h.x += 1")]
-    public void AnUpdateWithoutAStoredTypeAddsNoRecord(string holder, string update)
+    [InlineData(RejectedHolder, "h.x += 1", "UnsatisfiedConstraint_Kd")]
+    [InlineData(RejectedHolder, "h.x |= 1", "UnsatisfiedConstraint_Kd")]
+    [InlineData(RejectedHolder, "h.x++", "UnsatisfiedConstraint_Kd")]
+    [InlineData(UnresolvedHolder, "h.x += 1", "")]
+    [InlineData(RejectedStandard, "h.x += 1", "")]
+    [InlineData(UnresolvedStandard, "h.x += 1", "")]
+    public void AnUpdateWithoutAStoredTypeAddsNoRecord(string holder, string update, string added)
     {
         const string Main = "    return\npublic func main() -> ()\n    return\n";
-        Assert.Equal(Errors(holder + Main), Errors(holder + $"    {update}\n" + Main));
+        Assert.Equal(Errors(holder + Main).Concat(added.Length == 0 ? [] : added.Split(' ')), Errors(holder + $"    {update}\n" + Main));
 
         static string[] Errors(string source)
         {

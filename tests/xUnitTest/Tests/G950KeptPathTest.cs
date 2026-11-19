@@ -464,8 +464,8 @@ public sealed class G950KeptPathTest
     }
 
     // Row LV (G950-K's stamp; G949 ruling 174, S1-1's B4): MirBuilder.Build stamps a version's library segment with Binding's library
-    // publication version, written once at the library's freeze, so the stamp is the same in every version of a compilation: after its
-    // first Bind, a second Bind, and an edit then a Bind, which keeps the segment. Hello and X3 valid.
+    // publication version, Binding.Frozen once the library is frozen (PLAN G949 Stage 2 U3), so the stamp is the same in every version of
+    // a compilation: after its first Bind, a second Bind, and an edit then a Bind, which keeps the segment. Hello and X3 valid.
     [Fact]
     public void ALibraryVersionStampsEveryVersionOfACompilation()
     {
@@ -482,8 +482,9 @@ public sealed class G950KeptPathTest
         }
     }
 
-    // Row MR-3 (the design review's N5 and 6.2 (4); the Front's C-379 (1): HirTables.LibraryVersion is per compilation, S1-1's c13
-    // two-compilation clause in KimiLibraryShapeTest.ASecondBindBindsNoLibraryNode): two compilations interleaved, each warm and edited
+    // Row MR-3 (the design review's N5 and 6.2 (4); the Front's C-379 (1); S1-1's c13 two-compilation clause in
+    // KimiLibraryShapeTest.ASecondBindBindsNoLibraryNode; from PLAN G949 Stage 2 U3 both read one frozen library, whose
+    // HirTables.LibraryVersion is Binding.Frozen in each, and the segment is each program's): two compilations interleaved, each warm and edited
     // into the other's program, each keep their own library segment in every version, and every version equals a fresh pipeline: no
     // compilation's stamp moves another's. Hello and X3 valid.
     [Fact]

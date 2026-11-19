@@ -181,7 +181,7 @@ public sealed partial class Binding
         if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
         {
             failure = BindingFailure.QualificationRequired;
-            (this.qualificationFailures ??= new(ReferenceEqualityComparer.Instance))[node] = qualification;
+            this.qualificationFailures[node] = qualification;
             unresolved = false;
         }
 
@@ -515,7 +515,7 @@ public sealed partial class Binding
             }
 
             var key = IsRecovery(cause, out var syntax) ? syntax
-                : this.RecordedFailure(cause) is var failure && failure != BindingFailure.None ? cause.KeyOf(DiagnosticRequirement.Binding(failure))
+                : this.RecordedFailure(cause) is var failure && failure != BindingFailure.None ? cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(failure))
                 : this.PushPrerequisites(cause, pending) ? (DiagnosticKey?)null
                 : DiagnosticKey.Unresolved;
             if (key is { } found && !keys.Contains(found))

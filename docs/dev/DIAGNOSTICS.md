@@ -88,7 +88,7 @@ DiagnosticFact
 | Partition | Invalidated when |
 | --- | --- |
 | Input and configuration | Kept for the whole check request |
-| Syntax (one per module) | That module's syntax tree is rebuilt; it also holds the recovery map |
+| Syntax (one per module) | That module's syntax tree is rebuilt; it also holds the recovery map. A reading compilation's library module holds the frozen library's syntax list, registered read-only (each record renumbered into the compilation's source table, its documents in the freeze's order), never invalidated or rebuilt (DECISIONS R8-M55) |
 | Semantics (Binding, startup, control flow and ownership) | Any syntax changes (all of it), or one phase is analyzed again (that phase and later ones) |
 | Later phases | One per result unit |
 | Emission (one generation request) | Each generation or publication, a gate refusal included: `Compilation.Generate`'s records (located codes and `InternalInvariant_Kd`) and, beside them, `EmissionArtifacts.Publish`'s (generation runs at every publication, into no output after a failure before it): `ArtifactPublicationFailed_Kd` (Input: output I/O and publication-time native configuration and supplies, at the project file with its cause as a note) or `InternalInvariant_Kd` (a missing embedded backend record); an exception publication does not classify, a broken contract code generation throws among them, is the Emission result's fault (`CheckFaulted_Kd`, §7); the partition and requirement names are lasting, the generation request's (DECISIONS R5-M18, R5-M165, R5-M167, R5-M169, R5-M181) |

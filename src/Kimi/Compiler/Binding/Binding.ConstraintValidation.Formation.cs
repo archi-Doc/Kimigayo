@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 //   context, its Origin clauses and a constructed part's clauses with every enclosing container's under its arguments. The per-use
 //   walk (CheckTypeConstraints) judges an instantiated Type and enters every component; the declaration walk
 //   (CheckDeclaredTypeConstraints) judges a callee's declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints
-//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth.
+//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth. An instance's
+//   evidence (InstanceFormation, SPEC 8.6.3) reads the step alone: its declaration's Constraints at its arguments.
 // - Inputs: a Type and the scope whose premises apply; the declaration contexts, Origin declarations and constraint clauses bound so far.
 // - Outputs: the proof, combined as P < U < L < R < E, with the cause it rests on read into the enclosing proof scope; in the per-use
 //   walk, also the clause fact at the part's verdict, handed on as a clause list hands its own (LeaveClause; PLAN G354 (2)).
@@ -17,10 +18,10 @@ namespace Kimi.Compiler;
 //   clauses; each walk then closes the part's proof scope; each distinct part with components is decided once per query, and each walk
 //   call begins its own query, so the two walks never share an entry; a per-use walk call made while a per-use walk of the same scope
 //   runs (a conformance's instance formation inside a part's clauses) first reads a part that walk has decided on settled verdicts
-//   alone (no provisional read, ProvisionalReads, and no part read that was not), which holds at the call's deeper obligation, and
-//   stores nothing in that walk's query, so the walk is linear in the distinct parts however deep its instances nest, and an answer
-//   formed while an obligation or a capability request is pending is never read past it. A cached part and a computed one leave the
-//   same facts.
+//   alone (no dependence on an open obligation, EndAnswer, no provisional read, ProvisionalReads, and no part read that was not), which
+//   holds at the call's deeper obligation, and stores nothing in that walk's query, so the walk is linear in the distinct parts however deep its
+//   instances nest, and an answer formed while an obligation or a capability request is pending is never read past it. A cached part
+//   and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
 //   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
 //   no clause fact on while PLAN G375's sigref1 stays open.
@@ -28,9 +29,10 @@ public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
     // (DECISIONS BU-55), the clause fact it hands on (G354 (2); none in the declaration walk) and whether its computation read only
-    // settled verdicts (a nested per-use call's condition; the declaration walk's entries are read by their own walk only): neither
-    // ProvisionalReads nor unsettledReads grew over its computation. Settled goes with ProvisionalReads (removal: R7-C2e2 e2-5b, the
-    // answer's Completion).
+    // settled verdicts (a nested per-use call's condition; the declaration walk's entries are read by their own walk only): its proof
+    // depends on no obligation open before it began (EndAnswer, R1.1: a decided proof holds whatever the obligation settles to), and
+    // neither ProvisionalReads nor unsettledReads grew over it. Settled goes with ProvisionalReads (removal: R7-C2e2 e2-5b, the answer's
+    // Completion).
     private readonly TypeMemo<BoundType, (ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause, bool Settled)> formedParts = new();
 
     // The walks the SignatureVerdict row ran in this pass.
@@ -128,7 +130,7 @@ public sealed partial class Binding
         this.BeginProof();
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ?
             ConstraintProof.Unknown : ConstraintProof.Proven;
-        return CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
+        return CombineProof(proof, this.CheckTypeOriginRelations(type, scope.Owner), true);
     }
 
     // The step's closing judgment, after the walk's components: a constructed part's clauses and every enclosing container's under its
@@ -160,9 +162,10 @@ public sealed partial class Binding
         this.BeginProof();
         if (!this.formedParts.TryGet(part, query, out var known))
         {
-            var reads = this.ProvisionalReads + this.unsettledReads;
+            var (mark, reads) = (this.BeginAnswer(), this.ProvisionalReads + this.unsettledReads);
             var proof = this.CheckTypeConstraints(part, scope, query);
-            known = (proof, this.ProofCause(proof), this.ProofFact(proof), this.ProofClause(proof), this.ProvisionalReads + this.unsettledReads == reads);
+            var settled = !this.EndAnswer(mark, proof) && this.ProvisionalReads + this.unsettledReads == reads;
+            known = (proof, this.ProofCause(proof), this.ProofFact(proof), this.ProofClause(proof), settled);
             this.formedParts.Set(part, query, known);
         }
 
