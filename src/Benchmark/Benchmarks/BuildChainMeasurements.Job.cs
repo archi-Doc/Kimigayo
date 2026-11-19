@@ -11,7 +11,7 @@ namespace Benchmark;
 internal static partial class BuildChainMeasurements
 {
     // Starts `dotnet <arguments>` in a new job (PROC_THREAD_ATTRIBUTE_JOB_LIST, as TestProcess.Start), stdout and stderr to the log,
-    // and reads the job's accounting after the root and every process it started have exited.
+    // and reads the job's accounting after the root and every process it started have exited; a non-zero exit fails with the log.
     private static unsafe Round Measure(string dotnet, string[] arguments, string directory, string log)
     {
         using var job = new SafeFileHandle(CreateJobObjectW(0, null), true);
@@ -44,7 +44,8 @@ internal static partial class BuildChainMeasurements
             }
 
             var startup = new StartupInfoEx { Size = (uint)sizeof(StartupInfoEx), Flags = 0x100, Input = handles[0], Output = handles[1], Error = handles[1], Attributes = attributes };
-            var commandLine = string.Join(' ', arguments.Prepend(dotnet).Select(a => $"\"{a}\"")) + "\0";
+            // Quoted as CommandLineToArgvW reads them: the backslashes before the closing quote are doubled (no argument holds a quote).
+            var commandLine = string.Join(' ', arguments.Prepend(dotnet).Select(a => $"\"{a}{new string('\\', a.Length - a.TrimEnd('\\').Length)}\"")) + "\0";
             var watch = Stopwatch.StartNew();
             ProcessInfo info;
             fixed (char* line = commandLine)
@@ -78,7 +79,10 @@ internal static partial class BuildChainMeasurements
                 throw new Win32Exception(Marshal.GetLastPInvokeError());
             }
 
-            return new(wall, accounting.User / 10_000.0, accounting.Kernel / 10_000.0, limits.PeakJobMemoryUsed, accounting.TotalProcesses, exitCode);
+            output.Dispose();
+            return exitCode == 0
+                ? new(wall, accounting.User / 10_000.0, accounting.Kernel / 10_000.0, limits.PeakJobMemoryUsed, accounting.TotalProcesses, limits.PeakProcessMemoryUsed)
+                : throw new InvalidOperationException($"Exit {exitCode}: {log}\n{File.ReadAllText(log)}");
         }
         finally
         {
@@ -127,9 +131,10 @@ internal static partial class BuildChainMeasurements
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetExitCodeProcess(nint process, out uint exitCode);
 
-    /// <summary>One run: wall time from the root's creation to its exit; the job's CPU time of every process it held, its peak
-    /// committed memory and the number of processes it held.</summary>
-    private readonly record struct Round(double WallMilliseconds, double UserMilliseconds, double KernelMilliseconds, ulong PeakCommitBytes, uint TotalProcesses, uint ExitCode);
+    /// <summary>One successful run: wall time from the root's creation to its exit; the job's CPU time of every process it held,
+    /// its peak committed memory and the number of processes it held. <see cref="DiagnosticPeakProcessCommitBytes"/> is the largest
+    /// single process's peak committed memory, a diagnostic only and never a budget: it names different processes on the two paths.</summary>
+    private readonly record struct Round(double WallMilliseconds, double UserMilliseconds, double KernelMilliseconds, ulong PeakCommitBytes, uint TotalProcesses, ulong DiagnosticPeakProcessCommitBytes);
 
     // JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
     [StructLayout(LayoutKind.Explicit, Size = 144)]
@@ -137,6 +142,9 @@ internal static partial class BuildChainMeasurements
     {
         [FieldOffset(16)]
         internal uint Flags;
+
+        [FieldOffset(128)]
+        internal ulong PeakProcessMemoryUsed;
 
         [FieldOffset(136)]
         internal ulong PeakJobMemoryUsed;

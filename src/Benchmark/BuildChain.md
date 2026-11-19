@@ -18,7 +18,9 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <fol
 - One folder: each row runs A `rounds` times.
 - Two folders: each row runs A, B, A, ..., A (`rounds` + 1 runs of A, `rounds` of B) from one folder, under one toolchain root
   for both. The same folder given twice is the A=A pass, the variation a budget must exceed.
-- `--toolchain` defaults to the checkout's `toolchain`; `<name>` must be unused under `artifacts/benchmarks` and `temp/build-chain`.
+- `--toolchain` defaults to the checkout's `toolchain`. `<name>` is one plain path segment (no separator, not `.` or `..`, not
+  rooted), unused under `artifacts/benchmarks` and `temp/build-chain`.
+- Arguments reach the child quoted as `CommandLineToArgvW` reads them (backslashes before the closing quote doubled).
 - Run it in a booked quiet slot, through `quiet_guard`.
 
 ## Rows
@@ -26,6 +28,9 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <fol
 Six inputs, each at O0 and O2, each in two rows: a source build (`build <project>`, the whole command) and `build --Manifest`
 on a pair `emit`ted beforehand by A (the chain alone). 24 rows in all, in the order below. The inputs are fixed by name and
 source SHA-256 at A1 and not re-chosen; the series refuses an input whose bytes differ.
+
+If an input's source changes later, one commit re-fixes it: it changes the hash in `BuildChainMeasurements.Inputs` and in the table
+below, and states that the row's stored A1 figures no longer compare. A4's judgment is the paired run, so it does not depend on them.
 
 | Input | Source | SHA-256 |
 | --- | --- | --- |
@@ -50,23 +55,37 @@ built beside `tests/milestones`.
 
 Per run: the wall time from just before the root's creation to its exit; the job's total CPU time, user and kernel, of every
 process the job ever held; the job's peak committed memory; `TotalProcesses`, the number of processes the job held (it proves the
-job caught every tool, and is A4's evidence of zero child processes). Per row and compiler: the first run reported apart and not
-excluded, p50 and p95 by nearest rank over every run.
+job caught every tool, and is A4's evidence of zero child processes). Per row and compiler: each compiler's first run in the row
+(B's first is the row's second run) reported apart and not excluded, p50 and p95 by nearest rank over every run.
+
+- **TotalProcesses** is 14 at O0 and 18 at O2 today: the root and, per tool, one process and one console host each. The tools
+  are `opt` (verification), `llc`, `llvm-nm` twice, `llvm-readobj` and `lld-link` at O0 (14 = 2 × (1 + 6)); O2 adds `opt` twice
+  (18 = 2 × (1 + 8)). Kimi starts each tool with a new hidden console, and the launcher's `CREATE_NO_WINDOW` gives the root one,
+  each a `conhost` inside the job. The tools' console hosts are a cost of today's build. With this launcher, A4's expected value
+  for "zero child processes" is 2: the root and its console host.
+- **Memory** is judged at p95 per row, not p50. The tools' allocator commits per LLD worker, so the figure depends on the
+  processor count and on contention: a run below the high mode waited for a CPU. `rounds.json` also records per run
+  `DiagnosticPeakProcessCommitBytes`, the largest single process's peak committed memory; it is a diagnostic only, never a budget,
+  since it names different processes on the two paths.
 
 - **Included:** the root's creation and the runtime's start (`Kimi.dll` is not ReadyToRun, so every run JITs), project load,
   check, generation, publication and the native build; on the external path each tool's creation, image load, text parse and
   write; on the new path `tatara.dll`'s load and its work; LLD's worker threads on both.
 - **Excluded:** Defender's scanning (charged outside the job; in wall time only); image-backed and file-cache pages from the
-  memory figure, which is the job's peak committed memory; OS-cache-cold starts ("first" means the first run of a row).
+  memory figure, which is the job's peak committed memory; OS-cache-cold starts ("first" means each compiler's first run in the
+  row).
 
 ## Fixed conditions
 
 - The Release `dotnet Kimi.dll build` form, the same at A1 and A4; the NativeAOT publish only on explicit instruction.
-- No CPU pinning and default tiering, both recorded. If pinning is ever used: the whole job, with `DOTNET_TieredCompilation=0`,
-  equal on both sides.
-- Recorded as [O2Corpus](O2Corpus.md) records them: machine, processors, OS, power scheme, .NET version, inherited `KIMI_*` and
-  `DOTNET_*`, and the build, test and LLVM processes with their CPU seconds at start and end; plus Defender's real-time state, read
-  only; the compilers' folders and `Kimi.dll` hashes, the toolchain root and the `dotnet` host.
+- No CPU pinning and default tiering, both recorded as observed: the affinity mask the root inherits, and `tiering` from the
+  inherited `DOTNET_TieredCompilation` and `DOTNET_TC_*` (`default` when none is set). If pinning is ever used: the whole job,
+  with `DOTNET_TieredCompilation=0`, equal on both sides.
+- Recorded as [O2Corpus](O2Corpus.md) records them: machine, processors, OS, power scheme, .NET SDK version, inherited `KIMI_*`
+  and `DOTNET_*`, and the build, test and LLVM processes with their CPU seconds at start and end; plus Defender's real-time state,
+  read only; the toolchain root and the `dotnet` host; per compiler its folder, `Kimi.dll` hash, `ProductVersion` (the source
+  commit) and runtime (its runtimeconfig's framework at the highest installed patch of that major.minor, the host's default
+  roll-forward). A condition read that fails stops the run.
 
 ## Judgment
 
@@ -74,7 +93,10 @@ A4 runs this series as an interleaved paired A/B: A = A4's base on the external 
 measured. A1's stored figures are the first reference and the source of the budgets; compile time moves between A1 and A4, so
 the stored figures alone cannot judge A4.
 
+Memory at A4: per row the paired p95(B) − p95(A) of the job's peak committed memory, with the A=A pass's p95 difference as the
+floor. An absolute comparison with A1's stored figures holds only on the recorded machine.
+
 ## Output
 
 `artifacts/benchmarks/<name>/`: `rounds.json` (status, conditions, inputs, every run of every row and the statistics), written
-also when a run fails, and `summary.md`. Build logs stay under `temp/build-chain/<name>/`.
+also when a run fails, and `summary.md` (its memory column is p95). Build logs stay under `temp/build-chain/<name>/`.

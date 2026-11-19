@@ -36,6 +36,11 @@ internal static partial class BuildChainMeasurements
 
     public static void Run(string[] args)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("BuildChain measures through Windows job objects.");
+        }
+
         var positional = new List<string>();
         var rounds = 20;
         string? toolchainOption = null;
@@ -57,15 +62,19 @@ internal static partial class BuildChainMeasurements
 
         var repository = FindRepository();
         var toolchain = Path.GetFullPath(toolchainOption ?? Path.Combine(repository, "toolchain"));
-        var output = Path.Combine(repository, "artifacts", "benchmarks", positional.FirstOrDefault() ?? string.Empty);
-        var work = Path.Combine(repository, "temp", "build-chain", positional.FirstOrDefault() ?? string.Empty);
-        if (positional.Count is < 2 or > 3 || positional.Any(p => p.StartsWith('-')) || rounds < 1 || Directory.Exists(output) || Directory.Exists(work))
+        // The name is one plain path segment, so the output and work folders stay where they are declared.
+        var name = positional.FirstOrDefault() ?? string.Empty;
+        var output = Path.Combine(repository, "artifacts", "benchmarks", name);
+        var work = Path.Combine(repository, "temp", "build-chain", name);
+        if (positional.Count is < 2 or > 3 || positional.Any(p => p.StartsWith('-')) || rounds < 1 || Directory.Exists(output) || Directory.Exists(work) ||
+            name is "." or ".." || name.IndexOfAny([.. Path.GetInvalidFileNameChars(), Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) >= 0)
         {
-            throw new ArgumentException("Use --build-chain <new run name> <Kimi.dll folder A> [<folder B>] [--rounds n] [--toolchain root]; the name must be unused under artifacts/benchmarks and temp/build-chain.");
+            throw new ArgumentException("Use --build-chain <new run name> <Kimi.dll folder A> [<folder B>] [--rounds n] [--toolchain root]; the name is one plain path segment, unused under artifacts/benchmarks and temp/build-chain.");
         }
 
-        Directory.CreateDirectory(output);
-        var dotnet = Environment.GetEnvironmentVariable("PATH")!.Split(Path.PathSeparator).Select(d => Path.Combine(d, "dotnet.exe")).First(File.Exists);
+        var dotnet = Environment.GetEnvironmentVariable("PATH")!.Split(Path.PathSeparator).Select(d => Path.Combine(d, "dotnet.exe")).FirstOrDefault(File.Exists) ?? throw new FileNotFoundException("dotnet.exe is not on PATH.");
+        var inherited = Environment.GetEnvironmentVariables().Keys.Cast<string>().Where(k => k.StartsWith("KIMI_", StringComparison.OrdinalIgnoreCase) || k.StartsWith("DOTNET_", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).Select(k => $"{k}={Environment.GetEnvironmentVariable(k)}").ToArray();
+        var tiering = inherited.Where(v => v.StartsWith("DOTNET_TieredCompilation=", StringComparison.OrdinalIgnoreCase) || v.StartsWith("DOTNET_TC_", StringComparison.OrdinalIgnoreCase)).ToArray();
         var variants = positional.Skip(1).Select((folder, i) => (Name: i == 0 ? "A" : "B", Folder: Path.GetFullPath(folder), Copy: Path.Combine(work, "c", i == 0 ? "A" : "B"))).ToArray();
         var conditions = new Dictionary<string, object?>
         {
@@ -77,19 +86,28 @@ internal static partial class BuildChainMeasurements
             ["dotnet"] = Capture(dotnet, "--version"),
             ["dotnetHost"] = dotnet,
             ["defenderRealTimeProtection"] = Capture("powershell.exe", "-NoProfile", "-Command", "(Get-MpComputerStatus).RealTimeProtectionEnabled"),
-            ["environment"] = Environment.GetEnvironmentVariables().Keys.Cast<string>().Where(k => k.StartsWith("KIMI_", StringComparison.OrdinalIgnoreCase) || k.StartsWith("DOTNET_", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).Select(k => $"{k}={Environment.GetEnvironmentVariable(k)}").ToArray(),
-            ["pinning"] = "none",
-            ["tiering"] = "default",
+            ["environment"] = inherited,
+            ["affinity"] = $"0x{(long)Process.GetCurrentProcess().ProcessorAffinity:X}",
+            ["tiering"] = tiering.Length == 0 ? "default" : string.Join(", ", tiering),
             ["rounds"] = rounds,
             ["order"] = variants.Length == 1 ? "A per round" : "A, B, A, ..., A per row (rounds + 1 runs of A, rounds runs of B)",
             ["toolchainRoot"] = toolchain,
-            ["compilers"] = variants.Select(v => new { v.Name, v.Folder, v.Copy, KimiDllSha256 = Sha256(File.ReadAllBytes(Path.Combine(v.Folder, "Kimi.dll"))) }).ToArray(),
+            ["compilers"] = variants.Select(v => new
+            {
+                v.Name,
+                v.Folder,
+                v.Copy,
+                KimiDllSha256 = Sha256(File.ReadAllBytes(Path.Combine(v.Folder, "Kimi.dll"))),
+                FileVersionInfo.GetVersionInfo(Path.Combine(v.Folder, "Kimi.dll")).ProductVersion,
+                Runtime = Runtime(dotnet, v.Folder),
+            }).ToArray(),
             ["busyProcessesAtStart"] = Busy(),
         };
         var rows = new List<object>();
-        var summary = new StringBuilder($"# BuildChain {positional[0]}\n\n| Row | Compiler | First wall ms | p50 wall ms | p95 wall ms | p50 CPU ms | p95 CPU ms | p50 peak commit MiB | TotalProcesses |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
+        var summary = new StringBuilder($"# BuildChain {name}\n\n| Row | Compiler | First wall ms | p50 wall ms | p95 wall ms | p50 CPU ms | p95 CPU ms | p95 peak commit MiB | TotalProcesses |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
         var status = "incomplete";
         string? failure = null;
+        Directory.CreateDirectory(output);
         try
         {
             foreach (var variant in variants)
@@ -110,18 +128,18 @@ internal static partial class BuildChainMeasurements
                 throw new InvalidDataException($"Inputs differ from their fixed sources: {string.Join(", ", changed)}.");
             }
 
-            foreach (var ((name, _, _), text) in Inputs.Zip(texts))
+            foreach (var ((input, _, _), text) in Inputs.Zip(texts))
             {
                 foreach (var level in new[] { "O0", "O2" })
                 {
-                    var sourceProject = WriteInput(Path.Combine(work, "in", $"{name}-{level}", "source"), name, level, text);
-                    var pairProject = WriteInput(Path.Combine(work, "in", $"{name}-{level}", "pair"), name, level, text);
-                    var log = Path.Combine(work, "in", $"{name}-{level}", "emit.log");
-                    Require(Measure(dotnet, [Path.Combine(variants[0].Copy, "Kimi.dll"), "emit", pairProject, "--ToolchainRoot", toolchain], Path.GetDirectoryName(pairProject)!, log), log);
-                    var manifest = Path.Combine(Path.GetDirectoryName(pairProject)!, "bin", Target, $"{name}.link.json");
+                    var sourceProject = WriteInput(Path.Combine(work, "in", $"{input}-{level}", "source"), input, level, text);
+                    var pairProject = WriteInput(Path.Combine(work, "in", $"{input}-{level}", "pair"), input, level, text);
+                    var log = Path.Combine(work, "in", $"{input}-{level}", "emit.log");
+                    Measure(dotnet, [Path.Combine(variants[0].Copy, "Kimi.dll"), "emit", pairProject, "--ToolchainRoot", toolchain], Path.GetDirectoryName(pairProject)!, log);
+                    var manifest = Path.Combine(Path.GetDirectoryName(pairProject)!, "bin", Target, $"{input}.link.json");
                     foreach (var (kind, arguments) in new[] { ("source", new[] { "build", sourceProject }), ("manifest", new[] { "build", "--Manifest", manifest }) })
                     {
-                        rows.Add(MeasureRow($"{name} {level} {kind}", variants.Select(v => (v.Name, v.Copy)).ToArray(), [.. arguments, "--ToolchainRoot", toolchain], (dotnet, rounds), summary));
+                        rows.Add(MeasureRow($"{input} {level} {kind}", variants.Select(v => (v.Name, v.Copy)).ToArray(), dotnet, [.. arguments, "--ToolchainRoot", toolchain], rounds, summary));
                     }
                 }
             }
@@ -144,18 +162,16 @@ internal static partial class BuildChainMeasurements
         }
     }
 
-    // One row: every run in order, A alone or A, B, A, ..., A; the first run of each compiler is reported apart and kept in p50/p95.
-    private static object MeasureRow(string row, (string Name, string Copy)[] variants, string[] arguments, (string Dotnet, int Rounds) run, StringBuilder summary)
+    // One row: every run in order, A alone or A, B, A, ..., A; each compiler's first run is reported apart and kept in p50/p95.
+    private static object MeasureRow(string row, (string Name, string Copy)[] variants, string dotnet, string[] arguments, int count, StringBuilder summary)
     {
-        var order = Enumerable.Range(0, variants.Length == 1 ? run.Rounds : (2 * run.Rounds) + 1).Select(i => variants[i % variants.Length]).ToArray();
+        var order = Enumerable.Range(0, variants.Length == 1 ? count : (2 * count) + 1).Select(i => variants[i % variants.Length]).ToArray();
         var rounds = new List<(string Variant, Round Round)>();
         foreach (var (name, copy) in order)
         {
             var log = Path.Combine(copy, "..", $"{name}.log");
             // arguments[^3] is the project or the manifest; the run starts in its folder.
-            var round = Measure(run.Dotnet, [Path.Combine(copy, "Kimi.dll"), .. arguments], Path.GetDirectoryName(arguments[^3])!, log);
-            Require(round, log);
-            rounds.Add((name, round));
+            rounds.Add((name, Measure(dotnet, [Path.Combine(copy, "Kimi.dll"), .. arguments], Path.GetDirectoryName(arguments[^3])!, log)));
         }
 
         var statistics = new Dictionary<string, object>();
@@ -177,7 +193,7 @@ internal static partial class BuildChainMeasurements
                 PeakCommitBytesP95 = Percentile(peak, 0.95),
                 TotalProcesses = processes,
             };
-            var line = string.Create(CultureInfo.InvariantCulture, $"| {row} | {name} | {mine[0].WallMilliseconds:F0} | {Percentile(wall, 0.5):F0} | {Percentile(wall, 0.95):F0} | {Percentile(cpu, 0.5):F0} | {Percentile(cpu, 0.95):F0} | {Percentile(peak, 0.5) / 1048576:F1} | {processes} |");
+            var line = string.Create(CultureInfo.InvariantCulture, $"| {row} | {name} | {mine[0].WallMilliseconds:F0} | {Percentile(wall, 0.5):F0} | {Percentile(wall, 0.95):F0} | {Percentile(cpu, 0.5):F0} | {Percentile(cpu, 0.95):F0} | {Percentile(peak, 0.95) / 1048576:F1} | {processes} |");
             summary.Append(line).Append('\n');
             Console.WriteLine(line);
         }
@@ -222,20 +238,6 @@ internal static partial class BuildChainMeasurements
         return Encoding.UTF8.GetBytes(text.ToString());
     }
 
-    private static void Require(Round round, string log)
-    {
-        if (round.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"Exit {round.ExitCode}: {log}\n{File.ReadAllText(log)}");
-        }
-    }
-
-    private static string? Option(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
-    }
-
     private static string Sha256(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
     // Builds, tests and native tools with their CPU seconds so far (as benchmark-o2-corpus.ps1 records them).
@@ -250,7 +252,19 @@ internal static partial class BuildChainMeasurements
         using var process = Process.Start(start)!;
         var text = process.StandardOutput.ReadToEnd().Trim();
         process.WaitForExit();
-        return text;
+        return process.ExitCode == 0 ? text : throw new InvalidOperationException($"Exit {process.ExitCode}: {file} {string.Join(' ', arguments)}");
+    }
+
+    // The runtime that runs the compiler: its runtimeconfig's framework under the host's default roll-forward (Minor, latest
+    // patch), so the highest installed patch of the requested major.minor; any other resolution fails here.
+    private static string Runtime(string dotnet, string folder)
+    {
+        using var config = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(folder, "Kimi.runtimeconfig.json")));
+        var framework = config.RootElement.GetProperty("runtimeOptions").GetProperty("framework");
+        var requested = Version.Parse(framework.GetProperty("version").GetString()!);
+        var prefix = $"{framework.GetProperty("name").GetString()} {requested.Major}.{requested.Minor}.";
+        var installed = Capture(dotnet, "--list-runtimes").Split('\n').Where(l => l.StartsWith(prefix, StringComparison.Ordinal)).Select(l => Version.Parse(l.Split(' ')[1])).ToArray();
+        return installed.Length != 0 ? $"{prefix.Split(' ')[0]} {installed.Max()}" : throw new InvalidOperationException($"No installed runtime {prefix}x (requested {requested}).");
     }
 
     private static string FindRepository()
