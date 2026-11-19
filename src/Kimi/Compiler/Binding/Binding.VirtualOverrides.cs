@@ -562,8 +562,7 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (this.MemberType(required, declaring) is not { } bound ||
-                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
+            else if (this.MemberType(required, declaring) is not { } bound || !this.SameOverrideType(bound, actual, overridden.Binder, declared.Binder, implementation))
             {
                 return false;
             }
@@ -571,6 +570,11 @@ public sealed partial class Binding
 
         return true;
     }
+
+    // SPEC 8.2.3, 11.x (R7-C3 C-f2): a slot's Type and the override's are compared in the implementation's view, each in its form there
+    // (the judge's reader, CallableContractType), then by structure with each function's own parameters corresponding (SignatureEquals).
+    private bool SameOverrideType(BoundType slot, BoundType actual, Koto slotBinder, Koto actualBinder, FunctionKoto implementation)
+        => SignatureEquals(this.CallableContractType(slot, this.scopes[implementation]), this.CallableContractType(actual, this.scopes[implementation]), slotBinder, actualBinder);
 
     private void CheckVirtualOverrideSignature(FunctionKoto implementation, VirtualSlot slot)
     {
@@ -593,7 +597,7 @@ public sealed partial class Binding
         var overridden = new FnSig(original);
         var declared = new FnSig(implementation);
         if (overridden.Result is { } required && declared.Result is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
-            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
+            !this.SameOverrideType(bound, actual, overridden.Binder, declared.Binder, implementation))
         {
             this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ResultType, original)
             {

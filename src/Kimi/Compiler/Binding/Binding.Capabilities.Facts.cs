@@ -86,9 +86,10 @@ public sealed partial class Binding
         return proof;
     }
 
-    // The work of Owned over `type` in `scope`, whose rest a part's walk reads (OwnedMember); none if no work judged it.
+    // The work of Owned over `type` in `scope`, whose rest a part's walk reads (OwnedMember), read by the key its judge judged
+    // (JudgedCapabilityKey, R7-C3 C7); none if no work judged it.
     private CapabilityWork? OwnedWork(BoundType type, BindingScope scope)
-        => this.capabilityNodes.TryGetValue((this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), scope, false), out var work) ? work : null;
+        => this.capabilityNodes.TryGetValue(this.JudgedCapabilityKey(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), scope), out var work) ? work : null;
 
     private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
     {

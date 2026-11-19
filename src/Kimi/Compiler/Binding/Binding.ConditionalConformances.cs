@@ -668,13 +668,21 @@ public sealed partial class Binding
 
         this.BeginProof();
         var result = ConstraintProof.Proven;
+        var derived = false;
         ClauseFact? conditions = null;
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.StoredConstraint(written, type), scope, type) : null;
             var limit = this.ScopeReads.Limit;
+            var error = this.ScopeReads.Error;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
+            if (this.DerivedObligation(proof, error))
+            {
+                derived = true;
+                continue;
+            }
+
             if (proof != ConstraintProof.Proven)
             {
                 var onLimit = proof == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
@@ -684,6 +692,7 @@ public sealed partial class Binding
             result = CombineProof(result, proof, true);
         }
 
+        result = this.DerivedVerdict(result, derived);
         var verdict = this.EndProof(result);
         this.LeaveClause(conditions, result); // The conditions are a clause list (G351a).
         return verdict;

@@ -9,8 +9,9 @@ namespace Kimi.Compiler;
 //   (FunctionFits), two at an invariant position, one each way (SPEC 3.8, 15.3.5), whose implementation conditions it judges at every
 //   nesting when it has a Binding.
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
-//   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads (none: the
-//   relation as written), and which Origin bindings count (OriginPart).
+//   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads, and in
+//   whose view the root's two sides are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), and which Origin
+//   bindings count (OriginPart).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
@@ -123,6 +124,7 @@ public sealed partial class Binding
         private ComparisonFailure failure;
         private bool ended;
         private int endedAt;
+        private bool formed; // whether the root's pair was formed (J3: only the root forms; its parts are parts of formed Types)
 
         internal RelationWalk(Binding owner, Binding? binding, Koto? use, OriginPart part)
         {
@@ -157,6 +159,19 @@ public sealed partial class Binding
         internal bool Fits(
             BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
         {
+            // R7-C2c2 c2-4b (design R4.12b, J3): the relation's one engine is the Type relation's intake: at a use, the root's two sides
+            // in their class's form in the use's view (SPEC 8.2.3: all Type checking in the scope treats identical Types as one Type),
+            // the Completion unthreaded (ClassForm's contract); nested parts are parts of formed Types. Without a use (SameStructure,
+            // IsSubtype) the walk reads no premise and compares as written.
+            if (!this.formed)
+            {
+                this.formed = true;
+                if (this.binding is { } judge && this.use is { } at)
+                {
+                    (actual, expected) = (judge.ClassForm(actual, at), judge.ClassForm(expected, at)); // R7-C3: the judge decides its domain
+                }
+            }
+
             if (this.parts is not { } parts || instance.Expected is not null || this.Discharged(actual, expected))
             {
                 return this.Relate(actual, expected, invariant, skipOrigin, instance, own);

@@ -419,7 +419,22 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
+        if ((this.FailedPremiseRead(type, scope) ?? this.UnprovenInputRead(type, contract, scope)) is { } failed)
+        {
+            return this.RestOnFailure(failed); // R7-C3 (B1'): as ProveProposition's intake; the direct callers read the failed premises too
+        }
+
         type = this.MemberOf(type, scope, out _); // R7-C2c2 c2-4 (design R1.1): the Contract judge's subject is its class's Member
+
+        // R7-C2c2 c2-4b (design R4.12b, J1): the Contract judge's own entry is J1's intake too, since its direct callers bypass
+        // ProveProposition: the subject and the Contract reference's arguments in their class's form in the judging view (SPEC 8.2.3,
+        // 8.3.1); the Completion unthreaded, as MemberOf's above (ClassForm's contract).
+        type = this.ClassForm(type, scope, out _);
+        if (IsBoundContractReference(contract) && this.ClassForm(contract.Type!, scope, out _) is var reference && !ReferenceEquals(reference, contract.Type))
+        {
+            contract = this.BoundContractReference(reference);
+        }
+
         // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
         // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
         // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.

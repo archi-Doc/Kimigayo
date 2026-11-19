@@ -242,6 +242,20 @@ public sealed partial class Binding
         }
     }
 
+    // R7-C3 (C7): a capability work is keyed by the subject its judge judged (CapabilityKey): the proposition in its form in the view
+    // (ProveProposition's normalization, J1), its subject read as its class's Member (RequestCapability). A reader of the work the judge
+    // formed for a proposition it asked reads that key, never the proposition as written (rv.tp3-u: an anonymous function's header
+    // under `U is W` forms the erasure subject).
+    private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) JudgedCapabilityKey(BoundConstraint asked, BindingScope scope)
+    {
+        var judged = this.NormalizeProofConstraint(asked, scope, out _);
+        return this.CapabilityKey(this.MemberOf(judged.Subject!, scope, out _), judged.Contract!, scope, derivation: false);
+    }
+
+    // The one key of capability works: the judged subject (its class's Member) and the intrinsic Contract in the view.
+    private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) CapabilityKey(BoundType member, BindingSymbol intrinsic, BindingScope scope, bool derivation)
+        => (this.InternConstraint(new(ConstraintKind.Contract, member, contract: intrinsic)), scope, derivation);
+
     private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation = false)
     {
         var contexts = this.OperandContexts(type);
@@ -293,8 +307,7 @@ public sealed partial class Binding
             }
         }
 
-        var proposition = this.InternConstraint(new(ConstraintKind.Contract, type, contract: intrinsic));
-        var key = (proposition, scope, derivation);
+        var key = this.CapabilityKey(type, intrinsic, scope, derivation);
         if (!this.capabilityNodes.TryGetValue(key, out var work))
         {
             work = new(type, intrinsic, scope, derivation);
@@ -971,8 +984,7 @@ public sealed partial class Binding
     private ConstraintProof SymbolicCapability(CapabilityWork work)
     {
         var negative = false;
-        var parameterIdentity = HasParameterIdentity(work.Scope);
-        var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true, out _) : work.Type;
+        var subject = work.Type; // its class's Member and rows reach it through RequestCapability's MemberOf and the supply's keys
         var positive = this.PremiseRefines(subject, work.Intrinsic, work.Scope); // SPEC 8.3.2's refinement row (ContractSolver).
         if (TryPairLayer(work.Type, out var pair, out _) && this.AdmittedSemantics(pair, work.Scope) is not SemanticsMask.None and var admitted)
         {
@@ -1008,49 +1020,14 @@ public sealed partial class Binding
             negative |= cases == ConstraintProof.Refuted;
         }
 
+        // R7-C3 (merge of dev 8a1d8cff6): the premise loop keeps only a failed environment's Error. Its other evidence went with both
+        // sides: the identity premise's (`T is U`: the work's Type is its class's Member, RequestCapability's MemberOf) and dev's
+        // Semantics facts (a pair layer's admitted cases, above).
         for (var scope = work.Scope; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { } environment)
-            {
-                continue;
-            }
-
-            if (environment.Invalid)
+            if (scope.Constraints is { Invalid: true } environment)
             {
                 return this.InvalidEnvironment(environment);
-            }
-
-            foreach (var available in environment.Facts)
-            {
-                if (!this.AvailableConstraintFact(environment, available, out _))
-                {
-                    continue;
-                }
-
-                int? serial = null; // The loop's judgments may write the chain: a serial per fact.
-                var fact = parameterIdentity ? this.Reading(available, work.Scope, ref serial) : available;
-                if (!this.FactStates(fact, subject, out var stated))
-                {
-                    continue;
-                }
-
-                var evidence = ConstraintProof.Unknown;
-                BoundType? part = null; // The Type whose verdict is the evidence, an Owned part of the abstract Type (member 0).
-                var saved = this.ScopeReads.Origin;
-                this.ScopeReads.Origin = null;
-                if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
-                {
-                    evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part = required, contract: work.Intrinsic)), work.Scope);
-                }
-
-                this.ScopeReads.Origin = work.Part(0, part is null ? ConstraintProof.Proven : evidence, this.ScopeReads.Origin, saved, part);
-                if (evidence == ConstraintProof.Error)
-                {
-                    return evidence;
-                }
-
-                positive |= evidence == ConstraintProof.Proven;
-                negative |= evidence == ConstraintProof.Refuted;
             }
         }
 

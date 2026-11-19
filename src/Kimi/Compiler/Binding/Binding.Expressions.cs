@@ -233,9 +233,9 @@ public sealed partial class Binding
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (expected is { ContainsParameter: true })
+        if (expected is not null)
         {
-            expected = this.SubstituteIdentityPremises(expected, scope);
+            expected = this.ClassForm(expected, scope, out _); // SPEC 8.2.3: the binding input's form (a literal at T under `T is i32` is i32)
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
@@ -267,7 +267,7 @@ public sealed partial class Binding
             expected = this.CompleteArrayExpectation(expected, actual);
         }
 
-        if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
+        if (actual is not null && this.ClassForm(actual, scope, out _) is var substituted && !ReferenceEquals(substituted, actual))
         {
             // SPEC 8.2: the expression has the one Type that the identity premises of its scope make of its Types.
             if (ReferenceEquals(node.BoundType, actual))
@@ -571,11 +571,6 @@ public sealed partial class Binding
                 else if (target is ForKoto or WhileKoto or DeferredBlockKoto)
                 {
                     resultType = BoundType.Unit;
-                }
-
-                if (resultType is { ContainsParameter: true })
-                {
-                    resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.2
                 }
 
                 var actual = jump.Expression is { } operand ? this.BindExpected(operand, scope, resultType, (target as FunctionKoto)?.ReturnType) : BoundType.Unit;

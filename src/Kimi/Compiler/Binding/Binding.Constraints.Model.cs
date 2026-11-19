@@ -105,8 +105,24 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 // it here; the first one is kept. As an ICheckCause it is what a proof that reads the environment rests on (Binding.InvalidEnvironment,
 // the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
 // otherwise.
+// R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is.
+internal sealed class PremiseFailure(Koto owner) : ICheckCause
+{
+    public Koto Use { get; } = owner;
+
+    public ICheckCause? Next => null;
+
+    public ICheckCause? ReentrySite => null;
+
+    public void Rest()
+    {
+    }
+}
+
 internal sealed class ConstraintEnvironment : ICheckCause
 {
+    private PremiseFailure? premiseFailure; // R7-C3 B1': FailedPremise's cause, made once
+
     public Koto Use => this.Failed!;
 
     public ICheckCause? Next => null;
@@ -127,11 +143,19 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     internal bool Invalid => this.Failed is not null;
 
-    internal bool HasAssociatedProjection { get; private set; }
+    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the premises whose proof is Error (FailPremise), out of the evidence; and what a proof that reads
+    // one rests on (PremiseFailure, Use = the declaration that holds the record).
+    internal List<BoundConstraint>? FailedPremises { get; private set; } // allocated at the first failed premise
 
-    /// <summary>Gets a value indicating whether a fact identifies a Type parameter with a Type (SPEC 8.2), so that expressions bound in
-    /// its scope substitute one for the other.</summary>
-    internal bool HasParameterIdentity { get; private set; }
+    // R7-C3 (F's C2 ruling 255): the declaration's own unproven projection inputs (NameUnprovenInput): no premise fails, and a proof that
+    // reads one (Binding.UnprovenInputRead) rests on PremiseFailure.
+    internal List<(BoundType Subject, BindingSymbol Contract)>? UnprovenInputs { get; private set; } // allocated at the first one
+
+    // The cause is made once per environment and kept across passes (warm Bind allocates nothing, BU-64); it is the environment's
+    // answer only while a premise of this pass has failed or an input of it is named.
+    internal PremiseFailure? FailedPremise => this.FailedPremises is { Count: > 0 } || this.UnprovenInputs is { Count: > 0 } ? this.premiseFailure : null;
+
+    internal bool HasAssociatedProjection { get; private set; }
 
     // The number of changes of this environment's state.
     internal int Version { get; private set; }
@@ -154,7 +178,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         if (added)
         {
             this.HasAssociatedProjection |= fact.HasAssociatedProjection;
-            this.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
             this.HasTypeIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, RequiredType: not null };
         }
 
@@ -194,6 +217,60 @@ internal sealed class ConstraintEnvironment : ICheckCause
         return false;
     }
 
+    /// <summary>Fails a premise whose proof is Error (R7-C3 B1', SPEC 8.2.3's kept premise-error context extended to any failed premise):
+    /// it leaves the evidence, the environment stays valid, and a proof that reads it rests on its declaration's record.</summary>
+    /// <param name="fact">The failed premise.</param>
+    /// <param name="owner">The declaration whose record it is.</param>
+    /// <returns>Whether the premise newly failed (the failed set only grows, so the premise failures reach a fixpoint).</returns>
+    internal bool FailPremise(BoundConstraint fact, Koto owner)
+    {
+        if (!this.Facts.Remove(fact))
+        {
+            return false;
+        }
+
+        this.DirectFacts.Remove(fact);
+        for (var i = this.DerivedFacts.Count - 1; i >= 0; i--)
+        {
+            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact))
+            {
+                this.DerivedFacts.RemoveAt(i);
+            }
+        }
+
+        (this.FailedPremises ??= new()).Add(fact);
+        this.premiseFailure ??= new(owner);
+        this.Version++;
+        return true;
+    }
+
+    /// <summary>Names an unproven projection input of the declaration (F's C2 ruling 255): its own requirement, whose record is the
+    /// declaration's; no premise fails, the declaration keeps its context, and a proof that reads the input rests on that record. No
+    /// Version change: no view-keyed table reads the names (the judge's intake reads them, Binding.UnprovenInputRead), as with
+    /// MarkDeclared.</summary>
+    /// <param name="subject">The input's subject.</param>
+    /// <param name="contract">The input's Contract.</param>
+    /// <param name="owner">The declaration whose record it is.</param>
+    internal void NameUnprovenInput(BoundType subject, BindingSymbol contract, Koto owner)
+    {
+        foreach (var (named, namedContract) in this.UnprovenInputs ??= new())
+        {
+            if (ReferenceEquals(named, subject) && ReferenceEquals(namedContract, contract))
+            {
+                return;
+            }
+        }
+
+        this.UnprovenInputs.Add((subject, contract));
+        this.premiseFailure ??= new(owner);
+    }
+
+    /// <summary>Gets the environment's premise-failure cause for its declaration's recorded identity premise error (R7-C3 gate 2): the one
+    /// cause a proof that reads a failed premise rests on.</summary>
+    /// <param name="owner">The declaration whose record it is.</param>
+    /// <returns>The cause.</returns>
+    internal PremiseFailure PremiseError(Koto owner) => this.premiseFailure ??= new(owner);
+
     /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
     /// <param name="node">The failed node.</param>
     internal void Fail(Koto node)
@@ -222,8 +299,9 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.DerivedFacts.Clear();
         this.Declared = 0;
         this.Failed = null;
+        this.FailedPremises?.Clear();
+        this.UnprovenInputs?.Clear();
         this.HasAssociatedProjection = false;
-        this.HasParameterIdentity = false;
         this.HasTypeIdentity = false;
     }
 }

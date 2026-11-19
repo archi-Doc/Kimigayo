@@ -90,13 +90,13 @@ public sealed partial class Binding
     private BoundType? RestOnEmptiedSet(Koto node, BindingScope scope)
         => this.EmptyingEnvironment(scope) is { } failed ? this.CompleteDependent(node, failed) : this.Fail(node, BindingFailure.Internal);
 
-    // The owner of the failed environment on a scope chain: a set its premises empty is an Error proof, which fails that environment
-    // (ValidateConstraintEnvironments), so a chain that admits no case has one; null is a broken contract.
+    // The owner of the failed environment on a scope chain: a set its premises empty is an Error proof, which fails those premises
+    // (ValidateConstraintEnvironments, FailPremise; R7-C3 gate 2), so a chain that admits no case has one; null is a broken contract.
     private Koto? EmptyingEnvironment(BindingScope? scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is { Failed: { } failed })
+            if (current.Constraints is { } environment && (environment.Failed ?? environment.FailedPremise?.Use) is { } failed)
             {
                 return failed;
             }
