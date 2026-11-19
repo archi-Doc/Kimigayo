@@ -80,7 +80,6 @@ public sealed partial class Binding
         this.virtualOverrides = new(this);
         this.originDeclarations = new(this);
         this.discoveredOrigins = new(this);
-        this.perCallNamings = new(this);
         this.initializerOrigins = new(this);
         this.propertyCalls = new(this);
         this.storageProjections = new(this);

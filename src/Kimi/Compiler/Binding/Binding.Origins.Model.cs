@@ -421,10 +421,6 @@ internal readonly struct CallableInstance
         => this.actualBinder is not null && Binding.IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
             ReferenceEquals(origin.Binder, this.actualBinder) && origin.Slot == position;
 
-    // A per-call Origin of the implementation that the comparison instantiates at the required input's (Instantiate): the compared
-    // implementation's own per-call Origin, as written.
-    internal bool IsImplementationSlot(BoundOrigin origin) => !ReferenceEquals(this.Instantiate(origin), origin);
-
     internal BoundOrigin Instantiate(BoundOrigin origin)
     {
         if (this.actual is null || this.actualBinder is null || origin is not { Kind: OriginKind.Input, Occurrence: null } || !ReferenceEquals(origin.Binder, this.actualBinder) ||
