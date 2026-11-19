@@ -1408,7 +1408,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("jHidWholeRefOk", "")] // V, the whole parameter Type hidden
     [InlineData("jHidWholeScalarOk", "")] // V, as jHidWholeRefOk over owner Scalar bytes
     [InlineData("jGenCalleeBad", "jGenCalleeBad: kk = 2; jGenCalleeBad: var y: i32 = 5")] // I, a generic callee whose stepping row is shown
-    [InlineData("jShowPartScalarBad", "jShowPartScalarBad: kk = 2; jShowPartScalarBad: var y: i32 = 5")] // I, the stepping layers shown above the hidden one
+    [InlineData("jShowPartScalarBad", "jShowPartScalarBad: kk = 2")] // I, the stepping layers shown above the hidden one (its dependent `var y` record went with the A5 landing: DECISIONS Q13)
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");

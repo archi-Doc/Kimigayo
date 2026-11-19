@@ -644,14 +644,18 @@ public sealed partial class MirBorrowsTest
     // storage that can hold a part or a borrow formed through the argument keeps its Loans, and a stated layer retains as its borrow
     // would (5.7 Calls, PLAN G339). A keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the
     // drop forms of ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of
-    // reads through the argument carries, so that raw layer keeps it. Another argument's storage (keeperOtherBad) and a raw result
-    // (keeperResultBad, keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
+    // reads through the argument carries, so that raw layer keeps it, and slot's own storage end conflicts too (keeperBorrowedBad's
+    // `var slot`, a true record: the layer a declaration states keeps what it admits, 5.7 Calls; D-757; keeperChainBad's the same).
+    // Another argument's storage (keeperOtherBad) and a raw result (keeperResultBad, keeperTupResultBad) keep the by-value argument's
+    // own value, the keeper's Loan with it (keeperOtherBad's `usep(other)` and `var other`: records added with the A5 landing on a
+    // program rejected anyway, DECISIONS Q13).
     [Fact]
     public void AByValueKeeperIsItsArgumentsOwnValue()
         => Assert.Equal(
             [
-                "keeperBorrowedBad: usep(slot)", "keeperChainBad: usep(slot)", "keeperOtherBad: slot = null", "keeperResultBad: usep(slot)",
-                "keeperTupResultBad: usep(slot)",
+                "keeperBorrowedBad: usep(slot)", "keeperBorrowedBad: var slot: raw/u8 = null", "keeperChainBad: usep(slot)",
+                "keeperChainBad: var slot: raw/u8 = null", "keeperOtherBad: slot = null", "keeperOtherBad: usep(other)",
+                "keeperOtherBad: var other: raw/u8 = null", "keeperResultBad: usep(slot)", "keeperTupResultBad: usep(slot)",
             ],
             Problems("""
                 func usep<T>(p: raw/T) => ()

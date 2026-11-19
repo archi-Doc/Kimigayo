@@ -780,10 +780,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("lBorrowScalarPartBad", "lBorrowScalarPartBad: kk = 2; lBorrowScalarPartBad: var y: i32 = 5")] // I, the same over an owner Scalar's bytes (the first clause)
     [InlineData("lBorrowRefOk", "")] // V, only a u8 is stored through the row
     [InlineData("kPastRawRefOk", "")] // V, p retains spare, not used after; h is not reached
-    [InlineData("otherOriginNullOk", "otherOriginNullOk: y = 5")] // V by SPEC: the call's own pointer at c2's layer stores a ref/i32 during a, which v is not; rejected: stO's entry for that storage retains v (Binding's, PLAN), which rule 4 now takes in place of All
+    [InlineData("otherOriginNullOk", "")] // V by SPEC: the call's own pointer at c2's layer stores a ref/i32 during a, which v is not; accepted: stO's entry for that storage (G935's rule R, which rule 4 reads) no longer retains v
     [InlineData("otherOriginNullBad", "otherOriginNullBad: y = 5")] // I: v fits that layer's pointee
-    [InlineData("otherOriginOwnPtrOk", "otherOriginOwnPtrOk: y = 5; otherOriginOwnPtrOk: var x: i32 = 1")] // I: storage the body does not own keeps a read through t, cell's Loan on x; `y = 5` is that entry's (as otherOriginNullOk)
-    [InlineData("otherOriginChainBad", "otherOriginChainBad: x = 5; otherOriginChainBad: var y: i64 = 2")] // I, the same; `var y` is that entry's
+    [InlineData("otherOriginOwnPtrOk", "otherOriginOwnPtrOk: var x: i32 = 1")] // I: storage the body does not own keeps a read through t, cell's Loan on x; the false `y = 5` (that entry's, as otherOriginNullOk) is gone
+    [InlineData("otherOriginChainBad", "otherOriginChainBad: x = 5")] // I, the same; the false `var y` (that entry's) is gone
     [InlineData("keepHalfOk", "")] // V, the owner's O-353 (a): hop's layer raw/T is shown, its pointee T's binding adds no reach
     [InlineData("keepShownBad", "twoLayersShown: y@follow = 5")] // I: both layers above T are the parameter's own (twoLayers)
     [InlineData("gHidOwnPtrOk", "")] // V, as keepHalfOk

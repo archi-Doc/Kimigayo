@@ -1670,7 +1670,8 @@ public sealed partial class MirBorrowsTest
     // used after), has only it. The valid ss8, ss8s and ss8mv are valid before this rule is read. The rule's two directions are kept by
     // the concrete twins, whose callee writes the Tuple Type in its own signature (putAnyV's by-value rows still read the binding):
     // cs8s (no raw layer in `*t`) and the by-value cs8vr and cs8mvr (stAV and stMV write no layer of the caller's storage, and their
-    // t.0 is w's address read through the shared s) are valid; cs8m, cs8g, cs8a, cs8c, cs8two and cr1a err at `z = 5`. A callee taking
+    // t.0 is w's address read through the shared s) are valid; cs8m, cs8g, cs8a, cs8c, cs8two and cr1a err at `z = 5`, and cs8m and
+    // cs8a also at the storage ends of the holders the callee's storage keeps, as r1c and r1cv (independent records, SPEC 23.1.2). A callee taking
     // such a Tuple through `uniq` with a raw layer without an Origin in `*t` is no valid twin: it may write its own pointer at t.0 and
     // store v through it in storage the body does not own (SPEC 15.6.4's composition and its twoLayers example; 5.7 Calls "also as a
     // Tuple element"). Those programs (the `uniq` forms of cs8vr and cs8mvr, and this test's older r1cv, which the A5 chain relabels)
@@ -1988,7 +1989,8 @@ public sealed partial class MirBorrowsTest
                 "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5", "ss8c: z = 5",
                 "ss8c: inspect(v)", "r1a: z = 5", "r1a: g", "r1c: z = 5", "r1c: var q: (raw/(ref/i32), i32) = (w@raw, 0)", "r1c: var w: ref/i32 = x@ref",
                 "r1c: var x = 1", "r1cv: z = 5", "r1cv: var q: (raw/(ref/i32), i32) = (u@raw, 0)", "r1cv: var w: ref/i32 = x@ref", "r1cv: var y = 2",
-                "r1cv: var x = 1", "ss8w: w = y@ref", "cs8m: z = 5", "cs8m: inspect(v)", "cs8g: z = 5", "cs8g: g", "cs8a: z = 5", "cs8c: z = 5",
+                "r1cv: var x = 1", "ss8w: w = y@ref", "cs8m: z = 5", "cs8m: inspect(v)", "cs8m: var v: ref/i32 = y@ref", "cs8m: var w: ref/i32 = x@ref",
+                "cs8m: var y = 2", "cs8m: var x = 1", "cs8g: z = 5", "cs8g: g", "cs8a: z = 5", "cs8a: var w: ref/i32 = x@ref", "cs8a: var x = 1", "cs8c: z = 5",
                 "cs8c: inspect(v)", "cs8two: z = 5", "cr1a: z = 5", "cr1a: g", "hidRefBad: z = 5", "hidRefBad: inspect(w)", "hidRefEarlyOk: inspect(w)",
                 "hidRefNestBad: z = 5", "hidRefNestBad: inspect(w)", "hidRefDirectBad: z = 5", "hidRefDirectBad: inspect(w)",
             ],

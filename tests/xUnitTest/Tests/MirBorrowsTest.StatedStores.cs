@@ -946,7 +946,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("tRecPassOk", "")]
     [InlineData("tRecPassBad", "tRecPassBad: kk = 2")]
     [InlineData("bndLoansOk", "")]
-    [InlineData("bndLoansBad", "bndLoansBad: kk = 2")]
+    [InlineData("bndLoansBad", "bndLoansBad: kk = 2; bndLoansBad: var x: u8 = 0")] // the `var x` record added with the A5 landing on a program rejected anyway (DECISIONS Q13)
     public void AStatedRawLayerRetainsWhatItsOriginAdmits(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + ReachedForms[..ReachedForms.IndexOf("func tRecBorrowOk(", StringComparison.Ordinal)] + Form(ReachedForms, form));

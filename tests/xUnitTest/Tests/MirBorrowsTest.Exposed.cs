@@ -2876,21 +2876,21 @@ public sealed partial class MirBorrowsTest
     [InlineData("capCpyOk", "")] // V
     [InlineData("argUseBad", "argUseBad: kk = 2")] // I, the Copy passed to a call after kk = 2 (a use)
     [InlineData("arithOk", "")] // V, an arithmetic result carries nothing (A3 5's val)
-    [InlineData("cpyResultBad", "")] // I; kk = 2 at C-370's landing (G935's rule R) (an Origin-free input's own value at a result that can hold it, 15.6.4)
+    [InlineData("cpyResultBad", "cpyResultBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R) (an Origin-free input's own value at a result that can hold it, 15.6.4)
     [InlineData("cpyResultOk", "")] // V
-    [InlineData("cpyFieldBad", "")] // I; kk = 2 at C-370's landing (G935's rule R) (a constructor's Field holds the input by value)
+    [InlineData("cpyFieldBad", "cpyFieldBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R) (a constructor's Field holds the input by value)
     [InlineData("cpyFieldOk", "")] // V
     [InlineData("narrowResultOk", "")] // V, a u8 result cannot hold a u64 or a part of one (15.6.4)
-    [InlineData("intFirstBad", "")] // I; kk = 2 at C-370's landing (G935's rule R) (put64 stores v at d: 5.7 Calls, 5.2.1 Retained dependencies)
-    [InlineData("intFirstPunBad", "")] // I; kk = 2 at C-370's landing (G935's rule R)
+    [InlineData("intFirstBad", "intFirstBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R) (put64 stores v at d: 5.7 Calls, 5.2.1 Retained dependencies)
+    [InlineData("intFirstPunBad", "intFirstPunBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R)
     [InlineData("intFirstPunOk", "")] // V
-    [InlineData("storeCopyBad", "")] // I; kk = 2 at C-370's landing (G935's rule R) (set stores v through x into a)
+    [InlineData("storeCopyBad", "storeCopyBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R) (set stores v through x into a)
     [InlineData("storeCopyOk", "")] // V
     [InlineData("storeSafeOk", "")] // V, a safe store of a constant
-    [InlineData("intPastBad", "")] // I; kk = 2 with G935's rule R (the storage past a parameter's raw layer without an Origin)
-    [InlineData("intPastPunBad2", "")] // I; kk = 2 with G935's rule R
+    [InlineData("intPastBad", "intPastBad: kk = 2")] // I; kk = 2 with G935's rule R (the storage past a parameter's raw layer without an Origin)
+    [InlineData("intPastPunBad2", "intPastPunBad2: kk = 2")] // I; kk = 2 with G935's rule R
     [InlineData("intPastOk", "")] // I by 15.6.4's composition (twoLayers; O-230 Q2 (a)); kk = 2 with G935's rule R and OwnPointer's pointee test deleted (rule D, PLAN G841)
-    [InlineData("ownerQBad", "")] // I; kk = 2 at C-370's landing (G935's rule R)
+    [InlineData("ownerQBad", "ownerQBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R)
     [InlineData("ownerQOk", "")] // V
     [InlineData("intPastScalarOk", "")] // V, the control: w0 never punned, so it carries nothing
     [InlineData("cpyNoHolderOk", "")] // V, a Copy of a local that carries nothing
@@ -2932,7 +2932,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("caseBuiltLocal", "caseBuiltLocal: var a: i32 = 0")] // I (O-364 (a); O-383 (b) bounds a call's result only): a value the body built, its Err payload returned past a's end
     [InlineData("callFieldSafeBad", "callFieldSafeBad: a = 2")] // I (O-364 (a)): a struct Field of a call's result, which O-383 (b) does not bound
     [InlineData("tryErrRefRead", "")] // V (O-383 (b); I before the Middle's reading of 2026-11-17): a Copy out of the payload through a shared reference to the result is bounded like a Move
-    [InlineData("caseOwnValueBad", "")] // I; kk = 2 with G935's rule R read per Case: the Err Case, u64, then holds v's own value, which the payload Type does not show
+    [InlineData("caseOwnValueBad", "caseOwnValueBad: kk = 2; caseOwnValueBad: var a: i32 = 0")] // I: the Err Case, u64, holds v's own value, which the payload Type does not show; kk = 2 since the A5 landing (MirBorrows.Holders' Mixing: a result that keeps by Value an input that may carry a Loan is no Case bound), and `var a` a record on a program rejected anyway (DECISIONS Q13)
     [InlineData("rvCaseNestedTryOk", "")] // V (O-383 (b), a Case payload of a Case payload): through Ok then Err the result holds a Full; two `try`s
     [InlineData("rvCaseOptionOk", "")] // V (O-383 (b)): through Some then Err, a fallible iterator's `Option<Result<..>>`
     [InlineData("rvCaseNestedOk", "")] // V (O-383 (b)): the same by two nested matches
@@ -2950,7 +2950,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvCaseLoopOk", "")] // V (O-383 (b)): two calls' results in one local
     [InlineData("rvCaseSharedOk", "")] // V (O-383 (b)): a shared borrow of the result writes nothing (5.2.1 condition 3)
     [InlineData("rvMatchBuiltBad", "rvMatchBuiltBad: a = 2")] // I (O-364 (a)): a body-built Result's Copy-type Err payload copied out while its Ok Case may hold a shared Loan on a
-    [InlineData("rvGenCaseBad", "")] // I; kk = 2 with G935's abstract-storage Value rows read per Case: the Err Case, T = u64, then holds v's own value (as caseOwnValueBad)
+    [InlineData("rvGenCaseBad", "rvGenCaseBad: kk = 2")] // I: the Err Case, T = u64, holds v's own value; kk = 2 since the A5 landing (as caseOwnValueBad)
     [InlineData("rvCaseKeptOk", "")] // V (O-383 (b)): an exclusive reference to the call's result kept in a local and never stored through does not unbound it
     [InlineData("rvCasePairOk", "")] // V (O-383 (b)): an element of a Case payload Moved into a local is bounded as the result is
     [InlineData("rvCasePairPartBad", "rvCasePairPartBad: a = 2")] // I (O-364 (a) within the Case): the Scalar beside the Result in the payload, whose Type holds the reference
@@ -2964,27 +2964,27 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvCaseRefCycleOk", "")] // V (O-383 (b)): the same Places through reference locals that Copy each other
     [InlineData("rvCaseRefTwiceHolderBad", "rvCaseRefTwiceHolderBad: a = 2")] // I (O-364 (a)): one Place the reference refers to is a local that is a holder by value flow
     [InlineData("rvCaseRefCopyOk", "")] // V (O-383 (b)): a Copy of the payload's reference refers to what it refers to
-    [InlineData("caseWriteR2Bad", "")] // I; kk = 2 at C-370's landing, where G935's rule R retains v in put's write: put's write of a Loan-carrying u64 is then a write source of res's Loan-free payloads (MirBorrows.Holders' Writes, WriteSlots)
+    [InlineData("caseWriteR2Bad", "caseWriteR2Bad: kk = 2")] // I; kk = 2 since C-370's landing, where G935's rule R retains v in put's write: put's write of a Loan-carrying u64 is then a write source of res's Loan-free payloads (MirBorrows.Holders' Writes, WriteSlots)
     [InlineData("caseWriteR2Ok", "")] // V: e is not used after kk = 2
     [InlineData("caseWriteR2CleanOk", "")] // V: w is plain, so the u64 put may write carries nothing and res stays a call's result
     [InlineData("caseWriteR2ConstOk", "")] // V: a constant written
-    [InlineData("caseWriteR2FieldBad", "")] // I (O-364 (a): w, a Copy of a Field of s, carries kk's Loan); kk = 2 at C-370's landing (G935's rule R), as caseWriteR2Bad
-    [InlineData("caseWriteR2KeptBad", "")] // I; kk = 2 at C-370's landing (G935's rule R): put writes through rr, which refers to res
+    [InlineData("caseWriteR2FieldBad", "caseWriteR2FieldBad: kk = 2")] // I (O-364 (a): w, a Copy of a Field of s, carries kk's Loan); kk = 2 since C-370's landing (G935's rule R), as caseWriteR2Bad
+    [InlineData("caseWriteR2KeptBad", "caseWriteR2KeptBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R): put writes through rr, which refers to res
     [InlineData("caseWriteOtherOk", "")] // V: put writes into oth, not res; res's exclusive reference ro is never written through
     [InlineData("caseWriteOkCaseOk", "")] // V (O-383 (b)): put2 may store y only in the Ok Case, and a value of a Type that holds a Loan reaches no Loan-free payload
-    [InlineData("caseWriteR2LenderOk", "")] // I (the Middle's relabel, 08:2x; SPEC 15.6): e carries r's Loan on kk and is returned past kk's end; var kk: u8 = 1 at C-370's landing (G935's rule R), a = 2 no longer (the write slot)
+    [InlineData("caseWriteR2LenderOk", "caseWriteR2LenderOk: var kk: u8 = 1")] // I (the Middle's relabel, 08:2x; SPEC 15.6): e carries r's Loan on kk and is returned past kk's end; var kk: u8 = 1 since C-370's landing (G935's rule R), a = 2 no longer (the write slot)
     [InlineData("caseWriteR2LenderUseOk", "")] // V (O-383 (b), the Middle's phase-6 decision 2): put's write reaches only the Err payload, so e carries r's Loan and not a's; a = 2 with G935's rule R while the write mixed res
     [InlineData("caseWriteR2KeptUseOk", "")] // V: the same through a kept exclusive reference
-    [InlineData("caseWriteR2LaterBad", "")] // I (O-364 (a)); kk = 2 at C-370's landing (G935's rule R): the write slot keeps the value written, though w is overwritten after the call
-    [InlineData("caseWriteR2ExposedBad", "")] // I; kk = 2 at C-370's landing (G935's rule R): put writes through an exposed reference local, so every exposed local is written (Written's lost argument)
+    [InlineData("caseWriteR2LaterBad", "caseWriteR2LaterBad: kk = 2")] // I (O-364 (a)); kk = 2 since C-370's landing (G935's rule R): the write slot keeps the value written, though w is overwritten after the call
+    [InlineData("caseWriteR2ExposedBad", "caseWriteR2ExposedBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R): put writes through an exposed reference local, so every exposed local is written (Written's lost argument)
     [InlineData("caseWriteR2ExposedUseOk", "")] // V: the same with e used after a = 2; the lost argument's targets keep their bound
     [InlineData("caseWriteR2BindUseOk", "")] // V: e's address taken, so no store of Flowing reads the bounded payload; Mixing runs before the slots are numbered where a call writes (MirBorrows.Holders' WriteSourced), so res keeps its write slot (a = 2 with G935's rule R while a later Mixing mixed res)
     [InlineData("rvResPartBad", "")] // V by O-383 (b), the cost the owner's O-383 (b) accepted: a Loan-free Case payload is bounded by its Case's Type, though it may hold a Loan-free part of an argument whose Type holds a Loan (15.6.4); accepted on every build
-    [InlineData("rvResPartMixedBad", "")] // I (O-364 (a): the holder is also stored by the body, so no call's result only); kk = 2 at C-370's landing (G935's retention), the control of rvResPartBad
+    [InlineData("rvResPartMixedBad", "rvResPartMixedBad: kk = 2")] // I (O-364 (a): the holder is also stored by the body, so no call's result only); kk = 2 since C-370's landing (G935's retention), the control of rvResPartBad
     [InlineData("rvResTupBad", "")] // V by O-383 (b), the same through a Tuple holding the reference and the u64 by value; accepted on every build
-    [InlineData("rvResTupMixedBad", "")] // I (O-364 (a)); kk = 2 at C-370's landing (G935's retention), the control of rvResTupBad
+    [InlineData("rvResTupMixedBad", "rvResTupMixedBad: kk = 2")] // I (O-364 (a)); kk = 2 since C-370's landing (G935's retention), the control of rvResTupBad
     [InlineData("rvwPartBad", "")] // V by O-383 (b) and R7, the same part reaching the Err payload through putS's write (an input whose Type holds a Loan is no write source); accepted on every build
-    [InlineData("rvwPartBuiltBad", "")] // I (O-364 (a): res a value the body built); kk = 2 at C-370's landing (G935's retention), the control of rvwPartBad
+    [InlineData("rvwPartBuiltBad", "rvwPartBuiltBad: kk = 2")] // I (O-364 (a): res a value the body built); kk = 2 since C-370's landing (G935's retention), the control of rvwPartBad
     // The same bound where the Loan reaches the payload as a value read through a borrowed input (15.6.4, 15.7.1: what a read through
     // the argument carries): the owner's O-383 (b) bounds a Case payload by its Case's Type, so a Loan-free Case payload carries no Loan
     // whatever reached it (the Middle's decision on the repeated review's R1). Each beside its control, kk = 2 where the holder is no
@@ -2999,8 +2999,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("xchgOldD", "")] // V by O-383 (b): exchange's old contents hold w, which a raw store made carry r's Loan, in the Err payload
     [InlineData("xchgOldMixedBad", "xchgOldMixedBad: kk = 2")] // I (O-364 (a)), the control of xchgOldD
     [InlineData("rvwRefillOk", "")] // V (15.6 Holders: a holder completely replaced no longer carries its old value's Loans): res refilled by a new call's result after put's write clears its write slot (MirBorrows.Holders' Rewrite; the review's B2)
-    [InlineData("rvwRefillBad", "")] // I; kk = 2 at C-370's landing (G935's rule R): put writes the refilled res again
-    [InlineData("caseWriteR2BindBad", "")] // I; kk = 2 at C-370's landing (G935's rule R), through the same path
+    [InlineData("rvwRefillBad", "rvwRefillBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R): put writes the refilled res again
+    [InlineData("caseWriteR2BindBad", "caseWriteR2BindBad: kk = 2")] // I; kk = 2 since C-370's landing (G935's rule R), through the same path
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
