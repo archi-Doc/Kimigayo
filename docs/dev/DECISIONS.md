@@ -5607,6 +5607,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
   - Superseded in part by Q22 (2026-11-19): the owner abolished the 90% rule, so a later stage exits only when every exit task is
     done; G396's remaining items, the Exceptions above and X-2's 25 producers among them, are R7 exit conditions. R4's exit stands.
+  - Superseded in part by R7-M53 (2026-11-19): X-2's DEC O4 line and the Exceptions list for A5-F7, A5-F8, A5-F10, A6's 2g units
+    with G105, G126 and G147 (2): their stage is the R7 plan's stream Z, and each of the 25 producers is removed, not excepted.
 - **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
   「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; BU's review REVISE B1, the fix round under the owner's 「GO」)
   - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
@@ -22705,6 +22707,26 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Cost:** Bind time unchanged within the measurement, warm Bind 0 B, cold first Bind -560 B to +376 B: the judgments move from
       one pooled array of at least 16 per renting trial depth to one of max(capacity, 4) per pooled frame. Scaling: no new walk.
   - Commits 2a, 2b0, 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
+- **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
+  and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
+  dev 5dd6543e6, `middle\notes\g396-plan.md` and `front\notes\G147\census.md`). Under Q22, supersedes R4-M165's X-2 line ("the 25
+  without a removal stage stay under DEC O4") and its Exceptions list for these items: their stage is stream Z.
+  - **Rule.** A producer is removed when no located `Unsupported_Kd` stands at its site: a reachable valid form gets its common rule
+    and a regression row; a catch-all over a category Binding's HIR contract (HasFacts, R4-M61) or its enums already close becomes an
+    `InternalInvariant_Kd` arm with its contract test (AGENTS: a broken contract), with the HasFacts rows it reads. These conversions
+    need no owner exception: the owner's order supersedes DEC O4 for them.
+  - **Census.** Of the 25, M3b went with G264 U1 (9d49a47da); of the 24 left, 16 are such catch-alls (B2, B4-B8, B12-B16, E1, E2,
+    E6, M3c, X3: Z1, Z2, Z8), E5, M1, M2 and M3a guard valid forms and get common rules (Z3-Z6), and M4-M7 wait for P42 and A4's
+    `Limit` class (Z7). A5-F7's 2c-6 judged part landed with 2c-5 (R4-M152) and its rest is G216 (b) in R7-O3 (Z9, Z10); A5-F8's
+    2d-2 and coverage remain (Z11, Z12a, Z12b); A5-F10 is rule 22's Loan rows, with no spec variant (Z13); A6's 2g-1 is done for A3
+    only (R5-M186), and 2g-D, 2g-2a and 2g-2 to 2g-7 remain with G105, G126 and G103's term (Z15-Z21). G147 (2): (b), (d) and (f)
+    closed by the census, (c), (a) and (e) are Z22, Z23 and Z24.
+  - **Owners.** The Middle's units but Z5's G212 half and Z22-Z24 (the Front's); the Front reviews every Binding hunk (Z1, Z3, Z4,
+    Z6, Z8, Z9).
+  - **Owner questions, only where named:** OQ-Z7, if SPEC 22.4.3 does not decide whether a live Loan on a static proves it
+    initialized; Z6's option (a), if it adds a vocabulary entry; Z23, if its design needs a MIR vocabulary entry; O-445 for Z24.
+  - **Not in stream Z:** the producers another stage removes (B1, B3, E3, E4 with R7-T1; B9-B11 with R7-C3 and Y5; E7 with R7-P5;
+    X1, X2 with P42's Binding part) and those added since R4's X-2, which keep their own rows (PLAN G1106, G1107 among them).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
