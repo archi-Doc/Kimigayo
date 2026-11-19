@@ -110,7 +110,7 @@ public sealed partial class Binding
             var stride = call.ArgumentNodes.Count + 1;
             var operations = this.argumentOperationScratch.Rent(count * stride);
             var evaluated = this.candidateScratch.Rent(count);
-            var classBase = this.positionClasses.Count;
+            var positionBase = this.positionOperations.Count;
             try
             {
                 var applicable = 0;
@@ -156,7 +156,7 @@ public sealed partial class Binding
             {
                 this.argumentOperationScratch.Return(operations, clearArray: true);
                 this.candidateScratch.Return(evaluated, clearArray: true);
-                this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+                this.positionOperations.RemoveRange(positionBase, this.positionOperations.Count - positionBase);
             }
         }
         finally
@@ -198,7 +198,7 @@ public sealed partial class Binding
         return this.FailWaitingSelection(call, failure);
     }
 
-    private bool ReportCallableSelection(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    private bool ReportCallableSelection(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (!this.callableSelectionFailures.TryGetValue(node, out var failure))
         {
@@ -226,7 +226,8 @@ public sealed partial class Binding
 
         if (code == DiagnosticCode.ParameterShapeMismatch_Kd)
         {
-            node.Report(
+            node.ReportIn(
+                store,
                 requirement,
                 code,
                 failure.Mode,
@@ -240,7 +241,7 @@ public sealed partial class Binding
             var note = code == DiagnosticCode.ReceiverShapeMismatch_Kd ? "Distinct Callable signatures require one receiver; each signature uses its weakest declared receiver (SPEC 8.10)"
                 : code == DiagnosticCode.AmbiguousBinding_Kd ? "No Callable signature is better than every other applicable signature under the ordinary argument ranking rules (SPEC 10.4)"
                 : "No Callable signature applies; candidate checks use positional arguments and any fixed expected result (SPEC 8.10, 10.1)";
-            node.Report(requirement, code, evidence: code == DiagnosticCode.ReceiverShapeMismatch_Kd ? null : [failure.Count], related: related, note: note);
+            node.ReportIn(store, requirement, code, evidence: code == DiagnosticCode.ReceiverShapeMismatch_Kd ? null : [failure.Count], related: related, note: note);
         }
 
         return true;

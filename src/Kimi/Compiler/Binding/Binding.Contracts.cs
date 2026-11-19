@@ -418,6 +418,7 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
+        type = this.MemberOf(type, scope, out _); // R7-C2c2 c2-4 (design R1.1): the Contract judge's subject is its class's Member
         // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
         // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
         // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
@@ -427,9 +428,8 @@ public sealed partial class Binding
         // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
         premise = premise || this.PremiseRefines(type, contract, scope);
 
-        // Definition evidence is still resolved so that its errors are never hidden by an assumption.
-        var proof = this.ResolveConformance(type, contract, scope, out _);
-        return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
+        // Definition evidence is still resolved so that its errors are never hidden by an assumption (PremiseJoin, by polarity).
+        return PremiseJoin(premise, this.ResolveConformance(type, contract, scope, out _));
     }
 
     private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true, BindingSymbol? reference = null)

@@ -35,6 +35,19 @@ internal static class SemanticQueryTestExtensions
 
     internal static BoundType? ErasedTypeOf(this Koto node) => Query(node).ErasedTypeOf(node);
 
+    // The same facts through a named reading compilation (PLAN G949 Stage 2 U3, B's U3 ruling 34 (a)): a node of the frozen library has no
+    // compilation of its own, so a test that reads one names the compilation reading it; its answer is that compilation's SemanticQuery.
+    internal static BoundType? TypeOf(this Koto node, Compilation reader) => reader.Semantics.TypeOf(node);
+
+    internal static BindingSymbol? SymbolOf(this Koto node, Compilation reader) => reader.Semantics.SymbolOf(node);
+
+    internal static BindingState StateOf(this Koto node, Compilation reader) => reader.Semantics.StateOf(node);
+
+    internal static BindingFailure FailureOf(this Koto node, Compilation reader) => reader.Semantics.FailureOf(node);
+
+    internal static (ConversionBinding Kind, InvocationKoto? Creation, ExplicitAdaptationPlan? Adaptation, Int128? Folded) ConversionOf(this ConversionKoto node, Compilation reader)
+        => reader.Semantics.ConversionOf(node);
+
     // Test-only writes that stage a semantic state Binding itself would not publish; the only direct slot writes in tests.
     internal static void SetType(this Koto node, BoundType? type) => node.BoundType = type;
 

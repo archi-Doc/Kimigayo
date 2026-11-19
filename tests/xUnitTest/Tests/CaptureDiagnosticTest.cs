@@ -270,16 +270,16 @@ public class CaptureDiagnosticTest
         Assert.Equal(note, error.Note);
     }
 
-    // SPEC 10.5, 7.7.4: erasure receiver conditions are checked at the argument after selection, without a Callable Constraint.
+    // SPEC 7.7.4, 10.1, 10.2 (G379 (a) Revision 3): an erasure's receiver condition decides its row, so an Exclusive-receiver Closure
+    // leaves the lone candidate inapplicable: NoApplicableOverload_Kd at the call, without a Callable Constraint.
     [Fact]
-    public void ACommonFunctionReceiverFailureNamesTheConvertedArgument()
+    public void ACommonFunctionReceiverFailureLeavesTheLoneCandidateInapplicable()
     {
         const string Source = "func pass(f: () -> i32) -> i32 => f()\n" + Count + "Console.writeLine(\"\\(pass(count@move))\")";
         var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
-        Assert.Equal("count@move", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        Assert.Contains("Exclusive call", error.Note, StringComparison.Ordinal);
-        Assert.DoesNotContain("Callable Constraint", error.Note!, StringComparison.Ordinal);
+        Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), error.Code);
+        Assert.Equal("pass(count@move)", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.DoesNotContain("Callable Constraint", error.Note ?? string.Empty, StringComparison.Ordinal);
     }
 
     // The receivers reach the command rendering and both language-server placements.

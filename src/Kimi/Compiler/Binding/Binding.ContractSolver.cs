@@ -84,7 +84,14 @@
 //   re-keys its subject and its view's facts and walks again while a round adds a row, at most PremiseClosureLimit rounds (SPEC 8.3.3
 //   Limits; the owner's O-321 (b)): a mate's chain may be deeper than the link it is identical with (row (5)), so under a path
 //   equation to a deeper projection (`Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`, allowed) each round supplies a deeper
-//   identity and the rounds have no end of their own. A request still unproven at the bound is refused (RefuseProof:
+//   identity and the rounds have no end of their own. R7-C2c2 c2-4b (DECISIONS R4.13; the owner's O-345 (b)): the extension is the
+//   class's closure (ExtendClosed): from its root over the declaration's grounds (ConstraintEnvironment.Declares) and its own rows,
+//   re-rooted to a lower key, its rounds counted from the root's first walk, so an extending request's rounds and verdict are a
+//   function of (its root, Contract, the declaration's grounds), never of a use's supply or an earlier request; whether a request
+//   extends is not: its first walk reads the view's table, which holds the supply of every use bound before it (a Type spelled
+//   anywhere in the declaration, a body statement checked earlier), so whether the bound is reached can depend on spelling and on
+//   the order of checks: a known limit against SPEC 8.3.3 (STATUS) until R7-C3 removes the syntax-triggered supply (the owner's
+//   O-413 (a)). A request still unproven at the bound is refused (RefuseProof:
 //   PremiseClosureLimit, a Resource record, SPEC 23.1.1, at the use whose check asked, else at the owner of the request's scope)
 //   and the proof that asked rests on the refusal, so a judgment that fails on it is a resource failure, never Unknown by
 //   exhaustion; a judgment other evidence proves stands, a request proven within the bound is proven, and a query made after the
@@ -129,8 +136,10 @@
 //   (TyCtxt.Rebuild, Intern, HeldContext, HeldType, InterpolationBound, WithContext, RentTypes, StoredType and SubstituteType where
 //   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
 //   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
-//   and the PrepareTypeStorage memo (per storageVersion).
-// - PremiseRefines' answer may rest on a Provisional identity table (a view holding a derived identity fact, W6, W7) and reaches its
+//   and the PrepareTypeStorage memo (per storageVersion); R7-C2c2 c2-4's MemberOf (ContractTypeCore meets its Completion, the
+//   table's), UnconditionalBinding (declarations only; an unfinished or refused instance is its `pending`, met as Provisional),
+//   AssociatedInPath and OperandContexts (pure reads).
+// - PremiseRefines' answer, and the judges' MemberOf reads (ProveConformance, RequestCapability, JudgeConstraintAtom), may rest on a Provisional identity table (a view holding a derived identity fact, W6, W7) and reaches its
 //   callers unthreaded, as Complete, as its availability reads do; carrying it is R7-C2e2's (Completion carried by the judgments'
 //   answers). No such table is known to grow after the read within a pass.
 //
@@ -151,9 +160,11 @@
 //   returns. A Kept entry lasts the pass (ClearClosure, in ResetCapabilities) and spares a later outermost request its preparation;
 //   its readings are read only in KeptRegion, so outside it an outermost request forms its own (R7-M20) and the entry again. A
 //   nested demand reads an entry's written facts and their keys alone (the leaf rule), so it reads any entry. An extension (R7-C2c2
-//   c2-2) files the written facts again under its extended keys; its table is never Final (the rows are Provisional), so by the same
-//   rule the entry is then the request's: a Kept entry is reopened as owned by the outermost request before a pair goes in, never
-//   written into, and a later request forms it again (N3 of e2-1's merge review).
+//   c2-2) files the written facts again under its extended keys, which are the request's whatever its table's finality (R7-C2c2
+//   c2-4b: a round with no rows builds the declaration's table, which can be Final and is not the view's), so the entry is then the
+//   request's: a Kept entry is reopened as owned by the outermost request before a pair goes in, never written into, and a later
+//   request forms it again (N3 of e2-1's merge review). Each walking round first drops the class-key pairs an earlier table filed
+//   (the view's, a previous round's or a previous root's; ViewIndex.DropClassKeys), so the round reads its own table's keys alone.
 // - Readers: a request (PremiseRefines, FirstRows) and a closure validator's read (BeginClosureRead to EndClosureRead), which is
 //   outside any request and reads the TypeIdentity and Semantics rows. Whoever holds an entry starts no request, since a request's
 //   return drops the entries it does not keep: a request entered from a walk or from a validator's read is InternalInvariant, so a
@@ -631,8 +642,9 @@ public sealed partial class Binding
     // mate whose chain holds a link open in this walk (a cycle, `T.(Cy2).X.(Mid).Next is T`; SPEC 8.2.3 Cycles) is not walked from
     // here: it would read the open link as empty and leave that partial answer in the memo. It is deferred: it adds its rows of
     // the request's last round, and EnumerateClosed walks it once the request's chains are closed and walks again until no link's
-    // rows move (the least fixpoint, PLAN G881b). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) takes no mate's rows: its conformance is ResolveConformance's
-    // (the class header's Identity; ClassKey keys it to itself), so a premise contradicting it stays the premise's error (d09y).
+    // rows move (the least fixpoint, PLAN G881b). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) walks no mates of its
+    // own: R7-C2c2 c2-4 keys it to its class's Representative, so the class's rows, the mates' included, are its rows, and its closed
+    // world meets them by PremiseJoin, so a premise contradicting it is contradictory evidence (d09y).
     // Its own member, so EnumerateLink's body, walked for every link, holds no try region.
     private void EnumerateMates(BoundType subject, IdentityClasses classes, EvidenceView view, ViewIndex index, List<PremiseRow> rows)
     {
@@ -859,6 +871,8 @@ public sealed partial class Binding
         {
             Array.Clear(facts, 0, count);
         }
+
+        environment.MarkDeclared(); // R7-C2c2 c2-4b: what follows is a use's supply (ConstraintEnvironment.Declares)
     }
 
     private void AddContractPremises(BoundContract shape, BoundType self, BindingScope scope)

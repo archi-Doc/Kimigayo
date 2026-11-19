@@ -13,7 +13,8 @@ namespace XunitTest;
 
 // PLAN G949 Stage 2 U2a (design u2-design 2.1-2.3, 2.6; rows s2a, s2b, s6a, s6d, s16, s19, s21a, s21b, P-b; labels in
 // back\notes\l1-s2\u2a-impl\labels.md): the process's library per target, KimiLibrary.Of, frozen once by Freeze over an unfrozen library
-// whose freeze compilation Unfrozen makes (B's ruling 37); read by no compilation before U3, so these rows read the frozen library alone.
+// whose freeze compilation Unfrozen makes (B's ruling 37); from U3 (rows c14, s2c, s21c, s22a, s22c, h3, h6) every compilation not given a
+// library reads it, fixed when its Binding is made.
 public partial class KimiLibraryShapeTest
 {
     // s19: parallel readers of one target get one object, frozen, not refused (s16's windows-x64 row too).
@@ -40,19 +41,26 @@ public partial class KimiLibraryShapeTest
         Assert.Null(library.Layer.Refusal);
     }
 
-    // s21a and s21b: a direct freeze adds no entry to Of's store, and the freeze's Binding holds the library it made (the freeze never
-    // calls Of; its recursion half is U3's row, O-U2-5).
+    // s21a, s21b and s21c (U3's recursion half, O-U2-5): a direct freeze is not cached in Of's store, and the freeze compilation holds the
+    // library Unfrozen gave it, before its Freeze too (its Binding is made over it, never over Of's), so no freeze reads Of. The store is
+    // process-wide and other classes compile for this target in any order, so the row asserts that no entry holds the direct freeze's
+    // library and that Of's own library for the target is another object, never that the store lacks the key.
     [Fact]
     public void ADirectFreezeIsNotCachedAndHoldsItsOwnLibrary()
     {
         var target = TargetTriple.Parse("x86_64-unknown-linux-gnu");
         var freeze = Unfrozen(target, debugAndSetting: false);
+        var made = freeze.Library;
+        Assert.False(made.Kotonoha.Syntax.Frozen);
         var library = KimiLibrary.Freeze(freeze);
+        Assert.Same(made, library);
         Assert.Same(freeze.Library, library);
         Assert.Same(library, freeze.Binding.Library);
         Assert.True(library.Kotonoha.Syntax.Frozen);
         var store = (ConcurrentDictionary<TargetTriple, Lazy<KimiLibrary>>)typeof(KimiLibrary).GetField("Process", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-        Assert.False(store.ContainsKey(target));
+        Assert.DoesNotContain(store.Values, entry => entry.IsValueCreated && ReferenceEquals(entry.Value, library));
+        Assert.NotSame(library, KimiLibrary.Of(target));
+        Assert.DoesNotContain(store.Values, entry => entry.IsValueCreated && ReferenceEquals(entry.Value, library));
     }
 
     // s2a and s2b (R8-M32's Debug row, N10): Of's library equals an uncached freeze, with the default preparation for windows-x64 and
@@ -120,25 +128,96 @@ public partial class KimiLibraryShapeTest
         Assert.NotEqual(0, calls);
     }
 
-    // A freeze compilation over the seam's preparation: an empty project, with Debug on and a compile-time setting where the row asks.
-    private static Compilation Unfrozen(TargetTriple target, bool debugAndSetting)
+    // c14 (PLAN G949 Stage 2 U3, the switch): two fresh compilations of one target read one library, Of's, frozen before either Binds:
+    // the same object and layer, so every library fact both read is one object. Before U3 each compilation made and bound its own.
+    [Fact]
+    public void TwoCompilationsOfOneTargetReadOneFrozenLibrary()
     {
-        var kimigayo = Compilation.CreateForTest().Kimigayo; // A console-less compiler service, as Of's default preparation has.
-        var project = new Project(kimigayo);
-        if (debugAndSetting)
+        var (hello, milestone) = (Prepared("example/Hello"), Prepared("milestone/Milestone26"));
+        Assert.Same(KimiLibrary.Of(hello.TargetTriple), hello.Library);
+        Assert.Same(hello.Library, milestone.Library);
+        Assert.Same(hello.Library.Layer, milestone.Library.Layer);
+        Assert.True(hello.Library.Kotonoha.Syntax.Frozen);
+        Assert.True(hello.Bind().IsComplete);
+        Assert.True(milestone.Bind().IsComplete);
+        Assert.Same(hello.Binding.Semantics.Conformances(hello.Library.Option), milestone.Binding.Semantics.Conformances(milestone.Library.Option));
+    }
+
+    // s22a (X5, X7): a compilation without a target reads its own key's library (TargetTriple.Invalid), so a source binds alike in every
+    // target mode, and Of's store then holds the four keys.
+    [Fact]
+    public void EveryTargetModeReadsItsKeysLibrary()
+    {
+        Assert.Empty(CompilationTestHelper.BindInEveryTargetMode("let x: isize = 1\n"));
+        var store = (ConcurrentDictionary<TargetTriple, Lazy<KimiLibrary>>)typeof(KimiLibrary).GetField("Process", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+        Assert.All(new[] { WindowsProfile.Target, "i686-pc-windows-msvc", "avr-unknown-unknown" }, x => Assert.True(store.ContainsKey(TargetTriple.Parse(x)), x));
+        Assert.True(store.ContainsKey(TargetTriple.Invalid));
+    }
+
+    // s22c (invalid use: an internal contract): a compilation given a library of another target refuses it where its Binding is made.
+    [Fact]
+    public void ALibraryOfAnotherTargetIsRefusedAtTheBinding()
+    {
+        var c = Prepared(string.Empty);
+        c.UseLibrary(KimiLibrary.Freeze(Unfrozen(TargetTriple.Parse("i686-pc-windows-msvc"), debugAndSetting: false)));
+        var refused = Assert.Throws<InvalidOperationException>(() => c.Binding);
+        Assert.Contains("(InternalInvariant; PLAN G949 Stage 2 U3)", refused.Message, StringComparison.Ordinal);
+    }
+
+    // s2c (SPEC 22.1, the compiling half): compiling a program reads the frozen library and writes none of it: Of's frozen dump is the same
+    // after each program's Check, on windows-x64 and on i686.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("i686-pc-windows-msvc")]
+    public void CompilingAProgramLeavesTheFrozenLibraryUnchanged(string target)
+    {
+        var library = KimiLibrary.Of(TargetTriple.Parse(target));
+        var before = FrozenDump(library);
+        foreach (var program in new[] { "docs/examples/Hello/Hello.kimi", "tests/milestones/Milestone26.kimi" })
         {
-            project.KimiOptions.Debug = true;
-            project.ProjectFile.CompileTimeSettings["feature"] = new() { Bool = true };
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText(program.Split('/'))));
+            Assert.True(c.Check(), program);
+            Assert.Same(library, c.Library);
+            Assert.Equal(before, FrozenDump(library));
+        }
+    }
+
+    // h3 and h6 (the registration, form (i); the module set): a reading compilation's diagnostic owner holds the library module, with the
+    // frozen library's syntax list (empty for the shipped library) registered read-only: no library document has a syntax error, nothing
+    // is published for it, and invalidating it is the internal-invariant form; the compilation holds the library module, not another
+    // compilation's source module.
+    [Fact]
+    public void AReadingCompilationRegistersTheLibrarysSyntaxListReadOnly()
+    {
+        var c = Prepared("example/Hello");
+        Assert.True(c.Check());
+        var module = c.Library.Kotonoha;
+        Assert.False(c.Diagnostics.HasSyntaxRecords(module));
+        var documents = new HashSet<SourceDocument>(ReferenceEqualityComparer.Instance);
+        foreach (var node in module.Syntax.Nodes)
+        {
+            if (node?.CodeContext.SourceDocument is { } document)
+            {
+                documents.Add(document);
+            }
         }
 
-        return KimiLibrary.Unfrozen(target, kimigayo, project);
+        Assert.NotEmpty(documents);
+        Assert.All(documents, x => Assert.False(c.Diagnostics.HasSyntaxErrors(x)));
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Path is { } path && path.StartsWith("compiler://Kimi/", StringComparison.Ordinal));
+        var refused = Assert.Throws<InvalidOperationException>(() => c.Diagnostics.InvalidateSyntax(module));
+        Assert.Contains("(InternalInvariant; PLAN G949 Stage 2 U3)", refused.Message, StringComparison.Ordinal);
+        Assert.True(c.HoldsModule(module));
+        Assert.False(c.HoldsModule(Prepared(string.Empty).Kotonoha));
     }
 
     // The frozen library's syntax and every published HIR column, read from its table alone (B's ruling 45, C1: a frozen library names no
     // compilation, U2b, and the semantic printer reads each node through its compilation until U0b-P3): each node's parent, location, span
     // and kind; its State, Failure, Meaning, Symbol, Lookup and erased Type; its Op, Res, Completion, Adjust and Place; and every field of
     // its plan row, a plan object's fields by value (Types and Origins as the printer prints them, a node by its id).
-    private static string FrozenDump(KimiLibrary library)
+    internal static string FrozenDump(KimiLibrary library)
     {
         var printer = new Printer(false);
         var text = new System.Text.StringBuilder();
@@ -178,5 +257,19 @@ public partial class KimiLibraryShapeTest
             _ => value.GetType().Name + "{" + string.Join(" ", value.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                 .Select(x => x.Name + "=" + Value(x.GetValue(value), depth - 1))) + "}",
         };
+    }
+
+    // A freeze compilation over the seam's preparation: an empty project, with Debug on and a compile-time setting where the row asks.
+    private static Compilation Unfrozen(TargetTriple target, bool debugAndSetting)
+    {
+        var kimigayo = Compilation.CreateForTest().Kimigayo; // A console-less compiler service, as Of's default preparation has.
+        var project = new Project(kimigayo);
+        if (debugAndSetting)
+        {
+            project.KimiOptions.Debug = true;
+            project.ProjectFile.CompileTimeSettings["feature"] = new() { Bool = true };
+        }
+
+        return KimiLibrary.Unfrozen(target, kimigayo, project);
     }
 }

@@ -124,7 +124,8 @@ public sealed partial class Binding
 
         // A bound reference in the caller's instance, the one form InstanceContract reads it for.
         var recorded = call.RequirementContract;
-        var reference = recorded is { Type: { } bound } && IsBoundContractReference(recorded) ? this.InstantiateStorageType(bound, outer) : null;
+        var reference = recorded is { Type: { } bound } && IsBoundContractReference(recorded) &&
+            this.types.Instance(bound, this.types.StorageSubst(outer)) is ({ } instance, not StorageOutcome.Limit) ? instance : null;
         var contract = this.InstanceContract(recorded, self, reference);
         var witness = this.ResolveRequirementWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration));
         return witness.Kind switch

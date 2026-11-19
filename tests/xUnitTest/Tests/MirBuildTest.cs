@@ -97,10 +97,32 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             }
 
             c.Binding.Bind(mode);
-            Assert.NotEqual(0ul, HirTables.LibraryVersion(c)); // Its publication's version, set by its own pass in every mode.
+            Assert.NotEqual(0ul, HirTables.LibraryVersion(c)); // Its publication's version: the frozen library's in every mode (n4).
             var mir = new StringBuilder();
             MirDump.Write(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), SyntaxTable.LibraryModule, mir);
             return mir.ToString();
+        }
+    }
+
+    // n4 (PLAN G949 Stage 2 U3; C-378 N4): the library's publication version is Binding.Frozen in every compilation over a frozen library,
+    // from its Binding's construction, before its first Bind and after it, so G950-K's stamp holds (0 is a broken contract) and a later
+    // MIR version keeps the library segment. Before the switch a compilation's version was its own run counter, 0 before its first Bind.
+    [Fact]
+    public void EveryCompilationPublishesTheFrozenLibraryVersion()
+    {
+        foreach (var program in new[] { "docs/examples/Hello/Hello.kimi", "tests/milestones/Milestone26.kimi" })
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText(program.Split('/'))));
+            Assert.Equal(Binding.Frozen, HirTables.LibraryVersion(c));
+            Assert.True(c.Bind().IsComplete, program);
+            Assert.Equal(Binding.Frozen, HirTables.LibraryVersion(c));
+            var segment = c.BuildMir().LibrarySegment;
+            Assert.Equal(Binding.Frozen, c.BuildMir().LibraryVersion);
+            c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+            Assert.True(c.Bind().IsComplete, program);
+            Assert.Equal((Binding.Frozen, segment), (c.BuildMir().LibraryVersion, c.BuildMir().LibrarySegment));
         }
     }
 

@@ -18,7 +18,9 @@ public partial class KimiLibraryShapeTest
     private const string ZUnsupportedProbe = "#Unsupported\npublic struct ZProbe\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n";
 
     // s6r (C2): a refused layer holds only its refusal: no library node in the composed views, the library part reset, the table not
-    // frozen; a second Bind runs the library pass again and refuses with equal records.
+    // frozen; a second Bind publishes equal records. From PLAN G949 Stage 2 U3 (N3; changed by decision) the compilation reads the
+    // library its freeze compilation refused (the seam) and runs no pass, so the second Bind reads the same refusal; Stage 1's row ran the
+    // library pass again in the compilation that held it, and refused identically.
     [Fact]
     public void ARefusedLibraryLeavesOnlyItsRefusal()
     {
@@ -102,12 +104,90 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(2, published.Length);
     }
 
-    // A compilation whose library holds a probe source and whose program is valid, bound once: its Bind is refused (no result).
+    // s6c2 and h2 (PLAN G949 Stage 2 U3; ruling 15): two compilations given one refused library each run no pass (the library table and
+    // every level of its layer keep their counts: a refused library is never sealed, so an intern would write the shared layer), leave
+    // no result, and publish the refusal in their own records, each record once, and the same again after a second Bind.
+    [Fact]
+    public void TwoCompilationsGivenOneRefusedLibraryEachPublishItsRefusal()
+    {
+        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        freeze.Library.Kotonoha.CreateCodeContext().Parse(freeze.Library.Kotonoha.RootKoto, ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n");
+        var library = KimiLibrary.Freeze(freeze);
+        var (counts, refusal) = (Counts(library), library.Layer.Refusal!);
+        TestDiagnostic[]? records = null;
+        foreach (var c in new[] { Reading(library), Reading(library) })
+        {
+            for (var bind = 0; bind < 2; bind++)
+            {
+                Assert.Equal(default, c.Bind());
+                Assert.False(c.Check());
+                var published = TestDiagnostics.Of(c);
+                Assert.Equal(refusal.Records.Length + 1, published.Length); // Each record once, and the refusal's own at the first (ruling 40 (i)).
+                Assert.All(published, static x => Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code));
+                Assert.Equal(records ??= published, published);
+                Assert.Equal(counts, Counts(library));
+            }
+        }
+
+        static Compilation Reading(KimiLibrary library)
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.UseLibrary(library);
+            c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
+            return c;
+        }
+
+        static string Counts(KimiLibrary library)
+        {
+            var (layer, part) = (library.Layer, library.Layer.Part);
+            return $"{library.Kotonoha.Syntax.Count} {layer.Types.Count} {layer.Substs.Count} {layer.Intersections.Count} {layer.Lengths.Count} " +
+                $"{layer.Constraints.Count} {part.Nodes.Count} {part.Issues.Count} {part.DerivedIssues.Count} {part.Obligations.Count} {part.Regions.Count}";
+        }
+    }
+
+    // s6p2 and s6p2b (PLAN G949 Stage 2 U3; ruling 40 (i); design R2.1, N8): a library refused for a syntax error in each of two documents
+    // is read by two compilations. Each registers the frozen syntax list renumbered into its own source table: each parser record is
+    // published once, under its own code, located in its own document, beside the refusal's own record; the documents are listed in the
+    // freeze's order, and each holds its syntax errors in each compilation.
+    [Fact]
+    public void TheRefusedLibrarysSyntaxRecordsAreEachReadersOwn()
+    {
+        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        freeze.Library.Kotonoha.AddSource(new("ZA.kimi", "public group ZA\n    public func f(x: i32 -> i32 => x\n"));
+        freeze.Library.Kotonoha.AddSource(new("ZB.kimi", "public group ZB\n    public func g(y: i32 -> i32 => y\n"));
+        var library = KimiLibrary.Freeze(freeze);
+        var refusal = library.Layer.Refusal!;
+        string[]? records = null;
+        for (var i = 0; i < 2; i++)
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.UseLibrary(library);
+            c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
+            Assert.False(c.Check());
+            var result = c.Diagnostics.Finalize(rejected: true);
+            var parsers = result.Diagnostics.Where(static x => x.Code is nameof(Kimi.DiagnosticCode.ExpectedSyntax_Kd) or nameof(Kimi.DiagnosticCode.MissingSyntax_Kd)).ToArray();
+            string[] paths = [.. parsers.Select(x => result.Sources[x.Source].Path).Distinct()];
+            Assert.Equal(2, paths.Length);
+            Assert.EndsWith("ZA.kimi", paths[0], StringComparison.Ordinal);
+            Assert.EndsWith("ZB.kimi", paths[1], StringComparison.Ordinal);
+            Assert.All(parsers, x => Assert.All(x.Related ?? [], r => Assert.True(r.Source < 0 || r.Source == x.Source)));
+            Assert.Single(result.Diagnostics, x => x.Code == nameof(Kimi.DiagnosticCode.InternalInvariant_Kd) && x.Span == refusal.First.Span);
+            Assert.True(c.Diagnostics.HasSyntaxErrors(refusal.First.Document!));
+            string[] described = [.. result.Diagnostics.Select(x => $"{x.Code} {(x.Source < 0 ? "-" : result.Sources[x.Source].Path)} {x.Span} [{string.Join(", ", (x.Related ?? []).Select(static r => $"{r.Role} {r.Source} {r.Span}"))}]")];
+            Assert.Equal(described.Length, described.Distinct().Count());
+            Assert.Equal(records ??= described, described);
+        }
+    }
+
+    // A compilation whose library holds a probe source and whose program is valid, bound once: its Bind is refused (no result). The
+    // library is refused by its freeze compilation (the seam, CompilationTestHelper.UseEditedLibrary) and read here, as Of's would be.
     private static Compilation RefusedLibrary(string library)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, library);
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, library));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
         Assert.Equal(default, c.Bind());
         return c;

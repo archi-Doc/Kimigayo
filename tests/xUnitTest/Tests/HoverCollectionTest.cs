@@ -180,6 +180,11 @@ public sealed class HoverCollectionTest : IDisposable
         Assert.Throws<ArgumentOutOfRangeException>(() => documentation.Exclude(-1, 0, 0));
     }
 
+    // PLAN G949 Stage 2 U3 (design 4.7; changed by decision, O-376 (a), L1): every compilation reads the process's frozen library, whose
+    // freeze collects its documentation, so in every mode the library's documentation is the same objects, each compilation's Binding
+    // documents them (Binding.GetDocumentation) and a library node names no compilation (detached, U2b). Stage 1's row gave each
+    // compilation a library of its own, documented only when it collected, and wrote a comment's IsSelected (a write on a shared object:
+    // removed).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -189,38 +194,55 @@ public sealed class HoverCollectionTest : IDisposable
         var second = Create(!firstCollects);
         var enabled = firstCollects ? first : second;
         var disabled = firstCollects ? second : first;
-        Assert.Empty(disabled.Library.Kotonoha.DocumentationSources);
         Assert.Empty(disabled.Kotonoha.DocumentationSources);
         AssertEmbeddedDescriptions(enabled);
+        AssertEmbeddedDescriptions(disabled);
 
         var another = Create(true);
         AssertEmbeddedDescriptions(another);
         var earlier = IteratorComment(enabled);
-        var later = IteratorComment(another);
-        Assert.NotSame(earlier, later);
-        Assert.NotSame(earlier.Declaration, later.Declaration);
-        Assert.Same(enabled, earlier.Declaration!.CodeContext.Compilation);
-        Assert.Same(another, later.Declaration!.CodeContext.Compilation);
-        Assert.Equal(earlier.GetText().Text, later.GetText().Text);
-        earlier.IsSelected = false;
-        Assert.True(later.IsSelected);
+        Assert.Same(earlier, IteratorComment(another));
+        Assert.Same(earlier, IteratorComment(disabled));
+        Assert.NotSame(enabled.Binding, another.Binding);
+        Assert.Throws<InvalidOperationException>(() => earlier.Declaration!.CodeContext.Compilation);
     }
 
+    // PLAN G949 Stage 2 U3 (design 4.7; changed by decision): compilations made at once share the frozen library and its documentation,
+    // whatever their mode. Stage 1's row (ConcurrentLibraryLoadsShareOnlyLexicalData) loaded a library per compilation, documented only
+    // in the collecting ones.
     [Fact]
-    public async Task ConcurrentLibraryLoadsShareOnlyLexicalData()
+    public async Task ConcurrentCompilationsShareTheFrozenLibrarysDocumentation()
     {
         var compilations = await Task.WhenAll(Enumerable.Range(0, 4).Select(index => Task.Run(() => Create(index % 2 == 0), TestContext.Current.CancellationToken)));
         for (var i = 0; i < compilations.Length; i++)
         {
-            if (i % 2 == 0)
-            {
-                AssertEmbeddedDescriptions(compilations[i]);
-            }
-            else
-            {
-                Assert.Empty(compilations[i].Library.Kotonoha.DocumentationSources);
-            }
+            AssertEmbeddedDescriptions(compilations[i]);
+            Assert.Same(compilations[0].Library, compilations[i].Library);
         }
+    }
+
+    // h4 (PLAN G949 Stage 2 U3; N-f, R1-B3): a reading compilation that collects no documentation reads the frozen library's
+    // documentation and its failures, which its freeze collected: a library whose one added document's collection failed in its freeze
+    // reports that document as failed in the reading compilation, and no other library document.
+    [Fact]
+    public void AReadingCompilationReadsTheFrozenLibrarysDocumentationFailures()
+    {
+        var failed = new SourceDocument("ZFailed.kimi", "/// Lost description.\npublic struct ZFailed\n");
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        CompilationTestHelper.UseEditedLibrary(c, x =>
+        {
+            x.Kotonoha.AddSource(failed);
+            Assert.Single(x.Kotonoha.DocumentationSources, source => ReferenceEquals(source.Source, failed)).Merge(null!);
+        });
+        c.Kotonoha.AddSource(new("main.kimi", "let x = 1\n"));
+        Assert.True(c.Bind().IsComplete);
+        Assert.False(c.CollectDocumentation);
+        AssertEmbeddedDescriptions(c);
+        Assert.True(c.HasDocumentationFailure(failed));
+        Assert.False(c.HasDocumentationFailure(IteratorComment(c).Source));
+        var shipped = Create(false);
+        Assert.False(shipped.HasDocumentationFailure(IteratorComment(shipped).Source));
     }
 
     // IMPL 20.1 (DECISIONS R5-M175): a library documentation source is named by its source's logical name, its compiler:// path, so
