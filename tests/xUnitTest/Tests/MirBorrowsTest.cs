@@ -3218,7 +3218,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             this.effects.BeginProgram();
             this.Local(program, program.VersionBodies);
             this.obligations.Clear();
-            Assert.True(this.effects.Run(program, this.obligations, SyntaxTable.LibraryModule + 1));
+            Assert.True(this.effects.Run(program, this.obligations, 0)); // No obligation: A5 reads none, and a library one's body may be unbuilt.
         }
 
         // A segment's bodies' views' local facts.
