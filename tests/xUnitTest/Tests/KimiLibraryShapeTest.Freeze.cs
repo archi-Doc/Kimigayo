@@ -51,6 +51,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ImplicitConstructorDecisions"] = "never written: the library declares no derived structure",
         ["NodeColumns.ObjectErasures"] = "never written: the library erases no object view",
         ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
+        ["NodeColumns.PerCallNamings"] = "never written: no nested signature of the library names its per-call Origin in its inputs (PLAN G972, board C-400)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
