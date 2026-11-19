@@ -34,7 +34,7 @@ public sealed partial class Binding
 
     // The pass's change signal (ValidateConstraintEnvironments): advanced by every write of what an environment's judgment reads, in the
     // step that writes it: each Fail call, whether or not the node held a failure already (a conformance's, an identity's or an Access
-    // path's Invalid is written with one); each environment made Invalid (FailEnvironment); each premise failed alone (FailPremise); and an inference consumer made Invalid under
+    // path's Invalid is written with one); each premise failed (FailPremise, FailFacts); and an inference consumer made Invalid under
     // its source's use (InvalidateAssociatedEvidence). PublishSourceStates' state, written with no Fail at each ValidateConformances,
     // only withdraws a premise (AvailableContractPremise); the failure an Error reads (InvalidDeclarationContext) is written through Fail
     // by ValidateClosedTypeConstraints, which the rounds' condition runs before the walk (InvalidateProjectionCertificates).
@@ -164,12 +164,22 @@ public sealed partial class Binding
         return -1;
     }
 
-    // An environment made Invalid by the failure of `node` (ConstraintEnvironment.Fail), counted in the change signal whether or not the
-    // writer also fails a node: under an owner that held a failure already it calls no Fail.
-    private void FailEnvironment(ConstraintEnvironment environment, Koto node)
+    // R7-C3 (F's C2 rulings 272-273): the premises of a declaration whose own judgment failed it (an invalid conditional or block) fail
+    // with it, each through the one writer.
+    private void FailFacts(BindingScope scope, Koto owner)
     {
-        environment.Fail(node);
-        this.Invalidated();
+        if (scope.Constraints is not { } environment)
+        {
+            return;
+        }
+
+        foreach (var fact in environment.Facts)
+        {
+            if (environment.FailPremise(fact, owner))
+            {
+                this.Invalidated();
+            }
+        }
     }
 
     // R7-C3 (B1'): a premise failed alone (ConstraintEnvironment.FailPremise), counted in the change signal when it newly failed: the
@@ -185,8 +195,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // The change signal's one writer: Fail, FailEnvironment, FailPremise and an evidence record made Invalid with no failure of its own
-    // call it.
+    // The change signal's one writer: Fail, FailPremise, FailFacts and an evidence record made Invalid with no failure of its own call it.
     private void Invalidated() => this.invalidations++;
 
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)

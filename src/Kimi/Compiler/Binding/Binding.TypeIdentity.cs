@@ -57,7 +57,7 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is { Invalid: false, HasTypeIdentity: true })
+            if (current.Constraints is { HasTypeIdentity: true })
             {
                 return true;
             }
@@ -159,7 +159,7 @@ public sealed partial class Binding
             classes.Open(scope);
             for (var current = scope; current is not null; current = current.Parent)
             {
-                if (current.Constraints is not { Invalid: false } environment)
+                if (current.Constraints is not { } environment)
                 {
                     continue;
                 }
@@ -192,7 +192,7 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
@@ -253,7 +253,7 @@ public sealed partial class Binding
     // located limit (an Origin attribute the judge could not decide).
     private bool RecordIdentityPremiseError(BindingScope scope, BindingMode mode)
     {
-        if (scope.Constraints is not { Invalid: false, HasTypeIdentity: true } || this.identityRecorded.ContainsKey(scope) ||
+        if (scope.Constraints is not { HasTypeIdentity: true } || this.identityRecorded.ContainsKey(scope) ||
             this.ClassesOf(scope, out _) is not { Worst: not IdentityClasses.One } own)
         {
             return false;
@@ -285,7 +285,7 @@ public sealed partial class Binding
     // R7-C3 (B1'): any failed premise is this context's case: an identity premise error recorded at the declaration (identityRecorded),
     // or a premise whose proof failed and left the evidence (FailPremise), both its own record.
     private bool KeepsPremiseErrorContext(Koto declaration)
-        => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { Invalid: false } environment &&
+        => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { } environment &&
             ((this.identityRecorded.TryGetValue(scope, out var own) && own) || ReferenceEquals(environment.FailedPremise?.Use, declaration));
 
     // SPEC 8.2.3's Origin attribute, decided by the Origins' owner: OriginDeclaration's `==` (one Origin substituted by the other) and the

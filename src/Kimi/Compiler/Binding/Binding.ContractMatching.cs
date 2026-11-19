@@ -119,7 +119,7 @@ public sealed partial class Binding
         }
 
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid ||
-            conformance.Scope.Parent?.Constraints?.Invalid == true || this.InvalidDeclarationContext(conformance.Contract.Declaration) ||
+            this.InvalidDeclarationContext(conformance.Contract.Declaration) ||
             this.InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
@@ -130,10 +130,6 @@ public sealed partial class Binding
             else if (conformance.RootPath.Use.BindingFailure != BindingFailure.None)
             {
                 this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
-            }
-            else if (conformance.Scope.Parent?.Constraints is { Invalid: true } invalid)
-            {
-                return this.InvalidEnvironment(invalid);
             }
 
             return ConstraintProof.Error;

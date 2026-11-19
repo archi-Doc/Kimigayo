@@ -241,7 +241,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
+            if (!this.ValidateArithmeticDirections(scope, environment))
             {
                 changed = true; // ValidateArithmeticDirections failed the owner and the pair's facts (R7-C3 gate 2); the rest is judged.
             }
@@ -508,9 +508,9 @@ public sealed partial class Binding
                     // Invalid type formation in a clause must not remain available as evidence.
                     for (var parent = node.Parent; parent is not null; parent = parent.Parent)
                     {
-                        if (parent is IsKoto { BoundConstraint: not null })
+                        if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
                         {
-                            this.FailEnvironment(scope.Constraints ??= new(), node);
+                            this.FailPremise(environment, fact, scope.Owner); // R7-C3: the clause's own judgment fails its premise
                             break;
                         }
 
@@ -853,7 +853,7 @@ public sealed partial class Binding
 
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }

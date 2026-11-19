@@ -282,7 +282,6 @@ public sealed partial class Binding
 
         internal bool Negative { get; init; }
 
-        internal ConstraintEnvironment? Invalid { get; init; }
     }
 
     // C1 §5: whether an answer rests only on what is final in the pass (Complete) or not (Provisional, the zero).
@@ -449,11 +448,6 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (environment.Invalid)
-            {
-                return new() { Invalid = environment };
-            }
-
             positive |= this.AvailableConstraintFact(environment, proposition, out _);
             negative |= this.AvailableConstraintFact(environment, negation, out _);
             if (environment.HasAssociatedProjection || typeIdentity || proposition.Kind == ConstraintKind.Callable || proposition is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
@@ -567,7 +561,7 @@ public sealed partial class Binding
 
         for (var current = view.Premises; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }

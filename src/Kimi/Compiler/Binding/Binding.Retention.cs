@@ -172,7 +172,7 @@ public sealed partial class Binding
         var scope = this.ConstraintScope(use);
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } constraints)
+            if (current.Constraints is not { } constraints)
             {
                 continue;
             }

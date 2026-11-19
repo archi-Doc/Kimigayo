@@ -102,7 +102,7 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 // Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf); the mark of
 // the declaration's own supply (Declared) only by MarkDeclared and Reset. An Invalid
 // environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer fails that node in the same step and names
-// it here; the first one is kept. As an ICheckCause it is what a proof that reads the environment rests on (Binding.InvalidEnvironment,
+// it here; the first one is kept. Its failed premises' cause is what a proof that consults one rests on (PremiseFailure,
 // the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
 // otherwise.
 // R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is.
@@ -119,15 +119,9 @@ internal sealed class PremiseFailure(Koto owner) : ICheckCause
     }
 }
 
-internal sealed class ConstraintEnvironment : ICheckCause
+internal sealed class ConstraintEnvironment
 {
     private PremiseFailure? premiseFailure; // R7-C3 B1': FailedPremise's cause, made once
-
-    public Koto Use => this.Failed!;
-
-    public ICheckCause? Next => null;
-
-    public ICheckCause? ReentrySite => null;
 
     internal HashSet<BoundConstraint> Facts { get; } = new(ReferenceEqualityComparer.Instance);
 
@@ -137,11 +131,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     // R7-C2c2 c2-4b (DECISIONS R4.13): the first Declared of DerivedFacts are the declaration's own supply (Declares).
     internal int Declared { get; private set; }
-
-    /// <summary>Gets the node whose failure made the environment Invalid; null while it is valid.</summary>
-    internal Koto? Failed { get; private set; }
-
-    internal bool Invalid => this.Failed is not null;
 
     // R7-C3 (SPEC 8.2.3, 23.1.2; F's C2 rulings 272-273): the premises whose own judgment is Error (FailPremise), their state Failed in
     // the evidence; and what a proof that consults one rests on (PremiseFailure, Use = the declaration that holds the record).
@@ -159,10 +148,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     // The number of changes of this environment's state.
     internal int Version { get; private set; }
-
-    public void Rest()
-    {
-    }
 
     // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise; an Error fact's writer names the failed node
     // (Fail).
@@ -262,17 +247,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.premiseFailure ??= new(owner);
     }
 
-    /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
-    /// <param name="node">The failed node.</param>
-    internal void Fail(Koto node)
-    {
-        if (this.Failed is null)
-        {
-            this.Failed = node;
-            this.Version++;
-        }
-    }
-
     /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
     /// of the identity relation and the identity classes' input (Binding.TypeIdentity); G721's interim reads it until G170's identity
     /// query answers which Types it makes identical.</summary>
@@ -280,7 +254,7 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     internal void Reset()
     {
-        if (this.Facts.Count != 0 || this.Invalid)
+        if (this.Facts.Count != 0)
         {
             this.Version++;
         }
@@ -289,7 +263,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
         this.Declared = 0;
-        this.Failed = null;
         this.FailedPremises?.Clear();
         this.UnprovenInputs?.Clear();
         this.HasAssociatedProjection = false;

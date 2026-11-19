@@ -623,11 +623,6 @@ public sealed partial class Binding
     {
         var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
         var evidence = this.Supply(normalized, this.ViewOf(scope));
-        if (evidence.Invalid is { } invalid)
-        {
-            return this.InvalidEnvironment(invalid);
-        }
-
         var positive = evidence.Positive;
         var negative = evidence.Negative;
 

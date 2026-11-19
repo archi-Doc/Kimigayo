@@ -55,14 +55,14 @@ public sealed partial class Binding
         {
             for (var left = a; left is not null; left = left.Parent)
             {
-                if (left.Constraints is not { Invalid: false } x)
+                if (left.Constraints is not { } x)
                 {
                     continue;
                 }
 
                 for (var right = b; right is not null; right = right.Parent)
                 {
-                    if (right.Constraints is not { Invalid: false } y)
+                    if (right.Constraints is not { } y)
                     {
                         continue;
                     }
@@ -327,7 +327,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                this.FailEnvironment(scope.Constraints ??= new(), syntax);
+                this.FailFacts(scope, syntax); // R7-C3: an invalid condition's premises fail with its judgment, never the environment
             }
         }
     }
@@ -335,14 +335,6 @@ public sealed partial class Binding
     private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, out BoundConformancePath? evidence)
     {
         evidence = null;
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is { Invalid: true } invalid)
-            {
-                return this.InvalidEnvironment(invalid);
-            }
-        }
-
         if (this.contractHeadersReady && this.BuiltinArithmeticConformance(type, contract, scope))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
@@ -642,11 +634,6 @@ public sealed partial class Binding
             }
 
             return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
-        }
-
-        if (path.Scope.Parent?.Constraints is { Invalid: true } invalid)
-        {
-            return this.InvalidEnvironment(invalid);
         }
 
         return this.ProveConditionalPremises(path.Premises, type, scope);

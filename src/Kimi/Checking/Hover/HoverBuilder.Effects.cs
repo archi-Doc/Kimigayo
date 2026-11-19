@@ -15,14 +15,6 @@ internal sealed partial class HoverBuilder
 
     private HoverInfo? Call(InvocationKoto syntax)
     {
-        for (var scope = query.ConstraintScope(syntax); scope is not null; scope = scope.Parent)
-        {
-            if (scope.Constraints is { Invalid: true })
-            {
-                return null;
-            }
-        }
-
         HoverInfo info;
         List<EffectEvidence>? evidence = null;
         StringBuilder? text = null;

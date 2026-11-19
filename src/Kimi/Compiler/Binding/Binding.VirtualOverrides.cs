@@ -122,7 +122,7 @@ public sealed partial class Binding
 
         void Collect(BindingScope source)
         {
-            if (source.Constraints is not { Invalid: false } environment)
+            if (source.Constraints is not { } environment)
             {
                 return;
             }

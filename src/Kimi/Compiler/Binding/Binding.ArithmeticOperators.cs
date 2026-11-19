@@ -33,7 +33,7 @@ public sealed partial class Binding
         // A Left premise publishes numeric eligibility without enumerating concrete numeric Types.
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
@@ -196,7 +196,7 @@ public sealed partial class Binding
         plan.Sources.Clear();
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
