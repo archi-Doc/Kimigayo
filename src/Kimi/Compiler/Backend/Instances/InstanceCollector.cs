@@ -51,14 +51,19 @@
 // complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
 // Formation (DECISIONS BU-36, BU-38; R7-T1): a Type or substitution of an item's instance is the substitution alone, never its
 // storage verdict (Binding's bound is retention's and A4's, not the collector's: a finite Type past it is generated, its growth R5-M170's
-// rule). Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed substitution through TyCtxt's
-// answer-frame query (TyCtxt.Answered), whose cause the collector reads once, at its requesting site (Formed): Formed makes it; HeightLimit,
-// a Type past IMPL A.4's height the substitution would form, is TypeHeightLimit_Kd (Resource, IMPL 21.3.2) at the site (a local's at the
-// local, the Type it writes forming it), once per requesting declaration and forming site at its least use, as a Layout limit is
-// (DECISIONS R5-M171); Incomplete is a broken contract at the site (Report). A part Binding rejected passes through to Layout's Rejected
-// row (RecordOf), a dependent of Binding's record. TypeOf reads TyCtxt.Apply, the same substitution without a frame, for code generation
-// and a Type whose cause its site already read (Rest's operand and environment, Agrees' signature under a witness's substitution whose
-// Self the call's composition made, Bodyless's intrinsic row's Type argument, a part of the Item Type its site made).
+// rule). Each run is Binding's one answer frame (TyCtxt.OpenAnswer, closed in a finally, so no throw leaves it open), so every Type the
+// run causes Binding to form answers a refusal past IMPL A.4's height to the formation owning it, of two: a substitution at a site, and an
+// instance's stored Types. Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed
+// substitution through TyCtxt's formation query (TyCtxt.Answered), whose cause the collector reads once, at its requesting site (Formed):
+// Formed makes it; HeightLimit is TypeHeightLimit_Kd (Resource, IMPL 21.3.2) at the site (a local's at the local, the Type it writes
+// forming it), once per requesting declaration and forming site at its least use, as a Layout limit is (DECISIONS R5-M171); Incomplete is
+// a broken contract at the site (Report). An instance's stored Types past the height are its own cause (AdtDef.InstanceStorage.HeightLimit),
+// which every reader of the instance reads: Layout as its HeightLimit, mapped here (RecordOf) to TypeHeightLimit_Kd at the use, once per
+// erased Type and declaration (R5-M171), never Rejected. A part Binding rejected passes through to Layout's Rejected row (RecordOf), a
+// dependent of Binding's record. A refusal no formation owns is the frame's, PLAN G651's site-less broken contract at its close. TypeOf
+// reads TyCtxt.Apply, the same substitution outside a formation, for code generation and a Type whose cause its site already read (Rest's
+// operand and environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic
+// row's Type argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
 // (CarriesInstance, the instance of the declaration it holds, TyCtxt.EnclosingDeclaration: a nested function's call, DECISIONS R5-M43; a
@@ -178,46 +183,15 @@ internal sealed partial class InstanceCollector
         }
 
         this.RunCount++;
-        set.Clear(program.Version);
-        this.counts.Clear();
-        this.limits.Clear();
-        this.refused.Clear();
-        this.glueKeys.Clear();
-        Array.Clear(this.declaring);
-        (this.program, this.rootModules, this.missed) = (program, rootModules, false);
-        program.Problems.Begin((int)MirRecordClass.Collection);
-        this.Templates(program);
-        foreach (var body in program.Bodies)
+        var frame = this.types.OpenAnswer(); // R7-T1: every substitution the run causes is inside the collector's answer frame.
+        try
         {
-            this.CheckStatic(body); // A3b, judged in every run (PLAN G950, G951), in body order: a static's declaration row first.
-            if (!body.HasFinding && body.Source.Module < rootModules)
-            {
-                this.CheckOperations(body);
-                if (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl))
-                {
-                    var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
-                    set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
-                }
-            }
+            return this.Collect(program, rootModules, set);
         }
-
-        set.EndRoots();
-        this.LayOutImports();
-        for (var item = 0; item < set.Items.Length; item++)
+        finally
         {
-            this.Replay(program, item);
+            this.types.CloseAnswer(frame);
         }
-
-        if (this.missed)
-        {
-            program.Problems.Drop(); // Round: a missed run commits nothing.
-            set.Clear(0);
-            return set;
-        }
-
-        this.RecordLimits();
-        program.Problems.Commit();
-        return set;
     }
 
     /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
@@ -262,6 +236,51 @@ internal sealed partial class InstanceCollector
             default:
                 throw new InvalidOperationException($"The formation {cause} has no row.");
         }
+    }
+
+    // One run of a version (Run), inside the collector's answer frame.
+    private CheckedSet Collect(MirProgram program, int rootModules, CheckedSet set)
+    {
+        set.Clear(program.Version);
+        this.counts.Clear();
+        this.limits.Clear();
+        this.refused.Clear();
+        this.glueKeys.Clear();
+        Array.Clear(this.declaring);
+        (this.program, this.rootModules, this.missed) = (program, rootModules, false);
+        program.Problems.Begin((int)MirRecordClass.Collection);
+        this.Templates(program);
+        foreach (var body in program.Bodies)
+        {
+            this.CheckStatic(body); // A3b, judged in every run (PLAN G950, G951), in body order: a static's declaration row first.
+            if (!body.HasFinding && body.Source.Module < rootModules)
+            {
+                this.CheckOperations(body);
+                if (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl))
+                {
+                    var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
+                    set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
+                }
+            }
+        }
+
+        set.EndRoots();
+        this.LayOutImports();
+        for (var item = 0; item < set.Items.Length; item++)
+        {
+            this.Replay(program, item);
+        }
+
+        if (this.missed)
+        {
+            program.Problems.Drop(); // Round: a missed run commits nothing.
+            set.Clear(0);
+            return set;
+        }
+
+        this.RecordLimits();
+        program.Problems.Commit();
+        return set;
     }
 
     // A Type of an item's body in the item's instance read at a site (TyCtxt.Answered, its cause read there, Formed): the Type itself for a

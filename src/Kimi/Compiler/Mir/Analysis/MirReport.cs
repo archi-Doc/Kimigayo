@@ -264,8 +264,10 @@ internal sealed partial class MirReport
         }
     }
 
-    /// <summary>Rows of a report kept as data (<see cref="Keep"/>): the problems with their facts and the index the first had in its report,
-    /// from which <see cref="Replay"/> moves their Cause facts. It references no analysis, so its owner can hold it across versions.</summary>
+    /// <summary>Rows of a report kept as data, read in two ways: a library segment's rows (<see cref="Keep"/>), the problems with their facts
+    /// and the index the first had in its report, from which <see cref="Replay"/> moves their Cause facts; and the open round's held problems
+    /// (<see cref="Begin"/>; R7-T1), kept from 0, which Commit adds through Add and which are never replayed. It references no analysis, so
+    /// its owner can hold it across versions.</summary>
     internal sealed class Kept
     {
         private readonly List<MirProblem> problems = [];

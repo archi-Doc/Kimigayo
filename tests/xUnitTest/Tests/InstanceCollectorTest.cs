@@ -932,13 +932,16 @@ public sealed partial class InstanceCollectorTest
     // IMPL A.4, 21.3.2 (R7-T1; DECISIONS R5-M171): a substitution a site requests past IMPL A.4's Type height (8,192) is one Resource record,
     // TypeHeightLimit_Kd with its limit, at the site whose Type forms it, and nothing else: a call's composition, by growth adding 900
     // layers a generation (grow450, before R5-M170's 17th generation) or in a chain of distinct functions whose 19th call forms 8,551
-    // (chain20); a body local's written Type in its instance (localh: f19's local forms 8,553), at the local, not at the requesting call.
-    // Before: the storage-nesting gap (Unsupported_Kd) at the first call past Binding's bound; without the answer frame, InternalInvariant_Kd
-    // at the project.
+    // (chain20); a body local's written Type in its instance (localh: f19's local forms 8,553), at the local, not at the requesting call;
+    // a Closure's result in its instance (clores150, the Front's twin t2-clores-over: 8,252, at the Closure's local) and a nested
+    // function's local (nest150, t2-nest-over: at inner's local). Before: the storage-nesting gap (Unsupported_Kd) at the first call past
+    // Binding's bound; without the answer frame, InternalInvariant_Kd at the project.
     [Theory]
     [InlineData("grow450", "mid<Box<")]
     [InlineData("chain20", "f20<Box<")]
     [InlineData("local450", "let x: Option<raw/Box<")]
+    [InlineData("clores150", "let g = func")]
+    [InlineData("nest150", "let y: Option<raw/Box<")]
     public void AHeightPastTheLimitIsAResourceRecordAtItsFormingSite(string shape, string site)
     {
         var c = MinimalEmissionTest.Check(DeepSource(shape));
@@ -947,12 +950,32 @@ public sealed partial class InstanceCollectorTest
         Assert.StartsWith(site, record.Text, StringComparison.Ordinal);
     }
 
-    // R7-T1 (N1; PLAN G651): only the collector's query answers a height refusal after Binding's run. On chain20, f19's call composed with
-    // f19's instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding nothing; TyCtxt.Answered gives
-    // HeightLimit again without a record, while TyCtxt.Compose, which opens no answer frame, gives Incomplete and Binding's site-less broken
-    // contract (InternalInvariant_Kd at the project until G651 a1-a4), never a silent null.
+    // IMPL A.4, 21.3.2 (R7-T1; DECISIONS R5-M171): an instance whose stored Type passes IMPL A.4's height (f19's W<Box^8100<i32>>, its Field
+    // or Case payload Option<raw/Box^150<T>> forming 8,252) is its own cause, published with the instance: one TypeHeightLimit_Kd per
+    // instance and declaration, at its least use (the local; the `.None` beside it and a second Type holding the instance are uses of it),
+    // never Rejected's InternalInvariant_Kd and never at a call whose composition only names the instance (wboth: g<W<T>>() reads none of
+    // its storage); two instances are two records (wpair). The Front's twins t2-field-over, t2-case-over, t3-fieldboth-over.
+    [Theory]
+    [InlineData("wfield150", 1)]
+    [InlineData("wcase150", 1)]
+    [InlineData("wboth150", 1)]
+    [InlineData("wtwo150", 1)]
+    [InlineData("wpair150", 2)]
+    public void AStoredTypePastTheLimitIsOneResourceRecordPerInstance(string shape, int count)
+    {
+        var c = MinimalEmissionTest.Check(DeepSource(shape));
+        var records = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
+        Assert.Equal(Enumerable.Repeat(nameof(DiagnosticCode.TypeHeightLimit_Kd), count), records.Select(static x => x.Code));
+        Assert.All(records, static x => Assert.StartsWith("let ", x.Text, StringComparison.Ordinal));
+    }
+
+    // R7-T1 (N1; PLAN G651): only the collector's run answers a height refusal after Binding's run, to the formation owning it. On chain20,
+    // f19's call composed with f19's instance (T = Box^8100<i32>) forms 8,551: the collector's run records it at the call and Binding
+    // nothing. In the collector's answer frame, TyCtxt.Answered gives HeightLimit again without a record, while TyCtxt.Compose, which owns
+    // no refusal, gives Incomplete and the frame records Binding's site-less broken contract at its close; outside the frame Answered owns
+    // nothing either (InternalInvariant_Kd at the project until G651 a1-a4): never a silent null.
     [Fact]
-    public void OnlyTheCollectorsQueryAnswersAnAfterRunHeightRefusal()
+    public void OnlyTheCollectorsRunAnswersAnAfterRunHeightRefusal()
     {
         var c = MirBuildTest.Compile(DeepSource("chain20"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -963,22 +986,30 @@ public sealed partial class InstanceCollectorTest
         var f19 = set.Items.ToArray().Single(x => x.BodyOrdinal >= 0 && program.Body(x.BodyOrdinal).Key.Decl?.Name == "f19");
         var call = program.Body(f19.BodyOrdinal).Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x is { Kind: MirTerminatorKind.Call, Callee.Subst: not null });
         Assert.Empty(TestDiagnostics.Of(c));
+        var frame = c.Types.OpenAnswer();
         var answered = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.HeightLimit), (answered.Subst, answered.Cause));
-        Assert.Empty(TestDiagnostics.Of(c));
         var composed = c.Types.Compose(call.Callee.Subst!, f19.Representative!);
         Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (composed.Subst, composed.Cause));
+        Assert.Empty(TestDiagnostics.Of(c));
+        c.Types.CloseAnswer(frame);
         Assert.Equal([nameof(DiagnosticCode.InternalInvariant_Kd)], TestDiagnostics.Of(c).Select(static x => x.Code));
+        var outside = c.Types.Answered(call.Callee.Subst!, f19.Representative!);
+        Assert.Equal(((Subst?)null, TyCtxt.Formation.Incomplete), (outside.Subst, outside.Cause));
     }
 
     // R7-T1 (IMPL 21.3.1, SPEC 6.1; the owner's RQ12): a finite Type past Binding's storage bound that no called signature carries is an
     // instance, whose growth alone R5-M170 bounds: a body local behind raw or ref over Box^n<i32> (61, the bound's twin, to 450) or over S1
     // of a 65-ring, a handle in a generic struct's Field, a by-value local over the ring through rc, a chain of distinct functions within
-    // the height limit (f17's call forming 7,651, f18's 8,101) and its last function's local within it (8,153); and pick<T>(value: T)
-    // over Option^32<ref/i32> with nothing following the call (labelled V, c3\labels.tsv W1a; SPEC 8.13.3, 8.15.3: a closed generic call
-    // over a finite Type), where A5's own limit is not met (B's rulings 14-15; its twin with a statement following keeps A5's record,
-    // APickPastTheBoundFollowedByAStatementMeetsA5sOwnLimit). Before: from Box^62 on, the storage-nesting gap (Unsupported_Kd) at the
-    // call. GenericStorageEmissionTest.DeepTypesExecute runs one program per form.
+    // the height limit (f17's call forming 7,651, f18's 8,101) and its last function's local within it (8,153); pick<T>(value: T) over
+    // Option^32<ref/i32> in a body holding no Loan (labelled V, c3\labels.tsv W1a; SPEC 8.13.3, 8.15.3: a closed generic call over a
+    // finite Type), which A5 does not check (A3 6.1 D5: only a body holding a Loan), so A5's own limit is not met (its twin whose body holds
+    // a Loan keeps A5's record, APickPastTheBoundInABodyHoldingALoanMeetsA5sOwnLimit); and the Front's twins (c3de\labels.tsv): a Closure
+    // literal's result or parameter past the bound (closure61/65, B1, and clopar65, called), and within IMPL A.4's height after the chain a
+    // Closure's result (clores50), a nested function's local (nest50), a generic struct's Field and enum's Case payload (wfield50, wcase50),
+    // each also at f18 with Box^500 written (the Early shapes, the Front's t-*-under), and an instance past it named only as a Type
+    // argument (warg150: no reader needs its storage). Before: from Box^62 on, the
+    // storage-nesting gap (Unsupported_Kd) at the call. GenericStorageEmissionTest.DeepTypesExecute runs one program per form.
     [Theory]
     [InlineData("raw61")]
     [InlineData("raw62")]
@@ -997,6 +1028,18 @@ public sealed partial class InstanceCollectorTest
     [InlineData("chain19")]
     [InlineData("local50")]
     [InlineData("pick32")]
+    [InlineData("closure61")]
+    [InlineData("closure65")]
+    [InlineData("clopar65")]
+    [InlineData("clores50")]
+    [InlineData("cloresEarly500")]
+    [InlineData("nest50")]
+    [InlineData("nestEarly500")]
+    [InlineData("wfield50")]
+    [InlineData("wfieldEarly500")]
+    [InlineData("wcase50")]
+    [InlineData("wcaseEarly500")]
+    [InlineData("warg150")]
     public void AFiniteTypePastBindingsBoundIsAnInstance(string shape)
     {
         var c = MinimalEmissionTest.Check(DeepSource(shape));
@@ -1004,15 +1047,34 @@ public sealed partial class InstanceCollectorTest
     }
 
     // R7-T1 (B's ruling 15; labelled V, c3\labels.tsv W1b: SPEC 8.13.3, 8.15.3; IMPL 21.3.2): pick<T>(value: T) over Option^32<ref/i32>
-    // with a statement following the call meets A5's own limit, where A5 tracks the value past the call: its OwnershipDepthLimit_Kd at
-    // pick(v@move) is the program's one record (before R7-T1 the collector's Unsupported_Kd beside it, m2); the twin with nothing
-    // following has none (AFiniteTypePastBindingsBoundIsAnInstance's pick32). The dependence on what follows is the Middle's (RP17).
+    // in a body holding a Loan (pickThen32's: the literal of the statement after the call) meets A5's own limit: A5 checks a body only
+    // where it holds a Loan (A3 6.1 D5), and its call-store check joins the call's retention limit at the call (DECISIONS R4-M51,
+    // R4-M153), so its OwnershipDepthLimit_Kd at pick(v@move) is the program's one record (before R7-T1 the collector's Unsupported_Kd
+    // beside it, m2); the twin whose body holds no Loan has none (AFiniteTypePastBindingsBoundIsAnInstance's pick32; the Middle's RP17).
     [Fact]
-    public void APickPastTheBoundFollowedByAStatementMeetsA5sOwnLimit()
+    public void APickPastTheBoundInABodyHoldingALoanMeetsA5sOwnLimit()
     {
         var c = MinimalEmissionTest.Check(DeepSource("pickThen32"));
         var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal((nameof(DiagnosticCode.OwnershipDepthLimit_Kd), "pick(v@move)"), (record.Code, record.Text));
+    }
+
+    // R7-T1 (the Front's twins, c3de\labels.tsv; IMPL A.4, 21.3.2; SPEC 23.1.2): where a twin's body holds a Loan past Binding's bound, A5's
+    // own OwnershipDepthLimit_Kd stays (on dev too), and a Type past IMPL A.4's height is one TypeHeightLimit_Kd at its forming site beside
+    // it, never InternalInvariant_Kd: a called Closure's parameter (clo150, t2-clo-over: the argument `.None` forms 8,252; cloEarly500,
+    // t-clo-under: f18's Box^500 written, within the height, A5's record alone) and a generic struct's method holding a Closure (cap92,
+    // t2-cap-over: the local h's H<Box^8192<i32>> forms 8,193; cap91, t2-cap-under: the receiver h's ref/H<Box^8191<i32>> forms 8,193).
+    // Each record as its code and its text up to the first '<'.
+    [Theory]
+    [InlineData("clo150", "OwnershipDepthLimit_Kd g(.None)|TypeHeightLimit_Kd .None")]
+    [InlineData("cloEarly500", "OwnershipDepthLimit_Kd g(.None)")]
+    [InlineData("cap92", "TypeHeightLimit_Kd let h = H|OwnershipDepthLimit_Kd H|OwnershipDepthLimit_Kd h.run()")]
+    [InlineData("cap91", "OwnershipDepthLimit_Kd H|TypeHeightLimit_Kd h|OwnershipDepthLimit_Kd h.run()")]
+    public void ATwinMeetingA5sOwnLimitKeepsItsRecord(string shape, string records)
+    {
+        var c = MinimalEmissionTest.Check(DeepSource(shape));
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(records, string.Join('|', errors.Select(static x => x.Code + " " + (x.Text!.IndexOf('<') is var at and >= 0 ? x.Text[..at] : x.Text))));
     }
 
     // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and
@@ -2770,8 +2832,11 @@ public sealed partial class InstanceCollectorTest
 
     // R7-T1's programs over Types past Binding's storage bound (the design's probes), a shape and its number n: a body local f<T>'s Option
     // behind raw or ref over Box^n<i32> (raw, ref) or over S1 of an n-ring (rawRing, refRing), a handle in a generic struct's Field (field),
-    // a by-value local over the ring through rc (valRing); pick<T>(value: T) over Option^n<ref/i32>, nothing following the call (pick)
-    // or a statement following it (pickThen); a chain of n distinct
+    // a by-value local over the ring through rc (valRing); pick<T>(value: T) over Option^n<ref/i32> in a body holding no Loan (pick) or
+    // one whose statement after the call holds one (pickThen); a Closure literal in f<Box^n<i32>> over T, its result (closure) or its
+    // parameter, called (clopar); after f19's chain (T = Box^8100<i32>), a Closure's result (clores) or parameter, called (clo), a nested
+    // function's local (nest), each over Box^n<T>, or a local of H<Box^n<T>> whose method holds a Closure (cap); a chain's shape ending
+    // "Early" ends the chain at f18 (T = Box^7650<i32>) instead; a chain of n distinct
     // functions each adding 450 layers (chain), the 19th, at T = Box^8100<i32>, with a body local adding n more (local) or making an
     // Array<Box^n<T>> with a capacity, the library's Array.initCapacity (capacity); growth by 2n layers a generation, grow -> mid -> grow
     // (grow).
@@ -2779,8 +2844,13 @@ public sealed partial class InstanceCollectorTest
     {
         const string Box = "struct Box<T>\n    public let value: T\n";
         const string End = "Console.writeLine(\"ok\")\n";
+        const string G = "func g<U>() -> i32 => 0\n"; // A generic function reading none of its parameter's storage.
+        const string H = "struct H<T>\n    public var n: i32 = 1\n    public init() => ()\n    public func run(self: ref/Self) -> i32\n" +
+            "        let g = func [] () -> i32 => 0\n        return g()\n"; // A generic struct's method holding a Closure.
         var n = int.Parse(shape.AsSpan(shape.IndexOfAny("0123456789".ToCharArray())), CultureInfo.InvariantCulture);
-        return shape[..shape.IndexOfAny("0123456789".ToCharArray())] switch
+        var name = shape[..shape.IndexOfAny("0123456789".ToCharArray())];
+        var last = name.EndsWith("Early", StringComparison.Ordinal) ? 18 : 19; // The chain's last function, f18 for a shape ending "Early".
+        return name[..(last == 18 ? ^5 : ^0)] switch
         {
             "raw" => Box + Local("Option<raw/T>") + $"f<{Nest("Box", n, "i32")}>()\n" + End,
             "ref" => Box + Local("Option<ref/T>") + $"f<{Nest("Box", n, "i32")}>()\n" + End,
@@ -2791,19 +2861,38 @@ public sealed partial class InstanceCollectorTest
             "pick" => Pick(n),
             "pickThen" => Pick(n) + End,
             "chain" => Chain(n, " => 0\n"),
-            "local" => Chain(19, $"\n    let x: Option<raw/{Nest("Box", n, "T")}> = .None\n    return 0\n"),
-            "capacity" => Chain(19, $"\n    let a = Array<{Nest("Box", n, "T")}>.init(capacity: 1)\n    return 0\n"),
+            "local" => Chain(last, $"\n    let x: Option<raw/{Nest("Box", n, "T")}> = .None\n    return 0\n"),
+            "capacity" => Chain(last, $"\n    let a = Array<{Nest("Box", n, "T")}>.init(capacity: 1)\n    return 0\n"),
+            "closure" => Box + $"func f<T>() -> ()\n    let g = func [] () -> Option<raw/T> => .None\n    return\nf<{Nest("Box", n, "i32")}>()\n" + End,
+            "clopar" => Box + "func f<T>() -> i32\n    let g = func [] (y: Option<raw/T>) -> i32 => 0\n    return g(.None)\n" +
+                $"require f<{Nest("Box", n, "i32")}>() == 0 else => $abort(\"f\")\n" + End,
+            "clores" => Chain(last, $"\n    let g = func [] () -> Option<raw/{Nest("Box", n, "T")}> => .None\n    return 0\n"),
+            "clo" => Chain(last, $"\n    let g = func [] (y: Option<raw/{Nest("Box", n, "T")}>) -> i32 => 0\n    return g(.None)\n"),
+            "nest" => Chain(last, $"\n    func inner() -> i32\n        let y: Option<raw/{Nest("Box", n, "T")}> = .None\n        return 0\n    return inner()\n"),
+            "cap" => Chain(last, $"\n    let h = H<{Nest("Box", n, "T")}>.init()\n    return h.run()\n", H),
+            "wfield" => Chain(last, "\n    let x: Option<W<T>> = .None\n    return 0\n", W(n)),
+            "wcase" => Chain(last, "\n    let x: Option<E<T>> = .None\n    return 0\n", E(n)),
+            "warg" => Chain(last, " => g<W<T>>()\n", W(n) + G),
+            "wboth" => Chain(last, "\n    let x: Option<W<T>> = .None\n    return g<W<T>>()\n", W(n) + G),
+            "wtwo" => Chain(last, "\n    let x: Option<W<T>> = .None\n    let y: Option<Option<W<T>>> = .None\n    return 0\n", W(n)),
+            "wpair" => Chain(last, "\n    let x: Option<W<T>> = .None\n    let y: Option<E<T>> = .None\n    return 0\n", W(n) + E(n)),
             _ => Box + $"func grow<T>(n: i32) -> i32 => if n == 0 => 0 else => mid<{Nest("Box", n, "T")}>(n - 1)\n" +
                 $"func mid<U>(n: i32) -> i32 => grow<{Nest("Box", n, "U")}>(n)\nrequire grow<i32>(3) == 0 else => $abort(\"grow\")\n" + End,
         };
 
         static string Local(string type) => $"func f<T>() -> ()\n    let x: {type} = .None\n    return\n";
 
+        // A generic struct's Field and a generic enum's Case payload over Box^n of the parameter, behind raw (R7-T1: an instance's stored
+        // Types).
+        static string W(int n) => $"struct W<T>\n    public let p: Option<raw/{Nest("Box", n, "T")}>\n";
+
+        static string E(int n) => $"enum E<T>\n    A(Option<raw/{Nest("Box", n, "T")}>)\n    B\n";
+
         static string Pick(int n) => $"func pick<T>(value: T) -> T => value@move\nlet v: {Nest("Option", n, "ref/i32")} = .None\nlet w = pick(v@move)\n";
 
-        // The chain's last function's body follows its signature.
-        static string Chain(int functions, string last)
-            => Box + string.Concat(Enumerable.Range(1, functions - 1).Select(static i => $"func f{i}<T>() -> i32 => f{i + 1}<{Nest("Box", 450, "T")}>()\n")) +
+        // The chain's last function's body follows its signature, after the declarations it reads.
+        static string Chain(int functions, string last, string declarations = "")
+            => Box + declarations + string.Concat(Enumerable.Range(1, functions - 1).Select(static i => $"func f{i}<T>() -> i32 => f{i + 1}<{Nest("Box", 450, "T")}>()\n")) +
                 $"func f{functions}<T>() -> i32" + last + "require f1<i32>() == 0 else => $abort(\"chain\")\n" + End;
     }
 

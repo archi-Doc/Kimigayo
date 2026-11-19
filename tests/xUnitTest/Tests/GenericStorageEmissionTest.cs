@@ -69,14 +69,16 @@ public class GenericStorageEmissionTest
     public void PairFieldsExecute(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericStoragePair" + name, source, stdout);
 
-    // R7-T1 (IMPL 21.3.1; the Middle's RP17): a program per form of a finite Type past Binding's storage bound that no called signature
+    // R7-T1 (IMPL 21.3.1, A.4; the Middle's RP17): a program per form of a finite Type past Binding's storage bound that no called signature
     // carries (InstanceCollectorTest.AFiniteTypePastBindingsBoundIsAnInstance) is generated and runs: a local behind raw over Box^62 and
-    // behind ref over Box^64, behind raw and ref over a 65-ring, a handle in a generic struct's Field, a by-value local over the ring, a
-    // chain of 19 distinct functions forming 8,101 layers and its last function's local forming 8,153, and pick<T>(value: T) over
-    // Option^32<ref/i32> with nothing following the call, which prints nothing (labelled V, c3\labels.tsv W1a; B's rulings 14-15: where
-    // A5's own limit is not met).
+    // over the deepest accepted Box^450 (no host-stack exhaustion at code generation), behind ref over Box^64, behind raw and ref over a
+    // 65-ring, a handle in a generic struct's Field, a by-value local over the ring, a chain of 19 distinct functions forming 8,101 layers
+    // and its last function's local forming 8,153, pick<T>(value: T) over Option^32<ref/i32> in a body holding no Loan, which prints
+    // nothing (labelled V, c3\labels.tsv W1a; A5 checks only a body holding a Loan), a Closure's result past the bound (B1), and a
+    // generic struct's Field and enum's Case payload within IMPL A.4's height and an instance past it named only as a Type argument.
     [Theory]
     [InlineData("raw62")]
+    [InlineData("raw450")]
     [InlineData("ref64")]
     [InlineData("rawRing65")]
     [InlineData("refRing65")]
@@ -85,6 +87,10 @@ public class GenericStorageEmissionTest
     [InlineData("chain19")]
     [InlineData("local50")]
     [InlineData("pick32", "")]
+    [InlineData("closure65")]
+    [InlineData("wfield50")]
+    [InlineData("wcase50")]
+    [InlineData("warg150")]
     public void DeepTypesExecute(string shape, string stdout = "ok\n")
         => ScalarEmissionTest.EmitFixture("GenericStorageDeep" + char.ToUpperInvariant(shape[0]) + shape[1..], InstanceCollectorTest.DeepSource(shape), stdout);
 

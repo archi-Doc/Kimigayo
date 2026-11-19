@@ -13,7 +13,8 @@ internal sealed partial class InstanceCollector
     private int[] chain = []; // A Place's steps, last first (ListNeeds' scratch).
 
     /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
-    /// is Resource (IMPL 21.3.2); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
+    /// is Resource (IMPL 21.3.2), and so is a stored Type past IMPL A.4's height (HeightLimit: TypeHeightLimit_Kd, R7-T1), each recorded as
+    /// a limit (Limit); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
     /// any depth in the window, is the Language error InvalidCLayout_Kd (SPEC 6.7.1, 8.15.3); Ok has none, and Rejected storage, which rests on
     /// a part Binding rejected, is a broken contract in a complete compilation and otherwise a dependent that Report drops (DECISIONS BU-38,
     /// R5-M151). Oversized is reported through Result.Oversized, which an oversized CLayout carries too.</summary>
@@ -24,6 +25,7 @@ internal sealed partial class InstanceCollector
         Layout.Outcome.Ok or Layout.Outcome.Oversized => null,
         Layout.Outcome.Rejected => DiagnosticCode.InternalInvariant_Kd,
         Layout.Outcome.SizeLimit or Layout.Outcome.CountLimit or Layout.Outcome.DepthLimit => DiagnosticCode.GenerationResourceLimit_Kd,
+        Layout.Outcome.HeightLimit => DiagnosticCode.TypeHeightLimit_Kd,
         Layout.Outcome.CLayout => DiagnosticCode.InvalidCLayout_Kd,
         _ => throw new InvalidOperationException($"The layout outcome {outcome} has no record row."),
     };
@@ -80,7 +82,7 @@ internal sealed partial class InstanceCollector
                 if (this.types.Signature(function, null, slot, out _) is { } type &&
                     SourceRef.Of(TyCtxt.SignatureSite(function.Declaration, slot)) is var site && this.Verdict(site, type) is { IsLimit: true } result)
                 {
-                    this.Limit(this.RecordOf(result.Outcome)!.Value, this.types.Erase(type), default, new(function, MirBodyKind.Fn), site); // The import is its own declaration.
+                    this.Limit(this.RecordOf(result.Outcome)!.Value, this.types.Erase(result.Instance ?? type), default, new(function, MirBodyKind.Fn), site); // The import is its own declaration.
                 }
             }
         }
@@ -199,14 +201,15 @@ internal sealed partial class InstanceCollector
         return laid;
     }
 
-    // Whether a by-value use's Type, at a site of an item's records, is laid out (Verdict); a limit is a use of its erased Type in the
-    // item's declaration with the limit's record (Limit, RecordOf).
+    // Whether a by-value use's Type, at a site of an item's records, is laid out (Verdict); a limit is a use in the item's declaration,
+    // with the limit's record (Limit, RecordOf), of the erased Type Layout names: the instance whose stored Type passes the height (R7-T1),
+    // else the use's.
     private bool LaysOut(int item, SourceRef subject, BoundType type)
     {
         var result = this.Verdict(subject, type);
         if (result.IsLimit)
         {
-            this.Limit(this.RecordOf(result.Outcome)!.Value, this.types.Erase(type), default, this.Declaration(item), subject);
+            this.Limit(this.RecordOf(result.Outcome)!.Value, this.types.Erase(result.Instance ?? type), default, this.Declaration(item), subject);
         }
 
         return result.Outcome == Layout.Outcome.Ok;

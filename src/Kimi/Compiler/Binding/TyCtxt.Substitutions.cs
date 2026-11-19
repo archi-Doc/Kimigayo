@@ -11,9 +11,12 @@
 // guarded by it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
 // Formation, this file's representation: whether a substitution formed its instance, the cause travelling with a null one (Apply's
 // Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete), HeightLimit (Binding.TypeHeight's
-// refusal answered to the query that opened its answer frame, Answered, the instance collector's, recorded by that query's reader at its
-// requesting site). A cause is the substitution's alone: it never reads storage, which Instance's verdict publishes beside it. Apply,
-// Instance and Compose open no frame, so an after-run refusal outside Answered stays PLAN G651's site-less record (R7-T1, N1).
+// refusal answered inside the instance collector's answer frame, which only the collector's run opens, OpenAnswer, to the formation
+// that owns it, Answered, the collector's query, recorded by that query's reader at its requesting site). Apply reads no storage, so its
+// cause is the substitution's alone; an instance's stored Types are formed by Binding.Instance, which publishes its own cause beside them
+// (AdtDef.InstanceStorage.HeightLimit), never Apply's or Compose's (whose verdict walk, Instance's, may form them). Apply, Instance and
+// Compose own no refusal, so one inside the frame outside Answered and outside an instance is the frame's, recorded at its close as PLAN
+// G651's site-less record, and one after the run outside the frame stays that record (R7-T1, N1).
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
 // compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
 // grows are reused.
@@ -46,12 +49,13 @@ internal sealed partial class TyCtxt
         Formed,
 
         /// <summary>A step does not complete (BU-36's contract substitution that does not complete), or Binding.TypeHeight refused a
-        /// Type outside an answer frame, recording it itself (the consultation's node, else PLAN G651's site-less record).</summary>
+        /// Type no formation of this query owns, recording it itself (the consultation's node, else PLAN G651's site-less record, at once
+        /// outside the collector's answer frame or at its close inside it).</summary>
         Incomplete,
 
-        /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered the query that opened its
-        /// answer frame instead of recording it (PLAN G651's after-run site kind "the caller records": Answered, the instance collector's
-        /// query, whose reader records it).</summary>
+        /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered it to this formation in
+        /// the collector's answer frame instead of recording it (PLAN G651's after-run site kind "the caller records": Answered, the
+        /// instance collector's query, whose reader records it).</summary>
         HeightLimit,
     }
 
@@ -180,30 +184,38 @@ internal sealed partial class TyCtxt
     // the identity keeps it; null where the substitution does not complete it.
     internal BoundLength? InstanceLength(BoundLength length, Subst subst) => subst.IsIdentity ? length : binding.InstanceLength(length, subst);
 
-    // SPEC 8.1.3: a declared Type in the instance a substitution makes, by the substitution alone (Binding.StorageInstance), with its
-    // Formation: the identity keeps the Type; null exactly where the substitution does not form it, with the cause. No storage is walked
-    // or prepared (Instance gives the verdict).
+    // SPEC 8.1.3: a declared Type in the instance a substitution makes, by the substitution alone (Binding.StorageInstance: its closing
+    // step reads the closure's result's formation, never its storage), with its Formation: the identity keeps the Type; null exactly where
+    // the substitution does not form it, with the cause. No storage is walked or prepared (Instance gives the verdict).
     internal (BoundType? Type, Formation Cause) Apply(BoundType type, Subst subst)
         => subst.IsIdentity ? (type, Formation.Formed)
             : binding.StorageInstance(type, subst) is { } instance ? (instance, Formation.Formed) : (null, Formation.Incomplete);
 
-    // R7-T1 (PLAN G651's after-run site kind "the caller records"; R1.1 item 1): Apply inside Binding's answer frame, the instance
-    // collector's query, whose one reader of a cause (InstanceCollector.Formed) records it at its requesting site: a refusal of a Type
-    // above the height limit is answered as HeightLimit, and Binding records nothing; any other result is Apply's.
+    // R7-T1 (PLAN G651's after-run site kind "the caller records"): the instance collector's answer frame, opened by its run alone
+    // (InstanceCollector.Run, in a finally), so every substitution the run causes is inside it and none outside (Binding.TypeHeight).
+    internal (bool Open, bool Answered) OpenAnswer() => binding.OpenAnswer();
+
+    // Closes the collector's answer frame; a refusal no formation owned is recorded there as PLAN G651's site-less broken contract.
+    internal void CloseAnswer((bool Open, bool Answered) frame) => binding.CloseAnswer(frame);
+
+    // R7-T1: Apply as a formation owning its refusals in the collector's answer frame, the collector's query, whose one reader of a cause
+    // (InstanceCollector.Formed) records it at its requesting site: a refusal of a Type above the height limit is answered as HeightLimit,
+    // and Binding records nothing; any other result is Apply's.
     internal (BoundType? Type, Formation Cause) Answered(BoundType type, Subst subst)
     {
-        var frame = binding.OpenAnswer();
+        var formation = binding.OpenFormation();
         var (instance, cause) = this.Apply(type, subst);
-        return binding.CloseAnswer(frame) ? (null, Formation.HeightLimit) : (instance, cause);
+        return binding.CloseAnswer(formation) ? (null, Formation.HeightLimit) : (instance, cause);
     }
 
-    // R7-T1: Compose inside Binding's answer frame, the instance collector's query for a call's edge (as Answered for a Type): a refused
-    // height is HeightLimit with no Subst; any other result is Compose's.
+    // R7-T1: Compose as such a formation, the collector's query for a call's edge (as Answered for a Type): a refused height is HeightLimit
+    // with no Subst; any other result is Compose's. A refusal its parts' verdict walk meets forming an instance's stored Types is that
+    // instance's (Binding.Instance), not the composition's.
     internal (Subst? Subst, Formation Cause, Binding.StorageOutcome Storage, BoundType? Part) Answered(Subst inner, Subst outer)
     {
-        var frame = binding.OpenAnswer();
+        var formation = binding.OpenFormation();
         var (subst, cause, storage, part) = this.Compose(inner, outer);
-        return binding.CloseAnswer(frame) ? (null, Formation.HeightLimit, Binding.StorageOutcome.Limit, null) : (subst, cause, storage, part);
+        return binding.CloseAnswer(formation) ? (null, Formation.HeightLimit, Binding.StorageOutcome.Limit, null) : (subst, cause, storage, part);
     }
 
     // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): Apply, then the instance's
