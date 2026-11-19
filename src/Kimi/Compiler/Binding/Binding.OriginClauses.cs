@@ -300,12 +300,13 @@ public sealed partial class Binding
     // record. The caller found it unproven by the premises, the proof a clause takes (SPEC 15.3.3: it assumes no new facts, so it bounds
     // no open initializer as a fit's answer does, FormBodyRelation's step 2), so the row forms directly. Its record is at the clause, or
     // at the initializer when that supplies one of its ends, an Origin the local's Type omits, as the value that does not fit (H11b D5).
+    // Its ends are the clause's as written, which the view resolves at the clause (its Supplier, R4-M133, is the written longer end).
     private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
     {
         var use = relation.Syntax;
         var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
         var site = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
-        var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, this.OriginAtUse(relation.Longer, use), this.OriginAtUse(relation.Shorter, use), Site: site);
+        var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Site: site);
         this.AddObligation(row with { Equality = relation.Equality, Clause = use });
 
         // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.

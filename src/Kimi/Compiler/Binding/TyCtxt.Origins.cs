@@ -61,8 +61,9 @@ internal enum ProjectionRole : byte
 
 /// <summary>One relation a body checks (2a0-D D2): its <c>Site</c>, the syntax it is checked at as a SourceRef (DECISIONS R4-M113); its ends,
 /// indices in the body's atom table; <c>CaseMask</c>, the Semantics case it is required in, as bits of the body's pair binders
-/// (<c>MirBody.Binders</c>). <c>Clause</c>, <c>Destination</c> and <c>FixedBy</c> (the input whose equality fixed a call's fresh Origin, SPEC 15.6.1) are
-/// the diagnostics adapter's: MirOrigins reads none of them.</summary>
+/// (<c>MirBody.Binders</c>). <c>Clause</c>, <c>Destination</c>, <c>FixedBy</c> (the input whose equality fixed a call's fresh Origin, SPEC 15.6.1) and
+/// <c>Supplier</c> (the longer end as Binding formed it, before the view resolved it, a Closure's receiver resolution included: the record shows
+/// the Borrow that supplied its end from it, DECISIONS R4-M133) are the diagnostics adapter's: MirOrigins reads none of them.</summary>
 internal readonly record struct OriginRow(
     SourceRef Site,
     int Longer,
@@ -72,7 +73,8 @@ internal readonly record struct OriginRow(
     Koto? Clause,
     BoundType? Destination,
     ulong CaseMask,
-    Koto? FixedBy);
+    Koto? FixedBy,
+    BoundOrigin Supplier);
 
 /// <summary>An atom of a body's table with its class there; <c>EnclosingCallRegion</c>: the atom is an enclosing body's call region, or a meet
 /// with such an operand (row 6), which A5's failing chains read (the nested-body limit).</summary>

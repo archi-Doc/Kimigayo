@@ -229,7 +229,8 @@ public partial class Compilation
 
     // The fact table's Relation row (design 3.3): an Origin problem's last edge through Binding.OriginRelationFacts, its site, clause,
     // destination and source from the body's C1-F4 row, a containment edge (-1) without a row as wellFormed; the ends are
-    // the Reason's, the longer one also the supplier (Q-BU-1). Null for a broken contract: no body, no Reason ends, or a row MirOrigins forms.
+    // the Reason's, the longer one also the supplier (Q-BU-1) unless the row's own longer end as formed supplied it (Binding.RowSupplier,
+    // DECISIONS R4-M133). Null for a broken contract: no body, no Reason ends, or a row MirOrigins forms.
     private (object[] Evidence, (string Role, Koto At, string? Label)[]? Related)? Relation(
         Mir.MirProgram program, in Mir.MirReport.MergedProblem problem, int body, ProblemFact fact)
     {
@@ -256,7 +257,7 @@ public partial class Compilation
         var at = this.SyntaxOf(row.Site);
         var wellFormed = row.Source == OriginRowSource.WellFormed;
         return source is null ? null
-            : this.Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, FixedBy: row.FixedBy, WellFormed: wellFormed), source);
+            : this.Binding.OriginRelationFacts(new(at, longer, this.Binding.RowSupplier(row.Supplier, longer, at), shorter, equality, row.Destination, refuted, row.Clause, FixedBy: row.FixedBy, WellFormed: wellFormed), source);
     }
 
     // A code without facts keyed by its subject's location, in the subject's collection (DIAGNOSTICS 4.1; DECISIONS R5-M65, R4-M71).
