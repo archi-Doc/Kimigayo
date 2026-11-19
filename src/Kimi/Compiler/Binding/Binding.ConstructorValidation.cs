@@ -141,6 +141,7 @@ public sealed partial class Binding
                     this.inferenceFixedChecks++;
                 }
 
+                RequireOriginWidths(function, originStride, inputStride);
                 var state = this.TryCandidate(
                     new SlotSolution
                     {

@@ -5,8 +5,9 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 10.2-10.4, 8.4.8.2: candidate evaluation and selection, shared by a call and by a query that must not publish, the omitted base
-// selection of an implicit constructor (SPEC 6.3.6). Evaluation records each candidate's applicability and plan facts in the call's
-// rented scratch; classification decides the selection from them. Neither fails, completes nor records a node.
+// selection of an implicit constructor (SPEC 6.3.6). Each candidate's accessibility is decided and its header bound before the set is
+// measured (RentCandidates); evaluation records each candidate's applicability and plan facts in the call's rented scratch;
+// classification decides the selection from them. Neither fails, completes nor records a node.
 public sealed partial class Binding
 {
     private enum CallSelection : byte
@@ -20,9 +21,21 @@ public sealed partial class Binding
         Ambiguous,
     }
 
-    // The scratch sizes a candidate set needs. Origins are solved when the caller or the enclosing Type can carry them, or when a
-    // candidate declares one, returns one or takes one. Receiver: the group has a receiver shape (SPEC 7.3.2), some candidate taking a
-    // receiver (ReceiverIndex), so a value-qualified call acquires its Receiver Expression by the Name before selection.
+    // The width condition: a view of a call's Origin scratch formed for a candidate covers the candidate's Origins and input Origins, or
+    // the call solves none (both widths 0). The widths are measured after the candidates' headers are bound (RentCandidates), so a
+    // shortfall is a broken contract, never a dropped slot.
+    private static void RequireOriginWidths(FunctionKoto function, int originSlots, int inputSlots)
+    {
+        if ((originSlots | inputSlots) != 0 && (function.Origins.Count > originSlots || InputOriginCount(function) > inputSlots))
+        {
+            throw new InvalidOperationException($"`{function.BoundSymbol?.Name}` has more Origin slots than its call measured (InternalInvariant; R7-P2 A9).");
+        }
+    }
+
+    // The scratch sizes a candidate set needs, read from the bound headers of its accessible candidates (RentCandidates). Origins are
+    // solved when the caller or the enclosing Type can carry them, or when a candidate declares one, returns one or takes one. Receiver:
+    // the group has a receiver shape (SPEC 7.3.2), some candidate taking a receiver (ReceiverIndex), so a value-qualified call acquires its
+    // Receiver Expression by the Name before selection.
     private static CandidateShape MeasureCandidates(FunctionGroup candidates, bool solveOrigins)
     {
         var shape = new CandidateShape { SolveOrigins = solveOrigins };
@@ -45,6 +58,37 @@ public sealed partial class Binding
         }
 
         return shape;
+    }
+
+    // SPEC 10.1, 9.4.1: a candidate set's rows, rented before the set is measured. Each candidate's accessibility is decided once, into
+    // its row, the one verdict its evaluation reads; a synthesized range construction pins its Kimi target, which source access does not
+    // restrict (SPEC 4.6.2). Each accessible candidate's header is bound here, so the set is measured once, after every header fact
+    // MeasureCandidates reads is published, also for a call bound before BindDeclarations' header loop reaches a candidate. The caller
+    // returns the rows.
+    private EvaluatedCandidate[] RentCandidates(in FunctionGroup candidates, Koto callee, BindingScope scope)
+    {
+        var count = 0;
+        foreach (var candidate in candidates)
+        {
+            count += candidate.Declaration is FunctionKoto ? 1 : 0;
+        }
+
+        var rows = this.candidateScratch.Rent(count);
+        var index = 0;
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Declaration is FunctionKoto)
+            {
+                var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
+                rows[index++] = new(candidate, CandidateApplicability.Inapplicable, null, 0, Accessible: accessible);
+                if (accessible)
+                {
+                    this.BindHeader(candidate);
+                }
+            }
+        }
+
+        return rows;
     }
 
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
@@ -96,11 +140,9 @@ public sealed partial class Binding
         var independentRejection = false;
         var premiseUnknown = false;
         ReferenceConstraintFailure? rejectedConstraint = null;
-        // SPEC 4.6.2: a synthesized range construction pins its Kimi target, which source access does not restrict.
-        var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
+        var accessible = evaluation.Evaluated[index].Accessible; // Decided once, and the header bound, before the set was measured.
         if (accessible)
         {
-            this.BindHeader(candidate);
             if (function.IsConstructor)
             {
                 declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, evaluation.Mapping, evaluation.Expected) : null;

@@ -7,9 +7,11 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The solution of the call's `candidate`-th candidate from its evaluation: the call's slot arrays, scope, Self, explicit Type
-    // arguments and the candidate's root rows.
+    // arguments and the candidate's root rows. Its Origin views cover the candidate's slots (RequireOriginWidths).
     private SlotSolution Solution(in CallEvaluation evaluation, int candidate, FunctionKoto function, BoundType? declaringType)
-        => new()
+    {
+        RequireOriginWidths(function, evaluation.OriginSlots, evaluation.InputSlots);
+        return new()
         {
             Rows = evaluation.Rows.AsSpan(candidate * evaluation.Call.ArgumentNodes.Count, evaluation.Call.ArgumentNodes.Count),
             ChildSlice = evaluation.ChildSlices.AsSpan(candidate * 2, 2),
@@ -26,6 +28,7 @@ public sealed partial class Binding
             Origins = evaluation.Origins,
             Inputs = evaluation.Inputs,
         };
+    }
 
     // SPEC 6.5.2, 10.8.1: a Case construction's solution: the enum owns its slots and binds its Origins; it has no Self, declaring Type,
     // explicit Type argument or input Origin, and its Type is never inferred apart from its slots. A Case without payload has no call,
@@ -364,6 +367,10 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
+        // The binder's input Origins: none when the call solves no Origins (its input scratch is empty), else every input of the binder,
+        // which the call's width covers (RequireOriginWidths).
+        internal readonly Span<BoundOrigin> InputSpan() => this.Inputs.IsEmpty ? this.Inputs : this.Inputs.Slice(0, InputOriginCount(this.Binder));
+
         // Whether the callable value converts to the common Function Type: a function group by one of its functions (SPEC 7.7.4).
         private readonly bool FitsCallable(Koto node, BoundType type)
         {
@@ -383,8 +390,6 @@ public sealed partial class Binding
         // that its declaring Type gives (an open construction slot is its own parameter there).
         private readonly bool FixedSlot(int slot)
             => slot < this.Fixed.Types.Length && this.Fixed.Types[slot] is { } bound && OwnSlot(bound, this.SlotOwner) != slot;
-
-        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.Slice(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.
