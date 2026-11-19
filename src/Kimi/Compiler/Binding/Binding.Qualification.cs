@@ -330,7 +330,7 @@ public sealed partial class Binding
     }
 
     /// <summary>The `qualificationFailures` family's one accessor (DECISIONS BU-220): a pass family, the qualification stop a failed
-    /// Name or Type at a node required (Fail), stored with its failure by the recorder (RecordedFact; a present fact always has its
+    /// Name or Type at a node required (FailUnselected), stored with its failure by the recorder (RecordedFact; a present fact always has its
     /// Container, so the column's default is none). Its members keep the names its readers use.</summary>
     private readonly struct QualificationFailureRows(Binding binding)
     {
