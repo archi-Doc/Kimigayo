@@ -60,21 +60,12 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact, out _))
+                if (SemanticsPremise(fact, whole) && (this.AvailableConstraintFact(environment, fact, out _) || environment.IsFailed(fact)))
                 {
                     admitted &= SemanticsSet(fact);
                 }
             }
 
-            // R7-C3 gate 2 (SPEC 8.3.4; F's C2 ruling 253): the premises give the set, a failed one included: contradictory Semantics
-            // premises leave the evidence (FailPremise) and still empty the set, which is their Error.
-            for (var i = 0; i < (environment.FailedPremises?.Count ?? 0); i++)
-            {
-                if (SemanticsPremise(environment.FailedPremises![i], whole))
-                {
-                    admitted &= SemanticsSet(environment.FailedPremises[i]);
-                }
-            }
         }
 
         return admitted;
@@ -258,6 +249,11 @@ public sealed partial class Binding
             changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
             foreach (var fact in environment.Facts)
             {
+                if (environment.IsFailed(fact))
+                {
+                    continue; // The premise's own judgment ran once; its state is Failed.
+                }
+
                 // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
                 this.failedCause = null;
                 var frame = this.BeginConsultation(scope.Owner);
@@ -269,8 +265,7 @@ public sealed partial class Binding
                 }
 
                 var previous = scope.Owner.BindingState;
-                changed = true;
-                this.FailPremise(environment, fact, scope.Owner); // R7-C3 (B1'): the premise fails itself; the environment stays valid
+                changed |= this.FailPremise(environment, fact, scope.Owner); // R7-C3: the premise's own judgment writes its state Failed
                 // Other input facts can have independent contradictions. Record a
                 // sole missing-name cause only when this is the entire environment.
                 this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
@@ -552,8 +547,7 @@ public sealed partial class Binding
     private void FailTypeRole(BindingObligation obligation)
     {
         var causes = this.TypeRoleCauses(obligation);
-        if ((causes & TypeRoleCause.Role) != 0 && (this.InvalidDeclarationContextCause(obligation.Use) ??
-            (obligation.Type is { } type ? this.FailedPremiseRead(type, this.ConstraintScope(obligation.Use))?.Use : null)) is { } failed)
+        if ((causes & TypeRoleCause.Role) != 0 && this.InvalidDeclarationContextCause(obligation.Use) is { } failed)
         {
             causes &= ~TypeRoleCause.Role;
             if (causes == TypeRoleCause.None)

@@ -243,7 +243,7 @@ public sealed partial class Binding
     // The kinds whose constraints give a row, the one list the index and the walk's two sources read (RowKind; each kind its own row
     // of Closure(view), R7-C2e2-2): Contract, and each kind with a reader of its own, a leaf row (R7-C2c2 c2-3b: Callable). A later
     // kind with a reader joins the list here alone.
-    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable];
+    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable, ConstraintKind.Error]; // Error: an unbound clause's failed fact (R7-C3)
 
     // The closure's kept readings (Reading), emptied at each publication's start in the capability phase (ForgetKeptTables) and each
     // pass (ResetCapabilities), capacity kept.
@@ -460,14 +460,14 @@ public sealed partial class Binding
             {
                 foreach (var fact in environment.Facts)
                 {
-                    if (!this.AvailableConstraintFact(environment, fact, out _))
-                    {
-                        continue;
-                    }
-
+                    // The consult follows the relevance test (F's C2 ruling 273): only a fact read as the proposition or its negation.
                     var identity = this.Reading(fact, view.Premises, ref serial);
-                    positive |= this.SameProofPremise(identity, proposition);
-                    negative |= this.SameProofPremise(identity, negation);
+                    var (states, refutes) = (this.SameProofPremise(identity, proposition), this.SameProofPremise(identity, negation));
+                    if ((states || refutes) && this.AvailableConstraintFact(environment, fact, out _))
+                    {
+                        positive |= states;
+                        negative |= refutes;
+                    }
                 }
             }
         }
@@ -845,11 +845,19 @@ public sealed partial class Binding
 
     // W6: Complete when the fact is not in the environment or is direct; a derived fact found available is the meet of every source it
     // read (R7-M20's composite rule), and one not found is Provisional (a Pending source may still supply it).
+    // R7-C3 (F's C2 rulings 272-273): the environment's one premise consult. A failed premise is no evidence, and the read is the proof's
+    // Error read (ScopeReads.Error, its PremiseFailure): a proof that consulted it and is not Proven rests on it (EndProof).
     private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, out Completion completion)
     {
         completion = Completion.Complete;
         if (!environment.Facts.Contains(fact))
         {
+            return false;
+        }
+
+        if (environment.IsFailed(fact))
+        {
+            this.ScopeReads.Error ??= environment.FailedPremise;
             return false;
         }
 

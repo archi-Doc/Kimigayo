@@ -419,7 +419,7 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        if ((this.FailedPremiseRead(type, scope) ?? this.UnprovenInputRead(type, contract, scope)) is { } failed)
+        if (this.UnprovenInputRead(type, contract, scope) is { } failed)
         {
             return this.RestOnFailure(failed); // R7-C3 (B1'): as ProveProposition's intake; the direct callers read the failed premises too
         }

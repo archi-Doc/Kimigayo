@@ -288,24 +288,6 @@ public sealed partial class Binding
         => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { Invalid: false } environment &&
             ((this.identityRecorded.TryGetValue(scope, out var own) && own) || ReferenceEquals(environment.FailedPremise?.Use, declaration));
 
-    // SPEC 8.2.3, 23.1.2 (the producer channel): the declaration whose recorded premise error a check at `node` read, when one of the
-    // Types it compared has a part in a final erroneous class of the node's view; the outermost scope whose own classes hold it is the
-    // producer. A failure path only.
-    private Koto? IdentityPremiseErrorRead(Koto node, BoundType? actual, BoundType? expected)
-    {
-        Koto? producer = null;
-        for (var current = this.ConstraintScope(node); current is not null && this.identityRecorded.Count != 0; current = current.Parent)
-        {
-            if (this.identityRecorded.TryGetValue(current, out var own) && own && this.ClassesOf(current, out _) is { } classes &&
-                (classes.Holds(actual) || classes.Holds(expected)))
-            {
-                producer = current.Owner;
-            }
-        }
-
-        return producer;
-    }
-
     // SPEC 8.2.3's Origin attribute, decided by the Origins' owner: OriginDeclaration's `==` (one Origin substituted by the other) and the
     // outlives judgment both ways (EntailsOrigin, SPEC 15.6.5's reachability over the declaration's premises). A "no" is final once the
     // declarations it read are complete and the premise environment can be rented; a "yes" only grows with the premises.

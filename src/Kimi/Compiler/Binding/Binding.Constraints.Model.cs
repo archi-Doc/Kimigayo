@@ -143,8 +143,8 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     internal bool Invalid => this.Failed is not null;
 
-    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the premises whose proof is Error (FailPremise), out of the evidence; and what a proof that reads
-    // one rests on (PremiseFailure, Use = the declaration that holds the record).
+    // R7-C3 (SPEC 8.2.3, 23.1.2; F's C2 rulings 272-273): the premises whose own judgment is Error (FailPremise), their state Failed in
+    // the evidence; and what a proof that consults one rests on (PremiseFailure, Use = the declaration that holds the record).
     internal List<BoundConstraint>? FailedPremises { get; private set; } // allocated at the first failed premise
 
     // R7-C3 (F's C2 ruling 255): the declaration's own unproven projection inputs (NameUnprovenInput): no premise fails, and a proof that
@@ -217,25 +217,22 @@ internal sealed class ConstraintEnvironment : ICheckCause
         return false;
     }
 
-    /// <summary>Fails a premise whose proof is Error (R7-C3 B1', SPEC 8.2.3's kept premise-error context extended to any failed premise):
-    /// it leaves the evidence, the environment stays valid, and a proof that reads it rests on its declaration's record.</summary>
+    /// <summary>Gets a value indicating whether a premise of this environment failed (R7-C3, F's C2 rulings 272-273): its one state, read
+    /// by the one consult (Binding.AvailableConstraintFact).</summary>
+    /// <param name="fact">The premise.</param>
+    /// <returns>Whether it failed.</returns>
+    internal bool IsFailed(BoundConstraint fact) => this.FailedPremises is { } failed && failed.Contains(fact);
+
+    /// <summary>Fails a premise whose own judgment is Error, whatever the cause (R7-C3, F's C2 rulings 272-273): it stays in the
+    /// environment with the state Failed, the environment stays valid, and a proof that consults it rests on its declaration's record.</summary>
     /// <param name="fact">The failed premise.</param>
     /// <param name="owner">The declaration whose record it is.</param>
     /// <returns>Whether the premise newly failed (the failed set only grows, so the premise failures reach a fixpoint).</returns>
     internal bool FailPremise(BoundConstraint fact, Koto owner)
     {
-        if (!this.Facts.Remove(fact))
+        if (!this.Facts.Contains(fact) || this.IsFailed(fact))
         {
             return false;
-        }
-
-        this.DirectFacts.Remove(fact);
-        for (var i = this.DerivedFacts.Count - 1; i >= 0; i--)
-        {
-            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact))
-            {
-                this.DerivedFacts.RemoveAt(i);
-            }
         }
 
         (this.FailedPremises ??= new()).Add(fact);
@@ -264,12 +261,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.UnprovenInputs.Add((subject, contract));
         this.premiseFailure ??= new(owner);
     }
-
-    /// <summary>Gets the environment's premise-failure cause for its declaration's recorded identity premise error (R7-C3 gate 2): the one
-    /// cause a proof that reads a failed premise rests on.</summary>
-    /// <param name="owner">The declaration whose record it is.</param>
-    /// <returns>The cause.</returns>
-    internal PremiseFailure PremiseError(Koto owner) => this.premiseFailure ??= new(owner);
 
     /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
     /// <param name="node">The failed node.</param>
