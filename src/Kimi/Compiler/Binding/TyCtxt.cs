@@ -25,24 +25,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     // The compilation's level of the interned Types (PLAN G949 Stage 2 U4): the Types interned after the library's seal; the library's
     // are LibraryLayer.Types, found first (Intern).
-    private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedRoom);
+    private readonly Dictionary<int, List<BoundType>> types = new();
 
     // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter), numbering on from the library's L once its layer is
     // sealed (U4), so every Type of the compilation's level has an id above L.
     private int typeCount = Math.Max(BoundType.StaticCount, library.Layer.TypeCount);
-    private int interned = library.Frozen ? library.Layer.Size.TypeKeys : 0; // The Types interned: the layer level's, then this TyCtxt's.
-    private int programEntries; // The Types of the compilation's level, which hold its room (KeyFree).
 
     /// <summary>Gets the last id this compilation gave a Type (Binding's freeze reads it as the library's L).</summary>
     internal int TypeCount => this.typeCount;
-
-    /// <summary>Gets the number of interned Types, the entries of their table. Not its keys: a key is a hash of the parts' identity
-    /// hashes, which a thread's earlier objects move, so two Types share one at random (PLAN G949's flaky TableCounts row).</summary>
-    internal int KeyCount => this.interned;
-
-    /// <summary>Gets the free slots of the compilation's level of the interned Types: its capacity less its entries, at most its free
-    /// keys.</summary>
-    internal int KeyFree => this.types.Capacity - this.programEntries;
 
     // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
     private BoundType[] pairScratch = [];
@@ -265,8 +255,6 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), instanceContext, binder);
         into.Add(created);
-        this.interned++;
-        this.programEntries += ReferenceEquals(open, this.types) ? 1 : 0;
         return created;
 
         static bool QuantifiesInput(BoundType inputs, Koto binder)

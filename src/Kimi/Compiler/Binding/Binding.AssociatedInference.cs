@@ -7,8 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(
-        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.AssociatedTypes), ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<Koto, (BoundRequirement Identity, AssociatedBinding Binding)> inferenceFailures = new(ReferenceEqualityComparer.Instance);
 

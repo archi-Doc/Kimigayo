@@ -295,10 +295,9 @@ public sealed partial class TyCtxtTest
         }
     }
 
-    // PLAN G949 (the flaky TableCounts row of BindingTest.AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass): Binding.TableCounts'
-    // TypeKeys is the Types the compilation interned, whatever the hashes of their parts. A part's hash is its identity hash, which the
-    // thread's earlier objects move: two Tuples over two Types whose identity hashes are equal share one key of the interned Types' table
-    // and are still two Types (a count of the keys counted them as one, so a twin compilation counted one Type fewer).
+    // PLAN G949: the interner makes one Type per distinct content, whatever the hashes of its parts, and TyCtxt.TypeCount counts each Type
+    // it makes. A part's hash is its identity hash, which the thread's earlier objects move: two Tuples over two Types whose identity
+    // hashes are equal share one key of the interned Types' table and are still two Types (a count of the keys would count them as one).
     [Fact]
     public void TypesWhosePartsShareAnIdentityHashAreCountedApart()
     {
@@ -318,9 +317,9 @@ public sealed partial class TyCtxtTest
         }
 
         Assert.NotNull(second);
-        var before = c.Binding.TableCounts.TypeKeys;
+        var before = c.Types.TypeCount;
         Assert.NotSame(c.Types.Tuple([first!]), c.Types.Tuple([second]));
-        Assert.Equal(before + 2, c.Binding.TableCounts.TypeKeys);
+        Assert.Equal(before + 2, c.Types.TypeCount);
     }
 
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is

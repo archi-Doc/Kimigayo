@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     // The compilation's level of the interned constraints (PLAN G949 Stage 2 U4): those interned after the library's seal; the library's
     // are LibraryLayer.Constraints, found first (InternConstraint).
-    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedRoom);
+    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new();
 
     private readonly DeferredConstraintRows deferredConstraints;
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;

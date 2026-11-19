@@ -57,9 +57,8 @@ public sealed partial class KimiLibrary
         this.registeredSymbols = new(entries.Length + unnamed.Count); // The catalog's symbols in catalog order, then the unnamed ones.
         this.RegisterCatalog(declarations, unnamed);
 
-        // The library's table, once per library (PLAN G949 Stage 2 U3-2; Binding's constructor wrote it until U3): its families reserved at
-        // the size KimiLibrarySize states, then each registered symbol in its declaration's slot.
-        this.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
+        // The library's table, once per library (PLAN G949 Stage 2 U3-2; Binding's constructor wrote it until U3): each registered symbol
+        // in its declaration's slot.
         foreach (var symbol in this.registeredSymbols)
         {
             Binding.DeclaredSymbols.Add(symbol.Declaration, symbol);
