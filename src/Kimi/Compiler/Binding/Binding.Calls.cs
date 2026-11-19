@@ -184,7 +184,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(candidateCount * argumentCount);
         var childSlices = this.indexScratch.Rent(candidateCount * 2);
         var childBase = this.childRows.Count;
-        var classBase = this.positionClasses.Count;
+        var positionBase = this.positionOperations.Count;
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -586,7 +586,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlices);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase); // R3: the evaluation's retained rows end with it.
-            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+            this.positionOperations.RemoveRange(positionBase, this.positionOperations.Count - positionBase);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);

@@ -472,6 +472,7 @@ public class ClosureReceiverClassificationTest
     [InlineData("        let t = (take(value), missing)\n        _ = t\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
+    [InlineData("        missing += value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        match c\n            true => value\n            false => missing\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
     // G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.6.3, 15.8.2): the payload, a Reborrow of `value` contained in the call receiver,
     // is fitted to `Option<s/T>`, the binder's `o`: UnprovenOriginRelation_Kd at it (its valid twin: the payload outside the Closure,

@@ -1674,17 +1674,14 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([("InternalInvariant_Kd", (string?)site)], Records(c));
     }
 
-    // K11 with R4-M28 (K package 4.4, 4.10): a Library generates every root but the body of a closed override whose slot TyCtxt.Applies
-    // refutes at its owning layer, which is checked only (as the old generator skipped it); where the slot applies, the override is generated.
-    // A Closure and a function nested in its body are no output roots: the override's runtime targets reach them, so they follow its mark
-    // (DECISIONS R5-M153; fail-before: both generated where the slot is refuted).
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ALibraryLeavesOutTheOverrideOfARefutedSlot(bool applies)
+    // K11 with R4-M28 (K package 4.4, 4.10): where the slot applies, a Library generates the closed override, and a Closure and a function
+    // nested in its body, which are no output roots, follow its mark through its runtime targets (DECISIONS R5-M153). The override of a
+    // refuted slot is a declaration error (SPEC 6.4.3; ARefutedSlotsOverrideIsOneDeclarationError).
+    [Fact]
+    public void ALibraryGeneratesTheOverrideOfAnApplyingSlot()
     {
         var c = Analyze(
-            "contract Marker\nstruct Thing\n" + (applies ? "    Self is Marker\n" : string.Empty) + "    public init() => ()\nopen struct Base<T>\n" +
+            "contract Marker\nstruct Thing\n    Self is Marker\n    public init() => ()\nopen struct Base<T>\n" +
             "    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\n" +
             "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n" +
             "        let add = func [] (x: i32) -> i32 => x + x\n        func twice(x: i32) -> i32 => x * 2\n        return add(3) + twice(2)\n",
@@ -1692,11 +1689,41 @@ public sealed partial class FunctionCodegenTest
         Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
         _ = c.Generate(TextWriter.Null);
         var set = c.Instances!;
-        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "mark").Generated);
-        Assert.Equal(applies, Assert.Single(Generated(set), static x => x.Name == "twice").Generated);
+        Assert.True(Assert.Single(Generated(set), static x => x.Name == "mark").Generated);
+        Assert.True(Assert.Single(Generated(set), static x => x.Name == "twice").Generated);
         var closure = Assert.Single(Enumerable.Range(0, set.Items.Length), x => set.Items[x].Key.Body.Def.Kind == MirBodyKind.Closure);
-        Assert.Equal(applies, set.IsGenerated(closure));
+        Assert.True(set.IsGenerated(closure));
     }
+
+    // SPEC 6.4.3 (D-712's scope): a substituted condition Unknown at the override's own declaration is an ordinary assumption, so
+    // `Gen<U> : Base<U>` is accepted; its instance `Gen<Thing>` refutes the slot, which keeps a null entry, and the override's body stays
+    // checked only (R4-M28): nothing generates it.
+    [Fact]
+    public void AnUnknownSlotConditionStaysAnAssumption()
+    {
+        var c = Analyze(
+            "contract Marker\nstruct Thing\n    public init() => ()\nopen struct Base<T>\n    public init() => ()\n" +
+            "    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\n" +
+            "struct Gen<U> : Base<U>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        return 1\n" +
+            "let g = Gen<Thing>.init()@obj\n");
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c));
+        _ = c.Generate(TextWriter.Null);
+        Assert.DoesNotContain(Generated(c.Instances!), static x => x.Name == "mark" && x.Generated);
+    }
+
+    // SPEC 6.4.3 (R7-C2c2 c2-4a, the owner's O-370): an override of a slot whose substituted condition is Refuted for the derived
+    // Type is one declaration error at the override, the record of the Error case (InvalidConstraint_Kd): the slot never exists for that
+    // Type. It is decided once, at the settle point, however the condition is spelled (closed `Base<Thing>`, dependent `Base<Box<U>>`,
+    // closed `Base<Box<i32>>`, a group with no common premise); the body's Binding-time records stand (SPEC 23.1.2). The rows moved from
+    // acceptance (DECISIONS R4-M28, R5-M77, R5-M153: checked only) by SPEC 6.4.3 and O-370.
+    [Theory]
+    [InlineData("library", "contract Marker\nstruct Thing\n    public init() => ()\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\nstruct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        let add = func [] (x: i32) -> i32 => x + x\n        func twice(x: i32) -> i32 => x * 2\n        return add(3) + twice(2)\n", "InvalidConstraint_Kd")]
+    [InlineData("own-scope", "contract Marker\nstruct Thing\n    public init() => ()\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\nstruct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        return true\n", "InvalidConstraint_Kd,TypeMismatch_Kd")]
+    [InlineData("p06", "contract Marker\nstruct Box<A>\n    public var a: A\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\nstruct Plain<U> : Base<Box<U>>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        return 1\n", "InvalidConstraint_Kd")]
+    [InlineData("p06b", "contract Marker\nstruct Box<A>\n    public var a: A\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\nstruct Plain : Base<Box<i32>>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        return 1\n", "InvalidConstraint_Kd")]
+    [InlineData("p06c", "contract Marker\ncontract Other\nstruct Box<A>\n    public var a: A\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self, x: i32) -> i32\n        T is Marker\n        return 5\n    public virtual func mark(self: objref/Self, x: bool) -> i32\n        T is Other\n        return 6\nstruct Plain<U> : Base<Box<U>>\n    public init() => ()\n    override func mark(self: objref/Self, x: i32) -> i32\n        return 1\n", "InvalidConstraint_Kd")]
+    public void ARefutedSlotsOverrideIsOneDeclarationError(string form, string program, string codes)
+        => Assert.Equal((form, codes), (form, string.Join(',', CompilationTestHelper.PublishedErrors(Analyze(program, OutputKind.Library)).Select(static x => x.Code.ToString()))));
 
     // DECISIONS R5-M153, against over-exclusion: no Closure's body is a Library output root (Generates), yet each one a generated body makes
     // at its Aggregate(Closure) site is Generated through that target: in an accessor's get and set, a destructor, a default template and a
