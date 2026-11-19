@@ -155,8 +155,9 @@ public class ClosureReceiverClassificationTest
     [InlineData("        w.v += w.q\n", true)]
     [InlineData("        let k = w.q + 1\n", false)]
     public void AStandardSetTargetBehindACustomGetIsTheFieldsPlace(string body, bool exclusive)
-        => AssertCallReceiver(CustomGet + "public func main() -> ()\n    var c = W.init()\n    let w = c@uniq\n    let f = func [w] () -> i32\n" + body +
-            "        return 0\n    let v = f()\n", exclusive);
+        => AssertCallReceiver(CustomGetCapture + body + "        return 0\n    let v = f()\n", exclusive);
+
+    private const string CustomGetCapture = CustomGet + "public func main() -> ()\n    var c = W.init()\n    let w = c@uniq\n    let f = func [w] () -> i32\n";
 
     // SPEC 15.6.2, 13.7.1 (D-818): a write or an update of such a target through a shared reference is denied by that layer, as for the
     // standard get (SharedPathAccess_Kd at the target; before D-818, the custom get's target was a root, InvalidAssignment_Kd).
