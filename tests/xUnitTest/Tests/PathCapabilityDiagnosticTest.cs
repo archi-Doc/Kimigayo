@@ -23,6 +23,13 @@ public class PathCapabilityDiagnosticTest
         "struct Point\n    public var inner: Inner = Inner.init()\n    public var n: i32 = 0\n    public init() => ()\n" +
         "struct Outer\n    public var point: Point = Point.init()\n    public init() => ()\nfunc keep(i: Inner) => ()\n";
 
+    // A Field with a custom get and the standard set, beside a standard Field (D-818).
+    private const string CustomGet = "struct W\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public var v: i32 = 0\n    public init() => ()\n";
+
+    // The same Field written through a shared receiver in its own method (D-818's sixth instance, the review's rv.ref-self).
+    private const string CustomGetSelf = "struct W\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public init() => ()\n" +
+        "    public func put(self: ref/Self) => self.q = 1\n";
+
     // A function f whose var entries store exclusive references to Point.
     private const string Entries = "func f(value: uniq/Point during a)\n    var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]\n";
 
@@ -181,6 +188,14 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Take + Leveled + "func f<T>(t: uniq/T) -> ()\n    T is Leveled\n    take((t.level)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Fixed + "func f(p: uniq/Fixed) -> () => take((p.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
+    // SPEC 15.6.2, 13.7.1, 11.2 (D-818): a write or an update of a standard-set target behind a custom get is denied by the shared layer
+    // on its path, as with the standard get (the `w.v` twin); before D-818 the target was taken as a getter result, a root, which gave
+    // InvalidAssignment_Kd.
+    [InlineData(CustomGet + "func f(w: ref/W) => w.q = 1", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGet + "func f(w: ref/W) => w.q += 1", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGet + "func f(w: ref/W) => w.v = 1", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGet + "func f(w: ref/W)\n    var h = func [w] (c: bool) -> ()\n        w.q = 1\n    h(true)", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(CustomGetSelf, DiagnosticCode.SharedPathAccess_Kd)]
     public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

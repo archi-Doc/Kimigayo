@@ -159,16 +159,6 @@ public class ClosureReceiverClassificationTest
 
     private const string CustomGetCapture = CustomGet + "public func main() -> ()\n    var c = W.init()\n    let w = c@uniq\n    let f = func [w] () -> i32\n";
 
-    // SPEC 15.6.2, 13.7.1 (D-818): a write or an update of such a target through a shared reference is denied by that layer, as for the
-    // standard get (SharedPathAccess_Kd at the target; before D-818, the custom get's target was a root, InvalidAssignment_Kd).
-    [Theory]
-    [InlineData("func run(w: ref/W)\n    w.q = 1\n")]
-    [InlineData("func run(w: ref/W)\n    w.q += 1\n")]
-    [InlineData("func run(w: ref/W)\n    w.v = 1\n")]
-    [InlineData("func run(w: ref/W)\n    var h = func [w] (c: bool) -> ()\n        w.q = 1\n    h(true)\n")]
-    public void AStandardSetTargetBehindACustomGetIsDeniedByASharedLayer(string run)
-        => Assert.Equal(run.Contains("w.v", StringComparison.Ordinal) ? "SharedPathAccess_Kd w.v" : "SharedPathAccess_Kd w.q", Records(CustomGet + run + "public func main() => ()\n"));
-
     // R8-W3's coverage rows c1 and cx1 (SPEC 7.7.3, 14.6.2; DECISIONS R4-M130) and their Range twins c1r and cx1r: a captured
     // `uniq/ResolvedRange` taken as a bare `for` Subject is Exclusive (its entry iterateUniq), so a `var` Closure runs, called twice, and
     // the call of a `let` one is invalid.
