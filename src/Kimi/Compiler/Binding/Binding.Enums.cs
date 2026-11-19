@@ -414,7 +414,7 @@ public sealed partial class Binding
 
             // Before any evidence the frame holds exactly the fixed bindings, an open slot unbound: a payload is settled when they complete it.
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
-                !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)))
+                !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.Slice(0, solution.OriginCount)))
             {
                 settled.Add(i);
                 _ = this.RecordsWaitingForm(solution.Call.ArgumentNodes[i]); // Recorded as a named call's argument is (P1), unbound.
