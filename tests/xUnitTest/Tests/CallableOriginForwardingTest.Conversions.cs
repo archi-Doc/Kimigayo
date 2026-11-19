@@ -1049,8 +1049,10 @@ public partial class CallableOriginForwardingTest
     // record (v_static_nonid, as pk_static_nonid). An erasure is decided once, under the use's premises (r04_cvprem: the caller's clause
     // admits a Closure value; dev crashed). The invalid twins keep their records, now over `s`, and beside a failed fit k's clause
     // record at `s` too. Rule W (unit 2): a failed or misfitting part is a wildcard, so the solve, the other fits and the clauses are
-    // judged (w04, w12, w17), an anonymous body's record stays (vd, vd3), and an erasure over a q whose only evidence failed keeps its
-    // dependent record, over the call's region (vfb); of two acquisitions the call records the evidence part's, as its named twin does
+    // judged (w04, w12, w17), an anonymous body's record stays (vd, vd3), and an erasure over a q whose only evidence failed keeps only
+    // the record it rests on (vfb: board D-822's B1, the one contract entry compares the Item with the call's region for q as the
+    // call's Origin, which the fit bounds, where the premise-free arm reported a dependent Contract; DECISIONS BU-115's sentence on
+    // vfb_bad superseded); of two acquisitions the call records the evidence part's, as its named twin does
     // (r17). PLAN G504 (SPEC 10.5.1, 14.9.2): a Tuple, array or nested Tuple argument and a join its call classifies wait for the solve,
     // which reads their typed parts at their positions (the rows, DECISIONS BU-104), so their waiting parts are completed at the
     // instantiated parameter: valid through Items, an anonymous function, a Closure value, Items with different Origin rows (x05) and a
@@ -1098,7 +1100,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("w12_fit", "func k9(q: ref/i32, f: (ref/i32) -> i32, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\nfunc hf2(x: ref/i32 during static) -> i32 => 5\n\n" + TwoHost + "    let g = k9\n    return g(s, hf2, p)\n", "UnprovenOriginContract_Kd hf2; UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s", null)]
     [InlineData("w17_case", "func k10(q: ref/i32, o: Option<i32>, x: ref/i32 during static) -> i32\n    origin q outlives static\n    return 0\n\n" + TwoHost + "    let g = k10\n    return g(s, .Some(undefinedName), p)\n", "UnprovenOriginRelation_Kd p; UnprovenOriginRelation_Kd s; UnresolvedBinding_Kd undefinedName", null)]
     [InlineData("vd3_bad", "func kd(f: (i32) -> i32, q: ref/i32) -> i32 => 0\n\n" + NestedHost + "    let g = kd\n    return g(func [] (x) => undefinedName2, true)\n", "NoApplicableOverload_Kd g(func [] (x) => undefinedName2, true); UnresolvedBinding_Kd undefinedName2", null)]
-    [InlineData("vfb_bad", "func k5(f: (ref/i32 during q) -> i32, q: ref/i32) -> i32 => 0\nfunc h3(x: ref/i32 during static) -> i32 => 5\n\n" + NestedHost + "    let g = k5\n    return g(h3, undefinedName)\n", "UnprovenOriginContract_Kd h3; UnresolvedBinding_Kd undefinedName", "the 1st parameter requires the omitted Origin of Inference outlives static, which is not proven")]
+    [InlineData("vfb_bad", "func k5(f: (ref/i32 during q) -> i32, q: ref/i32) -> i32 => 0\nfunc h3(x: ref/i32 during static) -> i32 => 5\n\n" + NestedHost + "    let g = k5\n    return g(h3, undefinedName)\n", "UnresolvedBinding_Kd undefinedName", null)] // B1 (board D-822): h3's comparison holds with q's call region, its only evidence failed (rule W)
     [InlineData("vt_ok", PlainK + TupleK + NestedHost + "    let g = kt\n    return g(s, (h4, 1))\n", "", null)]
     [InlineData("vtc_ok", PlainK + TupleK + NestedHost + "    let g = kt\n    return g(s, (func [] (x) => 5, 1))\n", "", null)]
     [InlineData("x08_tup_bad", PlainK + TupleK + NestedHost + "    let g = kt\n    return g(s, (h3, 1))\n", "UnprovenOriginContract_Kd h3", InputOverS)]
