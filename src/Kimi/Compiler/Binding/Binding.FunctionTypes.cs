@@ -204,7 +204,7 @@ public sealed partial class Binding
         failure = default;
         return actual.Kind == BoundTypeKind.Closure
             ? expected.Kind == BoundTypeKind.Function && SharedReceiver(actual) &&
-                this.ClosureSignature(actual) is { } signature && this.DefinitionContractFits(actual, signature, expected, use, rows, out failure)
+                this.ClosureSignature(actual) is not null && this.DefinitionContractFits(actual, expected, use, rows, out failure)
             : this.ErasureSignatureFits(actual, expected, use, rows, out failure);
     }
 
@@ -254,8 +254,8 @@ public sealed partial class Binding
     {
         failure = default;
         return expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
-            this.DefinitionContractFits(actual, signature, expected, use, rows, out failure)) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is not null &&
+            this.DefinitionContractFits(actual, expected, use, rows, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && SharedReceiver(actual) && this.ClosureSignature(actual) is { } closureSignature &&
             this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
     }
@@ -263,8 +263,8 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
-    // `container` with `arguments` bound, or those of the Function Item `item`. `comparison` is the query (ContractComparison): the
-    // required signature and the row sink that takes the region conjuncts its premises leave unproven.
+    // `container` with `arguments` bound, or those of `item`, a Function Item or a Closure (its signature). `comparison` is the query
+    // (ContractComparison): the required signature and the row sink that takes the region conjuncts its premises leave unproven.
     private bool ContractFits(
         Koto use,
         BindingSymbol symbol,

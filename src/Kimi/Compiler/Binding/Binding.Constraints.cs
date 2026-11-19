@@ -215,7 +215,7 @@ public sealed partial class Binding
             // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
             // The Unknown's comparison failure joins the proof as its U fact (design-r2 Amendment 4).
             var failure = default(ComparisonFailure);
-            if (subject.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure ? this.DefinitionContractFits(subject, signature, proposition.RequiredType!, scope.Owner, null, out failure)
+            if (subject.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure ? this.DefinitionContractFits(subject, proposition.RequiredType!, scope.Owner, null, out failure)
                 : this.CallableSignatureFits(signature, proposition.RequiredType!, scope.Owner, out failure))
             {
                 return ConstraintProof.Proven;

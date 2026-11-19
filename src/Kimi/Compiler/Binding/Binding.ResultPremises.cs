@@ -26,7 +26,7 @@ public sealed partial class Binding
     // The first premise an Instance or Prove visit fails (longer, shorter).
     private (BoundOrigin Longer, BoundOrigin Shorter)? failedResultPremise;
 
-    // The failure of the last Item solve that did not hold (ContractFits; DefinitionContractFits reads it), and the declared clause a solve's
+    // The failure of the last definition's solve that did not hold (ContractFits; DefinitionContractFits reads it), and the declared clause a solve's
     // CheckCallOriginRelations did not prove, with its substituted ends.
     private ComparisonFailure contractFailure;
     private (BoundOrigin Longer, BoundOrigin Shorter, bool Equality, Koto Syntax)? failedCallClause;
@@ -82,27 +82,15 @@ public sealed partial class Binding
     // Closure Type's, board D-822): only the implementation's instantiable call Origins are solved, all together, including an Item's
     // named and result-only universals and every per-call Origin of a direct borrowed input, against the required contract, under the
     // use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a fixed Origin of an enclosing
-    // function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
-    // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
-    internal bool DefinitionContractFits(BoundType item, BoundType signature, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
+    // function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same solution. A required signature
+    // over an open evidence region (SPEC 10.8) is compared the same way, under the same premises, row sink and well-formedness proof, for
+    // both definitions (board D-822's B1: no premise-free known-signature comparison beside it).
+    internal bool DefinitionContractFits(BoundType item, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
         if (item.Kind is not (BoundTypeKind.FunctionItem or BoundTypeKind.Closure) || item.Symbol is not { Declaration: FunctionKoto function } symbol)
         {
             return false;
-        }
-
-        if (HasOpenOrigin(required, evidenceOnly: true))
-        {
-            if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
-            {
-                return false;
-            }
-
-            if (!this.HasOriginConditions(function))
-            {
-                return true;
-            }
         }
 
         if (required is not { Kind: BoundTypeKind.Function, Components.Count: 2 } ||
