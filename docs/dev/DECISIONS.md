@@ -26243,8 +26243,3 @@ holds the owner's decisions 1–13). Units of the Tatara lane record their entri
     its units; seats 1+1. AGENTS (Roles), WORKFLOW (Sessions) and COMPILER_ARCHITECTURE (the sessions paragraph, the stage ledger)
     name it from the plan's adopting commit.
   - Amends R9-M6 (`src/Kimi/Build` was the Middle's) and R7-M4 (P13 was the Back's).
-- **T-M3 The executor seam is temporary** (Tatara, 2026-11-19; the plan's §4; recorded at the adoption so the stage ledger can name
-  it, and redrafted by T with unit A2's own request)
-  - Rule: from unit A2 to unit A4, `NativeBuild` runs its three tool operations (generate, inspect, link) through one of two
-    executors, the external tools or Tatara.
-  - Temporary, with its removal condition: unit A4 deletes the external executor and the seam; P13 then calls Tatara directly.
