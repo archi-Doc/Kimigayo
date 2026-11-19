@@ -7332,6 +7332,10 @@ resumed by R4-M86 (2026-10-20).
   Origins outlive (R2), hid the cut for borrows. Supersedes R4-M51's "not past a shared layer … nor past a non-exclusive pair layer"
   below a writable invariant position. Rejected: removing rc and arc from the shared layers (a case per form); a store row per handle
   input. Not temporary.
+  - Superseded in part by BU-231 (PLAN G935, G993; F's G935 rulings 67, 69, 70): "every occurrence below that position is in it,
+    past any layer" reads "past any layer but a borrow, a callable and a raw layer stating a borrow's Origin"; the reason that no
+    longer holds is "a value stored there brings its whole Type": a borrow's referent, and the storage a raw layer's Origin covers,
+    are no part of the value stored (SPEC 5.7). BU-1's fresh value is `FreshBelow`, read by the write test (BU-231).
 - **BU-2** (2026-10-18; superseded in part by BU-43; PLAN G130; the G130 entry, which its later units extend) Argument kinds (SPEC
   10.5.1) have one owner, the canonical component `Binding.ArgumentKinds`: the kind of every argument part (a call argument and,
   recursively, an element of a Tuple or array literal argument, a written boundary of a mixed range and a payload of a contextual
@@ -9243,6 +9247,10 @@ resumed by R4-M86 (2026-10-20).
     reads AdtDef's view).
   - Cost: Warm: `Bind(Final)` and 39 guard walks over marked holders allocate 0 B (also
     `TyCtxtTest.AWarmStoredRawLayerReadAllocatesNothing`). No slowdown.
+  - Amended by BU-232 (PLAN G964, F's G964 ruling 7, F1): past the holder that a raw layer of the callee's kept binding addresses,
+    no declaration's `Holds Any` statement applies, the holder's own Type's included, unless the declaring code acts there
+    (`StorageAt.Routed`); the holder itself is still written as that hidden layer states it, and a declaration shown to the call
+    keeps its statement.
 
 - **BU-48 An unavailable C layout is judged by Layout and reported at each by-value use of the checked set at check on every pipeline;
   Binding publishes the declaration facts; a constructor's construction receiver is no use** (2026-10-27; superseded in part by
@@ -10223,6 +10231,10 @@ resumed by R4-M86 (2026-10-20).
     result, a Closure with two captures and G273's walks, BU-63's Collect and Occurrences, as well) and
     `AnAbstractProjectionDagIsNormalizedOncePerPart` (n = 40, the guard path); `AConformanceOverAProjectionDagFinishes` (n = 40, B2's
     conformance path; G309-F1) bounds the open limit.
+  - Extended by BU-231 (PLAN G935's c3-2, F's G935 rulings 73-74): `Binding.Viewed` takes this per-query table, `viewedParts`, keyed
+    by (Type, depth), because Viewed's depth bound makes an answer a function of the depth where a premise chain is deeper than
+    StorageBound; at most StorageBound + 1 entries per distinct part (row
+    `TypeDagScalingTest.ADeclaredSignatureIsViewedOncePerPartAndDepth`).
 
 - **BU-65 A declaration's finite inline storage is judged on per-node summaries by Tarjan over the edges the walks discover**
   (2026-10-30; PLAN G310, unit bu76) SPEC 6.2 Finite inline storage: a struct or enum declaration is invalid iff its storage, its own
@@ -14166,6 +14178,10 @@ resumed by R4-M86 (2026-10-20).
     - one bool per walk: a key holds hidden and shown parts together (Wrap2's `value` and `q`);
     - one column with G692's per-layer retention records: another meaning and contract, the storage walk's (DECISIONS text: "one
       row, two contracts").
+  - Amended by BU-231 (PLAN G935's c3-5, F's G935 ruling 32): `Below`'s abstract Type kept below ends past a raw layer the binding
+    holds, stating an Origin or not, bounded by `StatesWrites` (one `SignaturePast` row), and `Hold` joins no rule A row into
+    storage of the kept Type; `TyCtxt.EntryType` publishes `(Type, Kept)`, and `OwnLayer.Kept` names the kept Type (`Hidden` derived
+    from it).
 
 - **BU-203 A join's typed position at a call is one control-flow argument: evidence, fit and one ranking class (PLAN G729)**
   (2026-11-13; Front, Binding; Major, an acceptance mover: valid programs newly accepted (Q17 class 3), with a whitelist; design
@@ -15355,6 +15371,10 @@ resumed by R4-M86 (2026-10-20).
     making the carrier atom's `Writable` true for a by-value T (it would relate E to the carrier's own node: an over-report);
     narrowing `AddErasedRelations`' carrier-node edge at every shared layer (prototype p5 accepted the invalid uniqTUniqRcFnBad;
     that edge is PLAN G993's).
+  - Amended by BU-231 (PLAN G935's merge with G963, F's G935 rulings 67, 69, 70): the reader list: `ErasedFills` is gone,
+    `HiddenFills` reads `Filled`, and `WrittenThrough` reads `HiddenWritableBelow` for "writes what T hides"; "one predicate" is
+    superseded for `Writes`, which reads `HiddenWritable` for what T hides and BU-1's fresh value (`FreshBelow`) for a value of T
+    (BU-231). PLAN G993 closes with BU-231.
 - **BU-226 Member lookup is the path walk's member step: the role's namespace, SPEC 9.2's Enum Case row, 9.6's role-compatible
   layer and 9.5's stop at every stage (PLAN G632)** (2026-11-18; Front, Binding; Major; R7-N1 c-a: c1 9df423746, behaviour-preserving,
   and c2 8bb4df4b8, records and support moved by code; design review REVISE (B1), re-check ACCEPT WITH CONDITIONS; implementation
@@ -15490,6 +15510,99 @@ resumed by R4-M86 (2026-10-20).
   Binding; no arm after the first unguarded whole-position Wildcard or Binding is a candidate. Same warnings, covering arms and
   order. Worst case: N arms that each have a Wildcard below the root stay pairwise. Rejected: a dictionary of root Literals only
   (Case and Tuple tables stay quadratic); a hash without an equality; a size threshold keeping the old loop.
+- **BU-231 A call's retention keeps an input's own value where SPEC 15.6.4's argument sentence lets it, and reads storage of the
+  called function's own abstract Type in the callee's terms (PLAN G935)** (2026-11-19; Front, Binding; Q17 class 1, a blocker of the
+  A5 chain; Major, an acceptance mover; the owner's O-359 (a), O-360 (a), O-389 (a), O-398 (a), O-423 (i) and O-435 (a), verbatim
+  「O-435 a」; F's G935 rulings 1-83 with O-435 (a)'s narrowing (rulings 78-83); reviews in Q-517's cells, the Middle's independent
+  review of rulings 81-82 on C-370 ACCEPT; Q-517 folded into Q-539, landing with the A5 one-tree landing; head
+  `proto/f-g935`@0102a78e9) SPEC 15.6.4, 5.7 Calls, 8.2.3, 23.1.2. Amends BU-202, BU-225 and BU-64; supersedes in part BU-1;
+  replaces N7 (C-281).
+  - Rule: Binding's call retention decides SPEC 15.6.4's argument sentence once: a position holds an input's own value, or what a
+    read or chain of reads through it carries, only where it can hold a value of the input's Type, of a part it holds by value, or a
+    borrow formed through it; storage of the called function's own abstract Type is read in the callee's terms (identity premises or
+    a handed callable, BU-202's Hidden positions; keyed by that Type in the call's Reached entries, the result's included); an input
+    that names no Origin is decided by the same test (rule R, replacing N7).
+  - Rule R's Value row (rulings 78-83, the owner's O-435 (a)) follows SPEC 15.6.4 as one predicate in R's owner, `MayRetain`
+    (`Binding.Retention.Rows.cs`, read by `UnnamedKinds` and `FilledKinds`): an input whose Type states an Origin gets a Value row
+    at every position that can hold a value of its Type, of a part it holds by value, or a borrow formed through it, only when the
+    result (or the written storage) as a whole may retain one of its Origins by the contract (a raw layer without an Origin
+    included); an Origin-free result or storage as a whole keeps none of them (the owner's O-435 (a): pr; ruling 79's `*y`, an `i32`
+    referent); an Origin-free input keeps the CanHold-alone row (O-364 (a) (2)). Ruling 81 reads O-435 (a)'s "position" as SPEC's "a
+    result or storage" (the owner's examples come out the same); ruling 78's per-position reading, which dropped mk2's `u64` Err
+    position, is superseded. Rows `RetentionTest.AnOriginFreeResultKeepsNoArgumentWhoseTypeStatesAnOrigin` and
+    `AResultOrStorageThatMayRetainAnArgumentsOriginKeepsEveryPartItCanHold` (10 cases; the three H pins rvResPartMixedBad,
+    rvResTupMixedBad and rvwPartBuiltBad rejected again).
+  - The kept Type (c3-5, ruling 32): one `SignaturePast` row ends the kept Type past a raw layer the binding holds, stating an
+    Origin or not, bounded by `StatesWrites`; `Hold` joins no rule A row into storage of the kept Type. `TyCtxt.EntryType` publishes
+    `(Type, Kept)` from one evaluation of `KeptType` (ruling 36), which the A5 reader reads.
+  - `OwnLayer.Kept` (ruling 47): the kept Type whose binding a hidden part lies in (the Type `Hides` tests in `OwnParts`), erased
+    and interned as `EntryType` and `OutputRetention.Handed` name it, compared by identity; null where not hidden; `OwnLayer.Hidden`
+    is derived from it. A5's hidden fold shows a hidden layer iff the output's `Handed` lists its `Kept`. A kept Type met only
+    through a covering input is read on A5's side under that input's own output's `Handed`, inside the owner's O-55 (c) (R4-M183),
+    so no Binding row moves (ruling 49). `OwnLayer.Loan` (ruling 38): a part past a `Loan`'s Type argument, set by `OwnParts`;
+    removed with G416 U3a.
+  - `OutputRetention.Handed` (ruling 40 (1), per kept Type by ruling 45 and the owner's O-398 (a)): for an output read in the
+    callee's terms, the kept Types the output's walk meets (erased, as `EntryType` names them) through whose binding a callable the
+    callee's declaration hands its body writes (`Binding.Writes` over the declared handed list `Filled` reads; input-agnostic; false
+    where `Kept` is null); A5's `KeptKey` and hidden fold read it for the kept Type at their key. The write test judges a kept Type
+    under the callee's identity premises (ruling 50, H1: `Identical` = Fits or `Binding.TypeIdentity`'s `IdentityProven` in the
+    reading's view; under `T is U` a writer of U writes T), one rule for `Handed`, `Filled` and `Routes`. `Identical` judges in the
+    view of the body the comparison stands in, the computation's own (`Binding.retentionViews`, set once per computation; ruling
+    57): the callee's constraint scope for its kept reading (`Handed`, `Routes`, `HiddenKind`, `Filled` in a kept binding; ruling
+    59), the calling definition's premise scope TyCtxt read the instance under for the instantiated one (the callee's where it read
+    it under none).
+  - The write test's two facts (the merge with G963, rulings 67, 69 and 70): "writes what T hides" is BU-225's `HiddenWritable`,
+    which `WrittenThrough` reads as `HiddenWritableBelow`; "writes a value of T" is `FreshBelow` (`Binding.Retention.Atoms.cs`),
+    BU-1's fresh value past a part held by value, an own step and a raw layer's pointee, read by `WrittenThrough` at reach Own
+    (entered only past an owning handle, rc or arc, met in storage the call writes; `WriteReach`, `Binding.Retention.Rows.cs`), with
+    its layer half `FreshPast(type, step)` (no callable, no borrow, no raw layer but at the steps Own, Address and Static) read by
+    the atom walk's `Writable` too. Rows: MirBorrowsTest `AWriterOfAFreshValueOfTheTypeKeepsTheArgumentThere` (PLAN G993's, closed
+    with this entry).
+  - The write test (`WrittenThrough`) and `HiddenKind` read a Type's entries through `HeldRun`, so Binding's Limit and an
+    Unsupported entry make the contract the Limit (reached through a declared retention, which has no substitution and so no limit
+    check in `TyCtxt.Instance`, and which A5's `BeginStoring` reads for a body's own contract: row
+    `RetentionTest.AWriteTestAtBindingsLimitIsTheLimit`, ruling 76 D1).
+  - Supersedes in part BU-1: "every occurrence below that position is in it, past any layer" reads "past any layer but a borrow, a
+    callable and a raw layer stating a borrow's Origin"; the reason that no longer holds is "a value stored there brings its whole
+    Type": a borrow's referent, and the storage a raw layer's Origin covers, are no part of the value stored (PLAN G993, SPEC 5.7).
+    Amends BU-225: its "one predicate" is superseded for `Writes` by the two facts above.
+  - Removes: N7's Free rows, CanHold's 'any value whose Origin reaches it', HoldsRaw's raw-only rule 3.
+  - Moves: class 1 (I accepted before, rejected with the Middle's reader): on dev and the chain pValTOwnPtrBad, pRefTOwnPtrBad,
+    abstractBad, abstractUnusedBad, keepHalfTBad, resultHalfTBad, tw1OrderBad, tw2TwoParamBad, tw8PairTBad, tw9PtrTBad; on the chain
+    cpyResultBad, cpyFieldBad, intFirstBad, intFirstPunBad, intPastBad, intPastPunBad2, storeCopyBad, ownerQBad, tw4PutTBad,
+    tw5ResultTBad, tw6SetTBad, tw7CallerUBad; c3-5's and ruling 34's idFormBad, idEnclBad, idFormInBad, hidPunUseEntryBad,
+    o312p2Bad, hidPunUnstatedWrapBad, a03Call, hidPunStatedS02, idEnclNoPremOk (I, ruling 33), hidAddrBad, keepTCellUsedBad,
+    hidStatedUseBad, hidStatedUnusedOk (I) and keepTHopUsedOk (I by the owner's O-389 (a)). Class 3 newly accepted: gHidPunRefOk,
+    gHidPunScalarOk (the chain), tw7CallerUOk (every base). Against its label: twoLayersCarriedBad (I) accepted (PLAN G841).
+  - Rejected: c3-5's row "only where the output is Parametric" (`Raw.initialize` and `replace` are Parametric; `StatesWrites` keeps
+    their records; ruling 32); `Kept` null for a writer; a per-key answer through `EntryType`; the Abstract-entry rows form; a
+    second `KeptEntryType` (a second path; an A5-side comparison would copy the rule; ruling 36); for the write test, leaving the
+    class 1, extending `HiddenWritableBelow` past rc, a writer test per form.
+- **BU-232 Past the holder a kept binding's hidden raw layer addresses, a declaration's `Holds Any` applies only where the declaring
+  code acts (PLAN G964)** (2026-11-19; Front, Binding; Q17 class 3; Major, an acceptance mover; F's G964 rulings 1-12, the owner's
+  O-398 (a); reviews in Q-517's cells; D-742; Q-517 folded into Q-539, landing with the A5 one-tree landing) SPEC 15.6.4, 5.7 Calls.
+  Amends BU-46.
+  - Rule (F's ruling 7, F1): past the holder that a raw layer of the callee's kept binding addresses (the layer where the declared
+    counterpart ends, `HiddenLayer`), no declaration's `Holds Any` statement applies, the holder's own Type's included, unless the
+    declaring code acts there (`StorageAt.Routed`; SPEC 5.7 Calls' last sentence: a generic body writes only by the routes; 15.6.4
+    S3). The holder itself is still written as that hidden layer states it (route 1, O-312 (a)). A declaration shown to the call
+    keeps its statement (rvHolderDeclShownBad, keeperBorrowedOk: S-D).
+  - The declaring code's own actions are its one exception, each by SPEC 15.6.4's own sentence: "A destruction retains as a call of
+    each `drop` it runs", and a callee that destroys a by-value input includes that cleanup: a `drop` of a struct of the kept
+    binding holding the layer by value (`StorageAt.Dropped`, set under a Type whose declared counterpart `Hides`; a generic
+    container's `drop` is a generic body that acts by the routes, rvGenericDropOk); a callable the instantiated contract hands the
+    callee's body may retain an argument "by this section applied to that callable's signature": a handed callable that writes the
+    kept Type (`HandWrites`, the one test `OutputRetention.Handed` also reads, BU-231). "Its calls and destruction store within that
+    reach" bounds where, not what.
+  - Rows: genUntiedOk and guParamOk (V; Binding's record is right, A5 still rejects them as on dev: PLAN G1091), with
+    genUntiedUseBad (I); hidNestedOk, hidGenericOk and rvHolderDeclOk (V: a declaration
+    not shown to the call states no layer past the hidden holder) with their invalid twins.
+  - Not covered (F's ruling 8): the by-value kept input read in the callee's terms where its destruction runs no drop, with its one
+    owner for "a drop in the call runs the binding's declaring code", is D-761 (PLAN G975, class 3).
+  - Rejected: A5's F1 (a consumer overriding its owner's fact); a Scalar clause (5.7 Calls rules the pointee bound out for a
+    declaration's layer); p1 (`WithoutUnstated` of the pointee) and p2 (the state at the hidden layer itself): both newly accept
+    o312p1Bad; p3's hold-walk skip: newly accepts mixPartTBad; p2' without the exception: loses
+    `AConsumingCallRetainsItsArgumentsCleanup`'s destruction row; `Dropped` under any struct: rejects rvGenericDropOk.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
