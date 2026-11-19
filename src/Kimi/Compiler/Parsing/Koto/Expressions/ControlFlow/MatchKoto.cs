@@ -53,11 +53,10 @@ public class MatchKoto : ExpressionKoto
         this.arms = arms;
 
         expression.Parent = this;
-        foreach (var arm in arms)
+        for (var i = 0; i < arms.Count; i++)
         {
-            arm.Pattern.Parent = this;
-            arm.Body.Parent = this;
-            this.Adopt(arm.Guard);
+            this.AdoptArm(i);
+            this.Adopt(arms[i].Guard);
         }
     }
 
@@ -109,5 +108,13 @@ public class MatchKoto : ExpressionKoto
             arm.Guard = slots.Slot(arm.Guard);
             arm.Body = slots.Slot(arm.Body);
         }
+    }
+
+    /// <summary>Attaches an arm's Pattern and Body as its parts.</summary>
+    /// <param name="index">The arm's ordinal.</param>
+    private protected void AdoptArm(int index)
+    {
+        this.Adopt(this.arms[index].Pattern, SelectionRole.Pattern, index);
+        this.Adopt(this.arms[index].Body, SelectionRole.Body, index);
     }
 }
