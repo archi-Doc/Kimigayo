@@ -7620,8 +7620,9 @@ resumed by R4-M86 (2026-10-20).
   (`Binding.PlaceAuthority.cs`) refuses a root that `IsBarePlace` or `IsStaticField` names a Place and admits any other (a call result,
   a Case construction, a callable value, a getter result, a length parameter), lending a getter result only shared (SPEC 11.5); its
   refusal of an exclusive borrow through an inline part (`pair().0@uniq`) is an implementation limit reported as a Language error (PLAN
-  G203), not part of the rule. `IsStaticField` (a group's Property read through its standard getter, qualified or in its group) is the
-  one static-root predicate; `LendsPlace`'s static root (BU-18) reads it. `IsBarePlace` takes a user index as a Place whatever its key.
+  G203; lifted by R7-M49), not part of the rule. `IsStaticField` (a group's Property read through its standard getter, qualified or
+  in its group) is the one static-root predicate; `LendsPlace`'s static root (BU-18) reads it. `IsBarePlace` takes a user index as a
+  Place whatever its key.
   Why: the clauses read the written node, so `take((State.limit)@uniq)` built, borrowing a copy, and a static's parts and a
   parenthesized computed getter were temporaries. Rejected: a static Field in `IsBarePlace` (its Subject consumer would borrow `for v
   in State.values` in place); a declaration-symbol test (an open family; it rejected `(Color.Red)@ref`). Open: `IsStaticField` joins
@@ -21906,6 +21907,26 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** the six-valued action (a mode parameter steering one visitor); an eager list of premises (Detect, Instance and Prove
     stop at the first item, and a bound or obligation a consumer adds is seen by the later holds, in the walk's order); a two-valued
     subject with every result's Type clauses formed (four of the five result consumers would skip them).
+- **R7-M49 SPEC 15.1.5's writable roots are read for a part at one owner** (Front, 2026-11-19; PLAN G1068, D-827, Q-536; Major, an
+  acceptance mover; design `front\notes\G1068\design.md` Revision 1; the owner's O-438 (a); SPEC 13.7.1's sentence, D-846) SPEC 3.6,
+  13.5.5, 13.7.1, 15.1.5.
+  - **The owner.** `WritableOwner` (`WritablePlace`, the whole-Place question an assignment's whole target and a pair layer's
+    owner-case operand ask, or `WritableTemporary`: a Temporary Value that is no getter result, or its whole Temporary Place as an
+    owner-case pair selection designates it, `IsTemporaryPlace`), with `LendsOwner` for lending; `Writable`'s three part clauses,
+    `AcquirableByBinding`, `LendsPlace`'s two part branches, `PairCapability`'s owner case and `BorrowableTemporary`'s exclusive
+    branch read them. Deleted: the four `Writable or WritableRoot` copies, `AcquirableByBinding`'s own Temporary Value reading and
+    `BorrowableTemporary`'s copy.
+  - **The limit.** A whole Temporary Place an owner-case `@follow` selects (`n@move@follow = N.init()` under `s is owner or uniq`) is a
+    valid target (SPEC 13.5.5 owner case, 3.6) that no lowering writes whole yet: `PairCapability`'s write answers it not offered
+    (`WritablePlace(operand)`), and `AccessFailure`, the one diagnostic for a denied capability, names it the located
+    `Unsupported_Kd` (`IsTemporaryPlace`; PLAN G1089).
+  - **Why:** the owned-temporary row lived only in `AcquirableByBinding` and whole-temporary borrows, so writes and exclusive borrows
+    into a temporary's part, also through an explicit `@follow`, were Language errors.
+  - **Rejected:** the row in `Writable`'s root (it makes a Temporary Value itself a target, `1 = 2`, which the owner's O-438 (a)
+    excludes); the row in `ElementAccess.WritableRoot` (misses an obj payload and lending); `PairCapability`'s write reading
+    `WritableOwner` with a second test at `CheckDestination` (a second walk to the temporary); accepting the whole Temporary Place
+    write (no lowering).
+  - Closes PLAN G1068 and G203's first half (BU-21's `pair().0@uniq` limit).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
