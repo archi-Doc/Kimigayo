@@ -572,6 +572,8 @@ public sealed partial class Binding
 
     private bool WellFormedPart(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {
+        this.OriginProofMetrics?.WellFormedPart();
+
         // R1 (DECISIONS BU-99): a slot's solution is its contributor's at a position without evidence; beside an Evidence position's
         // own Type the visit goes on over the solution, judged where the fit replaced an Origin (SPEC 15.6.1).
         if (pattern.Kind == BoundTypeKind.Parameter)
@@ -654,6 +656,8 @@ public sealed partial class Binding
 
     private bool VisitStoredPremises(BoundType pattern, BoundType result, BoundType? actual, BoundOrigin outer, BoundOrigin substituted, in WellFormedVisit visit)
     {
+        this.OriginProofMetrics?.WellFormedPart();
+
         // SPEC 8.1.1, 15.3.7: a layer stores every Origin its stored Type holds, a slot's solution included (DECISIONS BU-99).
         pattern = pattern.Kind == BoundTypeKind.Parameter ? result : pattern;
 
