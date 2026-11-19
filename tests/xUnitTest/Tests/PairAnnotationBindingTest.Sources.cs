@@ -160,7 +160,10 @@ public partial class PairAnnotationBindingTest
     // reference slot, which is never borrowed implicitly (o9y, o9ys: o9's and o9s's invalid twins), while two layers fit (o9r, o9rs).
     // A call-shape contract (SPEC 7.4.4) holds where an argument needs the formed Type's adaptation, the relied-on slot a pair binder
     // (n1c, n1cs) or X beside a formed ref/X (n1d, n1ds), and their invalid twins reject in either order (n1cx, n1cxs, n1dx, n1dxs):
-    // its collection precedes the sources that fix a binder and enters no application.
+    // its collection precedes the sources that fix a binder and enters no application. A Tuple literal at an occurrence of the original
+    // (`y: s/T`) fixes `s` through its whole's meet, so the waiting `x: s/(ref/X during b)` is inferred after it, before the expected
+    // result fills X (N1b, N1bs, N1e) and after the late pass's defaults (N1L, N1Lq; G812 ruling 147: SettleSources); f06c174bd
+    // rejected all five.
     [Theory]
     [InlineData("func put<s/W>(m: s/W, y: s/(ref/i32 during b) during a) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    let a: i64 = 1\n    return put(a@move, r)\n", "clean")] // n1
     [InlineData("func put<s/W>(y: s/(ref/i32 during b) during a, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    let a: i64 = 1\n    return put(r, a@move)\n", "clean")] // n2
@@ -312,6 +315,11 @@ public partial class PairAnnotationBindingTest
     [InlineData("func mk2<s/W, X>(y: s/W, x: s/(ref/X during b) during a, z: X, code: i32) -> i32\n    s is owner or ref\n    return 0\nfunc mk2<s/W, X>(y: s/W, x: s/(ref/X during b) during a, z: X, name: string) -> i32\n    s is owner or ref\n    return 1\nfunc use() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let n: i32 = 3\n    return mk2(k@move, a@move, n@move, 0)\n", "clean")] // n1ds
     [InlineData("func mk2<s/W, X>(x: s/(ref/X during b) during a, y: s/W, z: X, code: i32) -> i32\n    s is owner or ref\n    return 0\nfunc mk2<s/W, X>(x: s/(ref/X during b) during a, y: s/W, z: X, name: string) -> i32\n    s is owner or ref\n    return 1\nfunc use() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let m: i64 = 3\n    return mk2(a@move, k@move, m@move, 0)\n", "1*NoApplicableOverload_Kd")] // n1dx
     [InlineData("func mk2<s/W, X>(y: s/W, x: s/(ref/X during b) during a, z: X, code: i32) -> i32\n    s is owner or ref\n    return 0\nfunc mk2<s/W, X>(y: s/W, x: s/(ref/X during b) during a, z: X, name: string) -> i32\n    s is owner or ref\n    return 1\nfunc use() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let m: i64 = 3\n    return mk2(k@move, a@move, m@move, 0)\n", "1*NoApplicableOverload_Kd")] // n1dxs
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q: ref/i32 = w(rr, (n, m))\n    return q\n", "clean")] // N1b
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w2<s/T, X>(y: s/T, x: s/(ref/X during b) during a) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q: ref/i32 = w2((n, m), rr)\n    return q\n", "clean")] // N1bs
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q: i32 = w(rr, (n, m))\n    return q\n", "clean")] // N1e
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q = w(rr, (1, 2))\n    return 0\n", "clean")] // N1L
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q = w(rr, (1, 2))\n    return q\n", "clean")] // N1Lq
     public void AStructuredApplicationIsFormedAfterTheExactSources(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 

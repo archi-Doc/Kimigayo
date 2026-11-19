@@ -177,6 +177,33 @@ public sealed partial class Binding
                 ? solution.InferArgument(evidencePattern, solution.Call.ArgumentNodes[i], late: false) : solution.Call.ArgumentNodes[i].BoundType is null;
     }
 
+    // SPEC 10.8 Solving ("collected together": every source before the expected result fills; G812 ruling 147): the waiting inputs
+    // (SettleWaiting) and the wholes recorded since `wholes` (BindWholes) settle each other. A whole's meet can fix a pair binder whose
+    // application a waiting input holds (a Tuple literal at an occurrence of the original `s/T`), and an input inferred only then can
+    // record a whole. So they alternate until a round's wholes fix no slot. A round fixes at least one slot or ends the settle, so it ends
+    // within the call's slots. False when the candidate is inapplicable.
+    private bool SettleSources(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced, int wholes, bool late)
+    {
+        while (true)
+        {
+            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+            {
+                return false;
+            }
+
+            var bound = SourcedSlots(solution.Frame);
+            if (!solution.BindWholes(wholes, late))
+            {
+                return false;
+            }
+
+            if (waiting.IsEmpty || SourcedSlots(solution.Frame) == bound)
+            {
+                return true;
+            }
+        }
+    }
+
     // SPEC 10.1 step 4, 15.6.1: the expected result fills a candidate's still-unbound slots by its structure, and its Origins are
     // matched and collected; its Origin relations to the completed result are judged at the destination. Returns whether the
     // structure fits; true without an expected result (SPEC 10.8: the slot-free structure of a result that keeps an unsolved slot is
@@ -370,12 +397,8 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            if (!solution.BindWholes(wholes, late: false) || !solution.InferCallableSignatures(mapping, operations))
+            if (!this.SettleSources(ref solution, mapping, ref waiting, ref sourced, wholes, late: false) ||
+                !solution.InferCallableSignatures(mapping, operations))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -391,7 +414,7 @@ public sealed partial class Binding
             var expectedStructure = this.InferExpectedResult(ref solution, expected);
 
             // SPEC 10.8: the expected result is the last source of a binder; an input formed only now is inferred now.
-            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+            if (!this.SettleSources(ref solution, mapping, ref waiting, ref sourced, wholes, late: false))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -722,13 +745,8 @@ public sealed partial class Binding
         }
 
         // SPEC 10.8, 10.2.1: the defaults bind what no evidence bound (the owner's O-343 (a), O-347 (a)); an input formed only now is
-        // inferred now.
-        if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
-        {
-            return false;
-        }
-
-        if (!solution.BindWholes(wholes, late: true))
+        // inferred now, and the wholes the defaults or it give are bound (SettleSources).
+        if (!this.SettleSources(ref solution, mapping, ref waiting, ref sourced, wholes, late: true))
         {
             return false;
         }

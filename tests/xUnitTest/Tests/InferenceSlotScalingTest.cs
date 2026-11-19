@@ -65,6 +65,16 @@ public class InferenceSlotScalingTest
         }
     }
 
+    // SPEC 10.8 (G812 ruling 147): the waiting inputs and the wholes settle each other (SettleSources): a Tuple literal at `y: s/T` fixes
+    // `s` through its whole's meet, and the n waiting inputs `x: s/(ref/X during b)` it held then settle in the next round (two rounds at
+    // every n), so the call's inference work does not grow faster than linearly in n (n = 30, 60, 120: it stays the same) and the call binds.
+    [Fact]
+    public void WaitingInputsAWholeSettlesTakeWorkLinearInTheirCount()
+    {
+        long[] work = [.. new[] { 30, 60, 120 }.Select(count => Work(Bound(WaitingThroughAWhole(count))))];
+        Assert.True(MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+    }
+
     // G216 (a) U3a (C-38 B3; DECISIONS BU-104): premise discovery reads the evidence names once per solve, so its reads grow linearly
     // in a literal's elements beside the evidence that names the callee's Origins (`mk([.None x N], q, r)`), not with every leaf.
     [Fact]
@@ -149,6 +159,16 @@ public class InferenceSlotScalingTest
         }
 
         return source.ToString();
+    }
+
+    private static string WaitingThroughAWhole(int count)
+    {
+        var all = Enumerable.Range(0, count).ToArray();
+        return "func stop() -> Never => $abort(\"stop\")\n" +
+            $"func w<s/T, {string.Join(", ", all.Select(i => $"X{i}"))}>({string.Join(", ", all.Select(i => $"x{i}: s/(ref/X{i} during b) during a"))}, y: s/T) -> i32\n" +
+            "    s is owner or ref\n    return stop()\n" +
+            "func use(p: ref/i32, rr: ref/(ref/i32 during p)) -> i32\n" +
+            $"    let q = w({string.Join(", ", all.Select(_ => "rr"))}, (1, 2))\n    return 0\n";
     }
 
     private static string NestedArgument(string form, int depth)
