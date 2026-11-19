@@ -224,20 +224,43 @@ public sealed partial class Binding
         => this.partPrerequisites.TryGetValue(node, out var part) && this.IsUnresolvedPrerequisite(part) ? part : null;
 
     // A dependent takes Complete's state for no Type; a node of a module the pass does not bind takes it in its entry and keeps its
-    // columns, its Type's included.
+    // columns, its Type's included. SPEC 23.1.2 (D-823): a node that rests after the Places built on it were bound (a late rest, such as
+    // Check's on a called declaration validation failed) takes them with it: each enclosing group, and each Place whose path's next step
+    // (NextPathStep) is the node, rests on it, so no Resolved Place stands over an untyped node (the HIR's compound Place has a Place
+    // root). The Places are found before any Type is cleared, since a step's form reads its operand's Type. While binding, a node's
+    // consumers are not bound yet, so the walk stops at once.
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
         this.prerequisiteStore.Add(cause);
         if (this.pass.Binds(node.SyntaxOwner))
         {
-            return Complete(node, null);
+            var top = node;
+            while (top.Parent is { BindingState: BindingState.Resolved } parent && this.BuiltOn(parent, top))
+            {
+                top = parent;
+            }
+
+            Complete(node, null);
+            for (var place = node; !ReferenceEquals(place, top); place = place.Parent!)
+            {
+                this.prerequisites[place.Parent!] = (this.prerequisiteStore.Count, 1);
+                this.prerequisiteStore.Add(place);
+                Complete(place.Parent!, null);
+            }
+
+            return null;
         }
 
         ref var entry = ref this.ForeignEntry(node);
         entry.State = CompletedState(entry.State, null);
         return null;
     }
+
+    // Whether `parent` is a group around `place` or a Place whose path's next step is `place` (NextPathStep, the one enumeration of a
+    // path's forms).
+    private bool BuiltOn(Koto parent, Koto place)
+        => IsGroup(parent) || (this.NextPathStep(parent, out var next) is not (PathStep.Root or PathStep.Candidate or PathStep.Receiver) && ReferenceEquals(next, place));
 
     private (int Start, Koto? Node) BeginConsultation(Koto node)
     {

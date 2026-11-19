@@ -638,6 +638,26 @@ public partial class PropertyBindingTest
         }
     }
 
+    // Two Fields whose custom getters return a non-Copy stored value: each declaration's one UnsatisfiedConstraint_Kd (SPEC 11.1).
+    private const string FailedGetter = "struct Q\n    public var x: i32 = 0\n    public init() => ()\nstruct P\n    public var x: i32 = 0\n    public var inner: Q = Q.init()\n" +
+        "    public init() => ()\nstruct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public var arr: Array<i32> = []\n" +
+        "        get() -> Array<i32> => storage\n    public init() => ()\nfunc take(v: i32) -> i32 => v\npublic func main() => ()\n";
+
+    // SPEC 23.1.2 (D-823): a use of a getter whose declaration validation fails rests on it after its body was bound, and so does every
+    // Place built on that use, which was bound against the use's Type: the program's only record is the declaration's. Before D-823 the
+    // Place stayed Resolved over the untyped use, and MIR met a Field rooted in an Error (InternalInvariant_Kd; a nested Place: a located
+    // Unsupported_Kd). Twins: the use itself, and a group, which failed nothing before.
+    [Theory]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.pos.x\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.arr[0]\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.pos.inner.x\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return take(w.pos.x)\n")]
+    [InlineData("func run(w: uniq/W)\n    let h = func [w] (c: bool) -> i32\n        return w.pos.x\n    let k = h(true)\n")]
+    [InlineData("func run(w: uniq/W)\n    let p = w.pos\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return (w.pos).x\n")]
+    public void APlaceBuiltOnAUseOfAFailedGetterRestsOnIt(string run)
+        => Assert.Equal([nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), nameof(DiagnosticCode.UnsatisfiedConstraint_Kd)], DiagnosticCorpus.Check(FailedGetter + run).Diagnostics.Select(static x => x.Code));
+
     // SPEC 11.8, 13.7.2, 23.1.1 (PLAN G295): a bare update of a group Property beside a custom accessor, inside its group, completes its
     // sides, then is Binding's located Unsupported_Kd at the target until P42 (before, no record and a PrerequisiteUnavailable_Kd without
     // a root). Twins bind: the standard accessors, the qualified form (the later phases' limit), a bare read and a bare write.
