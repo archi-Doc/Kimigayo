@@ -30,7 +30,7 @@ public sealed partial class Binding
     // SPEC 7.7.2: an anonymous function without a capture list never captures contextual self or a setter's value; its use is
     // the location, and the declaration of the binding is related. In a later default of the receiver's function, an entry can
     // neither move self nor keep a new borrow of it (SPEC 7.2.3), so only a Copy that holds no borrow, [self], can be offered.
-    private void ReportContextualCapture(Koto node, BindingSymbol contextual, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportContextualCapture(Koto node, DiagnosticCollection? store, BindingSymbol contextual, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var declaring = contextual.Declaration!;
         var self = contextual.Name == "self";
@@ -42,14 +42,14 @@ public sealed partial class Binding
             note += "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
         }
 
-        node.Report(requirement, code, note: note, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
+        node.ReportIn(store, requirement, code, note: note, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
     }
 
     // SPEC 7.7.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
     // located at the entry and names the initialization it stands for; a bare entry of a Non-Copy binding offers the transfer
     // and the borrow as candidates (SPEC 23.1.3). In a default, the binding of a preceding argument admits neither, nor an
     // exclusive borrow (SPEC 7.2.3), so no candidate is offered.
-    private void ReportCaptureEntry(Koto node, CaptureFailure capture, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportCaptureEntry(Koto node, DiagnosticCollection? store, CaptureFailure capture, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var name = capture.Name;
         var type = capture.Type;
@@ -57,10 +57,10 @@ public sealed partial class Binding
         switch (code)
         {
             case DiagnosticCode.InvalidAssignment_Kd when DefaultParameters.InLaterDefault(node, source):
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], span: capture.At);
+                node.ReportIn(store, requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], span: capture.At);
                 break;
             case DiagnosticCode.InvalidAssignment_Kd:
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], span: capture.At);
+                node.ReportIn(store, requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], span: capture.At);
                 break;
             case DiagnosticCode.TransferRequired_Kd when node is FunctionKoto { Captures: null }:
                 // SPEC 7.7.2 (R6-check H1, S3): the omitted list's capture, located at the Closure; no candidate is offered.
@@ -70,10 +70,11 @@ public sealed partial class Binding
                     omitted += ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
                 }
 
-                node.Report(requirement, code, note: omitted, evidence: [name]);
+                node.ReportIn(store, requirement, code, note: omitted, evidence: [name]);
                 break;
             case DiagnosticCode.TransferRequired_Kd when DefaultParameters.InLaterDefault(node, source):
-                node.Report(
+                node.ReportIn(
+                    store,
                     requirement,
                     code,
                     note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is not proven Copy, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)",
@@ -81,7 +82,8 @@ public sealed partial class Binding
                     span: capture.At);
                 break;
             case DiagnosticCode.TransferRequired_Kd:
-                node.Report(
+                node.ReportIn(
+                    store,
                     requirement,
                     code,
                     note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference{this.FailingCaseNote(type, node)}",
@@ -95,12 +97,13 @@ public sealed partial class Binding
                 break;
             case DiagnosticCode.InvalidCaptureBinding_Kd when Receiver(source) is not null:
                 // SPEC 7.7.2: an explicit capture of self obeys the construction and destruction restrictions.
-                node.Report(requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.7.2)", span: capture.At);
+                node.ReportIn(store, requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.7.2)", span: capture.At);
                 break;
             case DiagnosticCode.InvalidCaptureBinding_Kd when capture.Helper is not null && capture.Captured is { } captured:
                 // SPEC 16.3.1, 15.6.5: a later value of a captured var brings the helper borrow; each capture and the declaration are related.
                 var reaches = $"This value carries the helper borrow of the whole destruction receiver (self@ref) into {name}, which a Closure captures; ";
-                node.Report(
+                node.ReportIn(
+                    store,
                     requirement,
                     code,
                     note: reaches + HelperBorrowNote,
@@ -114,17 +117,17 @@ public sealed partial class Binding
                 (string Role, Koto At, string? Label)[] related = capture.Borrow is { } borrow
                     ? [("declaration", source.Declaration, null), ("borrow", borrow, null)] : [("declaration", source.Declaration, null)];
                 var carries = $"{name} carries the helper borrow of the whole destruction receiver (self@ref); ";
-                node.Report(requirement, code, note: carries + HelperBorrowNote, span: capture.At, related: related);
+                node.ReportIn(store, requirement, code, note: carries + HelperBorrowNote, span: capture.At, related: related);
                 break;
             default:
-                node.Report(requirement, code, span: capture.At);
+                node.ReportIn(store, requirement, code, span: capture.At);
                 break;
         }
     }
 
     // SPEC 7.7.2, 23.1.2: a repeated capture name is one problem at the later entry or parameter, with the entry it repeats related.
     // Another entry that failed on its own is reported beside the repeats, exactly as it is in a list that repeats no name.
-    private void ReportCaptureRepeats(Koto function, CaptureListFailure list, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportCaptureRepeats(Koto function, DiagnosticCollection? store, CaptureListFailure list, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var repeats = CollectionsMarshal.AsSpan(this.captureRepeatRows).Slice(list.Repeats.Start, list.Repeats.Count);
         if (list.Failure != BindingFailure.None)
@@ -138,11 +141,11 @@ public sealed partial class Binding
             };
             if (list.Entry is { } entry)
             {
-                this.ReportCaptureEntry(function, entry, entryRequirement, entryCode);
+                this.ReportCaptureEntry(function, store, entry, entryRequirement, entryCode);
             }
             else
             {
-                function.Report(entryRequirement, entryCode);
+                function.ReportIn(store, entryRequirement, entryCode);
             }
         }
 
@@ -153,7 +156,8 @@ public sealed partial class Binding
             var note = repeat.Parameter
                 ? $"The capture entry {name} and the parameter {name} would both declare {name} in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.7.2)"
                 : $"The capture list names {name} twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.7.2)";
-            function.Report(
+            function.ReportIn(
+                store,
                 requirement,
                 code,
                 note: note,

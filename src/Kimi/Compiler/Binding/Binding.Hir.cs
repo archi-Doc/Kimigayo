@@ -19,11 +19,9 @@ public sealed partial class Binding
     private HirPublisher? hirPublisher;
     private ulong hirVersion;
 
-    // The run whose library pass published the library module (RB1, C-379 F1); 0 before the first.
-    private ulong libraryVersion;
-
-    // The library module's publication version (HirTables.LibraryVersion).
-    internal ulong LibraryVersion => this.libraryVersion;
+    // The library module's publication version (HirTables.LibraryVersion; PLAN G949 Stage 2 U3): Frozen once the compilation's library is
+    // frozen, the same in every compilation; 0 for a library not frozen (the freeze compilation's before its freeze, a refused one).
+    internal ulong LibraryVersion => this.Library.Frozen ? Frozen : 0;
 
     // The nodes the publisher's jump walk visited (Keeps, DECISIONS BU-106): a scaling check's work measure.
     internal long KeptTargetWork => this.hirPublisher?.TargetWork ?? 0;
@@ -49,7 +47,7 @@ public sealed partial class Binding
 
     // The columns of the pass's modules, in their order, from the pass's facts. RB1 (PLAN G949 S1-r1b; review-s1r1 Re-check 3; C-379
     // F1): a pass that holds the library module publishes it at its end, since the program pass empties the per-pass tables the
-    // publisher reads for the library's nodes; its version is the library's (LibraryVersion, which the pass driver sets), never
+    // publisher reads for the library's nodes; its version is the library's (LibraryVersion: Frozen once frozen), never
     // hirVersion, which PublishHir compares for the program pass's modules. So the library pass, Final in every Bind, leaves a
     // Provisional program pass's modules to PublishHir.
     private void PublishPass()

@@ -265,7 +265,8 @@ public sealed partial class TyCtxtTest
     // PLAN G949 S1-b2 (DECISIONS BU-220): the statics hold the ids 1..StaticCount from one fixed list, the same objects in every
     // compilation; a compilation's TyCtxt numbers every Type it makes after them, the interned ones and the parameter Types (a generic
     // parameter's whole Type and target projection, a Contract's Self), each id once and with no gap, in the order it makes them, so two
-    // compilations of one program number alike.
+    // compilations of one program number alike. From PLAN G949 Stage 2 U3 (u13) the compilation reads the frozen library, whose layer
+    // holds the ids up to its L, so the compilation's own ids number on from L + 1 with no gap.
     [Fact]
     public void TypeIdsAreDenseAndUnique()
     {
@@ -1989,7 +1990,7 @@ public sealed partial class TyCtxtTest
             count++;
             var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(outer)!).Subst;
             var where = $"{module.Compilation.Kotonoha.Name} {outer.Target.Name} > {inner.Target.Name}";
-            foreach (var declared in ((FunctionKoto)inner.Target.Declaration).Parameters.Select(static x => x.Type.TypeOf()).Append(inner.Target.Type))
+            foreach (var declared in ((FunctionKoto)inner.Target.Declaration).Parameters.Select(x => x.Type.TypeOf(c)).Append(inner.Target.Type))
             {
                 var expected = declared is null ? null
                     : c.Types.Apply(declared, c.Types.SubstOf(inner)!) is { } once ? c.Types.Apply(once, c.Types.SubstOf(outer)!) : null;
@@ -2052,7 +2053,7 @@ public sealed partial class TyCtxtTest
                     calls++;
                     foreach (var parameter in callee.Parameters)
                     {
-                        Check(node, parameter.Type.TypeOf(), subst, call);
+                        Check(node, parameter.Type.TypeOf(c), subst, call);
                     }
 
                     Check(node, subst.Target.Type, subst, call);
@@ -2063,11 +2064,11 @@ public sealed partial class TyCtxtTest
                 }
             }
 
-            if (node.TypeOf() is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item) is { } context)
+            if (node.TypeOf(c) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto function } item && c.Binding.FunctionItemContext(item) is { } context)
             {
                 foreach (var parameter in function.Parameters)
                 {
-                    Check(node, parameter.Type.TypeOf(), c.Types.SubstOfItem(item)!, context);
+                    Check(node, parameter.Type.TypeOf(c), c.Types.SubstOfItem(item)!, context);
                 }
             }
         }

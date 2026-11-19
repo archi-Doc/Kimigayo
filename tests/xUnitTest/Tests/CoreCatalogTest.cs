@@ -9,8 +9,11 @@ namespace XunitTest;
 
 public class CoreCatalogTest
 {
+    // PLAN G949 Stage 2 U3 (changed by decision, X8): compilations made at once read the process's one frozen library for their
+    // target, so its identities are the same objects in each. Stage 1's row (ConcurrentCompilationsKeepSeparateLibraryState) gave each
+    // compilation a library of its own.
     [Fact]
-    public void ConcurrentCompilationsKeepSeparateLibraryState()
+    public void ConcurrentCompilationsShareTheFrozenLibraryState()
     {
         var libraries = new KimiLibrary[16];
         Parallel.For(0, libraries.Length, i =>
@@ -21,8 +24,8 @@ public class CoreCatalogTest
         });
         for (var i = 1; i < libraries.Length; i++)
         {
-            Assert.NotSame(libraries[0].Option, libraries[i].Option);
-            Assert.NotSame(libraries[0].Option.Declaration, libraries[i].Option.Declaration);
+            Assert.Same(libraries[0].Option, libraries[i].Option);
+            Assert.Same(libraries[0].Option.Declaration, libraries[i].Option.Declaration);
         }
     }
 
@@ -40,8 +43,11 @@ public class CoreCatalogTest
         Assert.False(c.Kotonoha.Syntax.IsLibrary);
     }
 
+    // PLAN G949 Stage 2 U3 (changed by decision, X8): the embedded sources keep their file locations, and two compilations read the one
+    // frozen library, so its symbols, declarations and documents are the same objects. Stage 1's row
+    // (EmbeddedSourcesKeepFileLocationsAndShareOnlyText) parsed them per compilation and shared only the text.
     [Fact]
-    public void EmbeddedSourcesKeepFileLocationsAndShareOnlyText()
+    public void EmbeddedSourcesKeepFileLocationsAndAreShared()
     {
         var first = Compilation.CreateForTest();
         var second = Compilation.CreateForTest();
@@ -52,10 +58,9 @@ public class CoreCatalogTest
             var source = a.Declaration.CodeContext.SourceDocument!;
             Assert.StartsWith("compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/", source.Path);
             Assert.EndsWith(".kimi", source.Path);
-            Assert.NotSame(a, b);
-            Assert.NotSame(a.Declaration, b.Declaration);
-            Assert.NotSame(source, b.Declaration.CodeContext.SourceDocument);
-            Assert.Same(source.SourceText, b.Declaration.CodeContext.SourceDocument!.SourceText);
+            Assert.Same(a, b);
+            Assert.Same(a.Declaration, b.Declaration);
+            Assert.Same(source, b.Declaration.CodeContext.SourceDocument);
         }
 
         Assert.True(first.Bind().IsComplete);
@@ -66,9 +71,13 @@ public class CoreCatalogTest
     public void DeclarationOrderDoesNotChangeRecognizedIdentities()
     {
         var c = Compilation.CreateForTest();
-        var makeObj = c.Library.MakeObj;
-        Assert.IsType<List<DeclarationContainerKoto>>(c.Library.Kotonoha.RootKoto.NestedContainers).Reverse();
-        Assert.IsType<List<Koto>>(((DeclarationContainerKoto)makeObj.Declaration.Parent!).Members).Reverse(); // Kimi.Intrinsics
+        BindingSymbol? makeObj = null;
+        CompilationTestHelper.UseEditedLibrary(c, x =>
+        {
+            makeObj = x.MakeObj;
+            Assert.IsType<List<DeclarationContainerKoto>>(x.Kotonoha.RootKoto.NestedContainers).Reverse();
+            Assert.IsType<List<Koto>>(((DeclarationContainerKoto)makeObj.Declaration.Parent!).Members).Reverse(); // Kimi.Intrinsics
+        });
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let value = Kimi.Intrinsics.makeObj(42)");
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.Same(makeObj, c.Library.MakeObj);
@@ -79,15 +88,18 @@ public class CoreCatalogTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Library.Kotonoha.CreateCodeContext().Parse(
-            c.Library.Kotonoha.RootKoto,
-            "public struct Extra\n    public func read(self: ref/Self) -> i32 => 42\npublic group Helpers\n    public func helper() -> i32 => Extra.init().read()");
-        c.Library.Kotonoha.CreateCodeContext().Parse(
-            (StructKoto)c.Library.Slice.Declaration,
-            "public func extra(self: Self) -> isize => self.length");
-        c.Library.Kotonoha.CreateCodeContext().Parse(
-            (EnumKoto)c.Library.Option.Declaration,
-            "public func extra(self: ref/Self) -> i32 => 42");
+        CompilationTestHelper.UseEditedLibrary(c, static x =>
+        {
+            x.Kotonoha.CreateCodeContext().Parse(
+                x.Kotonoha.RootKoto,
+                "public struct Extra\n    public func read(self: ref/Self) -> i32 => 42\npublic group Helpers\n    public func helper() -> i32 => Extra.init().read()");
+            x.Kotonoha.CreateCodeContext().Parse(
+                (StructKoto)x.Slice.Declaration,
+                "public func extra(self: Self) -> isize => self.length");
+            x.Kotonoha.CreateCodeContext().Parse(
+                (EnumKoto)x.Option.Declaration,
+                "public func extra(self: ref/Self) -> i32 => 42");
+        });
         c.Kotonoha.CreateCodeContext().Parse(
             c.Kotonoha.RootKoto,
             "let value = Kimi.Helpers.helper()\nlet a: [1 of i32] = [42]\nlet count = a[..].extra()");
@@ -108,7 +120,7 @@ public class CoreCatalogTest
             Assert.NotNull(c.Library.GetSymbol(id));
         }
 
-        Assert.Equal(BindingState.Resolved, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration.StateOf()); // SPEC 22.1: declared `#Unsupported`.
+        Assert.Equal(BindingState.Resolved, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration.StateOf(c)); // SPEC 22.1: declared `#Unsupported`.
     }
 
     [Fact]
