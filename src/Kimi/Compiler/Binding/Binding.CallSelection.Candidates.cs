@@ -134,7 +134,7 @@ public sealed partial class Binding
     // nothing), and those it formed are inferred again. Called before the expected result, after it (for a binder only the
     // expected result fixes) and after the late pass (for one only a Literal's default fixes); one still open keeps its open parts
     // unbound. An input whose own pattern forms no Type is judged by UnformedPart instead.
-    private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced, ref SlotSet unknown)
+    private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced)
     {
         var call = solution.Call;
         var function = solution.Function;
@@ -146,7 +146,7 @@ public sealed partial class Binding
             {
                 if (waiting.Contains(i) && !this.HasOpenApplication(function.Parameters[mapping[i]].Type.BoundType!, owner, solution.Frame))
                 {
-                    if (!this.InferWaiting(ref solution, mapping, i, ref unknown))
+                    if (!this.InferWaiting(ref solution, mapping, i))
                     {
                         return false;
                     }
@@ -167,7 +167,7 @@ public sealed partial class Binding
                 if (waiting.Contains(i) && !sourced.Contains(i))
                 {
                     sourced.Add(i);
-                    if (!this.InferWaiting(ref solution, mapping, i, ref unknown))
+                    if (!this.InferWaiting(ref solution, mapping, i))
                     {
                         return false;
                     }
@@ -184,13 +184,13 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8: infers waiting input i; false when it fails, unless it failed through its own pattern's formation (UnformedPart).
-    private bool InferWaiting(ref SlotSolution solution, int[] mapping, int i, ref SlotSet unknown)
+    private bool InferWaiting(ref SlotSolution solution, int[] mapping, int i)
     {
         var type = solution.Function.Parameters[mapping[i]].Type.BoundType!;
         var part = solution.Call.ArgumentNodes[i];
         var mark = this.unformedWrites;
         return (solution.Pattern(type) is { } evidencePattern ? solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is null) ||
-            this.UnformedPart(ref solution, type, i, this.FormsNone(type, mark), ref unknown) == true;
+            this.UnformedPart(ref solution, type, i, this.FormsNone(type, mark)) == true;
     }
 
     // DECISIONS D3 with rule W (BU-79; G812 ruling 88, design revision 1): argument i's check failed; whether it failed through its own
@@ -201,7 +201,7 @@ public sealed partial class Binding
     // O-338 (a); F's O1 (a)), and so does one that no case of the split layer adapts (FitsOpenLayer; the owner's O-366 (a)). Any other
     // part is unknown, a wildcard in every later check as a parameter Type that failed to bind is (SPEC 10.1's Unknown applicability),
     // and the trial goes on.
-    private bool? UnformedPart(ref SlotSolution solution, BoundType type, int i, bool formsNone, ref SlotSet unknown)
+    private bool? UnformedPart(ref SlotSolution solution, BoundType type, int i, bool formsNone)
     {
         if (!formsNone)
         {
@@ -216,7 +216,7 @@ public sealed partial class Binding
             return false;
         }
 
-        unknown.Add(i);
+        solution.Unknown.Add(i);
         return true;
     }
 
@@ -389,7 +389,7 @@ public sealed partial class Binding
         var unboundSlots = this.RentSlotSet(CallSlotCount(function));
         var unsolvedSlots = this.RentSlotSet(CallSlotCount(function));
         var defaults = this.RentSlotSet(function.Parameters.Count);
-        var unknown = this.RentSlotSet(call.ArgumentNodes.Count); // The parts whose own pattern forms no Type (UnformedPart).
+        solution.Unknown = this.RentSlotSet(call.ArgumentNodes.Count); // The parts whose own pattern forms no Type (UnformedPart).
         try
         {
             defaultsUsed = argumentMap.DefaultsUsed;
@@ -487,7 +487,7 @@ public sealed partial class Binding
                 var mark = this.unformedWrites;
                 if ((solution.Pattern(type) is { } evidencePattern
                     ? !solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is not null) &&
-                    this.UnformedPart(ref solution, type, i, this.FormsNone(type, mark), ref unknown) is not true)
+                    this.UnformedPart(ref solution, type, i, this.FormsNone(type, mark)) is not true)
                 {
                     if (part.BoundType is { } actual)
                     {
@@ -504,7 +504,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced, ref unknown))
+            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -525,7 +525,7 @@ public sealed partial class Binding
             var expectedStructure = this.InferExpectedResult(ref solution, expected);
 
             // SPEC 10.8: the expected result is the last source of a binder; an input formed only now is inferred now.
-            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced, ref unknown))
+            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -535,7 +535,7 @@ public sealed partial class Binding
                 DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
-            if (!this.SolveLate(ref solution, mapping, defaults, ref waiting, ref sourced, ref unknown))
+            if (!this.SolveLate(ref solution, mapping, defaults, ref waiting, ref sourced))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -581,7 +581,7 @@ public sealed partial class Binding
                 {
                     var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
                     var kind = this.KindOf(argument);
-                    if (unknown.Contains(i) || function.Parameters[mapping[i]].Type.BoundType is not { } pattern ||
+                    if (solution.Unknown.Contains(i) || function.Parameters[mapping[i]].Type.BoundType is not { } pattern ||
                         (kind is PartKind.Function or PartKind.Reference ? pass != ordinaryPasses :
                         pass == ordinaryPasses || (contextualInputs && (kind is PartKind.Aggregate or PartKind.Join) != (pass == 1))))
                     {
@@ -651,7 +651,7 @@ public sealed partial class Binding
                                 continue;
                             }
 
-                            if (this.UnformedPart(ref solution, pattern, i, formsNone, ref unknown) == true)
+                            if (this.UnformedPart(ref solution, pattern, i, formsNone) == true)
                             {
                                 continue;
                             }
@@ -670,7 +670,7 @@ public sealed partial class Binding
                             return CandidateApplicability.Inapplicable;
                         }
 
-                        if (met is null && this.UnformedPart(ref solution, pattern, i, formsNone, ref unknown) == true)
+                        if (met is null && this.UnformedPart(ref solution, pattern, i, formsNone) == true)
                         {
                             continue; // A Literal that fits the target of a pattern that forms no Type (FitsLiteralShape): unknown.
                         }
@@ -708,7 +708,7 @@ public sealed partial class Binding
                     waitingCallables |= applicability == CandidateApplicability.Waiting;
                     if (applicability is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                     {
-                        if (this.UnformedPart(ref solution, pattern, i, formsNone, ref unknown) == true)
+                        if (this.UnformedPart(ref solution, pattern, i, formsNone) == true)
                         {
                             continue; // D3: the fit failed at a Type formed with an unrepresented slot (HasOuterSlot).
                         }
@@ -721,7 +721,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 // DECISIONS D3 (C-359 C1): a Function Item part left unknown through its own signature fails where no case fits it.
-                if (unknown.Contains(i) && this.UnformedItemFails(ref solution, function.Parameters[mapping[i]].Type.BoundType!, call.ArgumentNodes[i]))
+                if (solution.Unknown.Contains(i) && this.UnformedItemFails(ref solution, function.Parameters[mapping[i]].Type.BoundType!, call.ArgumentNodes[i]))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
@@ -861,7 +861,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.ReturnSlotSet(unknown);
+            this.ReturnSlotSet(solution.Unknown);
             this.ReturnSlotSet(defaults);
             this.ReturnSlotSet(unsolvedSlots);
             this.ReturnSlotSet(unboundSlots);
@@ -878,13 +878,13 @@ public sealed partial class Binding
     // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted),
     // after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
     // inapplicable.
-    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet waiting, ref SlotSet sourced, ref SlotSet unknown)
+    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet waiting, ref SlotSet sourced)
     {
         var call = solution.Call;
         var function = solution.Function;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            if (unknown.Contains(i))
+            if (solution.Unknown.Contains(i))
             {
                 continue;
             }
@@ -896,7 +896,7 @@ public sealed partial class Binding
 
             var mark = this.unformedWrites;
             if (solution.Pattern(parameter) is { } latePattern && !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true) &&
-                this.UnformedPart(ref solution, parameter, i, this.FormsNone(parameter, mark), ref unknown) is not true)
+                this.UnformedPart(ref solution, parameter, i, this.FormsNone(parameter, mark)) is not true)
             {
                 return false;
             }
@@ -904,7 +904,7 @@ public sealed partial class Binding
 
         // SPEC 10.8, 10.2.1: the defaults bind what no evidence bound (the owner's O-343 (a), O-347 (a)); an input formed only now is
         // inferred now.
-        if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced, ref unknown))
+        if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
         {
             return false;
         }

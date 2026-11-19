@@ -93,6 +93,11 @@ public sealed partial class Binding
         // from the retained rows (CollectPositionPremises) and read by each discovery (DiscoverPremiseOrigins); its solve returns it.
         internal SlotSet EvidenceNamed;
 
+        // DECISIONS D3 (temporary, removed with (R)): the trial's arguments whose own pattern forms no Type, each unknown in the trial, a
+        // wildcard in every later check (UnformedPart adds them; SolveLate and the pass loop skip them). The trial's scratch, rented and
+        // returned by TryCandidateCore.
+        internal SlotSet Unknown;
+
         // The solution's Type and length slots, read-only: the frame's writes are InferCtxt's (DECISIONS R7-I2).
         internal readonly ReadOnlySpan<BoundType?> Types => this.Frame.Types;
 
