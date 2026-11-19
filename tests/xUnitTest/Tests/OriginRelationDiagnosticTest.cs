@@ -338,7 +338,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(Discarding + "    let r = h.link\n    h.link\n    r@follow = 1\n", "ComparisonLoanConflict_Kd")]
     [InlineData(Discarding + "    let r = h\n    _ = h.link\n    h.link\n    r.link@follow = 1\n", "ComparisonLoanConflict_Kd ComparisonLoanConflict_Kd")]
     [InlineData(Discarding + "    let g = h@move\n    _ = h.link\n    h.link\n", "MovedPlace_Kd MovedPlace_Kd")]
-    [InlineData(Discarding + "    let x: uniq/i32 during a = h.link\n    _ = x\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
+    // One fit, `s outlives a`: A5's one record at the initializer (R7-O1 H: the twin went; D5, the fit at its initializer).
+    [InlineData(Discarding + "    let x: uniq/i32 during a = h.link\n    _ = x\n", "UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a => h.link\n", "UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s, g: uniq/(Holder2 during a) during t) -> ()\n    g.link = h.link\n", "UnprovenOriginRelation_Kd")]
     // R7-O1 b1 (SPEC 15.6.2, 15.6.4, 23.1.2; the Middle's ruling of 2026-11-19): the second `g.store(h.link)` reborrows `h.link` while `g`

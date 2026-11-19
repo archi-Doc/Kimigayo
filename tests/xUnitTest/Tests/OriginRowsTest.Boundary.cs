@@ -75,15 +75,17 @@ public sealed partial class OriginRowsTest
     // SPEC 5.7 with R4-M108 (DECISIONS BU-24; design-final §13 A2): a raw fit recorded at a body chain has its rows like any fit, their ends
     // the regions of the raw Origins (a shared view's label, a Place borrow's anchor met with the pointer's region), and a record whose end
     // is Unstated or the holder of a `during self` layer has none, so no row end is Shared, Holder or Unstated. A recorded row's relation
-    // is A5's at the value (R7-O1 H).
+    // is A5's one record at the value (R7-O1 H; the twin at `return` went). A raw result is not "the borrow or a Copy or Reborrow" of the
+    // local's Borrow (SPEC 15.6.5), so rule W derives nothing there: the Loan conflict at the local's storage end, which the failed
+    // return's Opaque node hid, is independent and shown (Q13 rule 3, the Middle's (iii)).
     [Theory]
-    [InlineData("func f(x: ref/i32) -> raw/i32 during static\n    let n = 1\n    let r = n@ref\n    return r@follow@raw\n", "r@follow@raw|return r@follow@raw", "Fn:f Fit Finite Fixed return r@follow@raw")]
-    [InlineData(RawPlaceBorrow, "item@move", "Fn:f Fit Inferred Fixed item@move")]
-    [InlineData("func f(x: ref/i32, p: raw/i32) -> raw/i32 during x => p\n", "p", "")]
-    [InlineData("struct B\n    internal var data: raw/u8 during self\n    public init() => self.data = null\nfunc f(fresh: raw/u8)\n    var b = B.init()\n    b.data = fresh\n", "b.data = fresh", "")]
+    [InlineData("func f(x: ref/i32) -> raw/i32 during static\n    let n = 1\n    let r = n@ref\n    return r@follow@raw\n", "ComparisonLoanConflict_Kd let n = 1|UnsatisfiedOriginRelation_Kd r@follow@raw", "Fn:f Fit Finite Fixed r@follow@raw")]
+    [InlineData(RawPlaceBorrow, "UnsatisfiedOriginRelation_Kd item@move", "Fn:f Fit Inferred Fixed item@move")]
+    [InlineData("func f(x: ref/i32, p: raw/i32) -> raw/i32 during x => p\n", "UnsatisfiedOriginRelation_Kd p", "")]
+    [InlineData("struct B\n    internal var data: raw/u8 during self\n    public init() => self.data = null\nfunc f(fresh: raw/u8)\n    var b = B.init()\n    b.data = fresh\n", "UnsatisfiedOriginRelation_Kd b.data = fresh", "")]
     public void ARawFitsRowsEndAtRegions(string source, string records, string rows)
     {
-        Assert.Empty(Recorded(source, [.. records.Split('|').Select(static x => $"{Unsatisfied} {x}")], string.Empty));
+        Assert.Empty(Recorded(source, records.Split('|'), string.Empty));
         var c = MirBuildTest.Compile(source + Main);
         var all = new List<string>();
         foreach (var body in Rows(c, false).Select(static x => x.Body).Distinct())

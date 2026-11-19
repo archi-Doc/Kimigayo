@@ -165,17 +165,18 @@ public sealed partial class MirOriginsTest
     // so what reaches the meet itself is judged at the shorter end: a local's Borrow annotated `during (p and x)` and returned `during x`,
     // and the meet of two local regions read into a `during x` local (where the operand y is also Unknown); the valid counterpart names x.
     // The meet is also at the initializer's shorter end: the meet law's derived edge from the finite initializer into the meet's bound is
-    // Refuted at that in-edge's site too (SPEC 15.3.6; one record per edge into a Fixed node and failing source, as at the use).
+    // Refuted at that in-edge's site too (SPEC 15.3.6; one record per edge into a Fixed node and failing source, as at the use). A local
+    // annotation's fit is recorded at its initializer (R7-O1 H's D5), and the meet stays one row for MeetNode (R7-O1 H's F-H-13).
     [Theory]
     [InlineData(
         MeetHead + "    let m: ref/i32 during (p and x) = local@ref\n    return m\n",
-        "UnsatisfiedOriginRelation_Kd let m: ref/i32 during (p and x) = local@ref",
+        "UnsatisfiedOriginRelation_Kd local@ref",
         "UnsatisfiedOriginRelation_Kd m")]
     [InlineData(
         MeetHead + "    let m: ref/i32 during (p and q) = local@ref\n    let n: ref/i32 during x = m\n    return n\n",
-        "UnsatisfiedOriginRelation_Kd let m: ref/i32 during (p and q) = local@ref",
-        "UnsatisfiedOriginRelation_Kd let n: ref/i32 during x = m",
-        "UnprovenOriginRelation_Kd let n: ref/i32 during x = m")]
+        "UnsatisfiedOriginRelation_Kd local@ref",
+        "UnsatisfiedOriginRelation_Kd m",
+        "UnprovenOriginRelation_Kd m")]
     [InlineData(MeetHead + "    let m: ref/i32 during (p and x) = x\n    return m\n")]
     public void AMeetAtTheLongerEndIsAlsoItsOwnNode(string source, params string[] expected)
         => Assert.Equal(expected, Origins(MirBuildTest.Compile(source + Main)));
@@ -194,11 +195,11 @@ public sealed partial class MirOriginsTest
         Assert.Equal(["r: Relation r 3, Anchor l1@ref -1", "r: Relation r 3, Anchor l2@ref -1"], Facts(c));
     }
 
-    // PD31 (2a0-D D18): an Origin problem's facts are its last edge (Relation) and its Anchor, none where the source's Borrow lies inside
-    // the node Binding failed, which the MIR builds as an Opaque value (`bad`, its twin's row); j-region; and a chain through two exclusive
+    // PD31 (2a0-D D18): an Origin problem's facts are its last edge (Relation) and its Anchor: `bad`'s returned Borrow, built and anchoring
+    // the record at the value (R7-O1 H: Binding judges no body relation; it was an Opaque, its twin's row); j-region; and a chain through two exclusive
     // layers' containment edges, one problem per source, each anchored at its own Borrow.
     [Theory]
-    [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "return local@ref: Relation return local@ref 0")]
+    [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "local@ref: Relation local@ref 0, Anchor local@ref -1")]
     [InlineData(Region, "view: Relation view 2, Anchor local@ref -1")]
     [InlineData(
         Layers,
@@ -211,7 +212,7 @@ public sealed partial class MirOriginsTest
     // whose Ref has an Origin forms the node its rows and containment edges name, and the chain from it is Refuted, anchored at that Ref:
     // an argument's adapting Borrow, a stored exclusive reference Reborrowed into the result, a guard candidate, an explicit Borrow of a
     // Slice element (an Index, a shared layer, E6), and a Slice handle's Borrow, named by its root (`leak3`, `leak4` and the `var` form;
-    // SPEC 4.8.1), whose first two Binding fails at the return, so the MIR builds the return as an Opaque value and only its row remains.
+    // SPEC 4.8.1), anchored at the Borrow itself (R7-O1 H: Binding judges no body relation, so the return's Borrow is built; C6).
     [Theory]
     [InlineData(
         "func id(r: ref/i32) -> ref/i32 during r => r\nfunc f(x: ref/i32) -> ref/i32 during x\n    var view = x\n    let local = 1\n" +
@@ -227,10 +228,10 @@ public sealed partial class MirOriginsTest
         "UnsatisfiedOriginRelation_Kd view <- s[0]@ref")]
     [InlineData(
         "func leak3(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return values@ref\n",
-        "UnsatisfiedOriginRelation_Kd return values@ref")]
+        "UnsatisfiedOriginRelation_Kd values@ref <- values@ref")]
     [InlineData(
         "func leak4(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    let local = values\n    return local@ref\n",
-        "UnsatisfiedOriginRelation_Kd return local@ref")]
+        "UnsatisfiedOriginRelation_Kd local@ref <- local@ref")]
     [InlineData(
         "func leak4(values: Slice<i32> during s) -> uniq/(Slice<i32> during s) during s\n    var local = values\n    return local@uniq\n",
         "UnsatisfiedOriginRelation_Kd local@uniq <- local@uniq")]
@@ -265,24 +266,24 @@ public sealed partial class MirOriginsTest
     // exclusive reference's Reborrow into a fixed layer (row 9c's containment), and a local's Borrow through locals with no candidate, a
     // local region (row 19), returned. With the old reporter gone (R6-check H8a D4) the rows pin the MIR's lines.
     [Theory]
-    [InlineData(R7Inv, "UnprovenOriginRelation_Kd let z: uniq/(ref/i32 during a) = y; UnprovenOriginRelation_Kd uniq/(ref/i32 during a)")]
+    // R7Inv's local annotation fit is recorded at its initializer `y` (R7-O1 H's D5).
+    [InlineData(R7Inv, "UnprovenOriginRelation_Kd uniq/(ref/i32 during a); UnprovenOriginRelation_Kd y")]
     [InlineData(Layers, "UnsatisfiedOriginRelation_Kd rr@follow@follow@ref; UnsatisfiedOriginRelation_Kd rr@follow@follow@ref")]
     [InlineData("func f(p: uniq/(uniq/i32 during a)) -> ()\n    var local: i32 = 1\n    var r = local@uniq\n    p@follow = r\n", "UnsatisfiedOriginRelation_Kd r")]
     [InlineData("func f(y: ref/i32) -> ref/i32 during y\n    let l = 1\n    var a: ref/i32 = y\n    a = l@ref\n    let b: ref/i32 = a\n    return b\n", "UnsatisfiedOriginRelation_Kd b")]
     public void AnAuditRowsChainHasItsOriginProblems(string source, string origins)
         => Assert.Equal(origins, string.Join("; ", Origins(MirBuildTest.Compile(source + Main)).Order(StringComparer.Ordinal)));
 
-    // audit-origins row 19 read into a local Option: the MIR's Origin problem is the one Binding's twin records at the same site, so the
-    // ledger paired them (DECISIONS R4-M108; R7 removes the twins).
+    // audit-origins row 19 read into a local Option: the MIR's Origin problem is the chain's one record; Binding judges no body relation,
+    // so it has no twin (R7-O1 H; DECISIONS R4-M108's twins until R7 superseded).
     [Fact]
-    public void AnAuditRowsChainPairsBindingsTwin()
+    public void AnAuditRowsChainIsA5sOneRecord()
     {
         var c = MirBuildTest.Compile("func f(y: ref/i32) -> Option<ref/i32 during y>\n    let l = 1\n    let a: Option<ref/i32> = .Some(l@ref)\n" +
             "    let b: Option<ref/i32> = a\n    return b\n" + Main);
         var codes = new[] { DiagnosticCode.UnsatisfiedOriginRelation_Kd, DiagnosticCode.UnprovenOriginRelation_Kd };
-        string[] twins = [.. c.Binding.Issues.Where(x => codes.Contains(x.Code)).Select(x => $"{x.Code} {x.Node.ToString()!.Split('\n')[0].Trim()}")];
-        Assert.NotEmpty(twins);
-        Assert.Equal(twins.Order(StringComparer.Ordinal), Origins(c).Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(c.Binding.Issues, x => codes.Contains(x.Code));
+        Assert.Equal(["UnsatisfiedOriginRelation_Kd b"], Origins(c));
     }
 
     // SPEC 15.6.5 and 15.6.3: valid counterparts form no Refuted chain: a parameter's Borrow passed on, a Field's Borrow read through its
@@ -383,8 +384,7 @@ public sealed partial class MirOriginsTest
 
     // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is a Dependent node, never a source or a judged target, so a
     // chain that starts or ends at it needs the unresolved Origin and records nothing, Binding's failure explaining the rejection: a
-    // `var`'s binding set with no initializer, a containment edge into a Dependent layer, and a Dependent meet at the shorter end whose
-    // slot's Type occurrence a later pass resolves. RepeatedSet stays as the control: since H11b-0 B1 its local's failed clause rests
+    // `var`'s binding set with no initializer and a containment edge into a Dependent layer. RepeatedSet stays as the control: since H11b-0 B1 its local's failed clause rests
     // nothing (SPEC 15.3.3), so it has no Dependent end, and its chain still records nothing.
     [Theory]
     [InlineData(RepeatedSet)]
@@ -392,8 +392,6 @@ public sealed partial class MirOriginsTest
         "func f(x: ref/i32)\n    var pending: V<i32>{p}\n        origin p.source outlives x\n")]
     [InlineData(Held + "func f(a: ref/i32) -> i32\n    let h0 = C.init(a)\n    let h: C{x} = h0@move\n        origin x.s outlives zz\n" +
         "    let q = h.r@follow@ref\n    return q@follow\n")]
-    [InlineData(Held + "func g(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    let h0 = C.init(b)\n    let h: C{x} = h0@move\n" +
-        "        origin x.s outlives zz\n    let m: ref/i32 during (x.s and b) = b\n    return m\n")]
     public void AChainThatStartsOrEndsAtADependentNodeRecordsNothing(string source)
     {
         var c = MirBuildTest.Compile(source + Main);
@@ -407,7 +405,8 @@ public sealed partial class MirOriginsTest
     // record at `h0@move`: the failed `let h`'s fit is recorded at its initializer since R7-O1 H's D5, the same relation as the row its
     // value fit leaves there, PLAN G739), and BU's forms
     // through a slot no failed clause names (one local's, a Tuple's second set, an assignment's). Such a slot completes (DECISIONS BU-68): the records
-    // stay, the assignment's at `p.q`.
+    // stay, the assignment's at `p.q`. A meet whose operand `b` rests on no failed input is a conjunct of its own (SPEC 15.3, 23.1.2;
+    // R4-M118 as amended by R7-O1 H's F-H1-4): `b outlives a` is Unproven at the returned `m` (it was AChainThatStartsOrEnds...'s row).
     [Theory]
     [InlineData(Escape + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unsatisfied", "h.r")]
     [InlineData(Escape + "    let h: C{x} = h0@move\n    return h.r\n", "Unsatisfied", "h.r")]
@@ -423,6 +422,11 @@ public sealed partial class MirOriginsTest
         Pair + "    var p: P{x} = P.init(a, a)\n        origin x.s outlives zz\n    p = P.init(a, l@ref)\n    return p.q\n",
         "Unsatisfied",
         "p.q")]
+    [InlineData(
+        Held + "func g(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    let h0 = C.init(b)\n    let h: C{x} = h0@move\n" +
+        "        origin x.s outlives zz\n    let m: ref/i32 during (x.s and b) = b\n    return m\n",
+        "Unproven",
+        "m")]
     public void AChainThroughADependentNodeIsJudgedBetweenItsEnds(string source, string verdict, params string[] sites)
         => Assert.Equal([.. sites.Select(x => $"{verdict}OriginRelation_Kd {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
