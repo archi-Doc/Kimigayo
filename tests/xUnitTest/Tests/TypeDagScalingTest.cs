@@ -277,8 +277,11 @@ public partial class TypeDagScalingTest
     [Fact]
     public void AProjectionChainInALeftIsEvaluatedUnderOneLayer()
     {
-        var work = new[] { 30, 60, 120 }.Select(Work).ToArray();
-        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 400, string.Join(' ', work));
+        // Fails fast (ruling 29, C1): the 30 -> 60 step is checked before N = 120 is built.
+        var (w30, w60) = (Work(30), Work(60));
+        Assert.True(w60 <= (2 * w30) + 400, $"{w30} {w60}");
+        var w120 = Work(120);
+        Assert.True(w120 - w60 <= (2 * (w60 - w30)) + 400, $"{w30} {w60} {w120}");
 
         static int Work(int n)
         {
