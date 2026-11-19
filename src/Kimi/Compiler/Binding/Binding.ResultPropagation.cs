@@ -803,7 +803,7 @@ public sealed partial class Binding
             return this.SuppliedType(node);
         }
 
-        var adapted = this.ErasureFits(actual, target, node, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
+        var adapted = this.ErasureFits(actual, target, node, null, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
         if (adapted is null)
         {
             return actual;

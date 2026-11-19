@@ -29,7 +29,7 @@ public readonly record struct BoundDefaultArgument(Koto Expression, BindingSymbo
 /// <summary>The default of parameter <paramref name="Index"/> of a function (DefaultDecl, plan 5.6.2): one template per declaration and
 /// default, owned by the declaration a call selects statically, never an override or a specialization. It reads each earlier parameter
 /// i as the slot its call prepared (Res PreparedParam) of the declared Type <see cref="Parameter"/>(i) and produces
-/// <see cref="Parameter"/>(<paramref name="Index"/>); at a call each is <c>TyCtxt.Apply(Parameter(i), SubstOf(call))</c>.</summary>
+/// <see cref="Parameter"/>(<paramref name="Index"/>); at a call each is <c>TyCtxt.Apply(Parameter(i), SubstOf(call)).Type</c>.</summary>
 /// <param name="Function">The declaration.</param>
 /// <param name="Index">The parameter's slot.</param>
 internal readonly record struct DefaultDecl(FunctionKoto Function, int Index)

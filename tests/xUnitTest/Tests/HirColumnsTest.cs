@@ -330,7 +330,7 @@ public sealed class HirColumnsTest
                 {
                     var declaration = DefaultDecl.Of(omitted);
                     if (!ReferenceEquals(declaration.Function, call.Target.Declaration) || !ReferenceEquals(declaration.Expression, omitted.Expression) || HirTables.Op(omitted.Expression) is HirOp.Unset or HirOp.Error or HirOp.Syntax ||
-                        !ReferenceEquals(reader.Types.Apply(declaration.Parameter(declaration.Index), reader.Types.SubstOf(call)!), omitted.ParameterType))
+                        !ReferenceEquals(reader.Types.Apply(declaration.Parameter(declaration.Index), reader.Types.SubstOf(call)!).Type, omitted.ParameterType))
                     {
                         problems.Add($"{where} omits {omitted.Parameter.Name} without its default declaration");
                     }

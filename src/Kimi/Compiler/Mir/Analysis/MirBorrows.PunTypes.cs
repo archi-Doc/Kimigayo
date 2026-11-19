@@ -80,7 +80,7 @@ internal sealed partial class MirBorrows
     // pointer and for any Type that is not punnable.
     private Extent Scalar(BoundType type)
     {
-        if (ScalarTypes.Supports(type) || type.IsAbstract)
+        if (type.IsScalar || type.IsAbstract)
         {
             return Extent.Positive;
         }
@@ -124,7 +124,7 @@ internal sealed partial class MirBorrows
     // Closure, a Slice, a Function value), a part Binding did not bind and a declaration on an inline cycle (an error at its container).
     private (Extent Pointer, Extent Fixed) PlaceBytes(BoundType type)
     {
-        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || type.Kind == BoundTypeKind.FunctionItem)
+        if (type.IsScalar || ReferenceEquals(type, BoundType.Unit) || type.Kind == BoundTypeKind.FunctionItem)
         {
             return default;
         }

@@ -51,6 +51,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ImplicitConstructorDecisions"] = "never written: the library declares no derived structure",
         ["NodeColumns.ObjectErasures"] = "never written: the library erases no object view",
         ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
+        ["NodeColumns.PerCallNamings"] = "never written: no nested signature of the library names its per-call Origin in its inputs (PLAN G972, board C-400)",
         ["NodeColumns.AliasTargets"] = "never written: the library declares no alias",
         ["NodeColumns.ImportedContainers"] = "never written: the library declares no alias, so no qualifier selects an alias import",
         ["NodeColumns.QualificationFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",

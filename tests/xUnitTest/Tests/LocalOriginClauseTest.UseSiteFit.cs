@@ -8,11 +8,18 @@ namespace XunitTest;
 // SPEC 15.6.1, 15.3.5, 10.7, 15.6.5, 23.1.2 (PLAN G492-a (i)): the records of a use-site fit, one row per form and boundary of the
 // fit's walk of the Type relation. The fit walks the relation once and reads each part's answer from that walk; an invariant part that
 // the relation meets reversed is walked once more in the fit's own orientation. Every row's records are those of a walk rooted at each
-// part, which the fit made before. The row whose result differs from its label is not here: the `var` limit's (veqiv, G492-a (iii)).
+// part, which the fit made before.
+// w4L4 (valid, rejected) is here with the open issue that changes its record, and r4aL (valid) with the located limit until PLAN G960.
 // A Function Type at an invariant position relates both ways (PLAN G900): rq1w, rq2a, rq2av and n1f are rejected as labelled.
 public partial class LocalOriginClauseTest
 {
     private const string Reader2 = "struct R2<T, U>\n    public let call: (T, U) -> i32\n    public init(call: (T, U) -> i32) => self.call = call@move\n\n";
+
+    // A Function Item whose per-call Origins `a`, `b` are only a meet's operands (SPEC 15.3.6: a meet on the right is never split).
+    private const string MeetOnly = "func m1(w: ref/i64 during (a and b)) -> i32\n    return 0\n";
+
+    // MeetOnly's operands related by clauses to `c`, which is at an input contravariant in its slot (SPEC 15.3.5) and a covariant input.
+    private const string MeetToInvariant = "struct Sink {a}\n    public let g: (ref/i64 during a) -> i32\nfunc m3(w: ref/i64 during (a and b), s: Sink during c, v: ref/i64 during c) -> i32\n    origin a outlives c\n    origin b outlives c\n    return 0\n";
 
     // Each row: its name, the program without `main`, and its records in order as `code@line:column label`, joined by `|`.
     public static TheoryData<string, string, string> UseSiteFitRows => new()
@@ -45,10 +52,10 @@ public partial class LocalOriginClauseTest
         { "e4a", "func f(p: ref/i64, q: ref/i64) -> (ref/i64 during p, ref/i64 during p)\n    var t = (p, p)\n    t = (q, t.0)\n    return t\n", "UnprovenOriginRelation_Kd@4:12 requires q outlives p, which is not proven" },
         // valid: the clause `a == c` holds for `x`'s Origin `p`.
         { "veqi", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    let x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", string.Empty },
-        // invalid: `q == p` is not proven. The record names the first failing bound, `p outlives q` (PLAN G913's Revision 2, the
-        // owner's O-348 (a): a conversion's comparison gives the variable a representative and the walk judges the members, as ob2i);
-        // `requires q == p` before it.
-        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires p outlives q, which is not proven" },
+        // invalid: `q == p` is not proven. PLAN G913's Revision 2 names the first failing bound, `p outlives q` (the owner's O-348 (a));
+        // with PLAN G492-a (iii)'s comparison the record is the equality, `p == q` on (iii) alone, and in the joint landing with (ii),
+        // where x's slot is its region in the comparison (O-363 (a)), named as held: the Middle's text (board C-350, 11-17 22:35).
+        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires p == the omitted Origin of x, which is not proven" },
 
         // An invariant part the relation meets reversed (`uniq/X` in R's contravariant slot, SPEC 15.3.5): its facts are those of its own
         // walk in the fit's orientation, a Function Type's one oriented comparison included (10.7).
@@ -152,6 +159,79 @@ public partial class LocalOriginClauseTest
         // invalid: a failed Function part, then a nested part whose `c == d` comes before a Type mismatch, then `c == d`: the mismatch
         // ends the fit (PLAN G900); the nested `c == d` before it is kept.
         { "w2", "func f(b: ref/i32, c: ref/i32, d: ref/i32, p: ref/i32, q: ref/i32, r0: (uniq/((ref/i32) -> i32) during p, (uniq/(ref/i32 during c) during p, uniq/i32 during p), uniq/(ref/i32 during c) during p)) -> i32\n    origin p outlives q\n    origin b outlives q\n    origin c outlives q\n    origin d outlives q\n    let r: (uniq/((ref/i32 during b) -> i32) during q, (uniq/(ref/i32 during d) during q, uniq/i64 during q), uniq/(ref/i32 during d) during q) = r0@move\n    return 0\n", "UnprovenOriginRelation_Kd@6:5 requires c == d, which is not proven|TypeMismatch_Kd@6:147 expected (uniq/(ref/i32) -> i32, (uniq/ref/i32, uniq/i64), uniq/ref/i32), found (uniq/(ref/i32) -> i32, (uniq/ref/i32, uniq/i32), uniq/ref/i32)" },
+
+        // A Function Item compared with a Function Type whose solve leaves a per-call Origin with no bound that reached a fixed Origin
+        // when the representatives were taken (SPEC 15.3.6, 15.3.7; PLAN G492-a (iii)): the located limit where the comparison's failure
+        // is recorded (a `let`, a default argument), never an internal error.
+        // invalid: no bound reaches `a` or `b`, so they have no candidate; the limit is the record (record selection).
+        { "r3M", MeetOnly + "func outer(p: ref/i64) -> i32\n    let f: (ref/i64 during p) -> i32 = m1\n    return 0\n", "Unsupported_Kd@4:40" },
+        // invalid: r3M as a default argument's value, checked at its declaration (SPEC 7.2.3).
+        { "w4X4", MeetOnly + "func h(g: (ref/i64 during static) -> i32 = m1) -> i32\n    return 0\n", "Unsupported_Kd@3:44" },
+        // valid: `c` is invariant without a proven equality, so it takes p, checked against q by the premise, and `a`, `b` take `c`. The
+        // solve takes the representatives of `c` and of `a`, `b` at once, so `a`, `b` reach no fixed Origin: the limit until PLAN G960.
+        { "r4aL", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", "Unsupported_Kd@9:73" },
+        // invalid: `c` lies between p and q, and p outlives q is not proven. The solve stops at its first open end, so that member's
+        // record is not reported: the limit is the one record (record selection).
+        { "r4aLn", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", "Unsupported_Kd@8:73" },
+        // valid: r4aL at a call argument (p and q are fixed in `take3`, SPEC 15.3.4). The record is dev's: applicability discards the
+        // solve's located limit and finds the one candidate inapplicable, though inference never makes a candidate inapplicable (SPEC
+        // 15.3.6; PLAN: a call argument's applicability discards a comparison's located limit).
+        { "w4L4", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    func take3(g: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32) -> i32\n        return 0\n    return take3(m3)\n", "NoApplicableOverload_Kd@11:12 none of 1 candidates applies" },
+        // valid: w4L4 without the meet.
+        { "w4L4c", "struct Sink {a}\n    public let g: (ref/i64 during a) -> i32\nfunc m3(w: ref/i64 during a, s: Sink during c, v: ref/i64 during c) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    func take3(g: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32) -> i32\n        return 0\n    return take3(m3)\n", string.Empty },
+
+        // A Function Item or a Closure compared with a Function Type that names a `var` local's region (SPEC 15.3.6, 15.3.7, 15.6.5;
+        // the owner's O-375 Q2 (a); PLAN G492-a (iii)): the comparison treats the region as an inference variable and the solve gives
+        // the implementation's per-call Origin its candidate from G913's rows. Each is valid and accepted (dev rejected them).
+        // Plain and Function-typed positions (covariant and contravariant bounds on one per-call Origin):
+        { "r2A", "func cc(w: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (ref/i64 during p, (ref/i64 during x) -> i32) -> i32 = cc\n    return 0\n", string.Empty },
+        { "r2Aq", "func cc(w: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    var x = q\n    let f: (ref/i64 during p, (ref/i64 during x) -> i32) -> i32 = cc\n    return 0\n", string.Empty },
+        { "r2Bv", "func cc2u(w1: ref/i64 during a, w2: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, s: ref/i64) -> i32\n    origin s outlives p\n    var x = p\n    let f: (ref/i64 during x, ref/i64 during s, (ref/i64 during p) -> i32) -> i32 = cc2u\n    return 0\n", string.Empty },
+        { "r2Bvr", "func cc2u(w1: ref/i64 during a, w2: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, s: ref/i64) -> i32\n    origin s outlives p\n    var x = p\n    let f: (ref/i64 during p, ref/i64 during s, (ref/i64 during x) -> i32) -> i32 = cc2u\n    return 0\n", string.Empty },
+        { "r2G", "func cc2f(g1: (ref/i64 during a) -> i32, g2: (ref/i64 during a) -> i32, w: ref/i64 during a) -> i32\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin q outlives p\n    var x = q\n    let f: ((ref/i64 during x) -> i32, (ref/i64 during p) -> i32, ref/i64 during q) -> i32 = cc2f\n    return 0\n", string.Empty },
+        { "r3Bx", "func fu4(w: ref/i64 during a, g: (ref/i64 during a) -> i32) -> (ref/i64 during a) -> i32\n    return g@move\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (ref/i64 during x, (ref/i64 during p) -> i32) -> (ref/i64 during x) -> i32 = fu4\n    return 0\n", string.Empty },
+        { "rrA", "func m4(g: (ref/i64 during a) -> i32, w: ref/i64 during a, v: uniq/(ref/i64 during a)) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: ((ref/i64 during p) -> i32, ref/i64 during p, uniq/(ref/i64 during x)) -> i32 = m4\n    return 0\n", string.Empty },
+        { "rrB", "func cr3(w: ref/i64 during a, g: (ref/i64 during a) -> i32) -> ref/i64 during a\n    return w\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (ref/i64 during x, (ref/i64 during x) -> i32) -> ref/i64 during p = cr3\n    return 0\n", string.Empty },
+        { "rv3A", "func cc2u(w1: ref/i64 during a, w2: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, q: ref/i64, s: ref/i64) -> i32\n    origin p outlives q\n    origin s outlives q\n    var x = q\n    let f: (ref/i64 during p, ref/i64 during s, (ref/i64 during x) -> i32) -> i32 = cc2u\n    return 0\n", string.Empty },
+        { "rv3Ae", "func cc2u(w1: ref/i64 during a, w2: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, q: ref/i64, s: ref/i64) -> i32\n    origin p outlives q\n    origin s outlives q\n    origin q outlives s\n    var x = q\n    let f: (ref/i64 during p, ref/i64 during s, (ref/i64 during x) -> i32) -> i32 = cc2u\n    return 0\n", string.Empty },
+        { "rv3D", "func cc2u(w1: ref/i64 during a, w2: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, q: ref/i64, s: ref/i64) -> i32\n    origin q outlives p\n    origin s outlives p\n    origin p outlives s\n    var x = q\n    let f: (ref/i64 during x, ref/i64 during s, (ref/i64 during p) -> i32) -> i32 = cc2u\n    return 0\n", string.Empty },
+        { "rv3Dn", "func cc2u(w1: ref/i64 during a, w2: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, q: ref/i64, s: ref/i64) -> i32\n    origin q outlives p\n    origin s outlives p\n    var x = q\n    let f: (ref/i64 during x, ref/i64 during s, (ref/i64 during p) -> i32) -> i32 = cc2u\n    return 0\n", string.Empty },
+        { "rv3U2", "func k(v: ref/i64) -> i32\n    return 0\nfunc fu2(u: ref/i64 during c, g: (ref/i64 during c) -> i32, w: ref/i64 during a) -> (ref/i64 during a) -> i32\n    return k\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (ref/i64 during x, (ref/i64 during p) -> i32, ref/i64 during p) -> (ref/i64 during p) -> i32 = fu2\n    return 0\n", string.Empty },
+        { "vcc3v", "func cc3(w: ref/i64 during a, g: (ref/i64 during a) -> i32, h: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (ref/i64 during x, (ref/i64 during x) -> i32, (ref/i64 during p) -> i32) -> i32 = cc3\n    return 0\n", string.Empty },
+        { "vccv", "func cc(w: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (ref/i64 during x, (ref/i64 during p) -> i32) -> i32 = cc\n    return 0\n", string.Empty },
+        { "vccvq", "func cc(w: ref/i64 during a, g: (ref/i64 during a) -> i32) -> i32\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin q outlives p\n    var x = q\n    let f: (ref/i64 during x, (ref/i64 during p) -> i32) -> i32 = cc\n    return 0\n", string.Empty },
+        // Exclusive layers, invariant in their target (SPEC 15.3.5), among them the owner's veqiv and rrD (O-375 Q2 (a), O-391 (a));
+        // vccv's program is also vccv2's.
+        { "r2Fe", "func ch7(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during a), u: ref/i64 during c, g: (ref/i64 during c) -> i32) -> i32\n    origin c outlives a\n    return 0\nfunc outer(p: ref/i64, q: ref/i64, r: ref/i64) -> i32\n    origin q outlives p\n    origin p outlives q\n    origin p outlives r\n    var x = r\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during r), ref/i64 during q, (ref/i64 during p) -> i32) -> i32 = ch7\n    return 0\n", string.Empty },
+        { "rrD", "func ch6(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during a), u: ref/i64 during c, g: (ref/i64 during c) -> i32) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin q outlives p\n    origin p outlives q\n    var x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p), ref/i64 during q, (ref/i64 during p) -> i32) -> i32 = ch6\n    return 0\n", string.Empty },
+        { "rv3B", "func ch6(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during a), u: ref/i64 during c, g: (ref/i64 during c) -> i32) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    var x = q\n    let f: (uniq/(ref/i64 during p), uniq/(ref/i64 during p), ref/i64 during q, (ref/i64 during x) -> i32) -> i32 = ch6\n    return 0\n", string.Empty },
+        { "vargv", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let c = func (g: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32) -> i32 => 0\n    return c(eqi)\n", string.Empty },
+        { "vclov", "func outer(p: ref/i64) -> i32\n    var x = p\n    let c = func (w: uniq/(ref/i64 during x), v: uniq/(ref/i64 during x)) -> i32 => 0\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = c\n    return 0\n", string.Empty },
+        { "veq1v", "func eq1(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during a)) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eq1\n    return 0\n", string.Empty },
+        { "veq1vr", "func eq1(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during a)) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (uniq/(ref/i64 during p), uniq/(ref/i64 during x)) -> i32 = eq1\n    return 0\n", string.Empty },
+        { "veq3v", "func eq3(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during a), u: uniq/(ref/i64 during a)) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    var y = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p), uniq/(ref/i64 during y)) -> i32 = eq3\n    return 0\n", string.Empty },
+        { "veqiv", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", string.Empty },
+        { "veqiva", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    var g: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    g = eqi\n    return 0\n", string.Empty },
+        { "veqive", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin q == p\n    var x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", string.Empty },
+        { "veqivr", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (uniq/(ref/i64 during p), uniq/(ref/i64 during x)) -> i32 = eqi\n    return 0\n", string.Empty },
+        { "veqivret", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> ref/i64 during p\n    var x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return x\n", string.Empty },
+        { "veqivt", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let t: ((uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32, i32) = (eqi, 0)\n    return 0\n", string.Empty },
+        { "veqjv", "func eqj(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin c == a\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqj\n    return 0\n", string.Empty },
+        { "veqzv", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    var z = x@ref\n    let f: (uniq/(ref/i64 during z), uniq/(ref/i64 during x)) -> i32 = eqi\n    return 0\n", string.Empty },
+        { "vmixrv", "func mixr(w: uniq/(ref/i64 during a)) -> ref/i64 during a => $abort(\"a\")\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (uniq/(ref/i64 during x)) -> ref/i64 during p = mixr\n    return 0\n", string.Empty },
+        { "vmixv", "func mix(w: uniq/(ref/i64 during a), v: ref/i64 during a) -> i32\n    return 0\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let f: (uniq/(ref/i64 during x), ref/i64 during p) -> i32 = mix\n    return 0\n", string.Empty },
+
+        // A pair binder's contravariant slot in a contract comparison (SPEC 8.10, 15.3.6): H's `put` returns a closure whose Type
+        // carries `put`'s inherited `t` and `U` (SPEC 3.2.1, 6.1.3), so erasing it to the result's Function Type needs `U` Owned
+        // (7.7.4, 15.2.3; DECISIONS BU-222). invalid: no clause proves it.
+        { "r3P", "contract M\n    func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during p) -> (t/i32 during p) -> i32\n        t is owner or ref\nstruct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during a) -> (t/i32 during a) -> i32\n        t is owner or ref\n        return func (v: t/i32 during a) -> i32 => 0\n", "UnprovenConstraint_Kd@8:16" },
+        { "r3Pq", "contract M\n    func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during p) -> (t/i32 during q) -> i32\n        t is owner or ref\nstruct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during a) -> (t/i32 during a) -> i32\n        t is owner or ref\n        return func (v: t/i32 during a) -> i32 => 0\n", "UnprovenConstraint_Kd@8:16" },
+        { "rv4P1", "contract M\n    func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during q) -> (t/i32 during p) -> i32\n        t is owner or ref\n        origin p outlives q\nstruct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during a) -> (t/i32 during a) -> i32\n        t is owner or ref\n        return func (v: t/i32 during a) -> i32 => 0\n", "UnprovenConstraint_Kd@9:16" },
+        // valid: the same comparison with a body that never returns (no closure is formed or erased): the slot's relation as the
+        // rows test it. (`U is Owned` would not do: `t/U` is a borrow when `t` is `ref`.)
+        { "r3Pa", "contract M\n    func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during p) -> (t/i32 during p) -> i32\n        t is owner or ref\nstruct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during a) -> (t/i32 during a) -> i32\n        t is owner or ref\n        return $abort(\"never\")\n", string.Empty },
+        { "r3Pqa", "contract M\n    func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during p) -> (t/i32 during q) -> i32\n        t is owner or ref\nstruct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during a) -> (t/i32 during a) -> i32\n        t is owner or ref\n        return $abort(\"never\")\n", string.Empty },
+        { "rv4P1a", "contract M\n    func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during q) -> (t/i32 during p) -> i32\n        t is owner or ref\n        origin p outlives q\nstruct H\n    Self is M\n    public func put<t/U>(self: uniq/Self, p: ref/i32, q: ref/i32, r: ref/i32, w: ref/i32 during a) -> (t/i32 during a) -> i32\n        t is owner or ref\n        return $abort(\"never\")\n", string.Empty },
     };
 
     [Theory]
@@ -162,6 +242,10 @@ public partial class LocalOriginClauseTest
         var actual = string.Join('|', DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}@{Position(source, x.Span)} {x.Label}".TrimEnd()));
         Assert.True(records == actual, $"{row}: {actual}");
     }
+
+    // A program's records in order as `code@line:column`, joined by `|` (PLAN G492-a (ii)'s rows).
+    internal static string Records(string source)
+        => string.Join('|', DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}@{Position(source, x.Span)}"));
 
     // A span's start as `line:column`, both from 1.
     private static string Position(string source, SourceSpan? span)

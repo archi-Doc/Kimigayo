@@ -28,7 +28,7 @@ public sealed partial class Binding
     // required contract, under the use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a
     // fixed Origin of an enclosing function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same
     // solution. An open evidence region still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
-    internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
+    internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
         if (item.Kind != BoundTypeKind.FunctionItem || item.Symbol is not { Declaration: FunctionKoto function } symbol)
@@ -63,7 +63,7 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            var fits = this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs);
+            var fits = this.ContractFits(use, symbol, function, ContractComparison(required, rows), null, item, null, default, origins, inputs);
             failure = fits ? default : this.contractFailure;
             return fits;
         }
@@ -358,7 +358,7 @@ public sealed partial class Binding
     // the body (JudgeCallPosition, FormBodyRelation), which A5 judges beside the input's fit rows: a call position's Origin relations never
     // fail the input, and its instantiated well-formedness is a requirement of its own (SPEC 15.6.4 step 3). As for the fit, an argument
     // that carries no Origin, such as one that transfers control, supplies none; and an input Binding already failed (its fit's
-    // structure, SPEC 5.7's raw-layer rules, a located limit, or its conversion's contract: a Function value's, FailsFunctionConversion,
+    // structure, SPEC 5.7's raw-layer rules, a located limit, or its conversion's contract: a Function value's, ConvertFunctionValue,
     // whose relations are published with it, FollowsContract) is no instance of its parameter, so its well-formedness, read from its
     // supplied Type, would rest on that failure (SPEC 23.1.2).
     private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution)
@@ -398,8 +398,10 @@ public sealed partial class Binding
     {
         foreach (var premise in premises)
         {
-            if (!this.ProvesOriginOutlives(premise.Value, premise.Substituted, use, comparison, premise.Condition) ||
-                (premise.Equality && !this.ProvesOriginOutlives(premise.Substituted, premise.Value, use, comparison)))
+            if (!(this.ProvesOriginOutlives(premise.Value, premise.Substituted, use, comparison, premise.Condition) ||
+                    this.LeavesBodyRows(premise.Value, premise.Substituted, use, comparison, premise.Condition, premise.Clause)) ||
+                (premise.Equality && !(this.ProvesOriginOutlives(premise.Substituted, premise.Value, use, comparison) ||
+                    this.LeavesBodyRows(premise.Substituted, premise.Value, use, comparison, 0, premise.Clause))))
             {
                 if (premise.Clause is null)
                 {

@@ -9,7 +9,7 @@ Standing request: the owner approved R6-check's division of work on 2026-11-02 (
 H13, H15, the windows; R4 owns the MIR side; BU owns the Binding side: H1, H7, H11, the end of the old-analysis D5 exceptions) and
 told R5 「その役割分担でOKです。H0の設計から始めて下さい。終わったら、R4の完了を待ってください。」
 
-Base: dev `1ec539c79`. "Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md);
+Base: dev `1ec539c79`. "Plan" is the [R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md);
 "PLAN10" the [Compiler Size Reduction plan](../../Proposals/2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md).
 Paths: `C/` = `src/Kimi/Compiler/`, `T/` = `tests/xUnitTest/Tests/`, `B/` = `src/Benchmark/Benchmarks/`. Counts are greps over the
 base (comments included, as the zero-reference rows count them). No build or test was run. (H) marks an unchecked inference.

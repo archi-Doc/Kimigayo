@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Mir;
 // - Responsibility: for each non-Fixed meet m = o1 and ... and on and each class edge u -> m whose tail is not one of m's operands, an edge
 //   u -> (g1 and ... and gn) at that edge's site and row for each choice of one bound gi per operand, judged as any edge into a Fixed node.
 // - Inputs: the class's row and containment edges (classEdges; an Unclassed end's forms none); the C1-F4 view's atoms, a meet's operands
-//   resolved by TyCtxt.OriginAtom and a choice's canonical meet by TyCtxt.MeetAtom (a Fixed atom of the body's table).
+//   as the view holds them (TyCtxt.MeetOperand) and a choice's canonical meet by TyCtxt.MeetAtom (a Fixed atom of the body's table).
 // - Outputs: the derived edges, appended to classEdges by meet in the order the meets first keep a bound, then by in-edge and bound; and
 //   meetWords, the words the choices and derived edges add to the class's arena (D20).
 // - Invariants: an operand's bounds are the operand when it is Fixed, else each Fixed node its walk over the class's edges meets (never
@@ -31,7 +31,7 @@ internal sealed partial class MirOrigins
     private int[] lawInStart = [];
     private int[] lawIn = [];
     private int lawNodes; // The nodes before the law; a canonical meet it adds is Fixed and on no edge it walks.
-    private int[] operandAt = []; // Per meet: where its operand nodes start in operandNodes (-1: not resolved).
+    private int[] operandAt = []; // Per meet: where its operand nodes start in operandNodes (-1: not named yet).
     private int[] operandNodes = [];
     private int operandCount;
     private int[] boundFirst = []; // Per meet: its kept bounds, a list through boundNext (-1: none) ending at boundLast.
@@ -142,7 +142,7 @@ internal sealed partial class MirOrigins
     {
         gained = false;
         var ins = this.DerivedIns(m, out var site);
-        var (at, operands) = (this.Operands(m, site), this.slice.Atoms[m].Atom.Operands.Count);
+        var (at, operands) = (this.Operands(m, site), this.MeetOperands(m));
         MirDataflow.Grow(ref this.choiceStart, operands + 1);
         MirDataflow.Grow(ref this.digits, operands);
         var (found, product) = (0, 1L);
@@ -341,20 +341,20 @@ internal sealed partial class MirOrigins
         }
 
         var at = this.Operands(edge.Head, edge.Site);
-        return this.operandNodes.AsSpan(at, this.slice.Atoms[edge.Head].Atom.Operands.Count).Contains(edge.Tail);
+        return this.operandNodes.AsSpan(at, this.MeetOperands(edge.Head)).Contains(edge.Tail);
     }
 
-    // A meet's operand nodes, resolved once at the first site asked; where they start in operandNodes.
+    // A meet's operand nodes, named once (as the view holds them, TyCtxt.MeetOperand); where they start in operandNodes.
     private int Operands(int m, SourceRef site)
     {
         if (this.operandAt[m] < 0)
         {
-            var operands = this.slice.Atoms[m].Atom.Operands;
+            var operands = this.MeetOperands(m);
             this.operandAt[m] = this.operandCount;
-            MirDataflow.Grow(ref this.operandNodes, this.operandCount + operands.Count);
-            for (var i = 0; i < operands.Count; i++)
+            MirDataflow.Grow(ref this.operandNodes, this.operandCount + operands);
+            for (var i = 0; i < operands; i++)
             {
-                this.operandNodes[this.operandCount++] = types.OriginAtom(this.key, operands[i], site);
+                this.operandNodes[this.operandCount++] = this.MeetOperand(m, i, site);
             }
         }
 

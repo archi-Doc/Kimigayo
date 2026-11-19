@@ -7,7 +7,8 @@
 // A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
 // by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as its body sees it, its
 // definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit. A local
-// region is one form in signature and environment, and reaches the meet of its sources (Binding.AddRegionMeet; DECISIONS: G570).
+// region is one form in signature and environment; one with BU-127's solved value equals it, any other reaches the meet of its sources
+// (Binding.AddRegionMeet; DECISIONS: G570, PLAN G492-a (ii), the owner's O-422 (a)).
 // A destruction retains as a call of each `drop` it runs (SPEC 15.6.4, 16.3.1; DECISIONS BU-47): a `drop`'s contract has its destruction
 // receiver at input 0, though it declares no parameter (Signature numbers none), `uniq/Self` over the layer the Subst's declaring Type
 // names, without an Origin; an erased destruction, of a part whose `drop` the destruction walk cannot see (SPEC 16.3.3), retains as the

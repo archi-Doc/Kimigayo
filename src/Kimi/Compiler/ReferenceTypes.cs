@@ -40,7 +40,7 @@ internal static class ReferenceTypes
         // parameter; each instance checks its substitution.
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && type.Components[0].Kind is BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) ||
         // Binding verifies Origin obligations; inferred initializer aliases use the same stored reference representation.
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && (ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0])));
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && (type.Components[0].IsScalar || IsPointer(type.Components[0])));
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || type is { IsObjectBorrow: true };
 
@@ -104,7 +104,7 @@ internal static class ReferenceTypes
 
     internal static bool IndependentResult(BoundType? type)
     {
-        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceEquals(type, BoundType.Never))
+        if (type is { IsScalar: true } || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceEquals(type, BoundType.Never))
         {
             return true;
         }

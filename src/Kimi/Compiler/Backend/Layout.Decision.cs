@@ -28,6 +28,7 @@ internal sealed partial class Layout
         private readonly BoundType type;
         private BoundType? clayout;
         private BoundType? rejected;
+        private BoundType? limitInstance; // The first limit's instance: a HeightLimit's (R7-T1), else none.
         private Outcome limit;
         private int height;
         private bool exact;
@@ -55,9 +56,9 @@ internal sealed partial class Layout
             {
                 this.rejected ??= result.Instance;
             }
-            else if (result.Outcome is Outcome.SizeLimit or Outcome.CountLimit && this.limit == Outcome.Ok)
+            else if (result.Outcome is Outcome.SizeLimit or Outcome.CountLimit or Outcome.HeightLimit && this.limit == Outcome.Ok)
             {
-                this.limit = result.Outcome;
+                (this.limit, this.limitInstance) = (result.Outcome, result.Instance);
             }
 
             return part;
@@ -88,10 +89,10 @@ internal sealed partial class Layout
                 return Entry.Of(Outcome.DepthLimit, null, null, height, stored, 0);
             }
 
-            var limited = this.limit == Outcome.Ok ? ownCount : this.limit;
+            var (limited, instance) = this.limit == Outcome.Ok ? (ownCount, null) : (this.limit, this.limitInstance);
             if (limited != Outcome.Ok)
             {
-                return Entry.Of(limited, null, null, height, stored, known);
+                return Entry.Of(limited, null, instance, height, stored, known);
             }
 
             if (this.rejected is not null)

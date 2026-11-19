@@ -7,6 +7,7 @@
 
 using System.Numerics;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
@@ -463,6 +464,11 @@ public sealed class BoundType : IEquatable<BoundType?>
     // primitives in CreatePrimitives' order, Range, then the twelve wrapping Scalars; each compilation's TyCtxt numbers its own after them.
     internal const int StaticCount = 32;
 
+    // The width in bits of isize and usize for every Compilation, with or without a target: the profile's (SPEC 22, O-79 (a); IMPL
+    // 21.1.3; DECISIONS BU-130), from IrTarget's row for its triple, read once by Row; every reader of their width asks the Type (Width).
+    // A target's own width is only the pointerWidth Condition's (SPEC 19.2). Declared before the static Types, whose rows read it.
+    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
+
     private readonly NumericCategory numeric;
     private readonly byte width;
 
@@ -727,12 +733,17 @@ public sealed class BoundType : IEquatable<BoundType?>
     // DECISIONS D3 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
     internal bool ContainsOpen => this.containsOpen;
 
+    /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
+    /// wrapping integer Core (SPEC 3.1.1); no layer is followed. The one definition every phase reads: Binding, the MIR builder's
+    /// recorded values, MirValidator's testRecordValue row, A5's pun Types and the Backend's static-storage row.</summary>
+    internal bool IsScalar => ReferenceEquals(this, Boolean) || ReferenceEquals(this, Char) || this.IsNumeric;
+
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
     /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>
     internal bool IsSigned => this.numeric == NumericCategory.Signed;
 
     /// <summary>Gets the width in bits of an integer or wrapping integer Type (SPEC 3.1's storage size; <c>Wrapping&lt;T&gt;</c> has T's,
-    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="ScalarTypes.SizeWidth"/>); 0 for every other Type, among them
+    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="SizeWidth"/>); 0 for every other Type, among them
     /// a Type whose instance decides its width (SPEC 8.7.4).</summary>
     internal int Width => this.width;
 
@@ -798,13 +809,13 @@ public sealed class BoundType : IEquatable<BoundType?>
         "i32" => (NumericCategory.Signed, 32),
         "i64" => (NumericCategory.Signed, 64),
         "i128" => (NumericCategory.Signed, 128),
-        "isize" => (NumericCategory.Signed, (byte)ScalarTypes.SizeWidth),
+        "isize" => (NumericCategory.Signed, (byte)SizeWidth),
         "u8" => (NumericCategory.Unsigned, 8),
         "u16" => (NumericCategory.Unsigned, 16),
         "u32" => (NumericCategory.Unsigned, 32),
         "u64" => (NumericCategory.Unsigned, 64),
         "u128" => (NumericCategory.Unsigned, 128),
-        "usize" => (NumericCategory.Unsigned, (byte)ScalarTypes.SizeWidth),
+        "usize" => (NumericCategory.Unsigned, (byte)SizeWidth),
         "f32" or "f64" => (NumericCategory.Float, 0),
         _ => default,
     };

@@ -453,7 +453,7 @@ conditional designs/estimates are planning inputs, not adopted representations. 
 
 ## 2026-10-16 — Complete Polonius A5 plan
 
-- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み (open). The owner
+- [Complete Polonius A5 Plan](Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み (open). The owner
   adopted it for R4's remaining scope on 2026-10-16 and 2026-10-17 (its decisions OD1–OD13: the direction in its status line, the
   2026-10-17 outcomes in its §10; DECISIONS R4-M35) and approved its step 0 design A3 (`Sketches/A5 Step 0/design-A3.md`, §9) on 2026-10-17. It is a working plan:
   no section is integrated into SPEC or IMPL, and no text is frozen.
@@ -489,7 +489,7 @@ adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirme
   - Every item is integrated; none is rejected or transferred. The file moved to `Changes` with only its status sentence
     replaced at closure (adopted, DECISIONS R4-M39, and integrated); its links to files that stay in `Proposals` (S2, the
     A5 plan, PLAN10) are not rewritten. `Sketches/LoanIdentityByBase.mjs` names the new path.
-- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+- [Complete Polonius A5 Plan](Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
   frozen: §5.2's S4 and its Optional row "Mutable-static borrows never leave the body" (P6). The other clauses are
   §5.3's first list as design A3 §2 and §9 word them. The rest of the plan stays a working plan.
   - S4 → the second §15.6 example (`slot`, `r@follow = b@ref`).
@@ -666,7 +666,7 @@ ending) and **P12**.
 
 ## 2026-10-18 — R5 and R6 implementation plan
 
-- [R5 and R6 Implementation Plan](Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md): 一部取り込み (open). The
+- [R5 and R6 Implementation Plan](Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md): 一部取り込み (open). The
   owner adopted it on 2026-10-18 as the formal plan for R5, R6-gen and R6-check, with its three exit gates, and answered its
   questions OQ1–OQ17 (its status line and §2.2 record the outcomes; DECISIONS R5-M1–R5-M13). It is a working plan: no
   section is integrated into SPEC or IMPL, and no text is frozen.
@@ -679,7 +679,7 @@ ending) and **P12**.
 
 ## 2026-10-19 — A5 step 2 implementation plan
 
-- [A5 Step 2 Implementation Plan](Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md): 一部取り込み (open). The
+- [A5 Step 2 Implementation Plan](Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md): 一部取り込み (open). The
   owner adopted it on 2026-10-19 as R4's formal plan for A5 step 2, A6 and R4's exit, with its exit gate, and answered all of
   its questions OQ1–OQ13 at once (its status line and §2.2 record the outcomes; DECISIONS R4-M74). It is a working plan: no
   section is integrated into SPEC or IMPL, and no text is frozen.
@@ -747,7 +747,7 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
   - Usage: library, milestones, SPEC examples and xUnit 0 (proposal §4 and §5, H: a grep-level scan). The default
     pipeline keeps its verdicts (OD5); no implementation is claimed. Not refreshed: SPECJ (its §15.6.4 still has the
     pre-P5 open key) and GUIDE.
-- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+- [Complete Polonius A5 Plan](Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
   frozen: §5.2's S3, the clarification the A5 step 2 plan's OQ12 requested before its unit 2a0-3b.
   - S3 → §15.3.6's candidate paragraph, as the plan words it, with a link to §15.6.5 for fixed and finite Origins: a
     variable's bounds are followed through other variables to fixed or finite Origins and `static`, and a variable that
@@ -1424,6 +1424,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Nothing frozen.
 - Revision 101 (2026-11-19, plan §14; the Back's R7-N5 B4 and B5b): N5's count 70 after B4 and 67 after B5b; G1077 closed.
   Nothing frozen.
+- Revision 102 (2026-11-19, plan §14; the owner's orders in K's dialog, DECISIONS Q22; the Middle's D-872 and the Front's D-874):
+  the 90% rule is abolished; §10.1's new item 6 makes G396's remaining items (§5.4) R7 exit conditions; §5.1's stream Z (Z1–Z24,
+  Z14 unused; DECISIONS R7-M53) holds G396 (1), (3) and (4) and G147 (2) as R7 exit units; Z24 is settled by SPEC 4.7.1 step 3
+  and 5.4 (the owner's O-445 (A)), one test row remaining. Nothing frozen.
+- Revision 103 (2026-11-19, plan §14; the Back's R7-P2 design review ruling 10 and P2's commit 1, Q-544): §5.0's P3 row, §5.1's
+  P2 row and §6 name the code's `CallEvaluation` and `EvaluatedCandidate`; P2's row records commit 1 (DECISIONS R7-M52).
+  Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
@@ -1551,3 +1558,71 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   - The old path in DECISIONS R5-M2, in `Proposals/2026-10-17 R5 and R6 Implementation Plan.md`, in `Proposals/2026-10-12
     Post-Reduction Work Items.md` and in `Sketches/R5 Step 0/deep-dives/q4-evidence-metrics.md` reads this file.
   - No SPEC or IMPL text came from it.
+
+## 2026-11-19 — R5 and R6 implementation plan closed
+
+- `Changes/2026-10-17 R5 and R6 Implementation Plan.md`: 取り込み済み. It moved from `Proposals/` on the owner's instruction (verbatim
+  「上記の3ファイルは完了しましたか？完了していたら、Changesフォルダーに移動してください。」, 2026-11-19); of the three files the owner asked about it is the one that is
+  complete. The two A5 plans stay in `Proposals/`.
+  - The file gained a closing status paragraph, and its two links to `Proposals/` (the reduction plan and the Polonius A5 plan) follow
+    the move; its link to `Changes/2026-10-12 Pre-R5 Work Items.md` reads that file again. The whole file is now frozen.
+  - Dispositions:
+    - R5 is done (DECISIONS R5-M148).
+    - R6 is done: R6-gen (R5-M167) and R6-check (R5-M194).
+    - What R6-check left moved to R7 (R5-M194; the R7, R8 and R9 plan's revision 3): PD30 to R7-T1 (RQ12); PD21 is superseded by
+      DECISIONS Q9.
+    - Leftovers live in PLAN: H13's V1 review N1, and the Back's rows G121, G153 (2), G157, G311, G337, G156 and RZ.
+  - The old path is repointed where a link reads it: PLAN (the R5 and R6 line), COMPILER_ARCHITECTURE (the R5 stage row), DECISIONS
+    (the "R5 and R6 (adopted 2026-10-18)" section's link, the link only), twelve Sketches links (`R5 Step 0/`: `audit.md`,
+    `C-design-2.md`, `README.md`; `R6-check/`: `H0-design.md`, `H0a-publication.md`, `H0b-flip.md`, `H0c-deletions.md`; `R6-gen/`:
+    `G0-design.md`, `G4-design.md`, `G7-design.md`, `G8-design.md`, `G9-design.md`) and one code path (`R5 Step 0/F-design-2.md`). The
+    open `Proposals/2026-10-18 A5 Step 2 Implementation Plan.md` keeps its sibling link, which no longer resolves (its text is frozen),
+    and the 2026-11-06 entry above keeps the old path as written.
+  - No SPEC or IMPL text came from it; the SETTLED revision at H15 is recorded under its intake entry.
+
+## 2026-11-19 — Complete Polonius A5 plan and A5 step 2 implementation plan closed
+
+- `Changes/2026-10-16 Complete Polonius A5 Plan.md` and `Changes/2026-10-18 A5 Step 2 Implementation Plan.md`: 取り込み済み. They moved from
+  `Proposals/` on the owner's instruction (verbatim 「PLAN G396 に移ったものとして、「取り込み済み」で draft/Changes に移してください」, 2026-11-19): their
+  remaining units are PLAN G396's (the 2026-11-06 review above found neither complete, and the R5 and R6 plan's closure above left them
+  in `Proposals/`).
+  - Each file gained a closing status paragraph. The A5 plan's link to PLAN10, which stays in `Proposals/`, follows the move; the step
+    2 plan's links to the A5 plan and to the R5 and R6 plan resolve in `Changes/` unchanged. The R5 and R6 plan's link to the A5 plan
+    follows this move too, and its status paragraph's last sentence says so. Both files are now frozen.
+  - Dispositions:
+    - SPEC items, as the entries above record them: S1 (Loan Identity by Base) and S5 (Effect Atoms Widen) integrated through their
+      proposals, both in `Changes/`; S2 closed as 完了 (superseded by Abstract Calls Reach by Paths, DECISIONS R4-M106); S3 and S4
+      integrated as clarifications; relaxation (c) and the root-most kill not adopted.
+    - The exit rules (the A5 plan's §6.2, the step 2 plan's §5.4) are superseded by the owner's 90% rule (DECISIONS R4-M165); the step
+      2 plan's PD21 and §3.7 by DECISIONS Q9.
+    - The remaining units moved to PLAN G396 (and the R7, R8 and R9 plan's §5.4, "G396's items in the owner's order (R4-M165)"): F7's
+      2c-6 and 2c-7, F8 with the A5 plan's Appendix B U8s, F10, A6's 2g-1 to 2g-7 with G105 and Appendix B's U11, the 25
+      `Unsupported_Kd` producers without a removal stage, G103, G124, G126, G147 (2), G160's remainder, G263, X-5's notes and the step
+      2 plan's OQ8 condition.
+    - 2g-1 remains the removal condition of H3-2's interim records (PLAN).
+  - The old paths are repointed where a live link reads them: PLAN (the A5 and A5 step 2 lines), DECISIONS (the links in R4-M35 and
+    R4-M74, the links only) and the Sketches (`A5 Step 0/README.md`, `A5 Step 1/README.md`, `A5 Step 2/f4-census.md`, `origins.md`,
+    `spec-readings.md` and `step2-base-ledger.md`, and the code paths in `A5 Step 2/preserves-revision.md` and `R5 Step
+    0/deep-dives/q4-evidence-metrics.md`). This file's intake and entry links (2026-10-16, 2026-10-17, 2026-10-19 twice) follow the
+    move, text kept; the old path written in the 2026-10-17 entry and in the 2026-11-06 entries reads the new path.
+  - Not edited (frozen or open text), recorded here: the sibling links to the two plans in `Changes/2026-10-16 Loan Identity by
+    Base.md`, `Changes/2026-10-17 Loan Termination Across Borrow Dereferences.md`, `Changes/2026-10-19 Effect Atoms Widen.md` and
+    `Changes/2026-10-21 Closure Calls as Receiver Calls.md` now resolve (the 2026-10-25 entry's correction no longer applies to the
+    step 2 plan link); `Obsolete/2026-10-16 Preserves Results by Receiver Place.md`'s link to the A5 plan resolves at
+    `../Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md`; the open `Proposals/2026-10-20 M69 Default Loan Correspondence
+    Plan.md` and `Proposals/2026-10-20 S3 Closure Origin Publication Plan.md` link the step 2 plan as a sibling, which resolves at
+    `../Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md`; the code path in `Changes/2026-10-22 Abstract Calls Reach by
+    Paths.md` reads the new path.
+  - No SPEC or IMPL text came from them beyond the items the entries above record.
+
+## 2026-11-19 — Tatara implementation plan
+
+- [Tatara Implementation Plan](Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md): 一部取り込み (open). The owner approved it in
+  T's dialog on 2026-11-19 (relayed verbatim by T, board D-876: decisions 1–5 「→推奨の内容でOKです。」, decisions 6–11
+  「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan 「下書きを承認します。作業を続けて下さい。」 with one
+  addition, now its §6, 「LLVMがバージョンアップすることもある。それに合わせて更新できるように、道を準備しておいてください。」; DECISIONS
+  T-M1, T-M2). It is adopted as a working plan: nothing is implemented, no section is integrated into SPEC or IMPL, and no text is
+  frozen. The adopting commit adds the Tatara lane to AGENTS, WORKFLOW and COMPILER_ARCHITECTURE (decision 12).
+- Its specification work goes separately, each as an explicit revision recorded here when it lands: IMPL §20.3 gains a `tatara` row
+  with unit A3; IMPL §20.3.2's Toolchain wording changes with unit A4; IMPL §20.3.2 and §20.4 change again with B5 and B6, each after
+  its owner question. Nothing in SPEC changes before B7. Adoption implies no implementation support.

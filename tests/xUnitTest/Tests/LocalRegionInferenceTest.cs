@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class LocalRegionInferenceTest(ITestOutputHelper output)
+public partial class LocalRegionInferenceTest(ITestOutputHelper output)
 {
     // A stored function's input makes `s` contravariant.
     private const string Callback = "struct C {s}\n    public let call: (ref/i32 during s) -> i32\n    public init(call: (ref/i32 during s) -> i32) => self.call = call@move\n\n";
@@ -140,6 +140,51 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
+    // SPEC 23.1, 15.4.4 (DECISIONS R4-M133; PLAN G492-a (ii)): a record shows and relates the Borrow at the operand that supplies its end
+    // when that Borrow, or the value it is stored through, reads a `let` local's region in the local's own body, where the region is its
+    // value: a Reborrow through `let rr`, a `let` slice's element Borrow stored into a `var`, and a call whose Closure captured a `let`
+    // array, which holds no Borrow at the operand, so the end is shown there. Each showed the `let` initializer's Borrow instead. us1v
+    // (the owner's O-385 (a)): a comparison's bound `z outlives x` is stored in the region graph as the comparison read it, the slot z,
+    // and read as stored, so the Borrow n@ref that z's value bound brought in is shown and related (it was read back as z's value and
+    // matched at the comparison, where no Borrow is: "the borrow n" related at the call).
+    [Theory]
+    [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    var local: i32 = 1\n    var r = local@uniq\n    let rr = r@uniq\n    return rr@follow@follow@ref\n", "rr@follow@follow@ref", "the borrow rr@follow@follow@ref outlives p", "rr@follow@follow@ref")]
+    [InlineData("func f(x: ref/i32) -> ref/i32 during x\n    let values = [1, 2, 3]\n    let s = values[0..2]\n    var view = x\n    view = s[0]@ref\n    return view\n", "view", "the borrow s[0]@ref outlives x", "s[0]@ref")]
+    [InlineData("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\n", "f()", "the borrow n outlives static", "f()")]
+    [InlineData("func h(w: ref/i64 during a, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let n: i64 = 1\n    let z = n@ref\n    var x = p\n    let f: (ref/i64 during z, ref/i64 during x) -> ref/i64 during x = h\n    return f(z, x)\n", "f(z, x)", "the borrow n@ref outlives p", "n@ref")]
+    public void ARecordShowsTheOperandsBorrowThroughALetRegion(string function, string at, string relation, string related)
+    {
+        var source = function + "public func main() => ()\n";
+        var label = $"requires {relation}, which is false";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, x => Text(x.Span) == at && x.Label == label);
+        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), record.Code);
+        Assert.Contains(record.Related!, x => x.Role == "origin" && Text(x.Span) == related);
+
+        string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
+    }
+
+    // The owner's O-385 (a) (PLAN G492-a (ii), revision 4; DECISIONS R4-M133 as amended): the local-region graph stores a comparison's
+    // bound as the comparison read it, the slot, and its readers take a parent as stored. Two comparisons give `w outlives z` and `z
+    // outlives x` over three `let` regions, so x's region reaches w's source, the Borrow n@ref, through z's region: sib2 (Exclusive
+    // layers, which also need the Middle's O-375 Q2 (a) solve) and its one-direction form over `idf`. Each read the stored slot of z
+    // back as z's value `p`, so x's sources were `p` alone. The rows are the `var` forms (sib2v, chainv): under the owner's O-400 (b)
+    // the `let` forms' comparisons are the located limit (only the region reading decides them), which leaves no Compared row and so
+    // stores no bound (OriginPremiseCatalogTest.StoredReadingRows' sib2 and chain rows pin that limit).
+    [Theory]
+    [InlineData("sib2v", null)]
+    [InlineData("chainv", "func idf(w: ref/i64 during a) -> ref/i64 during a => w\nfunc outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    var w = n@ref\n    var z = p\n    var x = p\n    let f1: (ref/i64 during w) -> ref/i64 during z = idf\n    let f2: (ref/i64 during z) -> ref/i64 during x = idf\n    return 0\n")]
+    public void AComparedRegionsSourcesReachThroughTheStoredSlot(string row, string? body)
+    {
+        var c = MirBuildTest.Compile((body ?? OriginPremiseCatalogTest.StoredReadingRows.Single(x => x.Data.Item1 == row).Data.Item2) + MainDeclaration);
+        var outer = Assert.Single(c.BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "outer");
+        var (x, w) = (Region("x"), Region("w"));
+        var borrow = Assert.Single(c.Binding.LocalRegionSources(w).ToArray(), static s => s.Kind is not (OriginKind.Input or OriginKind.Parameter));
+        var sources = c.Binding.LocalRegionSources(x).ToArray();
+        Assert.True(sources.Contains(borrow), $"{row}: {sources.Length} sources of x, {string.Join(", ", sources.Select(static s => s.Kind))}");
+
+        BoundOrigin Region(string name) => Assert.Single(outer.Locals.ToArray(), l => l.Name == name).Type.Origin!;
+    }
+
     // SPEC 15.3.6: a body variable of a local whose row has no candidate is a local region of the local, never invented as static, so each
     // program is valid (DECISIONS R4-M112): an initializer's call qualifier slot outside the local's Type, a variable
     // bounded only by variables, and a contravariant slot with no principal lower bound, whose bounds hold through the region's one
@@ -229,18 +274,22 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     }
 
     // Pinned: outside a local an omitted Origin keeps its record, a Field's (SPEC 15.3.6) and an expression statement's call qualifier's
-    // (PLAN G10), and the S3 demo, a local Function input bounded through a clause by another inferred slot, stays the located
-    // Unsupported_Kd at its local (OQ-1 (c); DECISIONS R4-M112).
+    // (PLAN G10).
     [Theory]
     [InlineData("struct S\n    public let r: ref/i32\npublic func main() => ()", nameof(DiagnosticCode.MissingOriginBinding_Kd), "ref/i32")]
     [InlineData("public func main()\n    let n = 0\n    Array<ref/i32>.init(capacity: 0).length", nameof(DiagnosticCode.MissingOriginBinding_Kd), "ref/i32")]
-    [InlineData(S3Demo, nameof(DiagnosticCode.Unsupported_Kd), "let pair")]
     public void AnOriginOutsideTheRegionRulesKeepsItsRecord(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(code, error.Code);
         Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
+
+    // The S3 demo, a local Function input bounded through a clause by another inferred slot (R4-M112's pinned limit until G492-a (iii)):
+    // the Function value's comparison needs `k.source outlives s`, a region at the longer end, which is the body's row (SPEC 15.6.1 under
+    // the owner's O-261 Q2 (a)); R_k has no source and `x.source -> w.source -> x.source` holds, so the program is valid (SPEC 15.6.5).
+    [Fact]
+    public void TheS3DemosComparisonIsItsBodysRow() => Assert.Empty(DiagnosticCorpus.Check(S3Demo).Diagnostics);
 
     // SPEC 15.4.2, 15.6.5 (PLAN G758): a `var` local's pair slot, the original's `o` or an annotation, is a region of the local as a
     // concrete layer's Origin is, in every pair set; a written original keeps `o` (qb7) and a `let` local is not opened (qb8). Each row's

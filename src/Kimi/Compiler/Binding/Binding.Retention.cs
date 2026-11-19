@@ -38,6 +38,9 @@ public sealed partial class Binding
     private readonly List<BoundType> retentionOwnCallables = new();
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
+    // The local regions AddRegionMeet has read in the retention computation being made (RetentionNodes clears it), reused.
+    private readonly HashSet<BoundOrigin> retentionRegions = new(ReferenceEqualityComparer.Instance);
+
     // Each carrier's ReachedNode (DECISIONS R4-M154, Revision 3): the storage a value of it may refer to that the body does not own, reached
     // only by a relation whose output is a writable carrier position (an erased writer's, AddErasedRelations), which fills the Abstract
     // entry (the storage walk's Abstract positions); a carrier's own node (retentionCarriers) is its value's. Reused.
@@ -612,11 +615,13 @@ public sealed partial class Binding
     }
 
     // Each atom's node, interned before the catalog's walk, so its local-Place premises (R5) reach them; a carrier's hidden Origins outlive
-    // the layer above each of its occurrences (R2, SPEC 15.6.1), and a local region reaches the meet of its sources (AddRegionMeet).
+    // the layer above each of its occurrences (R2, SPEC 15.6.1), and a local region equals its solved value or reaches the meet of its
+    // sources (AddRegionMeet), each region read once per computation.
     private int[] RetentionNodes(OriginPremiseEnvironment environment)
     {
         var atoms = this.retentionAtoms;
         var nodes = new int[atoms.Count];
+        this.retentionRegions.Clear();
         for (var i = 0; i < atoms.Count; i++)
         {
             nodes[i] = this.AtomNode(environment, atoms[i]);
@@ -631,9 +636,13 @@ public sealed partial class Binding
         return nodes;
     }
 
-    // SPEC 15.3.6, 15.6.4 (DECISIONS: G570): a local region, or one in a meet, is solved over all its bounds, so it reaches the meet of its
-    // sources, read here in the tense of Binding's fit (JudgeLocalRegion): a position reaching that meet may hold a value of the region, and
-    // one naming a source of several cannot. Retention's own edge: its environment is per computation, so no proof reads it.
+    // SPEC 15.3.6, 15.6.4 (DECISIONS: G570): a local region, or one in a meet, is solved over all its bounds. One with BU-127's solved value
+    // (RegionValue: a `let` region's value, a `var` region's meet of its recorded bounds; PLAN G492-a (ii), the owner's O-422 (a)) equals
+    // it, the value's regions read the same way (each step one body outward or down its body's definitions, as RegionValue says), so a
+    // Closure's contract naming an enclosing region retains what its value holds (a capture and a result over one value). Any other
+    // (a call's open region) reaches the meet of its sources, read here in the tense of Binding's fit (JudgeLocalRegion): a position
+    // reaching that meet may hold a value of the region, and one naming a source of several cannot. Retention's own edges: its
+    // environment is per computation, so no proof reads them.
     private void AddRegionMeet(OriginPremiseEnvironment environment, BoundOrigin? origin)
     {
         for (var i = 0; origin is not null && i < origin.Operands.Count; i++)
@@ -641,8 +650,16 @@ public sealed partial class Binding
             this.AddRegionMeet(environment, origin.Operands[i]);
         }
 
-        if (origin is null || !IsLocalRegion(origin))
+        if (origin is null || !IsLocalRegion(origin) || !this.retentionRegions.Add(origin))
         {
+            return; // A region is read once per retention computation (the owner's O-426 (a); the Front's C1).
+        }
+
+        if (this.RegionValue(origin) is { } value)
+        {
+            AddPremiseEdge(environment, this.PremiseNode(environment, origin), this.PremiseNode(environment, value), OriginPremiseRule.Input);
+            AddPremiseEdge(environment, this.PremiseNode(environment, value), this.PremiseNode(environment, origin), OriginPremiseRule.Input);
+            this.AddRegionMeet(environment, value);
             return;
         }
 
