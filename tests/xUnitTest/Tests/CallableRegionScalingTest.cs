@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Verification;
 using Xunit;
 
@@ -53,6 +54,36 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
     public void EachAxisScalesWithinItsBound(string axis, double factor)
         => WorkScales(output, Sizes(axis), factor);
 
+    // RP8 (PLAN G492-a (iii); J1, the owner's O-264 Q5 (a), O-286 (a)): a comparison's proof reads the recorded bounds of each region it
+    // names, each node and bound once (O(N + B) per request), so k chained `var` locals, each with a later store, and m comparisons over
+    // the last one bind with premise work linear in m * k: (8, 8), (64, 8), (8, 64), (64, 64), within 1.5 times linear.
+    [Fact]
+    public void ComparisonsOverChainedRegionsScaleLinearly()
+    {
+        long[] work = [.. new[] { (8, 8), (64, 8), (8, 64), (64, 64) }.Select(static x => PremiseWork(ChainedComparisons(x.Item1, x.Item2)))];
+        output.WriteLine($"premise work {string.Join(", ", work)}");
+        Assert.True(work[1] <= 12 * work[0] && work[2] <= 12 * work[0] && work[3] <= 96 * work[0], $"premise work {string.Join(", ", work)}");
+    }
+
+    // Board C-400 (the Front's condition (1); PLAN G492-a (iii)): the reader of G972's fact (LeavesBodyRows, NamedInItsInputs) on a
+    // literal with N quantified inputs `ref/U` converted to N inputs `ref/U`, each input's well-formedness reaching it with the literal's
+    // per-call Origin at the shorter end (n8w over N inputs; valid): the verdict's reads at N = 32, 64, 128. OriginVisible publishes the
+    // verdict once per signature and each queried end reads one row (the Front's linear form, 74a03cbb7), so the work is linear in the
+    // inputs, at most 2.25 times per doubling (the per-query syntax walk it replaced counted 2N^2: 2048, 8192, 32768).
+    [Fact]
+    public void TheNamingSearchOverManyInputsScales()
+    {
+        long[] work = [.. new[] { 32, 64, 128 }.Select(static n => NamingWork(ManyInputs(n)))];
+        output.WriteLine($"naming reads {string.Join(", ", work)}");
+        Assert.True(work[0] > 0 && work[1] <= 2.25 * work[0] && work[2] <= 2.25 * work[1], $"naming reads {string.Join(", ", work)}");
+    }
+
+    // The valid workload of TheNamingSearchOverManyInputsScales.
+    internal static string ManyInputs(int n)
+        => "struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n" +
+            $"    let c: ({string.Join(", ", Enumerable.Repeat("ref/U", n))}) -> i32 = func [] ({string.Join(", ", Enumerable.Range(1, n).Select(static i => $"y{i}: ref/U"))}) -> i32 => 0\n" +
+            "    return 0\npublic func main() => ()\n";
+
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
     internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)
@@ -80,7 +111,40 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         Assert.True(allocated[2] - allocated[1] <= factor * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
     }
 
+    // The valid workload: `var x1 = p`, `x1 = q`, `var x2 = x1`, `x2 = q`, ..., then m comparisons `(ref/i64 during xk) -> ref/i64 during p`
+    // of a Function Item, each the body's rows (SPEC 15.6.1, 15.6.5), under `origin q outlives p`.
+    internal static string ChainedComparisons(int k, int m)
+        => "func idf(w: ref/i64 during a) -> ref/i64 during a => w\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin q outlives p\n    var x1 = p\n    x1 = q\n" +
+            string.Concat(Enumerable.Range(2, k - 1).Select(static i => $"    var x{i} = x{i - 1}\n    x{i} = q\n")) +
+            string.Concat(Enumerable.Range(1, m).Select(i => $"    let f{i}: (ref/i64 during x{k}) -> ref/i64 during p = idf\n")) + "    return 0\npublic func main() => ()\n";
+
     private static string[] Sizes(string axis) => [.. new[] { 16, 32, 64 }.Select(n => VerificationWorkloads.CallableRegions(axis, n))];
+
+    // The premise closures' nodes, edges and worklist insertions of one binding of a valid source.
+    private static long PremiseWork(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        c.Bind();
+        Assert.Empty(c.Binding.Issues);
+        return metrics.Nodes + metrics.Edges + metrics.Insertions;
+    }
+
+    // The nested-signature naming verdict's reads in one binding of a valid source (OriginProofMetrics.NamingReads).
+    private static long NamingWork(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        c.Bind();
+        Assert.Empty(c.Binding.Issues);
+        return metrics.NamingReads;
+    }
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
@@ -104,6 +168,17 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         [Fact]
         public void TheColdAnalysisOfABorrowChainAllocatesLinearly()
             => ColdAnalysisScales(output, [.. new[] { 128, 256, 512 }.Select(BorrowChain)], 3);
+
+        // RP8 (PLAN G492-a (iii)): a warm rebind of comparisons over chained regions allocates nothing (the row sink is one reused list).
+        [Fact]
+        public void WarmComparisonsOverChainedRegionsAllocateNothing()
+        {
+            var c = MinimalEmissionTest.Analyze(ChainedComparisons(8, 8));
+            Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+            var valid = true;
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+            Assert.True(valid, MinimalEmissionTest.Describe(c));
+        }
 
         // A body of N chained borrows, each a reference to the one before: a_k is ref^k/i32 (SPEC 10.2's explicit acquisition of a
         // reference slot).

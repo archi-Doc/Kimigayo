@@ -36,7 +36,7 @@ they land. Base of revision 0: dev `f406b0905` (G2-G7 landed, R5-M162), G8 count
 | §3 | DIAGNOSTICS §4.2 row; ARCH temporaries lose `ReportPublicationFailure` (R6-gen Transitional 1 → 0); CODEMAP's artifacts row; DECISIONS R5-M165 with amendment lines on R5-M18, R5-M64, R5-M162 | history comments naming the old code left as history |
 | Review 1 | B1: `EmissionArtifacts.GenerateInto` maps the output's I/O exceptions to `ArtifactPublicationFailed_Kd` and code generation's argument, data and support exceptions to `InternalInvariant_Kd` (a theory over a failing writer; no test input makes code generation's own checks throw); N1: the `Validate` rows go to `DependencyConfigurationTest` (Kind "unknown" and the migration text; the others its load theory had); N2: `Generate` clears the partition before the gate (a test); N3: the record's location at a loaded project's file; the missing-backend branch has no honest test seam (`WindowsProfile` reads the embedded release record); N4: the Benchmark message lists the partition's codes | — |
 
-"Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
+"Plan" is the [R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
 `src/Kimi/Compiler/`, `Bi/` = `C/Binding/`, `T/` = `tests/xUnitTest/Tests/`. Line numbers are at `f406b0905`. No build, test or
 probe was run. Reach comes from word-boundary greps over `src` (with `src/Benchmark` and `src/Playground`) and `tests`. One history
 check was run (`git log -S`) for the old reader of `DictionaryStorageCall`. **(H)** marks an unchecked claim. Commit messages say

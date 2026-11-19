@@ -47,11 +47,11 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`; a null Origin argument and an
-    // unproven Origin are Unknown.
+    // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`, a `let` region read as its published
+    // value wherever the judgment is asked (LetRegionValue; B's ruling 28); a null Origin argument and an unproven Origin are Unknown.
     private ConstraintProof StaticOrigin(BoundOrigin? origin, BindingScope scope)
     {
-        if (origin is not null && (this.ProvesOriginOutlives(origin, BoundOrigin.Static, scope.Owner) || this.SolvedStatic(origin)))
+        if (origin is not null && (this.ProvesOriginOutlives(this.LetRegionValue(origin), BoundOrigin.Static, scope.Owner) || this.SolvedStatic(origin)))
         {
             return ConstraintProof.Proven;
         }
