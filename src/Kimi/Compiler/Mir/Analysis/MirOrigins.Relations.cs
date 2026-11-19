@@ -35,7 +35,9 @@ internal enum MirRelation : byte
 //   below the shorter end, and no Finite node above the longer end meets a Fixed one below the shorter end (SPEC 15.6.5); Fails otherwise;
 //   Rests where it reads a recorded failure directly (SPEC 23.1.2): an end that is a Dependent atom (Binding's record), or the class's
 //   meet law over the storage limit (D20), whose one OwnershipStorageLimit_Kd Judge recorded at the body first (JudgeClass forms the same
-//   edges and stops the classes there); Undecided where an end is Unclassed (R7-O3). A view Judge did not classify, or another body,
+//   edges and stops the classes there); Undecided where an end is Unclassed (R7-O3). Within one pair a Dependent end is read first (the
+//   pair reads a recorded failure directly, so an Unclassed other end adds nothing); across a conjunction's pairs an Undecided pair
+//   outranks a resting one (another pair's Unclassed end is independent of it). A view Judge did not classify, or another body,
 //   is a broken contract (a throw): Judge classifies each view it is given, the views the Loan stratum then runs.
 // - Invariants: a query reads one class's edges, indexed once until the next class or body; it records no problem and changes no state
 //   Judge's problems read; an oracle it opens is disposed before it returns; Fixed's equality (Pin, MirOrigins.Causes.cs) reads the same

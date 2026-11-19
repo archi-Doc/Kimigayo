@@ -989,33 +989,40 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
-    // The Z2 DECISIONS draft (PLAN G396 (3), E1): A4's broken contract has one form per place. A call Local reads whose callee has no MIR
-    // body, no published row and no Bodyless category (here: a program holding the caller alone, so H.helper's body is withheld) is
-    // InternalInvariant_Kd at the call in its view, its class Derived (before Z2: no record there, the obligation over it Unsupported_Kd);
-    // the solve meeting an owing definition without a body, which has no site, throws (BU-102's form: the check ends as CheckFaulted_Kd;
-    // before Z2: the obligation's located Unsupported_Kd).
+    // The Z2 DECISIONS draft (PLAN G396 (3), E1): A4's broken contract has one form per place, in a complete compilation. A call Local
+    // reads whose callee has no MIR body, no published row and no Bodyless category (here: a program holding the caller alone, so
+    // H.helper's body is withheld) is InternalInvariant_Kd at the call in its view, its class Derived (before Z2: no record there, the
+    // obligation over it Unsupported_Kd); in an incomplete compilation (an unrelated function Binding rejects) the same call rests on
+    // Binding's records, no record (TyCtxt.BindingComplete). The solve meeting an owing definition without a body throws (BU-102's form:
+    // the check ends as CheckFaulted_Kd; before Z2: the obligation's located Unsupported_Kd).
     [Fact]
     public void ABodylessCallWithoutACategoryIsABrokenContract()
     {
-        var c = MirBuildTest.Compile("group H\n    public func helper() => ()\n    public func caller() => H.helper()\npublic func main() => ()\n");
-        var caller = c.BuildMir().VersionBodies.ToArray().Single(static x => x.Key.Decl?.Name == "caller");
-        var (cases, flow, held) = (new MirCases(c.Types), new MirDataflow(new MirReach()), new MirProgram());
-        var effects = new MirEffects(c.Types, cases, flow);
-        effects.BeginLibrary();
-        effects.BeginProgram();
-        flow.Begin(caller);
-        cases.Select(caller, 0);
-        effects.Local(held, caller, 0);
-        Assert.Equal(
-            ["InternalInvariant_Kd H.helper() 1"],
-            [.. held.Problems.All.ToArray().Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")]);
+        const string Calls = "group H\n    public func helper() => ()\n    public func caller() => H.helper()\n";
+        Assert.Equal(["InternalInvariant_Kd H.helper() 1"], LocalRecords(Calls));
+        Assert.Empty(LocalRecords(Calls + "    public func other() -> i32 => missingName\n"));
 
         var witness = MirBuildTest.Compile(Sink + Loud + Witness + "        return .Ok(())\npublic func main() => ()\n");
         _ = witness.BuildMir();
         var solve = new MirEffects(witness.Types, new MirCases(witness.Types), new MirDataflow(new MirReach()));
         solve.BeginLibrary();
         var thrown = Assert.Throws<InvalidOperationException>(() => solve.Run(new MirProgram(), new MirReport(), witness.SourceModules.Length));
-        Assert.Contains("(InternalInvariant; E1)", thrown.Message, StringComparison.Ordinal);
+        Assert.Contains("every callee A4 enters has one or the other (InternalInvariant)", thrown.Message, StringComparison.Ordinal);
+
+        // A4's Local over `caller` alone, in a program that holds no body: every problem it records.
+        static string[] LocalRecords(string source)
+        {
+            var c = MirBuildTest.Compile(source + "public func main() => ()\n");
+            var caller = c.BuildMir().VersionBodies.ToArray().Single(static x => x.Key.Decl?.Name == "caller");
+            var (cases, flow, held) = (new MirCases(c.Types), new MirDataflow(new MirReach()), new MirProgram());
+            var effects = new MirEffects(c.Types, cases, flow);
+            effects.BeginLibrary();
+            effects.BeginProgram();
+            flow.Begin(caller);
+            cases.Select(caller, 0);
+            effects.Local(held, caller, 0);
+            return [.. held.Problems.All.ToArray().Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        }
     }
 
     // PLAN G951 E3 (DECISIONS R5-M168's input rule): A4 judges the obligations whose subject is in the root range; one outside it is the

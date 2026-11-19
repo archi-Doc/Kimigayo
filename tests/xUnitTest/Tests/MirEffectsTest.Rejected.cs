@@ -44,8 +44,13 @@ public sealed partial class MirEffectsTest
     // (42ae03031, the solve's throw read Binding's incompleteness as a broken contract).
     [Fact]
     public void AClosureARejectedStaticLeftWithoutABodyIsItsDependent()
-        => Assert.Empty(Problems(Sink + Loud + "struct Box<T>\n    public init() => ()\n    public group G\n        public let s = func [] () -> isize => 4\n" +
-            Witness + "        _ = Box<i32>.G.s()\n        return .Ok(())\n"));
+    {
+        var c = MirBuildTest.Compile(Sink + Loud + "struct Box<T>\n    public init() => ()\n    public group G\n        public let s = func [] () -> isize => 4\n" +
+            Witness + "        _ = Box<i32>.G.s()\n        return .Ok(())\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(Problems(c, program));
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == Kimi.DiagnosticCode.InternalInvariant_Kd); // The whole report.
+    }
 
     // SPEC 23.1.2 (DECISIONS R4-M139): a copy over storage Binding rejected inside a confined witness (Holder.reset's `U.d(self.item@ref)`
     // omits `k: Option<T> = .None`) is built, and A4 reads the copy's Rejected locals, as its repair: no builder record and no A4 problem,

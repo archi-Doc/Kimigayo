@@ -270,8 +270,8 @@ internal sealed partial class MirEffects
     }
 
     // A body a part's destruction or a call enters, composed in the views its substitution selects; a published operation's row instead
-    // (SPEC 4.9.6); a function without a body is what Binding classifies, and one it does not classify a broken contract with no site
-    // here (Local records the one at a call, Broken; the solve's throws, DECISIONS BU-102's form) in a complete compilation, and in an
+    // (SPEC 4.9.6); a function without a body is what Binding classifies, and one it does not classify a broken contract, unreachable by
+    // any program (Local records the one at a call, Broken; the solve's throws, DECISIONS BU-102's form) in a complete compilation, and in an
     // incomplete one a dependent of Binding's records (Derived; R5-M183: a Closure in a declaration Binding rejected has no body).
     private void Enter(MirBody? body, Subst? subst, BindingSymbol symbol)
     {
@@ -299,7 +299,9 @@ internal sealed partial class MirEffects
 
         if (body is null)
         {
-            this.found |= Class(symbol) ?? (types.BindingComplete ? throw new InvalidOperationException($"`{symbol}` has no MIR body and no Bodyless category (InternalInvariant; E1).") : Derived);
+            this.found |= Class(symbol) ?? (types.BindingComplete ? throw new InvalidOperationException(
+                $"`{symbol}` has no MIR body and no Bodyless category in a complete compilation: every callee A4 enters has one or the other (InternalInvariant).")
+                : Derived);
             return;
         }
 

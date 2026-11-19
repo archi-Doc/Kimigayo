@@ -16,7 +16,8 @@
 // range (the library's are the library check's, PLAN G951 E3), added by a clean round only; and for A5 the per-node summaries and a site's
 // key row and classes per view (Keys, Field). A broken contract has one form per place (Broken): one Local meets at a call (a function
 // without a body Binding gives no category, a comparison leaf with no answer) is InternalInvariant_Kd at the call through MirReport, its
-// class Derived; one the solve meets, with no site, throws (DECISIONS BU-102's form: the check ends as CheckFaulted_Kd). Both only in a
+// class Derived; one the solve meets throws (DECISIONS BU-102's form: the check ends as CheckFaulted_Kd), since no program reaches it,
+// so the solve keeps no state to record it. Both only in a
 // complete compilation (TyCtxt.BindingComplete); in an incomplete one either is Derived with no record, resting on Binding's records.
 // The solve runs in rounds (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2 does not hold (one built since the
 // driver's last step, with no local facts) misses; the round goes on to its end, so it demands every body it reads, and commits nothing,
