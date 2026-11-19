@@ -162,7 +162,8 @@ public sealed partial class Binding
             : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : null;
 
     // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand's own capability (the owner case selects
-    // P itself: a write needs a whole Place that offers Write, WritablePlace; a borrow lends P as a Place or a writable temporary,
+    // P itself: a write needs a whole Place that offers Write, WritablePlace, which a writable temporary's whole Temporary Place does
+    // not offer yet, IsTemporaryPlace; a borrow lends P as a Place or a writable temporary,
     // LendsOwner, SPEC 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A
     // part of an owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
     private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
