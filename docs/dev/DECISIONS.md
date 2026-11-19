@@ -25415,17 +25415,21 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Known class-1 gaps, not moves (each accepted on dev too).** vl1c (PLAN G1085: the Callable constraint over a `let` region a
     signature names is unchecked) and e-owsin (PLAN G1099: an Owned judgment inside a nested body of a capture whose Type names an
     enclosing `let` region through the nested signature reads the region's value).
-  - **A captured local's region reads at its value (the owner's O-443 (a), verbatim 「O-443 a」 and 「「9本を一時的に拒否する」は許容します」, 2026-11-19;
-    SPEC 15.6.5; the Middle's R7-O2 design Revision 2 §7-§8).** In a body nested in the local's own body, such as a Closure body that
-    captures the local, the local's inferred region is a fixed Origin equal to its SPEC 15.3.6 value when it has one, and a fixed
-    Origin related to nothing otherwise (O-440 (a) generalized). It supersedes in part the owner's O-261 Q1 (a): its three
-    captured-`let` rows and R4-M152's revised sentence. The reason that no longer holds: a captured local's region is related to
-    nothing; it has its 15.3.6 value, as O-440 (a), O-174 (a)'s r18 and BU-127's z3v already read it. O-249 Q1 (a) stands for a capture
-    whose region has no value (cs_u1, BU-28's p8 and the other class S rows). The temporary reduction the owner accepted: this unit
-    rejects nine valid programs dev accepts, each a captured `let` at the shorter end of a relation the Closure body needs (p2v, p5v,
-    p8v, p9v, p10v, ret_v2, eq_let, lv_let, e1l: `UnprovenOriginRelation_Kd`), until R7-O2's A1 reads the captured region at its value
-    (PLAN G1105); A1 also accepts c20, z3v and r18. e-owsin, a nested signature's name read inside the Closure, stays invalid (PLAN
-    G1099).
+  - **A captured local's region reads at its candidate (the owner's O-443 (a), verbatim 「O-443 a」 and 「「9本を一時的に拒否する」は許容します」,
+    2026-11-19; SPEC 15.6.5; the Middle's R7-O2 design Revision 2 §7-§8; the scope and term of K's independent review, REVISE, whose
+    fix the Middle adopted).** In a Closure body, an enclosing body's inferred region that an environment binding's Type carries
+    (SPEC 7.7.2), the binding being captured in the region's own body or in a Closure body that carries the region in turn, is a fixed
+    Origin equal to its SPEC 15.3.6 candidate when it has one, and a fixed Origin with no premise otherwise (O-440 (a) generalized); in
+    any other nested body, as where only a nested signature names the region (SPEC 15.3.4), its candidate gives no premise. So
+    e-owsin, e-ownf, nf_lift and cs_u1 are invalid, and the twelve the owner's O-443 (a) and O-444 (a) accept rejecting until A1 (the
+    nine below and O-261 Q1 (a)'s three captured-`let` rows), e-owsinx, e-owsinc, e-owsyc and nf_lift_c are valid. It supersedes in
+    part the owner's O-261 Q1 (a): its three captured-`let` rows and R4-M152's revised sentence. The reason that no longer holds: a
+    captured local's region is related to nothing; it has its 15.3.6 candidate, as O-440 (a), O-174 (a)'s r18 and BU-127's z3v already
+    read it. O-249 Q1 (a) stands for a capture whose region has no candidate (cs_u1, BU-28's p8 and the other class S rows). The
+    temporary reduction the owner accepted: this unit rejects nine valid programs dev accepts, each a captured `let` at the shorter end
+    of a relation the Closure body needs (p2v, p5v, p8v, p9v, p10v, ret_v2, eq_let, lv_let, e1l: `UnprovenOriginRelation_Kd`), until
+    R7-O2's A1 reads the captured region at its candidate (PLAN G1105); A1 also accepts c20, z3v and r18. e-owsin, a nested
+    signature's name read inside the Closure, stays invalid (PLAN G1099).
   - **Supersedes.** BU-197's sentence "A `let` binding keeps the bound value's Type" for locals, and its rejected "region slots for
     `let` bindings": its reason, "no observable difference", no longer holds (PLAN G492's class 1 is the difference); BU-197's set
     (`IsRegionOwner`) is unchanged and an immutable Pattern binding keeps its stored Type (SPEC 14.8.3). In part BU-127's "Only A5
