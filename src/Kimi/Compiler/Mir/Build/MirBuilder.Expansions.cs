@@ -120,7 +120,7 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            this.Call(read, getter, target, null, given, operand);
+            this.Call(read, getter, target, null, (given, operand));
             this.Made(read);
         }
 
@@ -134,7 +134,7 @@ internal sealed partial class MirBuilder
         if (arithmetic is not null)
         {
             this.located.Add((target, read));
-            this.Call(result, arithmetic, node, null, right, value);
+            this.Call(result, arithmetic, node, null, (right, value));
         }
         else
         {
@@ -167,7 +167,7 @@ internal sealed partial class MirBuilder
         if (plan.Second is { } setter)
         {
             var unit = right is null ? this.Hold(BoundType.Unit, node) : destination;
-            this.Call(unit, setter, node, null, setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result));
+            this.Call(unit, setter, node, null, (setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result)));
             if (unit != destination)
             {
                 this.Made(unit);
