@@ -89,8 +89,8 @@ public sealed partial class Binding
         var comparison = instance;
         return Outlives(a, b, 0);
 
-        // The ends as written, before the implementation's per-call Origins are instantiated: the comparison's one decision for a region
-        // conjunct reads them so (LeavesBodyRows).
+        // The ends as written, before the implementation's per-call Origins are instantiated: every exit hands them so to the comparison's
+        // one decision for a region conjunct (LeavesBodyRows, directly or through FitOrigin), which instantiates where it reads them.
         bool Outlives(BoundOrigin writtenLonger, BoundOrigin writtenShorter, int depth)
         {
             if (depth > 8)
@@ -144,7 +144,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(longer, shorter, use!, comparison, condition);
+            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(writtenLonger, writtenShorter, use!, comparison, condition);
         }
     }
 

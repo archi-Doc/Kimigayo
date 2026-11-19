@@ -467,16 +467,17 @@ public sealed partial class Binding
 
     // SPEC 10.1: the Origin part of a fit (RelationWalk). During candidate evaluation and while a selected call's fits are collected
     // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives). `comparison` is the Callable comparison the
-    // fit is part of, whose premises its proof assumes. Both ends are resolved here, once (OriginAtUse).
+    // fit is part of, whose premises its proof assumes. Its ends arrive as written: they are instantiated (CallableInstance.Instantiate)
+    // and resolved here, once (OriginAtUse), and the comparison's one decision for a region conjunct reads them as written (LeavesBodyRows).
     // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): a conjunct one of whose ends rests on a failed part holds and gives no evidence
     // (HoldsResting, after the ordinary answer). A recording fit that held so publishes it (fitRested): its entry leaves the fit's
     // positions as rows of its body (CheckTypeUse), which A5 judges with the atom Dependent (a chain through it between its ends;
     // DECISIONS R4-M118), or the declaration judge rests (JudgeDeclarationRows). The walks entered through IsSubtypeAt (a callable
     // contract) and CallableSignatureFits set it too and form no row: no entry reads it there, and the next fit's entry clears it.
-    private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
+    private bool FitOrigin(BoundOrigin writtenLonger, BoundOrigin writtenShorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
+        var longer = this.OriginAtUse(comparison.Instantiate(writtenLonger), use);
+        var shorter = this.OriginAtUse(comparison.Instantiate(writtenShorter), use);
         if (this.FitConjunct(longer, shorter, use, comparison, condition))
         {
             return true;
@@ -484,7 +485,7 @@ public sealed partial class Binding
 
         if (!this.HoldsResting(longer, shorter, condition, new FitLeaf(this, use, comparison)))
         {
-            return this.LeavesBodyRows(longer, shorter, use, comparison, condition, null);
+            return this.LeavesBodyRows(writtenLonger, writtenShorter, use, comparison, condition, null);
         }
 
         this.fitRested |= !this.collectingFits && this.candidateTrials == 0;
