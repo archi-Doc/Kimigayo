@@ -14,7 +14,7 @@
 // configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
-// Output: the pair, the build record, the staged libraries, the object with its inspection and the executable, each published by
+// Output: the pair, the build record, the staged libraries, the object and the executable, each published by
 // replacement; and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
 // InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception: one IsToolchainFailure classifies is
 // the toolchain's, which its host renders as a message; any other ends the result it interrupted as Faulted (CheckFaulted_Kd): under

@@ -383,7 +383,6 @@ internal static partial class NativeToolchain
                 throw new InvalidDataException("Invalid _fltused definition, unwind information or hidden default library.");
             }
 
-            await File.WriteAllTextAsync(this.paths.Stem + ".inspection.txt", Redact(inspection, this.directory), this.cancellationToken);
             return undefined;
         }
 
