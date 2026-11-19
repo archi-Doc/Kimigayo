@@ -121,8 +121,10 @@ public sealed partial class Binding
     // complete theirs: the read Type (the node's) and the destination Type (its computed input's, PropertyUpdateDestination), to which
     // the update's operation fits its result. A standard `get` reads and a standard `set` writes the Field's Place as the body reads it
     // (MemberRead), which also types the storage node; a custom accessor's Type is its call's. A side without a Type leaves the update
-    // unresolved, as the read is. The storage is reached through the receiver the target names: a bare static Property names none, so
-    // its update is the located Unsupported_Kd until P42 binds a static Property's update (the qualified form is the later phases' limit).
+    // unresolved, as the read is. The storage is reached through the receiver the target names, located once as an exclusive borrow of
+    // the referent below its safe value-reference layer (LayerBelow; a pair layer followed as its accessor calls follow it, PLAN G1112):
+    // a bare static Property names none, so its update is the located Unsupported_Kd until P42 binds a static Property's update (the
+    // qualified form is the later phases' limit).
     private BoundType? BindPropertyUpdate(Koto target, BindingScope scope)
     {
         var property = target.BoundSymbol!.Property!;
@@ -141,7 +143,7 @@ public sealed partial class Binding
 
         Complete(this.propertyUpdateInputs[node], destination);
         var owner = node.Left.BoundType!;
-        var referent = owner is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? owner.Components[0] : owner;
+        var referent = this.LayerBelow(owner, scope) ?? owner;
         var type = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
         if (!this.AdaptInput(node.Left, FixedPattern.Open(type), owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
