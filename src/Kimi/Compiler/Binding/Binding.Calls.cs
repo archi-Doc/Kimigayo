@@ -553,6 +553,7 @@ public sealed partial class Binding
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(this, executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
+            call.CallStorage.PremiseReadsSplit = evaluated[winnerIndex].PremiseReadsSplit; // DECISIONS D3 (G812 ruling 159).
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.

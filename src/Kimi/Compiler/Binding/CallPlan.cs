@@ -125,6 +125,12 @@ public sealed class CallPlan
 
     internal ConversionKoto? AdaptationSource { get; set; }
 
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 159): the selected candidate's premise was Unknown through the split
+    // (its proof read a position a split binding decides, Binding.ReadsSplitDecided), written with the selection (Binding.Calls): the
+    // call's obligation rests at its verdict (Binding.Check), whose record is the split call's located Unsupported_Kd, and is never
+    // judged again at the published, unmarked Type.
+    internal bool PremiseReadsSplit { get; set; }
+
     // The Contract reference whose requirement the call selected: a bound reference (Indexable<Name>) when the Contract
     // takes Type arguments, else the Contract itself. Every instance dispatches through the conformance to that reference
     // (SPEC 8.6.1). Null for calls of other functions.
@@ -273,6 +279,7 @@ public sealed class CallPlan
         this.BasePath = null;
         this.ReceiverOperation = default;
         this.TupleOperator = false;
+        this.PremiseReadsSplit = false;
         this.RequirementContract = null;
         this.VirtualSlotType = null;
         this.VirtualBaseLookupType = null;
@@ -297,6 +304,7 @@ public sealed class CallPlan
         this.receiver = receiver;
         this.ConformingType = conformingType;
         this.TupleOperator = false;
+        this.PremiseReadsSplit = false;
         this.RequirementContract = null;
         this.DeclaringType = declaringType;
         this.BasePath = basePath;
