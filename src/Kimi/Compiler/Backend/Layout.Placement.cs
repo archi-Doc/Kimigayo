@@ -117,6 +117,7 @@ internal sealed partial class Layout
         {
             _ when type.Symbol?.Adt is { InlineCycle: true } => Rejected(type),
             _ when type.Symbol?.Adt is { CLayoutUnavailable: true } => Unavailable(type),
+            _ when AdtDef.HeightLimit(this.types, type) => Entry.Of(Outcome.HeightLimit, null, type, 1, 0, 0), // A leaf naming itself.
             BoundTypeKind.FixedArray => this.PlaceArray(type, budget - 1),
             _ when AdtDef.IsEnum(type) => this.PlaceEnum(type, budget - 1),
             _ => this.Place(type, budget - 1),

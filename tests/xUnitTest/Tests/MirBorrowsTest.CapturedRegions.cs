@@ -41,7 +41,10 @@ public sealed partial class MirBorrowsTest
     // the receiver even when its body returns the parameter, retention being per argument (15.6.4), over a `var` as over a `let`. A Closure
     // read through another keeps all this: called in its environment, through a borrow of it, defined in its body, held in a Field of it.
     // An annotation `during r` names the region itself, and a call adds to it: stored in a `var` binding, and the argument the result may
-    // hold though the body returns the capture.
+    // hold though the body returns the capture. A result over a `var` region one of whose sources is a captured `let` local's value may
+    // retain that capture, the local's region being its solved value (PLAN G492-a (ii); each accepted before): the body returning the
+    // parameter, the source added after the Closure, two bodies deep, a call's region in the capture, a meet with a parameter Origin, a
+    // Closure over the Closure.
     [Theory]
     [InlineData(OverParameter + Arrow + TwoLive, "let r2 = h()", "h")]
     [InlineData(OverParameter + "    var h = func [v] ()\n        return v\n" + TwoLive, "let r2 = h()", "h")]
@@ -82,12 +85,19 @@ public sealed partial class MirBorrowsTest
     [InlineData("struct H<F>\n    public var f: F\n    public init(f: F)\n        self.f = f@move\n" + See + "func t()\n    var x: i32 = 1\n    var r = x@ref\n    let h = H.init(func [r] () => r)\n    let d = func [h@ref] () => h.f()\n    let v = d()\n    x = 2\n    see(v)\n" + Main, "x = 2", null)]
     [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var r = a@ref\n    var c = func [var r] (p: ref/i32 during r) -> ref/i32 during r\n        r = p\n        return r\n    _ = c(b@ref)\n    b = 3\n    let v = c(a@ref)\n    see(v)\n" + Main, "b = 3", null)]
     [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var r = a@ref\n    let c = func [r] (p: ref/i32 during r) -> ref/i32 during r => r\n    let v = c(b@ref)\n    b = 3\n    see(v)\n" + Main, "b = 3", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    var r = sa\n    r = sb\n    let c = func [sa] (p: ref/i32 during r) -> ref/i32 during r => p\n    let v = c(r)\n    a = 3\n    see(v)\n" + Main, "a = 3", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    var r = sa\n    let c = func [sa] (p: ref/i32 during r) -> ref/i32 during r => p\n    r = b@ref\n    let v = c(r)\n    a = 3\n    see(v)\n" + Main, "a = 3", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    var r = sa\n    r = b@ref\n    let outer = func [sa] (p: ref/i32 during r) -> ref/i32 during r\n        let w = sa\n        let inner = func [w] (q: ref/i32 during r) -> ref/i32 during r => q\n        return inner(p)\n    let v = outer(r)\n    a = 3\n    see(v)\n" + Main, "a = 3", null)]
+    [InlineData("func id(p: ref/i32) -> ref/i32 during p => p\n" + See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    let x = id(sa)\n    var r = sa\n    r = b@ref\n    let c = func [x] (q: ref/i32 during r) -> ref/i32 during r => q\n    let v = c(r)\n    a = 3\n    see(v)\n" + Main, "a = 3", null)]
+    [InlineData(See + "func f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    let sa = a@ref\n    var r = q\n    if k => r = sa\n    let c = func [sa] (z: ref/i32 during r) -> ref/i32 during r => z\n    let v = c(q)\n    a = 3\n    see(v)\n" + Main, "a = 3", null)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    var r = sa\n    r = b@ref\n    let inner = func [sa] (z: ref/i32 during r) -> ref/i32 during r => z\n    let outer = func [inner] (z: ref/i32 during r) -> ref/i32 during r => inner(z)\n    let v = outer(r)\n    a = 3\n    see(v)\n" + Main, "a = 3", null)]
     public void AResultOverACapturedRegionKeepsTheReceiverAndTheCapture(string source, string context, string? subject)
         => MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At(context, subject)));
 
     // The valid twins: one call, a first result dead at the second call (also the second alone used, and a later source), a shared capture's
     // two results, also over a Move of the Closure, a Copy result, a Shared call's two Reborrows, `v` after the last use of the Closure's
-    // results, a result that is the parameter with its capture unused, a Consuming call's result dead before the write.
+    // results, a result that is the parameter with its capture unused, a Consuming call's result dead before the write; each result over a
+    // region a captured `let` local's value is a source of, dead before the write.
     [Theory]
     [InlineData(OverParameter + Arrow + "    let r = h()\n    r@follow = 1\n" + Main)]
     [InlineData(OverParameter + Arrow + "    let r = h()\n    r@follow = 1\n    let r2 = h()\n    r2@follow = 2\n" + Main)]
@@ -100,12 +110,20 @@ public sealed partial class MirBorrowsTest
     [InlineData(OverParameter + Arrow + "    let r = h()\n    r@follow = 1\n    v@follow = 2\n" + Main)]
     [InlineData("func f(value: uniq/i32 during q, other: uniq/i32 during q, third: uniq/i32 during q) -> ()\n    var v = value@move\n    var h = func [v] (p: uniq/i32 during q) -> uniq/i32 during q => p\n    let a = h(other)\n    let b = h(third)\n    a@follow = 1\n    b@follow = 2\n" + Main)]
     [InlineData("func f() -> ()\n    var x: i32 = 1\n    var v = x@uniq\n    var h = func [v@move] () => v@move\n    let r = h@move()\n    r@follow = 1\n    x = 5\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    var r = sa\n    r = sb\n    let c = func [sa] (p: ref/i32 during r) -> ref/i32 during r => p\n    let v = c(r)\n    see(v)\n    a = 3\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    var r = sa\n    let c = func [sa] (p: ref/i32 during r) -> ref/i32 during r => p\n    r = b@ref\n    let v = c(r)\n    see(v)\n    a = 3\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    var r = sa\n    r = b@ref\n    let outer = func [sa] (p: ref/i32 during r) -> ref/i32 during r\n        let w = sa\n        let inner = func [w] (q: ref/i32 during r) -> ref/i32 during r => q\n        return inner(p)\n    let v = outer(r)\n    see(v)\n    a = 3\n" + Main)]
+    [InlineData("func id(p: ref/i32) -> ref/i32 during p => p\n" + See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    let x = id(sa)\n    var r = sa\n    r = b@ref\n    let c = func [x] (q: ref/i32 during r) -> ref/i32 during r => q\n    let v = c(r)\n    see(v)\n    a = 3\n" + Main)]
+    [InlineData(See + "func f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    let sa = a@ref\n    var r = q\n    if k => r = sa\n    let c = func [sa] (z: ref/i32 during r) -> ref/i32 during r => z\n    let v = c(q)\n    see(v)\n    a = 3\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    var r = sa\n    r = b@ref\n    let inner = func [sa] (z: ref/i32 during r) -> ref/i32 during r => z\n    let outer = func [inner] (z: ref/i32 during r) -> ref/i32 during r => inner(z)\n    let v = outer(r)\n    see(v)\n    a = 3\n" + Main)]
     public void ACapturedRegionConflictsWithNothingLive(string source) => MirTargetSide.Check(source);
 
     // SPEC 15.3.6, 15.6.4 (the consent review's B1): a local has one region, the meet of all its sources, and a meet outlives what all its
     // sources do, so a result naming one source of several cannot hold the capture and keeps
     // none of its Loans: a source added after the capture, one before it, either order of a replaced source, two parameters' exclusive
     // references, `static` beside a local Borrow, a Closure that reads its capture, a Consuming call, a Closure over a Closure, one in a Field.
+    // The same where a source is a `let` local, whose region is its solved value (PLAN G492-a (ii)): added after the capture, beside a
+    // parameter; and a capture over a third local that is no source of the result's region, which the result cannot hold either.
     [Theory]
     [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = b@ref\n    var r = a@ref\n    let c = func [r] (p: ref/i32 during s) -> ref/i32 during s => p\n    r = s\n    let v = c(s)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
     [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = b@ref\n    let u = a@ref\n    var r = u\n    r = s\n    let c = func [r] (p: ref/i32 during u) -> ref/i32 during u => p\n    let v = c(u)\n    b = 3\n    see(v)\n    see(b@ref)\n" + Main)]
@@ -117,6 +135,9 @@ public sealed partial class MirBorrowsTest
     [InlineData(See + "func consumeText(s: string) => ()\nfunc f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let t = \"x\"\n    let c = func [r, t@move] (p: ref/i32 during q) -> ref/i32 during q\n        consumeText(t@move)\n        return p\n    let v = c@move(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
     [InlineData(See + "func f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let inner = func [r] (p: ref/i32 during q) -> ref/i32 during q => p\n    let outer = func [inner] (p: ref/i32 during q) -> ref/i32 during q => inner(p)\n    let v = outer(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
     [InlineData(See + "struct H<F>\n    public var f: F\n    public init(f: F)\n        self.f = f@move\nfunc f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    var r = q\n    if k => r = a@ref\n    let h = H.init(func [r] (p: ref/i32 during q) -> ref/i32 during q => p)\n    let v = h.f(q)\n    a = 3\n    see(v)\n    see(a@ref)\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let sa = a@ref\n    let sb = b@ref\n    var r = sa\n    let c = func [r] (p: ref/i32 during sb) -> ref/i32 during sb => p\n    r = sb\n    let v = c(sb)\n    a = 3\n    see(v)\n" + Main)]
+    [InlineData(See + "func f(q: ref/i32, k: bool)\n    var a: i32 = 1\n    let sa = a@ref\n    var r = q\n    if k => r = sa\n    let c = func [r] (z: ref/i32 during q) -> ref/i32 during q => z\n    let v = c(q)\n    a = 3\n    see(v)\n" + Main)]
+    [InlineData(See + "func t()\n    var a: i32 = 1\n    var b: i32 = 2\n    var d: i32 = 4\n    let sd = d@ref\n    var r = a@ref\n    r = b@ref\n    let c = func [sd] (p: ref/i32 during r) -> ref/i32 during r => p\n    let v = c(r)\n    d = 5\n    see(v)\n" + Main)]
     public void AResultNamingOneSourceCannotHoldTheCapture(string source) => MirTargetSide.Check(source);
 
     // SPEC 15.3.6, 15.6.4, 15.6.5 (DECISIONS: G570; G553's limit under the owner's O-51 and O-52, which it removes): the region is one meet,
@@ -188,14 +209,13 @@ public sealed partial class MirBorrowsTest
     // contract alone, so a `var`'s region over a `static` source is no `static` there. Invalid, accepted by dev, rejected now: an erasure
     // (s2h), a call's argument (s2c), a Callable bound (c12). An acceptance hole closed, no limit. The same rule, each invalid under O-61 (a)
     // and rejected on dev too (G572 U3): a held Closure over a `static`-only region erased at a stated `let` (e6v), at a call's argument
-    // (e6c), at a Field of Function Type (s9), and in a nested body (c11). Invalid under O-61 (a) too (G572 U1): an erasure whose input needs
-    // `p outlives R`, R's one bound p, a region's solved value not read there (f3v; SPEC 15.6.1, 15.3.7). At a call's or a constructor's
+    // (e6c), at a Field of Function Type (s9), and in a nested body (c11). G572 U1's f3v (an erasure whose input needs `p outlives R`, R's
+    // one bound p) is valid under the owner's O-264 Q5 (a) (J1): MirBorrowsTest.Comparisons.cs. At a call's or a constructor's
     // argument (s2c, s9, e6c) the record is at the argument since PLAN G379 (a), as at the erasure s2h: applicability reads the erasure's
     // structural part alone and its Origin part is judged after selection (SPEC 15.6.1, 10.8; DECISIONS R4-M155's t1d_n precedent). There
     // the region's Owned is decided only once the body is bound, so the erasure is the located Unsupported_Kd at the argument (the owner's
     // O-406 (a), G379 (a) R4-R5: a part not decidable before finality at applicability; O-57's recorded limit stays at s2h's initialization).
     [Theory]
-    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var r = p\n    let c = func (q: ref/i32 during r) -> ref/i32 during p => q\n    let g: (ref/i32 during p) -> ref/i32 during p = c\n    return g(p)\n" + Main, DiagnosticCode.UnprovenOriginContract_Kd, "during p = c", "c")]
     [InlineData(See + "func t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    let f: () -> ref/i32 during static = c@move\n    see(f())\n" + Main, DiagnosticCode.UnprovenConstraint_Kd, "c@move", null)]
     [InlineData(See + "func two(f: () -> ref/i32 during static)\n    see(f())\nfunc t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    two(c@move)\n" + Main, DiagnosticCode.Unsupported_Kd, "c@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
     [InlineData(See + "struct H\n    public var f: () -> ref/i32 during static\n    public init(f: () -> ref/i32 during static)\n        self.f = f@move\nfunc g(s: ref/i32 during static)\n    var r = s\n    let c = func [r] () => r\n    let h = H.init(c@move)\n    see(h.f())\n" + Main, DiagnosticCode.Unsupported_Kd, "c@move", null)] // O-406 (a): the located limit at the argument (G379 (a) R4-R5)
@@ -209,10 +229,12 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.3.6, 15.6.5 (DECISIONS: G572 U1): a region at a fixed longer end reads as its solved value, each bound outliving the target, and
     // A5 reads it, once every body is bound. The limit of O-57 for these forms ends here: (n1) a stated result, (n2) a store, (n6v) over a
     // call's result in a `var`, (n12) three bodies, (w1) a stated `let`, (w2) a stated parameter, each one bound. The same read through a
-    // written result (z24b, b1n), two bounds a premise relates (a2), a meet at the position (a3), a body `var` (a5), a later bound a premise
+    // written result (z24b), two bounds a premise relates (a2), a meet at the position (a3), a body `var` (a5), a later bound a premise
     // relates (a13), slots as separate regions (t23); a join (n26), a stated Type argument (n27) and an Array slot's call (t21) in a nested
     // body, Binding's judge leaving the row; and own-body joins, `Unsupported_Kd` before, which take the same row: with no Closure (g1, g7,
-    // g8), and over a Closure's result at a stated local (t29) and at the return (t37), O-59's.
+    // g8), and over a Closure's result at a stated local (t29) and at the return (t37), O-59's. An enclosing `var` region's value reached
+    // through the Closure's own `var` region, which an invariant call makes equal to another enclosing region, with that Equality row at
+    // the chain's last edge (eqw, rejected before) and with a store there (eqwp; PLAN G492-a (ii), the Middle's C-350 C2 (a)).
     [Theory]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let outer = func [r] () -> ref/i32 during p\n        let inner = func [r] () => r\n        return inner()\n    see(outer())\n" + Main)]
     [InlineData("func f(p: ref/i32, o: uniq/(ref/i32 during p))\n    var r = p\n    var w = func [r, o] ()\n        let inner = func [r] () => r\n        o@follow = inner()\n    w()\n" + Main)]
@@ -221,7 +243,6 @@ public sealed partial class MirBorrowsTest
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let outer = func [r] () -> i32\n        let inner = func [r] () => r\n        let w: ref/i32 during p = inner()\n        return w@follow\n    let n = outer()\n    see(n@ref)\n" + Main)]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let outer = func [r] () -> i32\n        let inner = func [r] () => r\n        let g = func (z: ref/i32 during p) -> i32 => z@follow\n        return g(inner())\n    let n = outer()\n    see(n@ref)\n" + Main)]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> ref/i32 during p => r\n    see(c())\n" + Main)]
-    [InlineData(See + "func t()\n    var b: i32 = 2\n    let s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    see(v)\n" + Main)]
     [InlineData(See + "func f(p: ref/i32, q: ref/i32)\n    origin p outlives q\n    var r = p\n    r = q\n    let c = func [r] () -> ref/i32 during q => r\n    see(c())\n" + Main)]
     [InlineData(See + "func f(p: ref/i32, q: ref/i32)\n    var r = p\n    r = q\n    let c = func [r] () -> ref/i32 during (p and q) => r\n    see(c())\n" + Main)]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> ref/i32 during p\n        var y = r\n        return y\n    see(c())\n" + Main)]
@@ -235,22 +256,47 @@ public sealed partial class MirBorrowsTest
     [InlineData("struct Box {o}\n    public let r: ref/i32 during o\n    public init(r: ref/i32 during o)\n        self.r = r\nfunc f(p: ref/i32, k: bool) -> ref/i32 during p\n    var r = p\n    let b: Box during p = if k => Box.init(r) else => Box.init(p)\n    return b.r\n" + Main)]
     [InlineData(See + "func f(p: ref/i32, k: bool)\n    var r = p\n    let c = func [r] () => r\n    let v: ref/i32 during p = if k => c() else => p\n    see(v)\n" + Main)]
     [InlineData(See + "func f(p: ref/i32, k: bool) -> ref/i32 during p\n    var r = p\n    let c = func [r] () => r\n    return if k => c() else => p\n" + Main)]
+    [InlineData("func same(x: uniq/(ref/i32 during a), y: uniq/(ref/i32 during a)) => ()\nfunc use(p: ref/i32) -> i32\n    var r = p\n    var s = r\n    var f = func [var r, s] () -> ()\n        var w = s\n        same(r@uniq, w@uniq)\n    f()\n    return 0\n" + Main)]
+    [InlineData("func put(t: uniq/(ref/i32 during a), v: ref/i32 during a) => ()\nfunc use(p: ref/i32) -> i32\n    var r = p\n    var s = r\n    var f = func [var r, s] () -> ()\n        var w = s\n        put(r@uniq, w)\n    f()\n    return 0\n" + Main)]
     public void AFixedPositionReadsARegionsSolvedValue(string source)
         => MirTargetSide.Check(source);
 
     // The same rule, a bound that does not outlive the position (15.6.5, one tense): a later local (b3), a later parameter (b2), a source
     // through a reference before the literal (b5), a call's argument to a `during r` parameter (b4), a nested body with a later source (b8),
-    // a loop's back edge (c1), a second capture's Origin (v7r). b1-stated-var's record returns to the write: G553's edge keeps the Loan.
+    // a loop's back edge (c1), a second capture's Origin (v7r). A result written `during s` over a `let s` (b1n, and b1-stated-var with a
+    // later write of the borrowed local): the signature names s's own region (PLAN G492-a (ii)), a fixed Origin of the Closure with no
+    // premise relating the capture's region to it (the owner's O-249 Q1 (a); the region's solved value is the meet of its sources,
+    // DECISIONS BU-127 and R4-M184), so the result is Unknown as its `var s` twin's; b1n was accepted. b1-stated-var keeps the write's
+    // Loan conflict beside it, independent (SPEC 15.6.1, 23.1.2): the Closure's retention reads r's region as its solved value, s's region
+    // (PLAN G492-a (ii), N6), so the result retains the capture. eqw's twin
+    // over a second parameter (eqwi): `q outlives` the other region's value is Unknown at the call.
     [Theory]
-    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var a: i32 = 1\n    var r = p\n    let c = func [r] () -> ref/i32 during p => r\n    r = a@ref\n    return c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r")]
-    [InlineData(See + "func f(p: ref/i32, q: ref/i32)\n    var r = p\n    let c = func [r] () -> ref/i32 during p => r\n    r = q\n    see(c())\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r")]
-    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var a: i32 = 1\n    var r = p\n    let h = r@uniq\n    h@follow = a@ref\n    let c = func [r] () -> ref/i32 during p => r\n    return c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r")]
-    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var a: i32 = 1\n    var r = p\n    let g = func (x: ref/i32 during r) -> ref/i32 during p => x\n    return g(a@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> x", "x")]
-    [InlineData(See + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    var r = p\n    let outer = func [r] () -> ref/i32 during p\n        let inner = func [r] () -> ref/i32 during p => r\n        return inner()\n    r = q\n    return outer()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r")]
-    [InlineData(See + "func t(s: ref/i32, n: i32)\n    var a: i32 = 1\n    var r = s\n    var last = s\n    var i = 0\n    while i < n\n        let c = func [r] (p: ref/i32 during s) -> ref/i32 during s => r\n        last = c(s)\n        r = a@ref\n        i += 1\n    see(last)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r")]
-    [InlineData(See + "func t()\n    var b: i32 = 2\n    let s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    b = 3\n    see(v)\n" + Main, DiagnosticCode.ComparisonLoanConflict_Kd, "b = 3", null)]
-    public void ABoundThatDoesNotOutliveThePositionStaysRejected(string source, DiagnosticCode code, string context, string? subject)
-        => MirTargetSide.Check(source, (code, MirTargetSide.At(context, subject)));
+    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var a: i32 = 1\n    var r = p\n    let c = func [r] () -> ref/i32 during p => r\n    r = a@ref\n    return c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r", null, null)]
+    [InlineData(See + "func f(p: ref/i32, q: ref/i32)\n    var r = p\n    let c = func [r] () -> ref/i32 during p => r\n    r = q\n    see(c())\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r", null, null)]
+    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var a: i32 = 1\n    var r = p\n    let h = r@uniq\n    h@follow = a@ref\n    let c = func [r] () -> ref/i32 during p => r\n    return c()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r", null, null)]
+    [InlineData(See + "func f(p: ref/i32) -> ref/i32 during p\n    var a: i32 = 1\n    var r = p\n    let g = func (x: ref/i32 during r) -> ref/i32 during p => x\n    return g(a@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> x", "x", null, null)]
+    [InlineData(See + "func f(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    var r = p\n    let outer = func [r] () -> ref/i32 during p\n        let inner = func [r] () -> ref/i32 during p => r\n        return inner()\n    r = q\n    return outer()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r", null, null)]
+    [InlineData(See + "func t(s: ref/i32, n: i32)\n    var a: i32 = 1\n    var r = s\n    var last = s\n    var i = 0\n    while i < n\n        let c = func [r] (p: ref/i32 during s) -> ref/i32 during s => r\n        last = c(s)\n        r = a@ref\n        i += 1\n    see(last)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r", null, null)]
+    [InlineData(See + "func t()\n    var b: i32 = 2\n    let s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    see(v)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r", null, null)]
+    [InlineData(See + "func t()\n    var b: i32 = 2\n    let s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    b = 3\n    see(v)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "=> r", "r", DiagnosticCode.ComparisonLoanConflict_Kd, "b = 3")]
+    [InlineData("func same(x: uniq/(ref/i32 during a), y: uniq/(ref/i32 during a)) => ()\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    var r = p\n    var s = q\n    var f = func [var r, s] () -> ()\n        var w = s\n        same(r@uniq, w@uniq)\n    f()\n    return 0\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "same(r@uniq, w@uniq)", "w@uniq", null, null)]
+    public void ABoundThatDoesNotOutliveThePositionStaysRejected(string source, DiagnosticCode code, string context, string? subject, DiagnosticCode? second, string? secondContext)
+        => MirTargetSide.Check(source, second is not { } other ? [(code, MirTargetSide.At(context, subject))] : [(code, MirTargetSide.At(context, subject)), (other, MirTargetSide.At(secondContext!))]);
+
+    // PLAN G492-a (ii), N6 (design-ii.md §13.18.12; labels rev5\labels-n6.md; SPEC 15.6.4, 15.8.2, 23.1.2): a Closure callee's
+    // retention reads an enclosing local region as its solved value (Binding.AddRegionMeet), so a result over the value a capture holds
+    // retains the capture's Loans and the write meets them: a `var` capture whose relation holds (f4bv), its holder twin (f5holdv), no
+    // Closure (n1), a capture and a result over one region (n2, a `var` one n3, one Closure level deeper n4); n2ok's use comes first.
+    [Theory]
+    [InlineData("f4bv", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    var s = b@ref\n    var r = s\n    let c = func [r] () -> ref/i32 during s => r\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
+    [InlineData("f5holdv", "func use() -> i32\n    let x: i32 = 4\n    var r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n", "UnprovenOriginRelation_Kd: start = n | ComparisonLoanConflict_Kd: let y: i32 = 5")]
+    [InlineData("n1", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    var r = s\n    let v = r\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
+    [InlineData("n2", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    let c = func [s] () -> ref/i32 during s => s\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
+    [InlineData("n3", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    var s = b@ref\n    let c = func [s] () -> ref/i32 during s => s\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
+    [InlineData("n4", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    let c = func [s] () -> ref/i32 during s\n        let d = func [s] () -> ref/i32 during s => s\n        return d()\n    let v = c()\n    b = 3\n    see(v)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd: b = 3")]
+    [InlineData("n2ok", "func see(p: ref/i32) => ()\nfunc t()\n    var b: i32 = 2\n    let s = b@ref\n    let c = func [s] () -> ref/i32 during s => s\n    let v = c()\n    see(v)\n    b = 3\npublic func main() => ()\n", "")]
+    public void AClosuresRetentionReadsARegionAsItsValue(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
     // SPEC 15.6.1 (DECISIONS: G572 U1): a body's clause is an obligation, so one over an enclosing region is A5's row, judged at the clause: a
     // later bound that does not hold (c1i), in a meet (e3), two bodies below the region (e6), through a slot (e2).
