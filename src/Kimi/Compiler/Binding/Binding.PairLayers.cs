@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The admitted set of every pair layer followed in this pass (SPEC 13.5.5), keyed by the @follow node.
-    private readonly Dictionary<Koto, SemanticsMask> pairFollows = new(ReferenceEqualityComparer.Instance);
+    private readonly PairFollowRows pairFollows;
 
     // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.3, 7.3), with their admitted sets.
     private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
@@ -291,5 +291,19 @@ public sealed partial class Binding
         var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
         met = !shared;
         return inPlace ? null : slot;
+    }
+
+    /// <summary>The `pairFollows` family's one accessor (DECISIONS BU-220): a pass family, the admitted set of the pair layer a @follow
+    /// node follows, kept in the node's module's NodeColumns at its SyntaxId (None, the column's default, for any other node). Its members
+    /// keep the names its readers use.</summary>
+    private readonly struct PairFollowRows(Binding binding)
+    {
+        internal SemanticsMask this[Koto node]
+        {
+            set => HirTables.Of(node).Families.PairFollows.Ref(node.SyntaxId, binding) = value;
+        }
+
+        internal SemanticsMask GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.PairFollows.Get(node.SyntaxId, binding) : SemanticsMask.None;
     }
 }
