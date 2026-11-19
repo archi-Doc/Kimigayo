@@ -1,7 +1,7 @@
 # R5 step 0, chapter C (S4): code generation, Layout/Abi, DropGlue, selector, coverage rows, debug-info record — design 2
 
 Status: design (second independent design of S4; written without reading any other design of this chapter or the deep dives).
-Base: `origin/dev` at `041ced79`. Plan: [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md)
+Base: `origin/dev` at `041ced79`. Plan: [R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md)
 ("the plan"), adopted 2026-10-18 (owner answers OQ1–OQ17; DEC R5-M1–R5-M13 in the records unit). PLAN10, A5P, ARCH, DEC, PD/OQ
 and unit IDs are used as in the plan. `B/` = `src/Kimi/Compiler/Backend/`, `E/` = `src/Kimi/Compiler/Emission/`, `M/` =
 `src/Kimi/Compiler/Mir/`. Citations are `path:line` at the base; (H) marks an estimate or an unverified inference. `audit.md` (S1)

@@ -148,7 +148,7 @@ public sealed partial class Binding
                     {
                         var contract = ComparisonFailure.Shape;
                         var structure = bound && ReferenceTypes.StorageMatches(required, actual);
-                        return structure && !this.ItemContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
+                        return structure && !this.ItemContractFits(candidateItem, actual, required, use, null, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
@@ -373,6 +373,7 @@ public sealed partial class Binding
         // SPEC 10.8 (two phases): a structured application of a pair binder is formed after the binder's exact sources, wherever S
         // writes them, so the signature is matched again while a pass that met an open application fixed something.
         var parameters = required.Components[0];
+        var binder = new SolveBinder(function);
         bool open;
         int sourced;
         do
@@ -386,9 +387,9 @@ public sealed partial class Binding
                     return false;
                 }
 
-                open |= this.HasOpenApplication(parameter, function, frame);
+                open |= this.HasOpenApplication(parameter, binder.SlotOwner, frame);
                 if (!this.Infer(
-                    parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
+                    parameter, parameters.Components[i], binder, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
                 {
                     return false;
                 }
@@ -401,9 +402,9 @@ public sealed partial class Binding
                     return false;
                 }
 
-                open |= this.HasOpenApplication(bound, function, frame);
+                open |= this.HasOpenApplication(bound, binder.SlotOwner, frame);
                 if (!this.Infer(
-                    bound, required.Components[1], function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
+                    bound, required.Components[1], binder, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
                 {
                     return false;
                 }
@@ -466,7 +467,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.4.4: an Origin that a written Type argument omits is an inference variable of the local whose initializer holds the
-    // reference; the selected binding from S solves it, as an initializer's acquisition bounds it. Elsewhere it stays unsolved.
+    // reference; the selected binding from S solves it, as an initializer's acquisition bounds it, read at the reference (SuppliedAtUse:
+    // the one reading, which the alias keeps, as a fit's bound is read at its use; the owner's O-385 (a)). Elsewhere it stays unsolved.
     private void SolveOmittedOrigins(BoundType written, BoundType binding, Koto use)
     {
         if (ReferenceEquals(written, binding))
@@ -491,7 +493,7 @@ public sealed partial class Binding
     {
         if (written is { Kind: OriginKind.Inference } atom && binding is not null && !ReferenceEquals(atom, binding) && this.OpenInitializerInference(atom, use) is { } pending)
         {
-            this.MeetInitializerBound(pending, atom, binding);
+            this.MeetInitializerBound(pending, atom, this.SuppliedAtUse(binding, use));
         }
     }
 
@@ -521,7 +523,7 @@ public sealed partial class Binding
             fromResult.ClearTypes(count);
             fromResult.ClearLengths(count);
             if (symbol.Type is not { } writtenResult || this.MemberType(writtenResult, container) is not { } result ||
-                !this.Infer(result, required.Components[1], function, fromResult, inferOrigins: true, lengths: true, commonOrigins: true, structural: true))
+                !this.Infer(result, required.Components[1], new(function), fromResult, inferOrigins: true, lengths: true, commonOrigins: true, structural: true))
             {
                 return null;
             }
@@ -662,9 +664,17 @@ public sealed partial class Binding
                     return CandidateApplicability.Inapplicable;
                 }
             }
-            else if (!this.ContractFits(use, symbol, function, required, container, null, frame, operations, origins, inputs))
+            else
             {
-                return CandidateApplicability.Inapplicable;
+                // SPEC 15.6.1: an Origin relation never changes a selection, so the reference's applicability takes the comparison's
+                // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction).
+                var rows = this.comparisonRows.Count;
+                var fits = this.ContractFits(use, symbol, function, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs);
+                this.DropComparisonRows(rows);
+                if (!fits)
+                {
+                    return CandidateApplicability.Inapplicable;
+                }
             }
 
             // A bound enclosing Type can supply conditions even when the function has no own slots.

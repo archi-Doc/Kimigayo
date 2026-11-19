@@ -70,6 +70,9 @@ internal sealed class AdtDef
     // null Field. Null for any other Type.
     internal static BoundType?[]? CaseTypes(TyCtxt types, BoundType type) => IsEnum(type) ? Instance(types, type).Cases : null;
 
+    // R7-T1: whether a struct's or enum's instance has a stored Type past IMPL A.4's height (InstanceStorage.HeightLimit).
+    internal static bool HeightLimit(TyCtxt types, BoundType type) => (IsStruct(type) || IsEnum(type)) && Instance(types, type).HeightLimit;
+
     internal static int Count(BoundType type) => Struct(type)?.Fields.Length ?? 0;
 
     // Selection identities include inherited fields, base first. Construction and destruction keep their separate layers.
@@ -191,6 +194,10 @@ internal sealed class AdtDef
 
         // The base with its raw Origins; null exactly where Base is.
         internal BoundType? PartsBase { get; set; }
+
+        // Whether a stored Type passes IMPL A.4's height, refused inside the instance collector's answer frame (Binding.Instance; R7-T1):
+        // its part is null, and the instance's readers read it as a limit (Binding's storage walk, Layout's HeightLimit), never Rejected.
+        internal bool HeightLimit { get; set; }
 
         // The pass that substituted these Types; not current otherwise.
         internal ulong Version { get; set; }

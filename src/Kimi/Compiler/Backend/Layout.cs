@@ -4,8 +4,9 @@
 // R5-M155). Responsibility: the size, alignment, stride, Field offsets and LLVM representation of a closed Type (PD2: code generation
 // and the collector call it, never a copy), and its verdict: OK, a typed generation limit, an unavailable C layout anywhere in the 64-level
 // window (SPEC 6.7.1, the one judge of its four conditions: open, derived or empty from Binding's published AdtDef.CLayoutUnavailable,
-// a zero-sized Field from the placed parts; S2-S4 X18), a layout over 2^63 - 1 bytes (Oversized, IMPL 21.1.1), or a failure derived
-// from Binding's rejected storage or from an abstract Type (Inputs). Rows (Layout.Rows.cs; static, Row): IMPL 21.1.3's scalars, Unit,
+// a zero-sized Field from the placed parts; S2-S4 X18), a layout over 2^63 - 1 bytes (Oversized, IMPL 21.1.1), an instance in the window
+// whose stored Type passes IMPL A.4's height (HeightLimit, a limit: Binding's published AdtDef.InstanceStorage.HeightLimit; R7-T1), or a
+// failure derived from Binding's rejected storage or from an abstract Type (Inputs). Rows (Layout.Rows.cs; static, Row): IMPL 21.1.3's scalars, Unit,
 // string, Never, borrows and raw pointers, object and function handles; and IMPL 21.1.3's Handles (Component): a Slice, Array or
 // Dictionary is a row whose record is its one component's placement, the library struct that states its words (DECISIONS R8-M1).
 // Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums, Closures and Function Items, memoized
@@ -22,8 +23,8 @@
 // (DECISIONS R5-M148), never asked for an abstract Type (Inputs); it throws
 // for a Type without a row, a kind outside Layout's input contract in every compilation. The
 // collector (InstanceCollector) alone maps the outcomes: a
-// limit to one Resource record per erased Type and declaration, at the declaration's least use, made at the collection's end
-// (R5-M171), CLayout to InvalidCLayout_Kd and Oversized to
+// limit to one Resource record per erased Type and declaration (HeightLimit's TypeHeightLimit_Kd per instance it names), at the
+// declaration's least use, made at the collection's end (R5-M171), CLayout to InvalidCLayout_Kd and Oversized to
 // OversizedLayout_Kd at each use (R5-M55, R5-M52), Rejected to a derived failure without a record (InternalInvariant_Kd in a complete
 // compilation, DECISIONS BU-38); codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd): the
 // collector's uses cover every Type it lays out (its by-value set and LayoutNeeds; DECISIONS R5-M149). No size is published.
@@ -65,6 +66,11 @@ internal sealed partial class Layout
         /// <summary>The placement height exceeds <see cref="MaximumHeight"/> and no CLayout lies in the window (IMPL 21.3.2).</summary>
         DepthLimit,
 
+        /// <summary>The result's Instance, a struct or enum instance placed in the window, stores a Type past IMPL A.4's height, which
+        /// Binding refused forming its storage (AdtDef.InstanceStorage.HeightLimit; R7-T1): a limit, its record TypeHeightLimit_Kd
+        /// (IMPL 21.3.2), one per instance.</summary>
+        HeightLimit,
+
         /// <summary>The result's Instance, a C-layout instance placed in the window, has no C layout: its declaration is open, derived or
         /// empty, or it stores a zero-sized Field (SPEC 6.7.1, 8.15.3).</summary>
         CLayout,
@@ -85,16 +91,16 @@ internal sealed partial class Layout
     /// Oversized, DepthLimit, a limit, Rejected, the Type's own size).</returns>
     internal Result Of(BoundType type) => this.Walk(type, MaximumHeight).Result;
 
-    /// <summary>A Type's layout and verdict: <see cref="Value"/> exactly for Ok, <see cref="Instance"/> exactly for CLayout and
-    /// Rejected, <see cref="Oversized"/> exactly for Oversized and a CLayout whose size is also over 2^63 - 1.</summary>
+    /// <summary>A Type's layout and verdict: <see cref="Value"/> exactly for Ok, <see cref="Instance"/> exactly for CLayout,
+    /// HeightLimit and Rejected, <see cref="Oversized"/> exactly for Oversized and a CLayout whose size is also over 2^63 - 1.</summary>
     /// <param name="Outcome">The verdict.</param>
     /// <param name="Value">The representation's one record, when the Type is laid out.</param>
-    /// <param name="Instance">The C-layout instance storing a zero-sized Field, or the Type whose storage Binding rejected or the abstract
-    /// Type.</param>
+    /// <param name="Instance">The C-layout instance storing a zero-sized Field, the instance whose stored Type passes the height, or the
+    /// Type whose storage Binding rejected or the abstract Type.</param>
     /// <param name="Oversized">Whether the Type needs a layout over 2^63 - 1 bytes.</param>
     internal readonly record struct Result(Outcome Outcome, ValueLowering? Value, BoundType? Instance, bool Oversized)
     {
         /// <summary>Gets a value indicating whether the outcome is a generation limit (IMPL 21.3.2), a Resource record's cause.</summary>
-        internal bool IsLimit => this.Outcome is Outcome.SizeLimit or Outcome.CountLimit or Outcome.DepthLimit;
+        internal bool IsLimit => this.Outcome is Outcome.SizeLimit or Outcome.CountLimit or Outcome.DepthLimit or Outcome.HeightLimit;
     }
 }

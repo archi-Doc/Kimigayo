@@ -15,7 +15,7 @@ R4の完了を待ってください。」
 
 Base: dev `e8ba140b3` (code, DECISIONS, PLAN, STATUS). Builds on the unreviewed parts H0a (`origin/claude/r5-h0a`, the publication
 table, H3) and H0c (`origin/claude/r5-h0c`, deletions after H5); §9 lists where this part disagrees. "Plan" is the
-[R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md); "Q8" is
+[R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md); "Q8" is
 `draft/Sketches/R5 Step 0/Q8-package.md` (owner-approved, R5-M23). Paths: `C/` = `src/Kimi/Compiler/`, `T/` = `tests/xUnitTest/Tests/`.
 Counts are greps over the base. No build, test or probe was run. (H) marks an unchecked inference.
 

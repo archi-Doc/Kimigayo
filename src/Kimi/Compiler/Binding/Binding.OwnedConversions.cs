@@ -336,7 +336,9 @@ public sealed partial class Binding
     // leaf Origin classified at `use` (RefutedStatic): Refuted when one is; else Final when one is decided only once the body is bound,
     // or when no part is known: no work judged the subject, or its work was forgotten (its evaluation's answer depends on an open
     // obligation, ForgetDependentCapabilities; rulings-g 3). The member it names is the first member with a refuted leaf, with that leaf, else the
-    // first member with its first Origin. -1 when no part failed; -2 when no work judged the subject.
+    // first member with its first Origin. -1 when no part failed; -2 when no work judged the subject. A part's Origin is read once, at the
+    // erasure's use, where it is taken from its part (SuppliedAtUse: a `let` region of the use's own body is its value, PLAN G492-a (ii)),
+    // before the receiver resolution, as a record's Supplier is.
     private OwnedFact OwnedMember(ICheckCause? cause, in OwnedRest rest, Koto use)
     {
         var first = new OwnedFact(cause, rest.Work is null ? -2 : -1, null, false, false);
@@ -346,7 +348,8 @@ public sealed partial class Binding
         this.ownedWalk.Clear();
         for (var p = 0; parts is not null && p < parts.Count; p++)
         {
-            var (member, origin, type) = parts[p];
+            var (member, written, type) = parts[p];
+            var origin = written is null ? null : this.SuppliedAtUse(written, use);
             var leaf = this.RefutedLeaf(type, origin, rest.Scope, use, ref final);
             if (first.Member < 0 || member < first.Member)
             {
@@ -364,7 +367,8 @@ public sealed partial class Binding
 
     // The first leaf Origin refuted under a part that is not Proven: an Origin part is its leaf; a part with a Type, each part of its
     // work, at any depth; a Type without a work (a leaf the engine decided, or a limit) and a limit part keep the engine's verdict.
-    // `final` collects a leaf decided only once the body is bound.
+    // `final` collects a leaf decided only once the body is bound. `origin` arrives read at the use; a nested work's part is read here, as
+    // OwnedMember reads a subject's part.
     private BoundOrigin? RefutedLeaf(BoundType? type, BoundOrigin? origin, BindingScope scope, Koto use, ref bool final)
     {
         if (type is null)
@@ -379,7 +383,8 @@ public sealed partial class Binding
 
         for (var i = 0; work.Parts is { } parts && i < parts.Count; i++)
         {
-            if (this.RefutedLeaf(parts[i].Type, parts[i].Origin, scope, use, ref final) is { } leaf)
+            var supplied = parts[i].Origin is { } written ? this.SuppliedAtUse(written, use) : null;
+            if (this.RefutedLeaf(parts[i].Type, supplied, scope, use, ref final) is { } leaf)
             {
                 return leaf;
             }

@@ -21,8 +21,7 @@ internal sealed partial class InstanceCollector
     /// <param name="source">The source of a statement, a terminator or a local of the body, an analysis problem's subject in its location's
     /// scope (MirDropTable.Incomplete), or none for the body itself.</param>
     /// <returns>The subject.</returns>
-    internal SourceRef Subject(int item, MirBody body, in SourceInfo source)
-        => this.Located(body, source) is var located && located.Module < this.rootModules ? located : this.Set.Items[item].Site;
+    internal SourceRef Subject(int item, MirBody body, in SourceInfo source) => this.Subject(this.Set.Items[item].Site, body, source);
 
     // DIAGNOSTICS rule 6 (DECISIONS R5-M171): the order of two subjects, by module and then by id, the syntax table's pre-order of parsed
     // nodes, after which nodes outside the tree (Binding's synthesized ones) follow in creation order.
@@ -56,6 +55,11 @@ internal sealed partial class InstanceCollector
 
         return false;
     }
+
+    // K 4.9: the subject of a record caused at a site of a body whose item's Site is given: an item's, or a new key's before admission (its
+    // requesting site, the Site Admit gives it).
+    private SourceRef Subject(SourceRef site, MirBody body, in SourceInfo source)
+        => this.Located(body, source) is var located && located.Module < this.rootModules ? located : site;
 
     // SPEC 6.1.3, 8.13.3 (DECISIONS R5-M43, R5-M157, BU-60): whether the substitution of a definition generic in its context carries the
     // instance it instantiates in, that of the declaration whose instance it holds (TyCtxt.EnclosingDeclaration), as its binder (a Closure's
@@ -118,7 +122,7 @@ internal sealed partial class InstanceCollector
         }
 
         var representative = erased is null ? null : subst;
-        if (representative is not null && !this.Instantiable(target, representative, site))
+        if (representative is not null && !this.Instantiable(parent, target, representative, site))
         {
             return -1;
         }
@@ -139,8 +143,8 @@ internal sealed partial class InstanceCollector
     // K 4.3, 4.8: the item of a type-driven key (its kind, a property witness's Field and a shim's variant) requested at a site, admitted
     // once per erased Type (the key's own when preset: a comparison item's node Type, DECISIONS R5-M166) whose layout verdict is Ok, a DropGlue's with its collection elements' (X34; a failure is the Type's record, or
     // derived), and represented by the first unerased Type that requests it, which is closed (an open one is a broken contract,
-    // InternalInvariant_Kd), and by that request's substitution, a shim's: its admitting call's, whose storage verdict the call's edge read
-    // (Made), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. A Type higher than the
+    // InternalInvariant_Kd), and by that request's substitution, a shim's: its admitting call's, whose formation the call's edge read
+    // (Formed), so TypeOf gives the shim's signature in its instance (DECISIONS R5-M126); null for another kind. A Type higher than the
     // height cap is, like a Layout limit, a use of its erased Type over a limit in the requesting declaration (Limit, DECISIONS R5-M171),
     // read again at each request, before its key is found (a handle glue's key is shared by Types of any height, GlueKey), not a refused
     // key. -1 when refused.
@@ -155,7 +159,7 @@ internal sealed partial class InstanceCollector
 
         if (type.Height > HeightLimit)
         {
-            this.Limit(this.types.Erase(type), this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
+            this.Limit(DiagnosticCode.GenerationResourceLimit_Kd, this.types.Erase(type), default, this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
             return -1;
         }
 
@@ -189,10 +193,12 @@ internal sealed partial class InstanceCollector
         });
     }
 
-    // Whether a representative is closed and makes every local Type of its body in its instance (TyCtxt.Instance), closed, the locals' worst
-    // verdict read at the requesting site (Made; every local is read, so a limit wins over a part Binding rejected, DECISIONS BU-36); an open
-    // representative or local Type, which K 4.3's closed representatives exclude, is a broken contract.
-    private bool Instantiable(MirBody body, Subst representative, SourceRef site)
+    // Whether a representative requested below an item at a site is closed and forms every local Type of its body in its instance, closed:
+    // each local's substitution (TyCtxt.Answered) read at the local (Formed: IMPL 21.3.2 places a height at the written Type forming it, as
+    // Layout's limits sit at the local, DECISIONS R5-M171), the first that does not form refusing the key; its storage is no reading of the
+    // collector's (R7-T1). An open representative or local Type, which K 4.3's closed representatives exclude, is a broken
+    // contract.
+    private bool Instantiable(int parent, MirBody body, Subst representative, SourceRef site)
     {
         var open = Open(representative.Self) || Open(representative.Declaring);
         foreach (var type in representative.Types)
@@ -200,11 +206,16 @@ internal sealed partial class InstanceCollector
             open |= Open(type);
         }
 
-        var storage = Binding.StorageOutcome.Prepared;
         for (var i = 0; !open && i < body.Locals.Length; i++)
         {
-            var (instance, verdict) = this.types.Instance(body.Locals[i].Type, representative);
-            (open, storage) = (Open(instance), verdict > storage ? verdict : storage);
+            var source = body.Locals[i].Source;
+            var (instance, cause) = this.types.Answered(body.Locals[i].Type, representative);
+            if (!this.Formed(cause, parent, body.Subject(source), this.Subject(site, body, source)))
+            {
+                return false;
+            }
+
+            open = Open(instance);
         }
 
         if (open)
@@ -213,7 +224,7 @@ internal sealed partial class InstanceCollector
             return false;
         }
 
-        return this.Made(storage, site);
+        return true;
 
         static bool Open(BoundType? type) => type is { ContainsParameter: true };
     }
