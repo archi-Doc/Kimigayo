@@ -478,7 +478,10 @@ public sealed partial class Binding
                 Complete(constructedMember.Left, selectedType);
             }
 
-            var result = winner.Type is { } returnType ? this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) : null;
+            // SPEC 8.2.3 (F's C2 ruling 268): the call publishes its instantiated result in its one form in the call's view, the form its
+            // Type takes there (BindAndAdaptNode), through the normalizer a value call's signature takes (TryCallable).
+            var result = winner.Type is { } returnType && this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) is { } instantiated
+                ? this.CallableContractType(instantiated, scope) : null;
             if (result is null)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);

@@ -127,10 +127,11 @@ public sealed partial class Binding
     // - Exposure: a form is visible only inside its judging view: J1's normalized request and kept readings (per view serial), J3's
     //   compared pair (transient), J4's pair within the branch and what the branch stores (the solve's solution, read only in the use's
     //   own view: the selected call's instantiation), (ii)'s Types in the use's body (its HIR, and MIR through TyCtxt.Premised with the
-    //   body's scope). Once J4 has formed both bindings, a twice-bound slot stores the form and a once-bound slot keeps the written Type;
-    //   8.2.3 allows it (every reader forms, J3), but a record naming the instantiated signature can show either. Published columns
-    //   (associated-Type bindings, declared signatures, requirement instances, conformance tables) hold Types as ContractType gives them;
-    //   records name the Types as written (8.2.3: "which Type is shown has no meaning").
+    //   body's scope), among them a call's published result and a value call's signature (CallableContractType in the call's view, dev's
+    //   one published form: F's C2 ruling 268). Once J4 has formed both bindings, a twice-bound slot stores the form and a once-bound
+    //   slot keeps the written Type; 8.2.3 allows it (every reader forms, J3), but a record naming the instantiated signature can show
+    //   either. Published columns (associated-Type bindings, declared signatures, requirement instances, conformance tables) hold Types
+    //   as ContractType gives them; records name the Types as written (8.2.3: "which Type is shown has no meaning").
     // - Invariants: (1) a form is taken in the view of the judgment that reads it and kept only where that view alone reads it; the table
     //   keeps its forms and clears them at its Open, so none outlives it; (2) in one view the form is idempotent and equal for identical
     //   Types, so two sides meet exactly when the view identifies them; (3) a form identifies nothing the view's classes do not: forming
