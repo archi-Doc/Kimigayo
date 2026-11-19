@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
-// of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the
-// interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's, and
-// R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
-// TyCtxt.OriginChains.cs's.
+// Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent) and an Integer
+// constant's one encoding (Normalize, DECISIONS BU-133), and the lifetime of TyCtxt's views (ResetViews); substitutions are
+// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and
+// rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's, and R4-M118's chain judgment of one Origin graph, a
+// pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
 // Interned identity is equality, over two levels (PLAN G949 Stage 2 U4; Binding.PassPart.Levels): the library layer's frozen level, filled
 // until the library's seal, and the compilation's, filled after it; values live with the compilation and survive warm rebinds. A
@@ -43,6 +43,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // publishes to retention's walks (Binding.Holdings, read for the positions and the sources alike): a `string`'s value holds its text's
     // bytes, elements of Type `u8`, by value, as a fixed array holds its elements; every other Core holds none (null). Never "holds any".
     internal static BoundType? CoreContent(BoundType type) => ReferenceEquals(type, BoundType.String) ? BoundType.Primitives["u8"] : null;
+
+    // DECISIONS BU-133: an Integer constant's one encoding, its Type's N-bit payload sign-extended, also for an unsigned language Type,
+    // which Binding writes (a literal's fit, a folded conversion) and MirValidator checks. Width 0 is for an integer or wrapping integer
+    // Type whose instance decides its width (a proven-PrimitiveInteger parameter or projection, Wrapping<T> over one; SPEC 8.7.4), and
+    // for no other widthless Type: it keeps the 128-bit payload, the widest instance's, whose low N bits are each instance's.
+    internal static Int128 Normalize(Int128 bits, int width) => width is > 0 and <= 64
+        ? (unchecked((long)bits) << (64 - width)) >> (64 - width) : bits;
 
     // SPEC 13.5.5, 8.15.2: the pair binder whose Semantics case decides a Type's case Type at its outer layer (its SemanticsTarget, the
     // PairBinder.Target): the original `s/T`, an application `s/U` and an adaptation family `p@s` (Binding.TryAdaptationSelector); null for

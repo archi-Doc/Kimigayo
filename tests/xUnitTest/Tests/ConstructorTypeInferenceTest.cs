@@ -41,6 +41,21 @@ public class ConstructorTypeInferenceTest
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 10.2.2 step 1, 3.5.3 (valid): a parameter of a read Type binds the terminal referent of a `ref` argument, which is value-read;
+    // whether T is a read Type is decided under the binder's Constraints: a constructor's own clause (its conditional member, SPEC 7.5)
+    // as its structure's (the solve's binder, SolveBinder).
+    [Theory]
+    [InlineData("struct Cell<T>\n    public let value: T\n    public init(value: T)\n        T is PrimitiveInteger\n        self.value = value\n")]
+    [InlineData("struct Cell<T>\n    T is PrimitiveInteger\n    public let value: T\n    public init(value: T) => self.value = value\n")]
+    public void AReadTypeSlotOfAConstructorBindsTheReferent(string cell)
+    {
+        var c = MinimalEmissionTest.Analyze(cell + "func k(n: ref/i32) -> i32\n    let c = Cell.init(n)\n    return c.value\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true });
+        var plan = Assert.IsType<CallPlan>(call.CallOf());
+        Assert.Equal("i32", Assert.Single(plan.DeclaringType!.Components).Name);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

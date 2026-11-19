@@ -1424,8 +1424,13 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Nothing frozen.
 - Revision 101 (2026-11-19, plan §14; the Back's R7-N5 B4 and B5b): N5's count 70 after B4 and 67 after B5b; G1077 closed.
   Nothing frozen.
-- Revision 102 (2026-11-19, plan §14; the owner's orders in K's dialog, DECISIONS Q22): the 90% rule is abolished; §10.1's new
-  item 6 makes G396's remaining items (§5.4) R7 exit conditions. Nothing frozen.
+- Revision 102 (2026-11-19, plan §14; the owner's orders in K's dialog, DECISIONS Q22; the Middle's D-872 and the Front's D-874):
+  the 90% rule is abolished; §10.1's new item 6 makes G396's remaining items (§5.4) R7 exit conditions; §5.1's stream Z (Z1–Z24,
+  Z14 unused; DECISIONS R7-M53) holds G396 (1), (3) and (4) and G147 (2) as R7 exit units; Z24 is settled by SPEC 4.7.1 step 3
+  and 5.4 (the owner's O-445 (A)), one test row remaining. Nothing frozen.
+- Revision 103 (2026-11-19, plan §14; the Back's R7-P2 design review ruling 10 and P2's commit 1, Q-544): §5.0's P3 row, §5.1's
+  P2 row and §6 name the code's `CallEvaluation` and `EvaluatedCandidate`; P2's row records commit 1 (DECISIONS R7-M52).
+  Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
@@ -1609,3 +1614,15 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
     `../Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md`; the code path in `Changes/2026-10-22 Abstract Calls Reach by
     Paths.md` reads the new path.
   - No SPEC or IMPL text came from them beyond the items the entries above record.
+
+## 2026-11-19 — Tatara implementation plan
+
+- [Tatara Implementation Plan](Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md): 一部取り込み (open). The owner approved it in
+  T's dialog on 2026-11-19 (relayed verbatim by T, board D-876: decisions 1–5 「→推奨の内容でOKです。」, decisions 6–11
+  「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan 「下書きを承認します。作業を続けて下さい。」 with one
+  addition, now its §6, 「LLVMがバージョンアップすることもある。それに合わせて更新できるように、道を準備しておいてください。」; DECISIONS
+  T-M1, T-M2). It is adopted as a working plan: nothing is implemented, no section is integrated into SPEC or IMPL, and no text is
+  frozen. The adopting commit adds the Tatara lane to AGENTS, WORKFLOW and COMPILER_ARCHITECTURE (decision 12).
+- Its specification work goes separately, each as an explicit revision recorded here when it lands: IMPL §20.3 gains a `tatara` row
+  with unit A3; IMPL §20.3.2's Toolchain wording changes with unit A4; IMPL §20.3.2 and §20.4 change again with B5 and B6, each after
+  its owner question. Nothing in SPEC changes before B7. Adoption implies no implementation support.
