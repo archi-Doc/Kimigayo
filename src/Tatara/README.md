@@ -23,6 +23,19 @@ version, the MSVC toolset and the Windows SDK.
 
 The build identity is the SHA-256 over every `.h`, `.cpp` and `.ps1` file under `src/Tatara` (rule in `build.ps1`).
 
+## Link
+
+Tatara links as LLVM's own tools link. The LLVM libraries are globbed, and the Windows libraries and options are read from
+`LLVMSupport`'s `INTERFACE_LINK_LIBRARIES` in the archive's `lib/cmake/llvm/LLVMExports.cmake`; the reader accepts only the
+shapes it knows and fails on any other token. One departure: `diaguids.lib` comes from the discovered Visual Studio, because
+`LLVMDebugInfoPDB`'s interface names a path on LLVM's build machine.
+
+## Allocator
+
+The DLL's static CRT allocates with LLVM's integrated rpmalloc (in `LLVMSupport.lib`), as `clang-cl`, `opt`, `llc` and
+`lld-link` do. The interface's `-INCLUDE:malloc` selects it, and the build fails if the interface does not carry it. No
+allocation crosses the C ABI, so the allocator stays the DLL's own.
+
 ## LibXml2
 
 Not added (the owner's decision). `LLVMWindowsManifest.lib` stays off the link line; with `lldCOFF` (unit A2) Tatara defines `llvm::windows_manifest`'s
@@ -31,9 +44,10 @@ members as LLVM's own build without LibXml2 does (`isAvailable` false, `merge` a
 ## Updating LLVM
 
 1. Adopt the new version in the supply catalog (`profile.json`) and update the archive's URL and digest in CI.
-2. Extract the new archive and run `build.ps1` against it; the version checks fail on any mismatch, and no library list changes
-   (every `LLVM*.lib` but `LLVMWindowsManifest` and `LLVM-C` is offered to the linker).
+2. Extract the new archive and run `build.ps1` against it; the version checks fail on any mismatch. Nothing in
+   `build.ps1` lists the LLVM libraries (every `LLVM*.lib` but `LLVMWindowsManifest` and `LLVM-C` is offered to the linker) or
+   the Windows options (read from the archive); a link-interface token the reader does not know stops the build.
 3. If the prebuilt archive no longer fits, build LLVM from source with the archive's settings: Release; static release CRT
-   (`CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded`); RTTI off; exceptions off; assertions off; zlib and zstd off; targets AArch64,
+   (`CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded`); `LLVM_INTEGRATED_CRT_ALLOC` with rpmalloc; RTTI off; exceptions off; assertions off; zlib and zstd off; targets AArch64,
    ARM, X86, BPF, WebAssembly, RISCV and NVPTX; LLD's `lldCOFF`, `lldELF` and `lldCommon` libraries and the `llvm`, `llvm-c` and
    `lld` headers installed.

@@ -31,12 +31,13 @@ $repository = [IO.Path]::GetFullPath($repository)
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory, (Get-Location).ProviderPath)
 function Test-Inside([string] $path, [string] $directory) {
     $relative = [IO.Path]::GetRelativePath($directory, $path)
-    return $relative -eq '.' -or -not ($relative.StartsWith('..') -or [IO.Path]::IsPathRooted($relative))
+    return -not ($relative -eq '..' -or $relative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar) -or [IO.Path]::IsPathRooted($relative))
 }
 if (Test-Inside $OutputDirectory $PSScriptRoot) { throw "Output directory is inside src/Tatara: $OutputDirectory" }
 if (Test-Inside $OutputDirectory $repository) {
     & git -C $repository check-ignore -q -- ([IO.Path]::GetRelativePath($repository, $OutputDirectory).Replace('\', '/'))
-    if ($LASTEXITCODE -ne 0) { throw "Output directory is inside the repository and not ignored by Git: $OutputDirectory" }
+    if ($LASTEXITCODE -eq 1) { throw "Output directory is inside the repository and not ignored by Git (git check-ignore exit 1): $OutputDirectory" }
+    if ($LASTEXITCODE -ne 0) { throw "git check-ignore failed with exit code ${LASTEXITCODE}: $OutputDirectory" }
 }
 
 # 3. Tools outside the archive: Visual Studio's C++ tools and the DIA SDK; clang-cl and lld-link find the toolset and the SDK.
@@ -48,10 +49,11 @@ if ($LASTEXITCODE -ne 0 -or -not $visualStudio) { throw 'Visual Studio with the 
 $dia = Join-Path $visualStudio 'DIA SDK/lib/amd64/diaguids.lib'
 if (-not (Test-Path -LiteralPath $dia -PathType Leaf)) { throw "DIA SDK not found: $dia" }
 
-# The build identity: SHA-256 (lower-case hex) over every .h, .cpp and .ps1 file under src/Tatara, recursively, in ordinal
-# order of the path relative to src/Tatara written with '/'; for each file the path's UTF-8 bytes, a NUL, then the file's bytes.
+# The build identity: SHA-256 (lower-case hex) over every .h, .cpp and .ps1 file under src/Tatara (hidden and system files
+# included), recursively, in StringComparer.Ordinal order (UTF-16 code units) of the path relative to src/Tatara written with '/';
+# for each file the path's UTF-8 bytes, a NUL, then the file's bytes.
 $inputs = [Collections.Generic.SortedDictionary[string, string]]::new([StringComparer]::Ordinal)
-foreach ($file in Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File | Where-Object { $_.Extension -cin '.h', '.cpp', '.ps1' }) {
+foreach ($file in Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Force | Where-Object { $_.Extension -cin '.h', '.cpp', '.ps1' }) {
     $inputs.Add([IO.Path]::GetRelativePath($PSScriptRoot, $file.FullName).Replace('\', '/'), $file.FullName)
 }
 $hash = [Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
@@ -65,7 +67,6 @@ $identity = [Convert]::ToHexString($hash.GetHashAndReset()).ToLowerInvariant()
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $object = Join-Path $OutputDirectory 'tatara.obj'
 $dll = Join-Path $OutputDirectory 'tatara.dll'
-Remove-Item -LiteralPath $object, $dll -ErrorAction SilentlyContinue
 $compile = @('/nologo', '/c', '/MT', '/GR-', '/EHs-c-', '/O2', '/std:c++17', '/Brepro') + $definitions +
     @("-DTATARA_BUILD_IDENTITY=$identity", '-I', (Join-Path $LlvmRoot 'include'), "/Fo$object", (Join-Path $PSScriptRoot 'tatara.cpp'))
 $driver = (& $clang @compile '-###' 2>&1 | Out-String)
@@ -77,13 +78,35 @@ if ($sdk.Count -ne 1) { throw "Windows SDK not found by clang-cl (or ambiguous):
 & $clang @compile
 if ($LASTEXITCODE -ne 0) { throw "clang-cl failed with exit code $LASTEXITCODE" }
 
-# 5. Link: every LLVM*.lib except LLVMWindowsManifest (LibXml2, not added) and the LLVM-C import library is offered; the linker
-# takes what is referenced, so an LLVM update changes no list.
+# 5. Link as LLVM's own tools link. Every LLVM*.lib except LLVMWindowsManifest (LibXml2, not added) and the LLVM-C import library
+# is offered; the linker takes what is referenced.
 $libraries = @(Get-ChildItem -LiteralPath (Join-Path $LlvmRoot 'lib') -Filter 'LLVM*.lib' -File |
     Where-Object { $_.Name -cnotin 'LLVMWindowsManifest.lib', 'LLVM-C.lib' } | ForEach-Object Name | Sort-Object -CaseSensitive)
+# The Windows libraries and options are read from LLVMSupport's INTERFACE_LINK_LIBRARIES in the archive's LLVMExports.cmake.
+# The reader accepts only the shapes it knows and fails naming any other token, so an LLVM update links as that LLVM does or stops.
+$exports = Join-Path $LlvmRoot 'lib/cmake/llvm/LLVMExports.cmake'
+if (-not (Test-Path -LiteralPath $exports -PathType Leaf)) { throw "LLVM exports not found: $exports" }
+$interface = [regex]::Match((Get-Content -LiteralPath $exports -Raw), '(?m)^set_target_properties\(LLVMSupport PROPERTIES\r?\n\s*INTERFACE_LINK_LIBRARIES "([^"]*)"')
+if (-not $interface.Success) { throw "LLVMSupport's INTERFACE_LINK_LIBRARIES not found: $exports" }
+# Generator expressions evaluated for a C++ link that is not IntelLLVM's: the IntelLLVM prefix before an option is empty; the
+# non-Swift wrapper keeps its content.
+$interface = $interface.Groups[1].Value.Replace('\$', '$').Replace(
+    '$<$<OR:$<LINK_LANG_AND_ID:C,IntelLLVM>,$<LINK_LANG_AND_ID:CXX,IntelLLVM>,$<LINK_LANG_AND_ID:Fortran,IntelLLVM>>:-Qoption,link,>', '')
+$interface = [regex]::Replace($interface, '\$<\$<NOT:\$<LINK_LANGUAGE:Swift>>:([^$<>]*)>', '$1')
+$windows = foreach ($token in $interface -split ';') {
+    if ($token -cmatch '^LLVM[A-Za-z0-9]+$') { continue }
+    elseif ($token -cmatch '^[A-Za-z0-9_]+$') { "$token.lib" }
+    elseif ($token -cmatch '^-delayload:([A-Za-z0-9_]+\.dll)$') { "/delayload:$($Matches[1])" }
+    elseif ($token -cmatch '^-INCLUDE:([A-Za-z_][A-Za-z0-9_]*)$') { "/include:$($Matches[1])" }
+    else { throw "Unknown token in LLVMSupport's INTERFACE_LINK_LIBRARIES ($exports): '$token'" }
+}
+# The allocator is the archive's rpmalloc (LLVM's integrated CRT allocator in LLVMSupport.lib), selected by the interface's
+# /include:malloc, as LLVM's own tools are linked.
+if ($windows -cnotcontains '/include:malloc') { throw "LLVMSupport's link interface does not carry -INCLUDE:malloc (the rpmalloc allocator): $exports" }
+# One departure: diaguids.lib comes from the discovered Visual Studio, because LLVMDebugInfoPDB's interface names a path on
+# LLVM's build machine.
 $response = Join-Path $OutputDirectory 'link.rsp'
-@("/libpath:`"$(Join-Path $LlvmRoot 'lib')`"") + $libraries +
-    @('psapi.lib', 'shell32.lib', 'ole32.lib', 'oleaut32.lib', 'uuid.lib', 'advapi32.lib', 'ws2_32.lib', 'ntdll.lib', 'delayimp.lib', 'version.lib', "`"$dia`"") |
+@("/libpath:`"$(Join-Path $LlvmRoot 'lib')`"") + $libraries + $windows + @("`"$dia`"") |
     Set-Content -LiteralPath $response -Encoding utf8NoBOM
 & $lld /nologo /dll /brepro /noimplib "/out:$dll" $object "@$response"
 if ($LASTEXITCODE -ne 0) { throw "lld-link failed with exit code $LASTEXITCODE" }
