@@ -11,10 +11,11 @@ public sealed partial class Binding
     private sealed partial class IdentityClasses(Binding binding)
     {
         internal const byte One = 0;
-        internal const byte Unsupported = 1;
-        internal const byte Unproven = 2;
-        internal const byte Cyclic = 3;
-        internal const byte Conflict = 4;
+        internal const byte Limit = 1; // R7-C2c2 c2-4: the binding grounds' closure limit (PremiseClosureLimit), below every error state
+        internal const byte Unsupported = 2;
+        internal const byte Unproven = 3;
+        internal const byte Cyclic = 4;
+        internal const byte Conflict = 5;
 
         private readonly Dictionary<BoundType, int> node = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<int, int> signatures = new();
@@ -25,6 +26,9 @@ public sealed partial class Binding
         private readonly List<bool> transparent = new(); // a pair application admitting exactly `owner`: its target (SPEC 8.2.3)
         private readonly List<(BoundOrigin A, BoundOrigin B)> correspondence = new(); // one Function pair's quantified Origins, by position
         private readonly List<(BoundType A, BoundType B)> parts = new(); // a meet's decomposition, read by its consumer and removed
+        private readonly HashSet<int> grounded = new(); // projection nodes joined with a binding ground (BindingGrounds, R7-C2c2 c2-4)
+        private readonly Dictionary<int, (BindingSymbol Owner, BindingSymbol Associated, int From)> groundOrigin = new(); // a ground's new nodes: the binding and the node it grounded
+        private readonly List<int> unbounded = new(); // projection nodes whose ground passes the closure limit (SPEC 8.3.3 Limits)
         private readonly List<byte> state = new();
         private readonly List<int> head = new();
         private readonly List<int> next = new();
@@ -72,6 +76,9 @@ public sealed partial class Binding
             this.transparent.Clear();
             this.correspondence.Clear();
             this.parts.Clear();
+            this.grounded.Clear();
+            this.groundOrigin.Clear();
+            this.unbounded.Clear();
             this.state.Clear();
             this.head.Clear();
             this.next.Clear();
@@ -208,15 +215,15 @@ public sealed partial class Binding
             return same;
         }
 
-        // SPEC 8.2.3's Refuted (PLAN G866), read by the one table the premise meets read (Meet): a parameter or projection bound by a
-        // premise stands for its class's complete member; one class is no difference; an abstract Type (IsAbstractType) differs only as
+        // SPEC 8.2.3's Refuted (PLAN G866), read by the one table the premise meets read (Meet): a node stands for its class's Member
+        // (R7-C2c2 c2-4); one class is no difference; an abstract Type (IsAbstractType) differs only as
         // a proper part; two constructors differ where their meet conflicts or a pair of their parts differs, or as a proper part.
         // The meet is the premises' own: a Function pair's quantification structure is a compared attribute (Correspond), while an
         // attribute's Unproven (Origins whose agreement is not proven) decides nothing. Limit: SameHead reads no length arguments.
         internal bool Refuted(BoundType a, BoundType b)
         {
             (a, b) = (this.Target(a), this.Target(b));
-            (a, b) = (this.CompleteMember(a) ?? a, this.CompleteMember(b) ?? b);
+            (a, b) = (this.Member(a) ?? a, this.Member(b) ?? b); // R7-C2c2 c2-4 (design R1.2): Member, with parameters too
             if (ReferenceEquals(a, b) ||
                 (this.node.TryGetValue(a, out var x) && this.node.TryGetValue(b, out var y) && this.Find(x) == this.Find(y)))
             {
@@ -251,7 +258,8 @@ public sealed partial class Binding
         }
 
         // Applies every premise, joins congruent nodes, and meets each class's constructor pairs, whose agreeing parts join, to a fixpoint:
-        // the round that joins nothing judged the final classes, so its meets are the states. Each round is linear in the nodes plus the
+        // the round that joins nothing judged the final classes, so its meets are the states (binding grounds add nodes within their bound,
+        // BindingGrounds). Each round is linear in the nodes plus the
         // class sizes' squares (constructors of one class only).
         internal void Close()
         {
@@ -265,6 +273,7 @@ public sealed partial class Binding
                 this.pending.Clear();
                 this.Congruence();
                 this.Members();
+                this.BindingGrounds();
                 this.state.Clear();
                 for (var n = 0; n < this.types.Count; n++)
                 {
@@ -277,6 +286,12 @@ public sealed partial class Binding
                 }
             }
             while (this.pending.Count != 0);
+
+            for (var i = 0; i < this.unbounded.Count; i++)
+            {
+                var root = this.Find(this.unbounded[i]);
+                this.state[root] = Math.Max(this.state[root], Limit); // the closure limit's class (SPEC 8.3.3 Limits)
+            }
 
             this.MarkCycles();
             for (var root = 0; root < this.types.Count; root++)
@@ -512,6 +527,78 @@ public sealed partial class Binding
                     }
                 }
             }
+        }
+
+        // R7-C2c2 c2-4 (design RB3): a projection node whose subject's class has a constructor member with an unconditional binding
+        // for it (UnconditionalBinding: declarations only, no identity or proof, within this table's prohibition) is joined with that
+        // binding's instance, as a premise is; once per node, so its pending union starts the next round as decomposition's do, and the
+        // rounds end when one joins nothing. A binding not yet complete makes the table Provisional (W7). The bound (SPEC 8.3.3
+        // Limits): the nodes a ground adds remember the binding (conforming declaration, associated Type) and the node it grounded;
+        // a chain uses one binding at most PremiseClosureLimit times (each use is one round of the premises' closure, the limit
+        // G881b's request rounds count), whatever the spelling of its Types (ground-dec2 and its directly spelled twin alike). A
+        // ground past it is not taken and its class is in state Limit, recorded once at the declaration as PremiseClosureLimit_Kd
+        // (a Resource record); a growing expansion (`associate C.X is Option<G<Option<A>>.(C).X>`) and a descent deeper than the limit
+        // (ground-deep) reach it alike. Finite: each binding is used a bounded number of times along any chain.
+        private void BindingGrounds()
+        {
+            var count = this.types.Count;
+            for (var n = 0; n < count; n++)
+            {
+                var type = this.types[n];
+                if (type.Kind != BoundTypeKind.AssociatedProjection || this.grounded.Contains(n) || !this.node.TryGetValue(type.Components[0], out var subject))
+                {
+                    continue;
+                }
+
+                for (var m = this.head[this.Find(subject)]; m >= 0; m = this.next[m])
+                {
+                    if (this.types[m].IsAbstractType)
+                    {
+                        continue;
+                    }
+
+                    var instance = binding.UnconditionalBinding(this.types[m], type, out var unfinished);
+                    this.provisional |= unfinished;
+                    if (instance is null)
+                    {
+                        continue;
+                    }
+
+                    this.grounded.Add(n);
+                    if (this.PastClosureLimit(n, this.types[m].Symbol!, type.Symbol!))
+                    {
+                        this.unbounded.Add(n);
+                        break;
+                    }
+
+                    var before = this.types.Count;
+                    this.pending.Add((n, this.Add(instance)));
+                    for (var k = before; k < this.types.Count; k++)
+                    {
+                        this.groundOrigin[k] = (this.types[m].Symbol!, type.Symbol!, n);
+                    }
+
+                    break;
+                }
+            }
+
+            if (this.types.Count != count)
+            {
+                this.Members(); // the instances' new nodes are classes of their own until the next round joins them
+            }
+        }
+
+        // Whether grounding node n through `owner`'s binding for `associated` passes the closure limit: n's chain (the grounds that
+        // added it, back to a premise's node) already used that binding PremiseClosureLimit times.
+        private bool PastClosureLimit(int n, BindingSymbol owner, BindingSymbol associated)
+        {
+            var uses = 0;
+            for (var at = n; this.groundOrigin.TryGetValue(at, out var origin); at = origin.From)
+            {
+                uses += ReferenceEquals(origin.Owner, owner) && ReferenceEquals(origin.Associated, associated) ? 1 : 0;
+            }
+
+            return uses >= PremiseClosureLimit;
         }
 
         private void Members()
