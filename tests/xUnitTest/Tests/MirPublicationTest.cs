@@ -196,6 +196,29 @@ public sealed class MirPublicationTest
         Assert.Equal([("requiredBytes", "4096"), ("limitBytes", "1024"), ("table", "Loans")], record.Reason!.Select(static x => (x.Name, x.Value)));
     }
 
+    // Design 3.3 (R7-T1; the Middle's P1): a problem's facts publish whatever its class, a Limit fact as its code's last argument and a
+    // Required fact the one before it, so a collection record's TypeHeightLimit_Kd carries its limit at its subject, as an analysis
+    // problem's does; a fact its code's catalog row has no argument slot for (a Required beside TypeHeightLimit_Kd's one argument, a Limit
+    // for MovedPlace_Kd, which takes none) is a broken contract: InternalInvariant_Kd at the subject.
+    [Theory]
+    [InlineData((int)MirRecordClass.Collection, "TypeHeightLimit_Kd", false, "TypeHeightLimit_Kd limit=8192")]
+    [InlineData(MirProblem.NoBody, "TypeHeightLimit_Kd", false, "TypeHeightLimit_Kd limit=8192")]
+    [InlineData((int)MirRecordClass.Collection, "TypeHeightLimit_Kd", true, "InternalInvariant_Kd")]
+    [InlineData(MirProblem.NoBody, "MovedPlace_Kd", false, "InternalInvariant_Kd")]
+    public void ALimitFactIsItsCodesLastArgument(int body, string code, bool required, string record)
+    {
+        var (c, program) = Program(Valid);
+        var subject = Site(c, Valid, "return total");
+        var limit = new ProblemFact(ProblemFactKind.Limit, subject, 8192);
+        program.Problems.Add(
+            new(Enum.Parse<DiagnosticCode>(code), DiagnosticRequirement.ControlFlow, subject, body, ulong.MaxValue),
+            required ? [new(ProblemFactKind.Required, subject, 1), limit] : [limit]);
+        Publish(c, program);
+        var published = Assert.Single(Records(c));
+        var reason = published.Reason?.Select(static x => $" {x.Name}={x.Value}") ?? [];
+        Assert.Equal((record, "return total"), (published.Code + string.Concat(reason), Text(Valid, published.Span)));
+    }
+
     // Design 3.3 (Q-BU-1): an Origin problem's Relation fact is Binding.OriginRelationFacts' evidence, from its C1-F4 row (a fit, with its
     // destination); a containment edge (-1) has no row: wellFormed, without a destination.
     [Fact]
@@ -310,17 +333,18 @@ public sealed class MirPublicationTest
         Assert.Equal(errors, string.Join("; ", Errors(c).Select(static x => $"{x.Code} {x.Text}").Order(StringComparer.Ordinal)));
     }
 
-    // H0a 5.2 (A; PLAN G128): where one call meets G128's bound, the collector's Unsupported_Kd and A5's OwnershipDepthLimit_Kd both publish,
-    // two located records of one implementation bound at Chain<i32>'s need(c@move) (ComponentSummaryTest's program; built without
-    // Analyze).
+    // H0a 5.2 (A; PLAN G128; R7-T1): where one call meets G128's bound, A5's OwnershipDepthLimit_Kd alone publishes at Chain<i32>'s
+    // need(c@move), the collector reading no storage verdict (before R7-T1: its Unsupported_Kd beside it, two located records of one
+    // implementation bound); the collector's record is the value's growing drop glue at need's parameter (ComponentSummaryTest's program;
+    // built without Analyze).
     [Fact]
-    public void ChainsBoundIsTwoRecordsAtOneCall()
+    public void ChainsBoundIsA5sRecordAtTheCall()
     {
         var c = MirBuildTest.Compile(
             "struct Chain<T>\n    public let next: Option<obj/Chain<(T, T)>>\n    public init()\n        self.next = .None\n" +
             "func need<T>(x: T)\n    T is Owned\n    ()\n" + "let c = Chain<i32>.init()\nneed(c@move)\nConsole.writeLine(\"chain\")");
         Publish(c, c.BuildMir());
-        Assert.Equal(["OwnershipDepthLimit_Kd", "Unsupported_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
+        Assert.Equal(["OwnershipDepthLimit_Kd"], Errors(c).Where(static x => x.Text == "need(c@move)").Select(static x => x.Code).Order());
     }
 
     // DECISIONS R4-M132 (rule W; the A5 step 2 plan's 2g-1 wording; R6-check H10a D12, design §10 Q7): a MIR problem with Cause facts is

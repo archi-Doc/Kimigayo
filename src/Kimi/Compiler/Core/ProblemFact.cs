@@ -13,6 +13,7 @@
 // last edge, D18) the edge's site and as its Value the row's index in the body's C1-F4 view, or -1 for a containment edge at its Ref, and
 // the storage limit's Required, Limit and Table facts (G213, R4-M132) the body and as their Values the bytes its arena needs, the
 // analyses' byte limit and the arena (a MirStorageTable), the catalog's requiredBytes, limitBytes and table of OwnershipStorageLimit_Kd,
+// a collection record's Limit fact (R7-T1) its subject and IMPL A.4's Type height limit, TypeHeightLimit_Kd's limit,
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
 // problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
 // the site (A3's guessed sites, R5-M186; 2g-1's), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
@@ -48,7 +49,7 @@ internal enum ProblemFactKind : byte
     Evaluated, // The default's operation of a Loan problem a body owns inside a copy, whose subject is the omitting call (SPEC 15.6).
     Relation, // An Origin problem's last edge (2a0-D D18): a row of the body's C1-F4 view (Value), or a containment edge at its Ref (Value -1).
     Required, // A storage limit's body: the bytes its arena needs (Value), OwnershipStorageLimit_Kd's requiredBytes (MirDataflow.StorageLimit).
-    Limit, // A storage limit's body: the analyses' byte limit (Value), its limitBytes.
+    Limit, // A storage limit's body: the analyses' byte limit (Value), its limitBytes; a height record's subject: IMPL A.4's height (R7-T1).
     Table, // A storage limit's body: the arena (Value, a MirStorageTable), its table.
     Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value); facts' tail.
     Actual, // Binding: the syntax that shows a mismatch, the Type found (Value, an index in BindingReport's kept Types; SPEC 23.3).

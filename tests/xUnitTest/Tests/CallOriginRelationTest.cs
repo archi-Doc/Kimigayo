@@ -585,11 +585,7 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
             }
             else
             {
-                // Past 64 layers the identity's held value is also the storage height limit's located Unsupported_Kd (BU-12), as its
-                // valid form is: independent of the relation, it is shown since A5 builds the call (R7-O1 H; Q13 rule 3).
-                var limit = form == "id" && layers > 64;
-                Assert.Equal(limit ? [nameof(DiagnosticCode.Unsupported_Kd), at] : [], records.Where(static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd)).SelectMany(x => new[] { x.Code, Text(source, x.Span) }));
-                var record = Assert.Single(records, static x => x.Code != nameof(DiagnosticCode.Unsupported_Kd));
+                var record = Assert.Single(records);
                 Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at), (record.Code, Text(source, record.Span)));
             }
         }
