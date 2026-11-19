@@ -2,10 +2,9 @@ fn init @12
   _0: Grid<Never> return (Receiver) @12
   _1: () temp @13
   _2: () temp @13
-  opaque 0 @9:
   bb0:
       StorageLive(_1) @13
-    * _0.0 = opaque 0: [N of i32] @9
+    * _0.0 = Fill(const 7_i32): [N of i32] @9
       StorageLive(_2) @13
     * _2 = const () @13
       StorageDead(_2) @13
