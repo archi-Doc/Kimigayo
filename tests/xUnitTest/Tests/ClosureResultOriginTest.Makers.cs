@@ -117,7 +117,7 @@ public partial class ClosureResultOriginTest
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
 
-    private const string Constraint = nameof(DiagnosticCode.UnsatisfiedConstraint_Kd);
+    private const string NoApplicable = nameof(DiagnosticCode.NoApplicableOverload_Kd);
 
     private const string UnprovenOwned = nameof(DiagnosticCode.UnprovenConstraint_Kd);
 
@@ -286,7 +286,7 @@ public partial class ClosureResultOriginTest
 
     // The returned Closure at a Callable proof or an erasure (problem-draft §4.4; SPEC 8.10, 10.7, 15.4.3 rule 2, 7.7.4): its result keeps
     // its own input or no Origin (valid); a result over the maker's ρ or input is Unknown (...AtACallableProof below). An erasure needs an Owned
-    // environment (q10).
+    // environment, so a result borrowing the local maker's capture leaves the lone `apply` not applicable (q10; SPEC 10.1, 15.6.5).
     [Theory]
     [InlineData(
         "q1_noorigin",
@@ -303,8 +303,8 @@ public partial class ClosureResultOriginTest
     [InlineData(
         "q10_erased_receiver",
         Apply + Use + "    let n: i32 = 1\n    let outer = func [n] () => func [n@ref] () => n@follow\n    let a = outer()\n    let r = apply(a)\n" + MainUnit,
-        Constraint + " let r = apply(a)",
-        Constraint + " a")]
+        NoApplicable + " let r = apply(a)",
+        NoApplicable + " apply(a)")]
     public void AReturnedClosureKeepsItsImagesAtACallableProofOrAnErasure(string form, string source, string mir, string? published)
         => AssertSides(form, source, mir, published);
 

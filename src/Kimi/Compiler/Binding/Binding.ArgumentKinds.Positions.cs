@@ -1,13 +1,15 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 // Argument positions (SPEC 10.5.1, 4.3.1, 14.9.2; DECISIONS BU-2 U3, BU-43): the parameter positions that the parts of an argument
 // occupy, which the evidence walk (SlotSolution.InferPosition), the defaults (SlotSolution.DefaultPosition) and the whole Type at a bare
-// slot (IndependentPositionType) recurse into.
-// - Responsibility: a position is the argument parts at one parameter position, a range of positionParts: a call argument or a Case
+// slot (WholeEvidence, Binding.ArgumentKinds.Wholes.cs) recurse into.
+// - Responsibility: the expected Type of every part's child positions (ExpectedChild) and of a value part (ExpectedTypeOf); a position
+//   is the argument parts at one parameter position, a range of positionParts: a call argument or a Case
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
 //   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
@@ -22,12 +24,18 @@ namespace Kimi.Compiler;
 //   Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2 U3's D6). A failed part (PartFailed) makes its
 //   position Call, Waiting under 10.5.1 (U1.6h site 3; DECISIONS BU-78): it is no evidence and fits every candidate (SPEC 23.1.2), and
 //   its siblings are checked at the selected candidate's Type. Every
-//   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
+//   reader (the evidence, the defaults, WholeEvidence, the fit) takes the kind from it.
+// - Inputs: a part (its syntax and recorded kind), a child index and the position's Type pattern or Type; for the expected Type
+//   (SPEC 10.2's fixed expected Type, 12.3.1; PLAN G924 rule A) the part's form and the position's Type alone.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's (or a
-//   part's) child positions and the parameter Type at each; PositionKind.
+//   part's) child positions and the parameter Type at each; PositionKind. The expected Type (SPEC 10.2's fixed expected Type, PLAN
+//   G924): ExpectedChild, the one table of a part's child positions' Types (rows: a Tuple element, an array element, a Dictionary key
+//   and value, a join's results), read by every walk, the rows, the fit and the waiting callables; ExpectedTypeOf, a value part's at
+//   a position (`ref/U` gives U), read by the fit, the completion, the evidence walk and Materialization.
 // - Invariants: a walk removes the parts it appended before it returns, so nested walks share the list; a position's parts end where
 //   the list ends when its walk begins.
-// - Prohibitions: no fit, evidence or record here; the walks decide what a position's parts are to their candidate.
+// - Prohibitions: no fit, evidence or record here; the walks decide what a position's parts are to their candidate. No second table of
+//   a child position's Type.
 public sealed partial class Binding
 {
     private readonly List<Koto> positionParts = new();
@@ -37,17 +45,20 @@ public sealed partial class Binding
     private static bool TupleShapeAt(TupleLiteralKoto tuple, BoundType? type)
         => type is { Kind: BoundTypeKind.Tuple } && type.Components.Count == tuple.Elements.Count;
 
-    private static BoundType? ChildPattern(Koto shape, int index, BoundType? pattern) => shape switch
+    // SPEC 10.2, 10.5.1, 12.3.1, 4.6.2 (PLAN G924 rule A): the expected Type at child position `index` of a part `core` (unwrapped) at
+    // the Type `pattern`, one row per form: a Tuple literal's element its component (of a Tuple of its length), an array literal's or
+    // fill's element the element Type, a Dictionary literal's key and value the key and value Types, a range's boundary its S or E (of
+    // a range Type); a join (a selection, `do` or `loop`, through a label: ComposedJoin) gives its results the join's own. Null where
+    // the pattern's shape differs; any other form has no child position.
+    private static BoundType? ExpectedChild(Koto core, int index, BoundType? pattern) => core switch
     {
         TupleLiteralKoto tuple => TupleShapeAt(tuple, pattern) && index < tuple.Elements.Count ? pattern!.Components[index] : null,
         ArrayLiteralKoto => pattern is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray } ? pattern.Components[0] : null,
-        _ => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
+        DictionaryLiteralKoto => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
+        RangeKoto => pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } ? pattern.Components[index] : null,
+        _ when ControlFlowExpression(core) is not null => pattern,
+        _ => throw new InvalidOperationException("A child position belongs to a literal, a range or a join (InternalInvariant)."),
     };
-
-    // The parameter Type at child position `index` of one part `core` whose position's is `pattern`: a Tuple or array literal element's
-    // (ChildPattern), a join's results' the join's own; AddChildPosition's, and the position rows' for their patterns.
-    private static BoundType? PartChildPattern(Koto core, int index, BoundType? pattern)
-        => core is TupleLiteralKoto or ArrayLiteralKoto ? ChildPattern(core, index, pattern) : pattern;
 
     // SPEC 10.5.1 (the owner, 2026-10-31, reading I): an aggregate literal part's child positions by index, as an argument's elements
     // are classified one by one: a Tuple's or array's elements, a Dictionary's key and value.
@@ -58,6 +69,41 @@ public sealed partial class Binding
         DictionaryLiteralKoto => 2,
         _ => throw new InvalidOperationException("An aggregate part is a Tuple, array or Dictionary literal."),
     };
+
+    // SPEC 10.2 row 2, 3.4.1, 3.6: the expected Type of a value part at a position of Type `position`: at `ref/U` the referent U, the
+    // owner temporary's Type (Materialization, its one reader for a part; a call's returned value, TryCandidateCore), else the
+    // position's own. A U with a borrow value's outer Semantics (HasBorrowSemantics: a pair `s/X` whose binder's admitted set lies
+    // within `borrow` included) has no owner temporary (its value is a borrow value, which is never borrowed again implicitly), so there
+    // the position's own (10.2.2 item 2; PLAN G924, the owner's O-407 (a) and O-416 (b)).
+    [return: NotNullIfNotNull(nameof(position))]
+    private BoundType? ExpectedTypeOf(BoundType? position)
+        => position is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } &&
+            !this.HasBorrowSemantics(referent) ? referent : position;
+
+    // SPEC 10.2.1, 12.3.1 (the one Literal layer rule, the owner's O-372 (a)): the Type a Literal meets at a parameter Type: a pair layer
+    // that formed nothing (an application under a binding that forms no Type, D3) passes to its target, one fixed ref layer to the
+    // value part's expected Type there (ExpectedTypeOf: its referent, a borrowed temporary, unless that is a borrow value), and any
+    // other fixed layer (uniq, an object form, raw) is met as it is, which no Literal fits.
+    private BoundType LiteralInputType(BoundType parameter)
+    {
+        var borrowed = false;
+        while (true)
+        {
+            if (parameter is { Kind: BoundTypeKind.SemanticsApplication, Components: [var target] })
+            {
+                parameter = target;
+            }
+            else if (!borrowed && this.ExpectedTypeOf(parameter) is var referent && !ReferenceEquals(referent, parameter))
+            {
+                parameter = referent;
+                borrowed = true;
+            }
+            else
+            {
+                return parameter;
+            }
+        }
+    }
 
     // A walk's position of one argument part; ClosePosition removes it with every part appended after it.
     private int OpenPosition(Koto part)
@@ -113,7 +159,7 @@ public sealed partial class Binding
                 }
             }
 
-            return ChildPattern(this.PartsShape(start, end)!, index, pattern);
+            return ExpectedChild(this.PartsShape(start, end)!, index, pattern);
         }
 
         var part = KotoHelper.UnwrapParentheses(this.positionParts[start]);
@@ -126,7 +172,7 @@ public sealed partial class Binding
             this.AddResults(this.ComposedJoin(part)!);
         }
 
-        return PartChildPattern(part, index, pattern);
+        return ExpectedChild(part, index, pattern);
     }
 
     // Appends a part's child `index` (IndexedChildren), formed by AddResultPart: its element there, none for a Tuple or array without
@@ -204,8 +250,9 @@ public sealed partial class Binding
         };
     }
 
-    // The first literal part of [start, end), whose default a Literal position takes (SPEC 10.5.1, 10.2.1).
-    private Koto FirstLiteral(int start, int end)
+    // The first literal part of [start, end), whose default a Literal position, or a waiting one beside its literals, takes (SPEC
+    // 10.5.1, 10.2.1); null when it holds none.
+    private Koto? FirstLiteral(int start, int end)
     {
         for (var i = start; i < end; i++)
         {
@@ -215,6 +262,6 @@ public sealed partial class Binding
             }
         }
 
-        throw new InvalidOperationException("A Literal position holds a literal.");
+        return null;
     }
 }

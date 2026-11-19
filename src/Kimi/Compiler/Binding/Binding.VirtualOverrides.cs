@@ -26,26 +26,32 @@ public sealed partial class Binding
     private Dictionary<FunctionKoto, OverrideFailure>? overrideFailures;
 
     // Header names must be independent of slot selection. Only premises common to the accessible
-    // virtual group can supply an unqualified associated name; a qualified name needs no guess.
-    private void PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
+    // virtual group can supply an unqualified associated name; a qualified name needs no guess. The scope the header binds in: an
+    // override's header layer holding those premises (SPEC 6.4.2 step 2), else the function's scope. The layer serves the header only:
+    // the body's premises are the selected slot's, decided once at SettleVirtualOverridePremises, so a condition Refuted for the
+    // instance is the override's one declaration error however it is spelled (SPEC 6.4.3; R7-C2c2 c2-4a; C2 ruling 164).
+    private BindingScope PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
     {
         if (!function.IsOverride || function.BoundSymbol?.Scope.Owner is not StructKoto { BaseClause: { } clause, BoundSymbol: { } symbol } structure ||
             this.BindType(clause, this.scopes[structure]) is null)
         {
-            return;
+            return scope;
         }
 
         var self = this.SelfType(symbol);
-        if (AdtDef.Base(self) is not { } baseType)
+        if (AdtDef.Base(this.types, self) is not { } baseType)
         {
-            return;
+            return scope;
         }
 
-        var selection = this.LookupTypeMember(baseType, function.Name, scope, self);
+        var selection = this.LookupMember(baseType, function.Name, scope, LookupRole.Value, self);
         if (selection.Pending || selection.DeclaringType?.Symbol is null)
         {
-            return;
+            return scope;
         }
+
+        var header = scope.HeaderPremises ??= new(function) { Parent = scope, Function = function };
+        (header.Constraints ??= new()).Reset(); // Bound again when a pending associated Type reopens the header.
 
         // Lookup and base binding are complete before these buffers are used. Collecting the
         // finite declared facts performs substitution only: no header/body recursion.
@@ -95,11 +101,11 @@ public sealed partial class Binding
                     // Judge against the derived declaration, before assuming any slot premise.
                     if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope) is ConstraintProof.Proven or ConstraintProof.Unknown)
                     {
-                        this.AddConstraintFact(scope.Constraints ??= new(), facts[i]);
+                        this.AddConstraintFact(header.Constraints!, facts[i]);
                     }
                 }
 
-                this.ExpandScopeContractPremises(scope);
+                this.ExpandScopeContractPremises(header);
             }
             finally
             {
@@ -111,6 +117,8 @@ public sealed partial class Binding
             common.Clear();
             current.Clear();
         }
+
+        return header;
 
         void Collect(BindingScope source)
         {
@@ -191,7 +199,8 @@ public sealed partial class Binding
             true);
     }
 
-    // Called by the common call-plan setter, including instantiated calls and Function Item contexts.
+    // Called by the common call-plan setter (CallPlan.Set) on the Binding its writer passes, including instantiated calls and Function Item
+    // contexts.
     // Target and its defaults always remain the original public contract.
     internal void SelectVirtualCall(CallPlan call, FunctionKoto original)
     {
@@ -202,8 +211,8 @@ public sealed partial class Binding
         call.VirtualImplementingType = null;
         if (call.VirtualIsDirect && call.ReceiverOperation.Source is { } receiverSource && this.ViewTarget(call.ReceiverOperation.SourceType, receiverSource) is { } receiver)
         {
-            call.VirtualBaseLookupType = AdtDef.Base(receiver);
-            for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(current))
+            call.VirtualBaseLookupType = AdtDef.Base(this.types, receiver);
+            for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(this.types, current))
             {
                 if (current.Symbol is { } symbol && OverrideEntryRows.TryGetValue((symbol, original), out var implementation) &&
                     this.virtualOverrides.TryGetValue(implementation, out var entry) && ReferenceEquals(this.MemberType(entry.Slot.DeclaringType, current), declaring))
@@ -234,7 +243,7 @@ public sealed partial class Binding
             }
 
             var self = this.SelfType(typeSymbol);
-            var baseType = AdtDef.Base(self);
+            var baseType = AdtDef.Base(this.types, self);
             if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && baseType is null))
             {
                 this.CompleteDependent(function, structure);
@@ -256,7 +265,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var selection = baseType is null ? default : this.LookupTypeMember(baseType, function.Name, this.scopes[function], self, this.MemberPath(null, structure.BaseClause!, baseType));
+            var selection = baseType is null ? default : this.LookupMember(baseType, function.Name, this.scopes[function], LookupRole.Value, self, this.MemberPath(null, structure.BaseClause!, baseType));
             FunctionKoto? first = null;
             FunctionKoto? second = null;
             var count = 0;
@@ -317,28 +326,9 @@ public sealed partial class Binding
             OverrideEntryRows.Add(key, function);
             if (IncompleteSignature(slot.Original) is { } prerequisite)
             {
-                this.CompleteDependent(function, prerequisite);
-                continue;
-            }
-
-            var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
-            this.PrepareVirtualOverridePremises(function, slot);
-            this.DropConsultation(frame);
-            this.CheckVirtualOverrideSignature(function, slot);
-            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
-            {
-                if (incompatible is { } contract)
-                {
-                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
-                }
-                else
-                {
-                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.OriginBinders, slot.Original));
-                }
+                this.CompleteDependent(function, prerequisite); // The settle point skips it (SettleVirtualOverridePremises).
             }
         }
-
-        this.FillVTables();
     }
 
     // SPEC 6.4.1-6.4.3, 6.2.1: every struct's dispatch shape once slot selection is complete (VTableDef, DECISIONS R5-M62).
@@ -358,14 +348,14 @@ public sealed partial class Binding
     {
         var symbol = structure.BoundSymbol!;
         var table = symbol.Adt!.VTable ??= new();
-        if (table.Version == this.storageVersion)
+        if (Current(table.Version, this.storageVersion))
         {
             return table.Resolved ? table : null;
         }
 
         table.Version = this.storageVersion;
         table.Resolved = false;
-        var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.SelfType(symbol)));
+        var parent = structure.BaseClause is null ? null : AdtDef.Declaration(AdtDef.Base(this.types, this.SelfType(symbol)));
         var inherited = parent is null ? null : this.FillVTable(parent);
         if (structure.BindingState == BindingState.Invalid || (structure.BaseClause is not null && inherited is null))
         {
@@ -422,10 +412,50 @@ public sealed partial class Binding
         }
     }
 
+    // The overrides' inherited conditions are decided once, when the proofs answer (after VerifyEarlyProjections; before it every
+    // conformance proof is Unknown): a condition Refuted or Error for the slot's instance is a declaration error at the override,
+    // since the slot never exists for that instance (SPEC 6.4.3), and no premise; a Proven or Unknown one is the body's
+    // premise. The override's signature check reads those premises (its result names complete through them:
+    // `U.Element` under the slot's `T is First`), so it and the Origin completion run here, after them, and the dispatch tables,
+    // which read the overrides' failures, are filled last. Each override that selected its slot (not a duplicate, its signature
+    // complete) is settled once per pass.
+    private void SettleVirtualOverridePremises()
+    {
+        // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
+        for (var rows = this.virtualOverrides.Values.In(this.pass); rows.MoveNext();)
+        {
+            var (function, implementation) = ((FunctionKoto)rows.Node, rows.Current);
+            var (slot, self) = (implementation.Slot, implementation.ImplementingType);
+            if (function.BoundSymbol?.Scope.Owner.BoundSymbol is not { } typeSymbol || IncompleteSignature(slot.Original) is not null ||
+                !OverrideEntryRows.TryGetValue((typeSymbol, slot.Original), out var entry) || !ReferenceEquals(entry, function))
+            {
+                continue;
+            }
+
+            var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
+            this.PrepareVirtualOverridePremises(function, slot);
+            this.DropConsultation(frame);
+            this.CheckVirtualOverrideSignature(function, slot);
+            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
+            {
+                if (incompatible is { } contract)
+                {
+                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                }
+                else
+                {
+                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.OriginBinders, slot.Original));
+                }
+            }
+        }
+
+        this.FillVTables();
+    }
+
     private void PrepareVirtualOverridePremises(FunctionKoto function, VirtualSlot slot)
     {
         var bodyScope = this.scopes[function];
-        var premises = bodyScope.ImplementationPremises ??= new(function);
+        var premises = bodyScope.ImplementationPremises ??= new(function, function);
         premises.Parent = function.BoundSymbol!.Scope;
         premises.Function = function;
         // ResetPass owns this shared environment. Resetting premises would also erase the body's facts.
@@ -449,16 +479,11 @@ public sealed partial class Binding
         foreach (var fact in environment.DirectFacts)
         {
             var bound = this.StoredConstraint(fact, slot.DeclaringType);
-            // Applicability belongs to the public slot. A refuted substituted premise supplies no
-            // body evidence; ordinary definition checks still run (SPEC 8.3.3). Generation keeps
-            // the inapplicable slot's position without requesting its body.
+            // SPEC 6.4.3: a substituted premise Refuted or Error for the derived Type makes the override one declaration error at the
+            // override (the slot never exists for that Type; the owner's O-370); it supplies no evidence. The body's Binding-time records
+            // stand (SPEC 23.1.2); a rejected definition publishes no body (DECISIONS R4-M18).
             var proof = this.ProveConstraint(bound, premises);
-            if (proof == ConstraintProof.Refuted)
-            {
-                continue;
-            }
-
-            if (proof == ConstraintProof.Error)
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
                 this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
                 continue;
@@ -514,21 +539,23 @@ public sealed partial class Binding
     // Selection deliberately ignores results, external labels, Origins, conditions and body facts.
     private bool VirtualInputsMatch(FunctionKoto original, FunctionKoto implementation, BoundType declaring)
     {
-        if (original.Parameters.Count != implementation.Parameters.Count || original.BoundSymbol!.ReceiverIndex != implementation.BoundSymbol!.ReceiverIndex)
+        var overridden = new FnSig(original);
+        var declared = new FnSig(implementation);
+        if (overridden.InputCount != declared.InputCount || overridden.ReceiverIndex != declared.ReceiverIndex)
         {
             return false;
         }
 
-        for (var i = 0; i < original.Parameters.Count; i++)
+        for (var i = 0; i < overridden.InputCount; i++)
         {
-            var required = original.Parameters[i].Type.BoundType;
-            var actual = implementation.Parameters[i].Type.BoundType;
+            var required = overridden.Input(i);
+            var actual = declared.Input(i);
             if (required is null || actual is null)
             {
                 return false;
             }
 
-            if (i == original.BoundSymbol.ReceiverIndex)
+            if (i == overridden.ReceiverIndex)
             {
                 if (required.Semantics != actual.Semantics)
                 {
@@ -536,7 +563,7 @@ public sealed partial class Binding
                 }
             }
             else if (this.MemberType(required, declaring) is not { } bound ||
-                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
+                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
             {
                 return false;
             }
@@ -563,8 +590,10 @@ public sealed partial class Binding
             }
         }
 
-        if (original.BoundSymbol!.Type is { } required && implementation.BoundSymbol!.Type is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
-            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
+        var overridden = new FnSig(original);
+        var declared = new FnSig(implementation);
+        if (overridden.Result is { } required && declared.Result is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
+            !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), overridden.Binder, declared.Binder))
         {
             this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ResultType, original)
             {

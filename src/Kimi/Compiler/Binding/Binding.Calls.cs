@@ -8,6 +8,9 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
+    // The plan of a named callee's call (CallStorage.Set below) of the current pass (IsCurrent); null before selection and for a value call.
+    internal CallPlan? CallOf(InvocationKoto call) => this.IsCurrent(call) && call.CallStorage is { Kind: not CalleeKind.Value } plan ? plan : null;
+
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.1, 8.6.4): a call bound inside
@@ -106,6 +109,14 @@ public sealed partial class Binding
         else if (callee is SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred)
         {
             group = this.InferredCase(inferred, scope, expected);
+        }
+        else if (callee.BindingState == BindingState.Resolved)
+        {
+            // A callee Resolved before its call is bound is its creator's binding (Ranges, Views, ObjectCreation, Interpolation, a
+            // selected requirement): its group is the symbol it pinned. Binding it again would only adapt it to a position, and a
+            // compiler-only callee's parent is the source root, so it would read as a value use and form a function item the call
+            // never keeps.
+            group = callee.BoundSymbol;
         }
         else
         {
@@ -209,11 +220,11 @@ public sealed partial class Binding
 
         var argumentCount = call.ArgumentNodes.Count;
         this.RentEvaluation(ref evaluation, shape);
-        var (solveFrame, explicitTypes, explicitLengths, mapping) = (evaluation.Frame, evaluation.ExplicitTypes, evaluation.ExplicitLengths, evaluation.Mapping);
+        var (frames, explicitTypes, explicitLengths, mapping) = (evaluation.Frames, evaluation.ExplicitTypes, evaluation.ExplicitLengths, evaluation.Mapping);
         var (origins, inputs, evaluated, operations) = (evaluation.Origins, evaluation.Inputs, evaluation.Evaluated, evaluation.Operations);
-        var (allTypes, allSelectors, allLengths, allMaps) = (evaluation.AllTypes, evaluation.AllSelectors, evaluation.AllLengths, evaluation.AllMaps);
-        var (allOrigins, allInputs, completedWaiting, waitingContexts) = (evaluation.AllOrigins, evaluation.AllInputs, evaluation.CompletedWaiting, evaluation.WaitingContexts);
-        var (operationStride, savedCandidates, maxGenerics) = (evaluation.OperationStride, evaluation.SavedCandidates, evaluation.MaxGenerics);
+        var (allMaps, allOrigins, allInputs) = (evaluation.AllMaps, evaluation.AllOrigins, evaluation.AllInputs);
+        var (completedWaiting, waitingContexts) = (evaluation.CompletedWaiting, evaluation.WaitingContexts);
+        var (operationStride, savedCandidates, maxGenerics) = (evaluation.OperationStride, evaluation.SavedCandidates, shape.Generics);
         var (originSlots, inputSlots, solveOrigins) = (evaluation.OriginSlots, evaluation.InputSlots, shape.SolveOrigins);
         BoundDefaultArgument[]? defaults = null;
         try
@@ -348,16 +359,20 @@ public sealed partial class Binding
                 return this.CompleteAmbiguous(evaluation);
             }
 
+            if (this.SettleSelected(evaluated[winnerIndex].HeldRefusal) is { } refused)
+            {
+                // SPEC 10.1, 8.3.3: an Unknown judgment of the selected candidate is its obligation; resting on a refused analysis, it is
+                // a resource failure, on which the call rests (a losing candidate's held refusal is never settled).
+                return this.CompleteDependent(call, refused);
+            }
+
             var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
             this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.
             var selectedType = evaluated[winnerIndex].DeclaringType;
+            var solveFrame = frames[winnerIndex];
             if (savedCandidates != 0)
             {
-                solveFrame.CopyTypes(
-                    allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)),
-                    allSelectors.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
-                solveFrame.CopyLengths(allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 allMaps.AsSpan(winnerIndex * argumentCount, argumentCount).CopyTo(mapping);
                 allOrigins.AsSpan(winnerIndex * originSlots, originSlots).CopyTo(origins);
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
@@ -433,7 +448,7 @@ public sealed partial class Binding
             }
 
             if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructionTargets.Contains(constructorMember.Left) &&
-                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, solveFrame, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, frames, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
             {
                 return Complete(call, null);
             }
@@ -529,7 +544,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
+            (call.CallStorage ??= new()).Set(this, executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
@@ -547,7 +562,7 @@ public sealed partial class Binding
                 this.defaultArgumentScratch.Return(defaults, clearArray: true);
             }
 
-            this.ReturnEvaluation(evaluation);
+            this.ReturnEvaluation(evaluation, shape);
         }
     }
 

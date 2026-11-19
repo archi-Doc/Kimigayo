@@ -170,7 +170,7 @@ public sealed partial class Binding
         finally
         {
             this.EndSelectionQuery(query);
-            this.ReturnEvaluation(evaluation);
+            this.ReturnEvaluation(evaluation, shape);
         }
     }
 
@@ -193,19 +193,18 @@ public sealed partial class Binding
         (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = query.Counters;
     }
 
-    // The scratch of a named call's evaluation (BindCall), sized by its candidates' shape, with the bases of the rows and classes its
-    // trials retain; ReturnEvaluation returns it in the reverse order.
+    // The scratch of a named call's evaluation (BindCall), sized by its candidates' shape (a frame per candidate, RentFrames), with the
+    // bases of the rows and position operations its trials retain; ReturnEvaluation returns it in the reverse order.
     private void RentEvaluation(ref CallEvaluation evaluation, in CandidateShape shape)
     {
         var call = evaluation.Call;
         var arguments = call.ArgumentNodes.Count;
         var explicitCount = evaluation.Generic?.TypeArguments.Count ?? 0;
         var saved = shape.Count > 1 ? shape.Count : 0;
-        evaluation.MaxGenerics = shape.Generics;
         evaluation.OriginSlots = shape.SolveOrigins ? shape.Origins : 0;
         evaluation.InputSlots = shape.SolveOrigins ? shape.InputOrigins : 0;
         evaluation.SavedCandidates = saved;
-        evaluation.Frame = this.infer.Rent(Math.Max(1, shape.Generics), call);
+        evaluation.Frames = this.RentFrames(shape.Count, shape.Generics, call);
         evaluation.ExplicitTypes = this.typeScratch.Rent(explicitCount);
         evaluation.ExplicitLengths = this.lengthScratch.Rent(explicitCount);
         evaluation.Mapping = this.indexScratch.Rent(Math.Max(1, arguments));
@@ -216,9 +215,6 @@ public sealed partial class Binding
         evaluation.Origins = this.originScratch.Rent(evaluation.OriginSlots);
         evaluation.Inputs = this.originScratch.Rent(evaluation.InputSlots);
         evaluation.Evaluated = this.candidateScratch.Rent(shape.Count);
-        evaluation.AllTypes = this.typeScratch.Rent(saved * shape.Generics);
-        evaluation.AllSelectors = this.typeScratch.Rent(saved * shape.Generics);
-        evaluation.AllLengths = this.lengthScratch.Rent(saved * shape.Generics);
         evaluation.AllMaps = this.indexScratch.Rent(saved * arguments);
         evaluation.AllOrigins = this.originScratch.Rent(saved * evaluation.OriginSlots);
         evaluation.AllInputs = this.originScratch.Rent(saved * evaluation.InputSlots);
@@ -227,22 +223,19 @@ public sealed partial class Binding
         evaluation.Rows = this.rowScratch.Rent(shape.Count * arguments);
         evaluation.ChildSlices = this.indexScratch.Rent(shape.Count * 2);
         evaluation.ChildBase = this.childRows.Count;
-        evaluation.ClassBase = this.positionClasses.Count;
+        evaluation.PositionBase = this.positionOperations.Count;
     }
 
-    private void ReturnEvaluation(in CallEvaluation evaluation)
+    private void ReturnEvaluation(in CallEvaluation evaluation, in CandidateShape shape)
     {
         this.argumentOperationScratch.Return(evaluation.Operations, clearArray: true);
         this.rowScratch.Return(evaluation.Rows, clearArray: true);
         this.indexScratch.Return(evaluation.ChildSlices);
         this.childRows.RemoveRange(evaluation.ChildBase, this.childRows.Count - evaluation.ChildBase); // R3: the evaluation's retained rows end with it.
-        this.positionClasses.RemoveRange(evaluation.ClassBase, this.positionClasses.Count - evaluation.ClassBase);
+        this.positionOperations.RemoveRange(evaluation.PositionBase, this.positionOperations.Count - evaluation.PositionBase);
         this.originScratch.Return(evaluation.AllInputs, clearArray: true);
         this.originScratch.Return(evaluation.AllOrigins, clearArray: true);
         this.indexScratch.Return(evaluation.AllMaps);
-        this.typeScratch.Return(evaluation.AllSelectors, clearArray: true);
-        this.typeScratch.Return(evaluation.AllTypes, clearArray: true);
-        this.lengthScratch.Return(evaluation.AllLengths, clearArray: true);
         this.lengthScratch.Return(evaluation.ExplicitLengths, clearArray: true);
         this.candidateScratch.Return(evaluation.Evaluated, clearArray: true);
         this.originScratch.Return(evaluation.Inputs, clearArray: true);
@@ -252,7 +245,7 @@ public sealed partial class Binding
         this.flagScratch.Return(evaluation.CompletedWaiting);
         this.flagScratch.Return(evaluation.Used);
         this.indexScratch.Return(evaluation.Mapping);
-        this.infer.Return(evaluation.Frame);
+        this.ReturnFrames(evaluation.Frames, shape.Count);
     }
 
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
@@ -293,7 +286,6 @@ public sealed partial class Binding
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
         (this.premiseReadsSplit, this.refusedOnSplit) = (false, false);
-        evaluation.Frame.ClearTypes(CallSlotCount(function));
         if (this.MeasureCallInference)
         {
             this.inferenceMappings++;
@@ -334,10 +326,12 @@ public sealed partial class Binding
 
         if (function.IsConstructor && declaringType is not null)
         {
-            declaringType = this.ConstructionType(function, declaringType, evaluation.Frame.Types) ?? declaringType;
+            declaringType = this.ConstructionType(function, declaringType, evaluation.Frames[index].Types) ?? declaringType;
         }
 
-        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown);
+        // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
+        var held = this.TakeTrialRefusal(call);
+        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown) { HeldRefusal = held };
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
         if (saved)
@@ -378,9 +372,6 @@ public sealed partial class Binding
         evaluation.Winner = index;
         if (saved)
         {
-            evaluation.Frame.Types[..CallSlotCount(function)].CopyTo(evaluation.AllTypes.AsSpan(index * evaluation.MaxGenerics));
-            evaluation.Frame.Selectors[..CallSlotCount(function)].CopyTo(evaluation.AllSelectors.AsSpan(index * evaluation.MaxGenerics));
-            evaluation.Frame.Lengths[..CallSlotCount(function)].CopyTo(evaluation.AllLengths.AsSpan(index * evaluation.MaxGenerics));
             evaluation.Origins.AsSpan(0, evaluation.OriginSlots).CopyTo(evaluation.AllOrigins.AsSpan(index * evaluation.OriginSlots));
             evaluation.Inputs.AsSpan(0, evaluation.InputSlots).CopyTo(evaluation.AllInputs.AsSpan(index * evaluation.InputSlots));
         }
@@ -464,7 +455,7 @@ public sealed partial class Binding
             if (shaped >= 0 && evaluation.Evaluated[shaped] is { Symbol.Declaration: FunctionKoto function } candidate &&
                 function.Parameters[evaluation.Mapping[a]].Type.BoundType is { } declared)
             {
-                var trial = (function, evaluation.Frame, evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType);
+                var trial = (function, Frame: evaluation.Frames[shaped], evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType);
                 _ = this.CompleteSplitPart(
                     part,
                     declared,
@@ -564,8 +555,9 @@ public sealed partial class Binding
     private readonly record struct SelectionQuery(
         int Obligations, AcquisitionFailure? Acquisition, ICheckCause? Cause, BindingSymbol? Contract, (long, long, long) Counters);
 
-    // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. The saved
-    // arrays retain each applicable candidate's slots and mapping only when several candidates are compared.
+    // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. Each candidate's
+    // slots are its own frame (Frames, R7-I2 c); the saved arrays retain each applicable candidate's mapping, Origins and input Origins
+    // only when several candidates are compared.
     private struct CallEvaluation
     {
         internal InvocationKoto Call;
@@ -575,7 +567,7 @@ public sealed partial class Binding
         internal BoundType? Expected;
         internal BoundType? Self;
         internal RequirementGroup? Requirements;
-        internal SlotFrame Frame;
+        internal SlotFrame[] Frames;
         internal BoundType?[] ExplicitTypes;
         internal BoundLength?[] ExplicitLengths;
         internal int[] Mapping;
@@ -590,17 +582,13 @@ public sealed partial class Binding
         internal int[] ChildSlices;
         internal int OperationStride;
         internal int SavedCandidates;
-        internal BoundType?[] AllTypes;
-        internal BoundType?[] AllSelectors;
-        internal BoundLength?[] AllLengths;
         internal int[] AllMaps;
         internal BoundOrigin[] AllOrigins;
         internal BoundOrigin[] AllInputs;
-        internal int MaxGenerics;
         internal int OriginSlots;
         internal int InputSlots;
         internal int ChildBase;
-        internal int ClassBase;
+        internal int PositionBase;
         internal int Count;
         internal int Applicable;
         internal int Winner;

@@ -624,6 +624,7 @@ public sealed partial class Binding
                 {
                     consumer.IsVerified = false;
                     consumer.Invalid = true;
+                    this.Invalidated(); // Under its source's own use it fails no node (the rounds' change signal).
                     consumer.Identity.IsVerified = false;
                     if (!ReferenceEquals(consumer.Use, source.Use))
                     {
@@ -637,7 +638,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool ReportAssociatedInference(Koto use, Kimi.Diagnostics.DiagnosticRequirement requirement)
+    private bool ReportAssociatedInference(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, Kimi.Diagnostics.DiagnosticRequirement requirement)
     {
         if (!this.inferenceFailures.TryGetValue(use, out var failure))
         {
@@ -673,7 +674,7 @@ public sealed partial class Binding
             related.Add(("result", first.ReturnType ?? first, "other declaration result"));
         }
 
-        use.Report(requirement, DiagnosticCode.AssociatedTypeInferenceFailed_Kd, evidence: [name, reason], related: related.ToArray());
+        use.ReportIn(store, requirement, DiagnosticCode.AssociatedTypeInferenceFailed_Kd, evidence: [name, reason], related: related.ToArray());
         return true;
     }
 
@@ -688,7 +689,7 @@ public sealed partial class Binding
         }
 
         var self = this.ConformanceSelf(path);
-        var selection = this.LookupTypeMember(self, identity.Symbol.Name, path.Scope, self);
+        var selection = this.LookupMember(self, identity.Symbol.Name, path.Scope, LookupRole.Value, self);
         var requirement = (FunctionKoto)identity.Symbol.Declaration;
         BindingSymbol? selected = null;
         var matches = 0;

@@ -4,7 +4,9 @@ namespace Kimi.Compiler;
 
 // Owns a projection's specification (SPEC 8.5.2, 8.6.1, 8.9.2): the one outcome of what Type an associated projection names on its
 // receiver, through the builtin routes, a chain scope's conformance path naming the receiver, or the receiver's conformances registered
-// by declaration or selected by a bound reference, whose paths must agree (PathsAgree). Reads the associated bindings
+// by declaration or selected by a bound reference, whose paths must agree (PathsAgree). R7-C2c2 c2-4's UnconditionalBinding is the
+// unconditional, proof-free restriction of the by-declaration route, with the same qualifier selection, which the identity table's
+// grounds and ContractTypeCore's Member specification read. Reads the associated bindings
 // (ResolveAssociated(path), AssociatedInPath: Binding.AssociatedTypes) and the conformance tables.
 public sealed partial class Binding
 {
@@ -46,6 +48,51 @@ public sealed partial class Binding
         return resolved with { Type = this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments) };
     }
 
+    // R7-C2c2 c2-4 (design RB3, S3; SPEC 8.2.3 "the available completed associated-Type bindings" are grounds): the binding a
+    // constructed member's own unconditional conformance (no `when`, not inherited) declares for a projection, as the member's Type;
+    // null without one or where two such paths disagree. Declarations only (no identity, no proof); `pending` when a binding is not yet
+    // complete. Its readers are the identity table's binding grounds and ContractTypeCore's specification on a Member, so one
+    // projection has one form; a conditional conformance's binding is no ground and completes nothing here (N8's named limit).
+    private BoundType? UnconditionalBinding(BoundType member, BoundType projection, out bool pending)
+    {
+        pending = false;
+        var associated = projection.Symbol!;
+        var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
+        if (member.Symbol is not { } owner || qualifier is { Kind: BoundTypeKind.Constructed } || associated.Scope.Owner.BoundSymbol is not { } contract ||
+            this.ConformanceByDeclaration(owner, contract, out _) is not { } identity)
+        {
+            return null; // a Contract reference with Type arguments selects by reference (ConformanceByReference, a proof): no ground (named limit)
+        }
+
+        BoundType? found = null;
+        for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
+        {
+            var path = this.impls.PathsOf(identity)[i];
+            if (path.InheritedFrom is not null || path.Premises is not null || this.AssociatedInPath(path, member, associated, qualifier, path.Scope) is not { } selected)
+            {
+                continue;
+            }
+
+            var binding = this.ResolveAssociated(path, selected, out var bindingPending);
+            var instance = binding is null ? null : this.StoredType(this.SubstituteStoredOrigins(binding, associated.Declaration, (BoundOrigin[])projection.OriginArguments), member);
+            pending |= instance is null && (binding is not null || bindingPending); // StoredType's null (a refused instance) is pending, as ContractTypeCore's route
+            if (instance is null)
+            {
+                continue;
+            }
+
+            // Interned: equal instances are one object.
+            if (found is not null && !ReferenceEquals(found, instance))
+            {
+                return null;
+            }
+
+            found = instance;
+        }
+
+        return found;
+    }
+
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type. `pending`: a null result is not final
     // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none. The paths whose
@@ -81,9 +128,9 @@ public sealed partial class Binding
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? available = null;
         (BoundType Binding, BoundConformancePath Path, BoundRequirement Identity)? unproven = null;
         var conflicting = false;
-        for (var i = 0; i < identity.PathStorage.Count; i++)
+        for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
-            var path = identity.PathStorage[i];
+            var path = this.impls.PathsOf(identity)[i];
             var condition = this.ProveConformanceConditions(path, receiver, scope);
             if (condition == ConstraintProof.Error)
             {
@@ -143,7 +190,7 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (identity.Paths.Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
+            if (this.impls.PathsOf(identity).Count != 0 && identity.Contract.Type is { } reference && ReferenceEquals(reference.Symbol?.Declaration, associated.Scope.Owner) &&
                 (ReferenceEquals(reference, qualifier) || this.NamesReference(reference, receiver, qualifier, scope)))
             {
                 if (found is not null && !ReferenceEquals(found, identity))

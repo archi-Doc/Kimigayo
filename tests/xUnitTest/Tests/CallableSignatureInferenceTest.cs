@@ -14,6 +14,12 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
 {
     private const string Len = "func len(n: ref/i32) -> i32 => n@follow\n";
 
+    private const string Pick = "func pick(n: ref/i32) -> ref/i32 => n\n";
+
+    private const string FixedMake = "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\n";
+
+    private const string MixedMake = "func make<T>(v: ref/i32 during x, action: (ref/i32 during x, ref/i32) -> T) -> i32 => 1\nfunc run()\n    let n: i32 = 6\n";
+
     private const string WrapDeclarations = "func identity<T>(value: T) -> T => value@move\nfunc wrap<T>(v: T) -> Option<T> => .Some(v@move)\nfunc wrap2<T>(v: (T, i32)) -> Option<T> => .None\nfunc twice(v: i64) -> i64 => v\nfunc show(value: i32) -> () => ()\nfunc show<T>(value: T) -> () => ()\nfunc k() -> i32\n";
 
     private const string NeverDeclarations = "func stopAt(x: i32) -> Never => $abort(\"stop\")\nfunc stopB(x: bool) -> Never => $abort(\"stop\")\nfunc h(f: (i32) -> i32) -> i32 => f(1)\nfunc cb<F>(f: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return f(1)\n";
@@ -412,6 +418,27 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.False(rejected.Accepted);
         Assert.Equal(["make(local@ref, pick)", "make(p, pick)"], rejected.Diagnostics.Select(x => Text(escape, x.Span)));
     }
+
+    // Rows as CompilationTestHelper.AssertRecordsAtLines reads them: (unit, form, program, records), the verdict from SPEC. A unit other than
+    // guard is the plan's unit that makes the row pass: the row is Explicit until that unit lands and removes the marker.
+    // SPEC 10.7, 10.8, 15.6.1 (PLAN G379 (a)): the per-call stand-in decides only a function group's or a Closure or Function Item value's
+    // argument whose own per-call input left an open region; a Function value and an anonymous function written in the call keep their
+    // fit, so no Origin fact makes the candidate inapplicable. mixc is the instantiation's row: an instantiation that leaves the
+    // argument's other per-call input open solves nothing (AFixedRequiredInputDecidesNothingElse's rule for a Closure). The fixed-input
+    // forms of an anonymous function and a Function value (anonfixed, fvfixedm, fvparam, fvret) are valid and wait for the stand-in of
+    // those kinds (G1037, the open issue PLAN G379 (a) opens).
+    [Theory]
+    [InlineData("G1037", "anonfixed", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc run()\n    let n: i32 = 6\n    let r = make(n@ref, func (k: ref/i32) -> ref/i32 => k)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("guard", "anonmake", "func make<T>(action: (ref/i32) -> T) -> i32 => 7\nfunc run()\n    let m = make(func (k: ref/i32) -> ref/i32 => k)\n", "UnprovenOriginContract_Kd: let m = make(func (k: ref/i32) -> ref/i32 => k)")]
+    [InlineData("G1037", "fvfixedm", Pick + FixedMake + "func run()\n    let n: i32 = 6\n    let fv: (ref/i32) -> ref/i32 = pick\n    let r = make(n@ref, fv@move)\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("G1037", "fvparam", FixedMake + "func use(fv: (ref/i32) -> ref/i32) -> i32\n    let n: i32 = 6\n    let r = make(n@ref, fv@move)\n    return r@follow\n", "", Explicit = true)]
+    [InlineData("G1037", "fvret", Pick + "func get() -> (ref/i32) -> ref/i32 => pick\n" + FixedMake + "func run()\n    let n: i32 = 6\n    let r = make(n@ref, get())\n    require r@follow == 6 else => $abort(\"fixed input\")\n", "", Explicit = true)]
+    [InlineData("guard", "fvmakem", Pick + "func make<T>(action: (ref/i32) -> T) -> i32 => 7\nfunc run()\n    let fv: (ref/i32) -> ref/i32 = pick\n    let m = make(fv@move)\n", "Unsupported_Kd: let m = make(fv@move)")]
+    [InlineData("guard", "fvsamem", Pick + "func same<T>(action: (T) -> T) -> i32 => 7\nfunc run()\n    let fv: (ref/i32) -> ref/i32 = pick\n    let m = same(fv@move)\n", "")]
+    [InlineData("guard", "mixc", MixedMake + "    let c = func (a: ref/i32, b: ref/i32) -> ref/i32 => a\n    let r = make(n@ref, c)\n", "MissingOriginBinding_Kd: let r = make(n@ref, c)")]
+    [InlineData("guard", "mixcv", MixedMake + "    let c = func (a: ref/i32, b: ref/i32) -> ref/i32 during a => a\n    let r = make(n@ref, c)\n", "")]
+    public void APerCallStandInDecidesOnlyItsOwnArguments(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 23.1: the record and its related argument reach the CLI, the language server and JSON.
     [Fact]

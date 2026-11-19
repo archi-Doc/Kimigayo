@@ -13,10 +13,6 @@ public sealed partial class Binding
     // is still selected; a removed match's plan leaves with its row at renumbering, and a live match the pass did not index drops its
     // plan (PruneMatchPlans).
     private readonly MatchPlanRows matchPlans;
-    private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
-    private readonly List<Koto> previousPatternNodes = new();
-    private readonly HashSet<Koto> candidateScopes = new();
-    private readonly List<Koto> previousCandidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
     private UnsupportedMarker? unsupportedMarker;
@@ -30,41 +26,6 @@ public sealed partial class Binding
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
-    private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
-    {
-        var a = plan.PositionStorage[earlier];
-        var b = plan.PositionStorage[later];
-        if (a.Kind is BoundPatternKind.Wildcard or BoundPatternKind.Binding)
-        {
-            return true;
-        }
-
-        if (a.Kind != b.Kind || a.Case != b.Case)
-        {
-            return false;
-        }
-
-        if (a.Kind == BoundPatternKind.Literal)
-        {
-            return a.Literal == b.Literal;
-        }
-
-        var x = earlier + 1;
-        var y = later + 1;
-        while (x < a.End && y < b.End)
-        {
-            if (!ContainsPattern(plan, x, y))
-            {
-                return false;
-            }
-
-            x = plan.PositionStorage[x].End;
-            y = plan.PositionStorage[y].End;
-        }
-
-        return x == a.End && y == b.End;
-    }
-
     private void ResetMatches()
     {
         // The pass counter already left the last pass's matches stale, so every kept plan is reset: the last pass's, the same objects, and
@@ -74,46 +35,46 @@ public sealed partial class Binding
             plan!.Reset(null);
         }
 
-        foreach (var guard in this.candidateScopes)
+        foreach (var guard in this.pass.Part.CandidateScopes)
         {
-            this.previousCandidateScopes.Add(guard);
+            this.pass.Part.PreviousCandidateScopes.Add(guard);
         }
 
-        this.candidateScopes.Clear();
-        foreach (var node in this.patternNodes)
+        this.pass.Part.CandidateScopes.Clear();
+        foreach (var node in this.pass.Part.PatternNodes)
         {
-            this.previousPatternNodes.Add(node);
+            this.pass.Part.PreviousPatternNodes.Add(node);
         }
 
-        this.patternNodes.Clear();
+        this.pass.Part.PatternNodes.Clear();
         this.patternWarnings.Clear();
     }
 
     private void PruneCandidateScopes()
     {
-        foreach (var guard in this.previousCandidateScopes)
+        foreach (var guard in this.pass.Part.PreviousCandidateScopes)
         {
-            if (!this.candidateScopes.Contains(guard))
+            if (!this.pass.Part.CandidateScopes.Contains(guard))
             {
                 this.scopes.Remove(guard);
             }
         }
 
-        this.previousCandidateScopes.Clear();
+        this.pass.Part.PreviousCandidateScopes.Clear();
     }
 
     private void PrunePatternScopes()
     {
-        foreach (var node in this.previousPatternNodes)
+        foreach (var node in this.pass.Part.PreviousPatternNodes)
         {
-            if (!this.patternNodes.Contains(node) && !this.candidateScopes.Contains(node))
+            if (!this.pass.Part.PatternNodes.Contains(node) && !this.pass.Part.CandidateScopes.Contains(node))
             {
                 this.scopes.Remove(node);
                 this.symbols.Remove(node);
             }
         }
 
-        this.previousPatternNodes.Clear();
+        this.pass.Part.PreviousPatternNodes.Clear();
     }
 
     private void IndexMatch(MatchKoto match)
@@ -250,7 +211,7 @@ public sealed partial class Binding
             {
                 var guardType = this.BindNode(guard, this.scopes[guard], BoundType.Boolean);
                 pendingBody |= guardType is null;
-                if (guardType is not null && !Compatible(guardType, BoundType.Boolean))
+                if (guardType is not null && !this.FitsType(guardType, BoundType.Boolean))
                 {
                     this.Fail(guard, BindingFailure.TypeMismatch);
                     plan.Invalid = true;
@@ -258,7 +219,7 @@ public sealed partial class Binding
             }
 
             var bodyType = this.BindNode(arm.Body, this.scopes[arm.Pattern], required ? resultContext.Expected : null);
-            pendingBody |= bodyType is null && !this.AwaitsCall(arm.Body) && !this.AwaitsPosition(arm.Body);
+            pendingBody |= bodyType is null && !this.AwaitsCall(arm.Body) && !this.AwaitsPosition(arm.Body) && !this.Deferred(arm.Body);
         }
 
         if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
@@ -532,12 +493,14 @@ public sealed partial class Binding
             }
         }
 
-        var symbol = this.LookupTypeMember(expected, name, scope).Member;
-        if (symbol?.EnumCase is null)
+        var symbol = this.LookupMember(expected, name, scope, LookupRole.EnumCase).Member;
+        if (symbol is null)
         {
             return null;
         }
 
+        // Written here until R7-N1 c3 makes it the member step's (PublishPath's MemberAccess step would mark the Name Resolved before the
+        // pattern's completion gives it its Type, a HIR change).
         member.BoundSymbol = member.Right.BoundSymbol = symbol;
         return symbol.EnumCase;
     }
@@ -591,6 +554,7 @@ public sealed partial class Binding
 
     private void CompletePatternAcquisitions()
     {
+        this.PatternContainmentWork = 0;
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
         foreach (var row in this.matches.Values.In(this.pass))
         {
@@ -620,17 +584,7 @@ public sealed partial class Binding
             // Publish coverage warnings only after all Pattern Type checks have completed.
             if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
             {
-                for (var later = 1; later < plan.Arms.Count; later++)
-                {
-                    for (var earlier = 0; earlier < later; earlier++)
-                    {
-                        if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
-                        {
-                            this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, earlier));
-                            break;
-                        }
-                    }
-                }
+                this.WarnContainedPatterns(plan);
             }
         }
     }
@@ -646,9 +600,7 @@ public sealed partial class Binding
         var position = plan.PositionStorage[index];
         var proof = position.AccessMode == PatternAccessMode.Owned ? this.ProveCopy(position.MatchedType, position.Source) : ConstraintProof.Refuted;
         var acquisition = position.AccessMode != PatternAccessMode.Owned ? PatternAcquisition.Borrow
-            : proof == ConstraintProof.Proven ||
-                    (proof == ConstraintProof.Unknown && this.CopiesInEveryCase(position.MatchedType, this.ConstraintScope(position.Source)))
-                ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
+            : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
             : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
         plan.PositionStorage[index] = position with { Acquisition = acquisition };
     }
@@ -812,7 +764,7 @@ public sealed partial class Binding
     }
 
     /// <summary>The `matchPlans` family's one accessor (DECISIONS BU-220): a kept family, the plan object a match keeps across rebinds (each
-    /// pass resets it, ResetMatches, and a match the pass did not index returns it to the pool, PruneMatchPlans), in the match's module's
+    /// pass resets it, ResetMatches, and a match the pass did not index drops it, PruneMatchPlans), in the match's module's
     /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
     private readonly struct MatchPlanRows(Binding binding)
     {

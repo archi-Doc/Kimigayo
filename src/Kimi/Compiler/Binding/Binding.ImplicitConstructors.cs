@@ -63,7 +63,7 @@ public sealed partial class Binding
         var candidates = FunctionGroup.Of(group);
         var shape = MeasureCandidates(candidates, true);
         var query = this.BeginSelectionQuery();
-        var frame = this.infer.Rent(Math.Max(1, shape.Generics), constructor);
+        var frames = this.RentFrames(shape.Count, shape.Generics, constructor);
         var mapping = this.indexScratch.Rent(1);
         var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
         var origins = this.originScratch.Rent(shape.Origins);
@@ -78,7 +78,7 @@ public sealed partial class Binding
                 Call = call,
                 Callee = call.Method,
                 Scope = this.scopes[constructor],
-                Frame = frame,
+                Frames = frames,
                 ExplicitTypes = [],
                 ExplicitLengths = [],
                 Mapping = mapping,
@@ -89,13 +89,9 @@ public sealed partial class Binding
                 Operations = operations,
                 ChildSlices = childSlices,
                 OperationStride = 1,
-                AllTypes = [],
-                AllSelectors = [],
-                AllLengths = [],
                 AllMaps = [],
                 AllOrigins = [],
                 AllInputs = [],
-                MaxGenerics = shape.Generics,
                 OriginSlots = shape.Origins,
                 InputSlots = shape.InputOrigins,
                 Winner = -1,
@@ -128,7 +124,7 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);
-            this.infer.Return(frame);
+            this.ReturnFrames(frames, shape.Count);
         }
     }
 
@@ -261,7 +257,7 @@ public sealed partial class Binding
             var structure = (StructKoto)constructor.Parent!;
             var decision = this.implicitConstructorDecisions[structure];
             if (this.SelectOmittedBaseConstructor(constructor) != decision ||
-                (decision.Winner is { } winner && constructor.BaseInitializer?.BoundCall is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
+                (decision.Winner is { } winner && constructor.BaseInitializer is { } initializer && this.CallOf(initializer) is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
             {
                 this.Fail(structure.BaseClause!, BindingFailure.Unsupported);
             }

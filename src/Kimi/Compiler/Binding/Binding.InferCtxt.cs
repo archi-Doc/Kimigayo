@@ -6,16 +6,16 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // InferCtxt (SPEC 10.8; DECISIONS R7-I2): the owner of every solve's slot frames, with an undo log and snapshots.
-// - Responsibility: the slot frames (a solve's Type slots and length slots: a call candidate's, a Case construction's, a fixed
-//   construction's re-check, an implicit constructor's, a function reference's), held privately, with each pair slot's selector
-//   evidence (SPEC 8.1.2, 10.8: the first source's Type, whose outer Semantics every other source of the slot's binder must have;
-//   none for a slot fixed before any evidence) and the solve's node; their writes, each logged while a snapshot is open; Snapshot
-//   and Rollback.
-// - Inputs: Rent and Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, ClearTypes, ClearLengths,
-//   CopyTypes, CopyLengths) from the unifier (Infer, InferLength, InferArrayLength), a candidate's seeding and clearing, a trial's
-//   write-back, the selected candidate's restore and an open Origin's instantiation.
-// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.Selectors) and SlotFrame.Node, which SlotSolution and the
-//   other solves read.
+// - Responsibility: the slot frames (a solve's Type slots, length slots and invariant marks: a call candidate's, one per candidate, a
+//   Case construction's, a fixed construction's re-check, an implicit constructor's, a function reference's), held privately, with each
+//   pair slot's selector evidence (SPEC 8.1.2, 10.8: the first source's Type, whose outer Semantics every other source of the slot's
+//   binder must have; none for a slot fixed before any evidence) and the solve's node; their writes, each logged while a snapshot is
+//   open; Snapshot and Rollback. A frame lives as long as its solve, so its marks and selectors are that solve's alone.
+// - Inputs: Rent and Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, SetInvariant, SetSelector,
+//   ClearTypes, ClearLengths, CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's seeding and clearing, a
+//   trial's write-back and an open Origin's instantiation.
+// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.IsInvariant, SlotFrame.Selectors) and SlotFrame.Node, which
+//   SlotSolution and the other solves read.
 // - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write; no snapshot is open and
 //   the log is empty between two solves; a frame is returned only with no snapshot open (asserted); Rollback undoes in reverse order;
 //   the frames and the log are pooled and reused (warm 0 B).
@@ -28,7 +28,8 @@ public sealed partial class Binding
 
     private readonly record struct InferSnapshot(int Log, int Depth);
 
-    // One solve's slot frame: its Type and length slots, read through read-only views and written only through its logged operations.
+    // One solve's slot frame: its Type slots, length slots and invariant marks, read through read-only views and written only through
+    // its logged operations.
     private readonly struct SlotFrame
     {
         private readonly InferCtxt store;
@@ -53,7 +54,12 @@ public sealed partial class Binding
 
         internal int Id => this.id;
 
+        // SPEC 10.8, 15.3.6: whether the slot's binding in this solve comes from an invariant position.
+        internal bool IsInvariant(int slot) => this.store.IsInvariant(this.id, slot);
+
         internal void SetType(int slot, BoundType? value) => this.store.SetType(this.id, slot, value);
+
+        internal void SetInvariant(int slot) => this.store.SetInvariant(this.id, slot);
 
         internal void SetLength(int slot, BoundLength? value) => this.store.SetLength(this.id, slot, value);
 
@@ -63,17 +69,18 @@ public sealed partial class Binding
 
         internal void ClearLengths(int count) => this.store.ClearLengths(this.id, count);
 
-        internal void CopyTypes(ReadOnlySpan<BoundType?> source, ReadOnlySpan<BoundType?> selectors) => this.store.CopyTypes(this.id, source, selectors);
-
-        internal void CopyLengths(ReadOnlySpan<BoundLength?> source) => this.store.CopyLengths(this.id, source);
+        internal void CopyTypes(ReadOnlySpan<BoundType?> source) => this.store.CopyTypes(this.id, source);
     }
 
     private sealed class InferCtxt
     {
+        // An invariant mark: an element of the marks column, an object so that the log records its writes like the other columns'.
+        private static readonly object Invariant = new();
         private BoundType?[][] types = new BoundType?[8][];
         private BoundLength?[][] lengths = new BoundLength?[8][];
         private BoundType?[][] selectors = new BoundType?[8][];
         private Koto?[] nodes = new Koto?[8];
+        private object?[][] marks = new object?[8][];
         private int[] free = new int[8];
         private int frameCount;
         private int freeCount;
@@ -97,6 +104,7 @@ public sealed partial class Binding
                     Array.Resize(ref this.lengths, this.frameCount * 2);
                     Array.Resize(ref this.selectors, this.frameCount * 2);
                     Array.Resize(ref this.nodes, this.frameCount * 2);
+                    Array.Resize(ref this.marks, this.frameCount * 2);
                     Array.Resize(ref this.free, this.frameCount * 2);
                 }
 
@@ -104,6 +112,7 @@ public sealed partial class Binding
                 this.types[id] = [];
                 this.lengths[id] = [];
                 this.selectors[id] = [];
+                this.marks[id] = [];
             }
 
             if (this.types[id].Length < capacity)
@@ -111,6 +120,7 @@ public sealed partial class Binding
                 this.types[id] = new BoundType?[Math.Max(capacity, 4)];
                 this.lengths[id] = new BoundLength?[Math.Max(capacity, 4)];
                 this.selectors[id] = new BoundType?[Math.Max(capacity, 4)];
+                this.marks[id] = new object?[Math.Max(capacity, 4)];
             }
 
             this.nodes[id] = node;
@@ -125,6 +135,7 @@ public sealed partial class Binding
             Array.Clear(this.lengths[frame.Id]);
             Array.Clear(this.selectors[frame.Id]);
             this.nodes[frame.Id] = null;
+            Array.Clear(this.marks[frame.Id]);
             this.free[this.freeCount++] = frame.Id;
         }
 
@@ -135,6 +146,15 @@ public sealed partial class Binding
         internal ReadOnlySpan<BoundType?> Selectors(int id) => this.selectors[id];
 
         internal Koto Node(int id) => this.nodes[id]!;
+
+        internal bool IsInvariant(int id, int slot) => this.marks[id][slot] is not null;
+
+        internal void SetInvariant(int id, int slot)
+        {
+            var frame = this.marks[id];
+            this.Push(frame, slot);
+            frame[slot] = Invariant;
+        }
 
         internal void SetType(int id, int slot, BoundType? value)
         {
@@ -157,34 +177,19 @@ public sealed partial class Binding
             frame[slot] = value;
         }
 
-        // A solve's Type slots are cleared with their selector evidence: one solution's state.
+        // A solve's Type slots are cleared with their invariant marks and selector evidence: each describes the binding it clears.
         internal void ClearTypes(int id, int count)
         {
             this.Clear(this.types[id], count);
+            this.Clear(this.marks[id], count);
             this.Clear(this.selectors[id], count);
         }
 
         internal void ClearLengths(int id, int count) => this.Clear(this.lengths[id], count);
 
-        // A solution's Type slots are restored with their selector evidence (as ClearTypes clears them): one solution's state.
-        internal void CopyTypes(int id, ReadOnlySpan<BoundType?> source, ReadOnlySpan<BoundType?> selectors)
+        internal void CopyTypes(int id, ReadOnlySpan<BoundType?> source)
         {
-            Debug.Assert(source.Length == selectors.Length, "A restore copies both columns of the same slots.");
             var frame = this.types[id];
-            var evidence = this.selectors[id];
-            for (var i = 0; i < source.Length; i++)
-            {
-                this.Push(frame, i);
-                this.Push(evidence, i);
-            }
-
-            source.CopyTo(frame);
-            selectors.CopyTo(evidence);
-        }
-
-        internal void CopyLengths(int id, ReadOnlySpan<BoundLength?> source)
-        {
-            var frame = this.lengths[id];
             for (var i = 0; i < source.Length; i++)
             {
                 this.Push(frame, i);

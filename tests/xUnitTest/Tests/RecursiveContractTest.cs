@@ -73,7 +73,7 @@ public sealed partial class RecursiveContractTest
     {
         var c = Bind(declarations + $"func probe<T>(value: {projection})\n    {premise}\n    ()\n");
         var probe = Probe(c);
-        var type = TyCtxt.Signature(probe, null, 0, out _)!;
+        var type = c.Types.Signature(probe, null, 0, out _)!;
         Assert.Equal(BoundTypeKind.AssociatedProjection, type.Kind);
         Assert.Equal(expected, c.Types.RecursiveBase(probe, type));
     }
@@ -84,7 +84,7 @@ public sealed partial class RecursiveContractTest
     {
         var c = Bind(Tree + "func probe<T>(value: T)\n    T is Tree\n    ()\n");
         var probe = Probe(c);
-        Assert.False(c.Types.RecursiveBase(probe, TyCtxt.Signature(probe, null, 0, out _)!));
+        Assert.False(c.Types.RecursiveBase(probe, c.Types.Signature(probe, null, 0, out _)!));
     }
 
     // Immutable after Bind and pooled: a warm rebind, which revokes the pass's recursive Contracts, and the queries that find them again
@@ -97,7 +97,7 @@ public sealed partial class RecursiveContractTest
             "func probe<T, U, V>(value: T.(Forest).Root.(Tree).Child, other: U.(A).X, next: V.(Seq<i32>).Next)\n    T is Forest\n    U is A\n" +
             "    V is Seq<i32>\n    ()\n");
         var probe = Probe(c);
-        var types = Enumerable.Range(0, 3).Select(i => TyCtxt.Signature(probe, null, i, out _)!).ToArray();
+        var types = Enumerable.Range(0, 3).Select(i => c.Types.Signature(probe, null, i, out _)!).ToArray();
         Assert.All(types, x => Assert.True(c.Types.RecursiveBase(probe, x)));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
@@ -275,12 +275,11 @@ public sealed partial class RecursiveContractTest
     [InlineData("C2c2", "d09r-struct", Marks + "struct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Leaf\n    T is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
     [InlineData("C2c2", "d09y-leafproj", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    needMark<Leaf>(x)\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
     [InlineData("C2c2", "d09y-noquery", Marks + "contract Holder\n    associate Item\nstruct Leaf\n    public var v: i32\nfunc f<T>(x: ref/Leaf)\n    T is Holder\n    T.(Holder).Item is Leaf\n    T.(Holder).Item is Mark\n    ()\n", "InvalidConstraint_Kd: T.(Holder).Item is Leaf | InvalidConstraint_Kd: T.(Holder).Item is Mark | InvalidConstraint_Kd: func f<T>(x: ref/Leaf)")]
-    [InlineData("C2c2", "d09-option", Marks + "func f<T, U>(x: ref/Option<U>)\n    T is Option<U>\n    T is Mark\n    needMark<Option<U>>(x)\n", "UnprovenConstraint_Kd: needMark<Option<U>>(x)")]
-    [InlineData("C2c2", "d09d-optioninf", Marks + "func f<T, U>(y: ref/T)\n    T is Option<U>\n    T is Mark\n    needMark(y)\n", "UnprovenConstraint_Kd: needMark(y)")]
-    // SPEC 8.2.3: `T is Copy` is evidence for the identical `Option<U>`, whose own Copy path is Unknown (not Refuted): valid. The
-    // implementation's limit (Binding.TypeIdentity.Keys' ClassKey): a premise is not yet read as evidence for a constructed member whose
-    // conformance is Unknown, so it is rejected, as on base, until R7-C2c2 c2-4 (the Middle's R2-C1, its N7 with r2-c2 and r2-c7).
-    [InlineData("c2-4", "d09c-optioncopy", "func f<T, U>(x: Option<U>) -> (Option<U>, Option<U>)\n    T is Option<U>\n    T is Copy\n    return (x, x)\n", "", Explicit = true)]
+    [InlineData("C2c2", "d09-option", Marks + "func f<T, U>(x: ref/Option<U>)\n    T is Option<U>\n    T is Mark\n    needMark<Option<U>>(x)\n", "InvalidConstraint_Kd: func f<T, U>(x: ref/Option<U>)")] // O-344 (a): the premise's error
+    [InlineData("C2c2", "d09d-optioninf", Marks + "func f<T, U>(y: ref/T)\n    T is Option<U>\n    T is Mark\n    needMark(y)\n", "InvalidConstraint_Kd: func f<T, U>(y: ref/T)")] // O-344 (a)
+    // SPEC 8.2.3: `T is Copy` is evidence for the identical `Option<U>`, whose own Copy path is Unknown (not Refuted): valid; c2-4a
+    // keys a constructed member to its class, so the premise reaches it (the Middle's R2-C1, its N7 with r2-c2 and r2-c7).
+    [InlineData("c2-4", "d09c-optioncopy", "func f<T, U>(x: Option<U>) -> (Option<U>, Option<U>)\n    T is Option<U>\n    T is Copy\n    return (x, x)\n", "")]
     [InlineData("guard", "d09s-primcopy", "func f<T>(x: i32) -> (i32, i32)\n    T is i32\n    T is Copy\n    return (x, x)\n", "")]
     [InlineData("guard", "d09r-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(x: ref/Leaf2)\n    T is Leaf2\n    T is Mark\n    needMark<Leaf2>(x)\n", "")]
     [InlineData("guard", "d09t-ok", Marks + "struct Leaf2\n    Self is Mark\n    public var v: i32\nfunc f<T>(y: ref/T)\n    T is Leaf2\n    T is Mark\n    needMark(y)\n", "")]

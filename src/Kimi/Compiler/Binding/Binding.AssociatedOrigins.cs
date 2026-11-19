@@ -32,53 +32,6 @@ public sealed partial class Binding
         return UnwrapTransparentType(head);
     }
 
-    private static bool HasUnsupportedAssociatedIdentity(BoundConstraint constraint)
-        => (constraint.RequiredType is { } type && !HasSupportedAssociatedFormation(type)) ||
-        (constraint.Left is { } left && HasUnsupportedAssociatedIdentity(left)) ||
-        (constraint.Right is { } right && HasUnsupportedAssociatedIdentity(right));
-
-    // Borrow layers publish their formation premises, including complete Contract Type parameters.
-    private static bool HasSupportedAssociatedFormation(BoundType type)
-    {
-        if (!type.CarriesOrigin)
-        {
-            return true;
-        }
-
-        if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
-        {
-            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
-                HasSupportedAssociatedFormation(type.Components[0]);
-        }
-
-        // SPEC 8.1.2, 8.5: an original, annotated or applied pair layer whose binder admits only value or valueborrow Semantics is a
-        // conditional borrow of its target, supported when its target is; object families and raw layers wait for their tracks.
-        if (type.Kind != BoundTypeKind.SemanticsAdaptation && TryPairLayer(type, out var whole, out var target) && whole.Symbol is { Scope: { } scope } pair &&
-            pair.Declaration.CodeContext.Compilation.Binding.AdmittedSemantics(whole, scope) is var admitted && admitted != SemanticsMask.None &&
-            (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0)
-        {
-            return HasSupportedAssociatedFormation(target);
-        }
-
-        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.AssociatedProjection ||
-            (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto or EnumKoto))
-        {
-            // A forwarded family, `I.(C).Item(a)`, applies the specification's own parameters to another family; its
-            // formation conditions are that family's, checked at each application (SPEC 8.5).
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (!HasSupportedAssociatedFormation(type.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
     private static bool AssociatedIdentityMatches(BoundType? pattern, BoundType type)
         => ReferenceEquals(pattern, type) ||
         (pattern is { Kind: BoundTypeKind.AssociatedProjection, OriginArguments.Count: > 0 } && type.Kind == BoundTypeKind.AssociatedProjection &&
@@ -97,6 +50,53 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    private bool HasUnsupportedAssociatedIdentity(BoundConstraint constraint)
+        => (constraint.RequiredType is { } type && !this.HasSupportedAssociatedFormation(type)) ||
+        (constraint.Left is { } left && this.HasUnsupportedAssociatedIdentity(left)) ||
+        (constraint.Right is { } right && this.HasUnsupportedAssociatedIdentity(right));
+
+    // Borrow layers publish their formation premises, including complete Contract Type parameters.
+    private bool HasSupportedAssociatedFormation(BoundType type)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+        {
+            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
+                this.HasSupportedAssociatedFormation(type.Components[0]);
+        }
+
+        // SPEC 8.1.2, 8.5: an original, annotated or applied pair layer whose binder admits only value or valueborrow Semantics is a
+        // conditional borrow of its target, supported when its target is; object families and raw layers wait for their tracks.
+        if (type.Kind != BoundTypeKind.SemanticsAdaptation && TryPairLayer(type, out var whole, out var target) && whole.Symbol is { Scope: { } scope } pair &&
+            this.AdmittedSemantics(whole, scope) is var admitted && admitted != SemanticsMask.None &&
+            (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0)
+        {
+            return this.HasSupportedAssociatedFormation(target);
+        }
+
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.AssociatedProjection ||
+            (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto or EnumKoto))
+        {
+            // A forwarded family, `I.(C).Item(a)`, applies the specification's own parameters to another family; its
+            // formation conditions are that family's, checked at each application (SPEC 8.5).
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!this.HasSupportedAssociatedFormation(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     // SPEC 8.5, 8.3: whether a fact states `type`: its own subject, or a universal family pattern that holds at every
@@ -294,7 +294,7 @@ public sealed partial class Binding
                 formation = this.ContractType(formation, this.ConstraintScope(use), projection.Components[0]);
             }
 
-            if (this.CheckTypeOriginRelations(projection, this.ConstraintScope(use)) != ConstraintProof.Proven ||
+            if (this.CheckTypeOriginRelations(projection, use) != ConstraintProof.Proven ||
                 (formation is not null && !this.CheckAssociatedFormation(formation, use)))
             {
                 this.Fail(use, BindingFailure.InvalidOrigin);

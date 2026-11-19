@@ -28,7 +28,7 @@ public sealed partial class RetentionTest
     {
         var c = Bind(string.Empty);
         var array = (DeclarationContainerKoto)c.Library.GetSymbol(KimiDeclarationId.Array)!.Declaration;
-        var operation = array.Members.OfType<FunctionKoto>().Single(x => x.Name == name).SymbolOf()!;
+        var operation = array.Members.OfType<FunctionKoto>().Single(x => x.Name == name).SymbolOf(c)!;
         var row = c.Types.Published(operation);
         Assert.True(row.HasValue, $"{name}: no published row");
         Assert.Equal((0, false), (row.Value.Destroys, row.Value.InPlace));

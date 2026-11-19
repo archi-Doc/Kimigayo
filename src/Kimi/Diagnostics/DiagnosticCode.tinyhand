@@ -13,7 +13,7 @@
     Arguments="name:Text,container:Text"
     Evidence="namespace:Enumeration,cause:Enumeration,instance:Boolean|namespace:Enumeration,cause:Enumeration,instance:Boolean,base:Text"
     Label="qualify {0} explicitly"
-    Note="An unqualified Name supplies no receiver and cannot select an inherited declaration; lookup stops at this Container"
+    Note="An unqualified Name never selects an enum Case, supplies no receiver and cannot select an inherited declaration; lookup stops at this Container"
 
   + Name="BorrowOriginKeyword_Kd"
     Category="Language"
@@ -795,6 +795,11 @@
   + Name="TypeHeightLimit_Kd"
     Category="Resource"
     Message="A Type formed here is higher than the implementation limit of {0}"
+    Arguments="limit:Number"
+
+  + Name="PremiseClosureLimit_Kd"
+    Category="Resource"
+    Message="The identities the premises supply for a Type judged here are not closed within the implementation limit of {0} rounds (a request's extension rounds, or one associated-Type binding's uses along a chain of completed bindings)"
     Arguments="limit:Number"
 
   + Name="ExpansionLimit_Kd"

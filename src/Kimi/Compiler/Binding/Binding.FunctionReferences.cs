@@ -547,7 +547,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!(IsSubtype(written, bound) && IsSubtype(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound, out _) is not null))
+                if (!(this.IsSubtype(written, bound) && this.IsSubtype(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound, out _) is not null))
                 {
                     return false;
                 }

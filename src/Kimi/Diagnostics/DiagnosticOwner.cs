@@ -23,6 +23,10 @@ public sealed partial class DiagnosticOwner
     private readonly List<FactList> syntax = [];
     private int unattributed = -1;
 
+    // The module index whose syntax list a frozen library's registration holds (AddLibrary, PLAN G949 Stage 2 U3): no record or
+    // invalidation reaches it; -1 for none.
+    private int library = -1;
+
     // SPEC 19.4: excluded syntax per source index, created only for documents that have excluded syntax.
     private Dictionary<int, List<ExcludedRange>>? excludedRanges;
 
@@ -315,6 +319,11 @@ public sealed partial class DiagnosticOwner
 
     internal void Record(DiagnosticPartition partition, int module, in DiagnosticFact fact, bool isError)
     {
+        if (partition == DiagnosticPartition.Syntax)
+        {
+            this.EnsureWritable(module);
+        }
+
         var list = partition == DiagnosticPartition.Syntax ? this.syntax[module] : this.partitions[(int)partition];
 
         // One problem, one fact: a repeated report merges its prerequisites and must agree on location and facts.
@@ -382,6 +391,137 @@ public sealed partial class DiagnosticOwner
     /// <param name="module">The module that consumes it.</param>
     internal void AddInput(SourceDocument document, Kotonoha module)
         => this.DocumentSource(document, this.ModuleIndex(module), true);
+
+    /// <summary>Gets a value indicating whether a module's syntax holds a record of any severity (PLAN G949 Stage 2 U2a: the library's
+    /// freeze refuses a library with any record, C1 (x)).</summary>
+    /// <param name="module">The module.</param>
+    /// <returns><see langword="true"/> when the module's lexical or syntax list holds a record.</returns>
+    internal bool HasSyntaxRecords(Kotonoha module)
+        => this.modules.TryGetValue(module, out var index) && index < this.syntax.Count && this.syntax[index].Facts.Count != 0;
+
+    /// <summary>Gets the first record of a module's syntax list as a located fact (PLAN G949 Stage 2 U2a, B's ruling 40: a refused library's
+    /// own record is published at the first record its freeze counted, the syntax list's first).</summary>
+    /// <param name="module">The module.</param>
+    /// <returns>The record, or null for an empty list.</returns>
+    internal LocatedRecord? FirstSyntaxRecord(Kotonoha module)
+    {
+        if (!this.modules.TryGetValue(module, out var index) || index >= this.syntax.Count || this.syntax[index].Facts.Count == 0)
+        {
+            return null;
+        }
+
+        var fact = this.syntax[index].Facts[0];
+        var document = fact.Source >= 0 ? this.sources[fact.Source].Document : null;
+        return new(fact.Code, fact.Key.Requirement, document, document is null ? null : new SourceSpan(fact.Start, fact.Length));
+    }
+
+    /// <summary>Takes a partition's records out as located facts (code, requirement, document and span; none for a record about an input
+    /// without a document) and discards the partition (PLAN G949 Stage 2 U2a: a refused library pass's records become its refusal's). The
+    /// records are those <see cref="Finalize"/> would publish: a derived one whose prerequisites all lead to published direct Errors, in this
+    /// partition or an earlier one such as the syntax its source failed, is left out by the same rule (SPEC 23.1.2).</summary>
+    /// <param name="partition">A partition other than syntax.</param>
+    /// <returns>The records, in their recorded order.</returns>
+    internal LocatedRecord[] TakeLocated(DiagnosticPartition partition)
+    {
+        var facts = this.Candidates(DiagnosticPartition.Input, partition);
+        var explained = Explain(facts);
+        var records = new List<LocatedRecord>();
+        for (var i = facts.Count - this.partitions[(int)partition].Facts.Count; i < facts.Count; i++)
+        {
+            if (!explained[i])
+            {
+                var fact = facts[i];
+                var document = fact.Source >= 0 ? this.sources[fact.Source].Document : null;
+                records.Add(new(fact.Code, fact.Key.Requirement, document, document is null ? null : new SourceSpan(fact.Start, fact.Length)));
+            }
+        }
+
+        this.Invalidate(partition);
+        return [.. records];
+    }
+
+    /// <summary>Takes a module's syntax records out of this owner as detached data (PLAN G949 Stage 2 U2b; form (R)): the frozen library
+    /// carries its own syntax list, which its freeze compilation's owner no longer holds (moved, never copied). Each record is about one
+    /// document, its own (<see cref="DiagnosticFact.IsAboutOneDocument"/>; PLAN G949 Stage 2 U3), checked here as the internal-invariant
+    /// form, and keeps that document, so a later owner moves every source index it holds by the fact's one renumbering
+    /// (<see cref="DiagnosticFact.WithSource"/>) with the document's index there; its indices here are this owner's.</summary>
+    /// <param name="module">The module.</param>
+    /// <returns>The module's syntax records.</returns>
+    /// <exception cref="InvalidOperationException">A record names a document other than its own (InternalInvariant).</exception>
+    internal DetachedSyntax TakeSyntax(Kotonoha module)
+    {
+        if (!this.modules.TryGetValue(module, out var index) || index >= this.syntax.Count)
+        {
+            return DetachedSyntax.Empty;
+        }
+
+        var facts = this.syntax[index].Facts;
+        var documents = new SourceDocument?[facts.Count];
+        for (var i = 0; i < documents.Length; i++)
+        {
+            if (!facts[i].IsAboutOneDocument)
+            {
+                throw new InvalidOperationException($"The syntax record {facts[i].Code} names a document other than its own (InternalInvariant; PLAN G949 Stage 2 U3).");
+            }
+
+            documents[i] = facts[i].Source >= 0 ? this.sources[facts[i].Source].Document : null;
+        }
+
+        var taken = new DetachedSyntax([.. facts], documents);
+        this.InvalidateSyntax(index);
+        return taken;
+    }
+
+    /// <summary>Registers a frozen library module's detached syntax list as this owner's, read-only (PLAN G949 Stage 2 U3; form (i)):
+    /// its documents first, in the order of their indices in the freeze owner (the freeze's consumption order of the library's documents,
+    /// so the source table keeps the order of a compilation that parsed the library), then each record moved into this owner's source
+    /// table by the fact's one renumbering (<see cref="DiagnosticFact.WithSource"/>) and recorded as any module's, so the counts,
+    /// <see cref="HasSyntaxErrors(SourceDocument)"/> and Finalize read it; no later record or invalidation reaches the list. The list carries no excluded
+    /// range: no library file holds a compile-time directive (KimiLibraryShapeTest's tripwire; a library that gains one makes this
+    /// registration carry the freeze owner's ranges). Its one caller is <see cref="Compiler.Compilation.ReadLibrary"/>.</summary>
+    /// <param name="module">The frozen library's module.</param>
+    /// <param name="detached">Its syntax list, taken by its freeze (<see cref="TakeSyntax"/>).</param>
+    /// <exception cref="InvalidOperationException">A library is registered already (InternalInvariant).</exception>
+    internal void AddLibrary(Kotonoha module, DetachedSyntax detached)
+    {
+        if (this.library >= 0)
+        {
+            throw new InvalidOperationException("A diagnostic owner registers one library (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+
+        var index = this.ModuleIndex(module);
+        var facts = detached.Facts;
+        if (facts.Length != 0)
+        {
+            var documents = new SortedDictionary<int, SourceDocument>();
+            for (var i = 0; i < facts.Length; i++)
+            {
+                if (detached.Documents[i] is { } document)
+                {
+                    documents.TryAdd(facts[i].Source, document);
+                }
+            }
+
+            var sources = new Dictionary<int, int>(documents.Count);
+            foreach (var (freeze, document) in documents)
+            {
+                sources.Add(freeze, this.DocumentSource(document, index));
+            }
+
+            for (var i = 0; i < facts.Length; i++)
+            {
+                if (!DiagnosticEntries.TryGet(facts[i].Code, out var entry))
+                {
+                    throw new DiagnosticContractException(DiagnosticFault.UnknownCode, facts[i].Code.ToString());
+                }
+
+                var source = detached.Documents[i] is not null ? sources[facts[i].Source] : -1;
+                this.Record(DiagnosticPartition.Syntax, index, facts[i].WithSource(source), entry.Severity == DiagnosticSeverity.Error);
+            }
+        }
+
+        this.library = index;
+    }
 
     /// <summary>Gets a value indicating whether the syntax of one document holds an Error; a decision inside one parse uses it.</summary>
     /// <param name="document">The document.</param>
@@ -823,6 +963,7 @@ public sealed partial class DiagnosticOwner
 
     private void InvalidateSyntax(int module)
     {
+        this.EnsureWritable(module);
         this.partitionErrors[(int)DiagnosticPartition.Syntax] -= this.syntax[module].Errors;
         this.syntax[module].Clear();
         foreach (var entry in this.sources)
@@ -842,6 +983,15 @@ public sealed partial class DiagnosticOwner
                     excluded.Remove(source);
                 }
             }
+        }
+    }
+
+    // A registered library's syntax list is read-only (AddLibrary): a record or an invalidation of it is a compiler defect.
+    private void EnsureWritable(int module)
+    {
+        if (module == this.library)
+        {
+            throw new InvalidOperationException("The library module's syntax list is registered read-only (InternalInvariant; PLAN G949 Stage 2 U3).");
         }
     }
 

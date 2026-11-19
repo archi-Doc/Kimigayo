@@ -17,9 +17,11 @@ public sealed partial class Binding
 {
     // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers); the (slot, owner Type, input,
     // mode) keys one RawMembers call has walked, and the slots on the walk's current chain (KeptReferents), reused.
-    private readonly Dictionary<OriginParameter, KeeperList> keepers = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<(OriginParameter Slot, BoundType Owner, int Input, bool Exclusive)> keeperVisits = new();
     private readonly HashSet<OriginParameter> keeperPath = new(ReferenceEqualityComparer.Instance);
+
+    // The running pass's part of the slots' keepers (PassPart.Keepers, EnterPass).
+    private Dictionary<OriginParameter, KeeperList> keepers;
 
     // SPEC 5.7 Origins, Calls (D15; DECISIONS BU-24): the borrows `origin` belongs to within `scope` (a contract's or signature's input
     // Types, an instance), appended to `members` in scope order: each Type there whose outer Origin it is, by its referent and mode
@@ -74,7 +76,7 @@ public sealed partial class Binding
                 this.keepers.Add(schema.Origins[i], list = new());
             }
 
-            if (list.Pass != this.originRequirementPass)
+            if (!Current(list.Pass, this.originRequirementPass))
             {
                 (list.Pass, list.Count) = (this.originRequirementPass, 0);
             }
@@ -83,9 +85,31 @@ public sealed partial class Binding
         }
     }
 
-    // The keepers of a declared slot in this pass (Keep): a borrow's referent, or a nested Type with the nested slot keeping it.
+    // The keepers of a declared slot (Keep): a borrow's referent, or a nested Type with the nested slot keeping it. The slot's row is
+    // found by the parts' one find (PassPart.Find: the library layer's first) and is current by the stamp of the part holding it.
     private ReadOnlySpan<Keeper> Keepers(OriginParameter slot)
-        => this.keepers.TryGetValue(slot, out var list) && list.Pass == this.originRequirementPass ? list.Items : default;
+    {
+        var layer = this.Library.Layer.Part;
+        var found = PassPart.Find(PassPart.Parts(layer.Keepers, this.keepers), slot, out var list);
+        var call = ReferenceEquals(found, layer.Keepers) ? layer.RequirementCall : this.pass.Part.RequirementCall;
+        return found is not null && Current(list!.Pass, call) ? list.Items : default;
+    }
+
+    // PLAN G949 S1-1's freeze of the layer's keepers (FreezeLibrary): each list current at the library pass's latest call, and the call
+    // itself, Frozen32, so the lists read current in every later pass whatever the requirement counter.
+    private void FreezeKeepers()
+    {
+        var part = this.pass.Part;
+        foreach (var list in part.Keepers.Values)
+        {
+            if (list.Pass == part.RequirementCall)
+            {
+                list.Pass = Frozen32;
+            }
+        }
+
+        part.RequirementCall = Frozen32;
+    }
 
     // The member borrows of each slot of a nominal Type within `type` (scope Type `input`) that `origin` binds: the slot's keepers'
     // referents under that Type (KeptReferents), exclusive where the slot is `uniq` in some case the Type selects (RequirementAt). False
@@ -162,10 +186,10 @@ public sealed partial class Binding
 
     // A slot's keeper: the referent of a borrow keeping it, or (Via) a nested Type whose slot Via keeps it; a pair layer's referent keeps
     // it only in its binder's borrow cases (Binders, of the slot's schema).
-    private readonly record struct Keeper(BoundType Type, OriginParameter? Via, BinderSet Binders);
+    internal readonly record struct Keeper(BoundType Type, OriginParameter? Via, BinderSet Binders);
 
     // A slot's keepers in one pass, without duplicates; reused across passes (a warm pass allocates nothing).
-    private sealed class KeeperList
+    internal sealed class KeeperList
     {
         private Keeper[] items = new Keeper[2];
 

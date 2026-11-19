@@ -1,12 +1,20 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 public class DiagnosticPrecisionTest
 {
+    // The test-only `#Unsupported` library declarations the handed-on rows read (AnUnsupportedDeclarationIsRefusedWhereItIsHandedOn).
+    private const string UnsupportedProbe = "#Unsupported\npublic struct ZProbe\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n\n        public struct Deep\n            public let z: i32\n" +
+        "public group ZG\n    #Unsupported\n    public struct ZM\n        public let x: i32\n\n        public struct Inner\n            public let y: i32\n" +
+        "public struct ZPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+        "public open struct ZOpenPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+        "#Unsupported\npublic struct ZDer : ZOpenPlain\n    public let w: i32\n";
+
     private const string Payload = "struct P\n    public var v: i32\n    public init(v: i32) => self.v = v\n";
 
     public static TheoryData<string> MutationNames => [.. DiagnosticCorpus.Mutations.Select(static x => x.Name)];
@@ -512,8 +520,9 @@ public class DiagnosticPrecisionTest
     // R8-G1-3b-2. Each use outside them is one Unsupported_Kd at the Name that names one, whether the Name ends the path, qualifies a
     // member (no later step republishes it; deeper members, a group member, an inherited member Type) or is a `::` path's root name, and
     // independent uses each have their own; a mention inside an `#Unsupported` declaration is no use. The valid twins open a plain struct
-    // (t14v, SPEC 18.2.1) and inherit a member Type from a plain open base (t18v, SPEC 6.2.2, 9.6). A record in the library text is "L"
-    // with its position there; the rows also pin that the hook adds no record of its own (G1-2 binds library Attributes). The u rows'
+    // (t14v, SPEC 18.2.1) and inherit a member Type from a plain open base (t18v, SPEC 6.2.2, 9.6). A use in the library text is a
+    // broken build (ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild); the rows also pin that the hook adds no record of its own
+    // (G1-2 binds library Attributes). The u rows'
     // group ZF is wholly `#Unsupported`, as every library group is: alone it fails the Name (u01x, u02x); gathered beside a user group
     // (SPEC 9.5.1, R8) only its selection is a use, by a call's winner (u05x, u06x) or a function item (u07x), in either alias order.
     [Theory]
@@ -523,8 +532,6 @@ public class DiagnosticPrecisionTest
     [InlineData("z04x", "", "func f(v: ref/::Kimi.ZProbe.Inner) => ()\n", "Unsupported_Kd 1:17")]
     [InlineData("z05x", "", "func f(v: ref/::Kimi.ZProbe) => ()\n", "Unsupported_Kd 1:17")]
     [InlineData("z06v", "", "func f(v: ref/i32) => ()\n")]
-    [InlineData("z07x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
-    [InlineData("z08x", "public group ZUses\n    public func zuse(v: ref/::ZProbe) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
     [InlineData("z09v", "#Unsupported\npublic group ZOwn\n    public func zown(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n")]
     [InlineData("t01x", "", "func f(v: ref/ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
     [InlineData("t02x", "", "func f(v: ref/Kimi.ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
@@ -534,7 +541,6 @@ public class DiagnosticPrecisionTest
     [InlineData("t14v", "", "alias Kimi.ZPlain\nfunc f(v: ref/Inner) => ()\n")]
     [InlineData("t18v", "", "struct D : ZOpenPlain\n    let a: i32\nfunc f(v: ref/D.Inner) => ()\n")]
     [InlineData("t19x", "", "func f(v: ref/ZDer.Inner) => ()\n", "Unsupported_Kd 1:15")]
-    [InlineData("t23x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner.Deep) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
     [InlineData("u01x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nlet n = zf(1)\n", "Unsupported_Kd 2:9")]
     [InlineData("u02x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "let n = Kimi.ZF.zf(1)\n", "Unsupported_Kd 1:9")]
     [InlineData("u03v", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nalias Mine\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet n = zf(true)\n")]
@@ -543,24 +549,44 @@ public class DiagnosticPrecisionTest
     [InlineData("u06x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Mine\nalias Kimi.ZF\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet n = zf(1)\n", "Unsupported_Kd 5:9")]
     [InlineData("u07x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nalias Mine\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet f: (i32) -> i32 = zf\n", "Unsupported_Kd 5:23")]
     [InlineData("u08v", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n", "alias Kimi.ZF\nalias Mine\ngroup Mine\n    public func zf(v: bool) -> i32 => 1\nlet f: (bool) -> i32 = zf\n")]
-    [InlineData("u09x", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\npublic group ZF2\n    public func zu() -> i32 => ZF.zf(1)\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 34:32")]
     [InlineData("u10v", "public group ZF\n    #Unsupported\n    public func zf(v: i32) -> i32 => v\n    #Unsupported\n    public func zu() -> i32 => zf(1)\n", "func f(v: ref/i32) => ()\n")]
     public void AnUnsupportedDeclarationIsRefusedWhereItIsHandedOn(string row, string library, string source, params string[] expected)
     {
-        var probe = "#Unsupported\npublic struct ZProbe\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n\n        public struct Deep\n            public let z: i32\n" +
-            "public group ZG\n    #Unsupported\n    public struct ZM\n        public let x: i32\n\n        public struct Inner\n            public let y: i32\n" +
-            "public struct ZPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
-            "public open struct ZOpenPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
-            "#Unsupported\npublic struct ZDer : ZOpenPlain\n    public let w: i32\n" + library;
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, probe);
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + library));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         c.Bind();
-        var records = c.Binding.Issues.Select(x =>
-            ReferenceEquals(x.Node.Kotonoha, c.Library.Kotonoha) ? "L " + At(probe, x.Node.Span.Start, x.Code)
-            : ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
+        var records = c.Binding.Issues.Select(x => ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
         Assert.True(expected.Order(StringComparer.Ordinal).SequenceEqual(records.Order(StringComparer.Ordinal)), $"{row}: {string.Join(", ", records)}");
+    }
+
+    // DECISIONS BU-219 (PLAN G949 S1-1's freeze): the Kimi library is a compiler-build constant, so a library whose pass has a record is a
+    // broken build, refused before anything is frozen. From PLAN G949 Stage 2 U2a the refusal is a value, not a thrown fault (B's ruling 6;
+    // the Front's C-380 16:55 consent, (d)): the Bind leaves no result and binds no program, and the check publishes the library's record
+    // as InternalInvariant_Kd at its library location, `ZProbe` in `zuse`'s `::ZProbe.Inner`, beside the refusal's own InternalInvariant_Kd
+    // at the same place, the first record the freeze counted (B's ruling 40 (i)), and nothing else.
+    // The former rows z07x, z08x, t23x and u09x (a library declaration naming an `#Unsupported` library declaration, "L Unsupported_Kd")
+    // are this row, z07x's library; the same uses in a program keep their located records (z01x-z05x, t01x-t19x and the u rows).
+    [Fact]
+    public void ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n"));
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
+        Assert.Equal(default, c.Bind());
+        Assert.False(c.Check());
+        var library = UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n";
+        var use = new SourceSpan(library.IndexOf("::ZProbe.Inner", StringComparison.Ordinal) + 2, "ZProbe".Length);
+        var records = TestDiagnostics.Of(c);
+        Assert.Equal(2, records.Length);
+        Assert.All(records, x =>
+        {
+            Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code);
+            Assert.Equal(c.Library.Kotonoha.Name, x.Path); // The probe's library document, not the program's.
+            Assert.Equal(use, x.Span); // The use's location, as the program rows' Unsupported_Kd (z01x-z05x) has it.
+        });
     }
 
     // SPEC 6.7, 19.4 (R8-G1 row A6): excluded syntax is checked syntactically only, so an implementation Attribute there is not

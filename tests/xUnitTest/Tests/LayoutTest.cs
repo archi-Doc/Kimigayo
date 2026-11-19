@@ -148,7 +148,7 @@ public partial class LayoutTest
         var c = CompilationTestHelper.BindSuccess("#Layout(\"C\")\nstruct C\n    var x: u8\n    var y: i32\nopen struct B\n    var c: C\n    var t: u8\nstruct E: B\n    var u: u8\nstruct D: B\n    var u: u8\n    var w: i64\nlet p: raw/" + derivedName + " = null");
         var derived = Variable(c, "p").Components[0];
         var whole = c.Layout.Of(derived).Value!;
-        var prefix = c.Layout.Of(AdtDef.Base(derived)!).Value!;
+        var prefix = c.Layout.Of(AdtDef.Base(c.Types, derived)!).Value!;
         Assert.Equal(("{ [0 x i32], [12 x i8] }", 12, 4), (prefix.Layout.StorageType, prefix.Layout.Size, prefix.Layout.Alignment));
         Assert.Equal(new[] { 0, 8 }, prefix.Layout.FieldOffsets.ToArray());
         Assert.Equal((storage, size, alignment), (whole.Layout.StorageType, whole.Layout.Size, whole.Layout.Alignment));
@@ -244,7 +244,7 @@ public partial class LayoutTest
         Assert.Equal(source.Length == 0, c.Bind().IsComplete);
         var type = probe switch
         {
-            "E.b" => AdtDef.FieldType(Declared(c, "E"), 0)!,
+            "E.b" => AdtDef.FieldType(c.Types, Declared(c, "E"), 0)!,
             "E<i32>" => c.Types.Intern(BoundTypeKind.Constructed, Declared(c, "E").Symbol, SemanticsKind.Owner, [BoundType.I32]),
             "[-1 of i32]" => c.Types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [BoundType.I32], length: -1),
             _ => Declared(c, probe),
@@ -550,7 +550,7 @@ public partial class LayoutTest
     public void StringReprIsPlacedAsTheStringRow()
     {
         var c = CompilationTestHelper.BindSuccess("()");
-        var placed = c.Layout.Of(LibrarySource.Declaration(c.Library, "Storage.StringRepr").SymbolOf()!.Type!);
+        var placed = c.Layout.Of(LibrarySource.Declaration(c.Library, "Storage.StringRepr").SymbolOf(c)!.Type!);
         Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
         var (layout, row) = (placed.Value!.Layout, Layout.Row(BoundType.String).Layout);
         Assert.Equal((row.Size, row.Alignment, row.Stride), (layout.Size, layout.Alignment, layout.Stride));

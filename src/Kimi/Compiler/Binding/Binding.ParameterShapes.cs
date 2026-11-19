@@ -121,12 +121,13 @@ public sealed partial class Binding
     // length and the same kinds position by position; a length slot takes no explicit Type argument.
     private static bool SameExplicitArgumentShape(FunctionKoto a, FunctionKoto b)
     {
-        if (a.GenericArguments.Count != b.GenericArguments.Count)
+        var count = new FnSig(a).GenericCount;
+        if (count != new FnSig(b).GenericCount)
         {
             return false;
         }
 
-        for (var i = 0; i < a.GenericArguments.Count; i++)
+        for (var i = 0; i < count; i++)
         {
             if (a.GenericArguments[i] is LengthParameterKoto != b.GenericArguments[i] is LengthParameterKoto)
             {
@@ -222,7 +223,7 @@ public sealed partial class Binding
         mode = other = default;
         shape = default;
         conservative = false;
-        if (earlier.Parameters[i].Type.BoundType is not { } ta || later.Parameters[j].Type.BoundType is not { } tb)
+        if (new FnSig(earlier).Input(i) is not { } ta || new FnSig(later).Input(j) is not { } tb)
         {
             return false;
         }
@@ -258,10 +259,10 @@ public sealed partial class Binding
 
     // SPEC 7.4: appends to the party store every parameter of `earlier` that corresponds to parameter j of `later` and conflicts
     // with it, in the unbound sequence, the bound sequence and by external name. The first conflict supplies the record's facts.
-    private void CollectParameterShapeParties(FunctionKoto earlier, BindingSymbol earlierSymbol, FunctionKoto later, BindingSymbol laterSymbol, int j, ref ParameterShapeConflict facts, ref bool found)
+    private void CollectParameterShapeParties(FunctionKoto earlier, FunctionKoto later, int j, ref ParameterShapeConflict facts, ref bool found)
     {
-        var earlierReceiver = earlierSymbol.ReceiverIndex;
-        var laterReceiver = laterSymbol.ReceiverIndex;
+        var earlierReceiver = new FnSig(earlier).ReceiverIndex;
+        var laterReceiver = new FnSig(later).ReceiverIndex;
         var receivers = earlierReceiver >= 0 && laterReceiver >= 0;
         if (AllowsPositionalArgument(later, j))
         {
@@ -370,7 +371,7 @@ public sealed partial class Binding
                 {
                     if (members[a].Declaration is FunctionKoto earlier && !earlier.IsSpecialization)
                     {
-                        this.CollectParameterShapeParties(earlier, members[a], later, members[b], j, ref facts, ref found);
+                        this.CollectParameterShapeParties(earlier, later, j, ref facts, ref found);
                     }
                 }
 
@@ -467,7 +468,7 @@ public sealed partial class Binding
 
                     if (earlierMember.Declaration is FunctionKoto earlier)
                     {
-                        this.CollectParameterShapeParties(earlier, earlierMember, later, laterMember, j, ref facts, ref found);
+                        this.CollectParameterShapeParties(earlier, later, j, ref facts, ref found);
                     }
                 }
             }
@@ -486,7 +487,7 @@ public sealed partial class Binding
 
     // SPEC 7.4: one record per conflicting parameter, located at its Type (or at the use), with both modes, the ground of
     // correspondence and the unified key as facts and the overlapping earlier parameters as related locations.
-    private void ReportParameterShapes(Koto node, DiagnosticRequirement requirement, (int Start, int Count) range)
+    private void ReportParameterShapes(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, (int Start, int Count) range)
     {
         for (var k = 0; k < range.Count; k++)
         {
@@ -508,7 +509,8 @@ public sealed partial class Binding
                 _ => $"Value({target})",
             };
             var first = this.parameterShapePartyStore[conflict.PartyStart];
-            node.Report(
+            node.ReportIn(
+                store,
                 requirement,
                 DiagnosticCode.ParameterShapeMismatch_Kd,
                 conflict.Mode,

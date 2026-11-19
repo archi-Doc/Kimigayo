@@ -187,7 +187,10 @@ public partial class PairAnnotationBindingTest
     // reference slot, which is never borrowed implicitly (o9y, o9ys: o9's and o9s's invalid twins), while two layers fit (o9r, o9rs).
     // A call-shape contract (SPEC 7.4.4) holds where an argument needs the formed Type's adaptation, the relied-on slot a pair binder
     // (n1c, n1cs) or X beside a formed ref/X (n1d, n1ds), and their invalid twins reject in either order (n1cx, n1cxs, n1dx, n1dxs):
-    // its collection precedes the sources that fix a binder and enters no application.
+    // its collection precedes the sources that fix a binder and enters no application. A Tuple literal at an occurrence of the original
+    // (`y: s/T`) fixes `s` through its whole's meet, so the waiting `x: s/(ref/X during b)` is inferred after it, before the expected
+    // result fills X (N1b, N1bs, N1e) and after the late pass's defaults (N1L, N1Lq; G812 ruling 147: SettleSources); f06c174bd
+    // rejected all five.
     // Under a binding that forms no Type (a pair target alone or an unresolved projection no premise proves owner, PLAN G886), a Type
     // formed under it, its standalone target or its pair layer's outer-Origin slot is not represented, so the call is one located
     // Unsupported_Kd (DECISIONS D3, temporary until G886's representation; F's ruling of 11-15): valid (f1n, f1ns, a Never argument)
@@ -375,6 +378,11 @@ public partial class PairAnnotationBindingTest
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc mk<V>() -> V\n    return stop()\nfunc put4<s/W>(m: s/W, n: s/Box, k: i32) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let b = Box.init(1)\n    return put4(u@move, b@move, mk())\n", "1*NoApplicableOverload_Kd")] // nt1
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc app<V>(f: (V, Box) -> i32, v: V) -> i32\n    V is Owned\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    return app(put3, u@move)\n", "1*NoApplicableOverload_Kd")] // rf1
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc app<V>(f: (V, Box) -> i32, v: V) -> i32\n    V is Owned\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner\n    U is Owned\n    return app(put3, u@move)\n", "clean")] // rf1o
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q: ref/i32 = w(rr, (n, m))\n    return q\n", "clean")] // N1b
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w2<s/T, X>(y: s/T, x: s/(ref/X during b) during a) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q: ref/i32 = w2((n, m), rr)\n    return q\n", "clean")] // N1bs
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q: i32 = w(rr, (n, m))\n    return q\n", "clean")] // N1e
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q = w(rr, (1, 2))\n    return 0\n", "clean")] // N1L
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc w<s/T, X>(x: s/(ref/X during b) during a, y: s/T) -> X\n    s is owner or ref\n    return stop()\nfunc use(p: ref/i32, rr: ref/(ref/i32 during p), n: i64, m: i32) -> i32\n    let q = w(rr, (1, 2))\n    return q\n", "clean")] // N1Lq
     public void AStructuredApplicationIsFormedAfterTheExactSources(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 

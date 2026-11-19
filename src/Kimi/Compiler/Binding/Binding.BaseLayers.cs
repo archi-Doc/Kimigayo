@@ -24,7 +24,7 @@ namespace Kimi.Compiler;
 //   mode computes; a later Bind of both unchanged (knownMode, set as a Bind completes) starts from them as that cold Bind's second run, runs
 //   once and reports what it reports. An edit clears them (Invalidate).
 // - Ends: a chain follows values final in the run, each a function of the declaration, so it is periodic and BaseWalk ends it; a parameter
-//   or a projection through one is no struct and ends it. A recursion among a name's evaluation, Accessible and LookupTypeMember passes
+//   or a projection through one is no struct and ends it. A recursion among a name's evaluation, Accessible and LookupMember passes
 //   DirectBase, Running at most once per struct on the stack, or BindType, resolvingTypes at most once per syntax.
 // - Removal: clausesBindable, notReadyReads, earlyReads, knownBases, knownMode, secondRun, verifiedClause, StartRuns, VerifyEarlyReads,
 //   Bind's loop and the second PublishInheritedOptOuts go at R7-D2 d3 (plan §5.0, conformances), when a conformance's specification is read

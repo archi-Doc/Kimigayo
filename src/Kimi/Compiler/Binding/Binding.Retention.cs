@@ -149,10 +149,9 @@ public sealed partial class Binding
     // available Contract fact on its subject (TyCtxt.RequirementSignatures, a refinement's inherited requirements included), any
     // subject; then, by the premises' rows (FirstRows; R7-C2c2 c2-3c), of each Type the contract reaches: each available Contract row's
     // requirement signatures there and each available Callable row's signature (SPEC 8.3.2: a clause at every depth, in any premise
-    // order, through the identities FirstRows reaches: the rows' contract; a row of a written fact is the fact's, listed above). Limit
-    // (PLAN G881, a class 1 the rows own): FirstRows gives a parameter identified with a two-link projection
-    // (`U is T.(A).Next.(B).Next`) no available Contract row, so U's requirement signatures and the clauses below them are not handed.
-    // The contract reaches its own Types (`signature`, its declared inputs and result) and those of each signature it hands, each
+    // order, through identities, a cycle through a projection included: the rows' contract, ContractSolver's row (5) and its least
+    // fixpoint, PLAN G881, G881b; a row of a written
+    // fact is the fact's, listed above). The contract reaches its own Types (`signature`, its declared inputs and result) and those of each signature it hands, each
     // component at any depth (Reach): a body holds a value of a Type only from them. A Type reached only through a handed signature
     // whose projection chain repeats an associated declaration (Recurs: `associate Next is Mk`) is not walked, a subject just below an
     // own recursing Type included (an own `T.(Mk).Next.(Mk).Next` skips `T.(Mk).Next.(Mk).Next.(Mk).F`): its rows are those of its
@@ -342,10 +341,10 @@ public sealed partial class Binding
             return;
         }
 
-        var declared = TyCtxt.Signature(target, null, -1, out var count);
+        var declared = this.types.Signature(target, null, -1, out var count);
         for (var i = 0; declared is not null && count == inputs.Length && i < count; i++)
         {
-            if (TyCtxt.Signature(target, null, i, out _) is not { } input)
+            if (this.types.Signature(target, null, i, out _) is not { } input)
             {
                 this.retentionDeclared.Clear();
                 return;
@@ -415,7 +414,7 @@ public sealed partial class Binding
             this.AddTypePremises(environment, declaring, OriginPremiseRule.Input);
         }
 
-        this.AddResultPremises(environment, result);
+        this.AddDefinitionResultPremises(environment, result);
         if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)
@@ -511,8 +510,9 @@ public sealed partial class Binding
     // An erased callable's relations (owner decision 2026-10-17, DECISIONS R4-M52): its implementation was compared where it was
     // converted, under premises no view reads, so no absence of a relation among its fixed Origins is proven (SPEC 15.6.4): each fixed
     // Origin of an input, among the atoms from `start`, outlives each fixed Origin of an output, its result's or one its inputs let it
-    // write, and, where it writes an abstract part (a writer: `absorb(self: uniq/Self, r: E)`), that carrier's ReachedNode, the storage its
-    // implementation may write through the part's exclusive layers; a result it returns replaces a part and reaches none (DECISIONS
+    // write, and, where it meets a carrier through no shared layer (HiddenWritable, PLAN G963: a writer `absorb(self: uniq/Self, r: E)`, or
+    // `set: (T, E)` taking the T by value), that carrier's ReachedNode, the storage its implementation may write through the part's
+    // exclusive layers (SPEC 15.6.4 route 2 applied to its own signature); a result it returns replaces a part and reaches none (DECISIONS
     // R4-M154). Its per-call Origins (IsFixed, its Binder's) keep only its own premises.
     private void AddErasedRelations(OriginPremiseEnvironment environment, int start, Koto? binder)
     {
@@ -532,7 +532,7 @@ public sealed partial class Binding
                     AddPremiseEdge(environment, longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
                 }
 
-                if (atoms[j] is { Input: >= 0, Writable: true, Carrier: { } carrier } && IsFixed(atoms[j], binder))
+                if (atoms[j] is { Input: >= 0, HiddenWritable: true, Carrier: { } carrier } && IsFixed(atoms[j], binder))
                 {
                     AddPremiseEdge(environment, longer, this.ReachedNode(environment, carrier), OriginPremiseRule.Input);
                 }
@@ -553,7 +553,7 @@ public sealed partial class Binding
             var stored = false;
             for (var k = raws; !stored && k < raw.Count; k++)
             {
-                stored = atoms[j] is { Carrier: not null } atom && (atom.Input == CallRetention.ResultOutput || (atom.Writable && atom.Input != raw[k].Input));
+                stored = atoms[j] is { Carrier: not null } atom && (atom.Input == CallRetention.ResultOutput || (atom.HiddenWritable && atom.Input != raw[k].Input));
             }
 
             if (stored)
@@ -628,8 +628,7 @@ public sealed partial class Binding
             return;
         }
 
-        var owner = origin.Body.Definition?.Declaration?.CodeContext.Compilation.Binding ?? this;
-        if (owner.LocalRegionSources(origin) is { IsEmpty: false } sources)
+        if (this.LocalRegionSources(origin) is { IsEmpty: false } sources)
         {
             var meet = sources[0];
             for (var i = 1; i < sources.Length; i++)

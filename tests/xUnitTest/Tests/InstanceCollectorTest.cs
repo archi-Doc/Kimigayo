@@ -1182,9 +1182,10 @@ public sealed partial class InstanceCollectorTest
         Assert.Single(set.Items.ToArray(), x => Label(program, x) == "ObjectDescriptor i32");
     }
 
-    // SPEC 15.7.1, 16.3.2 (R8-U1): replace is a body whose destroyValues call destroys the old value in place, so each of its instances
-    // over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one its direct calls and its Item's
-    // Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and swap's instances destroy nothing.
+    // SPEC 15.7.1, 16.3.2, 5.2.3 (R8-U1, R8-M17): replace is a body whose discarded Take `_ = (*place)@move` destroys the old value in
+    // place, so each of its instances over a Type that may need a drop targets that Type's glue, each instance checked on its own (the one
+    // its direct calls and its Item's Value call reach, and the one its erased adapter reaches), and its i32 instance none; exchange's and
+    // swap's instances destroy nothing.
     [Fact]
     public void ReplacesBodyTargetsTheGlueOfTheValueItDestroysInPlace()
     {
@@ -1675,9 +1676,9 @@ public sealed partial class InstanceCollectorTest
         {
             var (function, representative) = (set.Items[shim].Key.Symbol!, set.Items[shim].Representative);
             Assert.Same(set.Items[shim].RepresentativeType, representative?.Self);
-            _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+            _ = c.Types.Signature(function, null, int.MaxValue, out var count);
             var expected = TyCtxt.Contract(function).LibraryDeclaration == KimiDeclarationId.Equatable ? "bool" : "i32";
-            var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, TyCtxt.Signature(function, null, x, out _)!)!));
+            var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, c.Types.Signature(function, null, x, out _)!)!));
             Assert.Equal([expected, "ref/i32", "ref/i32"], types);
         }
     }
@@ -1789,9 +1790,9 @@ public sealed partial class InstanceCollectorTest
             DropGlue.Level(c.Types, type, [], [], steps); // A glue function's level: Mir's level of an aggregate, the Backend's own parts.
             parts.AddRange(steps.Where(static x => x.Kind is MirDropStepKind.Whole or MirDropStepKind.Run).Select(static x => x.Part));
             var walk = new Descents(descents);
-            _ = MirTypes.Destruction(type, ref walk);
+            _ = MirTypes.Destruction(c.Types, type, ref walk);
             Assert.Equal(Expected(c.Types, type, descents), parts.Select(static x => x.Type));
-            Assert.All(parts, x => Assert.Same(Component(type, x), x.Type));
+            Assert.All(parts, x => Assert.Same(Component(c.Types, type, x), x.Type));
             names.Add(TyCtxt.Name(type));
         }
 
@@ -2789,13 +2790,13 @@ public sealed partial class InstanceCollectorTest
             return descents.SelectMany(static x => x.Components.Reverse());
         }
 
-        var fields = AdtDef.Base(type) is null ? descents.Count : descents.Count - 1;
+        var fields = AdtDef.Base(types, type) is null ? descents.Count : descents.Count - 1;
         return descents.Take(fields).Reverse().Concat(descents.Skip(fields));
     }
 
     // The component a part's position names in the aggregate writer's numbering (FunctionCodegen.Component), or the part's own Type for a
     // part without one (Index -1).
-    private static BoundType Component(BoundType type, DropPart part)
+    private static BoundType Component(TyCtxt types, BoundType type, DropPart part)
     {
         if (part.Index < 0)
         {
@@ -2804,7 +2805,7 @@ public sealed partial class InstanceCollectorTest
 
         if (AdtDef.IsEnum(type))
         {
-            return AdtDef.CaseTypes(type)![part.Ordinal]!.Components[part.Index];
+            return AdtDef.CaseTypes(types, type)![part.Ordinal]!.Components[part.Index];
         }
 
         if (!AdtDef.IsStruct(type))
@@ -2812,8 +2813,8 @@ public sealed partial class InstanceCollectorTest
             return type.Components[part.Index];
         }
 
-        var parent = AdtDef.Base(type);
-        return parent is not null && part.Index == 0 ? parent : AdtDef.FieldType(type, parent is null ? part.Index : part.Index - 1)!;
+        var parent = AdtDef.Base(types, type);
+        return parent is not null && part.Index == 0 ? parent : AdtDef.FieldType(types, type, parent is null ? part.Index : part.Index - 1)!;
     }
 
     // The destruction walk's direct descents below its root: each Type it enters after the root, none entered further.

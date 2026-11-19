@@ -6,25 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // An independent array literal defaults differently from a contextual call argument.
-    private static bool IsCallArgument(Koto node)
-    {
-        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-        {
-            if (parent is InvocationKoto)
-            {
-                return true;
-            }
-
-            if (parent is not (LabeledKoto or ParenthesizedKoto))
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
 
@@ -94,7 +75,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.UnprovenConstraint);
         }
 
-        if (this.IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(type, scope))
+        if (this.IsBarePlace(conversion.Left) && this.ProveCopy(type, scope) != ConstraintProof.Proven)
         {
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
@@ -109,7 +90,7 @@ public sealed partial class Binding
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!this.OffersTake(conversion.Left) ||
-            (this.ReceiverOfPart(conversion.Left) is not null && !this.CopiesInEveryCase(type, this.ConstraintScope(conversion))))
+            (this.ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, this.ConstraintScope(conversion)) != ConstraintProof.Proven))
         {
             return this.FailTake(conversion, conversion.Left);
         }
@@ -314,7 +295,7 @@ public sealed partial class Binding
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
                 : this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
-                !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
+                !this.IsSubtype(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
             {
                 return failure.IsCondition ? this.RecordMismatch(conversion, conversion, adapted, pattern, failure)
@@ -350,7 +331,7 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (!this.CopiesInEveryCase(copied, this.ConstraintScope(conversion)))
+            if (this.ProveCopy(copied, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
             {
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }

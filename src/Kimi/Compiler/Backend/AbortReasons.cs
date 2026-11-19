@@ -36,6 +36,7 @@ internal static class AbortReasons
     internal const int DuplicateKey = 15;
     internal const int ReferenceCount = 16;
     internal const int StaticCycle = 17;
+    internal const int Clock = 18;
 
     // Indices are module-local ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -61,6 +62,7 @@ internal static class AbortReasons
         new(DuplicateKey, "duplicate_key", "KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key"),
         new(ReferenceCount, "ref_count", "KIMI_E_REF_COUNT: Reference count limit exceeded"),
         new(StaticCycle, "static_cycle", "KIMI_E_STATIC_CYCLE: Static initialization cycle"),
+        new(Clock, "clock", "KIMI_E_CLOCK: Elapsed-time counter failed"),
     ];
 
     // Appends the text of a runtime template's abort marker: the reason table and the message constants (`abort_reasons`), the
