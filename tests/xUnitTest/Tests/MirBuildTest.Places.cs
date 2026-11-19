@@ -468,10 +468,10 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 13.7.2, 11.3.1 (Z11, 2d-2; amends DECISIONS R4-M37's Open): an update through a setter reserves the setter's receiver once where
-    // it locates it, before the getter's call: the setter takes that reservation, a TwoPhaseUniq in a temp, as its receiver, so its call
-    // activates it, and the getter's receiver is a shared Borrow through it, or the standard get reads through it; for a local, a
-    // parameter's referent, a Field path and an element, in a compound assignment, an increment and a decrement. Fail-before: the setter's
-    // receiver was a TwoPhaseUniq formed at its own call, after the getter had borrowed the receiver itself.
+    // it locates it, before the old value is read: the setter takes that reservation, a TwoPhaseUniq in a temp, as its receiver, so its
+    // call activates it, and the getter's shared Borrow or the standard get's read of the receiver coexist with it until then; for a
+    // local, a parameter's referent, a Field path and an element, in a compound assignment, an increment and a decrement. Fail-before: the
+    // setter's receiver was a TwoPhaseUniq formed at its own call, after the old value was read.
     [Theory]
     [InlineData("var g = WGauge.init()", "g.level += 2")]
     [InlineData("var g = WGauge.init()", "g.level++")]
@@ -504,29 +504,11 @@ public sealed partial class MirBuildTest
         Assert.Equal((MirOperandKind.Move, 0), (reservation.Kind, reservation.Place.Projection));
         var formed = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Place == reservation.Place);
         Assert.Equal(MirRefKind.TwoPhaseUniq, (MirRefKind)statements[formed].Rvalue.Op);
+        // The old value's read: the getter's call, or the standard get's operation on the stored Field.
         var getter = Array.FindIndex(blocks, static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "level.Get" });
-        if (getter < 0)
-        {
-            Assert.Contains(body.Operands.ToArray(), x => x.Kind == MirOperandKind.Copy && Through(x.Place));
-            return;
-        }
-
-        Assert.True(formed < blocks[getter].Start + blocks[getter].Count, "The reservation is formed before the getter's call.");
-        var input = body.Operands[blocks[getter].Terminator.Start].Place;
-        Assert.Contains(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Place == input &&
-            (MirRefKind)x.Rvalue.Op == MirRefKind.Shared && Through(x.Rvalue.Place));
-
-        // A Place read through the reservation: rooted at its holder, its first step the holder's Deref.
-        bool Through(MirPlace place)
-        {
-            var step = place.Projection;
-            while (step != 0 && body.Projections[step].Prefix != 0)
-            {
-                step = body.Projections[step].Prefix;
-            }
-
-            return place.Root == reservation.Place.Root && step != 0 && body.Projections[step].Kind == MirProjectionKind.Deref;
-        }
+        var read = getter >= 0 ? blocks[getter].Start + blocks[getter].Count - 1 : Array.FindIndex(
+            statements, static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.BinaryOp });
+        Assert.True(formed <= read, "The reservation is formed before the old value is read.");
     }
 
     // SPEC 14.8.3: a guard candidate's guard-local Origin ends at the guard's cleanup on every path, a transfer out of the guard

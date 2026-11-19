@@ -210,7 +210,7 @@ fn bump @73
       _5 = &uniq two-phase (*_1): uniq/Counter @80 s1
       StorageLive(_6) @79 s1
       StorageLive(_7) @80 s1
-      _7 = &(*_5): ref/Counter @80 s1
+      _7 = &(*_1): ref/Counter @80 s1
       _6 = count.Get(move _7) -> bb1 @79 s1
   bb1:
       StorageLive(_8) @78 s1
@@ -652,7 +652,7 @@ fn update @201
       StorageLive(_5) @208 s1
       _5 = &uniq two-phase (*_1): uniq/Box @208 s1
       StorageLive(_6) @206 s1
-      _6 = Add(copy (*_5).0, move _4) @206 s1
+      _6 = Add(copy (*_1).0, move _4) @206 s1
       _3 = item.Set(move _5, move _6) -> bb1 @206 s1
   bb1:
       StorageDead(_6) @206 s1
