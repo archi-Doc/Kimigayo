@@ -782,13 +782,17 @@ public sealed partial class Binding
     }
 
     // R's Origin test (SPEC 15.6.4: "one that may retain any other Origin of an argument carries the argument's Loans where it can hold a
-    // value of its Type, of a part it holds by value, or a borrow formed through it"; the owner's O-435 (a), F's G935 ruling 81), whether a
-    // storage (`kinds`, its row so far) may keep an input by a source that names no Origin: always where the input's Type states none
-    // (O-364 (a) (2): CanHold alone); else only where the storage as a whole may retain one of the input's Origins by the contract, the
-    // closure from one of its targets reaching an occurrence of the input (its Content test, which Storages makes before any position; a
-    // raw layer the call writes without an Origin already keeps there every input but the written-through one by Value, rule A). So an
-    // Origin-free result or storage keeps none of such an input's parts (pr's i32 result, `*y: i32`). Read by both readers of such a
-    // source: UnnamedKinds and FilledKinds.
+    // value of its Type, of a part it holds by value, or a borrow formed through it"; the owner's O-435 (a), F's G935 rulings 81, 83):
+    // 15.6.4 decides "may retain" for the result or storage as a whole and "where it can hold" for the positions inside it, so a storage
+    // may keep an input by a source that names no Origin always where the input's Type states none (O-364 (a) (2): CanHold alone), else
+    // only where the storage as a whole may retain one of the input's Origins by the contract (a raw layer the call writes without an
+    // Origin already keeps there every input but the written-through one by Value, rule A). So an Origin-free result or storage keeps none
+    // of such an input's parts (pr's i32 result, `*y: i32`). The test reads `kinds`, the storage's row built so far: in Storages, its
+    // targets' Content test (the closure from one of them reaching an occurrence of the input), made before any position, and what the
+    // storage's positions and fills walked earlier added; today that row equals the Content test in either walk order (each position's node
+    // is also a target of its storage: Position, Admitted, AbstractPositions; the rows of sources that name no Origin are gated here;
+    // RetentionTest.AResultOrStorageThatMayRetainAnArgumentsOriginKeepsEveryPartItCanHold's mk2o, putSo); in HiddenKinds' fill, also
+    // HiddenKinds' rows in the callee's terms. Read by both readers of such a source: UnnamedKinds and FilledKinds.
     private bool MayRetain(RetentionKind[] kinds, int input)
         => kinds[input] != RetentionKind.None || !this.retentionArguments[input].CarriesAnyOrigin;
 
