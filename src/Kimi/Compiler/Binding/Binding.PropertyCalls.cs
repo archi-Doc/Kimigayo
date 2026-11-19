@@ -16,6 +16,16 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
             KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
 
+    // SPEC 13.7.1: whether a node, taken as its outermost group (Grouped), is the target of `=` (write) or of a compound assignment,
+    // `++` or `--` (an update): the one reading of a Property use's write role.
+    internal static bool IsWriteTarget(Koto node, out bool write)
+    {
+        var target = Grouped(node);
+        var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+        write = assignment && target.Parent!.Akind == KotoKind.Equals;
+        return assignment || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+    }
+
     // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
     // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
     // it writes is the library's syntax and its header's interned Types, the same in every pass. A program accessor's is refreshed at each use.
