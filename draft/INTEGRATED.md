@@ -1412,6 +1412,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 96 (2026-11-19, plan §14; the owner's hand-over, verbatim 「(a) Yes, hand them over」): §3.1 names the R7 units
   that run outside the Front (the Back: T2, N5, T1, E2, P2; the Middle: O1, O2) and §5.1 marks their ids; the Front reviews
   them. Nothing frozen.
+- Revision 97 (2026-11-19, plan §14; the Back's T2 and N5 designs, C-402 and C-403): T2's row counts ten units (U10
+  `ArithmeticContracts`), N5's row 79 matches in 54 files. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
