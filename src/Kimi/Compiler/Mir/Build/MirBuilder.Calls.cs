@@ -8,6 +8,20 @@ namespace Kimi.Compiler.Mir;
 // Call assembly (SPEC 7.3): a node's call, its callee, receiver and arguments in their order, and its Call terminator.
 internal sealed partial class MirBuilder
 {
+    // The value an expansion evaluated for a node (Call's given), null for another node.
+    private static MirOperand? Evaluated(ReadOnlySpan<(Koto? Node, MirOperand Value)> given, Koto? node)
+    {
+        foreach (var (evaluated, value) in given)
+        {
+            if (evaluated is not null && ReferenceEquals(evaluated, node))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
     // SPEC 7.3: the parameters a function's signature declares, an accessor's self and value included (TyCtxt.Signature's count; a slot
     // past them asks for no Type).
     private int Arity(BindingSymbol function)
@@ -38,7 +52,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 7.3, 7.7.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
-    // takes it for its parameter's Type or as the value an expansion evaluated for it (given), each read where it is evaluated (SPEC 12.2:
+    // takes it for its parameter's Type or as the value an expansion evaluated for its node (given), each read where it is evaluated (SPEC 12.2:
     // secured before a later argument that builds code or that the operand order puts before it: a named one (SPEC 10.1.1), an unbound
     // reference's receiver supplied after earlier parameters (SPEC 7.3.4), a setter's receiver after its value (SPEC 13.7.1), A3 E13 (2);
     // or in its pending slot), then its omitted defaults (Defaults), passed by parameter slot, the receiver first. A compiler function is its
@@ -48,7 +62,7 @@ internal sealed partial class MirBuilder
     // whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
     // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the
     // Never value (DECISIONS R4-M62).
-    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
+    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, params ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
@@ -101,7 +115,7 @@ internal sealed partial class MirBuilder
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
                     var slot = defaults ? this.Slot(argument.ParameterType, argument.Source!) : (MirPlace?)null;
-                    var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(
+                    var operand = Evaluated(given, argument.Source) ?? this.Operand(
                         argument.Source!,
                         argument.AdaptedType ?? argument.ParameterType,
                         input: true,
@@ -147,7 +161,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 12.2: the last argument of a call that builds code, in evaluation order (the receiver -2, first -1, the others in order), and,
     // appended to leastAfter by argument, the least position of the arguments evaluated after it.
-    private int Order(CallPlan call, BindingSymbol? function, Koto? first, Koto? given)
+    private int Order(CallPlan call, BindingSymbol? function, Koto? first, ReadOnlySpan<(Koto? Node, MirOperand Value)> given)
     {
         var (last, after, least, earliest) = (-2, this.leastAfter.Count, int.MaxValue, -1);
         CollectionsMarshal.SetCount(this.leastAfter, after + call.ArgumentOperations.Length);
@@ -161,13 +175,13 @@ internal sealed partial class MirBuilder
             }
 
             (this.leastAfter[after + i], least) = (least, Math.Min(least, MirCallee.Position(function, argument.ParameterIndex)));
-            last = last == -2 && !ReferenceEquals(argument.Source, given) && Builds(argument.Source!) ? i : last;
+            last = last == -2 && Evaluated(given, argument.Source) is null && Builds(argument.Source!) ? i : last;
         }
 
         if (earliest >= 0)
         {
             this.leastAfter[after + earliest] = least;
-            last = last == -2 && !ReferenceEquals(first, given) && Builds(first!) ? -1 : last;
+            last = last == -2 && Evaluated(given, first) is null && Builds(first!) ? -1 : last;
         }
 
         return last;
