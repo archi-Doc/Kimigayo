@@ -7856,6 +7856,10 @@ resumed by R4-M86 (2026-10-20).
   old analysis has no route for an exclusive reference argument whose referent is Never (`ReferenceTypes.IsStorage` excludes Never), so
   `pass(y@(uniq/Never))` on a `var y` gives its `InternalInvariant_Kd` beside its `Unsupported_Kd`, as a `uniq/Never` parameter passed
   on already did (`h(p: uniq/Never) => g(p)`), on both pipelines until R6-check (frozen path; STATUS). Not temporary.
+  - Amended by R7-M56 (R7-T2 U6): `ReferenceTypes.IsStorage` is `TyCtxt.IsStoredReference` (the same referent list over
+    `BoundType.SafeReferent`; Never stays outside it). The open point no longer holds (dev 7979e3a56): `h(p: uniq/Never) => g(p)` is
+    accepted with no record, and `pass(y@(uniq/Never))` after `var y: Never = x` gives only `UninitializedPlace_Kd` (no `var` of
+    Type Never is ever initialized, SPEC 3.1.3, 14.10.3, 15.1.1), with no `InternalInvariant_Kd` or `Unsupported_Kd`.
 - **BU-8** (2026-10-18; PLAN G147 (2)) A user index's choice between `index` and `indexUniq` (SPEC 4.7.1) is decided once, by the HIR
   publisher, from the capability of the element Place's use. `ExclusiveUse` (`Binding.Hir.Adjust.cs`) holds exactly when the consumer's
   operation needs exclusive capability of the node, or the node is an assignment's or update's target or the operand of a borrow whose
@@ -13540,6 +13544,8 @@ resumed by R4-M86 (2026-10-20).
     a revisit on the path ends the walk.
   - Amended by BU-181 (PLAN G703): the walk of `OperandTerminal`, a site above, is now `Binding.LayersTerminal`, which
     `OperandTerminal` (after its premises) and `ReadTypeReferent` call; the rule is unchanged.
+  - Amended by R7-M56 (R7-T2 U6): `ReferenceTypes.EndsInString` is deleted; its readers ask
+    `ReferenceEquals(Binding.ComparisonReferent(t), BoundType.String)`, so its walk is `ComparisonReferent`'s (one walk, SPEC 13.4).
 - **BU-167 A qualifier with its own list omitted before `.init` or a Case reference is one inferred construction target (PLAN
   G745)** (2026-11-11; Front, Binding; Major; design reviews 1 REVISE (B1), 2 ACCEPT; implementation review ACCEPT) SPEC 9.7, 9.7.1,
   6.5.2.
@@ -16009,6 +16015,8 @@ resumed by R4-M86 (2026-10-20).
   mismatches; split the former 106-statement `BindBinary` by operand binding, destination authority and completion. Rejected: code-only
   diagnostic replacement, per-code cascade exceptions, re-proving in the adapter, another failure map, and role/mode switches.
   `ArithmeticSelection.Condition` belongs to the existing selection contract and is not reorganized by this unit.
+  - Amended by R7-M56 (R7-T2 U6): `EndsInString` is `ReferenceEquals(Binding.ComparisonReferent(t), BoundType.String)` (the same
+    set); the rejected predicate's reason stands.
 
 - **G52-1 Binding prerequisite ownership** (2026-10-24). SPEC 23.1.2 makes a declaration rejected because a part failed depend on that
   part; it does not invent another independent failure. G52 needs the existing prerequisite storage and readers together before
@@ -23033,6 +23041,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     hold the same fact twice).
   - **Rows.** `MirBuildTest.AnArmNoPublishedFormTakesIsABrokenContract` (13 rows) and `AResolvedNodeWithoutItsFactsIsABrokenContract`;
     no record, HIR or MIR moves on programs.
+- **R7-M56 A safe reference's referent is the Type's own fact: `BoundType.SafeReferent`** (Back, 2026-11-20; R7-T2 U6, Q-550, D-890;
+  Major, behaviour-preserving; R7 plan §5.1 T2; design `back\notes\r7-t2\t2-design.md` §2-§3; the Front's review C-402, C1 and C2
+  taken: the entry is required) SPEC 3.4, 13.4.
+  - **Representation.** `BoundType.SafeReferent`, the referent of a safe `ref/T` or `uniq/T` layer (SPEC 3.4), else null; one layer;
+    a computed property beside `HandleMode` and `IsObjectBorrow` (R4-M196's precedent: a Type's own facts on `BoundType`, no field).
+  - **Replaces** `ReferenceTypes.IsReference`, the eight `Is<Referent>` shape predicates (`IsStruct`, `IsArray`, `IsTuple`, `IsEnum`,
+    `IsDynamicArray`, `IsDictionary`, `IsSlice`, `IsStringReference`) and every other spelling of the safe-layer test, with or without
+    `Components.Count: 1` or `Kind: Semantics` (the same set: a Semantics-kind Type has one component, and Ref and Uniq occur only on
+    that Kind), in Binding, the root `ElementAccess`, the MIR analyses (`MirBorrows`, `MirEffects`) and the Backend's comparison
+    terminal (`FunctionCodegen.Arithmetic`'s `Terminal.Of`). `ReferenceTypes.IsStorage` is `TyCtxt.IsStoredReference`, the same
+    referent list over `SafeReferent` (Never stays outside it).
+  - **Deleted:** `ReferenceTypes.EndsInString` (its readers ask `ReferenceEquals(Binding.ComparisonReferent(t), BoundType.String)`,
+    one walk, SPEC 13.4), `IsResolvedRange` (its readers write the library-declaration test), `IsBorrow` and `IndependentResult` (no
+    reader). `ReferenceTypes` keeps `IsPointer` and `StorageMatches` for U7.
+  - No COMPILER_ARCHITECTURE row changes: the MIR analyses and the Backend read a Type's own fact, as they read `BoundType.Width`
+    (R4-M196).
+  - **Rejected:** a `TyCtxt.SafeReferent(t)` static (design P2: single-Type facts are `BoundType`'s; the Front's C-402).
+  - **Amends** BU-6, BU-175, G51-2 and R8-M47, each of which names a deleted member; each entry's line states the change.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -25230,6 +25256,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     O0 only (a mode steering the builder).
   - The three checks: Exposure, G416's generic Iterable rows, unchanged; Readings, none disputed (the library's unresolved-key
     sentinel `ResolvedRange.init(start: 0, end: -1)` is never iterated).
+  - Amended by R7-M56 (R7-T2 U6): `ReferenceTypes.IsResolvedRange` is deleted; its readers (`Binding.Ranges`, `Binding.Views`) write the
+    library-declaration test `{ Kind: Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }`.
 - **R8-M48 `Console.writeLine(ref/string)` is a Kimigayo body; no compiler function has the Body disposition** (Back, 2026-11-16;
   R8-W2 d, the second lander after b2-1 and b2-2; Major; the Front's C-321 consent) SPEC 22.7, 22.5.1.
   - The string overload is `Console.writeLine(Text.utf8(text))` in `Formatting.kimi`'s Console group, after the view overload
