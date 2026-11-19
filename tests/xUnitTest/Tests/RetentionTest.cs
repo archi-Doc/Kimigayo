@@ -1495,9 +1495,11 @@ public sealed partial class RetentionTest
     // `...\front\notes\G935\r81\labels.txt`): R's Origin test is the result's or written storage's as a whole. mk2's result states s, an
     // Origin of v, so its u64 Err payload keeps v by Value (v.n, a part v holds by value), as mk3's keeps v.1 and putS's `*dst` v.n: the
     // calls of the Middle's pins rvResPartMixedBad, rvResTupMixedBad and rvwPartBuiltBad (MirBorrowsTest.Exposed on the one tree, I by
-    // O-364 (a)). With no position for a part of v, v is Content only (mk2i); an Origin-free v keeps CanHold alone (mk2f, O-364 (a) (2));
-    // a result stating only an Origin the contract does not relate to p's keeps nothing of p (prb), and pr's call in F's twin keeps
-    // nothing (O-435 (a)). Fails on ddfe08f7c: the three pins' calls keep v by Content only.
+    // O-364 (a)). The test is the storage's whatever the order its positions are walked in (mk2o's result and putSo's `*dst` have the u64
+    // before the Origin's element; F's G935 ruling 83, labels first in `...\front\notes\G935\r83\labels.md`) and reaches a nested position
+    // (mk5's u64 in a Tuple in Option's payload). With no position for a part of v, v is Content only (mk2i); an Origin-free v keeps
+    // CanHold alone (mk2f, O-364 (a) (2)); a result stating only an Origin the contract does not relate to p's keeps nothing of p (prb), and
+    // pr's call in F's twin keeps nothing (O-435 (a)). Fails on ddfe08f7c: the three pins' calls keep v by Content only.
     [Theory]
     [InlineData(
         MixedHolder + "func mk2(x: uniq/i32 during s, v: RS during s) -> Result<uniq/i32 during s, u64> => .Err(v.n)\n" +
@@ -1520,6 +1522,22 @@ public sealed partial class RetentionTest
             "        .Err(let e)\n            kk = 2\n            let k = e\n            return 0\n",
         "putS",
         "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(
+        MixedHolder + "func mk2o(x: uniq/i32 during s, v: RS during s) -> (u64, uniq/i32 during s) => $abort(\"x\")\n" +
+            "func g() -> ()\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var a: i32 = 0\n    let res = mk2o(a@uniq, s@move)\n",
+        "mk2o",
+        "result {0 Value, 1 Value}")]
+    [InlineData(
+        MixedHolder + "func putSo(dst: uniq/(u64, uniq/i32 during s), v: RS during s) => ()\n" +
+            "func g() -> ()\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var a: i32 = 0\n" +
+            "    var res: (u64, uniq/i32) = (1, a@uniq)\n    putSo(res@uniq, s@move)\n",
+        "putSo",
+        "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(
+        MixedHolder + "func mk5(x: uniq/i32 during s, v: RS during s) -> (uniq/i32 during s, Option<(u8, u64)>) => $abort(\"x\")\n" +
+            "func g() -> ()\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var a: i32 = 0\n    let res = mk5(a@uniq, s@move)\n",
+        "mk5",
+        "result {0 Value, 1 Value}")]
     [InlineData(
         MixedHolder + "func mk2i(x: uniq/i32 during s, v: RS during s) -> Result<uniq/i32 during s, i8> => .Err(1)\n" +
             "func g() -> ()\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var a: i32 = 0\n    let res = mk2i(a@uniq, s@move)\n",
