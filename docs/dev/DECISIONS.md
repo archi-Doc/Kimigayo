@@ -2903,6 +2903,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `CheckTypeUse`'s order, which have no row today (...; pinned)". H11's list (R7) keeps non-call fits' rows independent of
     Binding's verdict and the differing Function Type component itself, whose failed condition is one `UnprovenOriginContract_Kd` at
     the value and has no row.
+  - Superseded for call positions by R7-M51 (R7-O1 b1): A5 alone judges a body's call positions and Binding forms their rows, so
+    "Binding's until R7" no longer holds there.
 - **R4-M109 An Error node is each consumer's derived value** (2026-10-22; amends R4-M88's Rule 2 and Part 3, consistent with R5-M63;
   amended by R4-M149 and BU-103) SPEC 23.1.2, 13.7.2, 11.3.
   - Cause: the publisher kept a consumer's Adjust on an input it published Error (an Error has no Place, PlaceShape Value, and no value
@@ -2949,6 +2951,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `()`); L2's list adds 'a derived write's right side', and its 'no censused failure site produces such a consumer over an Error' no
     longer holds for it (validator-clean, no Loan, as L2 states). A Copy right side under a live exclusive Loan reports no conflict:
     the Copy is the securing, which rests on the failed target (a record selection, Q13).
+  - Superseded for call positions by R7-M51 (R7-O1 b1); its rule stays for an input rejected after selection (a static Place's
+    Borrow).
   - Deleted: `MirBuilder.Expansions.cs`' copy of the getter's Adjust (`HirAdjust.Of(argument)` and its ByCase/None choice).
   - Rejected: design A's `(Unset, …)` (the column's default, which `Blocks.Result` reads as not consumed); A5 ignoring Loans on Opaque
     stand-ins (suppressing a derived report afterwards); failing the call (hides its independent records); locating the receiver at the
@@ -14764,6 +14768,8 @@ resumed by R4-M86 (2026-10-20).
   - Closes PLAN G936. Open: G942-G944 (above); a Closure's value call never proves its result's clauses, since
     `CarriesResultPremises` excludes anonymous functions (PLAN G962, to reuse this judge); pre-existing on G913 and found by the
     Middle's consent re-check: PLAN G966, G967 and the G710 and G870 additions.
+  - Amended by R7-M51 (R7-O1 b1): a value call opens its waited Origin parameters too, as the direct call does
+    (`SlotSolution.OpenWaited`, one member with the named call).
 - **BU-224 The expected Type reaches every part of an argument, and a value at `ref/U` is one temporary borrowed once: principles A
   and B of argument flow (PLAN G924 AF-1, AF-2)** (2026-11-18; Front, Binding; Major, an acceptance mover (Q-477); the owner's
   direction of 2026-11-15 answering O-331, verbatim 「提案の方針（原則A：期待型を引数の式に下ろす、原則B：ref/U に渡す値の式は引数の位置で一時値にして1回借用する）でOKです。提案書を作成し、設計、実装を進めて下さい。SPECもそれに合わせて、修正して下さい。」, and its
@@ -21927,6 +21933,33 @@ R8-M* and R9-M* by the stage of the recording unit.
     `WritableOwner` with a second test at `CheckDestination` (a second walk to the temporary); accepting the whole Temporary Place
     write (no lowering).
   - Closes PLAN G1068 and G203's first half (BU-21's `pair().0@uniq` limit).
+- **R7-M51 A body's call positions are judged by A5 alone; Binding forms their rows** (Middle, 2026-11-19; R7-O1 b1, Q-537; Major, a
+  record mover by class (Q18), no acceptance move; design `r7-o1-design.md` Revision 2 §2.1-§2.3, the Front's design review and
+  re-check C-410 ACCEPT WITH CONDITIONS; R7 plan revision 99) SPEC 15.6.1, 15.6.4, 15.6.5, 23.1.2.
+  - **Rule.** In an executable body Binding judges no call position's Origin relation (a selected direct or property call's, a value
+    call's clauses, a Case construction's, the Require arms'): `FormBodyRelation` (`Binding.Obligations.cs`) forms each, one rule in
+    five steps, and A5's Origin stratum (`MirOrigins`) is its one judge (SPEC 15.6.5): (1) a meet at the longer end that does not fit
+    as a whole decomposes, each operand its own relation (SPEC 15.3.6); (2) the fit's answer at the use, both directions for `==`
+    (`FitConjunct`: `FitOriginOutlives`, the pure `FitsOriginOutlives` inside candidate trials and collected fits); (3) a body chain is
+    a row whatever the answer (its obligation bounds the region graph); (4) a fixed-fixed relation (2) proves needs no row; (5)
+    otherwise the row, through `AddObligation` and its Unstated rule (SPEC 5.7).
+  - **The declaration judge stays** (OJ1): `JudgeDeclarationPosition` (`Binding.OriginClauses.cs`) judges a position in the
+    declaration frame.
+  - **Published:** `FixedBy` on `BindingObligation` and `OriginRow` (adapter-only; `MirOrigins` never reads it): the input whose
+    equality fixed a call's fresh Origin (SPEC 15.6.1), the record's related location.
+  - **Amends BU-223 (J2):** a value call opens its waited Origin parameters as the direct call does (`SlotSolution.OpenWaited`, one
+    member with the named call).
+  - **Records (Q13), no acceptance move:** partition Binding -> Ownership for every call position (code, location and related kept);
+    independent records dev hid, kept (an input's instantiated well-formedness beside its fit; a Loan conflict behind a formerly
+    opaque argument; A1's `UninitializedPlace_Kd` at a call consuming a Never array element, SPEC 14.10.3); the nested-body limit (E2
+    case (b)) moves from a Language record to the located `Unsupported_Kd`; an `==` failing one way names the failing direction; a
+    duplicate `UnprovenConstraint_Kd` is removed (one owner per input Type occurrence's clause).
+  - **Supersedes for call positions:** 2a0-D D1's fixed-fixed clause, R4-M108's "Binding's until R7", R4-M109 (a rejected argument is
+    an Error, opaque input) and `MirOrigins`' contract "must not judge a relation Binding judged directly" (it still holds for fits
+    until H1). R4-M109's rule stays for an input rejected after selection (a static Place's Borrow).
+  - **Deleted:** `HasCallRelation`.
+  - **Rejected:** a split by caller (b1a/b1b, a second rule); Binding keeping a judgment for enclosing-call-region ends (a second
+    judge); keeping `HasCallRelation` (a suppression that reads no failed input).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
