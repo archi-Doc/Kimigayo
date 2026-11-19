@@ -168,7 +168,7 @@ public sealed partial class Binding
         }
     }
 
-    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType)
     {
         var binder = selected.OriginBinder;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
