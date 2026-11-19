@@ -273,7 +273,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        var temps = f.Locals.ToArray().Where(x => x.Kind == MirLocalKind.Temp && c.SyntaxOf(x.Source.Syntax).ToString() == target).Select(static x => TyCtxt.Name(x.Type));
+        var temps = f.Locals.ToArray().Where(x => x.Kind == MirLocalKind.Temp && c.SyntaxOf(x.Source.Syntax).ToString() == target).Select(static x => TyCtxt.Name(x.Type!));
         Assert.Contains(type, temps);
         Assert.DoesNotContain("Never", temps);
     }
@@ -348,7 +348,7 @@ public sealed partial class MirBuildTest
         var program = Compile("public func main()\n    let values: [3 of string] = [\"a\", \"b\", \"c\"]\n    for value in values@move => ()\n").BuildMir();
         Assert.Empty(program.Findings);
         var drop = program.Bodies.ToArray()
-            .Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "drop" } && x.Locals[1].Type.Symbol?.Name == "FixedOwnedRemainder");
+            .Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "drop" } && x.Locals[1].Type?.Symbol?.Name == "FixedOwnedRemainder");
         Assert.DoesNotContain(drop.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Drop && x.Terminator.Place.Root == 1);
     }
 
@@ -360,7 +360,7 @@ public sealed partial class MirBuildTest
         var program = Compile("public func main()\n    let values: Array<string> = [\"a\"]\n    for value in values@move => ()\n").BuildMir();
         Assert.Empty(program.Findings);
         var init = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "init" } &&
-            x.Locals.ToArray().Any(static y => y.Type.Symbol?.Name == "ArrayOwningIterator") && x.Locals.ToArray().Any(static y => y.Type.Symbol?.Name == "InlineStorage"));
+            x.Locals.ToArray().Any(static y => y.Type?.Symbol?.Name == "ArrayOwningIterator") && x.Locals.ToArray().Any(static y => y.Type?.Symbol?.Name == "InlineStorage"));
         Assert.DoesNotContain(init.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Drop && init.TypeOf(x.Terminator.Place)?.Symbol?.Name == "InlineStorage");
     }
 
@@ -544,15 +544,31 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var held = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref)
-            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type), Binding.HoverTypeName(x.Rvalue.Type!)));
+            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type!), Binding.HoverTypeName(x.Rvalue.Type!)));
         Assert.Equal(Enumerable.Repeat(("uniq/i32 during (s and a)", "uniq/i32 during (s and a)"), 4), held);
+    }
+
+    // PLAN G1073 (SPEC 23.1.2; the design's R1-10): a parameter whose Type Binding failed is a local of no Type, in its function's body and,
+    // as the prepared input of a later default's template, never a reference over no Type; both bodies validate, with no record (g's
+    // call omits the default into a failed signature: an Opaque, no copy).
+    [Fact]
+    public void AFailedParameterIsALocalOfNoTypeInItsBodyAndALaterDefaultsTemplate()
+    {
+        var c = Compile("func g<T>(t: T, u: Missing, v: i32 = 1) -> i32\n    return v\nfunc h() -> i32\n    return g(1, 2)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name == "g").ToDictionary(static x => x.Key.Kind);
+        Assert.Null(bodies[MirBodyKind.Fn].Locals.ToArray().Single(static x => x.Name == "u").Type);
+        Assert.Null(bodies[MirBodyKind.DefaultTemplate].Locals.ToArray().Single(static x => x.Name == "u").Type);
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M145, BU-103): a Place whose bare acquisition failed, a Place without a Type (its parameter's Type
     // unresolved), is a derived Opaque with no record, discarded or as an item no consumer took (its Adjust unset, which the container
     // reads as a discard), its plan row Failed, as any consumed child's Failed Adjust is; a complete compilation has no such row
-    // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition). g's fallthrough into i32 rests on that Error (no FunctionFallthrough_Kd), so
-    // its result is a second derived Opaque, without a root (MirBuilder.Leave).
+    // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition). The discarded value is of no Type, the statement's Type Binding failed (PLAN
+    // G1073: MirBuilder.Held). g's fallthrough into i32 rests on that Error (no FunctionFallthrough_Kd), so its result is a second derived
+    // Opaque, without a root (MirBuilder.Leave).
     [Fact]
     public void AFailedDiscardRowIsDerivedFromABindingError()
     {
@@ -567,7 +583,7 @@ public sealed partial class MirBuildTest
             var b = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "b");
             var opaques = Opaques(body);
             Assert.Equal([b], opaques[0].Roots);
-            Assert.Equal(name == "g" ? ["()", "i32"] : ["()"], opaques.Select(static x => x.Type));
+            Assert.Equal(name == "g" ? [null, "i32"] : [null], opaques.Select(static x => x.Type));
             Assert.Equal(name == "g" ? [0] : [], opaques[1..].Select(static x => x.Root + x.Roots.Length));
         }
     }
@@ -727,7 +743,7 @@ public sealed partial class MirBuildTest
         => string.Join(", ", sites.Select(x => x == subject ? "body" : $"{c.SyntaxOf(x).GetType().Name} {c.SyntaxOf(x).ToString().Split('\n')[0].Trim()}".Trim()));
 
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
-    private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
+    private static (string? Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
         .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Opaque)
-        .Select(x => (TyCtxt.Name(body.TypeOf(x.Place)!), x.Place.Root, body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray()))];
+        .Select(x => (body.TypeOf(x.Place) is { } type ? TyCtxt.Name(type) : null, x.Place.Root, body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray()))];
 }

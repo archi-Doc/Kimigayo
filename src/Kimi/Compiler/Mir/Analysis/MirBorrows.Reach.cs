@@ -258,7 +258,7 @@ internal sealed partial class MirBorrows
     }
 
     // Whether a local's case Type may hold a Loan (Holds): the holder test (MirBorrows.Holders).
-    private bool Holding(int local) => this.Holds(cases.Type(this.body.Locals[local].Type), out _);
+    private bool Holding(int local) => this.Holds(cases.KnownType(this.body.Locals[local].Type), out _);
 
     // The guard of a holder's own root Type, the Type the walk reads its state at (Writes, Read): what a call that writes its storage
     // may write past it (Holds); none for E and a static, which a call writes as storage the body does not own.
@@ -269,16 +269,23 @@ internal sealed partial class MirBorrows
             return MirWrites.None;
         }
 
-        _ = this.Holds(cases.Type(this.body.Locals[root].Type), out var writes);
+        _ = this.Holds(cases.KnownType(this.body.Locals[root].Type), out var writes);
         return writes;
     }
 
     // Whether a case Type may hold a Loan, with what a call may write past a value of it (MirTypes.HoldsLoans, one walk per distinct case
     // Type and program version), memoized: the answer is a function of the interned Type and of what Binding publishes it holds
     // (TyCtxt.Holdings), which a version fixes, so the memo is cleared when the program's version changes (DECISIONS R4-M140). The
-    // holder test and the walk's guard ask it of a local's Type, the storing rule's landing fact of a Place's (MirBorrows.Storing).
-    private bool Holds(BoundType type, out MirWrites writes)
+    // holder test and the walk's guard ask it of a local's Type, the storing rule's landing fact of a Place's (MirBorrows.Storing). A local
+    // of no Type (a slot Binding failed, PLAN G1073) holds nothing and a call writes nothing past it: rule W finds nothing to judge there.
+    private bool Holds(BoundType? type, out MirWrites writes)
     {
+        if (type is null)
+        {
+            writes = MirWrites.None;
+            return false;
+        }
+
         if (this.holdingVersion != this.program.Version)
         {
             this.holdingVersion = this.program.Version;

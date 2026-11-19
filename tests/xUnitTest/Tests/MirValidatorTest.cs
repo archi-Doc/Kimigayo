@@ -872,7 +872,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var lengths = body.Consts.ToArray().Where(static x => x.Kind == MirConstKind.Length).ToArray();
         Assert.Equal([LengthOperation.InterpolationBound, LengthOperation.InterpolationHint], lengths.Select(static x => ((BoundLength)x.Value!).Operation));
         var length = lengths[0];
-        var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type;
+        var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type!;
         Assert.Equal((LengthOperation.InterpolationBound, (object)region.LengthExpression!), (region.LengthExpression!.Operation, length.Value!));
         Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
         var findings = new List<MirFinding>();
@@ -1532,7 +1532,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-        Assert.Equal(BoundTypeKind.Parameter, f.Locals[1].Type.Kind);
+        Assert.Equal(BoundTypeKind.Parameter, f.Locals[1].Type!.Kind);
         Assert.Contains(f.Consts.ToArray(), x => x.Kind == MirConstKind.Integer && ReferenceEquals(x.Type, BoundType.Primitives[type]) && x.Bits == bits);
     }
 
@@ -1941,6 +1941,35 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         Assert.Equal(broken is null or "destructor" ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+    }
+
+    // PLAN G1073 (SPEC 23.1.2; the design's R1-2): a slot of no Type is Binding's failed slot, read by no location that judges its Type:
+    // the builder's body of a function with a parameter of unresolved Type, an Arg of no Type, is valid; _0 or a typed parameter of no
+    // Type, the failed parameter typed (the signature's slot is the fact), and a local of no Type read into a typed temp, are Local
+    // findings.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("result")]
+    [InlineData("typed")]
+    [InlineData("parameter")]
+    [InlineData("read")]
+    public void ASlotOfNoTypeIsBindingsFailedSlot(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f(n: Missing, m: i32) -> i32\n    let k = m\n    return k\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var locals = body.Locals.ToArray();
+        var at = Array.FindIndex(locals, x => x.Name == broken switch { "typed" => "n", "parameter" => "m", "read" => "k", _ => null });
+        Assert.Null(locals.Single(static x => x.Name == "n").Type);
+        if (broken == "result")
+        {
+            Unsafe.AsRef(in body.Locals[0]) = locals[0] with { Type = null };
+        }
+        else if (broken is not null)
+        {
+            Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Type = broken == "typed" ? BoundType.I32 : null };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
     // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,

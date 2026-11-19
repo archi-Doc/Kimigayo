@@ -133,12 +133,13 @@ internal static partial class MirTypes
     /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a reservation: reserved at the borrow and
     /// activated at the Call that takes it, a call's input on its preparation path (SPEC 15.6.7), or at the write through it, an update's
     /// destination (SPEC 13.7.2).</summary>
-    /// <param name="reference">The reference Type.</param>
+    /// <param name="reference">The reference Type; none for a borrow of a Place of no Type, which <see cref="MirValidator"/> reports (a
+    /// failed slot is borrowed by no location, PLAN G1073).</param>
     /// <param name="input">Whether the borrow is a reservation.</param>
     /// <returns>The borrow's kind.</returns>
-    internal static MirRefKind RefKind(BoundType reference, bool input)
+    internal static MirRefKind RefKind(BoundType? reference, bool input)
     {
-        if (reference.Semantics == SemanticsKind.Raw)
+        if (reference?.Semantics == SemanticsKind.Raw)
         {
             return MirRefKind.Raw;
         }

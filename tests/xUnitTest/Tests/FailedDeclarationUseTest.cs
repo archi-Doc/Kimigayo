@@ -207,6 +207,11 @@ public sealed class FailedDeclarationUseTest
         { "p.unresR+Wc", "func f() -> Missing\n    var x = 1\n    let r = x@uniq\n    let k = x\n    r@follow = 2\n    return k\nfunc g() -> i32\n    let m = f()\n    var y = 1\n    let q = y@uniq\n    let n = y\n    q@follow = 2\n    return n\n", "ComparisonLoanConflict_Kd: let n = y | UnresolvedBinding_Kd: func f() -> Missing" },
         { "r4.clU+W", "func f() -> i32\n    let c = func [] () -> Missing\n        var x = 1\n        let r = x@uniq\n        let k = x\n        r@follow = 2\n        return k\n    return 0\n", "ComparisonLoanConflict_Kd: let k = x | UnresolvedBinding_Kd: let c = func [] () -> Missing" },
         { "r4.unresTd", "func g(n: Missing = 1) -> i32 => 0\n", "UnresolvedBinding_Kd: func g(n: Missing = 1) -> i32 => 0" },
+        // PLAN G1073's MIR rows (rule W at the instance collector, a held value of no Type): a generic body that holds a value of no Type
+        // (a failed local's statement, a Closure of a failed parameter) and a valid call reaches; its instance has no layout obligation for it.
+        { "rv.genU+call", "func g<T>(t: T) -> i32\n    let y: Missing = 1\n    return 0\nfunc h() -> i32\n    return g(1)\n", "UnresolvedBinding_Kd: let y: Missing = 1" },
+        { "rv.genCl+call", "func g<T>(t: T) -> i32\n    let c = func (x: Missing) -> i32 => 1\n    return 0\nfunc h() -> i32\n    return g(1)\n", "UnresolvedBinding_Kd: let c = func (x: Missing) -> i32 => 1" },
+        { "c1.genHeldW", "func g<T>(t: T) -> i32\n    let y: Missing = 1\n    var x = 1\n    let r = x@uniq\n    let k = x\n    r@follow = 2\n    return k\nfunc h() -> i32\n    return g(1)\n", "ComparisonLoanConflict_Kd: let k = x | UnresolvedBinding_Kd: let y: Missing = 1" },
         { "r2.free+Tt", "func f<T, U>(t: T) -> i32\n    let u = t\n    let v = t\n    return 0\n", "TransferRequired_Kd: let u = t | TransferRequired_Kd: let v = t" },
     };
 

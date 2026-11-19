@@ -55,7 +55,7 @@ public class OwnershipJoinTest
             var program = c.BuildMir();
             var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "inspect");
             var selected = Assert.Single(body.Locals.ToArray(), static x => x.Name == "selected");
-            Assert.Equal(OriginKind.Intersection, selected.Type.Origin!.Kind);
+            Assert.Equal(OriginKind.Intersection, selected.Type!.Origin!.Kind);
             Assert.Equal(2, selected.Type.Origin.Operands.Count);
             Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code.IsLoanConflict());
             foreach (var owner in new[] { "a", "b" })

@@ -203,7 +203,7 @@ internal sealed partial class InstanceCollector
         var storage = Binding.StorageOutcome.Prepared;
         for (var i = 0; !open && i < body.Locals.Length; i++)
         {
-            var (instance, verdict) = this.types.Instance(body.Locals[i].Type, representative);
+            var (instance, verdict) = this.Instance(body.Locals[i].Type, representative);
             (open, storage) = (Open(instance), verdict > storage ? verdict : storage);
         }
 

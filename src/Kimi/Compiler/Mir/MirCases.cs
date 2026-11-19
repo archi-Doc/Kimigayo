@@ -173,12 +173,29 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
+    /// <summary>Gets the case Type (<see cref="Type"/>) of a Type that may be unknown: none for none, a local or static of no Type (a slot
+    /// Binding failed, <see cref="MirLocal"/>; PLAN G1073), which a validated body only writes whole, begins or ends the storage of, returns
+    /// or names at an Opaque site, and a temp of no Type derived from one, which only a delivery or an rvalue taking its Type from its
+    /// operands reads (<see cref="MirValidator"/>). The readers of such a whole Place take it: the holder test, the walk's guard, a store's
+    /// receiving part, the raw-holding tests of a body's inputs and of a Call's destination, and the enclosed-layer test of a read operand.</summary>
+    /// <param name="type">The Type, or none.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownType(BoundType? type) => type is null ? null : this.Type(type);
+
+    /// <summary>Gets the case Type (<see cref="KnownType(BoundType?)"/>) of a Place a location writes whole: none for a Place of no Type.</summary>
+    /// <param name="place">A Place of the selected body.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownTypeOf(MirPlace place) => this.KnownType(this.Body.TypeOf(place));
+
     /// <summary>Gets the Type a Place of the selected body has under the selected view: its Type (<see cref="MirBody.TypeOf"/>), which a
-    /// validated body states for every Place (<see cref="MirValidator"/> checks each Place a location names, a diverging Call's
-    /// destination included), as a case Type (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
+    /// validated body states for every Place a location reads, borrows, drops or projects (<see cref="MirValidator"/> checks each Place a
+    /// location names, a diverging Call's destination included; a Place of no Type, a failed slot, is only written whole, begun, ended,
+    /// returned or an Opaque site's root, whose readers take <see cref="KnownTypeOf"/>), as a case Type (<see cref="Type"/>), the one form
+    /// every case reader of a Place takes.</summary>
     /// <param name="place">A Place of the selected body.</param>
     /// <returns>The case Type.</returns>
-    internal BoundType TypeOf(MirPlace place) => this.Type(this.Body.TypeOf(place)!);
+    internal BoundType TypeOf(MirPlace place)
+        => this.Type(this.Body.TypeOf(place) ?? throw new InvalidOperationException($"A case reader read {place} of no Type (InternalInvariant)."));
 
     /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's Type as a case Type
     /// (<see cref="Type"/>) or its Place's (<see cref="TypeOf(MirPlace)"/>), the one form every case reader of an operand takes.</summary>

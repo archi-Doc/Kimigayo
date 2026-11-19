@@ -637,9 +637,9 @@ public sealed partial class MirBuildTest
         Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
         Assert.Equal(calls, body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(x => Step(body, x.Terminator).Split(' ')[0])
             .Where(static x => x != "Fail").Order(StringComparer.Ordinal));
-        Assert.Equal(region, Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type)
+        Assert.Equal(region, Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type!)
             .Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name).SingleOrDefault());
-        var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
+        var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type!.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
         Assert.Single(writers); // One writer local, both arms' (consent 1).
     }
 
@@ -713,7 +713,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Problems.All.ToArray());
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
-        var locals = Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type).ToArray();
+        var locals = Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type!).ToArray();
         Assert.Equal(regions, locals.Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name));
         Assert.Equal(writers, Regex.Matches(MirDumpTest.Unsited(program, body), @"= writer<(\w+)>\(").Select(static x => x.Groups[1].Value));
         Assert.Equal(writers.Length, locals.Count(static x => x.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer)); // One writer local for each plan.
@@ -836,7 +836,7 @@ public sealed partial class MirBuildTest
         var dropped = body.Blocks.ToArray().Where(static x => x.Terminator is { Kind: MirTerminatorKind.Drop, Place.Projection: 0 })
             .Select(static x => x.Terminator.Place.Root).Distinct().ToArray();
         return dropped.Any(x => body.Locals[x].Name == key) ? Assert.Single(dropped, x => body.Locals[x].Name == key)
-            : Assert.Single(dropped, x => TyCtxt.Name(body.Locals[x].Type) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
+            : Assert.Single(dropped, x => TyCtxt.Name(body.Locals[x].Type!) == key || c.SyntaxOf(body.Locals[x].Source.Syntax).ToString() == key);
     }
 
     // Whether a body drops a local and, in the cleanup chain after some Drop of it (along Drops and Gotos), another; an assignment's Drop

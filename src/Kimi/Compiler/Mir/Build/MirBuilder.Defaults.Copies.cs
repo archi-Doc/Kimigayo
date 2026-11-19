@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -86,10 +87,11 @@ internal sealed partial class MirBuilder
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageDead, through, view.Source with { StatementStart = false }));
     }
 
-    // A Type of a copy in the call's instance (Instantiates), each once.
-    private bool Instance(BoundType type, Subst subst)
+    // A Type of a copy in the call's instance (Instantiates), each once; a local of no Type (a slot Binding failed, PLAN G1073) has none
+    // and folds to itself (FoldType).
+    private bool Instance(BoundType? type, Subst subst)
     {
-        if (this.instances.ContainsKey(type))
+        if (type is null || this.instances.ContainsKey(type))
         {
             return true;
         }
@@ -106,8 +108,9 @@ internal sealed partial class MirBuilder
     // A copy's location, in the copy's scope (Frame).
     private SourceInfo FoldInfo(in SourceInfo info) => info with { Scope = this.folded[info.Scope] };
 
-    // A copy's Type in the call's instance (Instantiates); a copy without a substitution keeps its template's.
-    private BoundType FoldType(BoundType type, Subst? subst) => subst is null ? type : this.instances[type];
+    // A copy's Type in the call's instance (Instantiates); a copy without a substitution keeps its template's, and none stays none.
+    [return: NotNullIfNotNull(nameof(type))]
+    private BoundType? FoldType(BoundType? type, Subst? subst) => subst is null || type is null ? type : this.instances[type];
 
     // Plan 5.6.2: a copy's frame, where each scope, local and block of its template is in this body (folded, in that order, each in its
     // template's order: Inline reads a local at the scope count, a block after the locals): its scopes in a scope Inlined at the call,
@@ -294,7 +297,7 @@ internal sealed partial class MirBuilder
         MirRvalue Reacquired(in MirRvalue acquire)
         {
             var place = FoldPlace(template.Operands[acquire.Start].Place);
-            return this.ByCase(place, this.body.TypeOf(place) ?? BoundType.Unit, acquire.Op == (byte)MirRefKind.TwoPhaseUniq)
+            return this.ByCase(place, this.body.TypeOf(place), acquire.Op == (byte)MirRefKind.TwoPhaseUniq)
                 ?? MirRvalue.Use(this.body.AddOperand(MirOperand.Copy(place)));
         }
     }

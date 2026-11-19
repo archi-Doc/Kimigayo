@@ -193,7 +193,7 @@ internal sealed partial class MirBuilder
         {
             if (plan.Positions[i] is { BodySymbol: { } symbol, Source: var binding })
             {
-                var type = symbol.Type ?? BoundType.Unit;
+                var type = symbol.Type; // None where Binding failed it (PLAN G1073).
                 var adjust = HirTables.AdjustOf(binding);
                 var place = this.selected[start + i];
                 var mutable = Binding.Reassignable(symbol);

@@ -197,11 +197,9 @@ internal sealed partial class MirBuilder
         return place;
     }
 
+    // A static's root of its symbol's Type, none where Binding failed it (PLAN G1073): a static of no Type holds no raw authority.
     private MirPlace StaticRoot(BindingSymbol symbol)
-    {
-        var type = symbol.Type ?? BoundType.Unit;
-        return this.body.Static(new(symbol, type, Binding.Reassignable(symbol), MirTypes.HoldsRaw(compilation.Types, type, this.walked)));
-    }
+        => this.body.Static(new(symbol, symbol.Type, Binding.Reassignable(symbol), MirTypes.HoldsRaw(compilation.Types, symbol.Type, this.walked)));
 
     // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow; a Tuple element at
     // the position its own plan row keeps (Folded).
@@ -315,11 +313,12 @@ internal sealed partial class MirBuilder
 
     // The place a node's value is held in (Value; a transfer's operand whose value-less paths it delivers apart, Transfer): the place
     // given where that has the value's Type, else a new temp of it, which its holder makes; the Type Binding gave, else the expected
-    // one, and an Error node's always the expected one, in an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149).
+    // one, and an Error node's always the expected one, in an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149); none where
+    // both are unknown (PLAN G1073).
     private MirPlace Held(Koto node, BoundType? expected, MirPlace? into)
     {
         var derived = HirTables.Op(node) == HirOp.Error;
-        var type = (derived ? expected : null) ?? HirTables.TypeOf(node) ?? expected ?? BoundType.Unit;
+        var type = (derived ? expected : null) ?? KnownType(node) ?? expected;
         if (this.Given(into, type) is { } place)
         {
             return place;

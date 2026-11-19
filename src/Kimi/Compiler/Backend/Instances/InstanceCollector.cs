@@ -217,11 +217,12 @@ internal sealed partial class InstanceCollector
 
     /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
     /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its instance under the representative when its
-    /// storage is Prepared (Instance).</summary>
+    /// storage is Prepared (Instance); none for none.</summary>
     /// <param name="item">The item.</param>
-    /// <param name="type">A Type of its body.</param>
-    /// <returns>The Type in the instance, or null when its storage is not Prepared (a site maps the verdict, In).</returns>
-    internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
+    /// <param name="type">A Type of its body; none for a local of no Type (a slot Binding failed, PLAN G1073), which a body of a rejected
+    /// program alone has, so code generation, which runs on an accepted one, never meets it.</param>
+    /// <returns>The Type in the instance, or null when its storage is not Prepared (a site maps the verdict, In) or it has no Type.</returns>
+    internal BoundType? TypeOf(int item, BoundType? type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
 
     /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
     /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
@@ -255,13 +256,17 @@ internal sealed partial class InstanceCollector
         return storage == Binding.StorageOutcome.Prepared;
     }
 
-    // A Type of an item's body in the item's instance with its storage verdict (TyCtxt.Instance), the one path of TypeOf and In: the Type
-    // itself, Prepared, for a closed item.
-    private (BoundType? Type, Binding.StorageOutcome Storage) Instance(int item, BoundType type)
-        => this.Set.Items[item].Representative is { } representative ? this.types.Instance(type, representative) : (type, Binding.StorageOutcome.Prepared);
+    // A Type of an item's body in the item's instance with its storage verdict (TyCtxt.Instance), the one path of TypeOf, In and
+    // Instantiable: the Type itself, Prepared, for a closed item. SPEC 23.1.2 (rule W, PLAN G1073): a local of no Type (a slot Binding
+    // failed, MirLocal) has no instance and no obligation, none Prepared, never substituted; BuildMir collects every validated body at check
+    // (SPEC 8.15.3), a rejected program's included.
+    private (BoundType? Type, Binding.StorageOutcome Storage) Instance(int item, BoundType? type) => this.Instance(type, this.Set.Items[item].Representative);
+
+    private (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType? type, Subst? representative)
+        => type is not null && representative is not null ? this.types.Instance(type, representative) : (type, Binding.StorageOutcome.Prepared);
 
     // A Type of an item's body in the item's instance (Instance), its verdict read at the site (Made); null unless Prepared.
-    private BoundType? In(int item, SourceRef subject, BoundType type)
+    private BoundType? In(int item, SourceRef subject, BoundType? type)
         => this.Instance(item, type) is var (closed, storage) && this.Made(storage, subject) ? closed : null;
 
     // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path. A broken contract,

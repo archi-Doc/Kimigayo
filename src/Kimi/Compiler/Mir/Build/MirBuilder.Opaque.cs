@@ -74,12 +74,12 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.SetCount(this.located, mark);
     }
 
-    // An Opaque value at a node's site naming the roots collected; where it cannot complete, building continues in a block only the
-    // checks reach.
+    // An Opaque value at a node's site naming the roots collected, of its destination's Type (none for a destination of no Type, PLAN
+    // G1073); where it cannot complete, building continues in a block only the checks reach.
     private void Site(Koto node, MirPlace destination, bool completes)
     {
         var site = this.body.AddOpaque(SourceRef.Of(node), CollectionsMarshal.AsSpan(this.roots));
-        this.Set(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), node);
+        this.Set(destination, MirRvalue.Opaque(this.body.TypeOf(destination), site), node);
         if (!completes)
         {
             this.Diverge(node);

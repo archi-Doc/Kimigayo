@@ -233,8 +233,7 @@ internal sealed partial class MirValidator
             var sites = caseSites.Count;
             switch (statement.Kind)
             {
-                case MirStatementKind.StorageLive or MirStatementKind.StorageDead when local.Type is null ||
-                    local.Kind is not (MirLocalKind.Var or MirLocalKind.Temp):
+                case MirStatementKind.StorageLive or MirStatementKind.StorageDead when local.Kind is not (MirLocalKind.Var or MirLocalKind.Temp):
                     this.Report(MirViolation.StorageLocal);
                     break;
                 case MirStatementKind.EndBorrow when !MirTypes.IsReference(local.Type):
@@ -265,8 +264,9 @@ internal sealed partial class MirValidator
             this.delivering = statement is { Kind: MirStatementKind.Assign, Place: { Root: 0, Projection: 0 }, Rvalue: { Kind: MirRvalueKind.Use, Op: 0 } } &&
                 body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.Move;
             this.byCase = caseSites.Count > sites; // Its rvalue is a case site (MirValidator.Types).
+            this.propagating = statement.Kind == MirStatementKind.Assign && Propagates(statement.Rvalue);
             MirUses.ForEach(body, location, ref this);
-            (this.acquires, this.used, this.delivering, this.byCase) = (false, false, false, false);
+            (this.acquires, this.used, this.delivering, this.byCase, this.propagating) = (false, false, false, false, false);
             return true;
         }
 
@@ -332,9 +332,9 @@ internal sealed partial class MirValidator
                 this.Report(MirViolation.Operation); // PLAN G442: a construction's insertion transfers whole temps into it.
             }
 
-            this.calling = terminator.Kind == MirTerminatorKind.Call;
+            (this.calling, this.returning) = (terminator.Kind == MirTerminatorKind.Call, terminator.Kind == MirTerminatorKind.Return);
             MirUses.ForEach(body, location, ref this);
-            this.calling = false;
+            (this.calling, this.returning) = (false, false);
             return valid;
         }
     }

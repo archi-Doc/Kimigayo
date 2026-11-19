@@ -236,7 +236,8 @@ internal sealed partial class MirBuilder
         return valued;
     }
 
-    // SPEC 6.6: a local of its symbol's Type, visible after its declaration, initialized as its initializer's Adjust takes it. A
+    // SPEC 6.6: a local of its symbol's Type (none where Binding failed it, PLAN G1073), visible after its declaration, initialized as its
+    // initializer's Adjust takes it. A
     // declaration Binding rejected, whose symbol it typed, declares its local too, so every use of the name is that one storage (SPEC
     // 3.6), and its initializer, which the HIR replaced, gives the declaration's derived value (SPEC 23.1.2; DECISIONS R4-M125), whose
     // site names no earlier build's local of the name (a defer body is built at each exit).
@@ -246,7 +247,7 @@ internal sealed partial class MirBuilder
         var local = this.Live(
             this.body.AddLocal(
                 new(
-                symbol.Type ?? BoundType.Unit,
+                symbol.Type,
                 MirLocalKind.Var,
                 this.Info(variable, local: true),
                 Binding.Reassignable(symbol),
