@@ -190,10 +190,11 @@ public sealed partial class Binding
     // (ValidateDeclarationProjectionInputs, which names it).
     private void SettlePremiseFailures(BindingMode mode)
     {
-        this.ValidateConstraintEnvironments(mode);
-        while (mode == BindingMode.Final && (this.FailPremiseInputs() | this.ValidateConstraintEnvironments(mode, sourcesOnly: true)))
+        var failed = this.ValidateConstraintEnvironments(mode);
+        while (mode == BindingMode.Final && (this.FailPremiseInputs() | failed))
         {
             this.ClearCapabilityResults();
+            failed = this.ValidateConstraintEnvironments(mode, sourcesOnly: true);
         }
     }
 
@@ -273,14 +274,15 @@ public sealed partial class Binding
         return changed;
     }
 
-    // The fixpoint's input writer (SettlePremiseFailures, Final): only a declaration's projection input that answers Error (a failed
-    // fact) is recorded before the bodies; any other answer waits for ValidateDeclarationProjectionInputs, after them.
+    // The fixpoint's input writer (SettlePremiseFailures, Final): only a premise clause's projection input that answers Error (a failed
+    // fact, which fails the premise) is recorded before the bodies; every other input waits for ValidateDeclarationProjectionInputs,
+    // after them.
     private bool FailPremiseInputs()
     {
         var changed = false;
         foreach (var use in this.projectionUses)
         {
-            if (ProjectionDeclarationOwner(use.Use) is not { } declaration)
+            if (ProjectionDeclarationOwner(use.Use) is not { } declaration || this.PremiseClause(use.Use, declaration) is null)
             {
                 continue;
             }
