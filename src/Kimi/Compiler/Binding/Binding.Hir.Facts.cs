@@ -166,7 +166,8 @@ public sealed partial class Binding
 
     // PLAN G1073 (SPEC 23.1.2): whether every slot a node declares is stated (Stated): a declared local's; a definition's result and
     // parameters (an accessor's executing function's, with its self and value; a static's or Field's Type); the bindings of a match's, a
-    // try's or a for loop's plan; a Closure's parameters and result as a named function's (PLAN G1110). A node with a slot neither typed
+    // try's or a for loop's plan; a Closure's parameters and result as a named function's once its definition is published (PLAN G1110:
+    // a literal whose binding failed before its header formed, such as a header refuted by its expected Type, publishes no slot). A node with a slot neither typed
     // nor failed lacks its facts (HirTables.Broken) whatever its state: Binding records every failed slot's cause at its TypeSource. No
     // other node declares a slot the builder reads: a Closure's environment holds typed captures only (a capture of a source whose Type
     // failed forms no environment binding); a static's Place is built only under its declaration's Body (MirBuilder's
@@ -184,7 +185,7 @@ public sealed partial class Binding
                 var bound = Accessor(accessor);
                 return this.Stated(CallPlan.Accessor(this, accessor)) && (bound.SelfSymbol is not { } self || this.Stated(self)) &&
                     (bound.ValueSymbol is not { } value || this.Stated(value));
-            case FunctionKoto function when HirTables.Symbol(function) is { } symbol:
+            case FunctionKoto function when HirTables.Symbol(function) is { } symbol && (!function.IsAnonymous || function.ClosureDefinition is not null):
                 if (!this.Stated(symbol))
                 {
                     return false;
