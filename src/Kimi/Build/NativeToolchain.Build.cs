@@ -11,8 +11,6 @@ namespace Kimi.Build;
 
 internal static partial class NativeToolchain
 {
-    private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
-
     // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
@@ -24,7 +22,7 @@ internal static partial class NativeToolchain
         var projectBin = project.KimiOptions.LlvmBin is null && project.Directory.Length != 0; // A project's own setting is relative to the project.
         var bin = configuredBin is null ? null : ResolvePath(configuredBin, projectBin ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
         var optimization = project.ProjectFile.Optimization;
-        var build = new NativeBuild(project, paths, document.RootElement, project.Directory, optimization, report, cancellationToken);
+        var build = new NativeBuild(project, paths, document.RootElement, project.Directory, optimization, ExternalToolExecutor.Create, report, cancellationToken);
         await build.Run(project.KimiOptions.ToolchainRoot, bin);
     }
 
@@ -45,7 +43,7 @@ internal static partial class NativeToolchain
         var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
         var configured = llvmBin is null && manifest.TryGetProperty("toolchain", out var toolchain) ? LinkManifest.Text(toolchain, "toolchain.llvmBin") : null;
         var bin = llvmBin is not null ? ResolvePath(llvmBin, Directory.GetCurrentDirectory()) : configured is null ? null : ResolvePath(configured, directory);
-        await new NativeBuild(null, paths, manifest, directory, optimization, report, cancellationToken).Run(toolchainRoot, bin);
+        await new NativeBuild(null, paths, manifest, directory, optimization, ExternalToolExecutor.Create, report, cancellationToken).Run(toolchainRoot, bin);
     }
 
     // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
@@ -129,14 +127,11 @@ internal static partial class NativeToolchain
     [GeneratedRegex(@"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$")]
     private static partial Regex ModulePathPattern();
 
-    [GeneratedRegex("(?m)^" + WindowsProfile.FloatMarker + " [BD] ")]
-    private static partial Regex FloatMarkerPattern();
-
     /// <summary>One native build of a checked IR/manifest pair: its inputs, its record and its tools. The constructor takes the build's
     /// fixed inputs: the project whose supplies it checks (none for a standalone manifest), the pair, the root its records redact, the
-    /// optimization and the host's report and cancellation. <see cref="Run"/> takes the toolchain selection, which it resolves after the
-    /// pair's check, and runs the steps once, in order: the pair's identity, the tools, the libraries, the object, its inspection, the
-    /// link and the report; the steps fill the record and <see cref="Run"/> writes each of its states, the success last, so a step that
+    /// optimization, the executor's factory and the host's report and cancellation. <see cref="Run"/> takes the toolchain selection, which
+    /// it resolves after the pair's check, and runs the steps once, in order: the pair's identity, the executor (made where the tools are
+    /// resolved, filling the record's tools), the libraries, the object, its inspection, the link and the report; the steps fill the record and <see cref="Run"/> writes each of its states, the success last, so a step that
     /// fails, the report included, throws and leaves the record at the last incomplete state written (IMPL 20.3.2).</summary>
     private sealed class NativeBuild
     {
@@ -146,10 +141,10 @@ internal static partial class NativeToolchain
         private readonly string directory; // The root that published records and files redact.
         private readonly string outputDirectory;
         private readonly string optimization;
+        private readonly Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor;
         private readonly Action<DiagnosticSeverity, string> report;
         private readonly CancellationToken cancellationToken;
         private readonly JsonObject record = CreateBuildRecord();
-        private readonly Dictionary<string, string> tools = new(StringComparer.Ordinal);
 
         internal NativeBuild(
             Project? project,
@@ -157,6 +152,7 @@ internal static partial class NativeToolchain
             JsonElement manifest,
             string directory,
             string optimization,
+            Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor,
             Action<DiagnosticSeverity, string> report,
             CancellationToken cancellationToken)
         {
@@ -166,6 +162,7 @@ internal static partial class NativeToolchain
             this.directory = directory;
             this.outputDirectory = Path.GetDirectoryName(paths.Manifest)!;
             this.optimization = optimization;
+            this.createExecutor = createExecutor;
             this.report = report;
             this.cancellationToken = cancellationToken;
         }
@@ -179,12 +176,24 @@ internal static partial class NativeToolchain
             this.record["irSha256"] = irHash;
             this.record["optimization"] = this.optimization;
             WriteRecord(this.paths.Record, this.record);
-            this.ResolveTools(configuredBin ?? toolchainRoot, identities);
+            var context = new NativeExecutorContext(
+                toolchainRoot,
+                configuredBin ?? toolchainRoot,
+                this.outputDirectory,
+                this.directory,
+                this.report,
+                this.cancellationToken,
+                WindowsProfile.Target,
+                WindowsProfile.Cpu,
+                WindowsProfile.Features,
+                WindowsProfile.RelocationModel,
+                WindowsProfile.CodeModel);
+            var executor = this.createExecutor(context, identities);
             var libraries = this.ResolveLibraries(toolchainRoot);
             WriteRecord(this.paths.Record, this.record);
-            var obj = await this.Compile();
-            var undefined = await this.Inspect(obj);
-            await this.Link(obj, libraries, undefined);
+            var obj = await this.Compile(executor);
+            var undefined = await this.Inspect(executor, obj);
+            await this.Link(executor, obj, libraries, undefined);
             this.report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
             WriteRecord(this.paths.Record, this.record);
         }
@@ -223,17 +232,6 @@ internal static partial class NativeToolchain
             }
 
             return irHash;
-        }
-
-        // The build's tools, from the selected bin directory, each identified in the record.
-        private void ResolveTools(string bin, JsonObject identities)
-        {
-            foreach (var name in ToolNames)
-            {
-                var tool = RequireInstalledFile(Path.Combine(bin, name + ".exe"));
-                this.tools.Add(name, tool);
-                identities.Add(name, new JsonObject { ["path"] = Redact(tool, this.directory) });
-            }
         }
 
         // The manifest's libraries in its order, each the file the linker receives, checked against its assertions and identified in
@@ -325,42 +323,35 @@ internal static partial class NativeToolchain
         }
 
         // The object: the IR verified, for O2 optimized, its module paths redacted and verified again, then compiled.
-        private async Task<string> Compile()
+        private async Task<string> Compile(NativeExecutor executor)
         {
-            await this.Tool("opt", "-passes=verify", "-disable-output", this.paths.Ir);
             var selectedIr = this.paths.Ir;
             if (this.optimization == "O2")
             {
                 selectedIr = this.paths.Stem + ".ll";
-                await this.Tool("opt", "-S", "-passes=default<O2>", "-mtriple=" + WindowsProfile.Target, this.paths.Ir, "-o", selectedIr);
+                await executor.Optimize(this.paths.Ir, selectedIr);
                 var ir = await File.ReadAllTextAsync(selectedIr, this.cancellationToken);
                 ir = ModulePathPattern().Replace(ir, m => Redact(m.Value, this.directory));
                 await File.WriteAllTextAsync(selectedIr, ir, Utf8, this.cancellationToken);
-                await this.Tool("opt", "-passes=verify", "-disable-output", selectedIr);
             }
 
             var obj = this.paths.Stem + ".obj";
-            string[] arguments =
-            [
-                "-" + this.optimization, "-filetype=obj", "-mtriple=" + WindowsProfile.Target, "-mcpu=" + WindowsProfile.Cpu,
-                "-mattr=" + WindowsProfile.Features, "-relocation-model=" + WindowsProfile.RelocationModel,
-                "-code-model=" + WindowsProfile.CodeModel, selectedIr, "-o", Path.GetFileName(obj),
-            ];
-            await this.Tool("llc", arguments);
+            await executor.Emit(selectedIr, obj, this.optimization);
             return obj;
         }
 
         // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
-        // declares (the manifest's) in the same form; one _fltused definition, unwind information and no default library. Returns the undefined
-        // symbols' listing.
-        private async Task<string> Inspect(string obj)
+        // declares (the manifest's) in the same form; one _fltused definition, unwind information and no default library. Returns the
+        // record's form of the undefined symbols: llvm-nm's posix lines, in which an undefined symbol's value and size are 0.
+        private async Task<string> Inspect(NativeExecutor executor, string obj)
         {
-            var undefined = await this.Tool("llvm-nm", "--undefined-only", "--format=posix", obj);
+            var facts = await executor.Inspect(obj);
             Dictionary<string, bool>? declared = null;
-            foreach (var line in undefined.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            var lines = new string[facts.Undefined.Count];
+            for (var i = 0; i < lines.Length; i++)
             {
-                var separator = line.AsSpan().IndexOfAny(' ', '\t');
-                var symbol = separator < 0 ? line : line[..separator];
+                var symbol = facts.Undefined[i].Name;
+                lines[i] = symbol + " " + facts.Undefined[i].Kind + " 0 0";
                 if (AllowedUndefined.Contains(symbol))
                 {
                     continue;
@@ -371,24 +362,22 @@ internal static partial class NativeToolchain
                 var imported = symbol.StartsWith("__imp_", StringComparison.Ordinal);
                 if (!declared.TryGetValue(imported ? symbol[6..] : symbol, out var dllimport) || dllimport != imported)
                 {
-                    throw new InvalidDataException("Unsupported actual object dependency: " + line);
+                    throw new InvalidDataException("Unsupported actual object dependency: " + lines[i]);
                 }
             }
 
-            var defined = await this.Tool("llvm-nm", "--defined-only", "--extern-only", "--format=posix", obj);
-            var inspection = await this.Tool("llvm-readobj", "--unwind", "--coff-directives", obj);
-            if (FloatMarkerPattern().Count(defined) != 1 || !inspection.Contains("RuntimeFunction", StringComparison.Ordinal) ||
-                inspection.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase))
+            var markers = facts.DefinedExternal.Count(s => s.Name == WindowsProfile.FloatMarker && s.Kind is 'B' or 'D');
+            if (markers != 1 || !facts.HasUnwind || facts.HasDefaultLibrary)
             {
                 throw new InvalidDataException("Invalid _fltused definition, unwind information or hidden default library.");
             }
 
-            return undefined;
+            return string.Join('\n', lines);
         }
 
         // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked
         // state, which Run publishes last.
-        private async Task Link(string obj, List<string> libraries, string undefined)
+        private async Task Link(NativeExecutor executor, string obj, List<string> libraries, string undefined)
         {
             var temporary = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
             try
@@ -401,21 +390,18 @@ internal static partial class NativeToolchain
                 link[^3] = "/nodefaultlib";
                 link[^2] = "/Brepro";
                 link[^1] = "/out:" + temporary;
-                await this.Tool("lld-link", link);
+                await executor.Link(link);
                 this.cancellationToken.ThrowIfCancellationRequested();
                 Replace(temporary, this.paths.Executable);
                 this.record["status"] = "linked";
                 this.record["executable"] = Path.GetFileName(this.paths.Executable);
                 this.record["executableSha256"] = Hash(this.paths.Executable);
-                this.record["objectUndefinedSymbols"] = undefined.Trim();
+                this.record["objectUndefinedSymbols"] = undefined;
             }
             finally
             {
                 File.Delete(temporary);
             }
         }
-
-        private Task<string> Tool(string name, params string[] args)
-            => ExecuteTool(this.tools[name], args, this.outputDirectory, this.report, this.cancellationToken);
     }
 }

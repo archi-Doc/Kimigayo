@@ -3,7 +3,8 @@
 // The contract of Build (src/Kimi/Build, namespace Kimi.Build), P13, outside the compiler (the R7-R9 plan's §5.3, unit M2), stated
 // here, in its entry file, for all its types.
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
-// pair (NativeToolchain.Build.cs), the built Application's run and the installed toolchain's verification
+// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs through NativeExecutor's four calls (today ExternalToolExecutor: the
+// toolchain's tools, one process each, through ExecuteTool), the built Application's run and the installed toolchain's verification
 // (NativeToolchain.Verification.cs); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
 // identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles).
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
