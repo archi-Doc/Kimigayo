@@ -67,15 +67,15 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
 
     // Board C-400 (the Front's condition (1); PLAN G492-a (iii)): the reader of G972's fact (LeavesBodyRows, NamedInItsInputs) on a
     // literal with N quantified inputs `ref/U` converted to N inputs `ref/U`, each input's well-formedness reaching it with the literal's
-    // per-call Origin at the shorter end (n8w over N inputs; valid): the naming search's syntax visits at N = 32, 64, 128. Each queried end
-    // walks the signature's inputs, which a valid signature never stops early, so the visits are quadratic in one signature's inputs
-    // (2N^2: 2048, 8192, 32768 when written), bounded here at 4.5 times per doubling; a linear form needs a per-signature verdict.
+    // per-call Origin at the shorter end (n8w over N inputs; valid): the verdict's reads at N = 32, 64, 128. OriginVisible publishes the
+    // verdict once per signature and each queried end reads one row (the Front's linear form, 74a03cbb7), so the work is linear in the
+    // inputs, at most 2.25 times per doubling (the per-query syntax walk it replaced counted 2N^2: 2048, 8192, 32768).
     [Fact]
     public void TheNamingSearchOverManyInputsScales()
     {
         long[] work = [.. new[] { 32, 64, 128 }.Select(static n => NamingWork(ManyInputs(n)))];
-        output.WriteLine($"naming visits {string.Join(", ", work)}");
-        Assert.True(work[0] > 0 && work[1] <= 4.5 * work[0] && work[2] <= 4.5 * work[1], $"naming visits {string.Join(", ", work)}");
+        output.WriteLine($"naming reads {string.Join(", ", work)}");
+        Assert.True(work[0] > 0 && work[1] <= 2.25 * work[0] && work[2] <= 2.25 * work[1], $"naming reads {string.Join(", ", work)}");
     }
 
     // The valid workload of TheNamingSearchOverManyInputsScales.
@@ -133,7 +133,7 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         return metrics.Nodes + metrics.Edges + metrics.Insertions;
     }
 
-    // The nested-signature naming search's syntax visits of one binding of a valid source (OriginProofMetrics.NamingVisits).
+    // The nested-signature naming verdict's reads in one binding of a valid source (OriginProofMetrics.NamingReads).
     private static long NamingWork(string source)
     {
         var c = Compilation.CreateForTest();
@@ -143,7 +143,7 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         c.Binding.OriginProofMetrics = metrics;
         c.Bind();
         Assert.Empty(c.Binding.Issues);
-        return metrics.NamingVisits;
+        return metrics.NamingReads;
     }
 
     [Collection<AllocationIsolationCollection>]

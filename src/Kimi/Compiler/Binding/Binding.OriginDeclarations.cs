@@ -117,7 +117,11 @@ public sealed partial class Binding
     // input half of OriginVisible's verdict as it published it (the Origin stays bound, SPEC 23.1.2): one read per query. Such a signature
     // names its per-call Origin outside its own input's outer layer, so instantiating it there is no per-call binding of SPEC 15.3.7; false
     // for every valid signature. Read by a comparison judging an end that, as written, is `perCall`, after the signature's inputs are bound.
-    private bool NamedInItsInputs(BoundOrigin perCall) => OwnInput(perCall) is { } own && this.perCallNamings.Contains(own);
+    private bool NamedInItsInputs(BoundOrigin perCall)
+    {
+        this.OriginProofMetrics?.NamingRead();
+        return OwnInput(perCall) is { } own && this.perCallNamings.Contains(own);
+    }
 
     // SPEC 15.3.5: the variance of a Type's Origin argument `index`, the one reading every relation, fit and walk takes: a Closure Type's
     // by its occurrences in its definition's signature (ClosureArgumentVariance, DECISIONS R4-M159); a declared Type's by its schema's
