@@ -196,19 +196,13 @@ public sealed partial class Binding
     }
 
     // SPEC 9.6: the Type path of `qualifier.name`: a requirement member of the qualifier's Type, a member of the Type or group the
-    // qualifier forms, or a nested declaration. Formed when the qualifier was bound as a Type or a group; null when that binding failed
-    // (its record).
+    // qualifier forms, or a nested declaration (QualifierSelection). Formed when the qualifier was bound as a Type or a group; null when
+    // that binding failed (its record).
     private SideSelection? TypeSideMember(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? expected)
     {
-        BindingSymbol? typeMember = null;
-        if (qualifier?.Type is { } type && !qualifier.IsContract)
+        if (qualifier is null || qualifier.Declaration is ContractKoto || !this.scopes.ContainsKey(qualifier.Declaration))
         {
-            typeMember = this.RequirementMember(member, scope, type, true);
-        }
-
-        if (qualifier is null || qualifier.Declaration is ContractKoto || !this.scopes.TryGetValue(qualifier.Declaration, out var typeScope))
-        {
-            return new(typeMember, default, false);
+            return this.QualifierSelection(member, qualifier, name, scope, null);
         }
 
         if (qualifier.Type is not null)
@@ -221,9 +215,9 @@ public sealed partial class Binding
                 return null;
             }
 
-            var selection = this.LookupMember(qualifiedType, name, scope, LookupRole.Value);
-            return originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !selection.Ambiguous ? selection.Member : null)
-                ? null : new(selection.Member ?? typeMember, selection, true);
+            var selection = this.QualifierSelection(member, qualifier, name, scope, qualifiedType) with { Formed = true };
+            return originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !selection.Selection.Ambiguous ? selection.Selection.Member : null)
+                ? null : selection;
         }
 
         if (qualifier.Declaration is GroupKoto { IsRoot: false })
@@ -239,16 +233,32 @@ public sealed partial class Binding
                 return null;
             }
 
-            var selection = this.LookupMember(groupType, name, scope, LookupRole.Value);
-            return new(selection.Member, selection, true);
+            return this.QualifierSelection(member, qualifier, name, scope, groupType) with { Formed = true };
         }
 
-        return new(typeScope.Values.TryGetValue(name, out var candidate) ? candidate : typeMember, default, false);
+        return this.QualifierSelection(member, qualifier, name, scope, null);
     }
 
-    // SPEC 9.6, 3.4.3: the value path of `qualifier.name`: a member of the qualifier's value, at the referent of each safe value-reference
-    // layer, the payload of an object handle or view and the target of a qualifying pair layer. Formed when the qualifier may be a value;
-    // null when the selection rests on an emptied admitted set.
+    // SPEC 9.6, 8.6.4: the Type path's member of `qualifier.name` over `type`, the qualifier's formed Type or group: a nominal member (the
+    // layer walk), over the qualifier's requirement member; without a Type, a nested declaration of the qualifier's scope, or the
+    // requirement member. Not formed.
+    private SideSelection QualifierSelection(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? type)
+    {
+        var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Type;
+        var requirement = requirementType is null ? null : this.RequirementMember(member, scope, requirementType, true);
+        if (type is not null && (qualifier is null || qualifier.Type is not null || qualifier.Declaration is GroupKoto))
+        {
+            var selection = this.LookupMember(type, name, scope, LookupRole.Value);
+            return new(selection.Member ?? (qualifier is null || qualifier.Type is not null ? requirement : null), selection, false);
+        }
+
+        var nested = qualifier is not null && qualifier.Declaration is not ContractKoto && this.scopes.TryGetValue(qualifier.Declaration, out var typeScope) &&
+            typeScope.Values.TryGetValue(name, out var candidate) ? candidate : null;
+        return new(nested ?? requirement, default, false);
+    }
+
+    // SPEC 9.6, 3.4.3: the value path of `qualifier.name`, bound: the qualifier's value and its receiver layers, then ReceiverMember.
+    // Formed when the qualifier may be a value; null when the selection rests on an emptied admitted set.
     private SideSelection? ValueSideMember(MemberAccessKoto member, string name, BindingScope scope)
     {
         if (!this.MayBeValueQualifier(member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left, scope))
@@ -256,11 +266,26 @@ public sealed partial class Binding
             return new(null, default, false);
         }
 
-        BindingSymbol? valueMember = null;
-        MemberSelection valueSelection = default;
         var receiverType = this.BindNode(member.Left, scope);
         this.ReceiverThroughLayers(member.Left, receiverType);
         this.ReceiverElement(member.Left, receiverType);
+        var side = this.ReceiverMember(member, name, scope, receiverType, out var emptied);
+        if (emptied)
+        {
+            this.RestOnEmptiedSet(member, scope);
+            return null;
+        }
+
+        return side with { Formed = true };
+    }
+
+    // SPEC 9.6, 3.4.3: a member of a receiver Type: at the referent of each safe value-reference layer, the payload of an object handle
+    // or view and the target of a qualifying pair layer; `emptied` when it rests on an emptied admitted set. Not formed.
+    private SideSelection ReceiverMember(MemberAccessKoto member, string name, BindingScope scope, BoundType? receiverType, out bool emptied)
+    {
+        emptied = false;
+        BindingSymbol? valueMember = null;
+        MemberSelection valueSelection = default;
         while (true)
         {
             while (receiverType is not null && this.ViewBelow(receiverType, scope) is { } below)
@@ -280,13 +305,13 @@ public sealed partial class Binding
             // case rests the selection on the emptying environment (SPEC 8.3.4).
             if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) is not { } followed)
             {
-                return new(valueMember, valueSelection, true);
+                return new(valueMember, valueSelection, false);
             }
 
             if (followed == SemanticsMask.None)
             {
-                this.RestOnEmptiedSet(member, scope);
-                return null;
+                emptied = true;
+                return default;
             }
 
             receiverType = pairTarget;

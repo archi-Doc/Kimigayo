@@ -209,19 +209,39 @@ public sealed partial class Binding
     // read from the use at every later one, so BindNamedType forms the use's Type from it and no reader looks the use up again.
     private ResolvedPath NamePath(Koto syntax, BindingScope scope, int arity = 0)
     {
+        var mark = this.nameSteps.Count;
+        var path = this.EvaluateUse(syntax, scope, arity, out var early);
+        return this.PublishLookup(syntax, path, mark, early, scope, arity);
+    }
+
+    // NamePath's evaluation: the use's lookup in its row, its steps above the caller's mark, unpublished; or the published one, read.
+    private ResolvedPath EvaluateUse(Koto syntax, BindingScope scope, int arity, out bool early)
+    {
         var use = UseNode(syntax);
+        early = false;
         if (HirTables.LookupOf(use) is var published and not PathEnd.None)
         {
             return new(published, published == PathEnd.Selected ? use.BoundSymbol : null, use);
         }
 
-        var role = UseRow(use);
-        var mark = this.nameSteps.Count;
         var reads = this.notReadyReads;
-        var path = this.ResolvePath(use, scope, role, arity);
-        if (reads != this.notReadyReads)
+        var path = this.ResolvePath(use, scope, UseRow(use), arity);
+        early = reads != this.notReadyReads;
+        return path;
+    }
+
+    // NamePath's publication of an evaluated lookup (its steps above `mark`) on the use, once; a read one is returned as it is.
+    private ResolvedPath PublishLookup(Koto syntax, in ResolvedPath path, int mark, bool early, BindingScope scope, int arity)
+    {
+        var use = UseNode(syntax);
+        if (HirTables.LookupOf(use) != PathEnd.None)
         {
-            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, role, arity, path.Symbol, null);
+            return path;
+        }
+
+        if (early)
+        {
+            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, UseRow(use), arity, path.Symbol, null);
         }
 
         var symbol = this.PublishPath(path, mark);
@@ -385,12 +405,15 @@ public sealed partial class Binding
 
     // The evaluation alone of a spelling the program does not contain (a repair's check that a qualifier names its Container alone): what
     // lookup selects, unjudged, since no use is written (SPEC 22.1 judges uses).
-    private BindingSymbol? ProbePath(string name, BindingScope scope, Koto use, LookupRole role)
+    private BindingSymbol? ProbePath(string name, BindingScope scope, Koto use, LookupRole role) => this.EvaluateName(name, scope, use, role).Symbol;
+
+    // A Name's lookup evaluated alone (SPEC 9.5), publishing nothing: its end, selection and stop.
+    private ResolvedPath EvaluateName(string name, BindingScope scope, Koto use, LookupRole role)
     {
         var mark = this.nameSteps.Count;
         var path = this.ResolveName(name, scope, use, role, 0);
         this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
-        return path.Symbol;
+        return path;
     }
 
     private BindingSymbol? ProbePath(Koto syntax, BindingScope scope, LookupRole role, int arity)
