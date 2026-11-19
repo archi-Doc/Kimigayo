@@ -263,6 +263,7 @@ public sealed partial class Binding
         batch.State = 1;
         var previous = this.collectingAssociated;
         this.collectingAssociated = batch;
+        var held = this.BeginFormation(); // SPEC 8.5.5, 8.6.3: the inferred bindings are formed from the signatures, whatever the reader.
         try
         {
             var hasHole = false;
@@ -371,6 +372,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.EndFormation(held);
             this.collectingAssociated = previous;
             batch.State = 2;
             this.pendingAssociatedTypes.Clear();

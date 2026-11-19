@@ -165,9 +165,9 @@ public sealed partial class Binding
 
     private ConstraintProof VerifyInheritedConformance(BoundConformancePath path)
     {
-        if (path.Checking)
+        if (this.ReadOpen(new(null, null, path)))
         {
-            return this.ReentryRead(path);
+            return ConstraintProof.Unknown;
         }
 
         if (path.Invalid || path.Identity.Invalid || this.InvalidDeclarationContext(path.Type.Declaration))
@@ -180,7 +180,7 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        path.Checking = true;
+        this.BeginVerification(path, out var held);
         this.conformanceChecks++;
         path.RejectedSelfSignature = null;
         path.WitnessStorage.Clear();
@@ -238,7 +238,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                proof = CombineProof(proof, this.ProveRequirement(constraint, scope, self), true);
             }
 
             for (var s = 0; s < path.InheritedSourceCount; s++)
@@ -322,7 +322,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.EndChecking(path);
+            this.EndVerification(path, held);
             path.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }
