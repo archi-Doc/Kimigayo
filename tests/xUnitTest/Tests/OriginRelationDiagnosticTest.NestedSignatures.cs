@@ -135,8 +135,11 @@ public partial class OriginRelationDiagnosticTest
     // a Function Type's: not in an aggregate slot (n1, n2, n3, r6, in a meet's operand n9, in any order n10), not in a nested or written
     // direct borrow layer (g216: G216's OriginRowsTest row; n5, n6), not in a Function Type inside an input (n7, n7r), also under a local
     // annotation (n8), a header probe (n11b), a generic body (n15, once), with a local clause (loc: LocalOriginClauseTest's row) and in
-    // a converted literal (g905: PLAN G905's f2v, labelled valid before (b)). One InvalidOriginBinding_Kd at the written Origin; it
-    // stays bound, so independent records stay (n8, g905: the conversion). Valid: an outer Origin (v1; v1t, whose clause is a premise of
+    // a converted literal (g905: PLAN G905's f2v, labelled valid before (b); a15 at a call argument). One InvalidOriginBinding_Kd at the
+    // written Origin; it stays bound, so independent records stay. The conversion's comparison solves the literal's per-call Origin
+    // (SPEC 15.3.6-15.3.7, board D-822) and holds for n8, g905 and a15, so G972's record is their only one (F's G972 ruling 6 (1) (i):
+    // their UnprovenOriginContract_Kd came from the old instantiation; DECISIONS supersedes R4-M212's parenthetical on the conversion
+    // record). Valid: an outer Origin (v1; v1t, whose clause is a premise of
     // the literal), x's own slot, a body variable (v4), and the per-call Origin where it is visible: the literal's result (r1), its body
     // (r14, v10's inner literal), a named signature (v7); v12b is n11b's twin, h2 a Function Type's sibling input over a set fixed by
     // equality to an outer Origin (8.10).
@@ -152,11 +155,12 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("n6", LiteralHead + "    let c = func [] (x: ref/i32, y: ref/i32 during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
     [InlineData("n7", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, f: (U during x) -> i32) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
     [InlineData("n7r", LiteralHead + "    let c = func [] (x: ref/i32, f: () -> ref/i32 during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")]
-    [InlineData("n8", FreeStruct + LiteralHead + "    let c: (ref/i32, U) -> i32 = func [] (x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x; UnprovenOriginContract_Kd func [] (x: ref/i32, y: U during x) -> i32 => 0")]
+    [InlineData("n8", FreeStruct + LiteralHead + "    let c: (ref/i32, U) -> i32 = func [] (x: ref/i32, y: U during x) -> i32 => 0\n    return 0\n", "InvalidOriginBinding_Kd x")] // G972's record alone: the comparison holds under the solve (F's G972 ruling 6 (1) (i); board D-822)
     [InlineData("n11b", FreeStruct + StaticApp + LiteralHead + "    let r = app(func [] (x: ref/i32, y: U during x) -> i32 => 0)\n    return 0\n", "InvalidOriginBinding_Kd x")]
     [InlineData("n15", FreeStruct + "func mk<V>(v: ref/V) -> i32\n    let c = func [] (x: ref/V, y: U during x) -> i32 => 0\n    return 0\n\n" + LiteralHead + "    let a = mk(p)\n    let bv: bool = true\n    let b = mk(bv@ref)\n    return 0\n", "InvalidOriginBinding_Kd x")]
     [InlineData("loc", "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n\nfunc f() -> i32\n    let g = func (a: ref/i32 during b, b: ref/i32) -> i32\n        let h0 = H.init(a)\n        let h: H{x} = h0@move\n            origin x.s outlives b\n        return h.item@follow\n    return 0\n", "InvalidOriginBinding_Kd b")]
-    [InlineData("g905", "func f(c: ref/i32) -> i32\n    let k: (ref/i32 during c, uniq/((ref/i32 during c) -> i32)) -> i32 = func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0\n    return 0\n", "InvalidOriginBinding_Kd b; UnprovenOriginContract_Kd func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0")]
+    [InlineData("g905", "func f(c: ref/i32) -> i32\n    let k: (ref/i32 during c, uniq/((ref/i32 during c) -> i32)) -> i32 = func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0\n    return 0\n", "InvalidOriginBinding_Kd b")] // G972's record alone: the comparison holds under the solve (F's G972 ruling 6 (1) (i); board D-822)
+    [InlineData("a15", FreeStruct + "func apply(q: ref/i32, f: (ref/i32, U during q) -> i32) -> i32 => 0\n\n" + LiteralHead + "    return apply(p, func [] (x: ref/i32, y: U during x) -> i32 => 0)\n", "InvalidOriginBinding_Kd x")] // G972's record alone: the comparison holds under the solve (F's G972 ruling 6 (1) (i); board D-822)
     [InlineData("v1", FreeStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: U during p) -> i32 => 0\n    return 0\n", "")]
     [InlineData("v1t", ClauseStruct + LiteralHead + "    let c = func [] (x: ref/i32, y: T during p) -> i32 => 0\n    return 0\n", "")]
     [InlineData("v4", FreeStruct + LiteralHead + "    let c = func [] (x: ref/U, y: U during x.a) -> i32 => 0\n    return 0\n", "")]

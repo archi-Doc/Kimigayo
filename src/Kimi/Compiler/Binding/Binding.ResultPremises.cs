@@ -19,34 +19,24 @@ public sealed partial class Binding
     // its readers clear it before the proof.
     private (BoundOrigin Longer, BoundOrigin Shorter)? failedResultPremise;
 
-    // The failure of the last Item solve that did not hold (ContractFits; ItemContractFits reads it), and the declared clause a solve's
+    // The failure of the last definition's solve that did not hold (ContractFits; DefinitionContractFits reads it), and the declared clause a solve's
     // CheckCallOriginRelations did not prove, with its substituted ends.
     private ComparisonFailure contractFailure;
     private (BoundOrigin Longer, BoundOrigin Shorter, bool Equality, Koto Syntax)? failedCallClause;
 
-    // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
-    // required contract, under the use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a
-    // fixed Origin of an enclosing function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same
-    // solution. An open evidence region still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
-    internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
+    // SPEC 15.3.7, 10.7, 15.3.6: the contract comparison of a callable definition, a Function Item's or an anonymous function's (a
+    // Closure Type's, board D-822): only the implementation's instantiable call Origins are solved, all together, including an Item's
+    // named and result-only universals and every per-call Origin of a direct borrowed input, against the required contract, under the
+    // use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a fixed Origin of an enclosing
+    // function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same solution. A required signature
+    // over an open evidence region (SPEC 10.8) is compared the same way, under the same premises, row sink and well-formedness proof, for
+    // both definitions (board D-822's B1: no premise-free known-signature comparison beside it).
+    internal bool DefinitionContractFits(BoundType item, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
-        if (item.Kind != BoundTypeKind.FunctionItem || item.Symbol is not { Declaration: FunctionKoto function } symbol)
+        if (item.Kind is not (BoundTypeKind.FunctionItem or BoundTypeKind.Closure) || item.Symbol is not { Declaration: FunctionKoto function } symbol)
         {
             return false;
-        }
-
-        if (HasOpenOrigin(required, evidenceOnly: true))
-        {
-            if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
-            {
-                return false;
-            }
-
-            if (!this.HasOriginConditions(function))
-            {
-                return true;
-            }
         }
 
         if (required is not { Kind: BoundTypeKind.Function, Components.Count: 2 } ||
@@ -176,7 +166,7 @@ public sealed partial class Binding
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
     // the solve without them judges no bound either (SolveOriginInference).
-    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, bool select = false)
+    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType, bool select = false)
     {
         if (!CarriesResultPremises(function))
         {
@@ -385,11 +375,25 @@ public sealed partial class Binding
         => ReferenceEquals(implementation, required) || !implementation.StoresOrigin ||
             this.ProvesPremises(new(this, implementation, implementation, required, WellFormedSubject.Input, null, use, comparison), use, comparison);
 
-    // SPEC 15.3.7: a whole-contract comparison proves the implementation's result premises for its substituted result from the
-    // required contract's premises at `use`.
+    // SPEC 15.3.7 (the owner's (a)): a whole-contract comparison proves the implementation's result condition for its substituted result
+    // from the required contract's premises at `use`: a named function's result premises; an anonymous function's result
+    // well-formedness, which is no premise of its body (SPEC 15.3.4, 15.6.1, DECISIONS R4-M162) and which every comparison judges.
     private bool ProvesResultPremises(FunctionKoto function, BoundType result, Koto use, in CallableInstance comparison)
-        => !CarriesResultPremises(function) ||
-            this.ProvesPremises(new(this, function.BoundSymbol!.Type!, result, null, WellFormedSubject.NamedResult, function, use, comparison), use, comparison);
+    {
+        if (!function.IsAnonymous)
+        {
+            return !CarriesResultPremises(function) ||
+                this.ProvesPremises(new(this, function.BoundSymbol!.Type!, result, null, WellFormedSubject.NamedResult, function, use, comparison), use, comparison);
+        }
+
+        if (result.StoresOrigin && this.FailedWellFormedness(result, comparison, use) is { } failed)
+        {
+            this.failedResultPremise = failed; // A Type clause's too: the comparison's failure names it (ContractFits).
+            return false;
+        }
+
+        return true;
+    }
 
     // Whether the premises at `use` prove each of `premises` under `comparison`, which it consumes. The first stored relation they do not
     // prove is kept for the comparison's failure (failedResultPremise); a clause's is not, as before the enumeration.
@@ -448,14 +452,26 @@ public sealed partial class Binding
         var inputs = actual.Components[0];
         for (var i = 0; i <= inputs.Components.Count; i++)
         {
-            var part = i < inputs.Components.Count ? inputs.Components[i] : actual.Components[1];
-            foreach (var premise in new WellFormedPremises(this, part, part, null, WellFormedSubject.Input, null, use, instance))
+            if (this.FailedWellFormedness(i < inputs.Components.Count ? inputs.Components[i] : actual.Components[1], instance, use) is { } failed)
             {
-                if (!InstanceOutlives(premise.Value, premise.Substituted, instance, this, use, premise.Condition) ||
-                    (premise.Equality && !InstanceOutlives(premise.Substituted, premise.Value, instance, this, use)))
-                {
-                    return (i, premise.Value, premise.Substituted);
-                }
+                return (i, failed.Longer, failed.Shorter);
+            }
+        }
+
+        return null;
+    }
+
+    // The first relation of a signature part's own well-formedness (its stored relations and its Types' clauses) that the instance's
+    // premises and those at `use` do not prove under the instantiation, null when each holds: FailedSignatureWellFormedness's per part,
+    // and an anonymous function's result condition in a whole-contract comparison (ProvesResultPremises; board D-822).
+    private (BoundOrigin Longer, BoundOrigin Shorter)? FailedWellFormedness(BoundType part, in CallableInstance instance, Koto use)
+    {
+        foreach (var premise in new WellFormedPremises(this, part, part, null, WellFormedSubject.Input, null, use, instance))
+        {
+            if (!InstanceOutlives(premise.Value, premise.Substituted, instance, this, use, premise.Condition) ||
+                (premise.Equality && !InstanceOutlives(premise.Substituted, premise.Value, instance, this, use)))
+            {
+                return (premise.Value, premise.Substituted);
             }
         }
 
