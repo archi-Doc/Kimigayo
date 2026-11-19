@@ -118,22 +118,15 @@ public sealed partial class Binding
     }
 
     // J2 (PLAN G936): the selected candidate's openings become the region graph's records (RecordOpening), before its fits and
-    // clauses are judged; only a candidate with a Signature row opened anything (SlotSolution.OpenWaited).
+    // clauses are judged; only a candidate with a position without evidence opened anything (HasWaitingPosition, the gate
+    // SlotSolution.OpenWaited reads).
     private void RecordOpenings(Koto call, in SlotSolution solution)
     {
-        for (var i = 0; i < solution.Rows.Length; i++)
+        if (this.HasWaitingPosition(solution) && this.originInferences.TryGetValue((call, solution.Function), out var inference))
         {
-            if (solution.Rows[i].Contribution == Contribution.Signature)
+            foreach (var (region, bound) in inference.Opened)
             {
-                if (this.originInferences.TryGetValue((call, solution.Function), out var inference))
-                {
-                    foreach (var (region, bound) in inference.Opened)
-                    {
-                        this.RecordOpening(region, bound, call);
-                    }
-                }
-
-                return;
+                this.RecordOpening(region, bound, call);
             }
         }
     }

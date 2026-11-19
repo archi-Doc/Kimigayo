@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 //   composed once per candidate at its first solve (RetainChildRows, the probe's state) and retained, which every later solve of the
 //   candidate (CollectPositionPremises) and its selected call's judgment (JudgePositionRows) read, each leaf at its own sub-Type; both
 //   readers stay here until U5's shared relation judge. Its evidence leaves (IsEvidenceLeaf) are read by EvidenceNames and by a value
-//   call's solve (SolveValueCallOrigins, PLAN G504); the variables its rows name, by CollectPositionNames (J2, PLAN G936).
+//   call's solve (SolveValueCallOrigins, PLAN G504); the variables its rows name, by CollectPositionNames (J2, PLAN G936), and
+//   whether a candidate has a position without evidence at all (HasWaitingPosition, the same rows).
 // - Inputs: the arguments, the candidate's parameter patterns, solution and contributions (SlotSolution.Contribute, ContributePayloads);
 //   the position composition (Binding.ArgumentKinds.Positions.cs) and each part's contribution (PartContribution) for child rows.
 // - Outputs: PositionRow; SlotSolution.Rows, the candidate's root rows, a slice of CallEvaluation.Rows (rowScratch); childRows, the
@@ -168,6 +169,32 @@ public sealed partial class Binding
                 }
             }
         }
+    }
+
+    // J2 (PLAN G936, G1127 R2): whether the candidate has a position without evidence, of the rows CollectPositionNames reads: a
+    // Signature root without child rows or a Signature leaf row (BU-104 R4: a root with child rows is read through them), so a join
+    // argument whose sources wait (an Evidence root over Signature leaves) has one. The one gate of SlotSolution.OpenWaited and
+    // RecordOpenings: a candidate without one opens and records nothing.
+    private bool HasWaitingPosition(in SlotSolution solution)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            this.ChildGroup(solution, i, out var start, out var end);
+            if (start == end && solution.Rows[i] is { Pattern: not null, Contribution: Contribution.Signature })
+            {
+                return true;
+            }
+
+            for (var j = start; j < end; j++)
+            {
+                if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Pattern: not null, Contribution: Contribution.Signature })
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // J2 (SPEC 10.5.1, 10.8, 15.3.6, 15.3.7; the owner's O-358 (a), O-362 (a); PLAN G936): the callee variables that the candidate's
