@@ -170,10 +170,13 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     // is TypeHeightLimit_Kd at that node, never InternalInvariant_Kd or a Language record (an agreement's first path is `Self is Named`);
     // `{0}` one layer less is accepted, or keeps the form's own record (`Derived`'s Unsupported_Kd, from a later phase that this harness
     // runs only after Binding accepts; the CLI keeps it beside the height record). Fail-before: dev gives InternalInvariant_Kd.
+    // R7-C3 (the design review's C1; F's C2 ruling 257 (2)): struct E's clause is spelled at the limit (`D12<{0}>` written), so E's
+    // validation pass forms the Type past the limit in its own frame; the forms as first written are
+    // AClauseValidatedAsWrittenStaysWithinTheLimit's rows.
     [Theory]
     [InlineData("struct G<T>\n    D12<T>.Item is Sealed\n    var v: i32\nfunc p(x: ref/G<{0}>) => ()\n", "G<(", null)]
-    [InlineData("struct E<T>\n    T is {0}\n    D12<T>.Item is Sealed\n    var v: i32\n", "struct E", null)]
-    [InlineData("struct E<T>\n    T is {0}\n    D12<T>.Item is Sealed\n    var v: i32\n    public func get(self: ref/Self) -> i32\n        return self.v\n", "struct E", null)]
+    [InlineData("struct E<T>\n    T is {0}\n    D12<{0}>.Item is Sealed\n    var v: i32\n", "struct E", null)]
+    [InlineData("struct E<T>\n    T is {0}\n    D12<{0}>.Item is Sealed\n    var v: i32\n    public func get(self: ref/Self) -> i32\n        return self.v\n", "struct E", null)]
     [InlineData("func f<T>(x: i32) -> i32\n    T is D12<{0}>\n    T is HasItem\n    T.Item is Sealed\n    return x\n", "func f", null)]
     [InlineData("struct G<T>\n    D12<T>.Item is Sealed\n    Self is HasItem\n    associate HasItem.Item is i32\nstruct S\n    G<{0}>.Item is Sealed\n    var v: i32\n", "struct S", null)]
     [InlineData("contract Named\ncontract Tagged: Named\nstruct Tag<T>\n    var value: i32\n    Self is Named when T is HasItem, T.Item is Sealed\n    Self is Tagged when T is D12<{0}>\n", "Self is Named", null)]
@@ -191,13 +194,32 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     }
 
     // SPEC 23.1.2: an environment past the limit keeps an independent record beside its height record (r2's `envs-13-twin`).
+    // R7-C3 (C1; ruling 257 (2)): the clause spelled at the limit; the Type is formed past it in the closed clause's frame and its
+    // owner's (the frames above), one height record each, and `bad`'s record stays.
     [Fact]
     public void AnEnvironmentPastTheLimitKeepsAnIndependentRecord()
     {
-        var source = Doubling(12) + "struct E<T>\n    T is (D12<i32>.Item, i32)\n    D12<T>.Item is Sealed\n    var v: i32\nfunc bad() -> i32\n    return true\n" + Main;
+        var source = Doubling(12) + "struct E<T>\n    T is (D12<i32>.Item, i32)\n    D12<(D12<i32>.Item, i32)>.Item is Sealed\n    var v: i32\nfunc bad() -> i32\n    return true\n" + Main;
         var records = this.Compile(source).Records;
-        Assert.Equal([nameof(DiagnosticCode.TypeHeightLimit_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], records.Select(static x => x.Code));
+        Assert.Equal([nameof(DiagnosticCode.TypeHeightLimit_Kd), nameof(DiagnosticCode.TypeHeightLimit_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], records.Select(static x => x.Code));
         AssertHeightRecord(records[0], source, "struct E");
+    }
+
+    // R7-C3 (the design review's C-e and C1; F's C2 ruling 257 (2); SPEC 8.3.3 Limits, IMPL A.4): a clause is validated as written, so
+    // `D12<T>.Item is Sealed` under `T is {0}` forms no Type past the limit and is accepted; dev rewrote `D12<T>` to `D12<{0}>` and
+    // reached the limit (TypeHeightLimit_Kd at struct E). 8.3.3 and IMPL A.4 permit both verdicts; C3-1 removes the rewrite (its
+    // commit (2)), a named move. Within and past the limit's spelling of `{0}` alike.
+    [Theory]
+    [InlineData("struct E<T>\n    T is {0}\n    D12<T>.Item is Sealed\n    var v: i32\n")]
+    [InlineData("struct E<T>\n    T is {0}\n    D12<T>.Item is Sealed\n    var v: i32\n    public func get(self: ref/Self) -> i32\n        return self.v\n")]
+    public void AClauseValidatedAsWrittenStaysWithinTheLimit(string form)
+    {
+        foreach (var argument in (string[])["D12<i32>.Item", "(D12<i32>.Item, i32)"])
+        {
+            var (records, accepted) = this.Compile(Doubling(12) + form.Replace("{0}", argument, StringComparison.Ordinal) + Main);
+            Assert.Empty(records);
+            Assert.True(accepted);
+        }
     }
 
     // SPEC 8.8 (review 2's `ovcond`): an override condition over an associated Type within the limit is accepted (its pass is framed by

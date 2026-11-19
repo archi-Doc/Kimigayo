@@ -240,7 +240,9 @@ internal sealed class ConstraintEnvironment : ICheckCause
     }
 
     /// <summary>Names an unproven projection input of the declaration (F's C2 ruling 255): its own requirement, whose record is the
-    /// declaration's; no premise fails, the declaration keeps its context, and a proof that reads the input rests on that record.</summary>
+    /// declaration's; no premise fails, the declaration keeps its context, and a proof that reads the input rests on that record. No
+    /// Version change: no view-keyed table reads the names (the judge's intake reads them, Binding.UnprovenInputRead), as with
+    /// MarkDeclared.</summary>
     /// <param name="subject">The input's subject.</param>
     /// <param name="contract">The input's Contract.</param>
     /// <param name="owner">The declaration whose record it is.</param>
@@ -256,7 +258,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
         this.UnprovenInputs.Add((subject, contract));
         this.premiseFailure ??= new(owner);
-        this.Version++;
     }
 
     /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
