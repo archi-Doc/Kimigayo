@@ -239,7 +239,8 @@ public sealed partial class Binding
         return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], expected.Length < 0 ? actual.Length : expected.Length, lengthExpression: expected.Length < 0 ? actual.LengthExpression : expected.LengthExpression);
     }
 
-    // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
+    // SPEC 4.3: without a fixed-array or Array expectation (none, or a Type no array literal has, whose fit then fails at the position as
+    // a fill's or a Dictionary literal's does; SPEC 10.2) an independent literal constructs an Array whose element Type is the
     // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
     // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it. Every
     // element is bound, also after a failed one (SPEC 23.1.2), as a Dictionary literal's parts are (IndependentDictionaryType).

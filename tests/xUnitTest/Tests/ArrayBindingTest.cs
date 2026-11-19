@@ -98,7 +98,24 @@ public class ArrayBindingTest
     [InlineData("let a = [missing, missing2]\n", "UnresolvedBinding_Kd missing; UnresolvedBinding_Kd missing2")]
     [InlineData("var k: i32 = 1\nlet a = [k, true, false]\n", "TypeMismatch_Kd true; TypeMismatch_Kd false")]
     public void AnIndependentLiteralBindsEveryElementAfterAFailedOne(string source, string records)
-        => Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
+        => Assert.Equal(records, Records(source));
+
+    // SPEC 4.1, 4.3.1, 10.2, 12.4 (PLAN G1116): without a fixed-array or Array expectation, whatever Type its position expects, a list
+    // literal takes its own Type by the place rule, as a fill and a Dictionary literal do, and the position's fit reports the mismatch; an
+    // empty one has no element Type. An expected ref/U still reaches the literal through U.
+    [Theory]
+    [InlineData("let s: Slice<i32> = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("let n: i32 = [1]\n", "TypeMismatch_Kd [1]")]
+    [InlineData("let t: (i32, i32) = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("let u: uniq/[2 of i32] = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("func h<T>()\n    let x: T = [1]\nlet done = 0\n", "TypeMismatch_Kd [1]")]
+    [InlineData("func r() -> i32\n    return [1]\nlet done = 0\n", "TypeMismatch_Kd [1]")]
+    [InlineData("let nested: Array<i32> = [[1]]\n", "TypeMismatch_Kd [[1]]")]
+    [InlineData("let n: i32 = []\n", "UnresolvedBinding_Kd []")]
+    [InlineData("let unknown = []\n", "UnresolvedBinding_Kd []")]
+    [InlineData("let r: ref/[2 of i32] = [1, 2]\n", "")]
+    public void ALiteralWithoutAnArrayExpectationTakesItsOwnType(string source, string records)
+        => Assert.Equal(records, Records(source));
 
     // Each inferred inner Array owns its own buffer, destroyed recursively with the outer Array.
     [Fact]
@@ -324,4 +341,8 @@ public class ArrayBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
+
+    // Each public record's code and the source text it locates, in report order.
+    private static string Records(string source)
+        => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }
