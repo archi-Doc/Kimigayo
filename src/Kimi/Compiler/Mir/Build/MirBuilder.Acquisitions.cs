@@ -5,9 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Acquisitions (SPEC 3.5, 10.2, 13.5.6, 15.1.5): a node's Place formed and taken (Formed; a take by case, Take, MirBuilder.Cases.cs), a
-// Place as its consumer's acquisition and
-// adaptation take it (Acquire), by the pair layer's case (ByCase), and the one borrow rule (Ref, Lent), each formed in a temp or the place
-// given (Temporary, Borrow); a Place in an Opaque temp is lent by none (Unlent; DECISIONS R4-M149).
+// Place as its consumer's acquisition and adaptation take it (Acquire), by the pair layer's case (ByCase), and the one borrow rule (Ref,
+// Lent), each formed in a temp or the place given (Temporary, Borrow); a Place in an Opaque temp is lent by none (Unlent; DECISIONS R4-M149).
 internal sealed partial class MirBuilder
 {
     // The body's Opaque temps (DECISIONS R4-M149): the temps the builder holds an Opaque value in for a consumer, the derived value of a

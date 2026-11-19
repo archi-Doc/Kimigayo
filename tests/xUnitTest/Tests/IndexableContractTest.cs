@@ -15,6 +15,12 @@ public class IndexableContractTest
         "    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
         "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self\n        self.uniqCalls += 1\n        return self.first@uniq\n";
 
+    // Counting with a public `first`, which a nested selection's program reads (`w.first.uniqCalls`).
+    private const string CountingFirst = "struct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    public var first: T\n" +
+        "    public var uniqCalls: i32 = 0\n    public init(first: T) => self.first = first@move\n" +
+        "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self\n        self.uniqCalls += 1\n        return self.first@uniq\n";
+
     private const string SharedSubject = Counting + "func f(v: uniq/Two<(uniq/(ref/Array<i32> during a) during b, i32)>) -> i32\n    var total: i32 = 0\n    for x in v[0].0\n" +
         "        total += x\n    return total\nvar items: Array<i32> = [1, 2]\nvar r = items@ref\nvar t = (r@uniq, 1)\nvar two = Two.init(t@move)\nlet n = f(two@uniq)\n" +
         "require two.uniqCalls == 0 else => $abort(\"indexUniq ran\")\n";
@@ -419,16 +425,6 @@ public class IndexableContractTest
     public void ASelectionByCaseLetRef()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T>(v: uniq/Two<s/T>) -> ()
                 s is ref or uniq
                 let x = v[0]
@@ -439,7 +435,7 @@ public class IndexableContractTest
             require two.uniqCalls == 0 else => $abort("indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseLetRef", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseLetRef", Counting + Source, "ok\n");
     }
 
     // a4: a1's s=uniq instance, indexUniq once.
@@ -447,16 +443,6 @@ public class IndexableContractTest
     public void ASelectionByCaseLetUniq()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T>(v: uniq/Two<s/T>) -> ()
                 s is ref or uniq
                 let x = v[0]
@@ -467,7 +453,7 @@ public class IndexableContractTest
             require two.uniqCalls == 1 else => $abort("no indexUniq")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseLetUniq", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseLetUniq", Counting + Source, "ok\n");
     }
 
     // n5: `w[0][0]`, s=ref, index at both levels.
@@ -475,16 +461,6 @@ public class IndexableContractTest
     public void ASelectionByCaseNestedRef()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                public var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T>(w: uniq/Two<Two<s/T>>) -> ()
                 s is ref or uniq
                 let x = w[0][0]
@@ -496,7 +472,7 @@ public class IndexableContractTest
             require two.first.uniqCalls == 0 else => $abort("inner indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseNestedRef", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseNestedRef", CountingFirst + Source, "ok\n");
     }
 
     // m3: a Closure body's bare take through a capture, s=ref.
@@ -504,16 +480,6 @@ public class IndexableContractTest
     public void ASelectionByCaseCaptureRef()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T>(v: uniq/Two<s/T>) -> ()
                 s is ref or uniq
                 var h = func [v] () -> ()
@@ -526,7 +492,7 @@ public class IndexableContractTest
             require two.uniqCalls == 0 else => $abort("indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseCaptureRef", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseCaptureRef", Counting + Source, "ok\n");
     }
 
     // m6: two takes of two binders in one Tuple, (ref, ref).
@@ -534,16 +500,6 @@ public class IndexableContractTest
     public void ASelectionByCaseTwoDeciders()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T, r/U>(v: uniq/Two<s/T>, w: uniq/Two<r/U>) -> ()
                 s is ref or uniq
                 r is ref or uniq
@@ -558,7 +514,7 @@ public class IndexableContractTest
             require b.uniqCalls == 0 else => $abort("b indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseTwoDeciders", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseTwoDeciders", Counting + Source, "ok\n");
     }
 
     // r1: the key's take of another binder owns its frame, (ref, ref).
@@ -566,16 +522,6 @@ public class IndexableContractTest
     public void ASelectionByCaseKeyOtherDecider()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                public var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func pick<X>(value: X) -> isize => 0
             func f<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>) -> ()
                 s is ref or uniq
@@ -592,7 +538,7 @@ public class IndexableContractTest
             require u.uniqCalls == 0 else => $abort("key")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseKeyOtherDecider", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseKeyOtherDecider", CountingFirst + Source, "ok\n");
     }
 
     // r1m: r1 at (uniq, ref).
@@ -600,16 +546,6 @@ public class IndexableContractTest
     public void ASelectionByCaseKeyOtherDeciderMixed()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                public var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func pick<X>(value: X) -> isize => 0
             func f<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>) -> ()
                 s is ref or uniq
@@ -626,7 +562,7 @@ public class IndexableContractTest
             require u.uniqCalls == 0 else => $abort("key")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseKeyOtherDeciderMixed", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseKeyOtherDeciderMixed", CountingFirst + Source, "ok\n");
     }
 
     // r2: the key's take of the same decision takes the side, s=ref.
@@ -634,16 +570,6 @@ public class IndexableContractTest
     public void ASelectionByCaseKeySameDecider()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                public var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func pick<X>(value: X) -> isize => 0
             func f<s/T>(w: uniq/Two<Two<s/T>>, u: uniq/Two<s/T>) -> ()
                 s is ref or uniq
@@ -659,7 +585,7 @@ public class IndexableContractTest
             require u.uniqCalls == 0 else => $abort("key")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseKeySameDecider", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseKeySameDecider", CountingFirst + Source, "ok\n");
     }
 
     // k1: a capture entry's take in the outer key opens nothing, s=ref.
@@ -667,16 +593,6 @@ public class IndexableContractTest
     public void ASelectionByCaseCaptureInKey()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                public var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func pick<X>(value: X) -> isize => 0
             func f<s/T>(w: uniq/Two<Two<s/T>>, p: s/T) -> ()
                 s is ref or uniq
@@ -690,7 +606,7 @@ public class IndexableContractTest
             require w.first.uniqCalls == 0 else => $abort("inner")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseCaptureInKey", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseCaptureInKey", CountingFirst + Source, "ok\n");
     }
 
     // d2: a default's copy decided by its case-free decider, ref.
@@ -776,16 +692,6 @@ public class IndexableContractTest
     public void ASelectionByCaseDefaultOpenSide()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                public var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             struct Loud<T>
                 Self is UniqIndexable<isize>
                 associate Element is T
@@ -811,7 +717,7 @@ public class IndexableContractTest
             require w.first.uniqCalls == 0 else => $abort("inner")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseDefaultOpenSide", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseDefaultOpenSide", CountingFirst + Source, "ok\n");
     }
 
     // a2: `s is owner or uniq`, `T is Copy`, the s=owner instance runs index only.
@@ -819,16 +725,6 @@ public class IndexableContractTest
     public void ASelectionByCaseLetOwner()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func g<s/T>(v: uniq/Two<s/T>) -> ()
                 s is owner or uniq
                 T is Copy
@@ -840,7 +736,7 @@ public class IndexableContractTest
             require two.uniqCalls == 0 else => $abort("indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseLetOwner", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseLetOwner", Counting + Source, "ok\n");
     }
 
     // a3: `_ = v[0]`, s=ref.
@@ -848,16 +744,6 @@ public class IndexableContractTest
     public void ASelectionByCaseDiscard()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T>(v: uniq/Two<s/T>) -> ()
                 s is ref or uniq
                 _ = v[0]
@@ -867,7 +753,7 @@ public class IndexableContractTest
             require two.uniqCalls == 0 else => $abort("indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseDiscard", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseDiscard", Counting + Source, "ok\n");
     }
 
     // a7b: `(v[0], 1)`, s=ref.
@@ -875,16 +761,6 @@ public class IndexableContractTest
     public void ASelectionByCaseTupleElement()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T>(v: uniq/Two<s/T>) -> ()
                 s is ref or uniq
                 let t = (v[0], 1)
@@ -895,7 +771,7 @@ public class IndexableContractTest
             require two.uniqCalls == 0 else => $abort("indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseTupleElement", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseTupleElement", Counting + Source, "ok\n");
     }
 
     // a8b: `.Some(v[0])`, s=ref.
@@ -903,16 +779,6 @@ public class IndexableContractTest
     public void ASelectionByCasePayload()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             func f<s/T>(v: uniq/Two<s/T>) -> ()
                 s is ref or uniq
                 let o = Option.Some(v[0])
@@ -923,7 +789,7 @@ public class IndexableContractTest
             require two.uniqCalls == 0 else => $abort("indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCasePayload", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCasePayload", Counting + Source, "ok\n");
     }
 
     // a12: `v[0].link`, the decider the Field below the index, s=ref.
@@ -931,16 +797,6 @@ public class IndexableContractTest
     public void ASelectionByCaseFieldDecider()
     {
         const string Source = """
-            struct Two<T>
-                Self is UniqIndexable<isize>
-                associate Element is T
-                var first: T
-                public var uniqCalls: i32 = 0
-                public init(first: T) => self.first = first@move
-                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
-                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
-                    self.uniqCalls += 1
-                    return self.first@uniq
             struct Holder<T>
                 public var link: T
                 public init(link: T) => self.link = link@move
@@ -954,10 +810,11 @@ public class IndexableContractTest
             require two.uniqCalls == 0 else => $abort("indexUniq ran")
             Console.writeLine("ok")
             """;
-        ScalarEmissionTest.EmitFixture("IndexByCaseFieldDecider", Source, "ok\n");
+        ScalarEmissionTest.EmitFixture("IndexByCaseFieldDecider", Counting + Source, "ok\n");
     }
 
-    // m1: a Dictionary element, s=ref (ran ok on dev, where its indexer was indexUniq's body: the code, not the output, moves).
+    // m1, a guard row: a Dictionary element, s=ref. It ran ok on dev too, where its indexer was indexUniq's body: the code moves, not
+    // the output, so this row guards the Dictionary path rather than reproducing the defect.
     [Fact]
     public void ASelectionByCaseDictionary()
     {
@@ -972,5 +829,20 @@ public class IndexableContractTest
             Console.writeLine("ok")
             """;
         ScalarEmissionTest.EmitFixture("IndexByCaseDictionary", Source, "ok\n");
+    }
+
+    // t1 (the code review's B3; SPEC 8.14, 4.7.4): the opened index's own key holds a take by case of another binder, `v[pick(u[0])]`:
+    // the key is located before v's branch, its own frame closed first. Each binder's Copy case selects index: (ref, ref) runs no
+    // indexUniq, (uniq, ref) runs v's once and none of u's.
+    [Theory]
+    [InlineData("RefRef", "ref", "ref", 0, 0)]
+    [InlineData("UniqRef", "uniq", "ref", 1, 0)]
+    public void ASelectionByCaseInTheOpenedIndexsKey(string name, string s, string r, int v, int u)
+    {
+        var source = Counting + "func pick<X>(value: X) -> isize => 0\nfunc f<s/T, r/U>(v: uniq/Two<s/T>, u: uniq/Two<r/U>) -> ()\n    s is ref or uniq\n" +
+            "    r is ref or uniq\n    let x = v[pick(u[0])]\n    _ = x\nvar n: i32 = 1\nvar m: i32 = 2\n" +
+            $"var v = Two.init(n@{s})\nvar u = Two.init(m@{r})\nf(v@uniq, u@uniq)\nrequire v.uniqCalls == {v} else => $abort(\"v\")\n" +
+            $"require u.uniqCalls == {u} else => $abort(\"u\")\nConsole.writeLine(\"ok\")\n";
+        ScalarEmissionTest.EmitFixture($"IndexByCaseLocatedKey{name}", source, "ok\n");
     }
 }

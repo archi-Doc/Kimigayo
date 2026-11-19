@@ -686,12 +686,16 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // R7 plan Z23 (SPEC 8.14, 4.7.1 step 3, 4.7.4, 7.2.3): a take by case owns one case branch where its decision splits the views: a1's
     // `v[0]` and n5's `w[0][0]` (the outer index takes the side) one, r2's key of the same decision none of its own, r1's key of another
-    // binder one on each side; d2's default copy in `main` keeps its branch on the case-free decider `ref/i32`.
+    // binder one on each side; t1's take of another binder in the opened index's own key closes its branch before v's (the key is
+    // located before the branch), and t1s's of the same binder too, two branches of one decision in sequence; d2's default copy in
+    // `main` keeps its branch on the case-free decider `ref/i32`.
     [Theory]
     [InlineData("    let x = v[0]\n", "f", 1, "s/T")]
     [InlineData("    let x = w[0][0]\n", "f", 1, "s/T")]
     [InlineData("    let x = w[0][pick(u[0])]\n", "f", 1, "s/T")]
     [InlineData("    let x = w[0][pick(r[0])]\n", "f", 3, "s/T, r/U, r/U")]
+    [InlineData("    let x = v[pick(r[0])]\n", "f", 2, "r/U, s/T")]
+    [InlineData("    let x = v[pick(u[0])]\n", "f", 2, "s/T, s/T")]
     [InlineData("", "", 1, "ref/i32")]
     public void ATakeByCaseBranchesWhereItsDecisionSplitsTheViews(string take, string function, int branches, string deciders)
     {

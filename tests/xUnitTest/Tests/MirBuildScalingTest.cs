@@ -119,9 +119,9 @@ public class MirBuildScalingTest(ITestOutputHelper output)
             distinct = $"w{k}[0][pick({distinct})]";
         }
 
-        var (blocks, views) = Branches($"func f<{binders}>({receivers}) -> ()\n{cases}    let x = {distinct}\n    _ = x\n");
-        output.WriteLine($"64 views: blocks {blocks}, branches {views}");
-        Assert.Equal(63, views);
+        var (blocks, branched) = Branches($"func f<{binders}>({receivers}) -> ()\n{cases}    let x = {distinct}\n    _ = x\n");
+        output.WriteLine($"64 views: blocks {blocks}, branches {branched}");
+        Assert.Equal(63, branched);
     }
 
     // The nested shape at a depth: K overwrites, each in the previous one's defer, then each target used.

@@ -344,8 +344,8 @@ internal sealed partial class MirValidator
         }
 
         // SPEC 8.14, 4.7.1 step 3 (R7 plan Z23): a CaseSwitch's decider is one whose decision MirCases.Branch defines: a TypeToken
-        // constant (else Operation) of a pair layer of the body's binders or of a case-free Type, a default's copy (else Binder); its one
-        // entry of the case table is its exclusive side.
+        // constant (else Operation) whose pair layers, at every depth, name binders of the body, or a case-free Type, a default's copy
+        // (else Binder); its one entry of the case table is its exclusive side.
         private readonly bool Decider(in MirTerminator branch)
         {
             if (branch is not { Count: 1, Operand.Kind: MirOperandKind.Const } || (uint)branch.Operand.Arg >= (uint)body.Consts.Length ||
@@ -355,13 +355,32 @@ internal sealed partial class MirValidator
                 return false;
             }
 
-            if (body.Consts[branch.Operand.Arg].Type is var decider && TyCtxt.PairBinder(decider) is not null && MirCases.Binder(body, decider) < 0)
+            if (!Binds(body, body.Consts[branch.Operand.Arg].Type))
             {
                 this.Report(MirViolation.Binder);
                 return false;
             }
 
             return true;
+
+            // Whether every pair layer of a Type, its parts' included, names a binder of the body (a case-free Type has none).
+            static bool Binds(MirBody body, BoundType type)
+            {
+                if (TyCtxt.PairBinder(type) is not null && MirCases.Binder(body, type) < 0)
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < type.Components.Count; i++)
+                {
+                    if (!Binds(body, type.Components[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
     }
 }

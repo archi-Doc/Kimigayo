@@ -129,18 +129,11 @@ internal sealed partial class MirBuilder
         return this.Referent(node, plan.Second!);
     }
 
-    // The index call under the shared side: its receiver taken by the receiver's plan-row Adjust where the two calls' inputs differ.
+    // The index call under the shared side: its receiver taken by the receiver's plan-row Adjust where the two calls' inputs differ (Taken).
     private MirPlace Shared(Koto node, CallPlan call)
     {
         var receiver = ((IndexKoto)node).Left;
-        var adjust = HirTables.PlanOf(receiver).Adjust;
-        var parameter = call.ReceiverOperation.AdaptedType ?? call.ReceiverOperation.ParameterType;
-        foreach (ref readonly var argument in call.ArgumentOperations)
-        {
-            parameter = ReferenceEquals(argument.Source, receiver) ? argument.AdaptedType ?? argument.ParameterType : parameter;
-        }
-
-        var value = this.Operand(receiver, adjust == default ? HirTables.AdjustOf(receiver) : adjust, parameter, input: true);
+        var value = this.Taken(call, receiver);
         var result = this.Hold(call.ReturnType, node);
         this.Call(result, call, node, null, (receiver, value));
         return this.body.Project(compilation.Types, this.Made(result), MirProjectionKind.Deref, 0);

@@ -126,4 +126,30 @@ public sealed partial class MirBorrowsTest
             """;
         Assert.Equal(["a5: v[0] CallActivationConflict_Kd views 2"], ViewProblems(Source));
     }
+
+    // r1x (SPEC 8.15.2, 15.6.7, 4.7.1 step 3; the code review's N3): r1 under a live `view = u@follow@ref`, a body with a nested frame
+    // (CB(s) at w, CB(r) on each side): u's indexUniq conflicts with the view exactly in the r=uniq views (1 and 3, views 10), one
+    // record of u[0], built on each side of w's branch; its r=ref views take index, a shared borrow.
+    [Fact]
+    public void ANestedCaseBranchConflictsOnlyInItsReborrowingViews()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                public var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            func pick<X>(value: X) -> isize => 0
+            func r1x<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>) -> ()
+                s is ref or uniq
+                r is ref or uniq
+                let view = u@follow@ref
+                let x = w[0][pick(u[0])]
+                _ = x
+                _ = view
+            """;
+        Assert.Equal(["r1x: u[0] CallActivationConflict_Kd views 10"], ViewProblems(Source));
+    }
 }

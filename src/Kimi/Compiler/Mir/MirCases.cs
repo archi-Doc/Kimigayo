@@ -211,7 +211,7 @@ internal sealed class MirCases(TyCtxt types)
     /// case Type, so it selects one side in every view.</summary>
     /// <param name="branch">A CaseSwitch of the selected body.</param>
     /// <returns>Whether the exclusive side is taken.</returns>
-    internal bool Branch(in MirTerminator branch) => MirTypes.IsExclusive(this.Type(this.Body.Consts[branch.Operand.Arg].Type));
+    internal bool Branch(in MirTerminator branch) => this.Exclusive(this.Body.Consts[branch.Operand.Arg].Type);
 
     /// <summary>Gets the views of a body in which a decider selects a CaseSwitch's exclusive side (<see cref="Branch"/>'s rule, evaluated
     /// per view, stored nothing): the builder's decision of where a case branch splits the views. The selected view is not kept.</summary>
@@ -224,7 +224,7 @@ internal sealed class MirCases(TyCtxt types)
         for (var view = 0L; view < Count(body); view++)
         {
             _ = this.Select(body, view);
-            bits |= MirTypes.IsExclusive(this.Type(decider)) ? 1UL << (int)view : 0;
+            bits |= this.Exclusive(decider) ? 1UL << (int)view : 0;
         }
 
         return bits;
@@ -258,4 +258,7 @@ internal sealed class MirCases(TyCtxt types)
                 target),
         };
     }
+
+    // Branch's rule under the selected view: whether a decider's case Type is an exclusive reference.
+    private bool Exclusive(BoundType decider) => MirTypes.IsExclusive(this.Type(decider));
 }
