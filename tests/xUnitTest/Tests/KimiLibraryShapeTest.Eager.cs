@@ -13,13 +13,14 @@ namespace XunitTest;
 // B1 steps, k4).
 public partial class KimiLibraryShapeTest
 {
-    // e1 (D-4; O-U2-4, the Front's C-380 16:55): after the empty program's Bind every non-Not constraint the interner holds, the library
-    // pass's, has its negation (a Not constraint's is its operand, never stored). Before U2b a negation was formed only where a pass used it.
+    // e1 (D-4; O-U2-4, the Front's C-380 16:55; C-380 F3 (b)): after the empty program's Bind every non-Not constraint of the layer's level
+    // (PLAN G949 Stage 2 U4), the library pass's, has its negation (a Not constraint's is its operand, never stored). Before U2b a negation
+    // was formed only where a pass used it.
     [Fact]
     public void EveryLibraryConstraintHasItsNegation()
     {
         var c = Bound(string.Empty);
-        var constraints = ((IDictionary)typeof(Binding).GetField("constraints", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Values.Cast<BoundConstraint>().ToArray();
+        var constraints = c.Library.Layer.Constraints.Values.ToArray();
         Assert.NotEmpty(constraints);
         Assert.Empty(constraints.Where(static x => x.Kind != ConstraintKind.Not && x.Negation is null).Select(static x => x.ToString()));
     }

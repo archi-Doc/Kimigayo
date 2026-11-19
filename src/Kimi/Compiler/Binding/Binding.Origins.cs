@@ -7,7 +7,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Origin expressions (SPEC 15.3.1, 15.3.6): atoms interned per binder, kind and slot (OriginAtom, kept in the binder's module's
-// NodeColumns: OriginAtomRows, DECISIONS BU-220), meets interned in one canonical operand order (Meet, CompareOrigins) and the
+// NodeColumns: OriginAtomRows, DECISIONS BU-220), meets interned in one canonical operand order (Meet, CompareOrigins; over the library
+// layer's frozen level and the compilation's, PassPart.Levels, PLAN G949 Stage 2 U4) and the
 // context-free outlives facts (OriginOutlives); an obligation's record is
 // Binding.Obligations.cs's. Declaration schemas are Binding.Origins.Schemas.cs's; a Type position's written and omitted Origins
 // Binding.Origins.Annotations.cs's.
@@ -214,35 +215,46 @@ public sealed partial class Binding
                 hash.Add(RuntimeHelpers.GetHashCode(scratch[i]));
             }
 
+            // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4).
             var key = hash.ToHashCode();
-            if (!this.originExpressions.TryGetValue(key, out var bucket))
+            var levels = PassPart.Interned(this.Library, this.Library.Layer.Intersections, this.originExpressions);
+            foreach (var level in levels)
             {
-                this.originExpressions.Add(key, bucket = new(1));
+                if (level.TryGetValue(key, out var bucket) && Match(bucket, scratch, count) is { } found)
+                {
+                    return found;
+                }
             }
 
-            for (var i = 0; i < bucket.Count; i++)
+            var open = levels.Open;
+            if (!open.TryGetValue(key, out var into))
             {
-                var candidate = bucket[i];
-                if (candidate.Operands.Count != count)
-                {
-                    continue;
-                }
-
-                var equal = true;
-                for (var j = 0; j < count; j++)
-                {
-                    equal &= ReferenceEquals(candidate.Operands[j], scratch[j]);
-                }
-
-                if (equal)
-                {
-                    return candidate;
-                }
+                open.Add(key, into = new(1));
             }
 
             var created = new BoundOrigin(OriginKind.Intersection, operands: scratch.AsSpan(0, count).ToArray());
-            bucket.Add(created);
+            into.Add(created);
             return created;
+
+            static BoundOrigin? Match(List<BoundOrigin> bucket, BoundOrigin[] scratch, int count)
+            {
+                for (var i = 0; i < bucket.Count; i++)
+                {
+                    var candidate = bucket[i];
+                    var equal = candidate.Operands.Count == count;
+                    for (var j = 0; equal && j < count; j++)
+                    {
+                        equal = ReferenceEquals(candidate.Operands[j], scratch[j]);
+                    }
+
+                    if (equal)
+                    {
+                        return candidate;
+                    }
+                }
+
+                return null;
+            }
 
             void Add(BoundOrigin origin)
             {

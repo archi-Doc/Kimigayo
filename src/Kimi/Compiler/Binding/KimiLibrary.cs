@@ -16,18 +16,19 @@ namespace Kimi.Compiler;
 //   FreezeLibrary decides); and the detachment (KimiLibrary.Process.cs, Detach): the frozen library names no compilation.
 // - Inputs: the embedded sources; the compilation the library is parsed in (its target's conditions, its documentation flags); for the
 //   freeze, the target and the preparation (a Kimigayo and its Project).
-// - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal); the frozen library's
-//   DocumentationFailures, HoverAnchors and SyntaxRecords (data its freeze compilation recorded).
+// - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal and the interners' frozen
+//   levels); Frozen, whether the layer's interner levels are sealed (PLAN G949 Stage 2 U4): the library table's freeze, the seal; the
+//   frozen library's DocumentationFailures, HoverAnchors and SyntaxRecords (data its freeze compilation recorded).
 // - Invariants: one library per target per process, a frozen library or a refused one, cached by the store; only a compiler defect is
 //   cached as an exception (ExecutionAndPublication: one freeze per target; the build constant reproduces it). After Freeze no step
-//   writes a frozen object (S1-1's refusals; the eager steps run in the library pass); every stamp a frozen object holds is Frozen.
-//   After Freeze no frozen object names a compilation: a read of a detached module's or code context's compilation or collection is the
-//   internal-invariant form; the module's syntax list moves with the frozen library (SyntaxRecords) and its freeze compilation's owner
-//   no longer holds it. A refused library exposes only its refusal; a compilation given one (U3) runs no program pass and publishes the
-//   refusal. Each library record has one owner: a Binding-side one the refusal (published as InternalInvariant_Kd at its library
-//   location), a syntax one the library module's syntax list (moved with the frozen library as SyntaxRecords; from U3 the reading
-//   compilation's DiagnosticOwner registers it read-only and publishes it under its own code); the refusal refers to that list, never
-//   copies it.
+//   writes a frozen object (S1-1's refusals; the eager steps run in the library pass); every stamp a frozen object holds is Frozen; the
+//   layer's interner levels are sealed at the library's freeze, after which no insert reaches them (U4). After Freeze no frozen object
+//   names a compilation: a read of a detached module's or code context's compilation or collection is the internal-invariant form; the
+//   module's syntax list moves with the frozen library (SyntaxRecords) and its freeze compilation's owner no longer holds it. A refused
+//   library exposes only its refusal; a compilation given one (U3) runs no program pass and publishes the refusal. Each library record
+//   has one owner: a Binding-side one the refusal (published as InternalInvariant_Kd at its library location), a syntax one the library
+//   module's syntax list (moved with the frozen library as SyntaxRecords; from U3 the reading compilation's DiagnosticOwner registers it
+//   read-only and publishes it under its own code); the refusal refers to that list, never copies it.
 // - Prohibitions: no second constructor or freeze path; no mode or flag deciding the library pass; no second check of the library's
 //   records beside FreezeLibrary's; no compilation reads Of before U3.
 
@@ -178,6 +179,10 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the library's base stores (PLAN G949, DECISIONS BU-220): what the library leaves outside its SyntaxTable.</summary>
     internal LibraryLayer Layer { get; } = new();
+
+    /// <summary>Gets a value indicating whether the library's layer is sealed (PLAN G949 Stage 2 U4): its table frozen by its
+    /// compilation's freeze (Binding.FreezeLibrary), after which no insert reaches the layer's interner levels.</summary>
+    internal bool Frozen => this.Kotonoha.Syntax.Frozen;
 
     /// <summary>Gets the ordinal of Option's Some Case, its first (SPEC 22.1 declares <c>Some(T)</c>, then <c>None</c>; AdtDef numbers
     /// Cases in declaration order), or -1 before Binding prepared the library's Cases: the one statement of where Some is
@@ -511,7 +516,7 @@ public sealed partial class KimiLibrary
         {
             if (!scopes.TryGetValue(container, out var scope))
             {
-                scope = new(container) { Parent = ScopeOf(DeclaringContainer(container)) };
+                scope = new(container, container) { Parent = ScopeOf(DeclaringContainer(container)) };
                 scopes.Add(container, scope);
             }
 

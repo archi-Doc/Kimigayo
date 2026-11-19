@@ -114,9 +114,18 @@ public sealed partial class Binding
         Mismatch,
     }
 
-    // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
-    private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use, in CallableInstance comparison = default)
-        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use, comparison)) : 0;
+    // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use; every caller
+    // states the comparison the relation belongs to (PairSlotCondition), `default` outside any comparison.
+    private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use, in CallableInstance comparison)
+    {
+        if (binding is null || use is null || !actual.ContainsPairLayer)
+        {
+            return 0;
+        }
+
+        var at = new UseScope(use);
+        return RequiredCondition(binding.PairSlotCondition(actual, ref at, comparison));
+    }
 
     // SPEC 8.1.2: a pair's conditional outer Origin participates only in admitted borrow cases. Internal Origins remain checked.
     private bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
@@ -139,8 +148,9 @@ public sealed partial class Binding
     // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is
     // declared, so the fit derives from that failure instead of adding a mismatch. Any other difference in presence is structural.
     // A walk without a premises reader reads this Binding's, the binder's, so the decision is the same with or without one (PLAN G758).
-    // RelationWalk, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision.
-    private OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter, in CallableInstance comparison = default)
+    // RelationWalk, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision; each states the comparison
+    // its relation belongs to (InactiveOuterOrigin), `default` outside any comparison.
+    private OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter, in CallableInstance comparison)
     {
         longer = shorter = null!;
         if (actual.Semantics == SemanticsKind.Raw && actual.Kind == BoundTypeKind.Semantics)

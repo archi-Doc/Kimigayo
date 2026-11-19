@@ -156,7 +156,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
             this.types.KeyCount,
-            this.constraints.Count,
+            this.Library.Layer.Constraints.Count + this.constraints.Count,
             this.pendingAssociatedTypes.Count,
             this.memberSelections.Count,
             this.memberSides.Count,
@@ -260,6 +260,7 @@ public sealed partial class Binding
         {
             this.EnterPass(this.ProgramPass); // Between Binds, and after a throw, the fields hold Binding's own part.
             this.running = false;
+            this.producing = false; // A pass that did not finish produced none.
         }
     }
 
@@ -348,6 +349,7 @@ public sealed partial class Binding
         this.capabilitiesReady = true;
         this.ValidateConformances(mode, false);
         this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
+        this.SettleVirtualOverridePremises(); // R7-C2c2 c2-4: a refuted inherited condition fails the override (SPEC 6.4.3).
         this.ValidateConstraintEnvironments(mode);
         this.PrepareSpecializations();
         this.CompleteImplicitConstructors();

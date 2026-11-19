@@ -11,8 +11,9 @@
 // Output: the fixed fields' JSON; for a read, the field's value or InvalidDataException naming the field's path, one text for a missing
 // field or another kind and one for another fixed value.
 // Invariants: every manifest read goes through these readers, so no JsonElement accessor exception (KeyNotFound, InvalidOperation,
-// Format) leaves a manifest read; the fixed fields are written and checked by the one table. Must not: read the build record, the
-// installation or the kernel32 records (their readers are PLAN G983's), or decide a variable field's value.
+// Format) leaves a manifest read; a member's lookup and an Int32's read are ArtifactFiles' (Member, Number), the toolchain files' one
+// rule; the fixed fields are written and checked by the one table. Must not: read the build record, the installation or the kernel32
+// records (their readers compare ArtifactFiles' total reads with what they expect, PLAN G983), or decide a variable field's value.
 
 using System.Text.Json;
 using Kimi.Compiler;
@@ -110,7 +111,7 @@ internal static class LinkManifest
             var states = value switch
             {
                 string text => field.ValueEquals(text),
-                int number => field.TryGetInt32(out var actual) && actual == number,
+                int number => ArtifactFiles.Number(field) == number,
                 _ => ArtifactFiles.SequenceEqual(field, (string[])value),
             };
             if (!states)
@@ -129,8 +130,8 @@ internal static class LinkManifest
     /// <exception cref="InvalidDataException">The element is not an object, or the field is missing or of another kind.</exception>
     internal static JsonElement Field(JsonElement element, ReadOnlySpan<char> path, JsonValueKind kind)
     {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(Leaf(path), out var field) ||
-            (field.ValueKind == JsonValueKind.False ? JsonValueKind.True : field.ValueKind) != kind)
+        var field = ArtifactFiles.Member(element, Leaf(path));
+        if ((field.ValueKind == JsonValueKind.False ? JsonValueKind.True : field.ValueKind) != kind)
         {
             var expected = kind == JsonValueKind.True ? "Boolean" : kind.ToString();
             throw new InvalidDataException($"The link manifest's '{path}' is missing or not a JSON {expected}. Re-emit the manifest.");
@@ -150,7 +151,7 @@ internal static class LinkManifest
     /// <param name="path">The field's path.</param>
     /// <returns>The string, or null when the field is absent.</returns>
     internal static string? OptionalText(JsonElement element, string path)
-        => element.ValueKind == JsonValueKind.Object && !element.TryGetProperty(Leaf(path), out _) ? null : Text(element, path);
+        => element.ValueKind == JsonValueKind.Object && ArtifactFiles.Member(element, Leaf(path)).ValueKind == JsonValueKind.Undefined ? null : Text(element, path);
 
     /// <summary>Reads an array field's items.</summary>
     /// <param name="element">The object holding the field.</param>
