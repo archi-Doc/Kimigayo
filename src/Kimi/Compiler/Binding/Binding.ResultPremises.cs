@@ -84,7 +84,7 @@ public sealed partial class Binding
     // use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a fixed Origin of an enclosing
     // function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
     // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
-    internal bool DefinitionContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
+    internal bool DefinitionContractFits(BoundType item, BoundType signature, BoundType required, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
         if (item.Kind is not (BoundTypeKind.FunctionItem or BoundTypeKind.Closure) || item.Symbol is not { Declaration: FunctionKoto function } symbol)
@@ -118,7 +118,7 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            var fits = this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs);
+            var fits = this.ContractFits(use, symbol, function, ContractComparison(required, rows), null, item, null, default, origins, inputs);
             failure = fits ? default : this.contractFailure;
             return fits;
         }
@@ -356,7 +356,7 @@ public sealed partial class Binding
     // slot of the pattern, whose solution its contributor proves, and at an Evidence position it goes on over the solution, judged where
     // the fit replaced an Origin (SPEC 10.3, 15.6.1; DECISIONS BU-99); a layer around the slot is this call's. As for the fit, an
     // argument that carries no Origin, such as one that transfers control, supplies none; and an input that already failed, its fit or
-    // its conversion's contract (a Function value's, FailsFunctionConversion, whose relations are published with it, FollowsContract), is
+    // its conversion's contract (a Function value's, ConvertFunctionValue, whose relations are published with it, FollowsContract), is
     // no instance of its parameter, so its well-formedness, read from its supplied Type, would only restate that failure.
     private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution)
     {
@@ -753,7 +753,8 @@ public sealed partial class Binding
 
                 return true;
             case WellFormedAction.Prove:
-                if (this.ProvesOriginOutlives(value, substituted, visit.Use, visit.Comparison, condition))
+                if (this.ProvesOriginOutlives(value, substituted, visit.Use, visit.Comparison, condition) ||
+                    this.LeavesBodyRows(value, substituted, visit.Use, visit.Comparison, condition, null))
                 {
                     return true;
                 }
@@ -794,8 +795,8 @@ public sealed partial class Binding
 
         if (visit.Action == WellFormedAction.Prove)
         {
-            return this.ProvesOriginOutlives(longer, shorter, visit.Use, visit.Comparison) &&
-                (!equality || this.ProvesOriginOutlives(shorter, longer, visit.Use, visit.Comparison));
+            return (this.ProvesOriginOutlives(longer, shorter, visit.Use, visit.Comparison) || this.LeavesBodyRows(longer, shorter, visit.Use, visit.Comparison, 0, clause)) &&
+                (!equality || this.ProvesOriginOutlives(shorter, longer, visit.Use, visit.Comparison) || this.LeavesBodyRows(shorter, longer, visit.Use, visit.Comparison, 0, clause));
         }
 
         if (visit.Action == WellFormedAction.Instance)

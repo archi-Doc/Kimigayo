@@ -298,9 +298,13 @@ public sealed partial class Binding
             return expected;
         }
 
-        if (expected is not null && actual is not null && this.FailsFunctionConversion(node, actual, expected))
+        if (expected is not null && actual is not null)
         {
-            return null;
+            actual = this.ConvertFunctionValue(node, actual, expected);
+            if (actual is null)
+            {
+                return null;
+            }
         }
 
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive

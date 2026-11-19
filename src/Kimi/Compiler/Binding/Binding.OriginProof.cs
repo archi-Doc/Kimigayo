@@ -11,6 +11,10 @@ public sealed partial class Binding
     // obligation's Type, a fit's whole destination Type, CheckTypeUse; DECISIONS R4-M133); reused across passes.
     private readonly List<(FunctionKoto Owner, BindingObligation Obligation, BoundType? Destination)> pendingRelations = [];
 
+    // The row sink of every reader of a comparison's region conjuncts (CallableInstance.Rows; LeavesBodyRows): one reused list (warm
+    // 0 B), each reader's segment from the end it found when it built its query, formed or dropped and truncated when it returns.
+    private readonly List<BindingObligation> comparisonRows = new();
+
     // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
     private int originStateVersion;
 
@@ -463,16 +467,17 @@ public sealed partial class Binding
 
     // SPEC 10.1: the Origin part of a fit (RelationWalk). During candidate evaluation and while a selected call's fits are collected
     // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives). `comparison` is the Callable comparison the
-    // fit is part of, whose premises its proof assumes. Both ends are resolved here, once (OriginAtUse).
+    // fit is part of, whose premises its proof assumes. Its ends arrive as written: they are instantiated (CallableInstance.Instantiate)
+    // and resolved here, once (OriginAtUse), and the comparison's one decision for a region conjunct reads them as written (LeavesBodyRows).
     // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): a conjunct one of whose ends rests on a failed part holds and gives no evidence
     // (HoldsResting, after the ordinary answer). A recording fit that held so publishes it (fitRested): its entry leaves the fit's
     // positions as rows of its body (CheckTypeUse), which A5 judges with the atom Dependent (a chain through it between its ends;
     // DECISIONS R4-M118), or the declaration judge rests (JudgeDeclarationRows). The walks entered through IsSubtypeAt (a callable
     // contract) and CallableSignatureFits set it too and form no row: no entry reads it there, and the next fit's entry clears it.
-    private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
+    private bool FitOrigin(BoundOrigin writtenLonger, BoundOrigin writtenShorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
+        var longer = this.OriginAtUse(comparison.Instantiate(writtenLonger), use);
+        var shorter = this.OriginAtUse(comparison.Instantiate(writtenShorter), use);
         if (this.FitConjunct(longer, shorter, use, comparison, condition))
         {
             return true;
@@ -480,12 +485,126 @@ public sealed partial class Binding
 
         if (!this.HoldsResting(longer, shorter, condition, new FitLeaf(this, use, comparison)))
         {
-            return false;
+            return this.LeavesBodyRows(writtenLonger, writtenShorter, use, comparison, condition, null);
         }
 
         this.fitRested |= !this.collectingFits && this.candidateTrials == 0;
         return true;
     }
+
+    // SPEC 15.6.1 under the owner's O-261 Q2 (a) (DECISIONS <G492-a (iii)>): the one decision for a condition of a comparison that its
+    // premises did not prove, called by the condition's owning check (the walk's leaf, the clause check, the well-formedness visit; never
+    // the solve). With a local region of the forming body at its longer end it is that body's relation, a row A5 judges by SPEC 15.6.5.
+    // A meet at the longer end is its operands' conjuncts (SPEC 15.3.6): a conjunct with a fixed longer end keeps the premises alone (J1
+    // included) and the condition fails with it; a region operand's conjunct the premises do not prove is a row. The comparison forms
+    // no row: it publishes each to its query's row sink (CallableInstance.Rows), whose reader forms or drops them; a query without one
+    // (a Constraint's proof, conformance, specialization, a contract match) reads the conjunct as not proven: premises alone.
+    // A row's every end is one A5 judges in the body (the Middle's option (b), board C-400), so two ends keep the comparison's own record
+    // (SPEC 15.6.1, premises alone): an end that, as written, is the compared implementation's own per-call Origin and that its signature
+    // names in its inputs (NamedInItsInputs, G972's verdict: no per-call binding of SPEC 15.3.7 there; false for every valid signature),
+    // and a shorter end that is another declaration's atom (the view's row 9, ForeignDeclarationAtom) the comparison decides by SPEC: a
+    // Function Item's universal, which it solves, or an enclosing comparison's required per-call Origin, which is rigid (SPEC 15.3.7; a30:
+    // g's result compared under the outer required j0). An anonymous function's per-call Origin there (PerCallBinder's FunctionKoto, G972's
+    // binder set: a literal's x in a nested result comparison, n8r) is a row A5 does not judge, its located limit, since the comparison
+    // does not solve such an Origin yet (D1 (a)); when it does (PLAN D-822), that arm joins this case. A required per-call Origin of this
+    // comparison is the L1 lift's. The ends arrive as written; the comparison instantiates them here.
+    private bool LeavesBodyRows(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition, Koto? clause)
+    {
+        if (comparison.Rows is not { } rows || (comparison.IsImplementationSlot(longer) && this.NamedInItsInputs(longer)) ||
+            (comparison.IsImplementationSlot(shorter) && this.NamedInItsInputs(shorter)))
+        {
+            return false;
+        }
+
+        longer = this.OriginAtUse(comparison.Instantiate(longer), use);
+        shorter = this.OriginAtUse(comparison.Instantiate(shorter), use);
+        if (!RegionChain(longer, shorter, false, this.formingBody) ||
+            (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter) && PerCallBinder(shorter) is not FunctionKoto))
+        {
+            return false;
+        }
+
+        var conjuncts = longer.Kind == OriginKind.Intersection ? longer.Operands.Count : 1;
+        for (var i = 0; i < conjuncts; i++)
+        {
+            var operand = conjuncts == 1 ? longer : longer.Operands[i];
+            if (!HasLocalRegion(operand) && !this.ProvesOriginOutlives(operand, shorter, use, comparison, condition))
+            {
+                return false;
+            }
+        }
+
+        // The L1 lift: a required per-call Origin j at the shorter end is rigid: the comparison holds for every j its premises allow (SPEC
+        // 15.3.7), so `R outlives j` holds exactly when R outlives the meet of the body's Origins those premises put above j, `static`
+        // when they put none (j may be any Origin then). The row names that bound, an Origin of the body.
+        var bound = comparison.IsRequiredSlot(shorter) ? this.RequiredSlotBound(shorter, use, comparison, condition) : shorter;
+        for (var i = 0; i < conjuncts; i++)
+        {
+            var operand = conjuncts == 1 ? longer : longer.Operands[i];
+            if (HasLocalRegion(operand) && (conjuncts == 1 || !this.ProvesOriginOutlives(operand, shorter, use, comparison, condition)))
+            {
+                rows.Add(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, operand, bound, Clause: clause, Condition: condition));
+            }
+        }
+
+        return true;
+    }
+
+    // The L1 lift's bound: the meet of the Origins of the body that the comparison's premises entail to outlive the required per-call
+    // Origin `slot` (the closure from it; a per-call Origin of a Function Type, a top-like node or an unnamed node is no bound), `static`
+    // when none; `slot` itself where the premises cannot be read (MaxOriginPremiseDepth), so A5 keeps its located limit there.
+    private BoundOrigin RequiredSlotBound(BoundOrigin slot, Koto use, in CallableInstance comparison, ulong condition)
+    {
+        if (this.RentPremises(use) is not { } environment)
+        {
+            return slot;
+        }
+
+        BoundOrigin bound = BoundOrigin.Static;
+        environment.Comparison = comparison;
+        environment.Shorter = slot;
+        try
+        {
+            var closure = environment.Closure;
+            this.CollectOriginResolvers(environment);
+            var target = closure.Node(slot, out _);
+            this.ExtractOriginPremises(environment, use);
+            _ = closure.Close(target, -1, condition);
+            var first = true;
+            for (var node = 0; node < closure.NodeCount; node++)
+            {
+                if (node != target && closure.Reached(node) && closure.Origin(node) is { Kind: not (OriginKind.Static or OriginKind.Anchor or OriginKind.Intersection) } origin &&
+                    origin.Binder is not FunctionTypeKoto)
+                {
+                    bound = first ? origin : this.Meet(bound, origin);
+                    first = false;
+                }
+            }
+        }
+        finally
+        {
+            this.ReturnPremises(environment);
+        }
+
+        return bound;
+    }
+
+    // A fit at a value that read its comparisons with the row sink from `start` (comparisonRows): outside a trial or a collected fit, the
+    // region conjuncts of its comparisons that held are the body's rows (AddObligation, the one writer), also when another part of the
+    // fit failed (SPEC 23.1.2: each an independent requirement; a failed comparison kept none, RelationWalk); the segment is then dropped.
+    private void FormComparisonRows(int start)
+    {
+        for (var i = start; this.candidateTrials == 0 && !this.collectingFits && i < this.comparisonRows.Count; i++)
+        {
+            this.AddObligation(this.comparisonRows[i]);
+        }
+
+        this.DropComparisonRows(start);
+    }
+
+    // SPEC 15.6.1: a selection, or a re-reading of comparisons that a fit at the value judged and formed, takes the region conjuncts from
+    // `start` and forms none.
+    private void DropComparisonRows(int start) => this.comparisonRows.RemoveRange(start, this.comparisonRows.Count - start);
 
     // The ordinary answer of one conjunct, its ends resolved at the use: pure in a candidate trial or a collected fit, recording otherwise.
     private bool FitConjunct(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition)
@@ -578,7 +697,8 @@ public sealed partial class Binding
         {
             var a = Substitute(relation.Longer);
             var b = Substitute(relation.Shorter);
-            if (!this.ProvesOriginOutlives(a, b, use, comparison) || (relation.Equality && !this.ProvesOriginOutlives(b, a, use, comparison)))
+            if ((!this.ProvesOriginOutlives(a, b, use, comparison) && !this.LeavesBodyRows(a, b, use, comparison, 0, relation.Syntax)) ||
+                (relation.Equality && !this.ProvesOriginOutlives(b, a, use, comparison) && !this.LeavesBodyRows(b, a, use, comparison, 0, relation.Syntax)))
             {
                 this.failedCallClause = (a, b, relation.Equality, relation.Syntax);
                 return false;

@@ -339,7 +339,10 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        if (this.ErasureSignatureFits(actual, type, node, out _))
+        var rows = this.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
+        var erases = this.ErasureSignatureFits(actual, type, node, this.comparisonRows, out _);
+        this.DropComparisonRows(rows);
+        if (erases)
         {
             // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an initialization; its Owned
             // environment is a Constraint of the candidate (ErasedArgumentsEnvironment, SPEC 10.1 step 5), its rest judged once the call is

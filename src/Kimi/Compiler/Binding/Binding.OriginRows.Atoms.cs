@@ -37,6 +37,11 @@ public sealed partial class Binding
         return this.InternAtom(slice, meet, this.compilation.SyntaxOf(site), PartOf(meet, slice));
     }
 
+    // The view's rows 1 and 9 for a declaration's atom, a universal or per-call Origin: Fixed in body B when its binder is B's contract
+    // (its or an enclosing declaration's), else another declaration's atom, Unclassed: an end no row of B judges (ClassifyAtom).
+    internal bool ForeignDeclarationAtom(BoundOrigin atom, ExecutableBody body)
+        => atom.Kind is OriginKind.Parameter or OriginKind.Input && !this.InContract(atom.Binder, body);
+
     // E4 (DECISIONS R4-M114, BU-102): an atom's part in a constructor's slice, the part whose unit formed it (1 the body's own, 2 its
     // layer's, the Field initializers'), a meet its operands' parts; a declaration atom or another body's names none, as no unit forms it.
     private static byte PartOf(BoundOrigin atom, OriginRowSet slice)
@@ -143,8 +148,7 @@ public sealed partial class Binding
                 // DECISIONS BU-100: fixed in every body; its callers prove every choice, so only `static` can carry it into one.
                 return new(atom, OriginAtomKind.Fixed, ProjectionRole.None);
             case OriginKind.Parameter or OriginKind.Input:
-                // Rows 1 and 9: B's contract (its or an enclosing declaration's), or another declaration's universal atom.
-                return new(atom, this.InContract(atom.Binder, slice.Body) ? OriginAtomKind.Fixed : OriginAtomKind.Unclassed, ProjectionRole.None);
+                return new(atom, this.ForeignDeclarationAtom(atom, slice.Body) ? OriginAtomKind.Unclassed : OriginAtomKind.Fixed, ProjectionRole.None);
             case OriginKind.Intersection:
                 return this.ClassifyMeet(atom, slice);
             case OriginKind.Unbound:

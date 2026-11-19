@@ -148,7 +148,7 @@ public sealed partial class Binding
                     {
                         var contract = ComparisonFailure.Shape;
                         var structure = bound && ReferenceTypes.StorageMatches(required, actual);
-                        return structure && !this.DefinitionContractFits(candidateItem, actual, required, use, out contract) && contract.IsCondition
+                        return structure && !this.DefinitionContractFits(candidateItem, actual, required, use, null, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
                             : this.FailMismatch(use, use, actual, required, contract);
                     }
@@ -623,9 +623,17 @@ public sealed partial class Binding
                     return CandidateApplicability.Inapplicable;
                 }
             }
-            else if (!this.ContractFits(use, symbol, function, required, container, null, frame, operations, origins, inputs))
+            else
             {
-                return CandidateApplicability.Inapplicable;
+                // SPEC 15.6.1: an Origin relation never changes a selection, so the reference's applicability takes the comparison's
+                // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction).
+                var rows = this.comparisonRows.Count;
+                var fits = this.ContractFits(use, symbol, function, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs);
+                this.DropComparisonRows(rows);
+                if (!fits)
+                {
+                    return CandidateApplicability.Inapplicable;
+                }
             }
 
             // A bound enclosing Type can supply conditions even when the function has no own slots.

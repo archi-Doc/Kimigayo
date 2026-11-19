@@ -10,12 +10,15 @@ namespace Kimi.Compiler;
 //   nesting when it has a Binding.
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
 //   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads (none: the
-//   relation as written), and which Origin bindings count (OriginPart).
+//   relation as written), which Origin bindings count (OriginPart), and the row sink of a reader of a comparison's region conjuncts
+//   (CallableInstance.Rows: its root comparisons take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not
+//   proven).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
 //   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
-//   that this walk meets reversed, under a contravariant one).
+//   that this walk meets reversed, under a contravariant one). A walk with a row sink appends to it each region conjunct its
+//   comparisons left as rows (LeavesBodyRows); the reader that set the sink forms or drops them, so "holds" there is conditional on them.
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
 //   inputs, its result, then the implementation's own well-formedness. A Callable comparison stops at its first failure, which is its
 //   one fact (SPEC 15.6.1); outside every comparison a recording root's walk goes on past an Origin position's or a Function
@@ -54,7 +57,10 @@ public sealed partial class Binding
 
         // A member's Origin position whose relation only an inferred or body-local region decides (the judge proves it through the
         // region's sources, or finds it Unrepresentable; SPEC 15.6.5): the located limit until region-inference edges exist, recorded as
-        // the plain position's search records it (design-r2 Amendment 1, A1), never in a whole-contract comparison (OriginPart.Contract).
+        // the plain position's search records it (design-r2 Amendment 1, A1); in a whole-contract comparison (OriginPart.Contract) only
+        // an implementation's per-call Origin no bound of which reached a fixed Origin when SolveOriginInference took the
+        // representatives: none at all (SPEC 15.3.6), or one only through another variable without a principal solution, until PLAN
+        // G960 gives every variable its value inside the fixpoint.
         Limit,
     }
 
@@ -150,6 +156,9 @@ public sealed partial class Binding
 
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
+
+        // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
+        internal List<BindingObligation>? Rows { get; init; }
 
         // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
         // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
@@ -252,13 +261,17 @@ public sealed partial class Binding
                 // position the two Function Types relate both ways (SPEC 3.8, 15.3.5): a Callable comparison is oriented (it instantiates
                 // only the implementation's per-call inputs and judges only its well-formedness, SPEC 10.7), so the comparison as written
                 // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
-                var comparison = Comparison(actual, own, expected, instance);
+                // A comparison that fails keeps none of the region conjuncts it left as rows: its failure is its one fact (SPEC 15.6.1,
+                // 23.1.2); one that holds keeps them for the reader, also when another part of the walk fails.
+                var comparison = Comparison(actual, own, expected, instance, InComparison(instance) ? instance.Rows : this.Rows);
+                var rows = comparison.Rows?.Count ?? 0;
                 if (this.FunctionFits(actual, expected, invariant, comparison) &&
                     (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))
                 {
                     return holds;
                 }
 
+                comparison.Rows?.RemoveRange(rows, comparison.Rows.Count - rows);
                 _ = !this.ended && this.Keep(this.failure, instance);
                 return false;
             }
