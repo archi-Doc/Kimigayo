@@ -6,6 +6,8 @@
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
 // The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs
 // with a by-case need's decider, whether it is an unresolved operation) and passes those to the rows' rules, which read no walk state.
+// Two by-case needs meeting at one node have deciders of one pair, which decide alike (UseNeed.Meet: a discarded group's take and its
+// operand's, one pair's occurrences annotated apart); deciders of two pairs meeting is a broken contract (InternalInvariant).
 // Must not resolve again.
 
 using Kimi.Compiler.Parsing;
