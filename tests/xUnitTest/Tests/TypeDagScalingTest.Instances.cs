@@ -129,7 +129,7 @@ public partial class TypeDagScalingTest
         Assert.Equal(Enumerable.Range(1, size).Select(static i => $"D{i}").Order(StringComparer.Ordinal), diagnosed.Order(StringComparer.Ordinal));
     }
 
-    // DECISIONS BU-12 (R7-T1, C-406's C2): the storage verdict (TyCtxt.StorageVerdict, Binding's walk) decides each distinct Type of a
+    // DECISIONS BU-12 (R7-T1, C-406's C2): the storage verdict (Binding.PrepareTypeStorage, the one storage query) decides each distinct Type of a
     // storage once per pass, so an inline Box and a fixed array nested N deep cost linear in N: Prepared within the height bound (64),
     // Limit past it, and the pass's memo gives the same verdict again; a walk that stalls fails at the deadline, never hangs.
     [Theory]
@@ -148,7 +148,7 @@ public partial class TypeDagScalingTest
                 var c = MirBuildTest.Compile(source);
                 var types = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters
                     .Select(static x => x.Type.TypeOf()!).ToArray();
-                return types.Select(c.Types.StorageVerdict).Concat(types.Select(c.Types.StorageVerdict)).ToArray();
+                return types.Select(c.Binding.PrepareTypeStorage).Concat(types.Select(c.Binding.PrepareTypeStorage)).ToArray();
             },
             cancel);
         Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
