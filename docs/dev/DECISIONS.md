@@ -4419,6 +4419,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   answer, verbatim 「(a) 素の取得とする (推奨)」 (SPEC 14.2.2 since dev 833209c38); the planning session's S2 decisions (the discard row as
   `PlanRow.Adjust`; Discard Context a bare acquisition position) and R5's three requirements on them). Supersedes R4-M128's interim
   by-value list and its Discard Context net. Requirement 2's unset-row sentences are superseded by BU-103. Its by-value list for the by-case mark is superseded by R7-M12 (`Take`'s ByCase).
+  Its net row (a null take, the net's `Unsupported_Kd`) is superseded by R7-M58 (X3: a broken contract).
   - Representation: `ClosureEffects.ConsumedByValue(place)` (`Binding.ClosureReceivers`), computed once per use (C7), reads the Adjust
     rule (R4-M142) instead of a list: the place's groups taken through (`Binding.Grouped` over `IsGroup`: parentheses and a label,
     which wraps only a control-flow construct, never a Place; `HirOp.Group` is wider, an identity or transfer conversion acquiring its
@@ -5611,6 +5612,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     done; G396's remaining items, the Exceptions above and X-2's 25 producers among them, are R7 exit conditions. R4's exit stands.
   - Superseded in part by R7-M53 (2026-11-19): X-2's DEC O4 line and the Exceptions list for A5-F7, A5-F8, A5-F10, A6's 2g units
     with G105, G126 and G147 (2): their stage is the R7 plan's stream Z, and each of the 25 producers is removed, not excepted.
+  - Applied by R7-M58 (2026-11-20; R7-M53's Rule): X3, a capture use no consumer takes, is a broken contract (`InternalInvariant_Kd`).
 - **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
   「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; BU's review REVISE B1, the fix round under the owner's 「GO」)
   - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
@@ -22979,6 +22981,23 @@ R8-M* and R9-M* by the stage of the recording unit.
     and the frame that site kind. `CapabilityGap.StorageNesting` (`[Transitional("R7")]`, its reason now c4), read only by the witness
     Limit rows (`Requirement`, `Comparing`, `Parts`, `Parts`' null node over a height-refused instance included, B's ruling 17 O2)
     until c4.
+- **R7-M58 X3: a capture use no consumer takes is a broken contract** (Middle, 2026-11-20; PLAN G396 (3), stream Z8, Q-561, D-909;
+  Minor by the plan, a Binding file: the Front's read, ACCEPT WITH CONDITIONS, C1 taken; the Middle's acceptance of the move, 11-20)
+  SPEC 4.7.1, 7.7.3, 13.7.1, 23.1.2.
+  - **Rule.** `ClosureEffects`' classification is closed: each use of a capture whose Type Reborrows by case is taken by its
+    consumer's Adjust rule or explained: its own failure; its consumer's failure or dependency, which decides only a bare acquisition
+    position; or a consumer of Op Error, Unset or Syntax, whose children the HIR publisher's walk takes none of (the derived arm: no
+    acquisition, no mark, no record; SPEC 23.1.2).
+  - **Broken contract.** `TakenByCase` is null only where an evaluated consumer's Adjust record lacks the use or a user index's two
+    selections take it differently (SPEC 4.7.1 excludes both); every such use is `Unlisted`, which `BindConcreteClosure` fails as a
+    located `InternalInvariant_Kd` (`Fail(use, BindingFailure.Internal)`). The filter that kept only an unmarked capture's uses under a
+    Shared case-free receiver is deleted.
+  - **Applies** R7-M53's Rule (which supersedes R4-M165's DEC O4 for stream Z's producers) to X3. **Supersedes** R4-M145's net row
+    ("no take or a user index pair that disagrees (B-3) null, the net's one row").
+  - **Move (Q13).** An admitted misfit (R5-M195, O-241 (a)) whose value holds a pair-layer capture as a direct operand loses the
+    dependent `Unsupported_Kd` at each such operand (rule W: its own `TypeMismatch_Kd` stays); 0 in the snapshot corpus.
+  - **Rows.** `ClosureReceiverClassificationTest.AUseNoConsumerTakesIsABrokenContract` (hand-built; `Unsupported_Kd` before) and
+    `.AnAdmittedMisfitsValueExplainsTheCaptureItHolds` (three rows).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
