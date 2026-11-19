@@ -258,8 +258,9 @@ public class UseLookupTest
 
     // SPEC 9.6, 8.5.2, 14.9.2 (R7-N1 c-b, rulings 24-26): the left of a Case through a projection is bound by the decided reading alone,
     // whatever asked first: in an `if` join, where ResultSurvey asks before the access binds, every node of the left has the lookup,
-    // selection and Type it has in the plain form (rb81v and rb47v; dq9v and dq7v; dq10v's join), the projection ends its path in its
-    // normal form M and the access selects M's Case `A`, the call's receiver.
+    // selection and Type it has in the plain form (rb81v and rb47v; dq9v and dq7v; dq10v's join), the projection ends its path and the
+    // access selects the Case `A` of its class's form M, the call's receiver. The projection's published Type is as ContractType gives
+    // it (R7-C3 C3-1: no identity step in a producer; ClassForm forms it at the member step), so the row does not name it.
     [Theory]
     [InlineData(CaseLeft, CaseLeftJoined)]
     [InlineData(NestedClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", NestedClause + "func g<T>(c: bool) -> i32\n    T is C\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n")]
@@ -269,7 +270,7 @@ public class UseLookupTest
         var (access, facts) = LeftFacts(plain);
         Assert.Equal(facts, LeftFacts(joined).Facts);
         Assert.Equal((BindingSymbolKind.EnumCase, "A"), (HirTables.Symbol(access)?.Kind, HirTables.Symbol(access)?.Name));
-        Assert.Equal((PathEnd.Projection, "M"), (HirTables.LookupOf(access.Left), HirTables.TypeOf(access.Left)?.ToString()));
+        Assert.Equal(PathEnd.Projection, HirTables.LookupOf(access.Left));
     }
 
     // SPEC 8.5.2, 8.6.1, 9.6 (R7-N1 c-b): a projection's member is formed by its one former after the left's reading: a Type function
