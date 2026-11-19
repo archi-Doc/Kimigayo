@@ -626,7 +626,7 @@ public sealed partial class Binding
                 return this.CompleteDependent(array, holeCause);
             case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
                 return this.CompleteDependent(array, arrayCause);
-            case ArrayLiteralKoto array:
+            case ArrayLiteralKoto array when this.TypedByPlaceRule(array, expected):
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);

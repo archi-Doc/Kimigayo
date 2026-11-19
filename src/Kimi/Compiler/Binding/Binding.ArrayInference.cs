@@ -239,8 +239,17 @@ public sealed partial class Binding
         return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], expected.Length < 0 ? actual.Length : expected.Length, lengthExpression: expected.Length < 0 ? actual.LengthExpression : expected.LengthExpression);
     }
 
-    // SPEC 4.3: without a fixed-array or Array expectation (none, or a Type no array literal has, whose fit then fails at the position as
-    // a fill's or a Dictionary literal's does; SPEC 10.2) an independent literal constructs an Array whose element Type is the
+    // SPEC 4.3.1, 10.2 (PLAN G1116): whether a list literal without a fixed-array or Array expectation takes its own Type by the place
+    // rule now (BindIndependentArrayLiteral), the position's fit judging that Type as it judges a fill's or a Dictionary literal's.
+    // Two places decide its Type where no implemented rule does, and keep the located Unsupported_Kd: a pair layer (SPEC 8.2.3, 13.5.5),
+    // whose admitted Semantics cases decide whether it is the array Type itself, a reference to a temporary of it or no array, which
+    // the fit does not resolve; and, for an empty literal, a place decided later (SPEC 4.3.1 Places, 14.9.2 step 3), where only parts
+    // publish a literal as waiting (AwaitsFor), so an empty one would wait with nothing to bind it.
+    private bool TypedByPlaceRule(ArrayLiteralKoto literal, BoundType? expected)
+        => expected?.IsPairLayer != true && (literal.Elements.Count != 0 || !this.DecidedLater(literal));
+
+    // SPEC 4.3: without a fixed-array or Array expectation (none, or a constructed Type no array literal has, whose fit then fails at
+    // the position; TypedByPlaceRule) an independent literal constructs an Array whose element Type is the
     // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
     // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it. Every
     // element is bound, also after a failed one (SPEC 23.1.2), as a Dictionary literal's parts are (IndependentDictionaryType).
