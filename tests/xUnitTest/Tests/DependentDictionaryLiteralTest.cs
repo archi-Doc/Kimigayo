@@ -119,7 +119,7 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     public void ALocalReferentCannotEscapeThroughTheDictionaryResult()
     {
         var c = MinimalEmissionTest.Analyze("func make() -> Dictionary<i32, ref/i32 during static>\n    let value = 42\n    return [1: value@ref]");
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         Assert.False(c.Generate(TextWriter.Null));
     }
 

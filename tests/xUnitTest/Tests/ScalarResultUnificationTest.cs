@@ -26,7 +26,7 @@ public class ScalarResultUnificationTest
     [InlineData("func f(p: uniq/(ref/i32 during a) during x, q: uniq/(ref/i32 during b) during y, c: bool) -> i32\n    let z = if c => p else => q\n    _ = z\n    return 0\n", "1*TypeMismatch_Kd")] // j5-uniq-inner-invariant
     [InlineData("func f<s/T>(value: s/T, other: s/T during a, c: bool) -> i32\n    s is owner or uniq\n    T is Copy\n    let z = if c => value else => other\n    _ = z\n    return 0\n", "clean")] // k06-pou-join-local
     [InlineData("func f<s/T>(value: s/T, other: s/T during a, c: bool) -> s/T during a\n    s is uniq\n    return if c => value else => other\n", "1*UnprovenOriginRelation_Kd")] // k07-pu-join-escape
-    [InlineData("func f(value: uniq/i32 during b, other: uniq/i32 during a, c: bool) -> uniq/i32 during a\n    return if c => value else => other\n", "1*UnprovenOriginRelation_Kd")] // k07c-concrete-join-escape
+    [InlineData("func f(value: uniq/i32 during b, other: uniq/i32 during a, c: bool) -> uniq/i32 during a\n    return if c => value else => other\n", "2*UnprovenOriginRelation_Kd")] // The join's fit at its source and the containment edge there (counted, Q13). // k07c-concrete-join-escape
     [InlineData("func f<s/T>(value: s/T, other: s/T during a, b: bool) -> ()\n    s is ref or uniq\n    let r = if b => other else => value\n    _ = r\n", "clean")] // j0-PRU
     [InlineData("func f<s/T>(x: s/T during a, y: s/T during c, b: bool) -> ()\n    s is ref or uniq\n    let r = if b => x else => y\n    _ = r\n", "clean")] // j3-PRU
     [InlineData("func f<s/T>(value: s/T, b: bool) -> ()\n    s is ref or uniq\n    var local = value\n    let r = if b => local else => value\n    _ = r\n", "clean")] // j2v-PRU

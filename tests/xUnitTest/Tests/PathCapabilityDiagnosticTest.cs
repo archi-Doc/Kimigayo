@@ -550,7 +550,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("follow_let", Bump + "func f<s/T>(x: s/T, n: s/Tw, b: s/Bc)\n    s is owner or uniq\n    let m = n@move\n    take(m@follow.v@uniq)\n    b.bump()\n", "InvalidAssignment_Kd m@follow.v@uniq; NoApplicableOverload_Kd b.bump()")]
     [InlineData("whole", "func f()\n    tw() = Tw.init()\n    (tw()) = Tw.init()\n    1 = 2\n    var u = Tw.init()\n    u@move = Tw.init()\n", "InvalidAssignment_Kd (tw()); InvalidAssignment_Kd 1; InvalidAssignment_Kd tw(); InvalidAssignment_Kd u@move")]
     [InlineData("outlive", "func f()\n    let r = tw().v@uniq\n    take(r)\n    let t = pair().0@uniq\n    t@follow = 3\n", "ComparisonLoanConflict_Kd pair(); ComparisonLoanConflict_Kd tw()")]
-    [InlineData("return", "func g(w: uniq/Tw) -> uniq/i32 during w\n    return tw().v@uniq\n", "UnsatisfiedOriginRelation_Kd return tw().v@uniq; UnsatisfiedOriginRelation_Kd tw().v@uniq")]
+    [InlineData("return", "func g(w: uniq/Tw) -> uniq/i32 during w\n    return tw().v@uniq\n", "UnsatisfiedOriginRelation_Kd tw().v@uniq")] // The twin at `return` went (R7-O1 H).
     [InlineData("origin_limit", RefParts, "Unsupported_Kd mkG(y@ref).r = x@ref; Unsupported_Kd pr(y@ref).0 = x@ref")]
     public void APartOfATemporaryKeepsItsPermissions(string form, string body, string records)
     {

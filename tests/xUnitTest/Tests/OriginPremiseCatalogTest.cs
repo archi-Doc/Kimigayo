@@ -227,10 +227,11 @@ public partial class OriginPremiseCatalogTest
     // binder admitting no borrow stores no `o`. A Field below a borrow proves the relation as its concrete twin does.
     [Theory]
     [InlineData(PairHolder + "    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
-    [InlineData(PairHolder + "    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    // R7-O1 H: two A5 records at the value, as the two published before (Binding's issue list held the first only).
+    [InlineData(PairHolder + "    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "UnprovenOriginRelation_Kd self.value@follow@ref")]
     [InlineData("struct Holder<s/T>\n    s is ref\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
     [InlineData(Box + Peek, null)]
-    [InlineData(Box + "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Box + "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "UnprovenOriginRelation_Kd b.item@follow@ref")]
     [InlineData("func peek<s/T>(b: ref/(s/T, i32)) -> ref/T\n    s is ref or uniq\n    return b.0@follow@ref\n", null)]
     [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]

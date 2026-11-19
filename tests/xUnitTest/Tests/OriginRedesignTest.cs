@@ -90,7 +90,11 @@ public class OriginRedesignTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("invalid.kimi", "struct V<T> {source}\n    let value: ref/T during source\n" + source));
         Assert.Empty(TestDiagnostics.Of(c));
-        Assert.False(c.Bind().IsComplete);
+        c.Project.ProjectFile.OutputKind = OutputKind.Library;
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Library);
+        c.Analyze();
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 
     [Theory]
