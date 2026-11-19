@@ -539,7 +539,7 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.2: the evidence of a pair occurrence failed with a Language cause.
-    private bool ReportFormationCause(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    private bool ReportFormationCause(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (this.formationCauses?.TryGetValue(node, out var causes) != true || node is not TypeSemanticsKoto { BoundSymbol.Pair: { } pair } application ||
             pair.WholeType is not { } whole)
@@ -553,11 +553,11 @@ public sealed partial class Binding
         var name = application.SemanticsParameter!;
         if ((causes & TypeRoleCause.MissingSlot) != 0)
         {
-            node.Report(requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)");
+            node.ReportIn(store, requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)");
         }
         else
         {
-            node.Report(requirement, code, evidence: [$"{name} admits {text}, which a static Origin never admits"], note: "A static outer-Origin slot admits no exclusive borrow (SPEC 8.1.2)");
+            node.ReportIn(store, requirement, code, evidence: [$"{name} admits {text}, which a static Origin never admits"], note: "A static outer-Origin slot admits no exclusive borrow (SPEC 8.1.2)");
         }
 
         return true;

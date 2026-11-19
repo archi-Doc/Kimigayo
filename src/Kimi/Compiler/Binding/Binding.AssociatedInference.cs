@@ -638,7 +638,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool ReportAssociatedInference(Koto use, Kimi.Diagnostics.DiagnosticRequirement requirement)
+    private bool ReportAssociatedInference(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, Kimi.Diagnostics.DiagnosticRequirement requirement)
     {
         if (!this.inferenceFailures.TryGetValue(use, out var failure))
         {
@@ -674,7 +674,7 @@ public sealed partial class Binding
             related.Add(("result", first.ReturnType ?? first, "other declaration result"));
         }
 
-        use.Report(requirement, DiagnosticCode.AssociatedTypeInferenceFailed_Kd, evidence: [name, reason], related: related.ToArray());
+        use.ReportIn(store, requirement, DiagnosticCode.AssociatedTypeInferenceFailed_Kd, evidence: [name, reason], related: related.ToArray());
         return true;
     }
 

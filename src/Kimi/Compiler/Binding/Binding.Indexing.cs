@@ -427,7 +427,7 @@ public sealed partial class Binding
                         if (!binding.symbols.TryGetValue(function, out var closureSymbol))
                         {
                             closureSymbol = new(string.Empty, BindingSymbolKind.Function, function, this.Scope);
-                            binding.symbols.Add(function, closureSymbol);
+                            DeclaredSymbols.Add(function, closureSymbol);
                         }
 
                         closureSymbol.Scope = this.Scope;
