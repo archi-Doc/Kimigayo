@@ -26,8 +26,8 @@ public enum LengthOperation : byte
 
 /// <summary>Interned checked length expression. Symbolic arithmetic is validated at instantiation.</summary>
 /// <remarks>An interpolation term (R8-W2; SPEC 22.10.5) has <see cref="Value"/> its literal bytes and <see cref="Values"/> the Tuple of
-/// its value Types, erased, at least one undecided: the bound term (rule L, FormattingTypes.StackBound) is the stack region of a direct
-/// interpolation in a generic body, the hint term (FormattingTypes.HintBound) the bytes an owning interpolation's later writes may still
+/// its value Types, erased, at least one undecided: the bound term (rule L, TyCtxt.StackBound) is the stack region of a direct
+/// interpolation in a generic body, the hint term (TyCtxt.HintBound) the bytes an owning interpolation's later writes may still
 /// reserve. A substitution folds it again by its own operation (TyCtxt.Refold).</remarks>
 public sealed class BoundLength(LengthOperation operation, long value, BindingSymbol? parameter, BoundLength? left, BoundLength? right, BoundType? values = null)
 {

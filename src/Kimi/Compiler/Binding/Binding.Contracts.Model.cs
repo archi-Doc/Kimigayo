@@ -387,8 +387,15 @@ public sealed class BoundConformancePath : ICheckCause
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
 
     // SPEC 23.1.2: a check resting on a conformance resting on its specification derives its record from Use; one resting on its OCC-X
-    // limit needs that limit published.
-    void ICheckCause.Rest() => this.Needed |= this.Unsupported;
+    // limit needs that limit published. Stored only on a change, so a frozen path, never Unsupported, is never written (PLAN G949 Stage 2
+    // U3).
+    void ICheckCause.Rest()
+    {
+        if (this.Unsupported)
+        {
+            this.Needed = true;
+        }
+    }
 
     internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
 

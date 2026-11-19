@@ -294,7 +294,7 @@ public sealed partial class Binding
                 formation = this.ContractType(formation, this.ConstraintScope(use), projection.Components[0]);
             }
 
-            if (this.CheckTypeOriginRelations(projection, this.ConstraintScope(use)) != ConstraintProof.Proven ||
+            if (this.CheckTypeOriginRelations(projection, use) != ConstraintProof.Proven ||
                 (formation is not null && !this.CheckAssociatedFormation(formation, use)))
             {
                 this.Fail(use, BindingFailure.InvalidOrigin);

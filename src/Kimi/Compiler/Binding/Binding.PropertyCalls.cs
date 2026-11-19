@@ -12,9 +12,26 @@ public sealed partial class Binding
     private readonly PropertyUpdateStorageRows propertyUpdateStorage;
     private readonly PropertyUpdateInputRows propertyUpdateInputs;
 
+    // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
+    // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
+    // is standard. That target locates the Field's Place, and the target's own getter is not called for it; an update's read by the
+    // getter is a value, which no Place walk takes. A getter result, and every path rooted in it, stays a root (11.5). Read by
+    // NextPathStep, PlaceOriginSource, ElementAccess's path roots and ClosureEffects' owned-part climb; NextPathStep's InlinePart case,
+    // IsBarePlace, IsStaticField and TakeJudgment still decide the Field's Place on their own (D-827).
     internal static bool IsGetterResult(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
-            KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
+        => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
+            place.BoundSymbol?.Property is { Getter.IsStandard: false } property && !(property.Setter.IsStandard && IsWriteTarget(place, out _));
+
+    // SPEC 13.7.1: whether a node, taken as its outermost group (Grouped), is the target of `=` (write) or of a compound assignment,
+    // `++` or `--` (an update): a Property use's write role, read by its binding and IsGetterResult (UseOf reads the same role from the
+    // parent's HirOp: D-827).
+    internal static bool IsWriteTarget(Koto node, out bool write)
+    {
+        var target = Grouped(node);
+        var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+        write = assignment && target.Parent!.Akind == KotoKind.Equals;
+        return assignment || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+    }
 
     // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
     // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
@@ -343,6 +360,8 @@ public sealed partial class Binding
                     Binding = this, Call = call, Binder = function, Origins = origins, Inputs = inputs, DeclaringType = declaringType, Rows = rows.AsSpan(0, count),
                 };
                 this.JudgeSelectedCall(call, solution, operations.AsSpan(0, count + 1), []);
+                this.RequireResultPremises(function, result, call); // SPEC 15.6.1, 15.6.4 step 3: the getter's result premises.
+                this.AddSynthesizedCall(node, call); // SPEC 11.3, 15.6.4 step 3: its Types' formation, judged as every call's, at the use (Check).
                 Complete(call, result);
                 return true;
             }

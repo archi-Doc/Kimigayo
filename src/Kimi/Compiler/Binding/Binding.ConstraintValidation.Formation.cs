@@ -130,7 +130,7 @@ public sealed partial class Binding
         this.BeginProof();
         var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ?
             ConstraintProof.Unknown : ConstraintProof.Proven;
-        return CombineProof(proof, this.CheckTypeOriginRelations(type, scope), true);
+        return CombineProof(proof, this.CheckTypeOriginRelations(type, scope.Owner), true);
     }
 
     // The step's closing judgment, after the walk's components: a constructed part's clauses and every enclosing container's under its

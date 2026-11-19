@@ -51,6 +51,9 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ImplicitConstructorDecisions"] = "never written: the library declares no derived structure",
         ["NodeColumns.ObjectErasures"] = "never written: the library erases no object view",
         ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
+        ["NodeColumns.AliasTargets"] = "never written: the library declares no alias",
+        ["NodeColumns.ImportedContainers"] = "never written: the library declares no alias, so no qualifier selects an alias import",
+        ["NodeColumns.QualificationFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
@@ -74,15 +77,22 @@ public partial class KimiLibraryShapeTest
         => [string.Empty, "example/Hello", "milestone/Milestone26", "milestone/Milestone27", "milestone/Milestone30", "milestone/Milestone31",
             "milestone/Milestone32", "milestone/Milestone35", "example/Ranges", "example/Utf8Formatting"];
 
-    // k3 (E4's tripwire; F's ruling 167, Q3): no library conformance path has a standard Property witness (SPEC 11.9.2: a stored Field
-    // witnessing a Property requirement, which a bridge accessor executes), so no program can make a witness bridge on a library path
-    // (PropertyWitnessFunction makes one per path and witness) and S1-1 needs no eager bridge step: every library path's Property
-    // witnesses are accessor calls (95 verified paths today). The unit that gives a library Type the first standard witness removes this
-    // Fact and adds the eager step over the base paths, returning a library bridge without its refresh (s11-design section 4, E4).
+    // k3 (E4's tripwire; F's ruling 167, Q3), strengthened as t3 (PLAN G949 Stage 2 U3, design R3.7 C2): no library contract declares a
+    // Property requirement, so no library conformance path has a Property witness, and so none a standard one (SPEC 11.9.2: a stored Field
+    // witnessing a Property requirement, which a bridge accessor executes): no program makes or refreshes a witness bridge on a frozen
+    // path (PropertyWitnessFunction makes one per path and witness) and S1-1 needs no eager bridge step. The unit that gives a library
+    // contract the first Property requirement routes those writes by U4's two levels, adds the eager step over the base paths (s11-design
+    // section 4, E4) and removes this Fact.
     [Fact]
     public void TheLibraryDeclaresNoStandardPropertyWitness()
     {
         var c = Bound(string.Empty);
+        var requirements = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<PropertyKoto>().Where(static x => x.DeclarationKind == PropertyDeclarationKind.Requirement).Select(static x => Line(x)).ToArray();
+        var removal = "A library contract declares a Property requirement, so PropertyWitnessFunction (through InstantiatePropertyRequirementCall) " +
+            "creates or refreshes in place a bridge on a frozen path (PropertyBridges; the bridge's receiver, Type, accessor and body) and " +
+            "OperationOrigins extends its PropertyWitnessOrigins: route them by U4's two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), with " +
+            "k3's E4 eager step, then remove this row: ";
+        Assert.True(requirements.Length == 0, removal + string.Join(", ", requirements));
         var paths = DeclaredSymbols(c)
             .Where(x => x.Kind == BindingSymbolKind.Type && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha))
             .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? [])
@@ -100,7 +110,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AFrozenQueryStateIsNeverWritten()
     {
-        var c = Bound(string.Empty);
+        var c = BoundOverItsOwnLibrary(string.Empty);
         var function = DeclaredSymbols(c).First(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha));
         var stamp = typeof(BindingSymbol).GetField("queryPass", BindingFlags.Instance | BindingFlags.NonPublic)!;
         stamp.SetValue(function, Binding.Frozen32);
@@ -191,7 +201,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void EveryWriteToTheFrozenLibraryIsRefused()
     {
-        var c = Bound(string.Empty);
+        var c = BoundOverItsOwnLibrary(string.Empty);
         var table = c.Library.Kotonoha.Syntax;
         var node = c.Library.Kotonoha.RootKoto;
         var planned = table.Nodes.ToArray().First(x => x is not null && table.Hir.PlanIndexes[x.SyntaxId] != 0)!;
@@ -275,9 +285,9 @@ public partial class KimiLibraryShapeTest
         Assert.True(table.Frozen);
         var nodes = table.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
         var indexes = nodes.OfType<IndexKoto>().ToArray();
-        var slice = indexes.Where(static x => x.TypeOf()?.Kind == BoundTypeKind.Slice).OrderBy(static x => x.Right is RangeKoto).First();
-        var follows = nodes.OfType<ConversionKoto>().Where(static x => x.ConversionOf().Kind is ConversionBinding.PairFollow or ConversionBinding.Follow).ToArray();
-        var follow = follows.FirstOrDefault(static x => x.ConversionOf().Kind == ConversionBinding.PairFollow) ?? follows.First();
+        var slice = indexes.Where(x => x.TypeOf(c)?.Kind == BoundTypeKind.Slice).OrderBy(static x => x.Right is RangeKoto).First();
+        var follows = nodes.OfType<ConversionKoto>().Where(x => x.ConversionOf(c).Kind is ConversionBinding.PairFollow or ConversionBinding.Follow).ToArray();
+        var follow = follows.FirstOrDefault(x => x.ConversionOf(c).Kind == ConversionBinding.PairFollow) ?? follows.First();
         var index = indexes.FirstOrDefault(x => c.Binding.SelectedIndexCall(x, exclusive: false) is not null) ?? indexes.First();
         var member = nodes.OfType<MemberAccessKoto>().First();
         Refused(nameof(Binding.IsResolvedSlice), () => c.Binding.IsResolvedSlice(slice));
@@ -324,6 +334,7 @@ public partial class KimiLibraryShapeTest
             var c = Compilation.CreateForTest();
             Assert.True(c.Prepare(WindowsProfile.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            CompilationTestHelper.UseEditedLibrary(c, static _ => { }); // A library of its own: the row writes its query states (x1).
             Assert.True(c.Bind().IsComplete);
             var queries = typeof(BindingSymbol).GetField("queries", BindingFlags.Instance | BindingFlags.NonPublic)!;
             var functions = DeclaredSymbols(c).Where(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();
@@ -477,7 +488,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Consumer")]
     public void W1ComparesTheLibrarysViewSerialsAndConsumersByValue(string field)
     {
-        var c = Bound(string.Empty);
+        var c = BoundOverItsOwnLibrary(string.Empty); // It writes frozen library objects: on a library of its own (x1, X11).
         var families = c.Library.Kotonoha.Syntax.Hir.Families;
         var dump = LibraryLayer.Dump(c, MemoStamps);
         var scope = First(families.Scopes.Enumerate());
@@ -642,6 +653,154 @@ public partial class KimiLibraryShapeTest
             .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? []).SelectMany(static x => x.Paths).ToArray();
         Assert.NotEmpty(paths);
         Assert.Empty(paths.Where(static x => x.InferenceConsumers is { Count: not 0 }).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
+    }
+
+    // t2 (PLAN G949 Stage 2 U3, design R3.7 C2; F-2's program side): a tripwire, true today. No library struct is `open`, so no program
+    // struct inherits a library base (SPEC 6: a sealed structure cannot be a base) and no frozen path is an inherited path's source.
+    [Fact]
+    public void TheLibraryDeclaresNoOpenStruct()
+    {
+        var open = KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<StructKoto>().Where(static x => (x.Modifier & ModifierKind.Open) != 0).Select(static x => Line(x)).ToArray();
+        var removal = "A library struct is open, so a library base makes a frozen path an inherited path's source, which a program pass " +
+            "writes (PublishInheritedInference's AddInferenceConsumer; VerifyConformance of an inherited source): route those writes by U4's " +
+            "two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), then remove this row and F-2: ";
+        Assert.True(open.Length == 0, removal + string.Join(", ", open));
+    }
+
+    // c1 (PLAN G949 Stage 2 U3, design R3.7 C1): the freeze leaves every base conformance path verified and none at its OCC-X limit, for
+    // every key, so verification stops at every frozen path (VerifyConformance's IsVerified return) and no reading compilation verifies
+    // one on the shared object. A path whose verification is open is the obligation table's (R7-C2e2 e2-3b; no path field): it is not
+    // verified, and the freeze refuses an open one (FreezeLibrary's ObligationDepth).
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("i686-pc-windows-msvc")]
+    [InlineData("avr-unknown-unknown")]
+    [InlineData("")]
+    public void EveryBaseConformancePathIsVerified(string target)
+    {
+        var library = KimiLibrary.Of(target.Length == 0 ? Kimi.Compiler.Target.TargetTriple.Invalid : Kimi.Compiler.Target.TargetTriple.Parse(target));
+        var paths = ((IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(library.Layer.Impls)!)
+            .Values.Cast<BoundConformancePath>().Where(static x => x.Current).ToArray();
+        Assert.NotEmpty(paths);
+        Assert.Empty(paths.Where(static x => !x.IsVerified || x.Unsupported).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
+    }
+
+    // c1's twin (invalid use: an internal contract; SPEC 12.7, OCC-X): a library whose inherited conformance (an exclusive witness reached
+    // through its base) no check needs is left unverified at its limit with no record, so its freeze is the internal-invariant form and
+    // the library stays unfrozen. Before c1 it froze with that path unverified, which every reading compilation would verify again.
+    [Fact]
+    public void AFreezeRefusesAnUnverifiedConformancePath()
+    {
+        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        freeze.Library.Kotonoha.CreateCodeContext().Parse(
+            freeze.Library.Kotonoha.RootKoto,
+            "contract ZBumps\n    func bump(self: uniq/Self) -> ()\nopen struct ZBase\n    Self is ZBumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct ZLeaf: ZBase\n    public init() => ()\n");
+        var refused = Assert.Throws<InvalidOperationException>(() => KimiLibrary.Freeze(freeze));
+        Assert.Contains("unverified (InternalInvariant; PLAN G949 Stage 2 U3)", refused.Message, StringComparison.Ordinal);
+        Assert.False(freeze.Library.Kotonoha.Syntax.Frozen);
+    }
+
+    /// <summary>Gets every field of every object reachable from a reading compilation's frozen library (LibraryObjects) and of every
+    /// library node, by value (the implementation review's N1; its probe's form): a primitive or string by value, a reference by identity,
+    /// a collection by identity, count and its elements' values two levels deep, a struct two levels deep.</summary>
+    /// <param name="reader">A compilation reading the library.</param>
+    /// <returns>Each object's field values, by the object's identity.</returns>
+    internal static Dictionary<object, string[]> FieldSnapshot(Compilation reader)
+    {
+        var map = new Dictionary<object, string[]>(ReferenceEqualityComparer.Instance);
+        foreach (var value in LibraryObjects(reader))
+        {
+            if (!value.GetType().IsValueType)
+            {
+                map[value] = Fields(value);
+            }
+        }
+
+        foreach (var node in reader.Library.Kotonoha.Syntax.Nodes)
+        {
+            if (node is not null)
+            {
+                map[node] = Fields(node);
+            }
+        }
+
+        return map;
+
+        static string[] Fields(object value) => [.. FreezeFields(value.GetType()).Select(f => $"{f.DeclaringType!.Name}.{FieldName(f)}={Shallow(f.GetValue(value), 2)}")];
+
+        static string Shallow(object? x, int depth)
+        {
+            switch (x)
+            {
+                case null:
+                    return "-";
+                case string s:
+                    return "\"" + s + "\"";
+                case Enum or bool or char:
+                    return x.ToString()!;
+                case Delegate:
+                    return "delegate#" + RuntimeHelpers.GetHashCode(x);
+            }
+
+            var type = x.GetType();
+            if (type.IsPrimitive)
+            {
+                return Convert.ToString(x, System.Globalization.CultureInfo.InvariantCulture)!;
+            }
+
+            if (x is ICollection collection)
+            {
+                var hash = default(HashCode);
+                if (depth > 0)
+                {
+                    foreach (var item in collection)
+                    {
+                        hash.Add(Shallow(item, depth - 1));
+                    }
+                }
+
+                return $"#{RuntimeHelpers.GetHashCode(x)}[{collection.Count}:{hash.ToHashCode()}]";
+            }
+
+            return type.IsValueType ? (depth == 0 ? type.Name : type.Name + "(" + string.Join(",", FreezeFields(type).Select(f => Shallow(f.GetValue(x), depth - 1))) + ")")
+                : "#" + RuntimeHelpers.GetHashCode(x);
+        }
+    }
+
+    /// <summary>Gets the changes between two field snapshots (FieldSnapshot): an object gained or lost, and each field whose value moved,
+    /// with its holder.</summary>
+    /// <param name="before">The earlier snapshot.</param>
+    /// <param name="after">The later snapshot.</param>
+    /// <returns>The changes; empty when no field of any object changed.</returns>
+    internal static string[] FieldChanges(Dictionary<object, string[]> before, Dictionary<object, string[]> after)
+    {
+        var changes = new List<string>();
+        foreach (var (key, fields) in after)
+        {
+            if (!before.TryGetValue(key, out var old))
+            {
+                changes.Add($"new {key.GetType().Name} {key}");
+                continue;
+            }
+
+            for (var i = 0; i < fields.Length; i++)
+            {
+                if (fields[i] != old[i])
+                {
+                    changes.Add($"{Holder(key)}: {old[i]} -> {fields[i]}");
+                }
+            }
+        }
+
+        changes.AddRange(before.Keys.Where(x => !after.ContainsKey(x)).Select(static x => $"gone {x.GetType().Name} {x}"));
+        return [.. changes];
+
+        static string Holder(object key) => key switch
+        {
+            BindingSymbol s => $"{s.Kind}:{s.Name}@{CompilationTestHelper.Location(s.Declaration)}",
+            Koto k => $"{k.GetType().Name}@{CompilationTestHelper.Location(k)}",
+            _ => key.GetType().Name,
+        };
     }
 
     // w1's comparison after each later step.
