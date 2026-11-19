@@ -10521,6 +10521,8 @@ resumed by R4-M86 (2026-10-20).
     (`Binding.CopiesInEveryCase`). The answer is still Binding's, and MIR only reads it. Its five readers: the validator's Copy rule,
     `MirEffects`, `MirTypes.Destruction`, `MirBorrows.Destructions` and `ModuleCodegen.Objects`. A Type that is Copy in every case
     destroys nothing in any instance.
+  - Amended by BU-228 (the sa unit, 2026-11-19): the one Copy verdict is now `ProveCopy`, which judges a pair layer per admitted case;
+    `CopiesInEveryCase` is removed and `TyCtxt.CopyFacts` reads `ProveCopy`.
 - **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after the
   joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03 (PLAN G396))
   - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
@@ -11867,6 +11869,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+  - Superseded in part by BU-228 (the sa unit, 2026-11-19): its owner `Binding.CopiesInEveryCase`, the 64-case clause and the readers;
+    the rule, Copy evidence per Semantics case, stands, now in the capability engine (`ProveCopy`).
 - **BU-143 A stated raw layer an input holds by value writes its Origin's members at any holder; Binding publishes the parts an input
   holds at its own address (PLAN G583)** (2026-11-09; Front, Binding; Major, an acceptance mover, with the Middle's G598-2a in one window;
   design review 2 ACCEPT after re-check; C-175; the owner's O-107 (a)) SPEC 15.6.4, 5.7 Calls, 5.2.1.
@@ -12620,6 +12624,8 @@ resumed by R4-M86 (2026-10-20).
     - A family row in `TyCtxt.Layer`: a family has no single target.
     - A premise reading with a Binding or MIR interim (design rounds 1 and 2): each interim approximated "a layer only the premises
       make" by a Type comparison, because no component publishes that fact.
+  - Amended by BU-228 (the sa unit, 2026-11-19): the reader list's and the Reading's `CopiesInEveryCase` is removed; they read
+    `ProveCopy`, which judges a pair layer per admitted case.
 - **BU-159 A failed Origin clause fails itself, not its owner or the declaration's other clauses** (2026-11-11; Front, Binding;
   Major; H11b-0 B1; F's ruling 3; design review 1 ACCEPT; the Middle's C-228 and the Back's C-229) SPEC 15.3.3, 15.3.4, 23.1.2.
   - **Rule.** A clause that does not bind (a guessed operator, an unavailable operand) fails itself. It supplies no equality,
@@ -13079,6 +13085,8 @@ resumed by R4-M86 (2026-10-20).
     plans them); a node fact alone (misses premise-made pair targets, design review 3, B3); deleting the gate for pair layers too
     (widens G254, B1); a located `Unsupported_Kd` at each use that Reborrows by case (C-235's interim: 18 valid `s/T` programs).
   - Closes PLAN G721: its remaining part is the two interim rows, each removed by its condition's owner (PLAN G254, G170).
+  - Amended by BU-228 (the sa unit, 2026-11-19): an omitted list over a pair layer whose plan never Reborrows Copies by `ProveCopy`,
+    which judges a pair layer per admitted case (`CopiesInEveryCase` is removed).
 - **BU-183 A built-in sequence with a declaration states its Indexable conformance in Kimigayo (PLAN G715 part a)** (2026-11-12;
   Front, the library and Binding; Major; implementation reviews 1 and 2 REVISE, 3 ACCEPT WITH NOTES by the Back's reviewer; split by
   the owner's O-197 (a)) SPEC 4.7.1, 8.5.2, 22.1, 3.4.3.
@@ -15036,6 +15044,34 @@ resumed by R4-M86 (2026-10-20).
     registers unless its key changes).
   - Rejected: a lookahead for `when` (it misreads a Type named `when` and scans every item); reusing `ParseInheritanceReference` for a
     ContractReference (it admits a BorrowOrigin; ruling 6); a per-site whitelist copy (the leaf predicate is one).
+- **BU-228 A pair layer's intrinsic is judged over every admitted case, in the capability engine** (2026-11-19; Back, Binding; Major,
+  class 3; the owner's O-417 (a), verbatim 「O-417 a」; O-416 (b); design `back\notes\g379c\sa-design.md` Revision 1, review
+  `review-sa.md` ACCEPT WITH CONDITIONS K1-K3, implementation review `review-sa-impl.md` ACCEPT WITH CONDITIONS C1-C2, B's
+  `rulings-sa.md`; the Front's C-397 CONSENT WITH CONDITIONS and the Middle's C-398 CONSENT; moves named in ca54937de, 0a0f7921b and
+  769a131ed; closes PLAN G1031; **amends BU-88, BU-138, BU-168 and BU-184**) SPEC 8.15.2, 8.14, 8.3.4, 8.7.2-8.7.4, 15.6.1, 10.1.
+  The engine's symbolic path (`SymbolicCapability`) judges a pair layer `s/U`, for every intrinsic, once per Semantics its binder
+  admits at the query's point (`AdmittedSemantics`), each case's complete Type (`CaseType`) a part through G379's one part record. The
+  family rule is written once, `CommonVerdict` (`Binding.Capabilities.cs`), read by the adaptation-family loop and the pair-layer
+  loop: the verdict common to every case is evidence, cases that differ give none (Unknown Copy is never Non-Copy, 8.14). The case
+  judgement is a pair layer's only Semantics evidence: the premise loop's Semantics-mask rows (`s is owner`'s target, the Copy mask,
+  Sealed/ObjectPayload without `owner`, `s is raw`'s Owned target), which it implies, are removed (behaviour-preserving). So Copy in
+  every case is the engine's Proven: `CopiesInEveryCase` (BU-138's owner, with `copyCaseBinders`, its 64-case clause and the Unknown
+  fallbacks of `BareAcquire` and `AcquireBinding`) is removed, and its readers, `TyCtxt.CopyFacts` (BU-88's one Copy verdict) among
+  them, read `ProveCopy`; BU-168's and BU-184's reader lists name `CopiesInEveryCase` and now read `ProveCopy`. Per binder, not the
+  product of every binder in scope: Copy and Owned are conjunctions over parts. A Type holding several layers of one binder is
+  judged layer by layer over that binder's cases, and its verdict is conjunctive across them (Copy, Sealed, ObjectPayload and Owned
+  each need every component), so it equals the joint cases' (the Front's C-397 C2); for Owned under `owner or ref` two layers are
+  never refuted in opposite cases (a layer's `ref` case holds its owner case's OwnedOrigins and the outer Origin), so the per-layer
+  verdict equals the joint one (rulings-sa 27; ow-xy-e, ow-xy-q pinned). Moves: class 3 sa-*, sax-*, sau2-*, sarc2-lone, cp-or and
+  ow-xy-q accepted; the lone forms (sa-lone, sax-lone, sau2-lone, ow-xy-e) to `NoApplicableOverload_Kd` at the call (Q13); **a record
+  move (Q13 class 4, record precision, toward SPEC 10.1): the case judgement adds a verdict where no premise row gave one, so a pair
+  layer refuted in every case for PrimitiveInteger (no premise row; an admitted set without `owner`: rv-prim, rv-prim-r), Sealed or
+  ObjectPayload (no row for a set with `owner`: an open struct, pz-sl-or; an opted-out struct, pz-op-or) is Refuted, not Unknown:
+  `UnprovenConstraint_Kd` -> `NoApplicableOverload_Kd` at the call**; one MIR representation move: a pair-layer Place whose every
+  case Copies is acquired by a plain Copy, not `PairAcquire` by case (`tests/mir/cases.mir`'s `fn both`, MirBuildTest's two rows,
+  the native fixture `PairAnnotatedFit`'s IR; the Middle consenting). Rejected: a conjunction over the cases (it makes a mixed pair
+  Non-Copy); an `Owned`-only branch beside `CopiesInEveryCase` (two copies of 8.15.2's per-case rule); the product enumeration (no
+  different verdict, more work); keeping the premise rows beside the case judgement (a second copy of the same evidence).
 - **BU-229 A selection states each Body and Pattern as its part (PLAN G800)** (2026-11-19; Front, Syntax and Binding; Major, a new
   canonical component, Syntax's selection parts; behavior-preserving on every program's acceptance, records and generated code; one
   reviewer for design and implementation, `front\notes\G800\review.md` ACCEPT and `review-impl.md` ACCEPT WITH NOTES; D-469; commit
