@@ -118,13 +118,12 @@ public sealed partial class Binding
             layer = node;
         }
 
-        // R (PLAN G935; the owner's O-359 (a), O-364 (a) (2), O-435 (a)): a part held by value that names no Origin and holds no part by value,
-        // of an input whose Type states no Origin, is a source of its own value with no node, matched at every position by CanHold alone
-        // (Storages); a raw layer is no such source (the hold walk's). An input whose Type states an Origin is retained only where a position
-        // may retain one of its Origins by the contract (SPEC 15.6.4: per argument), by its nodes, or by a raw layer without an Origin, which
-        // may retain every argument (rule A, 5.7): an Origin-free part of it is no source, so an Origin-free result carries none of its Loans.
+        // R (PLAN G935; the owner's O-359 (a), O-364 (a) (2)): a part held by value that names no Origin and holds no part by value is a source
+        // of its own value with no node, matched by CanHold alone at every position of a storage R's Origin test lets keep its input (MayRetain:
+        // where the input's Type states an Origin, a storage that as a whole may retain one of them; O-435 (a), F's G935 ruling 81); a raw
+        // layer is no such source (the hold walk's).
         if (layer < 0 && at.Source.Held && referent is null && (type.Kind != BoundTypeKind.Semantics || type.Semantics != SemanticsKind.Raw) &&
-            !this.retentionArguments[at.Source.Input].CarriesAnyOrigin && this.Leaf(type, run))
+            this.Leaf(type, run))
         {
             this.retentionSources.Add(new(-1, at.Source.Input, type, null, at.Signature, (this.retentionPaths.Count, 0)));
         }
