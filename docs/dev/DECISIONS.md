@@ -25394,6 +25394,17 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Known class-1 gaps, not moves (each accepted on dev too).** vl1c (PLAN G1085: the Callable constraint over a `let` region a
     signature names is unchecked) and e-owsin (PLAN G1099: an Owned judgment inside a nested body of a capture whose Type names an
     enclosing `let` region through the nested signature reads the region's value).
+  - **A captured local's region reads at its value (the owner's O-443 (a), verbatim 「O-443 a」 and 「「9本を一時的に拒否する」は許容します」, 2026-11-19;
+    SPEC 15.6.5; the Middle's R7-O2 design Revision 2 §7-§8).** In a body nested in the local's own body, such as a Closure body that
+    captures the local, the local's inferred region is a fixed Origin equal to its SPEC 15.3.6 value when it has one, and a fixed
+    Origin related to nothing otherwise (O-440 (a) generalized). It supersedes in part the owner's O-261 Q1 (a): its three
+    captured-`let` rows and R4-M152's revised sentence. The reason that no longer holds: a captured local's region is related to
+    nothing; it has its 15.3.6 value, as O-440 (a), O-174 (a)'s r18 and BU-127's z3v already read it. O-249 Q1 (a) stands for a capture
+    whose region has no value (cs_u1, BU-28's p8 and the other class S rows). The temporary reduction the owner accepted: this unit
+    rejects nine valid programs dev accepts, each a captured `let` at the shorter end of a relation the Closure body needs (p2v, p5v,
+    p8v, p9v, p10v, ret_v2, eq_let, lv_let, e1l: `UnprovenOriginRelation_Kd`), until R7-O2's A1 reads the captured region at its value
+    (PLAN G1105); A1 also accepts c20, z3v and r18. e-owsin, a nested signature's name read inside the Closure, stays invalid (PLAN
+    G1099).
   - **Supersedes.** BU-197's sentence "A `let` binding keeps the bound value's Type" for locals, and its rejected "region slots for
     `let` bindings": its reason, "no observable difference", no longer holds (PLAN G492's class 1 is the difference); BU-197's set
     (`IsRegionOwner`) is unchanged and an immutable Pattern binding keeps its stored Type (SPEC 14.8.3). In part BU-127's "Only A5
@@ -25405,7 +25416,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     A5's row and record (at the clause); the reason that no longer holds is BU-197's `let` sentence, superseded here. In part R4-M133
     R-a (its R8-M56 line: a graph parent is stored as its store read it) and R4-M184 rule (3) (above). The receiver-containment rows
     rc1, rc4 and rc2's store (`ClosureEnvironmentOriginTest.AReceiverContainmentTheBodyNeedsNotStaysValid`) are revised under the
-    owner's O-261 Q1 (a); no DECISIONS sentence is superseded for them.
+    owner's O-261 Q1 (a); no DECISIONS sentence is superseded for them. O-443 (a) supersedes O-261 Q1 (a) in part (above).
   - **Moves** (against dev 4f820362c, (ii) and (iii) together; Q-542; (iii)'s rule and the design's moves are R4-M222's). Class 1,
     invalid programs newly rejected: m3, m4, m5x, m6, m7, m8 (`ComparisonLoanConflict_Kd` at the write) and the us family (the located
     limit at the comparison). Class 3, valid programs newly accepted: pk7vv, cap15dvar, f4v, eqw (like its store twin eqwp) and (iii)'s
@@ -25416,8 +25427,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     wpc's `NoApplicableOverload_Kd` moves to `UnprovenOriginRelation_Kd` at `t` and `Unsupported_Kd` at `f` (the joint records with
     PLAN G379); eqwi stays rejected, its record naming the value's failing operand; same3w and w2w gain a second
     `UnprovenOriginRelation_Kd` at their one site and vl1cn keeps its constraint record alone, as on dev (record selection, Q13). No
-    valid program is newly rejected beyond O-400 (b)'s class, no invalid program is newly accepted, and no `InternalInvariant_Kd`
-    arises.
+    valid program is newly rejected beyond O-400 (b)'s class and the nine of O-443 (a)'s accepted temporary reduction (above; PLAN
+    G1105), no invalid program is newly accepted, and no `InternalInvariant_Kd` arises.
   - **Rejected:** a region per path for every binding (a `let` DAG's Type has 2^depth nodes: A2-0); a region per part for every binding
     (vp1 and mb23 refused: A2-1); opening a slot at a later use (15.4.4); option D, a second region for the name (two Origins per slot
     either way; (ii) picks once per reader at its use through one decider, `RegionValueIn`, where option D picks at the declaration and
