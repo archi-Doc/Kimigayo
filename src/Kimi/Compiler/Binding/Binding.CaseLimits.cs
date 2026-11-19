@@ -88,8 +88,9 @@ public sealed partial class Binding
     // Whether a definition's parts are verified, which the HIR publishes them on (PartsPublished). With no failure, CheckCaseBound passed
     // them: a count outside 1..CaseBound fails the definition when it is the first failure. A failed definition keeps its first failure
     // only, so its count is recomputed: verified with no parts or a case within the bound, never with an Unsupported or a Resource
-    // failure (SPEC 23.1.1, 8.3.3 Limits: a form the implementation does not support, or a judgment that depends on a limited analysis, is
-    // not judged). An accessor shares its Property's binders.
+    // failure, nor when its premise closure reached the limit behind another failure (PremiseClosureLimited; SPEC 23.1.1, 8.3.3 Limits:
+    // a form the implementation does not support, or a judgment that depends on a limited analysis, is not judged). An accessor shares
+    // its Property's binders.
     private bool PartsVerified(Koto definition)
     {
         var owner = definition is PropertyAccessorKoto accessor ? accessor.Parent! : definition;
@@ -99,7 +100,8 @@ public sealed partial class Binding
             return true;
         }
 
-        if (own == BindingFailure.Unsupported || its == BindingFailure.Unsupported || this.ResourceFailed(definition) || this.ResourceFailed(owner))
+        if (own == BindingFailure.Unsupported || its == BindingFailure.Unsupported || this.ResourceFailed(definition) || this.ResourceFailed(owner) ||
+            this.PremiseClosureLimited(owner))
         {
             return false;
         }
