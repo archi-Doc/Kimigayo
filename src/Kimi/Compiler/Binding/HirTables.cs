@@ -290,6 +290,7 @@ internal struct NodeColumns
     internal StampedColumn<bool?, Binding.PassCounter> DeferredConstraints; // Pass: whether a clause waits for the conformances (Binding.Constraints.cs).
     internal StampedColumn<BoundMatch?, Binding.PassCounter> Matches; // Pass: the plan of a match the pass indexed (Binding.Patterns.cs).
     internal StampedColumn<BoundAdaptation, Binding.PassCounter> Adaptations; // Pass: the implicit adaptation selected for an expression (Binding.ArgumentOperations.cs).
+    internal StampedColumn<bool, Binding.PassCounter> PerCallNamings; // Pass: whether a nested signature's inputs name the per-call Origin of this input (Binding.OriginDeclarations.cs).
     internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
     internal PagedColumn<Binding.OriginDeclaration?> OriginDeclarations; // Kept: an owner's declared Origins (Binding.OriginDeclarations.cs).
     internal PagedColumn<List<string>?> DiscoveredOrigins; // Kept: a binder's discovered Origin names (Binding.OriginDeclarations.cs).
@@ -304,6 +305,7 @@ internal struct NodeColumns
     internal PagedColumn<InvocationKoto?> RangeCalls; // Kept: a range or position key's synthesized PositionSyntax call (Binding.Ranges.cs).
     internal PagedColumn<InvocationKoto?> ResolvedKeys; // Kept: a selection key's synthesized `resolved` call (Binding.Ranges.cs).
     internal PagedColumn<BoundMatch?> MatchPlans; // Kept: the plan object a match keeps across rebinds (Binding.Patterns.cs).
+    internal PagedColumn<Binding.Refusal?> Refusals; // Kept: the refusal a refused analysis's site holds (Binding.ConstraintValidation.Proofs.cs).
 
     internal void Resize(int length)
     {
@@ -326,6 +328,7 @@ internal struct NodeColumns
         this.OpenOrigins.Grow(length);
         this.AssociatedOrigins.Grow(length);
         this.ShapeContractHeads.Grow(length);
+        this.PerCallNamings.Grow(length);
         this.InheritedOriginTypes.Grow(length);
         this.DeferredConstraints.Grow(length);
         this.Matches.Grow(length);
@@ -344,6 +347,7 @@ internal struct NodeColumns
         this.RangeCalls.Grow(length);
         this.ResolvedKeys.Grow(length);
         this.MatchPlans.Grow(length);
+        this.Refusals.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -361,6 +365,7 @@ internal struct NodeColumns
         this.Matches.Freeze(binding);
         this.Adaptations.Freeze(binding);
         this.ShapeContractHeads.Freeze(binding);
+        this.PerCallNamings.Freeze(binding);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -416,6 +421,7 @@ internal struct NodeColumns
             OpenOrigins = this.OpenOrigins.Renumbered(length),
             AssociatedOrigins = this.AssociatedOrigins.Renumbered(length),
             ShapeContractHeads = this.ShapeContractHeads.Renumbered(length),
+            PerCallNamings = this.PerCallNamings.Renumbered(length),
             InheritedOriginTypes = this.InheritedOriginTypes.Renumbered(length),
             DeferredConstraints = this.DeferredConstraints.Renumbered(length),
             Matches = this.Matches.Renumbered(length),
@@ -434,6 +440,7 @@ internal struct NodeColumns
             RangeCalls = this.RangeCalls.Renumbered(length),
             ResolvedKeys = this.ResolvedKeys.Renumbered(length),
             MatchPlans = this.MatchPlans.Renumbered(length),
+            Refusals = this.Refusals.Renumbered(length),
         };
         return columns;
     }
@@ -468,6 +475,7 @@ internal struct NodeColumns
         this.RangeCalls.Retire();
         this.ResolvedKeys.Retire();
         this.MatchPlans.Retire();
+        this.Refusals.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -499,6 +507,7 @@ internal struct NodeColumns
         this.RangeCalls.MoveTo(ref target.RangeCalls, from, to);
         this.ResolvedKeys.MoveTo(ref target.ResolvedKeys, from, to);
         this.MatchPlans.MoveTo(ref target.MatchPlans, from, to);
+        this.Refusals.MoveTo(ref target.Refusals, from, to);
     }
 }
 

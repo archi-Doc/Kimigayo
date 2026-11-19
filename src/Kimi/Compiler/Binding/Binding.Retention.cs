@@ -152,10 +152,9 @@ public sealed partial class Binding
     // available Contract fact on its subject (TyCtxt.RequirementSignatures, a refinement's inherited requirements included), any
     // subject; then, by the premises' rows (FirstRows; R7-C2c2 c2-3c), of each Type the contract reaches: each available Contract row's
     // requirement signatures there and each available Callable row's signature (SPEC 8.3.2: a clause at every depth, in any premise
-    // order, through the identities FirstRows reaches: the rows' contract; a row of a written fact is the fact's, listed above). Limit
-    // (PLAN G881, a class 1 the rows own): FirstRows gives a parameter identified with a two-link projection
-    // (`U is T.(A).Next.(B).Next`) no available Contract row, so U's requirement signatures and the clauses below them are not handed.
-    // The contract reaches its own Types (`signature`, its declared inputs and result) and those of each signature it hands, each
+    // order, through identities, a cycle through a projection included: the rows' contract, ContractSolver's row (5) and its least
+    // fixpoint, PLAN G881, G881b; a row of a written
+    // fact is the fact's, listed above). The contract reaches its own Types (`signature`, its declared inputs and result) and those of each signature it hands, each
     // component at any depth (Reach): a body holds a value of a Type only from them. A Type reached only through a handed signature
     // whose projection chain repeats an associated declaration (Recurs: `associate Next is Mk`) is not walked, a subject just below an
     // own recursing Type included (an own `T.(Mk).Next.(Mk).Next` skips `T.(Mk).Next.(Mk).Next.(Mk).F`): its rows are those of its

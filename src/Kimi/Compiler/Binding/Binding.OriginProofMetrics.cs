@@ -25,8 +25,16 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets every proof request, nested ones included.</summary>
     internal long Entries { get; private set; }
 
-    /// <summary>Gets the premise environments built: requests the structural instances did not answer, one closure each.</summary>
+    /// <summary>Gets the premise closures: one per request the structural instances did not answer.</summary>
     internal long Closures { get; private set; }
+
+    /// <summary>Gets the premise environments built for requests: one per request outside a premise session, one per anchor and Origin
+    /// state within one (PLAN G778).</summary>
+    internal long Environments { get; private set; }
+
+    /// <summary>Gets the premise edges written for requests: an environment's when it is built and a session request's own, the
+    /// construction work a premise session shares among the requests at one anchor (PLAN G778).</summary>
+    internal long WrittenEdges { get; private set; }
 
     /// <summary>Gets the environments built while another one was being built.</summary>
     internal long NestedClosures { get; private set; }
@@ -48,6 +56,9 @@ internal sealed class OriginProofMetrics
 
     /// <summary>Gets the local regions the fixed-fixed oracle read through their bounds (<c>UniversalRelations.Outlives</c>).</summary>
     internal long RegionReads { get; private set; }
+
+    /// <summary>Gets the reads of the nested-signature naming verdict (<c>Binding.NamedInItsInputs</c>, board C-400), one row each.</summary>
+    internal long NamingReads { get; private set; }
 
     /// <summary>Gets the declaration judge's chain work (<c>TyCtxt.OriginChains.Work</c> of its graphs, PLAN G318): the core's only, as
     /// the minimal-condition rule at a last edge is quadratic in its key's conditions by design (at most 64 binders), as the copy's was.</summary>
@@ -82,6 +93,8 @@ internal sealed class OriginProofMetrics
         this.Requests = 0;
         this.Entries = 0;
         this.Closures = 0;
+        this.Environments = 0;
+        this.WrittenEdges = 0;
         this.NestedClosures = 0;
         this.Nodes = 0;
         this.Edges = 0;
@@ -94,11 +107,14 @@ internal sealed class OriginProofMetrics
         this.BoundViolations = 0;
         this.ClosureTicks = 0;
         this.ChainWork = 0;
+        this.NamingReads = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
     }
 
     internal void RegionRead() => this.RegionReads++;
+
+    internal void NamingRead() => this.NamingReads++;
 
     internal void Chained(long work) => this.ChainWork += work;
 
@@ -111,6 +127,15 @@ internal sealed class OriginProofMetrics
         }
 
         this.queries.Add((longer, shorter, use));
+    }
+
+    internal void Construction(int edges, bool built)
+    {
+        this.WrittenEdges += edges;
+        if (built)
+        {
+            this.Environments++;
+        }
     }
 
     internal void Closure(OriginPremiseClosure closure, bool nested, long ticks)

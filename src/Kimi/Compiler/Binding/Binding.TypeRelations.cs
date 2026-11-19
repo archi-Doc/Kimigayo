@@ -35,9 +35,9 @@ public sealed partial class Binding
     internal bool FitsStructuralPart(BoundType actual, BoundType expected)
         => new RelationWalk(this, null, null, OriginPart.Everywhere).Fits(actual, expected);
 
-    // SPEC 10.7, 15.6.1: the part of callable compatibility that applicability reads: subtyping against the required signature, its
-    // result Never when the implementation's is (CompatibleResult), judged without recording a bound and without premises; `own` is the
-    // declaration whose per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
+    // SPEC 10.7, 15.6.1: a Function Item's signature part for its contract fit (ItemContractFits, the one caller; PLAN G379 (b)):
+    // subtyping against the required signature, its result Never when the implementation's is (CompatibleResult), judged without
+    // recording a bound and without premises; `own` is the declaration whose per-call inputs the implementation's signature names.
     internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own, out ComparisonFailure failure)
     {
         var walk = new RelationWalk(this, null, null, OriginPart.Contract);
@@ -89,15 +89,17 @@ public sealed partial class Binding
         var comparison = instance;
         return Outlives(a, b, 0);
 
-        bool Outlives(BoundOrigin longer, BoundOrigin shorter, int depth)
+        // The ends as written, before the implementation's per-call Origins are instantiated: every exit hands them so to the comparison's
+        // one decision for a region conjunct (LeavesBodyRows, directly or through FitOrigin), which instantiates where it reads them.
+        bool Outlives(BoundOrigin writtenLonger, BoundOrigin writtenShorter, int depth)
         {
             if (depth > 8)
             {
                 return false;
             }
 
-            longer = comparison.Instantiate(longer);
-            shorter = comparison.Instantiate(shorter);
+            var longer = comparison.Instantiate(writtenLonger);
+            var shorter = comparison.Instantiate(writtenShorter);
             if (ReferenceEquals(longer, shorter) || longer.Kind == OriginKind.Static)
             {
                 return true;
@@ -107,7 +109,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < longer.Operands.Count; i++)
                 {
-                    if (!Outlives(longer.Operands[i], shorter, depth + 1))
+                    if (!Outlives(longer.Operands[i], writtenShorter, depth + 1))
                     {
                         return false;
                     }
@@ -120,7 +122,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < shorter.Operands.Count; i++)
                 {
-                    if (Outlives(longer, shorter.Operands[i], depth + 1))
+                    if (Outlives(writtenLonger, shorter.Operands[i], depth + 1))
                     {
                         return true;
                     }
@@ -132,9 +134,9 @@ public sealed partial class Binding
             if (comparison.IsRequiredSlot(longer) || comparison.IsRequiredSlot(shorter))
             {
                 // A required per-call Origin relates to another only through the required signatures' own well-formedness; a local
-                // region at the longer end is the comparison's one decision's (LeavesBodyRows, the L1 lift).
+                // region at the longer end is the comparison's one decision's (LeavesBodyRows, the L1 lift), on the written ends.
                 return binding is not null && (binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition) ||
-                    binding.LeavesBodyRows(longer, shorter, use!, comparison, condition, null));
+                    binding.LeavesBodyRows(writtenLonger, writtenShorter, use!, comparison, condition, null));
             }
 
             if (shorter is { Kind: OriginKind.Inference, Open: true } && comparison.IsResultOnlyOrigin(longer))
@@ -142,7 +144,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(longer, shorter, use!, comparison, condition);
+            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(writtenLonger, writtenShorter, use!, comparison, condition);
         }
     }
 

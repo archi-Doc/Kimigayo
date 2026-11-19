@@ -75,6 +75,7 @@ public sealed partial class Binding
         this.virtualOverrides = new(this);
         this.originDeclarations = new(this);
         this.discoveredOrigins = new(this);
+        this.perCallNamings = new(this);
         this.initializerOrigins = new(this);
         this.propertyCalls = new(this);
         this.storageProjections = new(this);
@@ -156,7 +157,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
             this.types.KeyCount,
-            this.constraints.Count,
+            this.Library.Layer.Constraints.Count + this.constraints.Count,
             this.pendingAssociatedTypes.Count,
             this.memberSelections.Count,
             this.memberSides.Count,
@@ -241,21 +242,26 @@ public sealed partial class Binding
         try
         {
             this.BeginBind(mode);
-            this.Run(mode);
-            this.Result = this.ComposeResult();
-            if (mode == BindingMode.Final)
+            if (this.Run(mode))
             {
-                this.WalkLints();
+                this.Result = this.ComposeResult();
+                if (mode == BindingMode.Final)
+                {
+                    this.WalkLints();
+                }
+
+                this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             }
 
+            // A refused library pass (Run false; PLAN G949 Stage 2 U2a, C2) leaves no Result, as a pass that does not finish.
             this.impls.Sweep(); // No identity or path an edit removed is kept (PLAN G949, DECISIONS BU-220).
-            this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             return this.Result;
         }
         finally
         {
             this.EnterPass(this.ProgramPass); // Between Binds, and after a throw, the fields hold Binding's own part.
             this.running = false;
+            this.producing = false; // A pass that did not finish produced none.
         }
     }
 
@@ -344,6 +350,7 @@ public sealed partial class Binding
         this.capabilitiesReady = true;
         this.ValidateConformances(mode, false);
         this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
+        this.SettleVirtualOverridePremises(); // R7-C2c2 c2-4: a refuted inherited condition fails the override (SPEC 6.4.3).
         this.ValidateConstraintEnvironments(mode);
         this.PrepareSpecializations();
         this.CompleteImplicitConstructors();

@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 //   nesting when it has a Binding.
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
 //   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads (none: the
-//   relation as written), and which Origin bindings count (OriginPart), and the row sink of a reader of a comparison's region conjuncts
+//   relation as written), which Origin bindings count (OriginPart), and the row sink of a reader of a comparison's region conjuncts
 //   (CallableInstance.Rows: its root comparisons take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not
 //   proven).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the

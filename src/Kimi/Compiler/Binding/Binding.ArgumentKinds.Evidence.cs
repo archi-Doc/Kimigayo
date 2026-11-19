@@ -727,7 +727,7 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 10.5: a Function Item or a concrete Closure meets a common Function Type pattern through its call signature, as
-    // evidence; the conversion itself, its receiver and Owned conditions included, is judged once the call is selected. Any other Type,
+    // evidence; the conversion itself is judged by applicability and once the call is selected (ErasureSignatureFits). Any other Type,
     // or any Type at another pattern, as it is.
     private BoundType SignatureAtFunction(BoundType pattern, BoundType actual)
         => pattern.Kind != BoundTypeKind.Function ? actual

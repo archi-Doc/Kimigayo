@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 // Owns what a failing check rests on (SPEC 23.1.1, 23.1.2): a cause a proof met, whose Use the check's record is derived from, and,
 // when the cause is a location-only limit, the mark by which Binding.Check publishes that limit's one Unsupported_Kd.
 // Input: a producer met while a check proved its requirement: a conformance path resting on its specification or limited by OCC-X; a
-// component summary's site (a limit, L, which a proof carries until its answer is no longer combined, DECISIONS BU-22); the node a
+// component summary's site (a limit, L, which a proof carries until its answer is no longer combined, DECISIONS BU-22); an analysis a
+// reached implementation limit refused (Binding.RefuseProof: an L whose Use takes the limit's Resource record); the node a
 // component summary's Error rests on (a stored Type that failed, its failed operand context, or the hops of a conformance resolution that
 // re-entered itself; an identity step is never a re-entry, DECISIONS BU-22); an Invalid Constraint environment, whose Use is the node
 // whose failure made it Invalid (ConstraintEnvironment, read by Binding.InvalidEnvironment; PLAN G651 U1).
@@ -19,7 +20,8 @@ namespace Kimi.Compiler;
 // published once per pass, only when a failing check rested on it; a Use is failed by its owner by the end of Binding.Check's Final
 // prologue, where the derived uses resting on it are settled (DECISIONS BU-76): a Type node by the Definition deadline, a limit when the
 // prologue fails it (OCC-X limits, then the summaries' sites; the loop publishes each once), after the erasure that holds a cause ran
-// in body binding (FailOwnedConversion's only caller is RecordMismatch).
+// in body binding (FailOwnedConversion's only caller is RecordMismatch); a refused analysis's node where an answer resting on it is
+// no longer combined (EndProof).
 // Must not publish a record itself or decide a proof.
 internal interface ICheckCause
 {

@@ -37,8 +37,7 @@ public sealed partial class Binding
             return this.InvalidEnvironment(invalid);
         }
 
-        if (declaration.BindingState == BindingState.Invalid ||
-            this.InvalidDeclarationCause(member.Declaration) is not null)
+        if (this.ReadFailedDeclaration(declaration) is not null || this.ReadFailedDeclaration(member.Declaration) is not null)
         {
             return ConstraintProof.Error;
         }
@@ -76,7 +75,7 @@ public sealed partial class Binding
         if (!valid)
         {
             this.Fail(syntax, BindingFailure.InvalidConstraint);
-            (this.scopes[syntax].Constraints ??= new()).Fail(syntax);
+            this.FailEnvironment(this.scopes[syntax].Constraints ??= new(), syntax);
         }
     }
 

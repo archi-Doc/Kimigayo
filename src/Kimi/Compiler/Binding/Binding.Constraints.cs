@@ -6,7 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Constraints));
+    // The compilation's level of the interned constraints (PLAN G949 Stage 2 U4): those interned after the library's seal; the library's
+    // are LibraryLayer.Constraints, found first (InternConstraint).
+    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedRoom);
 
     private readonly DeferredConstraintRows deferredConstraints;
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
@@ -39,12 +41,7 @@ public sealed partial class Binding
                 return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
             }
 
-            if ((current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) is { } armScope)
-            {
-                return this.NodeScope(node, armScope);
-            }
-
-            if (this.scopes.TryGetValue(current, out var scope))
+            if (this.ScopeStop(current, child) is { } scope)
             {
                 return this.NodeScope(node, scope);
             }
@@ -59,6 +56,11 @@ public sealed partial class Binding
         ConstraintProof.Refuted => ConstraintProof.Proven,
         _ => value,
     };
+
+    // R7-C2c2 c2-4 (SPEC 8.3.2): the one join of a premise with a judge's closed world, by polarity: a premise is positive evidence,
+    // the closed world's Refuted negative, both contradictory evidence (Error). ProveConformance and the capability judge read it.
+    private static ConstraintProof PremiseJoin(bool premise, ConstraintProof proof)
+        => !premise || proof == ConstraintProof.Error ? proof : proof == ConstraintProof.Refuted ? ConstraintProof.Error : CombineProof(ConstraintProof.Proven, proof, false);
 
     private static ConstraintProof CombineProof(ConstraintProof left, ConstraintProof right, bool conjunction)
     {
@@ -94,17 +96,7 @@ public sealed partial class Binding
 
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
-    {
-        for (var i = 0; i < match.Arms.Count; i++)
-        {
-            if (ReferenceEquals(match.Arms[i].Body, body))
-            {
-                return this.scopes.GetValueOrDefault(match.Arms[i].Pattern);
-            }
-        }
-
-        return null;
-    }
+        => KotoHelper.IsSelectionBody(match, body) ? this.scopes.GetValueOrDefault(match.Arms[body.SelectionArm].Pattern) : null;
 
     // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
     // Self is an obligation of every conformer rather than a closed proposition. An existence walk: each distinct part visited once
@@ -172,6 +164,14 @@ public sealed partial class Binding
         if (contexts.Unresolved)
         {
             return ConstraintProof.Unknown;
+        }
+
+        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1): an identity, Callable or Semantics atom is judged on its subject's Member
+        // (MemberOf); the Contract and capability judges read it at their own entries (ProveConformance, RequestCapability).
+        if (proposition.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Callable or ConstraintKind.Semantics &&
+            proposition.Subject is { } held && this.MemberOf(held, scope, out _) is var member && !ReferenceEquals(member, held))
+        {
+            return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
         }
 
         if (proposition.Kind == ConstraintKind.TypeIdentity)
@@ -251,19 +251,41 @@ public sealed partial class Binding
         return proposition.Contract is { } contract ? this.ProveConformance(proposition.Subject!, contract, scope) : ConstraintProof.Unknown;
     }
 
+    // The one find over the two levels (PassPart.Levels; PLAN G949 Stage 2 U4; C-380 F3 (a)): content in no level is inserted at the
+    // open one, so a program's constraint equal to a frozen one is that object.
     private BoundConstraint InternConstraint(ConstraintKey key)
     {
-        if (!this.constraints.TryGetValue(key, out var result))
+        var levels = PassPart.Interned(this.Library, this.Library.Layer.Constraints, this.constraints);
+        if (PassPart.Find(levels, key, out var result) is null)
         {
             result = new(key, this.ContainsAssociatedProjection(key.Subject) || this.ContainsAssociatedProjection(key.RequiredType));
-            this.constraints.Add(key, result);
+            levels.Open.Add(key, result);
         }
 
-        return result;
+        return result!;
     }
 
+    // A frozen constraint's negation is set before the seal (D-4, U2b's eager step), so `??` forms only a compilation-level one: a frozen
+    // constraint without it would hold a compilation-level object (U4's invariant), the internal-invariant form.
     private BoundConstraint NegateConstraint(BoundConstraint value)
-        => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ??= this.InternConstraint(new(ConstraintKind.Not, left: value));
+        => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ?? (value.Negation = this.FormNegation(value));
+
+    private BoundConstraint FormNegation(BoundConstraint value)
+        => this.Library.Frozen && this.Library.Layer.Constraints.ContainsKey(ConstraintKey.Of(value))
+            ? throw new InvalidOperationException("A frozen constraint has no negation after the library's seal (InternalInvariant; PLAN G949 Stage 2 U4).")
+            : this.InternConstraint(new(ConstraintKind.Not, left: value));
+
+    // D-4 (PLAN G949 Stage 2 U2b; C-380 F3 (b) as O-U2-4 narrows it): the library pass forms the negation of every constraint it interned,
+    // so no later pass writes a library constraint's Negation (a Not constraint's negation is its operand, never stored). The library's
+    // constraints are the layer's level (PLAN G949 Stage 2 U4), the open level during the library pass, so each negation is inserted
+    // there before the seal, which the FormNegation refusal rests on.
+    private void CompleteNegations()
+    {
+        foreach (var constraint in this.Library.Layer.Constraints.Values.ToArray())
+        {
+            _ = this.NegateConstraint(constraint);
+        }
+    }
 
     private void BindConstraints()
     {
@@ -543,7 +565,7 @@ public sealed partial class Binding
             var environment = scope.Constraints ??= new();
             if (this.AddConstraintFact(environment, requirement))
             {
-                environment.Fail(clause); // The clause failed, or holds a recovery.
+                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
             }
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
@@ -619,33 +641,8 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        // SPEC 8.2.3, 8.3.2 (N9): the proposition's result for the complete constructed Type its subject is identical with is evidence of
-        // the other polarity too. It only detects the contradiction and never joins `positive` or `negative`: as evidence a member's
-        // Proven accepted an invalid program (r2-e3), and that direction is R7-C2c2 c2-4's.
-        if (structural != ConstraintProof.Error && positive != negative && HasTypeIdentity(scope) &&
-            this.MemberVerdict(normalized, scope) == (positive ? ConstraintProof.Refuted : ConstraintProof.Proven))
-        {
-            return ConstraintProof.Error;
-        }
-
         return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
-
-    // SPEC 8.2.3 ("a Contract fact about a Type is evidence for an identical one"), 8.3.2's rows: the proposition's result with each
-    // atom's subject replaced by the complete constructed member of its identity class (TypeIdentity's CompleteMember), judged by the
-    // atom judge and combined by the rows for `and`, `or` and `not`; an atom whose subject has no such member is Unknown. Premises are
-    // not read for it: a constructed member keys to itself (R7-C2c2 c2-1), so the atom judge answers by the closed world. ProveProposition
-    // is its one reader.
-    private ConstraintProof MemberVerdict(BoundConstraint proposition, BindingScope scope)
-        => proposition.Kind switch
-        {
-            ConstraintKind.Not => NegateProof(this.MemberVerdict(proposition.Left!, scope)),
-            ConstraintKind.And => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), true),
-            ConstraintKind.Or => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), false),
-            _ => proposition.Subject is { } subject && this.ClassesOf(scope, out _)?.CompleteMember(subject) is { } member
-                ? this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope)
-                : ConstraintProof.Unknown,
-        };
 
     // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
     // Type (CallableContractType) is Provisional.

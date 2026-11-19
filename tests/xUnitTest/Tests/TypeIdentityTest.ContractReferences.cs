@@ -148,7 +148,7 @@ public partial class TypeIdentityTest
     [InlineData("guard", "cyc-swap", "func same<T, U>(value: T) -> U\n    T is U\n    U is T\n    return value@move\n", "")]
     [InlineData("C3", "cyc-self", "func f<T>(value: T) -> i32\n    T is Option<T>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T>", Explicit = true)]
     [InlineData("guard", "cyc-proj", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is T.(C).X\n    return 0\n", "")]
-    [InlineData("guard", "cyc-part", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    return 0\n", "")]
+    [InlineData("guard", "cyc-part", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    return 0\n", "InvalidConstraint_Kd: T is Option<T.(C).X> | InvalidConstraint_Kd: func f<T>(value: T) -> i32")] // O-344 (a): Option declares no C
     [InlineData("C3", "cyc-both", "contract C\n    associate X\nfunc f<T>(value: T) -> i32\n    T is C\n    T is Option<T.(C).X>\n    T.(C).X is T\n    return 0\n", "InvalidConstraint_Kd: T.(C).X is T", Explicit = true)]
     [InlineData("C3", "cyc-contract", "contract C\n    associate X\n    associate Y\n    Self.X is Option<Self.Y>\n    Self.Y is Option<Self.X>\nfunc f<T>(value: T) -> i32\n    T is C\n    return 0\n", "InvalidConstraint_Kd: Self.Y is Option<Self.X>", Explicit = true)]
     public void ContractReferencesAreIdentifiedByTheirNormalizedForm(string unit, string form, string program, string records)

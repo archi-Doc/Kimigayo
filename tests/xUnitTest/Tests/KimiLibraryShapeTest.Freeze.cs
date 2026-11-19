@@ -51,6 +51,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ImplicitConstructorDecisions"] = "never written: the library declares no derived structure",
         ["NodeColumns.ObjectErasures"] = "never written: the library erases no object view",
         ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
+        ["NodeColumns.PerCallNamings"] = "never written: no nested signature of the library names its per-call Origin in its inputs (PLAN G972, board C-400)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
@@ -385,32 +386,9 @@ public partial class KimiLibraryShapeTest
         var declared = DeclaredSymbols(c).Where(x => x.Contract is not null && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();
         Assert.NotEmpty(declared);
         Assert.Empty(declared.Where(static x => x.Contract!.EffectState != 2).Select(static x => x.Name));
-        var scopes = new List<BindingScope>();
-        foreach (var scope in c.Library.Kotonoha.Syntax.Hir.Families.Scopes.Enumerate())
-        {
-            if (scope is not null)
-            {
-                scopes.Add(scope);
-            }
-        }
-
-        foreach (var path in DeclaredSymbols(c)
-            .Where(x => x.Kind == BindingSymbolKind.Type && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha))
-            .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? []).SelectMany(static x => x.Paths))
-        {
-            scopes.Add(path.Scope);
-            scopes.AddRange((path.WitnessScopes ?? []).Select(static x => x.Premises));
-            scopes.AddRange((path.OverlapScopes ?? []).Select(static x => x.Scope));
-        }
-
-        Assert.Empty(scopes.Where(static x => State(x) != x.ViewState).Select(static x => x.Owner?.ToString()));
+        Assert.Empty(UnsettledLibraryScopes(c));
         Assert.NotEmpty(layer.Regions);
         Assert.Empty(layer.Regions.Where(static x => x.Value.Version == -1).Select(static x => x.Key.ToString()));
-
-        // The chain state SerialOf compares with a scope's ViewState, read without writing (ContractSolver.SerialOf).
-        static (int, int, int) State(BindingScope scope) => (scope.Constraints?.Version ?? 0, scope.LinkVersion, scope.Parent is { } parent ? Serial(parent) : 0);
-
-        static int Serial(BindingScope scope) => State(scope) != scope.ViewState ? scope.ViewSerial + 1 : scope.ViewSerial;
     }
 
     // f1 (C-380 F1; s11-design 2.2 and 6.3): the freeze leaves no counter value on the library. After the first Bind of each of c2's
@@ -684,6 +662,37 @@ public partial class KimiLibraryShapeTest
         void Same(string step) => SameLayer($"{program} after {step}", EmptyProgramGuardedLayer.Value, LibraryLayer.Dump(c, MemoStamps), c.Library.Layer.TypeCount);
     }
 
+    // The library's scopes, and every scope of a library path (its own, its requirements' premises, its overlaps'), whose view SerialOf
+    // would still write: the owners of those whose chain state is not the view state they hold (k4; PLAN G949 Stage 2 U2b's s20b).
+    private static string[] UnsettledLibraryScopes(Compilation c)
+    {
+        var scopes = new List<BindingScope>();
+        foreach (var scope in c.Library.Kotonoha.Syntax.Hir.Families.Scopes.Enumerate())
+        {
+            if (scope is not null)
+            {
+                scopes.Add(scope);
+            }
+        }
+
+        foreach (var path in DeclaredSymbols(c)
+            .Where(x => x.Kind == BindingSymbolKind.Type && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha))
+            .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? []).SelectMany(static x => x.Paths))
+        {
+            scopes.Add(path.Scope);
+            scopes.AddRange((path.WitnessScopes ?? []).Select(static x => x.Premises));
+            scopes.AddRange((path.OverlapScopes ?? []).Select(static x => x.Scope));
+        }
+
+        Assert.NotEmpty(scopes);
+        return [.. scopes.Where(static x => State(x) != x.ViewState).Select(static x => x.Owner?.ToString() ?? "<no owner>")];
+
+        // The chain state SerialOf compares with a scope's ViewState, read without writing (ContractSolver.SerialOf).
+        static (int, int, int) State(BindingScope scope) => (scope.Constraints?.Version ?? 0, scope.LinkVersion, scope.Parent is { } parent ? Serial(parent) : 0);
+
+        static int Serial(BindingScope scope) => State(scope) != scope.ViewState ? scope.ViewSerial + 1 : scope.ViewSerial;
+    }
+
     // f1's findings: each selected field off Frozen, by its declaring Type and name, with the first holder and the count.
     private static IEnumerable<string> Counters(Compilation c)
     {
@@ -744,7 +753,7 @@ public partial class KimiLibraryShapeTest
 
             if (value is Koto node)
             {
-                if (ReferenceEquals(node.CodeContext?.Kotonoha, c.Library.Kotonoha) && node.SymbolOf() is { } own && ReferenceEquals(own.Declaration, node))
+                if (ReferenceEquals(node.CodeContext?.Kotonoha, c.Library.Kotonoha) && HirTables.Symbol(node) is { } own && ReferenceEquals(own.Declaration, node))
                 {
                     work.Push(own);
                 }

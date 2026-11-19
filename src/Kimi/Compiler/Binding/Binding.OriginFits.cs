@@ -193,9 +193,9 @@ public sealed partial class Binding
             binding.termWalks++;
 
             // SPEC 8.1.2, 15.6.5: the outer Origins as the fit relates them; a pair layer's slot exists only in its binder's borrow cases,
-            // whose premises the relation may use.
-            if (binding.FitOuterOrigins(actual, expected, binding, use, out var outer, out var required) == OuterOriginFit.Relation &&
-                this.FailedOriginPart(outer, required, polarity, SlotCondition(actual, binding, use)) is { } layer)
+            // whose premises the relation may use. A value's fit is judged at its use, in no comparison (default).
+            if (binding.FitOuterOrigins(actual, expected, binding, use, out var outer, out var required, default) == OuterOriginFit.Relation &&
+                this.FailedOriginPart(outer, required, polarity, SlotCondition(actual, binding, use, default)) is { } layer)
             {
                 if (all is null)
                 {

@@ -97,11 +97,9 @@ public class VirtualAssociatedHeaderTest
     {
         var source = "group Operations\n    public func check<T>()\n        T is Copy\n        return\nopen struct Base<T>\n    public virtual func read(self: objref/Self)\n        T is Copy\n        return\nstruct Derived<U> : Base<U>\n    U is not Copy\n    override func read(self: objref/Self) => " + (needsCopy ? "Operations.check<U>()" : "()") + "\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(!needsCopy, c.Binding.Result.IsComplete);
-        if (needsCopy)
-        {
-            Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.NoApplicableOverload_Kd);
-        }
+        var codes = c.Binding.Issues.Select(static x => x.Code).ToArray();
+        Assert.Contains(Kimi.DiagnosticCode.InvalidConstraint_Kd, codes); // SPEC 6.4.3 (O-370): `U is Copy` is Refuted under `U is not Copy`.
+        Assert.Equal(needsCopy, codes.Contains(Kimi.DiagnosticCode.NoApplicableOverload_Kd));
     }
 
     [Fact]

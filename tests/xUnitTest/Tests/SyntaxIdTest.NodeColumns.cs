@@ -132,8 +132,9 @@ public partial class SyntaxIdTest
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
-    // its container's list; OverrideEntries: a Type's implementations by original). The column is read by reflection, since the
-    // families' rows differ.
+    // its container's list; OverrideEntries: a Type's implementations by original; Refusals: the refusal a losing candidate's request
+    // past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by reflection, since the families'
+    // rows differ.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
@@ -156,6 +157,7 @@ public partial class SyntaxIdTest
     [InlineData("RangeCalls", "milestone:Milestone23")]
     [InlineData("ResolvedKeys", "milestone:Milestone27")]
     [InlineData("MatchPlans", "milestone:Milestone10")]
+    [InlineData("Refusals", "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\nfunc pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\npublic func main() => ()\n")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source
