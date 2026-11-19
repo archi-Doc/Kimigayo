@@ -145,6 +145,15 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets the mutable member list, creating it on first use.</summary>
     protected List<Koto> KotoList => this.kotoList ??= new(4);
 
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields()
+    {
+        _ = this.GenericArguments;
+        _ = this.TypeConstraints;
+        _ = this.Origins;
+        _ = this.KotoList;
+    }
+
     /// <summary>Gets nested Declaration Containers.</summary>
     public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
         => this.NestedContainers;

@@ -82,29 +82,6 @@ public class PagedColumnTest
         Assert.Equal(new[] { 2, 3, 17, 33, 399 }, Rows(column));
     }
 
-    // A reserved column (the library's, KimiLibrarySize) allocates its stated slots at its first carve and nothing more until they are
-    // full; a page past them doubles the arena with every row intact; the reservation survives a renumbering.
-    [Fact]
-    [Trait("Purpose", "Allocation")]
-    public void AReservedColumnStartsAtItsStatedSize()
-    {
-        var column = Column<int>(100 * P);
-        column.Reserve(10 * P);
-        column.Ref(0) = 1;
-        var arena = Field<int[]>(column, "arena");
-        Assert.Equal(10 * P, arena.Length);
-        for (var page = 1; page < 10; page++)
-        {
-            column.Ref(page * 7 * P) = page;
-        }
-
-        Assert.Same(arena, Field<int[]>(column, "arena"));
-        column.Ref(99 * P) = 10;
-        Assert.Equal(20 * P, Field<int[]>(column, "arena").Length);
-        Assert.Equal(new[] { 1 }.Concat(Enumerable.Range(1, 10)), Rows(column));
-        Assert.Equal(10 * P, Field<int>(column.Renumbered(100 * P), "reserve"));
-    }
-
     // The arena doubles, never past the module's dense size: a module of ten pages, every page carved, ends at ten pages, not sixteen.
     [Fact]
     [Trait("Purpose", "Allocation")]

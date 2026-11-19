@@ -154,6 +154,9 @@ public sealed class AttributeKoto : UnaryKoto
     public List<Koto> Arguments
         => this.Operand is InvocationKoto { Method: IdentifierNameKoto } invocation ? invocation.Arguments : field ??= [];
 
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields() => _ = this.Arguments;
+
     // Parser-local fragment identity; distinct from source-file or physical layout order.
     internal int FragmentOrdinal { get; set; }
 
