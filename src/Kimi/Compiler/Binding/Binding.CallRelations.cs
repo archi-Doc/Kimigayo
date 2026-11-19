@@ -4,9 +4,10 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Call relations (SPEC 15.6.1, 15.6.5, 10.1): the Origin relations of a selected call, judged after selection at their own sources
-// (the receiver's and each argument's fit to its completed parameter Type, then each substituted clause and a Within row), the bounds
-// its fits give omitted Origins (CollectFitBounds) and the input that fixed an equality. Files: this one; .Records.cs (the records of
+// Call relations (SPEC 15.6.1, 15.6.5, 10.1): the Origin relations of a selected call, formed after selection at their own sources
+// (the receiver's and each argument's fit to its completed parameter Type, then each substituted clause and a Within row) as rows of the
+// body, which A5 judges (FormBodyRelation; R7-O1: Binding judges no call position and records none), each row with the input that fixed
+// its equality (FixedBy); and the bounds its fits give omitted Origins (CollectFitBounds). Files: this one; .Records.cs (the records of
 // a node beyond the first).
 public sealed partial class Binding
 {
@@ -52,12 +53,12 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1, 15.6.5, 10.1: applicability uses only the structural part of each fit, so the Origin relations of the selected
-    // candidate are judged here, after selection and at their own sources: the receiver's and each argument's fit to its completed
+    // candidate are formed here, after selection and at their own sources: the receiver's and each argument's fit to its completed
     // parameter Type, then the well-formedness of each slot the call fills (SPEC 15.6.4 step 3: the receiver's, each argument's and each
-    // default's, at the call), then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
-    // UnprovenOriginRelation_Kd records at the value that does not fit; a chain between body Origins, which ownership analysis cannot
-    // represent yet, is an obligation that it reports as the located limit at that value. An aggregate argument's well-formedness is
-    // judged by its positions' rows (JudgePositionRows). Erasures, anonymous bodies and join arguments (U2j) are judged where they
+    // default's, at the call), then each substituted clause. Each relation the fit's answer does not prove, and each body chain, is a row
+    // of the body at the value that does not fit (FormBodyRelation); A5 judges it, a Refuted or Unknown one its record and a chain it
+    // cannot represent yet the located limit there, and the input is not failed for it. An aggregate argument's well-formedness is
+    // formed by its positions' rows (JudgePositionRows). Erasures, anonymous bodies and join arguments (U2j) are judged where they
     // are bound. The expected result is judged at its destination. `operations` holds the arguments' and, last, the receiver's; the
     // selected candidate's solution holds its Origins and each argument's root row (F1, R4-M164), and the receiver is Evidence.
     private void JudgeSelectedCall(
@@ -65,7 +66,6 @@ public sealed partial class Binding
     {
         var selected = solution.Function;
         this.RecordOpenings(call, solution);
-        this.callRelationScratch.Clear();
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)
@@ -114,7 +114,6 @@ public sealed partial class Binding
         }
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
-        this.PublishCallRelations();
         this.CollectFitBounds(operations, argumentCount);
     }
 

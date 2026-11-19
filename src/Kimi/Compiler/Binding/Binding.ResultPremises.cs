@@ -223,7 +223,7 @@ public sealed partial class Binding
 
     // SPEC 15.3.7: the selected call's obligations for its substituted result; SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): with them
     // the declared relations over the call's region of the result's Types, down to its slots, as rows of the call (RequireResultClause),
-    // published with the call's other rows (step 3 has published its own before the result is formed).
+    // which A5 judges with the call's other rows (FormBodyRelation).
     private void RequireResultPremises(FunctionKoto function, BoundType result, Koto use)
     {
         if (CarriesResultPremises(function))
@@ -239,8 +239,6 @@ public sealed partial class Binding
                     this.RequireResultOutlives(premise.Type, premise.Value, premise.Substituted, use, premise.Condition);
                 }
             }
-
-            this.PublishCallRelations();
         }
     }
 
@@ -355,14 +353,16 @@ public sealed partial class Binding
     // Signature position has every position of its Type judged: a default supplies no Type (SPEC 10.1.1) and is judged at the call (SPEC
     // 7.2.3). The enumeration walks the parameter's pattern `pattern` beside `parameter`: at a position that supplies no evidence it stops at a
     // slot of the pattern, whose solution its contributor proves, and at an Evidence position it goes on over the solution, judged where
-    // the fit replaced an Origin (SPEC 10.3, 15.6.1; DECISIONS BU-99); a layer around the slot is this call's. As for the fit, an
-    // argument that carries no Origin, such as one that transfers control, supplies none; and an input that already failed, its fit or
-    // its conversion's contract (a Function value's, FailsFunctionConversion, whose relations are published with it, FollowsContract), is
-    // no instance of its parameter, so its well-formedness, read from its supplied Type, would only restate that failure.
+    // the fit replaced an Origin (SPEC 10.3, 15.6.1; DECISIONS BU-99); a layer around the slot is this call's. Each premise is a row of
+    // the body (JudgeCallPosition, FormBodyRelation), which A5 judges beside the input's fit rows: a call position's Origin relations never
+    // fail the input, and its instantiated well-formedness is a requirement of its own (SPEC 15.6.4 step 3). As for the fit, an argument
+    // that carries no Origin, such as one that transfers control, supplies none; and an input Binding already failed (its fit's
+    // structure, SPEC 5.7's raw-layer rules, a located limit, or its conversion's contract: a Function value's, FailsFunctionConversion,
+    // whose relations are published with it, FollowsContract) is no instance of its parameter, so its well-formedness, read from its
+    // supplied Type, would rest on that failure (SPEC 23.1.2).
     private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution)
     {
-        if (parameter.StoresOrigin &&
-            (supplied is null || (supplied.StoresOrigin && at.BindingFailure == BindingFailure.None && !this.HasCallRelation(at))))
+        if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && at.BindingFailure == BindingFailure.None)))
         {
             var actual = contribution == Contribution.Evidence ? supplied : null;
             foreach (var premise in new WellFormedPremises(this, pattern, parameter, actual, WellFormedSubject.Input, null, at, default))
