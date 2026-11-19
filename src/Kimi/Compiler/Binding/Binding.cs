@@ -84,6 +84,9 @@ public sealed partial class Binding
         this.viewRangeCalls = new(this);
         this.rangeCalls = new(this);
         this.resolvedKeys = new(this);
+        this.aliasTargets = new(this);
+        this.importedContainers = new(this);
+        this.qualificationFailures = new(this);
         this.matchPlans = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)

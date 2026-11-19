@@ -11,10 +11,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<AliasKoto> aliases = new();
-    private readonly Dictionary<AliasKoto, BindingScope?> aliasTargets = new();
+    private readonly AliasTargetRows aliasTargets;
     private readonly Dictionary<(SourceDocument Document, string Name), AliasImport> namedAliases = new();
     private readonly List<AliasKoto> aliasWarnings = new();
-    private readonly Dictionary<Koto, AliasImport> importedContainers = new(ReferenceEqualityComparer.Instance);
+    private readonly ImportedContainerRows importedContainers;
     private Dictionary<SourceDocument, List<AliasImport>> aliasesByDocument; // The running pass's part's (PassPart.AliasesByDocument).
     private int aliasResolutionDepth;
     private ImportedOriginVisitor? importedOriginVisitor;
@@ -37,8 +37,6 @@ public sealed partial class Binding
             list.Clear();
         }
 
-        this.aliasTargets.Clear();
-        this.importedContainers.Clear();
         this.defaultAliasTargets.Clear();
         this.namedAliases.Clear();
         this.aliasWarnings.Clear();
@@ -251,5 +249,44 @@ public sealed partial class Binding
                 node.VisitChildren(this);
             }
         }
+    }
+
+    /// <summary>The `aliasTargets` family's one accessor (DECISIONS BU-220): a pass family, an alias's container scope, kept in the alias's
+    /// module's NodeColumns at its SyntaxId; a present row is Started, its Scope null while the alias resolves or once it failed. Its
+    /// members keep the names its readers use.</summary>
+    private readonly struct AliasTargetRows(Binding binding)
+    {
+        internal BindingScope? this[AliasKoto alias]
+        {
+            get => this.TryGetValue(alias, out var scope) ? scope : throw new KeyNotFoundException($"`{alias}` has no target in this pass.");
+            set => HirTables.Of(alias).Families.AliasTargets.Ref(alias.SyntaxId, binding) = (true, value);
+        }
+
+        internal void Add(AliasKoto alias, BindingScope? scope)
+        {
+            ref var row = ref HirTables.Of(alias).Families.AliasTargets.Ref(alias.SyntaxId, binding);
+            row = row.Started ? throw new ArgumentException($"`{alias}` already has a target in this pass.", nameof(alias)) : (true, scope);
+        }
+
+        internal bool TryGetValue(AliasKoto alias, out BindingScope? scope)
+        {
+            var row = alias.SyntaxOwner is { } table ? table.Hir.Families.AliasTargets.Get(alias.SyntaxId, binding) : default;
+            scope = row.Scope;
+            return row.Started;
+        }
+    }
+
+    /// <summary>The `importedContainers` family's one accessor (DECISIONS BU-220): a pass family, the alias import a qualifier's head
+    /// selected (PublishPath), kept in the use's module's NodeColumns at its SyntaxId (a present row always has its Declaration, so the
+    /// column's default is none). Its members keep the names its readers use.</summary>
+    private readonly struct ImportedContainerRows(Binding binding)
+    {
+        internal AliasImport this[Koto use]
+        {
+            set => HirTables.Of(use).Families.ImportedContainers.Ref(use.SyntaxId, binding) = value;
+        }
+
+        internal bool TryGetValue(Koto node, out AliasImport import)
+            => (import = node.SyntaxOwner is { } table ? table.Hir.Families.ImportedContainers.Get(node.SyntaxId, binding) : default).Declaration is not null;
     }
 }

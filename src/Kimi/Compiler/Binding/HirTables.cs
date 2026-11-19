@@ -305,6 +305,9 @@ internal struct NodeColumns
     internal PagedColumn<InvocationKoto?> ResolvedKeys; // Kept: a selection key's synthesized `resolved` call (Binding.Ranges.cs).
     internal PagedColumn<BoundMatch?> MatchPlans; // Kept: the plan object a match keeps across rebinds (Binding.Patterns.cs).
     internal PagedColumn<Binding.Refusal?> Refusals; // Kept: the refusal a refused analysis's site holds (Binding.ConstraintValidation.Proofs.cs).
+    internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
+    internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
+    internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
 
     internal void Resize(int length)
     {
@@ -346,6 +349,9 @@ internal struct NodeColumns
         this.ResolvedKeys.Grow(length);
         this.MatchPlans.Grow(length);
         this.Refusals.Grow(length);
+        this.AliasTargets.Grow(length);
+        this.ImportedContainers.Grow(length);
+        this.QualificationFailures.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -363,6 +369,9 @@ internal struct NodeColumns
         this.Matches.Freeze(binding);
         this.Adaptations.Freeze(binding);
         this.ShapeContractHeads.Freeze(binding);
+        this.AliasTargets.Freeze(binding);
+        this.ImportedContainers.Freeze(binding);
+        this.QualificationFailures.Freeze(binding);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -437,6 +446,9 @@ internal struct NodeColumns
             ResolvedKeys = this.ResolvedKeys.Renumbered(length),
             MatchPlans = this.MatchPlans.Renumbered(length),
             Refusals = this.Refusals.Renumbered(length),
+            AliasTargets = this.AliasTargets.Renumbered(length),
+            ImportedContainers = this.ImportedContainers.Renumbered(length),
+            QualificationFailures = this.QualificationFailures.Renumbered(length),
         };
         return columns;
     }

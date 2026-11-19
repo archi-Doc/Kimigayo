@@ -636,7 +636,6 @@ public sealed partial class Binding
         this.report.Clear();
         this.nameSteps.Clear();
         this.qualificationStops?.Clear();
-        this.qualificationFailures?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();

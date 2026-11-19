@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly QualificationFailureRows qualificationFailures;
     private Dictionary<(Koto Use, bool Type), QualificationFact>? qualificationStops;
-    private Dictionary<Koto, QualificationFact>? qualificationFailures;
 
     private enum QualificationNamespace : byte
     {
@@ -23,7 +23,7 @@ public sealed partial class Binding
         Case,
     }
 
-    private readonly record struct QualificationFact(
+    internal readonly record struct QualificationFact(
         BindingScope Container,
         BindingScope Scope,
         BindingSymbol Member,
@@ -184,7 +184,7 @@ public sealed partial class Binding
 
     private void ReportQualification(Koto node, DiagnosticRequirement requirement)
     {
-        var fact = this.qualificationFailures![node];
+        var fact = this.qualificationFailures[node];
         var container = fact.Container.Owner.BoundSymbol!;
         var instance = false;
         for (var member = fact.Member; member is not null; member = member.Next)
@@ -311,6 +311,19 @@ public sealed partial class Binding
             var verified = selected ? RepairConditionSet.Selection : RepairConditionSet.None;
             var required = (selected ? RepairConditionSet.None : RepairConditionSet.Selection) | (fact.Type ? RepairConditionSet.None : RepairConditionSet.UsageLegality);
             (repairs ??= []).Add(new(RepairKind.Qualify, [fact.Name, prefix], [node.Edit(new(fact.At!.Span.Start, 0), prefix)], verified, required));
+        }
+    }
+
+    /// <summary>The `qualificationFailures` family's one accessor (DECISIONS BU-220): a pass family, the qualification stop a failed
+    /// Name or Type at a node required (Fail), kept in the node's module's NodeColumns at its SyntaxId (a present fact always has its
+    /// Container, so the column's default is none). Its members keep the names its readers use.</summary>
+    private readonly struct QualificationFailureRows(Binding binding)
+    {
+        internal QualificationFact this[Koto node]
+        {
+            get => (node.SyntaxOwner is { } table ? table.Hir.Families.QualificationFailures.Get(node.SyntaxId, binding) : default) is { Container: not null } fact
+                ? fact : throw new KeyNotFoundException($"`{node}` has no qualification failure in this pass.");
+            set => HirTables.Of(node).Families.QualificationFailures.Ref(node.SyntaxId, binding) = value;
         }
     }
 }
