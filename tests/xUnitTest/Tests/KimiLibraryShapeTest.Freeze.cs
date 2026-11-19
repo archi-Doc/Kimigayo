@@ -256,7 +256,7 @@ public partial class KimiLibraryShapeTest
         var impls = (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         var path = impls.Paths.ToArray().First(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
         Refused(() => impls.Register(path.Type, path.Contract, path.RootContract, (IsKoto)path.Use, path.Scope.Parent!, path.Premises));
-        Refused(() => impls.Begin(Binding.Frozen, new([], c.Binding.Library.Kotonoha, new(0))));
+        Refused(() => impls.Begin(Binding.Frozen, new([], c.Binding.Library.Kotonoha, new())));
 
         c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
         Assert.True(c.Bind().IsComplete);

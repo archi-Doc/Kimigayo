@@ -374,34 +374,6 @@ internal struct NodeColumns
         this.QualificationFailures.Freeze(binding);
     }
 
-    // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
-    internal void Reserve(KimiLibrarySize.Tables stated)
-    {
-        this.Symbols.Reserve(stated.Declarations);
-        this.Parameters.Reserve(stated.Parameters);
-        this.Receivers.Reserve(stated.Receivers);
-        this.EnumConstructions.Reserve(stated.EnumConstructions);
-        this.CopyDeclarations.Reserve(stated.CopyDeclarations);
-        this.CopyByType.Reserve(stated.CopyByType);
-        this.InheritedOriginTypes.Reserve(stated.InheritedOriginTypes);
-        this.DeferredConstraints.Reserve(stated.DeferredConstraints);
-        this.Matches.Reserve(stated.Matches);
-        this.Adaptations.Reserve(stated.Adaptations);
-        this.Specializations.Reserve(stated.Specializations);
-        this.SpecializationsByOriginal.Reserve(stated.SpecializationsByOriginal);
-        this.Scopes.Reserve(stated.Scopes);
-        this.OriginAtoms.Reserve(stated.OriginAtoms);
-        this.OpenOrigins.Reserve(stated.OpenOrigins);
-        this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
-        this.OriginDeclarations.Reserve(stated.OriginDeclarations);
-        this.DiscoveredOrigins.Reserve(stated.DiscoveredOrigins);
-        this.OriginRequirementNodes.Reserve(stated.OriginRequirementNodes);
-        this.PropertyCalls.Reserve(stated.PropertyCalls);
-        this.RangeCalls.Reserve(stated.RangeCalls);
-        this.ResolvedKeys.Reserve(stated.ResolvedKeys);
-        this.MatchPlans.Reserve(stated.MatchPlans);
-    }
-
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
     // emptied, its stamp kept (StampedColumn.Renumbered).
     internal readonly NodeColumns Renumbered(int length)
