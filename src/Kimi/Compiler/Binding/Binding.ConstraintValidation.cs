@@ -414,9 +414,10 @@ public sealed partial class Binding
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
-                var frame = this.BeginConsultation(node);
+                var use = this.VerdictUse(node); // A synthesized call's Type is its consumer's verdict (PLAN G214).
+                var frame = this.BeginConsultation(use);
                 var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
-                this.RequireConstraintInFrame(node, result, mode, frame);
+                this.RequireConstraintInFrame(use, result, mode, frame);
                 if (node.BindingState == BindingState.Invalid)
                 {
                     // Invalid type formation in a clause must not remain available as evidence.
