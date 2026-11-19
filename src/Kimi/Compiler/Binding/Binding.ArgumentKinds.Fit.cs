@@ -33,7 +33,7 @@ public sealed partial class Binding
                 // failure (Unresolved), such as an operator's anonymous function whose omitted header rests on its call, is completed by
                 // the call and stays FitTyped's (C19's reason, kept; PLAN G924, ruling 115).
                 var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
-                operation = new(part, node.BoundType, type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
+                operation = new(part, this.ArgumentTypeAt(node), type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
                 return CandidateApplicability.Applicable;
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
@@ -328,7 +328,7 @@ public sealed partial class Binding
     private CandidateApplicability FitTyped(Koto part, Koto node, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
         operation = default;
-        if (node.BoundType is not { } actual)
+        if (this.ArgumentTypeAt(node) is not { } actual)
         {
             return CandidateApplicability.Pending;
         }

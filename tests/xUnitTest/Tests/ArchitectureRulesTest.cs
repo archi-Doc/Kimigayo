@@ -187,7 +187,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 76)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 67)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -272,8 +272,10 @@ public class ArchitectureRulesTest
     [InlineData("Readers of a class's Member", "src/Kimi/Compiler", @"\bMemberOf\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Constraints.cs=1;Binding/Binding.ContractTypes.cs=1;Binding/Binding.Contracts.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
-    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
-    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
+    // (ii): three of `Binding.LocalOrigins.cs`'s are InferLocalOrigins' `let` branch, which reads the replacements, publishes each
+    // region's value and replaces the replacement with the region before it sets the declaration's state: formation, as the rule names.
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
     // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
     // number is reached, its holder and a member returning it included:

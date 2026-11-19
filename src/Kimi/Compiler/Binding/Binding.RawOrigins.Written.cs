@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 5.7: the Phantom slot a raw layer states and the cases it is Phantom in (FailingCase), recorded only when the check fails.
-    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases)>? phantomRawOrigins;
+    private readonly PhantomRawOriginRows phantomRawOrigins;
 
     // SPEC 5.7 Origins (D17, D18; design-final §5; DECISIONS BU-24): the Origin a raw layer's `during` writes, one atom (never a meet or
     // Origin arguments), the atom its name binds whatever position it is written in: `self` names the holding value (Holder) on a layer
@@ -105,7 +105,7 @@ public sealed partial class Binding
         if ((projected ?? NamedSlot(raw, out instance)) is { } slot && this.RequirementAt(slot, instance).Weakest == LoanRequirement.None)
         {
             var cases = this.FailingCase(slot, instance, LoanRequirement.None);
-            this.FailExplained(ref this.phantomRawOrigins, node, BindingFailure.InvalidOrigin, (slot, LoanRequirement.None, cases));
+            this.FailExplained(PhantomRawOriginRows.Family, node, BindingFailure.InvalidOrigin, (slot, LoanRequirement.None, cases));
             return true;
         }
 
@@ -151,5 +151,17 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(inputs, clearArray: true);
         }
+    }
+
+    /// <summary>The `phantomRawOrigins` family's one accessor (DECISIONS BU-220): a pass family, the Phantom slot a raw layer states with
+    /// its failing cases, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a present row always has
+    /// its Slot). Its members keep the names its readers use.</summary>
+    private readonly struct PhantomRawOriginRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), PassCounter> Family(ref NodeColumns columns) => ref columns.PhantomRawOrigins;
+
+        internal bool TryGetValue(Koto node, out (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases) phantom)
+            => (phantom = binding.RecordedFact(node, Family)).Slot is not null;
     }
 }

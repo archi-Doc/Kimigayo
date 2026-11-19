@@ -2,7 +2,7 @@
 
 // The C1-F4 view's atom table (2a0-D §3, D4, D7; DECISIONS R4-M101 E4, E5): an atom's identity (resolved at its use, a meet canonical),
 // its class in a body by §3's precedence, first match deciding, the part of a constructor's slice it belongs to (E4), and the index MIR
-// reads an atom by (OriginAtomIn, at a MIR site).
+// reads an atom by (OriginAtomIn, at a MIR site; MeetOperandIn, an operand of a table meet as the meet holds it).
 // Input: an atom, the slice it is interned in and the use or MIR site it is resolved at. Output: the atom's index in the slice's table and
 // its part (OriginRowSet.InLayer).
 // Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives, and a Dependent atom (an end a
@@ -10,7 +10,8 @@
 // a complete compilation (BrokenContract, DECISIONS BU-102); roots by the forming body for non-declaration binders and by slot role for
 // declaration binders; an atom's part is its forming unit's on every path (PartOf; DECISIONS R4-M114, BU-102): a declaration atom or
 // another body's names none, and a unit names a non-Fixed atom of its own part or none (else a broken contract). An atom is stored only
-// after its class's check passes, and the part check runs at every read.
+// after its class's check passes, and the part check runs at every read. A table atom is resolved once, when it is interned: nothing
+// resolves a table atom or a part of one again (PLAN G492-a (ii), the owner's O-385 (a)).
 // Must not: let a slot or binder leave the view (only ProjectionRole does, D7).
 
 using Kimi.Compiler.Parsing;
@@ -27,6 +28,18 @@ public sealed partial class Binding
         var use = this.compilation.SyntaxOf(site);
         var atom = this.CanonicalOrigin(this.OriginAtUse(origin, use));
         return this.InternAtom(slice, atom, use, PartOf(atom, slice));
+    }
+
+    // An operand of a meet atom of a body's table (TyCtxt.MeetOperand: MeetNode's rule and A5's meet law), as the meet holds it. The meet
+    // was resolved once, when it was interned (a row's end as the row reads it, a MIR Origin at its site), and its operands with it, so
+    // an operand is interned as it is and never resolved again: a `let` region a Compared row names stays the region (PLAN G492-a (ii)).
+    // The site only locates a broken contract, which the meet's classification excludes (it classed every operand when it was interned).
+    // A row-6 local region's operands are its solved value's, the value itself when it is no meet (OriginAtomEntry.HeldOperand).
+    internal int MeetOperandIn(ExecutableBody body, int meet, int index, SourceRef site)
+    {
+        var slice = this.OriginRows(body);
+        var operand = slice.Atoms[meet].HeldOperand(index);
+        return this.InternAtom(slice, operand, this.compilation.SyntaxOf(site), PartOf(operand, slice));
     }
 
     // SPEC 15.3.6: the canonical meet of two atoms of a body's table (TyCtxt.MeetAtom), interned and classed there like every atom.
@@ -180,7 +193,9 @@ public sealed partial class Binding
 
         if (EnclosingAtom(atom, slice.Body))
         {
-            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom)); // Row 6: an enclosing body's atom, and whether it is a call region.
+            // Row 6: an enclosing body's atom, whether it is a call region, and a local region's solved value (RegionValue; DECISIONS
+            // BU-127, O-422 (a)): A5 judges a relation the region fails at a longer end as the value's (PLAN G492-a (ii)).
+            return new(atom, OriginAtomKind.Fixed, role, IsCallRegion(atom), this.RegionValue(atom));
         }
 
         return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.

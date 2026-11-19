@@ -1,6 +1,6 @@
 # R5 step 0
 
-Design records of the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md)
+Design records of the [R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md)
 step 0 (plan §4.1; adopted 2026-10-18, DECISIONS R5-M1). Working records, not authority: the package becomes the
 owner-approved design only through the plan's design review and the owner's approval (OQ4).
 

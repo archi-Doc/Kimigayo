@@ -427,7 +427,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.4.4: an Origin that a written Type argument omits is an inference variable of the local whose initializer holds the
-    // reference; the selected binding from S solves it, as an initializer's acquisition bounds it. Elsewhere it stays unsolved.
+    // reference; the selected binding from S solves it, as an initializer's acquisition bounds it, read at the reference (SuppliedAtUse:
+    // the one reading, which the alias keeps, as a fit's bound is read at its use; the owner's O-385 (a)). Elsewhere it stays unsolved.
     private void SolveOmittedOrigins(BoundType written, BoundType binding, Koto use)
     {
         if (ReferenceEquals(written, binding))
@@ -452,7 +453,7 @@ public sealed partial class Binding
     {
         if (written is { Kind: OriginKind.Inference } atom && binding is not null && !ReferenceEquals(atom, binding) && this.OpenInitializerInference(atom, use) is { } pending)
         {
-            this.MeetInitializerBound(pending, atom, binding);
+            this.MeetInitializerBound(pending, atom, this.SuppliedAtUse(binding, use));
         }
     }
 

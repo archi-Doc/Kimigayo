@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // beside it keys its entry by the pair (part, beside), so it decides each distinct pair once per query and stays linear in the distinct
 // pairs; a walk of the part alone keys it by the part. A key compares by its own equality, which for a Type is identity: a Type is
 // interned, and a Closure Type holds its whole context (BU-19, BU-60, BU-71). A walk whose visit depends on a further input stores, as
-// the value, the input the key was last met with (VisitWellFormedPremises' substituted part, DECISIONS R4-M164 U1e): a meet is a hit only
+// the value, the input the key was last met with (WellFormedPremises' substituted part, DECISIONS R4-M164 U1e): a meet is a hit only
 // when the caller's comparison with it holds, and otherwise revisits the key and overwrites it.
 // Input: the key (a part, or a part and the Type beside it) and the stamp of its query. Output: the answer, or the input, that query
 // recorded for the key, if any.
@@ -22,13 +22,18 @@ public sealed partial class Binding
 
     private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseNestedTypes' images.
 
-    // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins and PublishedResult
-    // (DECISIONS BU-58, BU-63): none calls a user of this table while it walks, so a query never begins inside another and evicts nothing
-    // live.
+    // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins, PublishedResult and
+    // ResolveLocalResultOrigins (DECISIONS BU-58, BU-63; PLAN G492-a (ii)), RegionValuesAt, and LocalBorrowType's opening of a `let`
+    // local, whose answer mints a part's regions the first time the query meets it (a function of the part within its query): none calls
+    // a user of this table while it walks, so a query never begins inside another and evicts nothing live.
     private readonly TypeMemo<BoundType, BoundType?> rewrittenParts = new();
 
+    // Viewed's images of a declared Type's parts as its function's body sees them (PLAN G935 c3-2), each keyed by its depth too: the depth
+    // bound's cut makes an answer a function of the depth where a premise chain is deeper than StorageBound.
+    private readonly TypeMemo<(BoundType Declared, int Depth), BoundType?> viewedParts = new();
+
     // The states in which a walk met a part, one bit per state (DECISIONS BU-63): the existence walks OperandContexts,
-    // ContainsAssociatedProjection, DependentType, TypeAccessCovers, ProveTypeLengths, HasLocalRegion and HasRegionBounds, and the walks
+    // ContainsAssociatedProjection, DependentType, TypeAccessCovers, ProveTypeLengths, HasLocalRegion, HasRegionBounds and CarrierOf, and the walks
     // whose revisit only repeats what they add, CollectRequirementEdges, AddStoredPremises, ClosureType's Collect, and AccumulateRequirements
     // and ClosureArgumentVariance's Occurrences (a bit per polarity).
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
