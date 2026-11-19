@@ -143,6 +143,20 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 9.5.1, 9.6: the resolver's miss, the one decision of a Name or Type that no lookup selected: a missing one whose lookup
+    // stopped at a declaration requiring qualification (QualificationStop) fails as QualificationRequired, a definite failure that
+    // carries its stop (`qualificationFailures`); any other miss fails unresolved as given.
+    private BoundType? FailUnselected(Koto name, BindingFailure missing)
+    {
+        if (missing is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(name) is { } qualification)
+        {
+            this.qualificationFailures[name] = qualification;
+            return this.Fail(name, BindingFailure.QualificationRequired);
+        }
+
+        return this.Fail(name, missing, true);
+    }
+
     private QualificationFact? InheritedStop(BindingScope container, BindingScope scope, Koto use, string name, LookupRole role, int arity)
     {
         if (role == LookupRole.TypeSemantics || container.Owner is not StructKoto { BaseClause: { } clause } structure)
@@ -316,7 +330,7 @@ public sealed partial class Binding
     }
 
     /// <summary>The `qualificationFailures` family's one accessor (DECISIONS BU-220): a pass family, the qualification stop a failed
-    /// Name or Type at a node required (Fail), stored with its failure by the recorder (RecordedFact; a present fact always has its
+    /// Name or Type at a node required (FailUnselected), stored with its failure by the recorder (RecordedFact; a present fact always has its
     /// Container, so the column's default is none). Its members keep the names its readers use.</summary>
     private readonly struct QualificationFailureRows(Binding binding)
     {
