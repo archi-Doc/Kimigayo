@@ -8,13 +8,12 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundMemberPath? Parent, Koto Base, BoundType Type), BoundMemberPath> memberPaths = new();
-    private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(
-        KimiLibrarySize.Stated.MemberSelections, ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(ReferenceEqualityComparer.Instance);
 
     // The side of each member access whose member was selected (PLAN G724, B4): published by PublishPath's MemberAccess step of the former
     // that selected it (SelectMember, BaseMember, ConstructorMember, a length argument's group member), its own fact beside the lookup's
     // selection, since a constructor access has a side and no selection.
-    private readonly Dictionary<MemberAccessKoto, MemberSide> memberSides = new(KimiLibrarySize.Stated.MemberSides, ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<MemberAccessKoto, MemberSide> memberSides = new(ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;

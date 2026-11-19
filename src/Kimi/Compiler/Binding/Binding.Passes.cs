@@ -32,9 +32,9 @@ namespace Kimi.Compiler;
 //   library is never bound again (PLAN G949 Stage 2 U3: the driver reads its refusal first and runs no pass, so a compilation given it
 //   does no Binding work beyond publishing the refusal); between Binds, and after a throw, the running pass is the program pass with
 //   Binding's own part, and a reader outside a pass reads the views, never a field a pass writes; the library pass runs Final whatever
-//   the Bind's mode (PLAN G949 S1-1, B2: no library fact is a Provisional pass's), so its Check publishes the library module, and its
-//   end sets the library's size (LibraryLayer.Size); a library declaration's Origin requirement work is never an edge source in the
-//   program pass (its Pass is Frozen32, never the running pass's requirement call, which CollectRequirementEdges compares).
+//   the Bind's mode (PLAN G949 S1-1, B2: no library fact is a Provisional pass's), so its Check publishes the library module; a
+//   library declaration's Origin requirement work is never an edge source in the program pass (its Pass is Frozen32, never the
+//   running pass's requirement call, which CollectRequirementEdges compares).
 // - Prohibitions: no step body here; no flag or mode steering a step; no second copy of a step for the library; no consumer
 //   composing parts.
 public sealed partial class Binding
@@ -48,9 +48,8 @@ public sealed partial class Binding
 
     internal const int FrozenRegion = int.MaxValue;
 
-    // Binding's own part of the published lists: the program pass's. Its node list starts at the program's room (the library's nodes
-    // are the layer's part's, which starts at the library's stated count: KimiLibrarySize).
-    private readonly PassPart programPart = new(KimiLibrarySize.NodeRoom);
+    // Binding's own part of the published lists: the program pass's (the library's nodes are the layer's part's).
+    private readonly PassPart programPart = new();
 
     // The empty second part of a pass's view when the pass's own part is the library layer's (selectableEffectClauses); never written.
     private readonly List<IsKoto> noClauses = new();
@@ -272,15 +271,12 @@ public sealed partial class Binding
         {
             // The library module's place in the pass's set, never which pass runs (RB1): the facts a later pass would otherwise form
             // lazily on a library object completed (PLAN G949 S1-1, B1: the effect bounds of every Contract the library declares or
-            // references, the scopes' view serials, the local regions' sources, each its owner's step over the pass's own stores), and the
-            // library's size, the pass's table counts before the program pass empties its per-pass tables (O8 (a)): the layer's part's
-            // nodes, not the composed view's.
+            // references, the scopes' view serials, the local regions' sources, each its owner's step over the pass's own stores).
             this.CompleteEffectBounds();
             this.SettleViewSerials();
             this.CompleteLocalRegions();
             this.CompleteNegations(); // D-4 (PLAN G949 Stage 2 U2b): every library constraint's negation.
             pass.Library.Syntax.CompleteLazyFields(); // PLAN G1072: every library node's and document's lazily filled fields, before the freeze counts records.
-            this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
         }
 
         return true;
@@ -356,9 +352,9 @@ public sealed partial class Binding
     // counts are the failing pass's (CountStates). Counts is the pass's
     // contribution to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: a program pass's
     // own nodes plus each foreign node's final state less its earlier one.
-    internal sealed class PassPart(int nodes)
+    internal sealed class PassPart
     {
-        internal List<Koto> Nodes { get; } = new(nodes);
+        internal List<Koto> Nodes { get; } = new();
 
         internal List<BindingIssue> Issues { get; } = new();
 
