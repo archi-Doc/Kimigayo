@@ -7730,7 +7730,8 @@ resumed by R4-M86 (2026-10-20).
 - **BU-26** (superseded in part by BU-62: the judge's pre-filter and its clause "derived when that end's binder failed"; superseded in
   part by R4-M155: a nested Function Type part's result well-formedness for an owner without a named declaration (the owner's (A));
   superseded in part by BU-89: its E2 test "whose resolved ends are declaration atoms"; superseded in part by BU-102: a remaining row
-  with no body is the view's throw, not `OriginFinding`) (2026-10-22; the owner's answers Q1 and Q2;
+  with no body is the view's throw, not `OriginFinding`; superseded in part by R7-M43: the catalog row's sentence "G214 keeps
+  the result-only form") (2026-10-22; the owner's answers Q1 and Q2;
   PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable body, a declaration's row (R4-M101 E1, E2): a
   Field's, payload's or base's declared Type, a computed Property's header, a signature's well-formedness (a requirement's, an
   override's, a specialization's, a nested Function Type part) and a clause's unrepresentable end. `Binding.JudgeDeclarationRows`, at
@@ -10521,6 +10522,8 @@ resumed by R4-M86 (2026-10-20).
     (`Binding.CopiesInEveryCase`). The answer is still Binding's, and MIR only reads it. Its five readers: the validator's Copy rule,
     `MirEffects`, `MirTypes.Destruction`, `MirBorrows.Destructions` and `ModuleCodegen.Objects`. A Type that is Copy in every case
     destroys nothing in any instance.
+  - Amended by BU-228 (the sa unit, 2026-11-19): the one Copy verdict is now `ProveCopy`, which judges a pair layer per admitted case;
+    `CopiesInEveryCase` is removed and `TyCtxt.CopyFacts` reads `ProveCopy`.
 - **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after the
   joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03 (PLAN G396))
   - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
@@ -11867,6 +11870,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a ByCase plan for a composite (MIR has no form for it, and the validator would still reject the Copy); case analysis
     inside `ProveCopy` (8.15.2 adds no premise to 8.3, so requirements stay one proof); fixing the call alone (a second copy of the
     rule); a validator exemption (MIR would then decide a Binding fact).
+  - Superseded in part by BU-228 (the sa unit, 2026-11-19): its owner `Binding.CopiesInEveryCase`, the 64-case clause and the readers;
+    the rule, Copy evidence per Semantics case, stands, now in the capability engine (`ProveCopy`).
 - **BU-143 A stated raw layer an input holds by value writes its Origin's members at any holder; Binding publishes the parts an input
   holds at its own address (PLAN G583)** (2026-11-09; Front, Binding; Major, an acceptance mover, with the Middle's G598-2a in one window;
   design review 2 ACCEPT after re-check; C-175; the owner's O-107 (a)) SPEC 15.6.4, 5.7 Calls, 5.2.1.
@@ -12620,6 +12625,8 @@ resumed by R4-M86 (2026-10-20).
     - A family row in `TyCtxt.Layer`: a family has no single target.
     - A premise reading with a Binding or MIR interim (design rounds 1 and 2): each interim approximated "a layer only the premises
       make" by a Type comparison, because no component publishes that fact.
+  - Amended by BU-228 (the sa unit, 2026-11-19): the reader list's and the Reading's `CopiesInEveryCase` is removed; they read
+    `ProveCopy`, which judges a pair layer per admitted case.
 - **BU-159 A failed Origin clause fails itself, not its owner or the declaration's other clauses** (2026-11-11; Front, Binding;
   Major; H11b-0 B1; F's ruling 3; design review 1 ACCEPT; the Middle's C-228 and the Back's C-229) SPEC 15.3.3, 15.3.4, 23.1.2.
   - **Rule.** A clause that does not bind (a guessed operator, an unavailable operand) fails itself. It supplies no equality,
@@ -13079,6 +13086,8 @@ resumed by R4-M86 (2026-10-20).
     plans them); a node fact alone (misses premise-made pair targets, design review 3, B3); deleting the gate for pair layers too
     (widens G254, B1); a located `Unsupported_Kd` at each use that Reborrows by case (C-235's interim: 18 valid `s/T` programs).
   - Closes PLAN G721: its remaining part is the two interim rows, each removed by its condition's owner (PLAN G254, G170).
+  - Amended by BU-228 (the sa unit, 2026-11-19): an omitted list over a pair layer whose plan never Reborrows Copies by `ProveCopy`,
+    which judges a pair layer per admitted case (`CopiesInEveryCase` is removed).
 - **BU-183 A built-in sequence with a declaration states its Indexable conformance in Kimigayo (PLAN G715 part a)** (2026-11-12;
   Front, the library and Binding; Major; implementation reviews 1 and 2 REVISE, 3 ACCEPT WITH NOTES by the Back's reviewer; split by
   the owner's O-197 (a)) SPEC 4.7.1, 8.5.2, 22.1, 3.4.3.
@@ -15036,6 +15045,34 @@ resumed by R4-M86 (2026-10-20).
     registers unless its key changes).
   - Rejected: a lookahead for `when` (it misreads a Type named `when` and scans every item); reusing `ParseInheritanceReference` for a
     ContractReference (it admits a BorrowOrigin; ruling 6); a per-site whitelist copy (the leaf predicate is one).
+- **BU-228 A pair layer's intrinsic is judged over every admitted case, in the capability engine** (2026-11-19; Back, Binding; Major,
+  class 3; the owner's O-417 (a), verbatim 「O-417 a」; O-416 (b); design `back\notes\g379c\sa-design.md` Revision 1, review
+  `review-sa.md` ACCEPT WITH CONDITIONS K1-K3, implementation review `review-sa-impl.md` ACCEPT WITH CONDITIONS C1-C2, B's
+  `rulings-sa.md`; the Front's C-397 CONSENT WITH CONDITIONS and the Middle's C-398 CONSENT; moves named in ca54937de, 0a0f7921b and
+  769a131ed; closes PLAN G1031; **amends BU-88, BU-138, BU-168 and BU-184**) SPEC 8.15.2, 8.14, 8.3.4, 8.7.2-8.7.4, 15.6.1, 10.1.
+  The engine's symbolic path (`SymbolicCapability`) judges a pair layer `s/U`, for every intrinsic, once per Semantics its binder
+  admits at the query's point (`AdmittedSemantics`), each case's complete Type (`CaseType`) a part through G379's one part record. The
+  family rule is written once, `CommonVerdict` (`Binding.Capabilities.cs`), read by the adaptation-family loop and the pair-layer
+  loop: the verdict common to every case is evidence, cases that differ give none (Unknown Copy is never Non-Copy, 8.14). The case
+  judgement is a pair layer's only Semantics evidence: the premise loop's Semantics-mask rows (`s is owner`'s target, the Copy mask,
+  Sealed/ObjectPayload without `owner`, `s is raw`'s Owned target), which it implies, are removed (behaviour-preserving). So Copy in
+  every case is the engine's Proven: `CopiesInEveryCase` (BU-138's owner, with `copyCaseBinders`, its 64-case clause and the Unknown
+  fallbacks of `BareAcquire` and `AcquireBinding`) is removed, and its readers, `TyCtxt.CopyFacts` (BU-88's one Copy verdict) among
+  them, read `ProveCopy`; BU-168's and BU-184's reader lists name `CopiesInEveryCase` and now read `ProveCopy`. Per binder, not the
+  product of every binder in scope: Copy and Owned are conjunctions over parts. A Type holding several layers of one binder is
+  judged layer by layer over that binder's cases, and its verdict is conjunctive across them (Copy, Sealed, ObjectPayload and Owned
+  each need every component), so it equals the joint cases' (the Front's C-397 C2); for Owned under `owner or ref` two layers are
+  never refuted in opposite cases (a layer's `ref` case holds its owner case's OwnedOrigins and the outer Origin), so the per-layer
+  verdict equals the joint one (rulings-sa 27; ow-xy-e, ow-xy-q pinned). Moves: class 3 sa-*, sax-*, sau2-*, sarc2-lone, cp-or and
+  ow-xy-q accepted; the lone forms (sa-lone, sax-lone, sau2-lone, ow-xy-e) to `NoApplicableOverload_Kd` at the call (Q13); **a record
+  move (Q13 class 4, record precision, toward SPEC 10.1): the case judgement adds a verdict where no premise row gave one, so a pair
+  layer refuted in every case for PrimitiveInteger (no premise row; an admitted set without `owner`: rv-prim, rv-prim-r), Sealed or
+  ObjectPayload (no row for a set with `owner`: an open struct, pz-sl-or; an opted-out struct, pz-op-or) is Refuted, not Unknown:
+  `UnprovenConstraint_Kd` -> `NoApplicableOverload_Kd` at the call**; one MIR representation move: a pair-layer Place whose every
+  case Copies is acquired by a plain Copy, not `PairAcquire` by case (`tests/mir/cases.mir`'s `fn both`, MirBuildTest's two rows,
+  the native fixture `PairAnnotatedFit`'s IR; the Middle consenting). Rejected: a conjunction over the cases (it makes a mixed pair
+  Non-Copy); an `Owned`-only branch beside `CopiesInEveryCase` (two copies of 8.15.2's per-case rule); the product enumeration (no
+  different verdict, more work); keeping the premise rows beside the case judgement (a second copy of the same evidence).
 - **BU-229 A selection states each Body and Pattern as its part (PLAN G800)** (2026-11-19; Front, Syntax and Binding; Major, a new
   canonical component, Syntax's selection parts; behavior-preserving on every program's acceptance, records and generated code; one
   reviewer for design and implementation, `front\notes\G800\review.md` ACCEPT and `review-impl.md` ACCEPT WITH NOTES; D-469; commit
@@ -21631,6 +21668,43 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** inheriting early for the signature, then resetting and inheriting again at the settle point (one decision per
     phase; a redo is a try-then-fallback); a clause for an override of a refuted slot; header premises persisting as body facts (a
     second decision point before the proofs answer, review-c24a-settle B2).
+- **R7-M43 A getter assumes its result and each read proves it as a call; a call's verdict is recorded at its use** (Front,
+  2026-11-19; R7-V4, PLAN G214, Q-519; Major, an acceptance mover; design `R7V4\design.md` Revision 1, its independent design review
+  ACCEPT WITH CONDITIONS (C2 taken), the implementation review ACCEPT WITH CONDITIONS (its C1, the Middle's C-396 B1, resolved by PLAN
+  G1022, Q-513); F's R7V4 rulings 1-11; RP17: the Middle's C-396 CONSENT on fb73df187) SPEC 11.3, 11.4, 11.5, 15.6.1, 15.6.4, 23.1.2.
+  Supersedes BU-26's catalog-row sentence "G214 keeps the result-only form: accessor R3 needs a Property read's result-premise check
+  with it" (its reason, no read-site check, no longer holds).
+  - **The getter's premise and the read's proof.** A getter is a definition with a result (SPEC 11.5, 11.4, 15.6.1): its body, written
+    result and a computed or requirement Property's header (its result, reached through `HeaderGetter`) assume the result well formed
+    (R3, `AddDefinitionResultPremises`: its borrow layers and its Types' own clauses), and each read, the getter's call (11.3), proves
+    it for the instantiated result (15.6.4 step 3) as every call does: the call's `RequireResultPremises` and its step five
+    (`CheckCallTypeConstraints`, the formation proof of the result Types' own fixed-fixed clauses), every accessor call (get and set)
+    being a synthesized call in Binding's `nodes` (`AddSynthesizedCall`). Owner: `Binding.ResultPremises.cs`: one predicate
+    `AssumedResult(definition)` (a named non-constructor function's result, a getter accessor's result), read by the R3 site and the
+    use side (`CarriesResultPremises`), and one getter identity `Definition(function)` (the accessor syntax for its execution view).
+    An associated formation is judged at its use, its Type's own relations included (`CheckTypeOriginRelations(type, at)`), so a
+    header has its getter's premises through the one walk (C2).
+  - **A call's verdict is recorded at its use** (SPEC 23.1.2; `Binding.Check.cs`, `VerdictUse`, read by both judges of a call: the
+    Check loop's step five and `ValidateConstraintUses`' formation of its Type): an invocation's at itself (also a call its own
+    selection failed), a synthesized call's at its consumer, whose witness call it is (an iteration's entry or step, an index, a view,
+    a range, a requirement, a formatting write, an object creation, a Property use's accessor call; the same span), so a failed use is
+    a failed node with its Type, as a failed invocation is, and the synthesized call rests on it; a consumer still rests on a call its
+    selection failed (`SettleSynthesizedCalls`). It replaces the consumer's untyped rest on a call the loop failed, which left
+    `t.rel.right` reading an untyped resting `t.rel` (a broken HIR contract, `InternalInvariant_Kd`) where `t.relm().right` reads a
+    typed failed call. One rule for every synthesized call: 16 labelled twins of the other synthesized forms keep every record
+    (`R7V4\impl\labels-r5.md`, `labels-r5b.md`); of 3 with an ill-formed result Type (`labels-r5d.md`), an operator whose Output is
+    `W<NC>` loses base's duplicate record at `v + 1` (the binary and its requirement call, one use: two records to one, as its method
+    twin), F's ruling 6 (one rule kept).
+  - **Rejected:** R3 for getters alone (leakf accepted); a Property-only read check or a Property-only part of step five (a second
+    copy of a call's rule); getters assuming only the borrow half (a per-definition split of R3; asv rejected again); a second judge
+    of a fixed-fixed clause in `VisitTypeClause` (its contract: the one judge); the header as a Field Type (15.3.3; G214's
+    over-rejection); rooting the getter at its execution view (changes the view's ancestry for retention, MIR and HIR); keeping the
+    consumer's Type while it rests (the MIR lowers a non-Resolved typed Property use through a call plan that no longer exists:
+    `Unsupported_Kd`, `InternalInvariant_Kd`); every Check-loop call resting on a failed argument (wider; changes calls' records
+    everywhere; its own unit if wanted).
+  - **Not this rule's:** a member call's container-Origin instantiation (PLAN G1003, D-782) rejects the valid family use, usew, gen,
+    usea, rf, gread, nbr, gcl and the Middle's c-retb-v, c-arg-v and c-owned-v at the read, as it rejects the method twin usem; V4
+    writes no row for them (a row would pin a conservative Language error on a valid program).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -24142,6 +24216,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Changed by decision:** `DiagnosticPrecisionTest.ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild` (S1-1) asserts the refused
     Bind and its located `InternalInvariant_Kd` records (the library's and the refusal's own, at the use) instead of the throw (no
     expectation weakened).
+  - Superseded in part by R8-M55 (R8-L1 U3, 2026-11-19): the Adopted bullet's "No compilation reads `Of` before U3" (from U3 every
+    compilation reads its target's frozen library) and the interim "Until U3, Core's `Publish` reports a MIR record through the node"
+    (U3 routes it through `StoreOf`).
 - **R8-M54 The interners' two levels (R8-L1 U4; PLAN G949 Stage 2)** (Back, 2026-11-19; Major, identity in Stage 1; U4's design
   `back\notes\l1-s2\u4-design.md` §4, 5.7 and 7b.3, its review ACCEPT WITH CONDITIONS (`review-u4.md`), the implementation review
   ACCEPT WITH NOTES (`review-u4-impl.md`), B's rulings `rulings-u4.md`; the Front's consent on C-380 (23:27); C-380 F3 (a)-(c), F4;
@@ -24164,6 +24241,59 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected.** A per-compilation copy of the frozen levels; a flag or mode choosing the level (the layer's state decides); a seal
     of its own beside the table's freeze; a growing shared level (O-s2 (c), rejected by O-381 (b)); two levels for `originSummaries`
     and TyCtxt's memos (C-380 F3 (c), F4); the level order restated in each interner (review C1: one enumerator).
+- **R8-M55 A compilation reads the frozen library (R8-L1 U3; PLAN G949 Stage 2)** (Back, 2026-11-19; Major; G949 Stage 2's plan of
+  record `back\notes\l1-s2\design.md` §7b; U3's design `back\notes\l1-s2\u3-design.md` Revisions 1-3, its reviews ACCEPT WITH
+  CONDITIONS (`review-u3.md`), the implementation review ACCEPT WITH CONDITIONS (`review-u3-impl.md`), B's rulings `rulings-u3.md`;
+  the owner's O-425 (a) (2026-11-18, K's dialog, verbatim 「O-425 a / O-426 a」); the Front's consent on C-380 and the Middle's on
+  C-381 (07:22)) SPEC 22.1, 23.1.2. Extends R8-M53 and R8-M54; supersedes in part R8-M53 (its R8-M55 line).
+  - **Adopted.** A compilation's library is fixed when its Binding is made: the library given before it (`Compilation.UseLibrary`:
+    the freeze compilation's own; a test's, frozen through the seam), else `KimiLibrary.Of(TargetTriple)`; `Prepare` after the
+    Binding is the internal-invariant form. Binding's driver decides by the library's state: a refused library runs no pass and the
+    compilation publishes its refusal; a frozen one is read, never bound again; only the freeze compilation binds its library. The
+    library's publication version is the literal `Frozen`; a compilation given a refused library does no Binding work beyond
+    publishing the refusal (its Binding-side records and the refusal's own record as `InternalInvariant_Kd`, its syntax records under
+    their own codes). MIR stays per compilation (O-381 (b); G951, R9-M9): no MIR store is frozen.
+  - **One reader of a library's detached data.** Core's `Compilation.ReadLibrary`, called once where the Binding is made over a frozen
+    or refused library, is the one reader of a library's detached data (Binding reads none): it registers the library module's syntax
+    list read-only (`DiagnosticOwner.AddLibrary`; the documents in their freeze indices' order, each record renumbered into the
+    compilation's source table by the fact's one renumbering `DiagnosticFact.WithSource`; a detached record is about one document,
+    checked when the freeze takes the list, `TakeSyntax`) and keeps the documentation failures and hover anchors for Core's composed
+    readers; the three detached properties exist only once the freeze detached the library. The module set "the source modules, then
+    the library" has one owner, `Compilation.BoundModules`.
+  - **One store decision for a report.** Every report of a Binding issue (Binding's per-record steps: `ReportIssue`, the derived
+    records and their prerequisite keys) and MIR's `Publish` go through Core's store decision `Compilation.StoreOf`, into the store it
+    names through `Koto.ReportIn(store, ...)`, which takes 13 parameters (`Koto.Report`'s 12 and the target store, `Report`
+    delegating to it; the owner's O-425 (a), the parameter exception COMPILER_ARCHITECTURE records): a record whose subject is a
+    library node goes whole, its case evidence and related declarations included, into the reading compilation's own diagnostics.
+    The other direct `Report` and `ReportDerived` callers report on program subjects only, because a library with any record is
+    refused (`FreezeLibrary`); a later caller whose subject may be a library node reports through `StoreOf`.
+  - **After the seal no compilation writes a frozen library object.** The freeze checks every base conformance path verified (none
+    `Checking` or `Unsupported`, `ImplTable.UnsettledPath`), so no reading compilation verifies one; a memo hung on a frozen object
+    takes U4's two levels (the frozen entries found first, an entry formed after the seal the compilation's), as the interners do.
+    Today `Binding.Hop` is the one such memo; a second gets one shared owner of the level choice, not a copy. A test that writes a
+    library object uses a library of its own. Two tripwires bound it (`KimiLibraryShapeTest.TheLibraryDeclaresNoOpenStruct`,
+    `TheLibraryDeclaresNoStandardPropertyWitness`), each naming its removal condition (route those writes by U4's two levels, as
+    `Hop`'s). `VerifyConformance`'s two `IsVerified = false` stores before its `IsVerified` return (the invalid path or declaration
+    context branch and the unresolved Type declaration context branch) do not run on a frozen path: their predicates read library
+    states the library pass left Resolved; a change that lets them read a reading compilation's facts (for example its foreign
+    failures) makes them a frozen-path write.
+  - **Rejected.** A mode or flag choosing the library (its state decides); a per-compilation copy of the frozen library; a test
+    editing `Of`'s library (it is shared: tests edit their own through the seam, `CompilationTestHelper.UseEditedLibrary`); the
+    record of a library body published through the frozen library's collection (shared across compilations); `WithSource` and
+    `SyntaxTransfer` as one map-form renumbering (B's U3 ruling 20).
+  - **Changed by decision** (each row names its reason in its comment; a renamed row is given as old -> new):
+    `IntrinsicCapabilityTest.CoreIdentityCanBeReadBeforePreparation` -> `PrepareAfterTheCoreIdentitiesAreReadIsRefused` (its subject,
+    a read before `Prepare` kept across it, no longer exists); `HoverCollectionTest.EmbeddedCollectionIsIndependentOfPriorModeAndKeepsBindingsLocal`
+    (both rows) and `ConcurrentLibraryLoadsShareOnlyLexicalData` -> `ConcurrentCompilationsShareTheFrozenLibrarysDocumentation` (one
+    shared, collected, detached library documentation in every mode); `CoreCatalogTest.ConcurrentCompilationsKeepSeparateLibraryState`
+    -> `ConcurrentCompilationsShareTheFrozenLibraryState` and `EmbeddedSourcesKeepFileLocationsAndShareOnlyText` ->
+    `EmbeddedSourcesKeepFileLocationsAndAreShared` (Stage 1's per-compilation library is gone);
+    `KimiLibraryShapeTest.TheCapabilityMemosEndWithTheirEpoch` runs on the freeze compilation, the one that binds its library;
+    `OriginPremiseCatalogTest.ABorrowedLocalPlaceSuppliesItsStoredOrigins` -> `ABorrowedLocalPlaceProvesItsRelationWithoutAPremise`
+    (its LocalPlace edge clause held only through the library pass sharing the compilation's metrics; its program forms no premise
+    closure). Moved to libraries of their own, each with its assertions: `KimiLibraryShapeTest`'s
+    `W1ComparesTheLibrarysViewSerialsAndConsumersByValue` and `TheSealRefusesAWriteIntoAFrozenObject`, and `BindingTest`'s
+    `AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass` and `ALocalRegionInTheLayersPartIsFoundThere`.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

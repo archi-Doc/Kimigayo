@@ -173,7 +173,6 @@ public class ArchitectureRulesTest
     [InlineData("FormattingTypes reads of Koto semantic slots", "src/Kimi/Compiler", "FormattingTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
-    [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
     [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
     [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Documentation", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Core reads of Koto semantic slots", "src/Kimi/Compiler/Core", "*.cs", SemanticSlotReads, 0)]

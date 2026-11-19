@@ -100,8 +100,10 @@ public sealed partial class Binding
     // its published source state.
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
-        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
-        if (!conformance.Checking)
+        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance). Stored only on
+        // a change, so a verified frozen path, never Unsupported (FreezeLibrary's UnsettledPath check), is never written (PLAN G949
+        // Stage 2 U3).
+        if (!conformance.Checking && conformance.Unsupported)
         {
             conformance.Unsupported = false;
         }

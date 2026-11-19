@@ -55,7 +55,7 @@ public partial class KimiLibraryShapeTest
             var texts = Texts(attribute);
             Assert.True(Enum.TryParse<IntrinsicId>(texts[0], out var id) && id.ToString() == texts[0] && id != IntrinsicId.None, Line(target));
             Assert.Equal(id == IntrinsicId.Fail ? 2 : 1, texts.Length);
-            Assert.Equal(target.SymbolOf()!.Definition, new(DispositionKind.Intrinsic, id, id == IntrinsicId.Fail ? texts[1] : null));
+            Assert.Equal(target.SymbolOf(Library.Value)!.Definition, new(DispositionKind.Intrinsic, id, id == IntrinsicId.Fail ? texts[1] : null));
             named.Add(id);
         }
 
@@ -105,7 +105,7 @@ public partial class KimiLibraryShapeTest
         foreach (var (attribute, target) in LibraryAttributes(AttributeKind.CallerLocation))
         {
             Assert.Empty(Texts(attribute));
-            var symbol = Assert.IsType<FunctionKoto>(target).SymbolOf()!;
+            var symbol = Assert.IsType<FunctionKoto>(target).SymbolOf(Library.Value)!;
             Assert.Contains(symbol, registered);
             Assert.True(declared.Add(symbol));
         }

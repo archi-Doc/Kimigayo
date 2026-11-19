@@ -554,7 +554,7 @@ public class DiagnosticPrecisionTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, UnsupportedProbe + library);
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + library));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
         c.Bind();
         var records = c.Binding.Issues.Select(x => ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
@@ -573,7 +573,7 @@ public class DiagnosticPrecisionTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n");
+        CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
         Assert.Equal(default, c.Bind());
         Assert.False(c.Check());
