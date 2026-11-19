@@ -103,7 +103,7 @@ internal sealed partial class MirBuilder
     {
         if (input)
         {
-            var value = this.Hold(this.body.TypeOf(destination)!, item);
+            var value = this.Hold(this.body.TypeOf(destination), item);
             var held = this.Result(value, item, container, input: false);
             this.Made(value);
             if (Completes(container))

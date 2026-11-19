@@ -36,8 +36,10 @@ internal sealed partial class InstanceCollector
         return callable;
     }
 
-    private static BoundType OperandType(MirBody body, in MirOperand operand)
-        => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
+    // An operand's Type: its constant's or its Place's, none for a derived temp of no Type an rvalue reads (PLAN G1073; rule W: it has no
+    // instance, layout need or capability to judge).
+    private static BoundType? OperandType(MirBody body, in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place);
 
     // An item's targets: a body item's template replayed under its representative, the target of each site that resolves and is admitted;
     // a type-driven item's from its representative Type.
