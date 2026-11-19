@@ -456,7 +456,7 @@ public class BindingTest
             Assert.Equal(obligations, c.Binding.Obligations);
             c.Binding.ReportDiagnostics();
             Assert.Equal(Records(twin), Records(c));
-            Assert.Equal(twin.Binding.TableCounts, c.Binding.TableCounts);
+            Assert.Equal(Nodes(twin), Nodes(c));
             Assert.Equal(OriginRows(twin), OriginRows(c));
         }
         finally
@@ -473,6 +473,10 @@ public class BindingTest
 
         // The Origin rows of each body an obligation names, in the obligations' order.
         static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
+
+        // The nodes of the composed view, which the reports and the candidate clauses walk outside a pass; no member publishes its count,
+        // so it is read as Move reaches the parts.
+        static int Nodes(Compilation c) => ((IReadOnlyCollection<Koto>)typeof(Binding).GetField("nodesView", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Count;
     }
 
     // PLAN G949 S1-r1b (s1r1-design 3.3, RC2's recorder): a pass binds the modules of its set, the library's table when it holds the

@@ -157,35 +157,6 @@ public partial class KimiLibraryShapeTest
         Assert.Equal((120, 82), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
-    // KimiLibrarySize's statement: the library's size is what the library pass fills (LibraryLayer.Size, its table counts at its end:
-    // the program pass empties the per-pass tables it filled, O8 (a)), each count rounded up to the Granule. A library change that moves
-    // a count past its Granule restates KimiLibrarySize.Stated: the message gives the counts.
-    [Fact]
-    public void TheStatedSizeIsTheLibrarys()
-    {
-        // A Bind of the empty program: the shared Library compilation has run later stages, which intern further Types.
-        var c = CompilationTestHelper.Parse(string.Empty);
-        Assert.True(c.Bind().IsComplete);
-        var counts = c.Binding.Library.Layer.Size;
-        Assert.True(counts.Rounded() == KimiLibrarySize.Stated, $"stated {KimiLibrarySize.Stated}, counted {counts}");
-
-        // h8 (PLAN G949 Stage 2 U3, design R2.3): the freeze's TypeKeys is its frozen level's Types, from which a reading compilation's
-        // count goes on (TyCtxt.KeyCount), so TableCounts.TypeKeys counts every Type key of the compilation.
-        Assert.Equal(c.Library.Layer.Types.Values.Sum(static x => x.Count), counts.TypeKeys);
-    }
-
-    // KimiLibrarySize's room contract: after a Bind of the library alone, each sized table with a room keeps at least its kind's room
-    // free, so a program smaller than the room resizes none of them, whatever the library holds.
-    [Fact]
-    [Trait("Purpose", "Allocation")]
-    public void TheLibraryLeavesEachSizedTableItsRoom()
-    {
-        var c = CompilationTestHelper.Parse(string.Empty);
-        Assert.True(c.Bind().IsComplete);
-        var free = c.Binding.TableFree;
-        Assert.True(free.Nodes >= KimiLibrarySize.NodeRoom && free.LeastKeyed >= KimiLibrarySize.KeyedRoom, $"free {free}");
-    }
-
     // DECISIONS BU-112: the library's trees are compiler-owned source, fixed at build time, so they are checked here and not walked at
     // run time: each lies within IMPL A.4's syntax depth L, measured as SyntaxNesting measures it (a node's distance from its root).
     [Fact]

@@ -14577,6 +14577,12 @@ resumed by R4-M86 (2026-10-20).
     reachable from frozen library facts (path Contracts, requirements) and must not be rewritten (census O15). The library pass also
     completes the effect bounds of every Contract the library declares, those no node of the pass holds included (the `#Lang`
     markers), so no later pass forms them.
+  - Amended by PLAN G949 Stage 2 U6 (R8-M55's U6 line): no column is reserved: `PagedColumn.Reserve` and `HirTables.Reserve` are
+    deleted, so the Representation bullet's "the arena reserved from the module's stated size for a library-only column
+    (`KimiLibrarySize`)" and the N5-1 line's "the library-only column's arena reserved at its stated size" end, and every arena starts
+    at one page; the "TableCounts' TypeKeys counts interned Types" line ends with `TableCounts` and `TyCtxt.KeyCount`; S1-r1b's
+    "`LibraryLayer.Size` (its table counts at its end; `KimiLibrarySize`'s statement is compared with it)" and "the layer's part at the
+    library's stated count, Binding's own at `NodeRoom`" end: both node lists start at their default.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -21750,6 +21756,132 @@ R8-M* and R9-M* by the stage of the recording unit.
     MemberOf), Same, Failed, Refuted and ListedRoot read it.
   - **Rejected:** any constructed member as the Member (a pair target as the 'closed' Member refused tp-1 and tp-2, valid); a second
     congruence for Types that are no node.
+- **R7-M46 A Complete answer may rest on a published state; every kept table lives for one publication** (Front, 2026-11-14,
+  landed 2026-11-19 with R7-M47; R7-C2e2 part e2-3a; Major; the plan's §5.0 C2 row, e2's entry; c2's design review note B; R7-M27's
+  N3) SPEC 8.3.2, 8.3.3, 23.1.2. Supersedes in part BU-199 item 7's "one lifetime, one epoch" for the kept rows (its reason, that only
+  the epoch bounded what a row read, no longer holds once a row's reads carry Completion) and R7-M20/R7-M28's "for one pass" lifetime
+  of the readings, the entries and the identity tables (their reason, that nothing they rest on changes within a pass, no longer
+  holds once W6 may be Complete on a published state). BU-199 item 7's "Inputs outside the key" argument stands and is extended
+  (below).
+  - W8 (`SourceStates`): `ReadSourceState` gives Complete for a published Proven or Refuted (final in its publication; it joins
+    nothing inside a proof scope), Provisional for Pending (a final Unknown included) and Error. `AvailableContractPremise` is the meet
+    of its reads, a failed or unresolved declaration context Provisional. W6: a derived fact found available is the meet of every
+    source it read (R7-M20's composite rule).
+  - A publication's start (`PublishSourceStates`, the states' one writer, asking ContractSolver's one phase fact
+    `KeepsAcrossRequests`) forgets the kept tables of the capability phase (`ForgetKeptTables`): readings, `Closure(view)` with its
+    rows and the identity memo, each entry and table rebuilt in place at its view's next read (a cleared pool hands a view another
+    view's entry and breaks warm 0 B; the premise error's per-pass record set stays), and head depths.
+  - An outermost walk, `PremiseRefines`' or `FirstRows`' (c2-3b's first walk), has a Completion (`enumerateCompletion`), the meet of
+    its availability reads; its rows are kept only when it is Complete and `keep` holds (the kept region, final keys: an identity
+    table that is not Final or an extension keeps nothing), as a column of the view's Kept entry (`ViewIndex.Rows`), each row c2-3b's
+    `PremiseRow` (with its availability and Source).
+  - The declaration context is an input outside the key, by BU-199 item 7's argument extended from rows in one epoch to every kept
+    table in a publication: a valid context only fails, and (i) the failure's own record rejects the program, so an answer kept
+    across it differs only in a rejected program's dependent records (Q13); (ii) an environment naming the failed Contract goes
+    Invalid, another serial (not shown for an ancestor's or an enclosing declaration's failure, which the read also consults: (i)
+    carries the argument).
+  - Not replayed by a kept answer (records only, dev's own): a read's proof frame outside every proof scope, and the dependent record
+    of a context failed after the walk.
+  - The Complete whitelist gains W8 (`SourceStates.cs`) and six ContractSolver sites: the availability meet and W6's meet
+    (`Binding.ContractSolver.cs`, with the walk and `WalkAvailable`), and the walk's start and its admission in `PremiseRefines` and
+    in `FirstRows` (`Binding.ContractSolver.Rows.cs`, the request boundary, with the kept rows, `KeepRows` and `ForgetKeptTables`).
+  - Moves (count rows only, `NormalizedConstraintProofBindingTest` and `RecursiveContractTest.AnExtensionReopensTheViewsKeptEntryAsItsOwn`):
+    a derived-identity view is Kept, and views are formed again after each publication (`ForgetKeptTables` re-forms the view's Kept
+    entry at each publication; F's e2 rulings 97 and 100); no record, acceptance or MIR moves.
+  - Deleted: `enumerateKept`, its pool, `KeepRows`' table, the rows' clear in `ClearCapabilityResults`; R7-M28's removal condition is
+    met for a view whose derived identity facts' sources are final in the publication; COMPILER_ARCHITECTURE's temporary "Enumerate's
+    kept rows" goes.
+  - Rejected: a published Valid or Invalid as Complete for the pass (F0: every publication resets the states; a final Unknown became
+    Proven later; `SourceStates.cs` resets every state at a publication's start); a second Completion for "final in an epoch"; a
+    context Provisional until the last validation or a failure stamp in the key (nothing kept, or a second invalidation); rows for one
+    epoch (the other tables read the same contexts for the publication); Evidence's Completion now (its reader is a judgment: e2-3b,
+    R7-M47).
+  - Pinned by count rows only: the publication forget, by the count rows above (with `ForgetKeptTables` skipped each returns to dev's
+    value; no program measured loses a Proven state within a pass).
+  - Not pinned by a row (located invariants in ContractSolver's header, Kept rows; the implementation review's mutations `admit`, rows
+    kept whatever the walk's Completion, and `w8`, an Unknown read Complete; the Unit's classes fail nothing under either): the walk's
+    admission and W8's Provisional for a Pending state, in a round as well as for a final Unknown. Both decide only what is kept. Only a
+    walk inside a round can keep a row that differs from a fresh walk's (outside a round a Pending state stays until the next
+    publication's start, which forgets the row); such a row stays stale from the source's settling until that start: the rest of its
+    round, the later rounds and the checks that follow the rounds (the window C3's row must cover). The difference exists under
+    `admit` for `PremiseRefines`' admission (`ClosedConformancePrerequisiteBindingTest`'s cap10 with X before R: `T is Copy` answered no
+    from the stale rows after R settled; `e23rv/stale.txt`), but no record moves: Supply's one-level eager derivation answers the same
+    proposition (it goes at C3; from then on the admission alone keeps such rows out, and C3's unit owes the fail-first row). Under
+    `w8` no admission changes: a walk that reads a Contract Pending also reads the derived facts the eager derivation filed from it,
+    not found and so Provisional by W6. Measured for `PremiseRefines`' admission on 48 programs (`F\C2\e2\e23rv\summary.txt`),
+    outputs byte-equal under both mutations. `FirstRows`' admission: `nofirstadmit` on the W-224 merge review's six twins (d3a, d3ar,
+    d3av, d3b, d3br, d3bv) and 56 programs, no difference, and unobserved (the invalid twins never reach a Provisional `FirstRows`
+    walk: the caller's environment is Invalid and the walk skips it); `FirstRows`' readers (`PremiseCallable`, the Callable and
+    effect-bound readers, `HandedSignatures`) read `Available` directly with no shadow, so a Pending read inside a round by one of them
+    is owed with C3's fail-first row (F's rulings 55-57).
+  - Temporary: none new; R7-C2e2 e2-5a's four (R7-M33) are removed by e2-3b (R7-M47).
+- **R7-M47 An answer depends on the conformance being verified exactly where its evidence rests on it: the evidence image** (Front,
+  2026-11-19; R7-C2e2 parts e2-3b (cached half) and e2-5b's n-forms; Major; the owner's O-415 (a), O-420 (a) and O-427 (c); PLAN G629,
+  G995 (D-774); G1001 (D-780) stays open) SPEC 8.3.3 Recursion and Finality, 8.5.1, 8.5.2, 8.6.1-8.6.3. Supersedes e2-5a's reading
+  that a projection route's binding is evidence however it was formed (its reason, that a binding's formation reads no obligation the
+  reader holds, does not hold when the route's path premises or the receiver's formation read the obligation being verified).
+  - **The exact dependence (R1.1).** `EndAnswer(mark, verdict)`: an answer depends on an obligation open before it began exactly
+    when it read one and is Unknown (8.3.3: a Proven or Refuted answer holds with the obligation's result held pending; the proof
+    rules are monotone in an Unknown operand). The capability engine's two readers pass their result.
+  - **The representation: the evidence image (R4.1, the cache and the route).** In a requirement's evidence (`ProveRequirement`,
+    `BeginEvidence`: the obligations open when it began are held pending, `heldObligations`), a projection whose route's evidence (the
+    path's conditions and the receiver's formation, one answer) depends on a held obligation names no Type: the image keeps the
+    projection at its position, so only a judgment that reads that part reads the obligation, and the evidence is Unknown only then
+    (`EndEvidence`). A formation read (a verification's body, the binding cache's formation, the inferred bindings' collection) holds
+    none: what it forms is judged where written, after the conformance holds. The cache's image is its first candidate (the identity
+    atom it is formed from) formed in the reading evidence, so every associated Type it names is read the same way; the route is
+    `PathConditions`; a specification is below. The batch answers formation reads only (`Batched`: its key carries no held
+    obligation).
+  - **An inferred binding (8.5.5) is read as its normal form by every reader, a requirement's evidence included** (dev's behaviour,
+    unchanged): its evidence image is open, PLAN G1001 (O-427 (c)); the rows `AnInferredBindingIsReadAsItsNormalForm` pin dev's
+    verdicts (the invalid ones accepted say "accepted until G1001: class 1, open").
+  - **Several identity atoms (8.5.1; R4.2).** The identity atom the binding is formed from is the binding (a formation read); every
+    other identity atom for the Item, in the same clause or another, and every other conjunct is an obligation of the conformance,
+    proven as a requirement's evidence; a repeated atom is one proposition (8.3.1).
+  - **No record kept by reads (R4.3).** The evidence image is formed in the reading answer and never stored; `FormBinding` runs once
+    per binding per pass under no held obligation; what a read sees is a function of the obligations open and held at it.
+  - **R2.5.** `InstanceFormation` reads the declaration's Constraints at the instance's arguments (the formation step alone), not the
+    arguments' own formation (their written site's), for every reader: the projection route, ResolveConformance's instance, the
+    capability engine's instance, the component summaries' stored instances (deepv, deepc, deepr V; deepcn I).
+  - **Owner.** `Binding.ConditionalConformances.cs`: `openObligations`, `dependence` and `heldObligations`, and every member that
+    writes them (`OpenObligation`, `BeginAnswer`/`EndAnswer`, `BeginEvidence`/`EndEvidence`, `BeginVerification`/`EndVerification`,
+    `BeginFormation`/`EndFormation`; `ResetContracts` resets them); `HeldPending` the one question (`FormationRead`,
+    `EndHeldAnswer` ask it). The route's per-path decision `PathConditions`: `Binding.AssociatedTypes.Specification.cs`. The cache, its
+    formation and its evidence image: `Binding.AssociatedTypes.cs`. The inferred bindings' collection as a formation read (its
+    `BeginFormation`/`EndFormation` pair): `Binding.AssociatedInference.cs`. The roles of a verification's clauses
+    (`ProveRequirement`, `ProveSpecification`): `Binding.ContractMatching.cs`, read by `Binding.InheritedConformances.cs`. Which
+    ContractType calls the batch answers (`Batched`: formation reads only): `Binding.ContractTypes.cs`. `heldObligations`' brackets are
+    try/finally pairs (review 75 N1).
+  - **Deletes.** e2-5a's reading of a route's deferred binding as evidence inside a requirement; commit 2's (07ee5fe34, not landed)
+    dependent-path skip and spread restriction; Revision 2's `assumption` and Revision 3's `AssociatedBinding.Provisional`,
+    `provisionalRoutes`/`Readers`, `ReadProvisional`, `ProvisionalRoute` (never landed); commit 1's absolute capability count row; c4's
+    and R4.9's inferred writer (`InferredEvidence`, `HolePart`, `WrittenType` and its rows `WrittenPositions`/`WrittenPosition`,
+    `JoinEvidence`, `AssociatedEvidence.Required/DeclaringType`; deleted by the cut before landing, O-427 (c)); and R7-C2e2 e2-5a's
+    four temporaries (R7-M33's removal condition met here, before e2-5b): `reentryReads`, `BoundConformancePath.Reentries`,
+    `CapabilityWork.Pending` and `BoundConformancePath.Checking`.
+  - **Records (Q13; review R4 C3).** A rejected program's independent record is `UnprovenConstraint_Kd` at the conformance; a failure
+    the conformance's implementation check owns keeps `IncompatibleContractImplementation_Kd` at the conformance with the result's
+    formation (impl1). Dependent `InvalidConstraint_Kd` records are not pinned by the rows.
+  - **Rejected options:** an answer that read any open obligation depends (Revision 0: rejects q2f); skip a dependent path in every
+    read (commit 2: rejects C-391 B1's eleven); Pending for a dependent path in every read (P1: the identity atom then compares the
+    cached binding with an unresolved projection); dependence by use (Revision 2's `assumption`: rejects oa1, oa3); routes kept on the
+    cached binding and judged again at each read (Revision 3: rejects oa2, pp1; rr2's reentrant fault); routes per part beside
+    ContractType's image (D-780's form: a second structure threaded through every judgment); the open obligation's key on the cache
+    (P6: accepts ind1, ccq); a memo of `InstanceFormation` per request (review R3 N2: no measured cost; RP8's counts); the inferred
+    writer of c4 and R4.9 (a second walker of 8.5.5's extraction and a second copy of the binders' component layout: the delta check's
+    D1-D4, nst4n accepted, wrap1-wrap2, nst3, nst5 faulting, pj1/pj2 and pos1/pos2 order-dependent, d30 2^N; withdrawn by O-427 (c),
+    G1001 designs it as the extraction's one walk).
+  - **The proof normalization walks each distinct part once per query (X1, e2 ruling 84; BU-19/BU-64).** `NormalizeProofType` takes the
+    per-query `TypeMemo` (`proofParts`), the third such walk after ContractType and SubstituteIdentity: a requirement's evidence keeps a
+    held projection in its subject's image, so NormalizeProofConstraint's early return no longer applies and the walk ran as a tree
+    (x24 86.5 s; now 4.4 s, dev 5.1 s). Rejected: widening the early return (hides the cost); keeping held parts out of the image (undoes
+    R4.1); memoizing ContractType across queries (the formation is linear already).
+  - **The base walk's settled part reads R1.1's exact dependence** (the dev 965a47bd4 merge; DECISIONS BU-218; e2 ruling 87):
+    FormedPart's `Settled` is a proof that depends on no obligation open before it began (`EndAnswer(mark, proof)`: a decided proof
+    holds whatever the obligation settles to) and no growth of `ProvisionalReads` (now the coinductive assumptions alone) or
+    `unsettledReads`; `reentryReads` is gone with e2-3b's commit 1. Rejected: any read of an open obligation (`EndRead`, e2-5a's
+    predicate: R4.7's rejected "an answer that read any open obligation depends", a second copy of R1.1's rule).
+  - **Unverified:** the engine's coinductive half (O3); RP8's timing (counts only: R4.6).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -21810,6 +21942,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     2026-11-11): about 935 library nodes raise warm Bind B/A' to 1.034 (Hello), 1.040 (Milestone26) and 1.026 (Strings) against an
     A'/A spread of 0.996-1.010, the per-compilation rebinding of the library (PLAN G337) that R8-L1 removes; the unit's purpose, the
     Dictionary kernel at O2, runs 0.61x.
+  - The RP8 exception closed (PLAN G949 Stage 2 U6, 2026-11-19): its cause, the per-compilation rebinding of the library (PLAN G337),
+    ended with R8-L1 U3 (W-272's RP8: warm Bind B/A' Hello 0.585, Milestone26 0.966, Interpolation 0.973); R8-M55's U6 line.
 - **R8-M3 `insert`, `remove`, `pop` and `swap` are Kimigayo bodies** (2026-11-07; R8-A1b; plan RP20, RQ9; on R8-M2)
   SPEC 4.9.3, 4.9.6, 4.9.7, 4.9.8, 5.2.3, 23.1.2.
   - Adopted: `insertAt`, `removeAt`, `pop` and `swapAt` are bodies over `Storage.ArrayRepr<T>` and `Raw.initialize`. `insertAt` and `removeAt` move
@@ -22869,39 +23003,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     and displaces), either one a second predicate beside the rule; a position-range check in the validator (the Middle's C-196).
   - **Dump** (the Middle's review of U1, N3). The keyed form is spelled with its operands after the Place: `storage(_n, copy _start,
     const type Kimi.Range<S, Kimi.End>)`; the unkeyed `storage(_n)` is unchanged.
-- **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a, board C-210 (A), the
-  Front's design reviews, re-check and implementation review; the owner's O-136 (a) and O-139 (a)). Every compilation's tables hold
-  the library's entries beside the program's and grew by doubling from small capacities, so each library unit moved a table's
-  doubling into a cold scaling row's window. `KimiLibrarySize` states the library's entry count, rounded up to a Granule of 1,024,
-  in each per-compilation table it sizes, and three kinds of room: `NodeRoom` (8,192) in the node table, `KeyedRoom` (1,024) in a
-  keyed table, and none in a library-only table (member selections, capability nodes), which starts at its stated count. A table
-  with a room starts at its stated count plus that room, so after a Bind of the library alone it keeps the room free;
-  `KimiLibraryShapeTest` checks the statement (`TheStatedSizeIsTheLibrarys`) and the room of the tables that have one
-  (`TheLibraryLeavesEachSizedTableItsRoom`). Selection is by bytes, not by entries: a table is sized when, grown by doubling from
-  empty, the doubling that follows the library's fill would allocate more than 64 KB, of which three fit inside the smallest margin
-  of the cold scaling rows (nine tables). The rooms are sizing facts, not contracts: a program past a room, or one that fills a
-  library-only table's free slots, may double that table.
-  - **The library-only kind, a known limit (the Front's R1; the owner's O-139 (a), verbatim 「(a) e のまま着地する」):** the kind was chosen
-    because no cold scaling row's program adds an entry to either table; that is its reason and no guarantee. Programs fill both: a
-    member access adds one member selection, a Copy struct declaration two capability nodes. So each table's next doubling (139,980
-    B and 102,652 B, above the selection rule's 64 KB) sits where the library's fill puts it, and the unit moves it: a member-read
-    row of the tests' shape (cold Bind bytes at 128, 256 and 512 reads, factor 3) measures 1.100 on dev 53cf29caf and 3.118 on this
-    unit. No row of the suite reads a member or declares a Copy struct. The RP8 exception below covers this limit until the removal
-    condition holds.
-  - Supersedes `DeclarationTableCapacity` (b7488ebfe, board C-124): its reason, one fixed size reviewed when the library grows, no
-    longer holds, since each library unit moved a table's doubling into a scaling row.
-  - **RP8 exception (the owner's O-136 (a), verbatim "(a) Land as exception", and O-139 (a)):** the unit lands although Hello's cold
-    Bind median is slower than RP8 allows. B's T-100, 12 pinned rounds: Hello cold Bind median +4.5% against an A'/A spread up to
-    +1.7%; cold min and warm Bind equal; cold bytes -3.0%, large-object bytes -5.3%, gen2 collections 16 against 17 per 60 Binds;
-    retained bytes +4.8%. By the trace's reading (B's trace; the median's attribution in milliseconds was not measured), the slower
-    cold median is the collector's cadence in a multi-compilation loop, not Bind work: blocking gen1 collections that fall before
-    the next large-object gen2 promote the dropped compilations' graphs, 12-21 MB against 3 MB.
-  - **Removal condition:** R8-L1 (a frozen library: no compilation rebuilds tables holding the library's entries), if RQ13 adopts it
-    (the plan's RQ13 thresholds). Until R8-L1 removes it, this statement, its two tests and the RP8 exception stand.
-  - Rejected: counts measured at run time (a library Bind per process, order-dependent cold allocation); exact counts (restated by
-    every library unit); a capacity or a room per table; one room for every table (U) and two rooms over six tables (H); `KeyedRoom`
-    2,048 with or without the library-only kind (revision 2, d: more large-object bytes and gen2 collections); selection by entry
-    count (it admitted a table whose step is smaller than an excluded table's).
+- **R8-M28 The library's size is stated once: `KimiLibrarySize`** (Back for the Front, 2026-11-10; R8-W1c-2a; the owner's O-136 (a)
+  and O-139 (a)). Superseded by R8-M55's U6 line (PLAN G949 Stage 2 U6, 2026-11-19): after R8-L1 U3 a compilation's tables hold only
+  its program's entries, so the statement, its two tests and its RP8 exception are deleted. Full text: dev 8a1d8cff6 (first landed in
+  5c243f016).
 - **R8-M29 SPEC 16.3.2's order of a level's parts is one Mir Type fact (`MirTypes.LevelCount`, `MirTypes.LevelPart`); A2's
   destruction walk composes it with a group's rows, and the builder and the Backend read it (PLAN G702)** (Back with the Middle's
   consent, board C-212; Major: a contract across phases; no acceptance, record or IR move).
@@ -24328,7 +24433,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Hop`'s). `VerifyConformance`'s two `IsVerified = false` stores before its `IsVerified` return (the invalid path or declaration
     context branch and the unresolved Type declaration context branch) do not run on a frozen path: their predicates read library
     states the library pass left Resolved; a change that lets them read a reading compilation's facts (for example its foreign
-    failures) makes them a frozen-path write.
+    failures) makes them a frozen-path write. A frozen library holds no lazily filled field (R8-L1 U3c, PLAN G1072, 2026-11-19;
+    B's U3 ruling 48): the library pass's end completes each (`Koto.CompleteLazyFields`, `SyntaxTable.CompleteLazyFields`), each
+    by its owner (a node type with such a field overrides `Koto.CompleteLazyFields`, and a new one joins it there;
+    `SourceDocument.CompleteLazyFields` forms a document's line map), at the B1 site before the freeze counts the library's records;
+    `InvocationKoto.ArgumentLabels` forms its list on each read and stores none (no compiler reader). The census is
+    `back\notes\l1-s2\u3c\census.md`; the row `KimiLibraryShapeTest.AReaderAfterTheFreezeFillsNoLazyField`.
   - **Rejected.** A mode or flag choosing the library (its state decides); a per-compilation copy of the frozen library; a test
     editing `Of`'s library (it is shared: tests edit their own through the seam, `CompilationTestHelper.UseEditedLibrary`); the
     record of a library body published through the frozen library's collection (shared across compilations); `WithSource` and
@@ -24346,6 +24456,23 @@ R8-M* and R9-M* by the stage of the recording unit.
     closure). Moved to libraries of their own, each with its assertions: `KimiLibraryShapeTest`'s
     `W1ComparesTheLibrarysViewSerialsAndConsumersByValue` and `TheSealRefusesAWriteIntoAFrozenObject`, and `BindingTest`'s
     `AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass` and `ALocalRegionInTheLayersPartIsFoundThere`.
+  - **U6: no table states the library's size** (PLAN G949 Stage 2 U6, 2026-11-19; design `back\notes\l1-s2\u6s2-design.md`; the
+    Front's review on C-380; RP8 T-W-277). After U3 every per-compilation table holds only its program's entries (on dev 1ad9abc26:
+    Milestone26 at most 186, the 44 milestones at most 853, the median SPEC example 0 to 30, against stated capacities of 1,103 to
+    8,192), so each starts at its collection's default: `KimiLibrarySize` is deleted, and with it the counts that existed only to
+    compare with it (`Binding.TableCounts` and `TableFree`, `LibraryLayer.Size`, `TyCtxt.KeyCount` and `KeyFree`), the reservation
+    of the library's columns (`HirTables.Reserve`, `PagedColumn.Reserve`; a library column grows by doubling from one page, capped at
+    the module's dense size, as every column does) and the rows `KimiLibraryShapeTest.TheStatedSizeIsTheLibrarys`,
+    `TheLibraryLeavesEachSizedTableItsRoom` and `PagedColumnTest.AReservedColumnStartsAtItsStatedSize`. Each fresh compilation
+    allocates 495,800 B less at its Binding's construction and 56 B (Empty) to 64 KB (Milestone31) more in its first Bind (Milestone26:
+    construct, Bind and Analyze 939,960 -> 458,392 B); warm Bind stays 0 B; the freeze, once per process and target, allocates
+    +0.63 MB and retains +49 KB (the library's columns doubling), a reasonable memory cost (AGENTS "Performance"). Changed by decision:
+    `BindingTest.AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass` compares the composed node view's count instead of
+    `TableCounts` (the only one of its numbers the moved part changes); `TyCtxtTest.TypesWhosePartsShareAnIdentityHashAreCountedApart`
+    counts by `TyCtxt.TypeCount`. Rejected: a fixed start per table (no measurement shows a regrowth it removes; it is a guess of the
+    program, R8-M28's rejected "capacity of a table's own"); the library's counts measured at run time; trimming the frozen columns at
+    the seal (a mechanism for 49 KB per process). Supersedes R8-M28 and BU-220's reservation of a library-only column (BU-220's U6
+    line); closes R8-M2's Scope RP8 exception (its U6 line).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
@@ -24705,6 +24832,16 @@ R8-M* and R9-M* by the stage of the recording unit.
     decisions would land without a reachable path); one range per builder (it forbids adding a module); the range in the kept
     library stamp (G950-R's two rules for kept facts); a step after the clean collector run to give unstepped bodies A1/A2 problems
     (C-378 (3) as amended; hover reads `Holds` instead).
+  - **Measured (unit M, 2026-11-19; PLAN G951 closed).** A fresh compilation builds 0-91 of the library's 319 bodies (Hello 5,
+    Milestone26 5, Milestone31 76; mean 30 over the 67 milestone, example and Benchmark programs; 0-2 over the A5 oracle's 1,764,
+    1,597 none), none by a program pass or the root build: the analyses demand 84 % and the collector 16 %; A4 needs at most one
+    missed round and the collector at most one missed run; a second version demands none, misses none and collects in one run;
+    lazy and eager records are equal on every program. N5's miss on a bodyless key is not memoized (at most 6 per program, 22 µs).
+    Pinned A/B (987ad9c7b, the dev before the switch, against 713fac946; T-315, 12 rounds, B/A'): cold Analyze Hello 0.018,
+    Milestone26 0.082, Milestone31 0.650, Interpolation 0.437; warm Analyze 0.002, 0.041, 0.248, 0.122; cold bytes 11.1-13.8 MB to
+    0.7-4.1 MB. The span also holds U2-K-b with G950-K and G949 Stage 2 U3, whose cold Analyze +7-11 % on Milestone26 and
+    Interpolation is U3's (K's W-272 row). Not attributed: Milestone31's cold Generate 1.116 (1.88 -> 2.10 ms; its whole cold
+    pipeline 42.9 -> 11.1 ms). Evidence: `artifacts/benchmarks/g951m-*`; the switch's own pinned row is K's `rp8w-W-246-e12b222ed-*`.
 - **R9-M10 The toolchain boundary's rule: a compiler exception under `Project.Build` is its result's fault (R9-B2, PLAN G345)**
   (Middle, 2026-11-18; the R7-R9 plan's §5.3 unit B2; Major; under DIAGNOSTICS rule 9, R5-M169 and R9-M6; design review ACCEPT WITH
   NOTES, the Middle's rulings on F1-F8; implementation review ACCEPT)

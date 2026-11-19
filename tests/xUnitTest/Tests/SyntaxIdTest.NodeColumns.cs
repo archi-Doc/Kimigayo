@@ -109,8 +109,8 @@ public partial class SyntaxIdTest
     {
         var c = MinimalEmissionTest.Analyze(Source);
         var every = c.Binding.Semantics.Declarations;
-        var sources = Rows(every.In(new(c.SourceModules, null, new(0))));
-        var library = Rows(every.In(new([], c.Binding.Library.Kotonoha, new(0))));
+        var sources = Rows(every.In(new(c.SourceModules, null, new())));
+        var library = Rows(every.In(new([], c.Binding.Library.Kotonoha, new())));
         Assert.NotEmpty(sources);
         Assert.NotEmpty(library);
         Assert.All(sources, symbol => Assert.False(symbol.Declaration.Kotonoha.Syntax.IsLibrary));
