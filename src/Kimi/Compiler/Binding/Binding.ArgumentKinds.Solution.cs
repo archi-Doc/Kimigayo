@@ -324,19 +324,28 @@ public sealed partial class Binding
             return proof;
         }
 
-        // SPEC 10.7, 10.8, 15.3.6: a callable value at a common Function Type that fits only once its per-call input is instantiated at
-        // a required input over a fixed Origin, or only through its own per-call Origin, which is reported after selection.
+        // SPEC 7.7.4, 10.7, 10.8, 15.3.6: whether `argument` is decided by its per-call stand-in (FitPerCall), a fact of the solve: an
+        // implementation erased at the common Function Type, a function group or a Closure or Function Item value, whose own per-call
+        // input left an open region in `type`. Any other argument keeps its fit (FitArgument): a Function value's fit is structural and
+        // judged after selection (DECISIONS R4-M155), an anonymous function written in the call is completed by the selected candidate.
+        internal readonly bool HasPerCallStandIn(Koto argument, BoundType type)
+        {
+            var node = KotoHelper.UnwrapParentheses(argument);
+            return type.Kind == BoundTypeKind.Function &&
+                (this.Binding.KindOf(node) == PartKind.Reference || node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem }) &&
+                this.Binding.PerCallStandIn(type, argument, type) is not null;
+        }
+
+        // SPEC 10.7, 10.8, 15.3.6: an argument with a per-call stand-in (HasPerCallStandIn) fits once its per-call input is instantiated at
+        // a required input over a fixed Origin and no open region of it remains, or else only through its own per-call Origin, which is
+        // reported after selection.
         internal readonly CandidateApplicability FitPerCall(Koto argument, BoundType type, out BoundArgumentOperation operation)
         {
             var binding = this.Binding;
             var node = KotoHelper.UnwrapParentheses(argument);
             operation = default;
-            if (binding.KindOf(node) != PartKind.Reference && node.BoundType is not { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem })
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            if (binding.PerCallStandIn(type, argument, type, true) is { } instantiated && this.FitsCallable(node, instantiated))
+            if (binding.PerCallStandIn(type, argument, type, true) is { } instantiated && binding.PerCallStandIn(instantiated, argument, type) is null &&
+                this.FitsCallable(node, instantiated))
             {
                 binding.InstantiateOpenOrigins(this.Frame, CallOwnSlots(this.Function).Count, argument, type);
                 operation = new(argument, node.BoundType, instantiated, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);

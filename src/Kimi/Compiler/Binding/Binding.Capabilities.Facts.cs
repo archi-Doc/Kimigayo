@@ -7,13 +7,16 @@ namespace Kimi.Compiler;
 // The verdict a capability work records (SPEC 8.3.3, 15.2.3; DECISIONS BU-22, R4-M155, R4-M161), a part of the capability engine.
 // - Responsibility: a work's state in the fixpoint (CapabilityWork: its proposition's Type, intrinsic and scope, its Result and Cause,
 //   its queue state, its dependents) and the payload its verdict carries: the U fact, and for Owned the first Origin it rests on and each
-//   part that is not Proven with its member and Origin (CapabilityPart); the judgment of one OwnedOrigins Origin against `static`
-//   (StaticOrigin); the payload's one reader, an Owned query's rest (ProveOwned with OwnedRest, read by the erasure).
+//   part that is not Proven with its member, Origin and Type (CapabilityPart, recorded through CapabilityWork.Part on every path that
+//   combines an Owned verdict); the judgment of one OwnedOrigins Origin against `static` (StaticOrigin); the payload's one reader, an
+//   Owned query's rest (ProveOwned with OwnedRest: the subject's work, whose parts the erasure walks through each part's own work,
+//   OwnedWork).
 // - Inputs: the engine's evaluations (Binding.Capabilities: RequestCapability's dequeue loop writes a work's verdict and payload; the
 //   Origin slot of the proof scope in progress, ProofReads.Origin of the channel-owned stack through ScopeReads,
 //   Binding.ConstraintValidation.Proofs).
 // - Outputs: a work's Result, which the fixpoint compares, its Cause, settled after the verdicts as a function of them, and its payload,
-//   which no decision reads (the selection of a record reads it). A part's Origin is kept only when the part is not Proven, so premises
+//   which the fixpoint never compares: the erasure's Owned owner reads it, for a call's applicability (SPEC 10.1 step 5,
+//   ErasedArgumentsEnvironment) and for the conversion's record (OwnedMember). A part is kept only when it is not Proven, so premises
 //   that prove a part leave none.
 // - Determinism: a dependent is queued again whenever a part's Result changes, so the final evaluation sees each part's final
 //   verdict; a part's Origin can still change without a re-queue, and a Result only rises in the information order (every work starts
@@ -22,7 +25,7 @@ namespace Kimi.Compiler;
 // - Invariants: a payload is the final evaluation's, written beside the Result and outside the fixpoint's equality; Reset returns a work
 //   to its initial verdict for a new pass; an OwnedOrigins Origin that is null or not proven to outlive `static` is Unknown, and each
 //   caller keeps its own absence rule (a missing outer Origin is Proven).
-// - Prohibitions: no proof decision reads a payload; nothing here schedules or evaluates a work (Binding.Capabilities).
+// - Prohibitions: no proof of the engine reads a payload; nothing here schedules or evaluates a work (Binding.Capabilities).
 public sealed partial class Binding
 {
     // The first local region of an Origin or of its meet's operands.
@@ -72,16 +75,20 @@ public sealed partial class Binding
         return relations.Outlives(origin);
     }
 
-    // An Owned query that also returns its subject's rest (R4-M161): the parts its work found not Proven; none without a work (a context
-    // that is not resolved returns before one exists, `Judged` false).
+    // An Owned query that also returns its subject's rest (R4-M161): the work that judged it, whose parts are those it found not Proven;
+    // none without a work (a context that is not resolved returns before one exists).
     private ConstraintProof ProveOwned(BoundType type, Koto context, out OwnedRest rest)
     {
         var proposition = this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned));
         var scope = this.ConstraintScope(context);
         var proof = this.ProveConstraint(proposition, scope);
-        rest = this.capabilityNodes.TryGetValue((proposition, scope, false), out var work) ? new(true, work.Parts) : default;
+        rest = new(this.OwnedWork(type, scope), scope);
         return proof;
     }
+
+    // The work of Owned over `type` in `scope`, whose rest a part's walk reads (OwnedMember); none if no work judged it.
+    private CapabilityWork? OwnedWork(BoundType type, BindingScope scope)
+        => this.capabilityNodes.TryGetValue((this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), scope, false), out var work) ? work : null;
 
     private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
     {
@@ -107,8 +114,9 @@ public sealed partial class Binding
         internal bool Queued { get; set; }
 
         // Whether its last evaluation read an open obligation, or a work that did (SPEC 8.3.3 Finality): no fact past the outermost
-        // request, which returns it to its initial state (Binding.ForgetPendingCapabilities). Temporary carrier with reentryReads;
-        // removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
+        // request, which returns it to its initial state but keeps this flag until its next evaluation (Binding.ForgetPendingCapabilities),
+        // so the erasure's Owned owner reads a forgotten subject as Final (OwnedMember). Temporary carrier with reentryReads; removal:
+        // R7-C2e2 e2-5b, with e2-3's Completion on the answer.
         internal bool Pending { get; set; }
 
         internal CapabilityWork? Parent { get; set; }
@@ -156,23 +164,27 @@ public sealed partial class Binding
             this.Dependents.Clear();
         }
 
-        // A part read by an Owned judgment: one that is not Proven is kept with its member and Origin; returns the work's Origin so far.
-        internal BoundOrigin? Part(int member, ConstraintProof proof, BoundOrigin? origin, BoundOrigin? first)
+        // A part read by an Owned judgment, on every path that combines one (G379 R5: a layer's own Origin, a structure's components,
+        // Origin parts and call signature, a declaration's Type and Origin arguments and projections, an abstract Type's evidence): one
+        // that is not Proven is kept with its member, Origin and Type; returns the work's Origin so far.
+        internal BoundOrigin? Part(int member, ConstraintProof proof, BoundOrigin? origin, BoundOrigin? first, BoundType? type)
         {
             if (proof == ConstraintProof.Proven || this.Intrinsic.Intrinsic != IntrinsicKind.Owned)
             {
                 return first;
             }
 
-            (this.Parts ??= new()).Add(new(member, origin));
+            (this.Parts ??= new()).Add(new(member, origin, type));
             return first ?? origin;
         }
     }
 
-    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1; a Closure's
-    // call signature is member Components.Count, which the erasure, judging the environment alone, never reads) and Origin.
-    private readonly record struct CapabilityPart(int Member, BoundOrigin? Origin);
+    // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1; an Origin part
+    // follows the components, a layer's own Origin first; a Closure's call signature is member Components.Count, which the erasure,
+    // judging the environment alone, never reads), its first Origin, and its Type, whose own work holds its parts (OwnedWork); an Origin
+    // part and a limit have none.
+    private readonly record struct CapabilityPart(int Member, BoundOrigin? Origin, BoundType? Type);
 
-    // An Owned query's subject rest (ProveOwned): whether a work judged it, and the parts it found not Proven.
-    private readonly record struct OwnedRest(bool Judged, List<CapabilityPart>? Parts);
+    // An Owned query's subject rest (ProveOwned): the work that judged it (none when no work did) and its scope.
+    private readonly record struct OwnedRest(CapabilityWork? Work, BindingScope Scope);
 }
