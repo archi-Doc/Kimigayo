@@ -1468,6 +1468,128 @@ public sealed partial class MirBorrowsTest
                 let y = n
                 x.v = 5
             """,
+        ["arView"] = """
+            func arView(values: uniq/Array<i32>) -> i32
+                var outer = values.sliceUniq()
+                var inner = outer.sliceUniq()
+                return inner[0]
+            """,
+        ["viewRet"] = """
+            func viewRet() -> i32
+                var a: Array<i32> = [1, 2]
+                var v = a.sliceUniq()
+                return v[0]
+            """,
+        ["viewWrite"] = """
+            func viewWrite() -> i32
+                var a: Array<i32> = [1, 2]
+                var v = a.sliceUniq()
+                let x = v[0]
+                a[1] = 5
+                return x
+            """,
+        ["viewWriteOk"] = """
+            func viewWriteOk() -> i32
+                var a: Array<i32> = [1, 2]
+                var v = a.sliceUniq()
+                let x = v[0]
+                let y = x + 1
+                a[1] = 5
+                return y
+            """,
+        ["viewRefUseBad"] = """
+            func viewRefUseBad() -> i32
+                var a: Array<i32> = [1, 2]
+                var v = a.sliceUniq()
+                let r = v[0]@ref
+                a[1] = 5
+                return r@follow
+            """,
+        ["sliceRet"] = """
+            func sliceRet() -> i32
+                var a: Array<i32> = [1, 2]
+                let s = a.slice()
+                return s[0]
+            """,
+        ["sliceWrite"] = """
+            func sliceWrite() -> i32
+                var a: Array<i32> = [1, 2]
+                let s = a.slice()
+                let x = s[0]
+                a[1] = 5
+                return x
+            """,
+        ["elemRefBad"] = """
+            func elemRefBad() -> i32
+                var x: i32 = 1
+                var arr: Array<ref/i32> = [x@ref]
+                var v = arr.sliceUniq()
+                let r = v[0]
+                x = 2
+                return r@follow
+            """,
+        ["viewRefCopy"] = """
+            func viewRefCopy() -> i32
+                var a: Array<i32> = [1, 2]
+                var v = a.sliceUniq()
+                let r = v.index(0)
+                return r@follow
+            """,
+        ["dictPayload"] = """
+            func dictPayload() -> i32
+                var d: Dictionary<i64, i32> = [1: 5]
+                match d.tryGet(1)
+                    .Some(let r) => return r@follow
+                    .None => return 0
+            """,
+        ["optPayloadGet"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func nOpt(self: ref/Self) -> Option<ref/i32 during self> => .Some(self.n@ref)
+            func optPayloadGet() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                var k: i32 = 0
+                match s.nOpt()
+                    .Some(let r) => k = r@follow
+                    .None => k = 0
+                a = 2
+                return k
+            """,
+        ["refGetBad"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func nRef(self: ref/Self) -> ref/i32 during self => self.n@ref
+            func refGetBad() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let k = s.nRef()@follow
+                a = 2
+                return k
+            """,
+        ["refReadBad"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            func refReadBad() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let q = s@ref
+                let k = q.n
+                a = 2
+                return k
+            """,
         ["rvDerefPlainOk"] = """
             struct KI
                 public var v: i32 = 0
@@ -2911,9 +3033,24 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvTupPartSafeOk", "")] // V
     [InlineData("rvFieldSafeBad", "rvFieldSafeBad: a = 2")] // I (O-364 (a)): the same with a struct Field
     [InlineData("rvFieldSafeOk", "")] // V
-    [InlineData("rvReborrowRetBad", "rvReborrowRetBad: var x = KI.init()")] // I (O-364 (a)): a Scalar read through a reference reborrowed through another holder, returned past x's end
-    [InlineData("rvReborrowUseBad", "rvReborrowUseBad: x.v = 5")] // I (O-364 (a)): the same used after x.v = 5
+    [InlineData("rvReborrowRetBad", "")] // V by the owner's O-437 (b) (I under O-364 (a), its name's label): a Scalar read through keep's reference result carries only what KI can hold, nothing, though the reference was reborrowed through another holder
+    [InlineData("rvReborrowUseBad", "")] // V by O-437 (b): the same used after x.v = 5
     [InlineData("rvReborrowUseOk", "")] // V
+    // The referent bound (the owner's O-437 (b)): a Copy read through a reference a call returns carries only the Loans its referent
+    // Type can hold; an index expression is such a read (SPEC 4.7.1: the Place `v.index(0)@follow` selects).
+    [InlineData("arView", "")] // V by O-437 (b): the i32 read through nested UniqSlice views' index result carries nothing
+    [InlineData("viewRet", "")] // V by O-437 (b): the element of a local array's view, returned past the array's end
+    [InlineData("viewWrite", "")] // V by O-437 (b): the element Copy, used after a write of the array
+    [InlineData("viewWriteOk", "")] // V
+    [InlineData("viewRefUseBad", "viewRefUseBad: a[1]; viewRefUseBad: a[1] = 5")] // I (15.6.4, 15.6): the reference itself retains the view's borrow and is used after the write
+    [InlineData("sliceRet", "")] // V (4.7.1: a Slice element retains s.source's shared Loan, whose reach a carries nothing)
+    [InlineData("sliceWrite", "")] // V
+    [InlineData("elemRefBad", "elemRefBad: x = 2")] // I (4.7.1, O-437 (b)): an element that stores a reference keeps its Loan, its Type holding one
+    [InlineData("refGetBad", "")] // V by O-437 (b) (I under O-364 (a), its name's label): a getter's reference result into a Loan-holding struct; the i32 read through it carries nothing
+    [InlineData("refReadBad", "refReadBad: a = 2")] // I (O-364 (a), kept by O-437 (b)): the same read through a reference the body forms
+    [InlineData("viewRefCopy", "")] // V by O-437 (b): index's reference result kept in a local, then read through
+    [InlineData("dictPayload", "")] // V: tryGet's Option payload reference; d carries no Loan, so V under O-364 (a) too
+    [InlineData("optPayloadGet", "")] // V by O-437 (b) where an Option payload of a call's result is the call's reference (I under O-364 (a))
     [InlineData("rvDerefPlainOk", "")] // V, the control: r reaches x only, which carries nothing
     [InlineData("rvCopyUseBad", "rvCopyUseBad: kk = 2")] // I, the Copy by assignment into an initialized local: d carries w0's Loans and is read after (15.6 Holders' Copy sentence)
     [InlineData("rvPutROk", "")] // V, a Scalar argument the builder spills into a temporary before a borrow argument; d is not used after

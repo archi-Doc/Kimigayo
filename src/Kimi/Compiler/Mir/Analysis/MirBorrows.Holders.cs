@@ -142,7 +142,7 @@ internal sealed partial class MirBorrows
     // operands' (MirBorrows.Values' ValueOperands, val's one rule), or a returning Call's destination, whose operands are
     // the inputs its result record retains (Binding's retention, 15.6.4: decided per argument; MirBorrows.CallRows' Planned, a call
     // receiver input at the callee operand), one of the operands a Place rooted at a holder whose read carries what the holder carries
-    // (none through a Case payload the Case bound empties, MirBorrows.Values' Unheld). The least such set over Holding's: an edge per
+    // (none through a Case payload the Case bound empties or a reference the referent bound empties, MirBorrows.Values' Unheld). The least such set over Holding's: an edge per
     // such store and operand from the operand's root to the destination, then a worklist from the holders, each edge once, linear in the
     // body. A local no such store reaches carries nothing at every point, so it has no slot.
     private void Flowing()
@@ -322,7 +322,7 @@ internal sealed partial class MirBorrows
 
     // The write slots (A3 3): a local a call's write source may store in (written) that holds only calls' results takes one in the flow
     // region, which the call's write source joins (MirBorrows.Calls' Keep) and a whole store replaces (Rewrite), so a
-    // Case payload the Case bound empties carries what the writes stored (MirBorrows.Values' Read); the count.
+    // Case payload the Case bound empties, or a referent the referent bound empties, carries what the writes stored (MirBorrows.Values' Read); the count.
     private int WriteSlots()
     {
         var (locals, count) = (this.body.Locals.Length, 0);

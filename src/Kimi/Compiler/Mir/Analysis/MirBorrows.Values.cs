@@ -9,14 +9,15 @@ namespace Kimi.Compiler.Mir;
 // reads (MirBorrows.Flow), and the value a Deref goes through (PointerOf); a raw Ref issues its address, a `during self` layer's read
 // carries what `@raw` of its storage carries (Layered); a Case payload of a holder that holds only calls' results carries nothing where
 // the Case's payload Type holds no Loan but what a call's write source stored there, its holder's write slot's (Sources; SPEC 15.6
-// Holders' Case-payload sentence, the owner's O-383 (b); the Middle's phase-6 decision 2). Must not decide which
+// Holders' Case-payload sentence, the owner's O-383 (b); the Middle's phase-6 decision 2), and so does a read through such a holder's
+// reference where the referent Type holds no Loan (the referent bound, the owner's O-437 (b)). Must not decide which
 // holders a set reaches or a call's store writes (MirBorrows.Reach), which locals hold only calls' results (MirBorrows.Holders) or which
 // Places a local's reference refers to (MirBorrows.Loans).
 internal sealed partial class MirBorrows
 {
-    private const byte ReadsPlace = 1; // Sources: a Place the read reads is one the Case bound does not empty.
+    private const byte ReadsPlace = 1; // Sources: a Place the read reads is one no bound (the Case or the referent bound) empties.
     private const byte ReadsHolder = 2; // Sources: such a Place is a holder's or a static's.
-    private const byte ReadsWritten = 4; // Sources: such a Place is one the Case bound empties but for a call's write source.
+    private const byte ReadsWritten = 4; // Sources: such a Place is one a bound empties but for a call's write source.
 
     private readonly List<(int Root, int At, bool Bound)> following = []; // Sources' worklist: the walks still to make.
     private readonly List<int> writtenRoots = []; // Sources: the roots whose write slots the read reads (ReadsWritten).
@@ -91,7 +92,7 @@ internal sealed partial class MirBorrows
 
     // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it; where no
     // Place the read reads (Sources) is a holder's or a static's, what the write slots of the roots whose payloads it reads carry: the
-    // Case bound empties the others but for what a call's write source stored there (MirBorrows.Holders' WriteSlots), and a local that
+    // Case bound or the referent bound empties the others but for what a call's write source stored there (MirBorrows.Holders' WriteSlots), and a local that
     // is no holder carries nothing at every point (MirBorrows.Holders' Flowing).
     private int Read(ulong[] state, MirPlace place)
     {
@@ -110,7 +111,7 @@ internal sealed partial class MirBorrows
         return this.Layered(place.Root, place.Projection, layer, parents);
     }
 
-    // Whether the Case bound empties every Place a read reads (Sources): MirBorrows.Holders' Flowing asks it of an edge's operand.
+    // Whether a bound (the Case or the referent bound) empties every Place a read reads (Sources): MirBorrows.Holders' Flowing asks it of an edge's operand.
     private bool Unheld(MirPlace place) => (this.Sources(place) & ReadsPlace) == 0;
 
     // Forgets the answers of following references (Sources), at a view's start and once Flowing has decided its holders, which the
@@ -123,7 +124,7 @@ internal sealed partial class MirBorrows
         this.keptRoots.Clear();
     }
 
-    // What a read of a Place reads, less the Places the Case bound empties: ReadsPlace where one remains, with ReadsHolder where one is
+    // What a read of a Place reads, less the Places the Case and referent bounds empty: ReadsPlace where one remains, with ReadsHolder where one is
     // a holder's or a static's (once Flowing has decided the holders). The Case bound (SPEC 15.6
     // Holders' Case-payload sentence; the owner's O-383 (b)): a Place that is, or lies in, a Case payload whose Type, the Case's in the
     // result's Type as the view instantiates it, holds no Loan (Holds), reached from a local that holds only calls' results
@@ -131,7 +132,11 @@ internal sealed partial class MirBorrows
     // Loan-free Case payload is bounded by its Case's Type (O-383 (b)): it carries no Loan whatever reached it: a part an input holds by
     // value, a value read through a borrowed input, or reference bits written through a raw pointer (the rows rvResPartBad, xchgFieldD,
     // xchgOldD); so a value Moved or Copied out of the payload carries none, whatever the result holds through another Case; where a
-    // call's write source may store in the local, it reads the local's write slot instead (Ends). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
+    // call's write source may store in the local, it reads the local's write slot instead (Ends). The referent bound (the owner's
+    // O-437 (b)), beside it: a read through the reference such a local holds whole (a Deref of the root's own reference) carries only
+    // the Loans its referent Type can hold, so where that Type holds no Loan (Holds) it is bounded as a Loan-free payload is, a part of
+    // the referent read below the Deref included (arView's `inner[0]`, c84's `res.v`); an element that stores a reference keeps its
+    // Loan (its Type holds one), and a reference the body forms is followed instead (Follows) and keeps O-364 (a). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
     // referring store: a Ref's Place, or what the local a whole Move or Copy reads refers to; so a Copy out of the payload through a
     // shared match Subject is bounded like a Move, and one through a reference stored more than once where every Place it refers to
     // is. A Field or an element of the result or of a payload, and any other holder's parts, carry what the holder carries (O-364 (a)).
@@ -150,7 +155,8 @@ internal sealed partial class MirBorrows
             while (at != 0 && root >= 0 && !(hopped = this.Follows(root, at, bound, ref reads)))
             {
                 var step = this.body.Projections[at];
-                bound = this.Payload(at) && (bound || (step.Kind == MirProjectionKind.Downcast && !this.Holds(cases.TypeOf(new MirPlace(root, at)), out _)));
+                var referent = step is { Kind: MirProjectionKind.Deref, Prefix: 0 } && ReferenceTypes.IsReference(cases.Type(this.body.Locals[root].Type));
+                bound = (this.Payload(at) || referent) && (bound || ((step.Kind == MirProjectionKind.Downcast || referent) && !this.Holds(cases.TypeOf(new MirPlace(root, at)), out _)));
                 at = step.Prefix;
             }
 
@@ -193,7 +199,7 @@ internal sealed partial class MirBorrows
         return reads;
     }
 
-    // What a walk that ends at a root reads: nothing where the Case bound empties the Place, but the root's write slot where a call's
+    // What a walk that ends at a root reads: nothing where a bound (the Case or the referent bound) empties the Place, but the root's write slot where a call's
     // write source may store in it (MirBorrows.Holders' written; before the slots are numbered, that it is read); else the Place, a
     // holder's or a static's.
     private byte Ends(int root, bool bound)
