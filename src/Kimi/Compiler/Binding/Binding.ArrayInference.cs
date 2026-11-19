@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly InferredArrayLengthRows inferredArrayLengths;
-    private readonly Dictionary<Koto, Koto> arrayInferenceShapes = new(ReferenceEqualityComparer.Instance);
+    private readonly ArrayInferenceShapeRows arrayInferenceShapes;
     private Dictionary<Koto, ArrayInferenceFailure>? arrayInferenceFailures;
 
     private enum ArrayInferenceProblem : byte
@@ -460,5 +460,19 @@ public sealed partial class Binding
 
         internal BoundLength? GetValueOrDefault(Koto hole)
             => hole.SyntaxOwner is { } table ? table.Hir.Families.InferredArrayLengths.Get(hole.SyntaxId, binding) : null;
+    }
+
+    /// <summary>The `arrayInferenceShapes` family's one accessor (DECISIONS BU-220): a pass family, the written fixed-array shape an empty
+    /// literal or a result-producing target takes its array evidence from (SPEC 4.3.1, 14.9.2), kept in the target's module's NodeColumns
+    /// at its SyntaxId (null for none). Its members keep the names its readers use.</summary>
+    private readonly struct ArrayInferenceShapeRows(Binding binding)
+    {
+        internal Koto this[Koto target]
+        {
+            set => HirTables.Of(target).Families.ArrayInferenceShapes.Ref(target.SyntaxId, binding) = value;
+        }
+
+        internal bool TryGetValue(Koto target, [NotNullWhen(true)] out Koto? shape)
+            => (shape = target.SyntaxOwner is { } table ? table.Hir.Families.ArrayInferenceShapes.Get(target.SyntaxId, binding) : null) is not null;
     }
 }

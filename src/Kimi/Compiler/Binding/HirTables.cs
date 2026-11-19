@@ -324,6 +324,7 @@ internal struct NodeColumns
     internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
 
     internal void Resize(int length)
     {
@@ -377,6 +378,7 @@ internal struct NodeColumns
         this.CallablePremiseFailures.Grow(length);
         this.EffectBoundRejections.Grow(length);
         this.InferredArrayLengths.Grow(length);
+        this.ArrayInferenceShapes.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -406,6 +408,7 @@ internal struct NodeColumns
         this.CallablePremiseFailures.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
         this.InferredArrayLengths.Freeze(binding);
+        this.ArrayInferenceShapes.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -464,6 +467,7 @@ internal struct NodeColumns
             CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
+            ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
         };
         return columns;
     }
