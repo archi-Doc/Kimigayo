@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Numerics;
 using System.Text;
 using Kimi.Compiler.Parsing;
 
@@ -19,7 +18,6 @@ public sealed partial class Binding
 
     // The binders in scope of one PairSlotCondition query, reused, and whether a query is collecting them.
     private readonly List<PairBinder> pairConditionBinders = new();
-    private readonly List<PairBinder> copyCaseBinders = new(); // The binders of one CopiesInEveryCase query, reused.
     private bool pairConditionActive;
 
     /// <summary>Appends the Semantics of a mask in bit order, separated.</summary>
@@ -340,77 +338,6 @@ public sealed partial class Binding
     /// <returns>The admitted cases that neither Copy nor Reborrow; None when every case has a plan.</returns>
     internal SemanticsMask BareAcquisition(BoundType type, Koto node, out SemanticsMask reborrow) => this.BareAcquisition(type, node, [], out reborrow);
 
-    /// <summary>Tells whether a Type Copies in every Semantics case of the pair binders in scope (SPEC 8.14, 8.15.2, 3.5): its
-    /// complete Type in each case (<see cref="CaseType"/>) is proven Copy by SPEC 8.3, which no case adds a premise to. The 8.3 proof
-    /// decides alone where it is not Unknown or the Type holds no pair layer, and where the cases exceed
-    /// <see cref="PairBinder.CaseBound"/> (64 cases are analyzed; 65 are not), whose definition records <c>OwnershipCaseLimit_Kd</c>
-    /// (<c>CheckCaseBound</c>), so no case is answered unchecked. The one Copy evidence of an
-    /// acquisition: BareAcquire, a Consuming call, <c>@copy</c>, a same-Type acquisition, a bare-Place adaptation or object view, a
-    /// Pattern binding, a special receiver's part, an omitted capture list (Transfers' S3), and <c>TyCtxt.CopyFacts</c>, which MIR reads
-    /// (DECISIONS BU-88).</summary>
-    /// <param name="type">The complete Type.</param>
-    /// <param name="scope">The scope whose premises and pair binders apply.</param>
-    /// <returns>Whether every case Copies.</returns>
-    internal bool CopiesInEveryCase(BoundType type, BindingScope scope)
-    {
-        var proof = this.ProveCopy(type, scope);
-        if (proof != ConstraintProof.Unknown || !type.ContainsPairLayer)
-        {
-            return proof == ConstraintProof.Proven;
-        }
-
-        // A query nested in a case's proof takes its own list, as PairSlotCondition's does.
-        var binders = this.copyCaseBinders.Count == 0 ? this.copyCaseBinders : new List<PairBinder>();
-        this.PairBinders(scope, binders);
-        var resolved = 0;
-        var count = 1L;
-        for (var b = 0; b < binders.Count; b++)
-        {
-            if (binders[b].Resolved)
-            {
-                count *= BitOperations.PopCount((uint)binders[b].Admitted);
-                resolved++;
-            }
-        }
-
-        if (resolved == 0 || count > PairBinder.CaseBound)
-        {
-            binders.Clear();
-            return false;
-        }
-
-        Span<SemanticsKind> digits = stackalloc SemanticsKind[resolved];
-        var scratch = this.caseScratch.Rent(resolved);
-        try
-        {
-            var assignment = scratch.AsSpan(0, resolved);
-            for (var index = 0; index < count; index++)
-            {
-                CaseDigits(binders, index, digits);
-                for (int j = 0, b = 0; b < binders.Count; b++)
-                {
-                    if (binders[b].Resolved)
-                    {
-                        assignment[j] = new(binders[b].Target, digits[j]);
-                        j++;
-                    }
-                }
-
-                if (this.ProveCopy(this.CaseType(type, assignment), scope) != ConstraintProof.Proven)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-        finally
-        {
-            this.caseScratch.Return(scratch, clearArray: true);
-            binders.Clear();
-        }
-    }
-
     // PairBinder.Collect.
     internal void PairBinders(Koto entry, List<PairBinder> binders) => this.PairBinders(this.ConstraintScope(entry), binders);
 
@@ -489,13 +416,6 @@ public sealed partial class Binding
         if (TryAdaptationSelector(type, out _))
         {
             return this.BareAcquisition(type, node, assignment, out reborrow) == SemanticsMask.None ? HirAcquire.ByCase : HirAcquire.Move;
-        }
-
-        // SPEC 8.14, 8.15.2: a Type that holds a pair layer, not itself one, has one plan in every case, as no case Type of it is a
-        // `uniq` reference: it Copies where every case does.
-        if (proof == ConstraintProof.Unknown && this.CopiesInEveryCase(type, this.ConstraintScope(node)))
-        {
-            return HirAcquire.Copy;
         }
 
         return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
