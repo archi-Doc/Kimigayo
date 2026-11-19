@@ -23,7 +23,7 @@ public sealed partial class Binding
 
     // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
     private bool SameCallableSignature(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (this.IsSubtype(a, b, a.Binder) && this.IsSubtype(b, a, b.Binder));
+        => ReferenceEquals(a, b) || (this.IsSubtype(a, b) && this.IsSubtype(b, a));
 
     private bool SameProofPremise(BoundConstraint a, BoundConstraint b)
     {

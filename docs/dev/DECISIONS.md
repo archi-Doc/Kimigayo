@@ -1250,7 +1250,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of A3 §9 item 8 on 2026-10-17;
   G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
-  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
+  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66; its
+  Open "a custom setter's receiver is reserved only at the setter call, not from locate" and its Rejected "a writeback through
+  setters now" amended by R4-M223 (Z11)) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -6834,6 +6836,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     which 8.10 says stays fixed: the owner chose (b)); the check in `FormNestedResult`'s inputs' half (a second walk of the inputs and
     a second judge for 15.3.4's one scope rule); a clause in `OriginCandidate`'s input-name branch (a consumer deciding by syntax:
     `x.a` with `x: ref/U` names a fixed body variable, valid); `BindOrigin` returning no Origin (it would hide independent records).
+  - Superseded in part by R4-M224 (PLAN G1064, board D-822, 2026-11-20): the Rule's parenthetical "(a conversion's
+    `UnprovenOriginContract_Kd`)". A conversion of a literal whose input names its own per-call Origin is compared under the solve:
+    where it holds, `InvalidOriginBinding_Kd` is the only record; the rest stands (the Origin stays bound).
 - **R4-M213 G379 (a): a Closure's erasure decides applicability by its structural part; its per-call stand-in is a fact of the
   solve** (2026-11-19; Back, Binding's selection; Major; PLAN G379 (a), R7-P4 T2's Closure arm; design
   `back\notes\g379c\design.md` Revisions 0-2 (§7, R1.5) with B's rulings, the Front's design review on C-385 ACCEPT WITH CONDITIONS,
@@ -7398,6 +7403,82 @@ and migration obligations remain in force; no numeric cap changes are authorized
     lifting a per-call end only when the longer end is an Origin its own input mentions (a consumer deciding what the owning component
     should publish); case B for every foreign declaration atom, n8r's kind included (a Proof record on a valid form, D1 (a): AGENTS'
     single located limit instead); a per-query syntax walk for the fact (2N^2 visits; replaced by the published verdict).
+  - Superseded in part by R4-M224 (PLAN G1064, board D-822, 2026-11-20): in "Which ends leave a row", case A (an end that is an
+    implementation per-call Origin its signature names in its inputs keeps the comparison's record) and C-400's fact it read
+    (`Binding.NamedInItsInputs`, `OriginProofMetrics.NamingReads` and the scaling row
+    `CallableRegionScalingTest.TheNamingSearchOverManyInputsScales`) are deleted, and an anonymous function's per-call Origin at the
+    shorter end (`PerCallBinder`) joins the case the comparison decides by SPEC, so n8r, n8rv and a13 are accepted instead of A5's
+    located limit.
+- **R4-M223 A setter's receiver is reserved where it is located (stream Z's Z11, A5-F8's 2d-2, PLAN G396 (1))** (2026-11-20, landing
+  with Q-553; Middle, MIR build; Major, no record or acceptance moves; the Middle's independent design and code review ACCEPT WITH
+  CONDITIONS) SPEC 13.7.2, 11.3.1. Amends R4-M37's Open "a custom setter's receiver is reserved only at the setter call, not from
+  locate" and its Rejected "a writeback through setters now".
+  - Rule: an update (compound assignment, increment, decrement) through a custom, computed or required `set` locates the receiver
+    once and there reserves it as the setter takes it (`Operand` over the located Place for the setter's receiver Type, `Input`: the
+    existing `TwoPhaseUniq` in a temp `$w`); the getter (R4-M109's Adjust) and a standard get read the receiver beside the
+    reservation, shared accesses whose Loans the setter's activation meets; the setter takes `$w` as its receiver input, so its Call
+    activates it (A5's existing activation). Owner: `MirBuilder.Update` (`MirBuilder.Expansions.cs`). An Error receiver is located
+    once; the setter's reservation and the getter each take their own derived value, whose site names the located root (R4-M149). A
+    simple assignment's setter keeps its reservation at its call (SPEC 13.7.1). No vocabulary entry.
+  - The getter reads beside the reservation, not through it (the A5 Step 2 plan's 2d-2 said "the getter reads through it"; the
+    Middle accepted the departure on 11-20): it is the form `Writeback` already takes (one concept, one form: a compound update's
+    getter reads beside its reservation), and SPEC 13.7.2's getter read is one of the shared reads of the protected receiver, which a
+    two-phase reservation admits until the setter's call activates it.
+  - `Call` takes the values an expansion evaluated as (node, operand) pairs (`given`), replacing its one pair (behaviour-preserving,
+    commit b69516b1c).
+  - Moves (Q13): none in records or acceptance; the MIR golden `tests/mir/expansions.mir` (its two setter updates); generated code
+    only in the 18 setter-update fixtures (the reservation formed before the getter). Rows:
+    `MirBuildTest.ASettersReceiverIsReservedWhereItIsLocated` (fails before),
+    `MirBorrowsTest.ASettersReservationProtectsItsReceiverUntilTheWrite`.
+  - Rejected: the getter reading through the reservation (`&(*$w)`): A5 meets a Borrow through the holder as the reservation's own
+    child, which its activation does not meet, so in `UserArithmeticUpdateTest.GetterTemporaryKeepsItsDestructionDependencies`
+    (computed `item: View` whose getter returns `View during self` holding `self.raw@ref`, View with an observing `drop`;
+    `box.item += ()`: SPEC 13.7.2, a getter result's dependency conflicts with `set`) the independent record moved from the update
+    (`CallActivationConflict_Kd`) to a later node (`ComparisonLoanConflict_Kd`), a lost independent record (WORKFLOW rule 3); a
+    reborrow of `(*$w)` at the setter (a reservation formed through another's holder, R4-M54); a seventh `Call` parameter. Not
+    temporary.
+- **R4-M224 A callable definition's contract comparison solves its call Origins, a Function Item's and an anonymous function's alike
+  (PLAN G1064, closed; board D-822)** (2026-11-19, landing with Q-538 on 2026-11-20; Front, Binding; Major, an acceptance mover;
+  design `front\notes\G972\design-d822.md` with §4a, F's G972 rulings 6-11; the independent design review ACCEPT WITH CONDITIONS
+  after B1; the Middle's RP17 consent on C-400, C1-C3 met) SPEC 15.3.7, 15.3.6, 10.7, 10.8. Supersedes in part R4-M212 (its parenthetical), BU-115
+  (its G494 unit 2 sentences on vfb_bad, r23_fb_cl_bad and p03) and R4-M222 (case A and C-400's fact).
+  - Rule (SPEC 15.3.7: "Required universal Origins are rigid; only the implementation's instantiable call Origins may be solved";
+    15.3.6: the per-call polarity "in a call or a contract comparison"): an anonymous function's per-call Origin is such an Origin,
+    solved as a Function Item's is (candidate the meet of its upper bounds, the other bounds checked against it). One entry,
+    `DefinitionContractFits` (was `ItemContractFits`), compares a Function Item or a Closure Type with a required signature through
+    `ContractFits`; the erasure (`ErasureFits`; an Item's applicability, `ErasureSignatureFits`) calls it with the reader's row sink
+    (`CallableInstance.Rows`, R4-M222), the Callable proof, a requirement Item and a function reference's applicability without one.
+    `ContractFits` reads a Closure's input and result Types from its signature (`ClosureSignature`); its result condition is an
+    anonymous function's result well-formedness (`ProvesResultPremises`, an Instance visit; no premise of its body, SPEC 15.3.4,
+    15.6.1, R4-M162), judged per part by `FailedWellFormedness`, which `FailedSignatureWellFormedness` shares. A required signature
+    over an open evidence region (SPEC 10.8) is compared the same way for both definitions (the design review's B1, F's G972 ruling
+    9: the Item's premise-free known-signature arm, `CallableSubtype` with `HasOriginConditions`, is removed from the entry; G379
+    (b)'s Item form o2g is now accepted). A Function value keeps the walk (`CallableSignatureFits`, now its only form: a Function
+    Type's per-call Origin has no upper bound beyond its own input's, so instantiating it is its solve).
+  - G972's invalid naming: a conversion of a literal whose input names its own per-call Origin is compared under the solve; where it
+    holds (n8, g905, a15 and (iii)'s n8v, t1, t2b, t4, t5, a20-a23), `InvalidOriginBinding_Kd` is the only record; where the solve's
+    candidate fails another bound (n8i, inv), the comparison keeps its `UnprovenOriginContract_Kd` (SPEC 23.1.2). The rest of R4-M212
+    stands (the Origin stays bound). F's ruling 6 (1) (i): a record of the old instantiation removed, not an independent record lost
+    (WORKFLOW rule 3).
+  - G492-a (iii)'s located limit for a literal's per-call Origin in a nested result comparison is closed (n8r, n8rv, a13: valid, now
+    accepted): `LeavesBodyRows`' anonymous-function arm (`PerCallBinder`) joins the case of another declaration's atom the comparison
+    decides by SPEC (the Middle's removal condition). (iii)'s case A (an implementation per-call Origin its signature names in its
+    inputs keeps the comparison's record) and C-400's fact it read (`NamedInItsInputs`, the `PerCallNamings` pass family,
+    `OriginProofMetrics.NamingReads`, `CallableInstance.IsImplementationSlot`, the scaling row
+    `TheNamingSearchOverManyInputsScales`) are deleted: unreached once no comparison instantiates an anonymous function's per-call
+    Origin. Also deleted: `HasOpenOrigin`'s `evidenceOnly` parameter and the walk's `own` (no other reader).
+  - BU-115's dependent record: vfb_bad, r23_fb_cl_bad and p03 keep only the failed name's `UnresolvedBinding_Kd` (dev reports the
+    dependent Contract beside it): p03 and r23_fb_cl_bad's kind (a Closure value) since G492-a (iii)'s row sink, vfb_bad since B1.
+    The comparison holds with q's call region, whose only evidence failed (rule W): `FitOrigin` fails `FitConjunct` and
+    `HoldsResting`, `LeavesBodyRows` adds `R_call outlives static` to the erasure's sink, and the body's row is satisfiable since
+    nothing else bounds the call region. So BU-115's reason no longer holds: no dependence analysis is needed. Twins
+    (CallableOriginForwardingTest): vfb_s (q = s, valid) is accepted; vfb_p (q = p, invalid) keeps the independent Contract record.
+    F's G972 rulings 10 and 11.
+  - Moves: newly accepted (valid): n8r, n8rv, a13, a30, d822, r2, r2b, nest, lbs and o2g; lb and inv keep dev's record; no accepted
+    program is rejected. Cost: one entry replaces two; the quadratic premise work is pre-existing (PLAN G1082).
+  - Rejected: (ii) keeping instantiation for a literal whose signature names a per-call Origin in its inputs, by reading C-400's
+    fact (`NamedInItsInputs`): a second path keyed on G972's verdict, two rules for one contract (F's ruling 6 (1)); a second entry
+    for literals with its own sink (two paths for one comparison). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -11998,6 +12079,10 @@ resumed by R4-M86 (2026-10-20).
     caller's fixed Origin is newly rejected, rfx). Moved: the located `Unsupported_Kd` at a Value call's literal is removed and the
     rest of its records kept (acceptance when none is left), a recovered `null` included. Rejected: a gate on `null` or on a literal
     input Type naming an Origin (one clause for one form, and it keeps two completion paths).
+  - Superseded in part by R4-M224 (PLAN G1064, board D-822, 2026-11-20): the G494 unit 2 amendment's sentences "The dependent record
+    at vfb_bad and r23_fb_cl_bad stays ... a dependence analysis beyond the failed input" and its p03 sentence ("one such record where
+    the base had none"). All three now keep only the failed name's `UnresolvedBinding_Kd`; the reason (the erasure would need to know
+    that q's only evidence failed) no longer holds, since the comparison holds with q's call region (R4-M224).
 
 - **BU-116 A Closure whose result retains its receiver is not erased** (2026-11-07; PLAN G516, O-28, BU #56 by Middle's unit
   r4-oi-o28; Major, no design review required (RI30 B-1)) SPEC 7.7.4, 15.6.4, 5.7 Calls. The owner's O-28 (a), verbatim 「O-28は、(a)：規則 A の保持も「呼び出し元への依存」と数える、で決定します」:
@@ -26261,3 +26346,33 @@ holds the owner's decisions 1–13). Units of the Tatara lane record their entri
     its units; seats 1+1. AGENTS (Roles), WORKFLOW (Sessions) and COMPILER_ARCHITECTURE (the sessions paragraph, the stage ledger)
     name it from the plan's adopting commit.
   - Amends R9-M6 (`src/Kimi/Build` was the Middle's) and R7-M4 (P13 was the Back's).
+- **T-M3 The Tatara component is `src/Tatara`: a C ABI over LLVM and LLD, built from the pinned archive** (Tatara, 2026-11-20; the
+  plan's unit A1a; Major; design review C-420).
+  - `src/Tatara` (`tatara.h` the ABI and contract, `tatara.cpp`, `build.ps1`) is P13's native part. It is not C#, `Kimi.csproj` does
+    not compile it, and its build is `build.ps1`: the archive's `clang-cl` and `lld-link`, the archive's configuration (static CRT,
+    no RTTI, no exceptions). **Tatara links as LLVM's own tools link:** every `LLVM*.lib` but `LLVMWindowsManifest` and the `LLVM-C`
+    import library is offered, and the Windows libraries and options are read from the archive's own link interface (`LLVMSupport`'s
+    `INTERFACE_LINK_LIBRARIES` in `LLVMExports.cmake`) by a reader that fails on a token it does not know, so an LLVM update links as
+    that LLVM does or stops. One departure: `diaguids.lib` comes from the discovered Visual Studio (`LLVMDebugInfoPDB`'s interface
+    names a path on LLVM's build machine). One version source: the supply catalog's `llvmVersion`.
+  - **The build identity** is the SHA-256 over every `.h`, `.cpp` and `.ps1` file under `src/Tatara` (path relative to `src/Tatara`
+    with `/`, ordinal order; path, NUL, bytes). `tatara_identity` reports it with LLVM's version. P13 compares both at start (unit A2),
+    from one implementation of the rule.
+  - **The allocator is the archive's rpmalloc** (LLVM's integrated CRT allocator in `LLVMSupport.lib`), selected by the interface's
+    `/include:malloc` and required by `build.ps1` (Tatara, 2026-11-20; the Middle's implementation review C-421, C1: the first build
+    had it by link order, undecided). `opt`, `llc` and `lld-link` run on it, and the comparison with today's chain and A4's budgets
+    assume it. No allocation crosses the C ABI, so it stays the DLL's own. Rejected: the CRT heap (a different allocator from the
+    tools Tatara replaces). B6's static link into the NativeAOT Kimi, where the same option would replace Kimi's process allocator,
+    is an owner question of B6.
+  - **LibXml2 is not added** (the owner, 2026-11-19, T's dialog, option (a), verbatim 「(a) 入れない」): `LLVMWindowsManifest.lib` stays
+    off the link line and `src/Tatara` defines its members as LLVM's own build without LibXml2 does (unit A2). Kimi's link passes no
+    manifest option. Rejected: (b) a pinned LibXml2 (a library and its build kept for a function Kimi does not use).
+  - **Temporary structure: T's private toolchain root** (a copy of the shared root plus `tatara.dll`, selected per process with
+    `--ToolchainRoot` or the process's own `KIMI_TOOLCHAIN_ROOT`, refreshed when `profile.json` changes). Every worktree reaches one
+    `toolchain` directory through a junction, so a DLL under development cannot sit there. Removal condition: unit A4, which makes the
+    DLL part of setup, of the installation record and of CI. Until then every test that loads `tatara.dll` is selected explicitly.
+  - `tatara.dll`'s hash is recorded where it is built, not adopted in the catalog: it contains the building machine's static CRT and
+    STL.
+  - Rejected: the C++ under `src/Kimi/Build` (it would join the C# project's items and `Build`'s file set) or under `src/backend`
+    (the Back's directory); a hand-raised ABI number (forgettable); the DLL in setup and CI from A1 (the shared junction); a copied
+    list of Windows link libraries (the first build's: it differed from the archive's interface).
