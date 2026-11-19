@@ -102,14 +102,15 @@ No product code changes.
 - **LLVM check:** whether CI's official archive (`clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz`, SHA-256 pinned) carries the static
   libraries needed (LLVM and LLD) and the headers, and whether its CRT fits. If not, build from source once and keep the result with
   its hash.
-- **Build:** `src/Tatara` holds the C++ sources and a build script that uses the archive's clang, as the backend's does. `setup.ps1`
-  calls it and `installation.json` records `tatara.dll`'s hash.
+- **Build:** `src/Tatara` holds the C++ sources and a build script (`build.ps1`) that uses the archive's `clang-cl` and `lld-link`.
+  Setup, `installation.json` and CI take the DLL in A4: every worktree shares one `toolchain` directory through a junction, so
+  until the switch T builds into a directory of its own.
 - **Baseline:** time and memory of single-shot `kimi build` on fixed inputs (Empty, Hello, some milestones, a large input). The
   comparison code lives in `src/Benchmark`.
 - **Survey:** the tests and scripts that read the record's `tools` field or the old options.
 
-**Done when:** a `tatara.dll` that only returns its build identity builds in setup and loads from a managed test; the baseline is in
-`artifacts/benchmarks/`; the owner has the proposed time and memory budgets.
+**Done when:** `build.ps1` builds, from the pinned archive, a `tatara.dll` that only returns its build identity, and checks it by
+loading it; the baseline is in `artifacts/benchmarks/`; the owner has the proposed time and memory budgets.
 
 ### A2 The Windows path
 
@@ -159,11 +160,12 @@ After A2's gate passes on the dev of that day, in a dedicated window.
 - `build`, `run` and `test` use Tatara.
 - The external executor, the seam and the tool-launching code are deleted.
 - `toolchain verify` checks `tatara.dll`.
+- Setup builds `tatara.dll`, the installation record holds its hash once, and CI builds it.
 - IMPL §20.3.2's Toolchain wording is revised.
 - The setup tools and the native fixture runner do not change (§3, item 3).
 
-**Done when:** the Session passes; single-shot time and memory are within budget against A1's baseline; `kimi build` starts no child
-process.
+**Done when:** the Session passes; single-shot time and memory are within budget, judged on A1's series run at A4 as an interleaved
+paired A/B (the base on the external tools against the candidate); `kimi build` starts no child process.
 
 ## 6. Updating LLVM
 
@@ -180,8 +182,8 @@ A new LLVM version is one unit. The rules below hold from stage A.
 - **Only `src/Tatara` touches LLVM's C++ API.** No LLVM type crosses the C ABI, so a version change leaves the C# side alone.
 - **The tool control test stays** (A2): it compares Tatara with the external tools of the same version, so every update is judged by
   the same condition.
-- **The source-build procedure is kept.** For a version whose prebuilt archive does not fit, the procedure checked in A1 is written in
-  `src/Tatara`'s README.
+- **The settings of a source build are kept.** `src/Tatara`'s README states the configuration a source build must reproduce. 22.1.8's
+  prebuilt archive fits, so A1 exercises no source build; a version whose archive does not fit exercises one then.
 
 **The update (one unit)**
 

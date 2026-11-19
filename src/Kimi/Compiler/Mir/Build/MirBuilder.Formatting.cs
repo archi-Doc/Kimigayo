@@ -147,7 +147,7 @@ internal sealed partial class MirBuilder
             var scope = this.OpenScope(block: false);
             var line = this.Temp(BoundType.String, text);
             this.Finish(line, writer, buffer, this.Done(ref done), text);
-            this.Call(destination, call, node, first: null, text, this.Borrow(SemanticsKind.Ref, line, text));
+            this.Call(destination, call, node, first: null, (text, this.Borrow(SemanticsKind.Ref, line, text)));
             this.CloseScope(scope);
         }
 
@@ -284,14 +284,14 @@ internal sealed partial class MirBuilder
     {
         var heap = CallPlan.Of(compilation.Binding, node)!;
         var empty = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
-        this.Call(buffer, heap, node, null, heap.ArgumentOperations[0].Source, empty);
+        this.Call(buffer, heap, node, null, (heap.ArgumentOperations[0].Source, empty));
     }
 
     // An owning interpolation's internal adapter (its second call) into the writer over an exclusive borrow of its buffer.
     private void Adapt(Koto node, MirPlace buffer, MirPlace writer)
     {
         var adapter = CallPlan.Of(compilation.Binding, node, 1)!;
-        this.Call(writer, adapter, node, null, adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node));
+        this.Call(writer, adapter, node, null, (adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node)));
     }
 
     // An owning interpolation's write positions (SPEC 22.10.3), each after the adapter's hint (SPEC 22.10.5; R3-10): Utf8Writer.hint's
@@ -386,7 +386,7 @@ internal sealed partial class MirBuilder
     private void Tested(CallPlan call, int done, Koto node, Koto? storage, MirPlace adapter)
     {
         var result = this.Hold(call.ReturnType, node);
-        this.Call(result, call, node, null, storage, storage is null ? default : this.Borrow(SemanticsKind.Uniq, adapter, node));
+        this.Call(result, call, node, null, (storage, storage is null ? default : this.Borrow(SemanticsKind.Uniq, adapter, node)));
         this.CaseTest(this.Made(result), 0, done, node);
     }
 }

@@ -285,7 +285,7 @@ internal sealed partial class MirBuilder
     {
         var length = this.Length(sequence, index);
         var result = this.Hold(key.ReturnType, index);
-        this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(compilation.Binding, index)!.Value.Evaluated].Source, MirOperand.Copy(length));
+        this.Call(result, key, index, null, (key.ArgumentOperations[ExpansionPlan.Of(compilation.Binding, index)!.Value.Evaluated].Source, MirOperand.Copy(length)));
         return this.Made(result);
     }
 
