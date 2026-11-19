@@ -373,6 +373,11 @@ public sealed partial class Binding
 
     private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
 
+    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2): whether the open consultation is `site`'s own check. A failure's own
+    // checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity premise
+    // error (IdentityPremiseErrorRead).
+    private bool ChecksOwnSite(Koto site) => ReferenceEquals(site, this.consultationNode);
+
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
     /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
     /// <param name="dependency">The node whose result was read.</param>

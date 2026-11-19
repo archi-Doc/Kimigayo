@@ -376,7 +376,7 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { FailedPremise: { } failure, UnprovenInputs: { Count: > 0 } inputs } || ReferenceEquals(current.Owner, this.consultationNode))
+            if (current.Constraints is not { FailedPremise: { } failure, UnprovenInputs: { Count: > 0 } inputs } || this.ChecksOwnSite(current.Owner))
             {
                 continue;
             }

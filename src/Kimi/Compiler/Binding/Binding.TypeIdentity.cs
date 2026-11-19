@@ -316,8 +316,8 @@ public sealed partial class Binding
         BindingScope? producer = null;
         for (var current = scope; current is not null && this.identityRecorded.Count != 0; current = current.Parent)
         {
-            // The producer's own checks (its frame) are the error's sites, never its readers (as UnprovenInputRead's).
-            if (this.identityRecorded.TryGetValue(current, out var own) && own && !ReferenceEquals(current.Owner, this.consultationNode) &&
+            // The producer's own checks (its frame) are the error's sites, never its readers (ChecksOwnSite).
+            if (this.identityRecorded.TryGetValue(current, out var own) && own && !this.ChecksOwnSite(current.Owner) &&
                 this.ClassesOf(current, out _) is { } classes && (classes.Holds(a) || classes.Holds(b)))
             {
                 producer = current;
