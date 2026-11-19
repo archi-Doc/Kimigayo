@@ -1592,6 +1592,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `CharLiteralKoto.Value`
   null) is published Error, derived from the lexer's record, not Broken: the publisher's `Rejected` owns that rule. A published Literal
   has its constant; the builder's `Literal` is the one check of it, a located `InternalInvariant_Kd` for a Literal without one.
+  Amended by R7-M55 (2026-11-20, stream Z1): the fact list's "a Tuple or array literal's Type" gains a plain call's coverage
+  (`CallPlan.Covers`), a PrimitiveOp member access's BuiltinForm and an array literal's fixed-array or, without a fill, Array Type;
+  the builder's arms that no published form takes record through `MirBuilder.Invariant`.
 - **R4-M54** (2026-10-17; implementing R4-M52's fold (owner); its pair-layer input amended by R4-M66)
   On the preparation path of an input that starts a reservation (`MirBuilder.Place` with `input`: `Operand` keeps it only for an
   input the call takes as an exclusive reference, by its expected Type, or without one, a value call's callee, by the reference it is
@@ -5612,6 +5615,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     done; G396's remaining items, the Exceptions above and X-2's 25 producers among them, are R7 exit conditions. R4's exit stands.
   - Superseded in part by R7-M53 (2026-11-19): X-2's DEC O4 line and the Exceptions list for A5-F7, A5-F8, A5-F10, A6's 2g units
     with G105, G126 and G147 (2): their stage is the R7 plan's stream Z, and each of the 25 producers is removed, not excepted.
+  - Applied by R7-M55 (2026-11-20; R7-M53's Rule): B2, B4-B8 and B12-B16 are broken HIR contracts (`InternalInvariant_Kd`).
   - Applied by R7-M58 (2026-11-20; R7-M53's Rule): X3, a capture use no consumer takes, is a broken contract (`InternalInvariant_Kd`).
 - **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
   「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; BU's review REVISE B1, the fix round under the owner's 「GO」)
@@ -23020,6 +23024,41 @@ R8-M* and R9-M* by the stage of the recording unit.
     and the frame that site kind. `CapabilityGap.StorageNesting` (`[Transitional("R7")]`, its reason now c4), read only by the witness
     Limit rows (`Requirement`, `Comparing`, `Parts`, `Parts`' null node over a height-refused instance included, B's ruling 17 O2)
     until c4.
+- **R7-M55 The MIR builder's closed-category arms are broken HIR contracts** (Middle, 2026-11-20; PLAN G396 (3), stream Z1, Q-551,
+  D-891; Major; the owner's order, DECISIONS Q22; design `middle\notes\g396-plan.md` §2 Z1; the Middle's code review, ACCEPT WITH
+  CONDITIONS, B1, B2 and N1-N8 taken; the Front's read of the Binding hunk) SPEC 4.3.3, 7.3, 23.1.2.
+  - **Rule.** A builder arm over a closed HIR vocabulary or a published fact that no published form takes is a broken contract, not
+    a limit. It records `InternalInvariant_Kd` at the node, with an Opaque value in its place, through the builder's one
+    broken-HIR-contract path, `MirBuilder.Invariant`. Where the lexer or Binding rejected the node, the value is derived from that
+    error and nothing is recorded (SPEC 23.1.2). The site names the roots the node's syntax touches, or a part built already (R5-M63,
+    R5-M84).
+  - **Converted (of R4-M165's 25).** B2 `Call` (`CallPlan.Covers` fails); B4 `Primitive`'s default; B5 `Metadata` without a
+    BuiltinForm; B6 `Place`'s Unset/Downcast; B7 `Named`'s default; B8 `Storage` without a receiver; B12 `Into`'s default (`HirOp.Unset`
+    keeps R4-M61's located `Unsupported_Kd`); B13 `Operand`'s StorageProjection, BaseBorrow without a reference Type and Erasure
+    without a Type; B14 `Aggregate` of no shape; B15 `Closure`'s unbound capture; B16 `Replace` without a setter.
+  - **Routed through the same path (B1).** BU-103's Unset acquisition, R4-M61's Literal without its constant (G122), `Reborrowed` of
+    another Type (its site keeps the built Place's roots) and a jump whose target no construct opened. Record-only producers that keep
+    building are another shape and stay: `MirBuilder.Blocks` (a Take's Place, a block's value), `MirBuilder.Transfers` (a target's)
+    and the module's Broken list (`MirBuilder.Module`, recorded before any body).
+  - **One coverage rule (B2).** `CallPlan` owns it: `Arity(function)`, the declared parameters with an accessor's self and value (also
+    a body's parameter count); `Arity()`, the call's; `Covers()`, operations + omitted defaults + receiver = arity, a receiver only
+    where the function takes one (SPEC 7.3). HasFacts' plain-call row and the builder's call assembly read it.
+  - **Amends R4-M61's fact list (N4).** `Binding.HasFacts` also guarantees that a plain call (no ExpansionPlan, no tuple operator)
+    covers its parameters (`CallPlan.Covers`), that a member access published PrimitiveOp has its BuiltinForm, and that an array
+    literal has a fixed-array Type or, without a fill, an Array Type (SPEC 4.3.3); before, "a Tuple or array literal's Type".
+  - **Existing rule restated (N5).** An Unresolved or Invalid node failing HasFacts is published Error but not Broken, and is derived
+    without a record: R4-M61's derived arm, read from Binding's own state of the node (no new analysis), its record Binding's (SPEC
+    23.1.2). No code changes.
+  - **Inherited, noted (N8).** `Rejected` also counts a node without a Type (Meaning null), so a broken contract at such a node is
+    derived silently, as on the Unsupported path; no program reaches it.
+  - **Applies** R7-M53's Rule (which supersedes R4-M165's DEC O4 for stream Z's producers) to B2, B4-B8 and B12-B16.
+  - **Rejected.** The arity row for every plan HasFacts reads (a dictionary literal's find takes its inputs from its expansion);
+    HasFacts rows for B13's target Type (the consumer's Type, not a fact of the node) and for B16's setter (HasFacts runs before the
+    target's PlaceShape, and a custom getter with a standard setter writes storage as a Place); a published BuiltinForm column (N3:
+    the form is Binding's one spelling rule, `SequenceMember`, read at publish by HasFacts and at build by `FormOf`; a column would
+    hold the same fact twice).
+  - **Rows.** `MirBuildTest.AnArmNoPublishedFormTakesIsABrokenContract` (13 rows) and `AResolvedNodeWithoutItsFactsIsABrokenContract`;
+    no record, HIR or MIR moves on programs.
 - **R7-M58 X3: a capture use no consumer takes is a broken contract** (Middle, 2026-11-20; PLAN G396 (3), stream Z8, Q-561, D-909;
   Minor by the plan, a Binding file: the Front's read, ACCEPT WITH CONDITIONS, C1 taken; the Middle's acceptance of the move, 11-20)
   SPEC 4.7.1, 7.7.3, 13.7.1, 23.1.2.
