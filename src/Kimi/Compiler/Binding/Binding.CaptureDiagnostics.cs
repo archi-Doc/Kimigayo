@@ -34,7 +34,7 @@ public sealed partial class Binding
     {
         var declaring = contextual.Declaration!;
         var self = contextual.Name == "self";
-        var prepared = self && DefaultParameters.InLaterDefault(node, contextual);
+        var prepared = self && InLaterDefault(node, contextual);
         var note = self ? "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2)"
             : "A setter's value is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2)";
         if (prepared)
@@ -56,7 +56,7 @@ public sealed partial class Binding
         var source = capture.Source;
         switch (code)
         {
-            case DiagnosticCode.InvalidAssignment_Kd when DefaultParameters.InLaterDefault(node, source):
+            case DiagnosticCode.InvalidAssignment_Kd when InLaterDefault(node, source):
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], span: capture.At);
                 break;
             case DiagnosticCode.InvalidAssignment_Kd:
@@ -65,14 +65,14 @@ public sealed partial class Binding
             case DiagnosticCode.TransferRequired_Kd when node is FunctionKoto { Captures: null }:
                 // SPEC 7.7.2 (R6-check H1, S3): the omitted list's capture, located at the Closure; no candidate is offered.
                 var omitted = $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow";
-                if (DefaultParameters.InLaterDefault(node, source))
+                if (InLaterDefault(node, source))
                 {
                     omitted += ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
                 }
 
                 node.Report(requirement, code, note: omitted, evidence: [name]);
                 break;
-            case DiagnosticCode.TransferRequired_Kd when DefaultParameters.InLaterDefault(node, source):
+            case DiagnosticCode.TransferRequired_Kd when InLaterDefault(node, source):
                 node.Report(
                     requirement,
                     code,

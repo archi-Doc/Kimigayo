@@ -98,7 +98,7 @@ internal struct HirTables
     internal static HirRes ResOf(Koto node) => Symbol(node) is not { } symbol ? HirRes.None : symbol.Kind switch
     {
         BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate => HirRes.Local,
-        BindingSymbolKind.Parameter => DefaultParameters.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
+        BindingSymbolKind.Parameter => Binding.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
         BindingSymbolKind.Capture => HirRes.Capture,
         BindingSymbolKind.Storage => HirRes.Field,
         BindingSymbolKind.Property => Binding.IsStatic(symbol) ? HirRes.Static : HirRes.Field,

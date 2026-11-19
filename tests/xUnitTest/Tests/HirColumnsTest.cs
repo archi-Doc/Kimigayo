@@ -159,7 +159,7 @@ public sealed class HirColumnsTest
             {
                 if (node is IdentifierNameKoto && HirTables.ResOf(node) == HirRes.Param)
                 {
-                    Assert.False(DefaultParameters.InLaterDefault(node, HirTables.Symbol(node)!, out var walked));
+                    Assert.False(Binding.InLaterDefault(node, HirTables.Symbol(node)!, out var walked));
                     (work, found) = (work + walked, found + 1);
                 }
             }
