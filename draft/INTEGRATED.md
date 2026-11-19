@@ -666,7 +666,7 @@ ending) and **P12**.
 
 ## 2026-10-18 — R5 and R6 implementation plan
 
-- [R5 and R6 Implementation Plan](Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md): 一部取り込み (open). The
+- [R5 and R6 Implementation Plan](Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md): 一部取り込み (open). The
   owner adopted it on 2026-10-18 as the formal plan for R5, R6-gen and R6-check, with its three exit gates, and answered its
   questions OQ1–OQ17 (its status line and §2.2 record the outcomes; DECISIONS R5-M1–R5-M13). It is a working plan: no
   section is integrated into SPEC or IMPL, and no text is frozen.
@@ -1551,3 +1551,24 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   - The old path in DECISIONS R5-M2, in `Proposals/2026-10-17 R5 and R6 Implementation Plan.md`, in `Proposals/2026-10-12
     Post-Reduction Work Items.md` and in `Sketches/R5 Step 0/deep-dives/q4-evidence-metrics.md` reads this file.
   - No SPEC or IMPL text came from it.
+
+## 2026-11-19 — R5 and R6 implementation plan closed
+
+- `Changes/2026-10-17 R5 and R6 Implementation Plan.md`: 取り込み済み. It moved from `Proposals/` on the owner's instruction (verbatim
+  「上記の3ファイルは完了しましたか？完了していたら、Changesフォルダーに移動してください。」, 2026-11-19); of the three files the owner asked about it is the one that is
+  complete. The two A5 plans stay in `Proposals/`.
+  - The file gained a closing status paragraph, and its two links to `Proposals/` (the reduction plan and the Polonius A5 plan) follow
+    the move; its link to `Changes/2026-10-12 Pre-R5 Work Items.md` reads that file again. The whole file is now frozen.
+  - Dispositions:
+    - R5 is done (DECISIONS R5-M148).
+    - R6 is done: R6-gen (R5-M167) and R6-check (R5-M194).
+    - What R6-check left moved to R7 (R5-M194; the R7, R8 and R9 plan's revision 3): PD30 to R7-T1 (RQ12); PD21 is superseded by
+      DECISIONS Q9.
+    - Leftovers live in PLAN: H13's V1 review N1, and the Back's rows G121, G153 (2), G157, G311, G337, G156 and RZ.
+  - The old path is repointed where a link reads it: PLAN (the R5 and R6 line), COMPILER_ARCHITECTURE (the R5 stage row), DECISIONS
+    (the "R5 and R6 (adopted 2026-10-18)" section's link, the link only), twelve Sketches links (`R5 Step 0/`: `audit.md`,
+    `C-design-2.md`, `README.md`; `R6-check/`: `H0-design.md`, `H0a-publication.md`, `H0b-flip.md`, `H0c-deletions.md`; `R6-gen/`:
+    `G0-design.md`, `G4-design.md`, `G7-design.md`, `G8-design.md`, `G9-design.md`) and one code path (`R5 Step 0/F-design-2.md`). The
+    open `Proposals/2026-10-18 A5 Step 2 Implementation Plan.md` keeps its sibling link, which no longer resolves (its text is frozen),
+    and the 2026-11-06 entry above keeps the old path as written.
+  - No SPEC or IMPL text came from it; the SETTLED revision at H15 is recorded under its intake entry.

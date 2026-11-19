@@ -15974,7 +15974,7 @@ resumed by R4-M86 (2026-10-20).
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"
-is the [R5 and R6 Implementation Plan](../../draft/Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md); its
+is the [R5 and R6 Implementation Plan](../../draft/Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md); its
 unit and decision names (S1, E2, PD12) are used as there. Each planning-session decision PD1–PD32, component and temporary
 structure is recorded here by the unit that first implements it.
 

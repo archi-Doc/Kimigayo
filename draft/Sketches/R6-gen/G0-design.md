@@ -3,7 +3,7 @@
 Status: G0's one design (plan §4.9 row G0, Doc, D+R under S2), revision 2 after the re-review (PASS) and its rulings. Working record, not authority:
 what it decides becomes authority only as the DECISIONS entry of §6, and its owner items only by the owner's answers.
 
-Base: dev `07a5ca2da` (code, DECISIONS, PLAN, STATUS). "Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md);
+Base: dev `07a5ca2da` (code, DECISIONS, PLAN, STATUS). "Plan" is the [R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md);
 "K" is `draft/Sketches/R5 Step 0/K-package.md`; S1–S8 are K §6 (owner-approved, R5-M18). Paths: `C/` = `src/Kimi/Compiler/`,
 `T/` = `tests/xUnitTest/Tests/`. "sel" = `KIMI_PIPELINE=mir` + `KIMI_CODEGEN=mir`. Evidence read, not rerun: X1
 (`artifacts/verify/reduction-R5/17cd554ab/`), `artifacts/verify/shared-base/228d6f0b4/` (default Session, mir-diff ledger) and batch
