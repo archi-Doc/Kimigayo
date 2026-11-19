@@ -98,6 +98,7 @@ public sealed partial class Binding
         this.implicitPairFollows = new(this);
         this.phantomRawOrigins = new(this);
         this.invalidStaticOriginSlots = new(this);
+        this.callablePremiseFailures = new(this);
         this.effectBoundRejections = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);

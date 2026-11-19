@@ -264,7 +264,6 @@ public sealed partial class Binding
             this.EnsureEffectBounds(this.contractShapes[i]);
         }
 
-        this.callablePremiseFailures.Clear();
         this.PrepareCallableEffects();
         this.PrepareVirtualEffectBounds();
     }
