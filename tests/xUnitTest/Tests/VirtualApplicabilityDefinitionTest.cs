@@ -36,15 +36,13 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         => Assert.Equal([DiagnosticCode.InvalidConstraint_Kd], MinimalEmissionTest.Analyze(Program(true, "string") + Override("2") + "()").Binding.Issues.Select(static x => x.Code));
 
     // SPEC 6.4.3 (O-370): the override of the refuted slot is one declaration error; its body's Binding-time records stand beside it (SPEC
-    // 23.1.2), with the program's independent unresolved Name. PLAN G1071's gate 1 publishes the body of a definition whose own Type did
-    // not fail, whatever its failure, so a check of the published body rests only where it reads the failed premise (`string is Copy`, the
-    // slot's `T is Copy` at Derived's `string`): the effect bound's record is not one, and the bare move's TransferRequired_Kd (R6-check
-    // H1), whose Copy proof reads that premise, rests on it through R7-C3 C3-1's completed gate 2 (SPEC 8.2.3: a premise error once,
-    // never at uses), so that row is in the Explicit theory below until C3-1 is on this branch's base (gate 1 lands after it).
+    // 23.1.2), with the program's independent unresolved Name. A rejected definition publishes no body (DECISIONS R4-M18), so the records
+    // read from its published body (the effect bound's, the bare move's TransferRequired_Kd, R6-check H1) are dependents of the rejection.
     [Theory]
     [InlineData("missing", "UnresolvedBinding_Kd")]
     [InlineData("\"wrong\"", "TypeMismatch_Kd")]
     [InlineData("Console.writeLine(\"effect\")\n        return 2", null)]
+    [InlineData("let value = \"text\"\n        let copy = value\n        return 2", null)]
     public void ARejectedOverrideKeepsItsBodysBindingRecords(string body, string? code)
     {
         var source = Program(false, "string") + Override(body, statement: body.Contains('\n')) + "let independent = absent\n";
@@ -55,14 +53,6 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         Assert.Equal(expected.Order(), TestDiagnostics.Of(c).Select(static x => x.Code).Order());
         Assert.False(c.Generate(TextWriter.Null));
     }
-
-    // PLAN G1071's row that needs R7-C3 C3-1's completed gate 2 too: the bare move in the rejected override reads the failed premise
-    // `string is Copy` and rests (above); on dev before gate 1 the body was not published (DECISIONS R4-M18's gate). A regular row of
-    // ARejectedOverrideKeepsItsBodysBindingRecords once C3-1 is on this branch's base.
-    [Theory(Explicit = true)]
-    [InlineData("let value = \"text\"\n        let copy = value\n        return 2", null)]
-    public void ARejectedOverridesBareMoveRestsOnItsPremiseError(string body, string? code)
-        => this.ARejectedOverrideKeepsItsBodysBindingRecords(body, code);
 
     // Derived declares no override of the refuted slot (one is a declaration error, SPEC 6.4.3): the call's or Item's record is the one.
     [Theory]
