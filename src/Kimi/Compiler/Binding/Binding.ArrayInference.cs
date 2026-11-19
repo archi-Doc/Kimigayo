@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, BoundLength> inferredArrayLengths = new();
+    private readonly InferredArrayLengthRows inferredArrayLengths;
     private readonly Dictionary<Koto, Koto> arrayInferenceShapes = new(ReferenceEqualityComparer.Instance);
     private Dictionary<Koto, ArrayInferenceFailure>? arrayInferenceFailures;
 
@@ -441,5 +442,23 @@ public sealed partial class Binding
 
         established = common;
         return true;
+    }
+
+    /// <summary>The `inferredArrayLengths` family's one accessor (DECISIONS BU-220): a pass family, the length an initializer supplied for
+    /// a written length hole `_` (SPEC 4.3.1), kept in the hole's module's NodeColumns at its SyntaxId (null for none). Its members keep the
+    /// names its readers use.</summary>
+    private readonly struct InferredArrayLengthRows(Binding binding)
+    {
+        internal BoundLength this[Koto hole]
+        {
+            set => HirTables.Of(hole).Families.InferredArrayLengths.Ref(hole.SyntaxId, binding) = value;
+        }
+
+        internal bool ContainsKey(Koto hole) => this.GetValueOrDefault(hole) is not null;
+
+        internal bool TryGetValue(Koto hole, [NotNullWhen(true)] out BoundLength? length) => (length = this.GetValueOrDefault(hole)) is not null;
+
+        internal BoundLength? GetValueOrDefault(Koto hole)
+            => hole.SyntaxOwner is { } table ? table.Hir.Families.InferredArrayLengths.Get(hole.SyntaxId, binding) : null;
     }
 }

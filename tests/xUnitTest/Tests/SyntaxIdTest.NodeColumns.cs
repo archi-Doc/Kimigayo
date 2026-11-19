@@ -192,7 +192,7 @@ public partial class SyntaxIdTest
     // would satisfy; OriginTwins, a body-local borrow's failed local clause, A5's twin; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; CallablePremiseFailures, an implementation's Callable
-    // bound its requirement lacks). Checked after each edit (N5-5's review C1):
+    // bound its requirement lacks; InferredArrayLengths, a length hole's inferred length). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -218,6 +218,7 @@ public partial class SyntaxIdTest
     [InlineData("InvalidStaticOriginSlots", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\nfunc g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")\n", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("EffectBoundRejections", "enum E\n    A\n    effect confined\n    B\n", DiagnosticCode.InvalidEffectBound_Kd)]
     [InlineData("CallablePremiseFailures", "contract Runner\n    func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\nstruct Worker\n    Self is Runner\n    public func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\n            effect confined\n        return callback()\n", DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

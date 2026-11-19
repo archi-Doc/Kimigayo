@@ -323,6 +323,7 @@ internal struct NodeColumns
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
     internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
+    internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
 
     internal void Resize(int length)
     {
@@ -375,6 +376,7 @@ internal struct NodeColumns
         this.InvalidStaticOriginSlots.Grow(length);
         this.CallablePremiseFailures.Grow(length);
         this.EffectBoundRejections.Grow(length);
+        this.InferredArrayLengths.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -403,6 +405,7 @@ internal struct NodeColumns
         this.InvalidStaticOriginSlots.Freeze(binding);
         this.CallablePremiseFailures.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
+        this.InferredArrayLengths.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -460,6 +463,7 @@ internal struct NodeColumns
             InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
             CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
+            InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
         };
         return columns;
     }

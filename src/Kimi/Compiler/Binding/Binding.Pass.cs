@@ -69,7 +69,6 @@ public sealed partial class Binding
         this.ResetSpecializations();
         this.ResetVirtualDeclarations();
         this.receiverOperations.Clear();
-        this.inferredArrayLengths.Clear();
         this.arrayInferenceShapes.Clear();
         this.arrayInferenceFailures?.Clear();
         this.noInitFailures?.Clear();
