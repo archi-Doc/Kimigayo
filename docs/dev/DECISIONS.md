@@ -12574,7 +12574,7 @@ resumed by R4-M86 (2026-10-20).
     `DropConsultation`) around a pass element that publishes facts. U1 frames the passes a form reaches past H:
     ValidateConstraintUses (a clause; a constructed Type node), ValidateConstraintEnvironments (the owner),
     ValidateClosedTypeConstraints (the clause, then its owner resting on it), ValidateConformances' agreement (the first path's
-    use), PublishSourceStates (the state's declaration), PrepareVirtualOverrides' premises (the override). Every other pass is G651
+    use), PublishSourceStates (the state's declaration), SettleVirtualOverridePremises' premises (the override). Every other pass is G651
     a1-a4's.
   - `ConstraintEnvironment`'s invalidity is the node whose failure caused it (`Failed`, written by `Fail` alone; nine writers name
     it); as an `ICheckCause` it is what a proof that reads it rests on (`InvalidEnvironment`, the one proof read; `Evidence.Invalid`
@@ -14176,11 +14176,13 @@ resumed by R4-M86 (2026-10-20).
     dependents of the rejection, as for every rejected definition.
   - A substituted condition that is Unknown at the declaration stays an assumption (6.4.3): `struct Gen<U> : Base<U>` overriding a
     slot under `T is Marker` is accepted, and an instance whose condition is Refuted (`Gen<Thing>`) keeps a null slot and a
-    checked-only body (K8's consumer rule; R5-M62's consumer rule, R5-M74, R5-M114 and R5-M153 stay).
-  - Supersedes, for the declaration case only, R4-M28's 'HIR publishes a body no instance applies (checked, never generated)' and
-    its rejected 'an inapplicable override owing nothing', and R5-M77's 'Such a body is accepted at check when its condition is
-    refuted without contradiction': the reason that no longer holds is that such a declaration was accepted; SPEC 6.4.3 as
-    rewritten makes it an error.
+    checked-only body (K8's consumer rule; R5-M62's consumer rule, R5-M74 and R5-M114 stay; R5-M153 as below).
+  - Supersedes R5-M77's 'Such a body is accepted at check when its condition is refuted without contradiction' and, of R4-M28's
+    ('HIR publishes a body no instance applies (checked, never generated)', its rejected 'an inapplicable override owing nothing')
+    and R5-M153's examples, the closed refuted-slot override: the reason that no longer holds is that such a declaration was
+    accepted; SPEC 6.4.3 as rewritten makes it an error. R5-M153's rule keeps its other inputs: a layout-less constructor
+    (R5-M149) and an instance of an override whose condition is refuted only at that instance (its null slot and checked-only
+    body).
   - What c2-4a removes from generation: nothing in code; InstanceCollector.Generates' closed-root leave-out of the override half
     loses its input in accepted programs (FunctionCodegenTest's `ALibraryLeavesOutTheOverrideOfARefutedSlot(false)` now asserts
     the declaration error); its removal or an invariant is the Back's (PLAN G1047).
