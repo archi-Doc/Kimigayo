@@ -311,12 +311,12 @@ public partial class TypeDagScalingTest
         var pair = c.Types.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, environments);
         var half = c.Types.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [pair, pair]);
         var whole = c.Types.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [half, half]);
-        var closed = calls.Select(x => c.Types.Apply(whole, x)!).ToArray();
+        var closed = calls.Select(x => c.Types.Apply(whole, x).Type!).ToArray();
         for (var i = 0; i < calls.Length; i++)
         {
             Assert.Same(closed[i].Components[0], closed[i].Components[1]);
             var parts = closed[i].Components[0].Components[0].Components;
-            Assert.Equal(environments.Select(x => c.Types.Apply(x, calls[i])!), parts);
+            Assert.Equal(environments.Select(x => c.Types.Apply(x, calls[i]).Type!), parts);
             Assert.All(parts, x => Assert.Same(calls[i], x.InstanceContext));
         }
 
@@ -351,7 +351,7 @@ public partial class TypeDagScalingTest
             var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
             var environment = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
             var call = nodes.OfType<InvocationKoto>().Single(static x => x.CallOf()?.Target.Name == "make").CallOf()!;
-            return c.Binding.ClosureSignature(c.Types.Apply(environment, c.Types.SubstOf(call)!)!)!.Components[1];
+            return c.Binding.ClosureSignature(c.Types.Apply(environment, c.Types.SubstOf(call)!).Type!)!.Components[1];
         }
     }
 

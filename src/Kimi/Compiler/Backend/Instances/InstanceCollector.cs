@@ -8,7 +8,7 @@
 // version's, since its runs follow the version's library step and MirProgram cleared the program store where the version started
 // (PLAN G951 U2-K-b, F18); the root range (Source.Module below it,
 // not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
+// Answered, Apply, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
 // an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
 // MirProgram.StaticInit; the Target and Need columns of the intrinsic rows; LayoutNeeds; the capability table; the
@@ -49,18 +49,26 @@
 // C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field) InvalidCLayout_Kd and
 // a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage is a broken contract in a
 // complete compilation and otherwise a dependent that Report drops; a type-driven item needs an Ok verdict.
-// Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
-// (Made): Prepared makes it; Rejected rests on a part Binding rejected, as Layout's Rejected, which a complete compilation has none of
-// (TyCtxt.BindingComplete), so it is a broken contract at its site (Report); a limit is the storage-nesting gap. Every row reads a Type of
-// an instance at its site through In or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
-// under a substitution; those read no verdict and serve code generation and a Type whose verdict its site already read (Rest's operand and
-// environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
-// argument, a part of the Item Type its site made).
+// Formation (DECISIONS BU-36, BU-38; R7-T1): a Type or substitution of an item's instance is the substitution alone, never its
+// storage verdict (Binding's bound is retention's and A4's, not the collector's: a finite Type past it is generated, its growth R5-M170's
+// rule). Each run is Binding's one answer frame (TyCtxt.OpenAnswer, closed in a finally, so no throw leaves it open), so every Type the
+// run causes Binding to form answers a refusal past IMPL A.4's height to the formation owning it, of two: a substitution at a site, and an
+// instance's stored Types. Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed
+// substitution through TyCtxt's formation query (TyCtxt.Answered), whose cause the collector reads once, at its requesting site (Formed):
+// Formed makes it; HeightLimit is TypeHeightLimit_Kd (Resource, IMPL 21.3.2) at the site (a local's at the local, the Type it writes
+// forming it), once per requesting declaration and forming site at its least use, as a Layout limit is (DECISIONS R5-M171); Incomplete is
+// a broken contract at the site (Report). An instance's stored Types past the height are its own cause (AdtDef.InstanceStorage.HeightLimit),
+// which every reader of the instance reads: Layout as its HeightLimit, mapped here (RecordOf) to TypeHeightLimit_Kd at the use, once per
+// erased Type and declaration (R5-M171), never Rejected. A part Binding rejected passes through to Layout's Rejected row (RecordOf), a
+// dependent of Binding's record. A refusal no formation owns is the frame's, PLAN G651's site-less broken contract at its close. TypeOf
+// reads TyCtxt.Apply, the same substitution outside a formation, for code generation and a Type whose cause its site already read (Rest's
+// operand and environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic
+// row's Type argument, a part of the Item Type its site made).
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
 // (CarriesInstance, the instance of the declaration it holds, TyCtxt.EnclosingDeclaration: a nested function's call, DECISIONS R5-M43; a
 // Closure no instance closed, in its own identity: a held instance with an Origin position or a generic container's group static,
-// R5-M157, BU-60), a substitution or Type whose storage is a limit (Made),
+// R5-M157, BU-60), a requirement call whose witness's Self is past Binding's bound (Witness's Limit, until R7-T1's c4),
 // OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
 // gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
 // a 17th generation of an identity (a body's definition, a DropGlue's declaration) on an admission chain, its height grown
@@ -108,9 +116,11 @@ internal sealed partial class InstanceCollector
     private readonly TyCtxt types;
     private readonly MirCases cases;
     private readonly Layout layout;
-    // The least use of each erased Type over a limit per declaration (Limit), recorded at the run's end (DECISIONS R5-M171).
-    private readonly Dictionary<(BoundType Type, MirDefKey Declaration), SourceRef> limits = new();
-    private readonly List<SourceRef> limitSubjects = new(); // RecordLimits' scratch.
+    // The least use of each use over a limit per declaration (Limit), recorded at the run's end with its code (DECISIONS R5-M171): an
+    // erased Type over a Layout limit or the type-driven height cap, or a forming site whose substitution passes IMPL A.4's height
+    // (TypeHeightLimit_Kd, Type null; R7-T1).
+    private readonly Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), SourceRef> limits = new();
+    private readonly List<(SourceRef Subject, DiagnosticCode Code)> limitSubjects = new(); // RecordLimits' scratch.
     private readonly HashSet<MonoKey> refused = new(); // The keys refused for growth, each reported once (DECISIONS R5-M170).
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
@@ -173,6 +183,64 @@ internal sealed partial class InstanceCollector
         }
 
         this.RunCount++;
+        var frame = this.types.OpenAnswer(); // R7-T1: every substitution the run causes is inside the collector's answer frame.
+        try
+        {
+            return this.Collect(program, rootModules, set);
+        }
+        finally
+        {
+            this.types.CloseAnswer(frame);
+        }
+    }
+
+    /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
+    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its instance under the representative, the
+    /// substitution alone (TyCtxt.Apply; a site reads its cause, In).</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="type">A Type of its body.</param>
+    /// <returns>The Type in the instance, or null where the substitution does not form it.</returns>
+    internal BoundType? TypeOf(int item, BoundType type)
+        => this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative).Type : type;
+
+    /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
+    /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="length">A length of its body.</param>
+    /// <returns>The length in the instance, or null where the representative does not complete it.</returns>
+    internal BoundLength? LengthOf(int item, BoundLength length)
+        => this.Set.Items[item].Representative is { } representative ? this.types.InstanceLength(length, representative) : length;
+
+    /// <summary>Gets whether a substitution a site requests formed its instance, the collector's one reading of a cause (TyCtxt.Formation;
+    /// R7-T1; DECISIONS R5-M151, R5-M171), the cause of TyCtxt's answer-frame query (TyCtxt.Answered): Formed makes the instance;
+    /// HeightLimit (a Type past IMPL A.4's height, IMPL 21.3.2's Resource) is TypeHeightLimit_Kd at the site, a use of its forming site over
+    /// a limit in the requesting item's declaration (Limit), recorded once at its least use at the run's end; Incomplete is a broken
+    /// contract at the site (Report). The request is refused but for Formed.</summary>
+    /// <param name="cause">The cause.</param>
+    /// <param name="item">The requesting item.</param>
+    /// <param name="forming">The site in its template that forms the instance (its body's syntax, unlocated), the height record's key.</param>
+    /// <param name="subject">The requesting site, located (Subject).</param>
+    /// <returns>Whether the cause is Formed.</returns>
+    internal bool Formed(TyCtxt.Formation cause, int item, SourceRef forming, SourceRef subject)
+    {
+        switch (cause)
+        {
+            case TyCtxt.Formation.Formed:
+                return true;
+            case TyCtxt.Formation.HeightLimit:
+                this.Limit(DiagnosticCode.TypeHeightLimit_Kd, null, forming, this.Declaration(item), subject);
+                return false;
+            case TyCtxt.Formation.Incomplete:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+                return false;
+            default:
+                throw new InvalidOperationException($"The formation {cause} has no row.");
+        }
+    }
+
+    // One run of a version (Run), inside the collector's answer frame.
+    private CheckedSet Collect(MirProgram program, int rootModules, CheckedSet set)
+    {
         set.Clear(program.Version);
         this.counts.Clear();
         this.limits.Clear();
@@ -215,63 +283,28 @@ internal sealed partial class InstanceCollector
         return set;
     }
 
-    /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
-    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its instance under the representative when its
-    /// storage is Prepared (Instance).</summary>
-    /// <param name="item">The item.</param>
-    /// <param name="type">A Type of its body.</param>
-    /// <returns>The Type in the instance, or null when its storage is not Prepared (a site maps the verdict, In).</returns>
-    internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
-
-    /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
-    /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
-    /// <param name="item">The item.</param>
-    /// <param name="length">A length of its body.</param>
-    /// <returns>The length in the instance, or null where the representative does not complete it.</returns>
-    internal BoundLength? LengthOf(int item, BoundLength length)
-        => this.Set.Items[item].Representative is { } representative ? this.types.InstanceLength(length, representative) : length;
-
-    /// <summary>Gets whether a storage verdict of TyCtxt makes the instance a site requests, the collector's one reading of it (DECISIONS
-    /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected, a broken contract (Report); Limit is the
-    /// storage-nesting gap (PLAN G128) at the site.</summary>
-    /// <param name="storage">The verdict.</param>
-    /// <param name="subject">The requesting site.</param>
-    /// <returns>Whether the verdict is Prepared.</returns>
-    internal bool Made(Binding.StorageOutcome storage, SourceRef subject)
+    // A Type of an item's body in the item's instance read at a site (TyCtxt.Answered, its cause read there, Formed): the Type itself for a
+    // closed item; null where it does not form.
+    private BoundType? In(int item, SourceRef subject, BoundType type)
     {
-        DiagnosticCode? record = storage switch
+        if (this.Set.Items[item].Representative is not { } representative)
         {
-            Binding.StorageOutcome.Prepared => null,
-            Binding.StorageOutcome.Rejected => DiagnosticCode.InternalInvariant_Kd,
-            Binding.StorageOutcome.Limit => Capability.Code(CapabilityGap.StorageNesting),
-            _ => throw new InvalidOperationException($"The storage verdict {storage} has no row."),
-        };
-
-        if (record is { } code)
-        {
-            this.Report(code, subject);
+            return type;
         }
 
-        return storage == Binding.StorageOutcome.Prepared;
+        var (instance, cause) = this.types.Answered(type, representative);
+        return this.Formed(cause, item, subject, subject) ? instance : null;
     }
 
-    // A Type of an item's body in the item's instance with its storage verdict (TyCtxt.Instance), the one path of TypeOf and In: the Type
-    // itself, Prepared, for a closed item.
-    private (BoundType? Type, Binding.StorageOutcome Storage) Instance(int item, BoundType type)
-        => this.Set.Items[item].Representative is { } representative ? this.types.Instance(type, representative) : (type, Binding.StorageOutcome.Prepared);
-
-    // A Type of an item's body in the item's instance (Instance), its verdict read at the site (Made); null unless Prepared.
-    private BoundType? In(int item, SourceRef subject, BoundType type)
-        => this.Instance(item, type) is var (closed, storage) && this.Made(storage, subject) ? closed : null;
-
-    // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path. A broken contract,
-    // InternalInvariant_Kd, presupposes a complete Binding; in an incomplete compilation it may rest on a part Binding rejected, which the
-    // collector cannot name, so it is that error's dependent, without a record. Every other record is kept.
-    private void Report(DiagnosticCode code, SourceRef subject)
+    // SPEC 23.1.2, DIAGNOSTICS rules 1 and 9 (DECISIONS R5-M151, amending BU-38's guard): the collector's one record path, with the record's
+    // facts (a height limit's value, R7-T1). A broken contract, InternalInvariant_Kd, presupposes a complete Binding; in an incomplete
+    // compilation it may rest on a part Binding rejected, which the collector cannot name, so it is that error's dependent, without a record.
+    // Every other record is kept.
+    private void Report(DiagnosticCode code, SourceRef subject, ReadOnlySpan<ProblemFact> facts = default)
     {
         if (code != DiagnosticCode.InternalInvariant_Kd || this.types.BindingComplete)
         {
-            this.program!.Report(subject, code, MirRecordClass.Collection);
+            this.program!.Report(subject, code, MirRecordClass.Collection, facts);
         }
     }
 }

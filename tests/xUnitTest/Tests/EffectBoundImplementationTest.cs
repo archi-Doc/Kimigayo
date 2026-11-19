@@ -88,8 +88,9 @@ public partial class EffectBoundImplementationTest
     //   comparison: a requirement call on an abstract Self uses the bounds of the Contracts its premises prove, never an
     //   implementation's (SPEC 8.11.3; A4's X2, DECISIONS R4-M22), and Equatable bounds no effect of equals;
     // - for storage nested past the implementation's height (Box65), the limits' records at the call (SPEC 23.1.1; PLAN G128), the
-    //   conformance valid (SPEC 8.11.2): A5's OwnershipDepthLimit_Kd (R4-M153), the instance collector's Unsupported_Kd and its
-    //   GenerationResourceLimit_Kd.
+    //   conformance valid (SPEC 8.11.2): A5's OwnershipDepthLimit_Kd (R4-M153) and the instance collector's GenerationResourceLimit_Kd
+    //   (Layout's); as a Type argument alone (deepArgument), which no walk meets, it is an instance (R7-T1: the collector reads no
+    //   storage verdict; before, its Unsupported_Kd at the call).
     [Theory]
     [InlineData("forward", "")]
     [InlineData("environment", "IncompatibleContractImplementation_Kd @ Self is Reset")]
@@ -99,9 +100,9 @@ public partial class EffectBoundImplementationTest
     [InlineData("format", "")]
     [InlineData("equals", "IncompatibleContractImplementation_Kd @ Self is Reset")]
     [InlineData("quiet", "")]
-    [InlineData("pair", "OwnershipDepthLimit_Kd @ U.pair(self.item@ref, self.big@ref); Unsupported_Kd @ U.pair(self.item@ref, self.big@ref); GenerationResourceLimit_Kd @ self.item@ref")]
-    [InlineData("deep", "OwnershipDepthLimit_Kd @ U.wrap(self.item@ref); Unsupported_Kd @ U.wrap(self.item@ref); GenerationResourceLimit_Kd @ self.item@ref")]
-    [InlineData("deepArgument", "Unsupported_Kd @ U.inner<T>()")]
+    [InlineData("pair", "OwnershipDepthLimit_Kd @ U.pair(self.item@ref, self.big@ref); GenerationResourceLimit_Kd @ self.item@ref")]
+    [InlineData("deep", "OwnershipDepthLimit_Kd @ U.wrap(self.item@ref); GenerationResourceLimit_Kd @ self.item@ref")]
+    [InlineData("deepArgument", "")]
     public void StorageBindingRejectedKeepsItsRepairsRecords(string form, string repaired)
     {
         Assert.Equal(repaired, string.Join("; ", Issues("i32")));
@@ -110,37 +111,18 @@ public partial class EffectBoundImplementationTest
         // Binding's records, then check's (the MIR's and the collector's), each as its code and its subject's first line.
         string[] Issues(string field)
         {
-            var item = form.StartsWith("deep", StringComparison.Ordinal) ? RetentionTest.Box65 : "Bad";
-            var (conformance, witness) = form switch
-            {
-                "requirement" => ("Named", "    public func name(self: ref/Self) -> i32 => 1\n"),
-                "format" => ("Utf8Format", "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n"),
-                "equals" or "quiet" => (form == "quiet" ? "QuietEq" : "Equatable", "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n"),
-                _ => (null, string.Empty),
-            };
-            var (call, helpers) = form switch
-            {
-                "forward" or "deep" => ("U.wrap(self.item@ref)", "    public func touch<T>(x: ref/T) => ()\n    public func wrap<T>(x: ref/T) => U.touch(x)\n"),
-                "environment" => ("U.wrap(self.item@ref)", "    public func touch<T>(x: ref/T) => Console.writeLine(\"t\")\n    public func wrap<T>(x: ref/T) => U.touch(x)\n"),
-                "argument" or "deepArgument" => ($"_ = U.outer<{item}>()", "    public func outer<T>() -> i32 => U.inner<T>()\n    public func inner<T>() -> i32 => 0\n"),
-                "dictionary" => ("_ = U.keyed(self.item@ref)", "    public func keyed<T>(x: ref/T) -> i32\n        var d: Dictionary<i32, Option<T>> = [:]\n        return 0\n"),
-                "requirement" => ("_ = U.ask(self.item@ref)", "    public func ask<T>(x: ref/T) -> i32\n        T is Named\n        return x.name()\n"),
-                "format" => ("_ = U.show(self.item@ref)", "    public func show<T>(x: ref/T) -> string\n        T is Utf8Format\n        return Text.toString(x)\n"),
-                "equals" or "quiet" => ("_ = U.same(self.item@ref)", $"    public func same<T>(x: ref/T) -> bool\n        T is {conformance}\n        return x == x\n"),
-                _ => ("U.pair(self.item@ref, self.big@ref)", "    public func touch<T, S>(x: ref/T, y: ref/S) => ()\n    public func pair<T, S>(x: ref/T, y: ref/S) => U.touch(x, y)\n"),
-            };
-            var source = "contract Reset\n    func reset(self: uniq/Self)\n        effect confined\ncontract Named\n    func name(self: ref/Self) -> i32\n        effect confined\n" +
-                "contract QuietEq: Equatable\n    effect Equatable.equals confined\n" +
-                RetentionTest.Box + "struct Bad\n" + (conformance is null ? string.Empty : $"    Self is {conformance}\n") + $"    public var m: {field}\n" + witness +
-                $"struct Holder\n    Self is Reset\n    var item: {item}\n" + (form == "pair" ? $"    var big: {RetentionTest.Box65}\n" : string.Empty) +
-                $"    public func reset(self: uniq/Self)\n        {call}\ngroup U\n" + helpers + Main;
-            var c = MinimalEmissionTest.Analyze(source);
+            var c = MinimalEmissionTest.Analyze(HolderSource(form, field));
             return [.. c.Binding.Issues.Select(static x => $"{x.Code} @ {First(x.Node)}"),
                 .. c.Problems.Select(x => $"{x.Code} @ {First(c.SyntaxOf(x.Subject))}")];
         }
 
         static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
     }
+
+    // R7-T1 (B's ruling 14, labelled V: SPEC 8.11.2, 8.13.3; IMPL 21.3.1; the Middle's RP17): the deepArgument form, Box^65<i32> as a
+    // Type argument alone through a forwarded call, which no walk meets, is generated and runs.
+    [Fact]
+    public void ATypeArgumentPastBindingsBoundExecutes() => ScalarEmissionTest.EmitFixture("EffectBoundDeepArgument", HolderSource("deepArgument", "i32"), string.Empty);
 
     // SPEC 8.11.2: every function the compiler serves has one effect class, Binding's category of it (TyCtxt.Bodyless) and, for an
     // intrinsic, MIR's row of it (MirDescriptors; MirEffects reads the two). Every library function or $abort that is no body is an
@@ -328,5 +310,34 @@ public partial class EffectBoundImplementationTest
         Assert.True(valid || !c.Accepts, MinimalEmissionTest.Describe(c));
         (DiagnosticCode, SyntaxLocation)[] bound = valid ? [] : [(DiagnosticCode.IncompatibleContractImplementation_Kd, MirTargetSide.At(conformance))];
         MirTargetSide.Check(c, [.. bound, .. others]);
+    }
+
+    // StorageBindingRejectedKeepsItsRepairsRecords's program of a form: Holder's reset over its item, Bad's Field m of the given Type.
+    private static string HolderSource(string form, string field)
+    {
+        var item = form.StartsWith("deep", StringComparison.Ordinal) ? RetentionTest.Box65 : "Bad";
+        var (conformance, witness) = form switch
+        {
+            "requirement" => ("Named", "    public func name(self: ref/Self) -> i32 => 1\n"),
+            "format" => ("Utf8Format", "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n"),
+            "equals" or "quiet" => (form == "quiet" ? "QuietEq" : "Equatable", "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n"),
+            _ => (null, string.Empty),
+        };
+        var (call, helpers) = form switch
+        {
+            "forward" or "deep" => ("U.wrap(self.item@ref)", "    public func touch<T>(x: ref/T) => ()\n    public func wrap<T>(x: ref/T) => U.touch(x)\n"),
+            "environment" => ("U.wrap(self.item@ref)", "    public func touch<T>(x: ref/T) => Console.writeLine(\"t\")\n    public func wrap<T>(x: ref/T) => U.touch(x)\n"),
+            "argument" or "deepArgument" => ($"_ = U.outer<{item}>()", "    public func outer<T>() -> i32 => U.inner<T>()\n    public func inner<T>() -> i32 => 0\n"),
+            "dictionary" => ("_ = U.keyed(self.item@ref)", "    public func keyed<T>(x: ref/T) -> i32\n        var d: Dictionary<i32, Option<T>> = [:]\n        return 0\n"),
+            "requirement" => ("_ = U.ask(self.item@ref)", "    public func ask<T>(x: ref/T) -> i32\n        T is Named\n        return x.name()\n"),
+            "format" => ("_ = U.show(self.item@ref)", "    public func show<T>(x: ref/T) -> string\n        T is Utf8Format\n        return Text.toString(x)\n"),
+            "equals" or "quiet" => ("_ = U.same(self.item@ref)", $"    public func same<T>(x: ref/T) -> bool\n        T is {conformance}\n        return x == x\n"),
+            _ => ("U.pair(self.item@ref, self.big@ref)", "    public func touch<T, S>(x: ref/T, y: ref/S) => ()\n    public func pair<T, S>(x: ref/T, y: ref/S) => U.touch(x, y)\n"),
+        };
+        return "contract Reset\n    func reset(self: uniq/Self)\n        effect confined\ncontract Named\n    func name(self: ref/Self) -> i32\n        effect confined\n" +
+            "contract QuietEq: Equatable\n    effect Equatable.equals confined\n" +
+            RetentionTest.Box + "struct Bad\n" + (conformance is null ? string.Empty : $"    Self is {conformance}\n") + $"    public var m: {field}\n" + witness +
+            $"struct Holder\n    Self is Reset\n    var item: {item}\n" + (form == "pair" ? $"    var big: {RetentionTest.Box65}\n" : string.Empty) +
+            $"    public func reset(self: uniq/Self)\n        {call}\ngroup U\n" + helpers + Main;
     }
 }
