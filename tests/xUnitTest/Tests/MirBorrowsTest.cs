@@ -2142,9 +2142,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     bump(value)
                 """));
 
-    // SPEC 15.6 (A3 E13 (1a); prototype 140, u1-u2, c1): an operand's own value is used by its operation after its access, an rvalue's
-    // single one's too, so moving or reading a holder that carries a Loan on its own part errs where it is evaluated, whether the value is
-    // used later or not; a holder whose Loan is on another root does not.
+    // SPEC 15.6 (A3 E13 (1a) as superseded by (c2); prototype 140, u1-u2, c1): an operand's own value is used by its operation after its
+    // access where the operation keeps it, an rvalue's value operands and a call's inputs, so moving or reading a holder that carries a Loan
+    // on its own part errs where it is evaluated, whether the value is used later or not; a holder whose Loan is on another root does not.
     [Fact]
     public void AnOperandIsCheckedWithItsOwnValue()
         => Assert.Equal(
@@ -2204,6 +2204,76 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var s = S.init(r: z@ref)
                     s.r = s.n@ref
                     let c = func [s@move] () => ()
+                """));
+
+    // SPEC 15.6 ((c2), superseding A3 E13 (1a)'s operand sentence): an operation that keeps none of its operands (a comparison, arithmetic)
+    // uses them at its point and gives a value that carries none, so its read of a holder carrying a Loan on its own Place is checked only
+    // against the values used after it and the values it stores; change3 may store amount, a Copy of item.1, in *target, so value carries
+    // the uniq Loan on itself. Valid: sibling, siblingReturn, u2eq, u2arith; invalid: siblingTwiceV (value, which carries the Loan, is used
+    // after its first read), siblingHolderBad (k), siblingStoredBad (w), u2eqUsed (s), u2call (a call keeps its input).
+    [Fact]
+    public void AnOperationKeepingNoOperandUsesItAtItsPoint()
+        => Assert.Equal(
+            [
+                "siblingTwiceV: value == 8", "siblingHolderBad: value", "siblingStoredBad: value", "siblingStoredBad: value = 3", "u2eqUsed: s.n == 1",
+                "u2eqUsed: s@ref", "u2call: giveN(s.n)",
+            ],
+            Problems(Order + """
+                func change3(target: uniq/i32, amount: i32) => target@follow = amount + 1
+                func giveN(a: i32) => ()
+                func sibling() -> bool
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    return value == 8
+                func siblingReturn() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let b = value == 8
+                    return 1
+                func siblingTwiceV() -> bool
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let b = value == 8
+                    return b and value == 9
+                func siblingHolderBad() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let k = item.1
+                    let w = value
+                    return k + w
+                func siblingStoredBad() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let w = value
+                    value = 3
+                    return w
+                func u2eq() -> bool
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    return s.n == 1
+                func u2eqUsed() -> bool
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    let b = s.n == 1
+                    inspect(s@ref)
+                    return b
+                func u2arith() -> i32
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    return s.n + 1
+                func u2call()
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    giveN(s.n)
                 """));
 
     // SPEC 15.6, 15.6.3, 15.6.7 (A3 E13 (1b), (1c), (1d); prototype a1-a2, rf1-rf2, b1-b2, 41o, d1-d3): an activation takes the other
