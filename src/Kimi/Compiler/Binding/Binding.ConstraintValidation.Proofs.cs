@@ -402,8 +402,12 @@ public sealed partial class Binding
                 ? (premise.Left is { } left && Reads(proposition, left)) || (premise.Right is { } right && Reads(proposition, right))
                 : proposition.Subject is { } subject && (Side(subject, premise.Subject) || Side(subject, premise.RequiredType));
 
+        // A side is read as the judge identifies it in the view (8.2.3: a fact about a Type is evidence for an identical one): one Type,
+        // identical by the view's classes, or one form (a side only the failed premise held in the table, `T.(Holder).Item` under
+        // `T is PH`, still completes to P).
         bool Side(BoundType subject, BoundType? side)
-            => side is not null && (ReferenceEquals(subject, side) || this.IdentityProven(subject, side, scope));
+            => side is not null && (ReferenceEquals(subject, side) || this.IdentityProven(subject, side, scope) ||
+                ReferenceEquals(this.CallableContractType(subject, scope), this.CallableContractType(side, scope)));
     }
 
     // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its

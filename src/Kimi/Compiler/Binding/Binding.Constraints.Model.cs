@@ -116,6 +116,8 @@ internal sealed class PremiseFailure(Koto owner) : ICheckCause
 
 internal sealed class ConstraintEnvironment : ICheckCause
 {
+    private PremiseFailure? premiseFailure; // R7-C3 B1': FailedPremise's cause, made once
+
     public Koto Use => this.Failed!;
 
     public ICheckCause? Next => null;
@@ -140,7 +142,9 @@ internal sealed class ConstraintEnvironment : ICheckCause
     // one rests on (PremiseFailure, Use = the declaration that holds the record).
     internal List<BoundConstraint>? FailedPremises { get; private set; } // allocated at the first failed premise
 
-    internal PremiseFailure? FailedPremise { get; private set; }
+    // The cause is made once per environment and kept across passes (warm Bind allocates nothing, BU-64); it is the environment's
+    // answer only while a premise of this pass has failed.
+    internal PremiseFailure? FailedPremise => this.FailedPremises is { Count: > 0 } ? this.premiseFailure : null;
 
     internal bool HasAssociatedProjection { get; private set; }
 
@@ -213,9 +217,16 @@ internal sealed class ConstraintEnvironment : ICheckCause
         if (this.Facts.Remove(fact))
         {
             this.DirectFacts.Remove(fact);
-            this.DerivedFacts.RemoveAll(x => ReferenceEquals(x.Fact, fact));
+            for (var i = this.DerivedFacts.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(this.DerivedFacts[i].Fact, fact))
+                {
+                    this.DerivedFacts.RemoveAt(i);
+                }
+            }
+
             (this.FailedPremises ??= new()).Add(fact);
-            this.FailedPremise ??= new(owner);
+            this.premiseFailure ??= new(owner);
             this.Version++;
         }
     }
@@ -249,7 +260,6 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.Declared = 0;
         this.Failed = null;
         this.FailedPremises?.Clear();
-        this.FailedPremise = null;
         this.HasAssociatedProjection = false;
         this.HasTypeIdentity = false;
     }
