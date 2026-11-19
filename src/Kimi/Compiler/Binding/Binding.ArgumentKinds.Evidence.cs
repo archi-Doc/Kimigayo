@@ -117,14 +117,14 @@ public sealed partial class Binding
                 if (written is not SyntaxFormKoto { Akind: KotoKind.InferredType } &&
                     (binding.BindType(written, headerScope) is not { } actual ||
                     !binding.Infer(
-                        parameterTypes.Components[i], actual, this.SlotOwner, this.Frame, lengths: true, structural: true, evidence: header)))
+                        parameterTypes.Components[i], actual, this.Solve, this.Frame, lengths: true, structural: true, evidence: header)))
                 {
                     return false;
                 }
             }
 
             return literal.ReturnType is null || (binding.BindType(literal.ReturnType, headerScope) is { } result &&
-                binding.Infer(memberSignature.Components[1], result, this.SlotOwner, this.Frame, lengths: true, structural: true, evidence: header));
+                binding.Infer(memberSignature.Components[1], result, this.Solve, this.Frame, lengths: true, structural: true, evidence: header));
         }
 
         // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence alongside ordinary
@@ -152,7 +152,7 @@ public sealed partial class Binding
                 }
 
                 var evidence = new SignatureEvidence(CalleeBinder(actual, actualSignature), source);
-                if (!binding.Infer(memberSignature, actualSignature, this.SlotOwner, this.Frame, lengths: true, structural: true, evidence: evidence))
+                if (!binding.Infer(memberSignature, actualSignature, this.Solve, this.Frame, lengths: true, structural: true, evidence: evidence))
                 {
                     var required = this.Type(memberSignature) ?? memberSignature;
                     operations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
@@ -179,7 +179,7 @@ public sealed partial class Binding
             try
             {
                 met = memberPattern;
-                return binding.Infer(binding.ExpectedTypeOf(met), shape, this.SlotOwner, this.Frame);
+                return binding.Infer(binding.ExpectedTypeOf(met), shape, this.Solve, this.Frame);
             }
             finally
             {
@@ -357,7 +357,7 @@ public sealed partial class Binding
             return binding.Infer(
                 pattern,
                 actual,
-                this.SlotOwner,
+                this.Solve,
                 this.Frame,
                 inferOrigins: true,
                 lengths: true,
@@ -561,7 +561,7 @@ public sealed partial class Binding
             actual = KotoHelper.UnwrapParentheses(source.Parent!) is RangeKoto && binding.ReadTypeReferent(actual, source) is { } read ? read : actual;
             binding.MatchInputOrigins(pattern, actual, this.Binder, this.Origins, this.Inputs);
             pattern = binding.SubstituteStoredOrigins(pattern, this.Binder, this.Origins.AsSpan(0, this.OriginCount), this.InputSpan());
-            return binding.Infer(pattern, actual, this.SlotOwner, this.Frame, inferOrigins: true, lengths: true);
+            return binding.Infer(pattern, actual, this.Solve, this.Frame, inferOrigins: true, lengths: true);
         }
 
         // SPEC 4.6.2: in the late pass, a literal-only boundary whose S or E no other evidence fixed takes the other boundary's integer
@@ -569,7 +569,7 @@ public sealed partial class Binding
         private readonly bool InferLiteralBoundary(BoundType pattern, Koto boundary, BoundType? other, bool late)
             => !late || this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
                 (this.Binding.DefaultOf(boundary) ?? this.Binding.RangeTyping(boundary, other)) is not { } type ||
-                this.Binding.Infer(pattern, type, this.SlotOwner, this.Frame, lengths: true);
+                this.Binding.Infer(pattern, type, this.Solve, this.Frame, lengths: true);
 
         // The own Types of a part's leaves of `kind` at the positions that hold an unsolved slot: the part itself, the elements of a
         // Tuple or array literal (a whole a slot takes included: its place is a hole until every part has one, BindWholes) and the
