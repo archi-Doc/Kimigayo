@@ -42,6 +42,9 @@ public abstract class ApplicationKoto : ExpressionKoto
     /// <param name="replacement">The detached replacement node.</param>
     public virtual void ReplaceArgument(int index, Koto replacement) => this.ReplaceAt(this.ArgumentNodes, index, replacement);
 
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields() => _ = this.Arguments;
+
     /// <summary>Gets the expression to which the arguments apply.</summary>
     protected Koto Target { get; private set; }
 

@@ -508,7 +508,7 @@ public class PairFollowTest
         var named = KotoTree.Walk(body).Select(x => x.TypeOf()).OfType<BoundType>().Where(NamesOuterOrigin).Distinct().ToArray();
         Assert.Contains(named, x => x.Origin is { Kind: OriginKind.Intersection } origin && origin.Operands.Any(IsOuterOrigin));
         Assert.Contains(named, x => x.OriginArguments.Any(origin => origin.Operands.Prepend(origin).Any(IsOuterOrigin)));
-        Assert.All(named, x => Assert.False(NamesOuterOrigin(c.Binding.InstantiateStorageType(x, write)!)));
+        Assert.All(named, x => Assert.False(NamesOuterOrigin(c.Types.ReadableInstance(x, c.Types.StorageSubst(write))!)));
     }
 
     private static bool IsOuterOrigin(BoundOrigin origin) => origin is { Kind: OriginKind.Parameter, Slot: < 0 };

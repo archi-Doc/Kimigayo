@@ -12,7 +12,8 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
 
-    // Conformance verifications and agreements in progress; inside them a conformance limited by OCC-X stays Unknown.
+    // Conformance verifications and agreements in progress: a limit context, not an obligation (the obligation table holds the paths
+    // being verified), read by ResolveConformance alone: inside them a conformance limited by OCC-X stays Unknown.
     private int conformanceChecks;
 
     // The conformance uses whose completeness rests on a specification, settled at publication (SettleSpecificationLinks).

@@ -5,7 +5,10 @@
 // - Inputs: a declaration container's Constraint clauses (SPEC 8.2.1), bound in its scope; proof (CheckTypeConstraints for a clause's
 //   subject, ProveConstraint); the pass's readiness (bound clauses; Contract headers and capabilities).
 // - Outputs: SourceState (Pending = Unknown, Valid = Proven, Invalid = Refuted or Error) and SourceCause (an Unknown's limit, an Error's
-//   cause) on every declaration container's own symbol; a read (ReadSourceState) joins what the state rests on (BU-22).
+//   cause) on every declaration container's own symbol; a read (ReadSourceState) joins what the state rests on (BU-22) and gives its
+//   Completion (W8, DECISIONS R7-M20's whitelist; R7-C2e2 e2-3a): a published Proven or Refuted is Complete within its publication
+//   (it joins nothing inside a proof scope), Pending (a final Unknown included) and Error are Provisional. A publication's start
+//   forgets every table the capability phase kept (ContractSolver's ForgetKeptTables), since a state is final only within one.
 // - Invariants: a closed clause (ClosedClause) is neither associated, a Self clause nor dependent on the declaration's parameters, a
 //   Contract's Self included; an unbound clause counts as closed (its answer Unknown). One writer, PublishSourceStates, run after
 //   ExpandContractPremises and where each ValidateConformances starts; every state is Pending from the pass's start (ResetSourceStates)
@@ -79,6 +82,11 @@ public sealed partial class Binding
     // one proof scope, so a check's answer keeps its cause instead of becoming its own Error (EndProof).
     private void PublishSourceStates()
     {
+        if (this.KeepsAcrossRequests)
+        {
+            this.ForgetKeptTables();
+        }
+
         var declarations = this.sourceDeclarations;
         var stateChanged = false;
         for (var i = 0; i < declarations.Count; i++)
@@ -137,9 +145,10 @@ public sealed partial class Binding
     // A read of a declaration's published state (a bound Contract reference reads its declaration's): inside a proof scope it joins that
     // scope directly, which is what a scope of its own would hand on (EndProof); outside every scope it settles in its own, as the check it
     // replaces did.
-    private ConstraintProof ReadSourceState(BindingSymbol symbol)
+    private ConstraintProof ReadSourceState(BindingSymbol symbol, out Completion completion)
     {
         var declaration = ((DeclarationContainerKoto)symbol.Declaration).BoundSymbol!;
+        completion = declaration.SourceState is ConstraintProof.Proven or ConstraintProof.Refuted ? Completion.Complete : Completion.Provisional;
         if (this.proofNesting != 0)
         {
             return this.ReadVerdict(declaration.SourceState, declaration.SourceCause, declaration.SourceFact);
