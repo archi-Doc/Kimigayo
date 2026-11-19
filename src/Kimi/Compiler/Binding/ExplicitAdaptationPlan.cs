@@ -38,9 +38,9 @@ internal sealed class ExplicitAdaptationPlan
                 ? ConversionBinding.ObjectCreation : ConversionBinding.None;
         }
 
-        if (target.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+        if (target.SafeReferent is { } referent)
         {
-            return ReferenceEquals(source, target.Components[0]) ? ConversionBinding.Borrow : ConversionBinding.None;
+            return ReferenceEquals(source, referent) ? ConversionBinding.Borrow : ConversionBinding.None;
         }
 
         if (target.IsObjectBorrow)

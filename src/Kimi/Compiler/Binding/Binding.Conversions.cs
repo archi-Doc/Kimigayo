@@ -251,8 +251,7 @@ public sealed partial class Binding
 
             if (TryAdaptationSelector(actual, out _) && IsBorrow(pattern.Semantics))
             {
-                var origin = pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq
-                    ? this.SlotOrigin(conversion.Left) : this.PlaceOrigin(conversion.Left);
+                var origin = pattern.SafeReferent is not null ? this.SlotOrigin(conversion.Left) : this.PlaceOrigin(conversion.Left);
                 var borrowed = this.types.Reference(pattern.Semantics, pattern.Components[0], pattern.Origin ?? origin);
                 return this.BindCaseAdaptation(conversion, scope, actual, borrowed);
             }
@@ -270,17 +269,17 @@ public sealed partial class Binding
 
             // SPEC 13.5.6: a typed borrow names exactly the stored Type of the written slot; it selects no
             // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && !ReferenceEquals(actual, pattern.Components[0]))
+            if (pattern.SafeReferent is { } referent && !ReferenceEquals(actual, referent))
             {
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawRooted(this, conversion.Left))
+            if (pattern.SafeReferent is not null && pattern.Origin is null && ElementAccess.IsRawRooted(this, conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
+            if (pattern.SafeReferent is { } stored && pattern.Origin is null && ReferenceEquals(actual, stored) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
                 var storage = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
@@ -589,7 +588,7 @@ public sealed partial class Binding
 
         // SPEC 13.5.3: an owned target never extracts its Core through a safe reference (only the value read of a read Type does,
         // above). Other ownership/borrow adaptations require their own verified paths.
-        var unsupported = !SupportsIdentityAcquisition(target) || (!SupportsIdentityAcquisition(source) && source.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq));
+        var unsupported = !SupportsIdentityAcquisition(target) || (!SupportsIdentityAcquisition(source) && source.SafeReferent is null);
         return this.Fail(conversion, unsupported ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, unsupported);
     }
 }

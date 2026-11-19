@@ -59,7 +59,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // or a raw pointer (Binding verifies Origin obligations; inferred initializer aliases use the same representation).
     internal static bool IsStoredReference(BoundType? type) => type?.SafeReferent is { } referent &&
         (AdtDef.IsStruct(referent) || AdtDef.IsEnum(referent) || ReferenceEquals(referent, BoundType.String) || ReferenceEquals(referent, BoundType.Unit) ||
-            referent is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } || referent.HandleMode is not null || referent.IsObjectBorrow ||
+            referent.SafeReferent is not null || referent.HandleMode is not null || referent.IsObjectBorrow ||
             referent.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Closure or
                 BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or
                 BoundTypeKind.SemanticsApplication ||

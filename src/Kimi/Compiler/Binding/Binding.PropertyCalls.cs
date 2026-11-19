@@ -141,7 +141,7 @@ public sealed partial class Binding
 
         Complete(this.propertyUpdateInputs[node], destination);
         var owner = node.Left.BoundType!;
-        var referent = owner is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? owner.Components[0] : owner;
+        var referent = owner.SafeReferent ?? owner;
         var type = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
         if (!this.AdaptInput(node.Left, FixedPattern.Open(type), owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {

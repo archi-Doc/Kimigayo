@@ -264,7 +264,7 @@ public sealed partial class Binding
         }
 
         var write = operation is BinaryKoto { Akind: KotoKind.Equals };
-        if (!write && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
+        if (!write && type is { SafeReferent: not null } &&
             ReferenceBindingAssignment(target) is { } referenceBinding)
         {
             this.Fail(operation, referenceBinding);

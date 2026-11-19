@@ -167,7 +167,7 @@ public sealed partial class Binding
             {
                 pattern = target;
             }
-            else if (whole.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+            else if (whole.SafeReferent is not null)
             {
                 pattern = this.types.Intern(BoundTypeKind.Semantics, null, whole.Semantics, [target], origin: pattern.Origin);
                 break;
