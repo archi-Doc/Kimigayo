@@ -27,6 +27,10 @@ public sealed partial class Binding
     // live.
     private readonly TypeMemo<BoundType, BoundType?> rewrittenParts = new();
 
+    // Viewed's images of a declared Type's parts as its function's body sees them (PLAN G935 c3-2), each keyed by its depth too: the depth
+    // bound's cut makes an answer a function of the depth where a premise chain is deeper than StorageBound.
+    private readonly TypeMemo<(BoundType Declared, int Depth), BoundType?> viewedParts = new();
+
     // The states in which a walk met a part, one bit per state (DECISIONS BU-63): the existence walks OperandContexts,
     // ContainsAssociatedProjection, DependentType, TypeAccessCovers, ProveTypeLengths, HasLocalRegion and HasRegionBounds, and the walks
     // whose revisit only repeats what they add, CollectRequirementEdges, AddStoredPremises, ClosureType's Collect, and AccumulateRequirements

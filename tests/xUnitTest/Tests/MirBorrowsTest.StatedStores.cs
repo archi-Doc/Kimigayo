@@ -520,6 +520,279 @@ public sealed partial class MirBorrowsTest
             kk = 2
         """;
 
+    private const string ReachedForms = """
+        func usep<T>(p: raw/T) => ()
+        func keepU(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepV(slot: uniq/((raw/u8, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepR2(slot: raw/(raw/((raw/u8 during a, u64))), a: ref/u8, value: raw/u8) => ()
+        func keepP2(slot: raw/(raw/((raw/u8, u64))), a: ref/u8, value: raw/u8) => ()
+        func keepR(slot: raw/(raw/((raw/u8 during a, u64))), a: ref/u8, value: raw/u8) => ()
+        func keepS(slot: raw/(raw/((raw/u8 during static, u64))), value: raw/u8) => ()
+        func usew(v: (u64, u64)) => ()
+        func keepP1(slot: raw/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepQ1(slot: raw/((raw/u8, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepQ(slot: uniq/((raw/u8 during a, u64)), a: uniq/u8, value: raw/u8) => ()
+        func keepW(slot: uniq/((raw/u8, u64)), a: uniq/u8, value: raw/u8) => ()
+        func keepSt(slot: uniq/((raw/u8 during static, u64)), value: raw/u8) => ()
+        func keepSt2(slot: uniq/((raw/u8, u64)), value: raw/u8) => ()
+        func keepM(slot: uniq/((raw/u8 during a, raw/u8)), a: ref/u8, value: raw/u8) => ()
+        func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+        func keepB(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8 during a) => ()
+        func keepB2(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepC(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, b: ref/u8, value: raw/u8 during b)
+            origin b outlives a
+            return
+        func keepC2(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, b: ref/u8, value: raw/u8 during b) => ()
+        struct SlotS {s}
+            let loan: Loan<ref/u8 during s>
+            public var at: raw/u8 during s
+            public init(r: ref/u8 during s)
+                self.loan = Loan.init(r)
+                self.at = r@follow@raw
+        func keepSl(x: uniq/(SlotS during t), value: raw/u8) => ()
+        func keepSl2(x: uniq/(SlotS during t), value: raw/u8 during t) => ()
+        func keepGs<T>(slot: uniq/((raw/T during a, u64)), a: ref/T, value: raw/T) => ()
+        func keepGu<T>(slot: uniq/((raw/T, u64)), a: ref/T, value: raw/T) => ()
+        func sink(o: uniq/(raw/u8), v: raw/u8) => ()
+        func usev<T>(v: ref/T) => ()
+        func keepL(slot: raw/(raw/((ref/i32 during a, u64))), a: ref/i32, value: raw/u8) => ()
+        func keepLQ(slot: raw/(raw/((ref/u8 during a, u64))), q: ref/(ref/u8 during a) during b) => ()
+        func tRecBorrowOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepU(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecBorrowBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepV(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecTypedOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            var g = c@raw
+            keepR2(g@raw, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecTypedBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            var g = c@raw
+            keepP2(g@raw, a, spare)
+            kk = 2
+            usep(c.0)
+        func zRecMixOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: raw/u8 = null
+            var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+            keepR(w@raw@raw/(raw/((raw/u8 during a, u64))), a, spare)
+            kk = 2
+        func dNoA()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: raw/u8 = null
+            var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+            keepS(w@raw@raw/(raw/((raw/u8 during static, u64))), spare)
+            kk = 2
+        func pRootOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: (u64, u64) = (0@u64, 0@u64)
+            keepP1(w@raw@raw/((raw/u8 during a, u64)), a, spare)
+            kk = 2
+            usew(w)
+        func pRootBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: (u64, u64) = (0@u64, 0@u64)
+            keepQ1(w@raw@raw/((raw/u8, u64)), a, spare)
+            kk = 2
+            usew(w)
+        func uRecOk(a: uniq/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepQ(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func uRecBad(a: uniq/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepW(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func sRecOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8 during static, u64) = (null, 0@u64)
+            keepSt(c@uniq, spare)
+            kk = 2
+            usep(c.0)
+        func sRecBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8, u64) = (null, 0@u64)
+            keepSt2(c@uniq, spare)
+            kk = 2
+            usep(c.0)
+        func mMixBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8 during a, raw/u8) = (a@follow@raw, null)
+            keepM(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func mMixOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8 during a, raw/u8) = (a@follow@raw, null)
+            keepM(c@uniq, a, spare)
+            kk = 2
+        func kDirectBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: raw/u8 = null
+            keep1(c@raw, spare)
+            kk = 2
+            usep(c)
+        func sAdmitBad()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepB(c@uniq, q, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func sUnstOk()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepB2(c@uniq, q, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func clauseBad()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepC(c@uniq, q, rk, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func clauseNoOk()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepC2(c@uniq, q, rk, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func slotStOk()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var x = SlotS.init(r: q)
+            keepSl(x@uniq, rk@follow@raw)
+            kk = 2
+            usep(x.at)
+        func slotAdmBad()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var x = SlotS.init(r: q)
+            keepSl2(x@uniq, rk@follow@raw)
+            kk = 2
+            usep(x.at)
+        func genStOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepGs(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func genUnBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepGu(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecPassOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepU(c@uniq, a, spare)
+            var out: raw/u8 = null
+            sink(out@uniq, c.0)
+            kk = 2
+            usep(out)
+        func tRecPassBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepV(c@uniq, a, spare)
+            var out: raw/u8 = null
+            sink(out@uniq, c.0)
+            kk = 2
+            usep(out)
+        func bndLoansOk(a: ref/i32)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a, 0@u64)
+            var g = c@raw
+            keepL(g@raw, a, spare)
+            kk = 2
+            usev(c@ref)
+        func bndLoansBad()
+            var kk: u8 = 1
+            var w: ref/u8 = kk@ref
+            var x: u8 = 0
+            var c = (x@ref, 0@u64)
+            var g = c@raw
+            keepLQ(g@raw, w@ref)
+            kk = 2
+            usev(c@ref)
+        """;
+
     // PLAN G338, SPEC 5.2.1 ("storage a pointer addresses `during o` is covered by the Loans of `o`"), 5.7's table, 15.6 Holders: a store through
     // a raw parameter's stated layer writes the holders that Origin's Loans name, whose storage end or whole write ends what it put there,
     // so a null q leaves nothing in E (the Ok rows, each an error at spare's end or the write before the fix, and at `kk = 1` in
@@ -633,5 +906,50 @@ public sealed partial class MirBorrowsTest
     {
         var c = MirBuildTest.Compile(Prelude + StatedForms[..StatedForms.IndexOf("func endOk(", StringComparison.Ordinal)] + Form(StatedForms, form));
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), LoanCodes).Order(StringComparer.Ordinal))}]");
+    }
+
+    // C-352 (the owner's O-329 (a); SPEC 15.6.4 "with an Origin, as the borrow that Origin belongs to would", 5.7 Fits and claims, 15.6
+    // Holders, O-223 (B')): a raw layer stating an Origin retains only what that Origin admits, at depth 1 and past a written layer, typed
+    // and punned, for a `ref`, a `uniq` and a `static` Origin; a raw argument stating no Origin fits it only by a claim, so `spare` is not
+    // kept there (each `*Ok`). A raw layer stating none that the call writes keeps it
+    // (each `*Bad`, the mixed storage's included); the rows of an unstated layer the parameter's Type expression writes are the rows of
+    // the storage holding it, since it bounds what is stored past it to its pointee Type (5.7 Calls). tRecBorrowOk, tRecTypedOk, pRootOk,
+    // uRecOk and sRecOk fail before (`kk = 2`); zRecMixOk and dNoA are the A5 chain's U3b's punned rows (accepted on dev and here). The
+    // consent review's twins (C5): a body-local Origin, a declared `outlives` clause, a slot's Field layer, a generic callee and the value
+    // passed on to a writer, each with its admitting twin. C3: past the parameter's bounding layer, the Loan-holding `(ref/i32 during a,
+    // u64)` storage takes rule A's rows only for the inputs its Origins admit (5.7 Calls "what its pointee Type admits"), so spare is not
+    // kept there (bndLoansOk, failing before), while q's referent names `a` and its chain of reads gives kk's borrow (bndLoansBad).
+    [Theory]
+    [InlineData("tRecBorrowOk", "")]
+    [InlineData("tRecBorrowBad", "tRecBorrowBad: kk = 2")]
+    [InlineData("tRecTypedOk", "")]
+    [InlineData("tRecTypedBad", "tRecTypedBad: kk = 2")]
+    [InlineData("zRecMixOk", "")]
+    [InlineData("dNoA", "")]
+    [InlineData("pRootOk", "")]
+    [InlineData("pRootBad", "pRootBad: kk = 2")]
+    [InlineData("uRecOk", "")]
+    [InlineData("uRecBad", "uRecBad: kk = 2")]
+    [InlineData("sRecOk", "")]
+    [InlineData("sRecBad", "sRecBad: kk = 2")]
+    [InlineData("mMixBad", "mMixBad: kk = 2")]
+    [InlineData("mMixOk", "")]
+    [InlineData("kDirectBad", "kDirectBad: kk = 2")]
+    [InlineData("sAdmitBad", "sAdmitBad: kk = 2")]
+    [InlineData("sUnstOk", "")]
+    [InlineData("clauseBad", "clauseBad: kk = 2")]
+    [InlineData("clauseNoOk", "")]
+    [InlineData("slotStOk", "")]
+    [InlineData("slotAdmBad", "slotAdmBad: kk = 2")]
+    [InlineData("genStOk", "")]
+    [InlineData("genUnBad", "genUnBad: kk = 2")]
+    [InlineData("tRecPassOk", "")]
+    [InlineData("tRecPassBad", "tRecPassBad: kk = 2")]
+    [InlineData("bndLoansOk", "")]
+    [InlineData("bndLoansBad", "bndLoansBad: kk = 2; bndLoansBad: var x: u8 = 0")] // the `var x` record added with the A5 landing on a program rejected anyway (DECISIONS Q13)
+    public void AStatedRawLayerRetainsWhatItsOriginAdmits(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + ReachedForms[..ReachedForms.IndexOf("func tRecBorrowOk(", StringComparison.Ordinal)] + Form(ReachedForms, form));
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal))}]");
     }
 }

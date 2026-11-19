@@ -84,6 +84,14 @@ public sealed partial class Binding
             (owner is { } type && Array.IndexOf(TransferTypes, type) >= 0) ? Transfer.Values : Transfer.None;
     }
 
+    // SPEC 15.6.4 ("Except for the operations whose writes SPEC states, namely `replace`, `exchange` and `swap` (15.7), `Raw.initialize`
+    // (5.6) and the operations of 4.6 to 4.9 (4.9.6), a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): whether
+    // the callee is one of them, by declaring identity: the operations TransferKey names and `replace` and `Raw.initialize`
+    // (CallRetention.Composes).
+    private bool StatesWrites(FunctionKoto? callee)
+        => this.TransferKey(callee) != Transfer.None ||
+            callee?.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Replace or KimiDeclarationId.RawInitialize;
+
     // The Iterator key of a callee TransferKey does not name (the file's contract), its Iterator conformance proven under `premises`
     // (null: the library root's).
     private Transfer IteratorTransfer(BindingSymbol? callee, ReadOnlySpan<BoundType> inputs, BindingScope? premises)
