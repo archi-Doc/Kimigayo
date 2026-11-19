@@ -288,8 +288,7 @@ public sealed partial class Binding
             }
         }
 
-        var proposition = this.InternConstraint(new(ConstraintKind.Contract, type, contract: intrinsic));
-        var key = (proposition, scope, derivation);
+        var key = this.CapabilityKey(type, intrinsic, scope, derivation);
         if (!this.capabilityNodes.TryGetValue(key, out var work))
         {
             work = new(type, intrinsic, scope, derivation);

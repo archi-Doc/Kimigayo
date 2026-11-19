@@ -163,6 +163,17 @@ public partial class TypeIdentityTest
         Assert.True(codes == found, row + ": " + found);
     }
 
+    // R7-C3 C7 (rv.tp3-u, V; SPEC 8.2.3, 10.7): the Owned erasure of an anonymous function whose header names a Type identical with the
+    // pair's target (`U is W`) reads the capability work its judge judged (JudgedCapabilityKey); with the written atom no longer judged
+    // it read the written proposition's key and found no work: InternalInvariant_Kd. The program's remaining record is D-779's (G999).
+    [Fact]
+    public void AnErasureReadsTheCapabilityWorkItsJudgeJudged()
+    {
+        var c = MinimalEmissionTest.Analyze("func pick<s/T>(x: s/T, g: (T) -> ())\n    s is ref or uniq\n    ()\nfunc f<U, W>(x: ref/U during a)\n    U is W\n" +
+            "    pick(x, func (v: U) => ())\npublic func main() => ()\n");
+        Assert.DoesNotContain(CompilationTestHelper.PublishedErrors(c), static x => x.Code == "InternalInvariant_Kd");
+    }
+
     private const string ExposurePrelude =
         "func consume<X>(x: X) => ()\ncontract Inner\n    associate F\n    Self.(Inner).F is Callable<(raw/u8) -> Self>\n" +
         "    func get(self: ref/Self) -> ref/Self.(Inner).F\n";
