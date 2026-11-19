@@ -274,10 +274,22 @@ public sealed partial class Binding
         {
             this.NoteEarlyProjection(syntax, type, scope, name, qualifier);
 
-            // F3 (PLAN G724): a Name after a projection that names a member Type of the projection's normal form (SPEC 9.6) is a selection
-            // not implemented yet: a located Unsupported_Kd, never a missing name. One the normal form does not declare stays missing.
-            return receiverPath.End == PathEnd.Projection && this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is not null
-                ? this.Fail(syntax, BindingFailure.Unsupported, true) : null;
+            // SPEC 9.6, 8.5.2 (PLAN G724 (b)): a Name after a projection that names a member Type of the projection's normal form selects
+            // it, formed in that normal form (BindContainerReference reads the projection qualifier's formed Type as its environment).
+            // One the normal form does not declare stays missing.
+            var member = receiverPath.End == PathEnd.Projection ? this.LookupMember(type, name, scope, LookupRole.Qualifier) : default;
+            if (member.Member is not { } nested)
+            {
+                if (member.Hidden is { } hidden)
+                {
+                    this.PublishHiddenMember(syntax, hidden); // SPEC 9.4: a member Type of the normal form inaccessible from the use.
+                }
+
+                return null;
+            }
+
+            this.PublishProjectionMember(syntax, nested);
+            return this.BindContainerReference(syntax, nested, scope, this.TypeContext(syntax, scope), []) is { } nestedType ? Complete(syntax.Right, nestedType) : null;
         }
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
@@ -296,8 +308,7 @@ public sealed partial class Binding
 
         // SPEC 8.6.1: an associated Type is identified by its receiver and its declaring Contract reference.
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
-        syntax.BoundSymbol = associated;
-        syntax.Right.BoundSymbol = associated;
+        this.PublishProjectionMember(syntax, associated);
         Complete(syntax.Right, projection);
         if (!ReferenceEquals(receiver, syntax.Left))
         {

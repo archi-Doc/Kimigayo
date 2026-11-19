@@ -174,6 +174,51 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 9.6 (R7-N1 c-b, Q20 B1): a member access's left reading evaluates the left's Type walk once per access (a failed walk beside
+    // the value reading is published, so inner accesses read it) and its value walk only where the Type reading may succeed, so binding
+    // a qualified chain is linear in its length: N nested groups to a function (`G1...GN.f()`), and N groups, a static value and N Field
+    // steps (`G1...GN.v.a...a.n`; a per-level re-walk of either was quadratic in N on a prototype).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AMemberAccessLeftIsReadOncePerAccess(bool mixed)
+    {
+        var work = new[] { 30, 60, 120 }.Select(Work).ToArray();
+        var text = string.Join(' ', work);
+        Assert.True(work[2].Name - work[1].Name <= (2 * (work[1].Name - work[0].Name)) + 400, text);
+        Assert.True(work[2].Member - work[1].Member <= (2 * (work[1].Member - work[0].Member)) + 400, text);
+
+        (int Name, int Member) Work(int n)
+        {
+            var source = new System.Text.StringBuilder();
+            if (mixed)
+            {
+                for (var i = 1; i <= n; i++)
+                {
+                    source.Append($"struct S{i}\n").Append(i == n ? "    public let n: i32\n    public init() => self.n = 1\n" : $"    public let a: S{i + 1}\n    public init() => self.a = S{i + 1}.init()\n");
+                }
+            }
+
+            for (var i = 1; i <= n; i++)
+            {
+                source.Append(' ', 4 * (i - 1)).Append(i == 1 ? "group G1" : $"public group G{i}").Append('\n');
+            }
+
+            source.Append(' ', 4 * n).Append(mixed ? "public let v: S1 = S1.init()\n" : "public func f() -> i32 => 1\n");
+            var path = string.Join('.', Enumerable.Range(1, n).Select(static i => $"G{i}")) + (mixed ? ".v" + string.Concat(Enumerable.Repeat(".a", n - 1)) + ".n" : ".f()");
+            source.Append("func g() -> i32\n");
+            for (var k = 0; k < 10; k++)
+            {
+                source.Append($"    let x{k} = {path}\n");
+            }
+
+            source.Append("    return 0\n");
+            var c = CompilationTestHelper.Parse(source.ToString());
+            c.Bind();
+            return (c.Binding.NameWalkWork, c.Binding.MemberWalkWork);
+        }
+    }
+
     // SPEC 8.6.2 (PLAN G602): a reversed chain of clauses through inherited conformances (L_i: S_i.(HasBase).Parent, S_i's Parent L_(i-1),
     // declared from the far end) binds with no stack failure, and the InheritedConformances query's clause readings beyond those of the
     // same chain written nominally are linear in its length.

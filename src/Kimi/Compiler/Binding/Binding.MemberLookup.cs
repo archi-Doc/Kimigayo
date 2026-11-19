@@ -177,27 +177,48 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifierPath = this.NamePath(member.Left, scope);
-        if (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.BindAssociatedProjection(projection, scope) is { } projected)
+        // SPEC 9.6: the left's reading is decided before either publishes (ReadLeft); its former then selects the member.
+        var name = right.IdentifierName;
+        switch (this.ReadLeft(member, name, scope, out var qualifierPath, out var projected))
         {
-            // SPEC 8.5.2, 9.6: a projection qualifier is a Type whose members are its normal form's and its Constraints' requirements.
-            // Selecting one (a Case, a Type function, a requirement member) is not implemented yet (PLAN G724): a located Unsupported_Kd
-            // at the member; construction (`.init`) is ConstructorMember's.
-            Complete(member.Left, projected);
-            this.Fail(member, BindingFailure.Unsupported);
-            return null;
+            case LeftReading.Value:
+                return this.ValueSideMember(member, name, scope) is { } valueSide ? this.SelectMember(member, null, default, valueSide, scope) : null;
+            case LeftReading.Unsupported:
+                // A member-access left of both readings: its value is its own access's selection, which publishes as it selects, so the
+                // value path is not evaluated first (BU-117's remainder, PLAN's row: until a member access's value Type is evaluated
+                // before publication).
+                this.Fail(member.Left, BindingFailure.Unsupported);
+                this.Fail(member, BindingFailure.Unsupported);
+                return null;
+            case LeftReading.Ambiguous:
+                this.Fail(member, BindingFailure.Ambiguous, true);
+                return null;
+            case LeftReading.ValueFailure:
+                return null;
         }
 
         var qualifier = qualifierPath.Symbol;
-        return this.TypeSideMember(member, qualifier, right.IdentifierName, scope, expected) is { } typeSide
-            && this.ValueSideMember(member, right.IdentifierName, scope) is { } valueSide
-            ? this.SelectMember(member, qualifier, typeSide, valueSide, scope)
-            : null;
+        if (projected is not null && UseNode(member.Left) is MemberAccessKoto projection)
+        {
+            // SPEC 8.5.2, 9.6 (PLAN G724 (a)): a projection qualifier is a Type whose members are its normal form's and its Constraints'
+            // requirements: the Type path over the formed projection; construction (`.init`) is ConstructorMember's. A member missing
+            // through a projection that stays one rests on the projection's use (SPEC 23.1.2; as ConstructorMember, DECISIONS BU-184):
+            // an unsatisfied conformance is that use's record, a pending prerequisite here.
+            Complete(member.Left, projected);
+            var selected = this.SelectMember(member, null, this.QualifierSelection(member, null, name, scope, projected), default, scope);
+            if (selected is null && projected.Kind == BoundTypeKind.AssociatedProjection)
+            {
+                this.AddPendingPrerequisite(member, projection);
+            }
+
+            return selected;
+        }
+
+        return this.TypeSideMember(member, qualifier, name, scope, expected) is { } typeSide ? this.SelectMember(member, qualifier, typeSide, default, scope) : null;
     }
 
     // SPEC 9.6: the Type path of `qualifier.name`: a requirement member of the qualifier's Type, a member of the Type or group the
-    // qualifier forms, or a nested declaration (QualifierSelection). Formed when the qualifier was bound as a Type or a group; null when
-    // that binding failed (its record).
+    // qualifier forms, or a nested declaration. Null when the qualifier's formation failed (its record).
     private SideSelection? TypeSideMember(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? expected)
     {
         if (qualifier is null || qualifier.Declaration is ContractKoto || !this.scopes.ContainsKey(qualifier.Declaration))
@@ -215,7 +236,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var selection = this.QualifierSelection(member, qualifier, name, scope, qualifiedType) with { Formed = true };
+            var selection = this.QualifierSelection(member, qualifier, name, scope, qualifiedType);
             return originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !selection.Selection.Ambiguous ? selection.Selection.Member : null)
                 ? null : selection;
         }
@@ -233,15 +254,15 @@ public sealed partial class Binding
                 return null;
             }
 
-            return this.QualifierSelection(member, qualifier, name, scope, groupType) with { Formed = true };
+            return this.QualifierSelection(member, qualifier, name, scope, groupType);
         }
 
         return this.QualifierSelection(member, qualifier, name, scope, null);
     }
 
-    // SPEC 9.6, 8.6.4: the Type path's member of `qualifier.name` over `type`, the qualifier's formed Type or group: a nominal member (the
-    // layer walk), over the qualifier's requirement member; without a Type, a nested declaration of the qualifier's scope, or the
-    // requirement member. Not formed.
+    // SPEC 9.6, 8.6.4: the Type path's member of `qualifier.name` over `type`, the qualifier's Type or group (formed, a projection's, or its
+    // declaration's own when PickReading compares the readings: arguments never change the selection): a nominal member over a
+    // requirement member of the Type; without a Type, a nested declaration of the qualifier's scope.
     private SideSelection QualifierSelection(MemberAccessKoto member, BindingSymbol? qualifier, string name, BindingScope scope, BoundType? type)
     {
         var requirementType = qualifier is null ? type : qualifier.IsContract ? null : qualifier.Type;
@@ -249,23 +270,18 @@ public sealed partial class Binding
         if (type is not null && (qualifier is null || qualifier.Type is not null || qualifier.Declaration is GroupKoto))
         {
             var selection = this.LookupMember(type, name, scope, LookupRole.Value);
-            return new(selection.Member ?? (qualifier is null || qualifier.Type is not null ? requirement : null), selection, false);
+            return new(selection.Member ?? (qualifier is null || qualifier.Type is not null ? requirement : null), selection);
         }
 
         var nested = qualifier is not null && qualifier.Declaration is not ContractKoto && this.scopes.TryGetValue(qualifier.Declaration, out var typeScope) &&
             typeScope.Values.TryGetValue(name, out var candidate) ? candidate : null;
-        return new(nested ?? requirement, default, false);
+        return new(nested ?? requirement, default);
     }
 
     // SPEC 9.6, 3.4.3: the value path of `qualifier.name`, bound: the qualifier's value and its receiver layers, then ReceiverMember.
-    // Formed when the qualifier may be a value; null when the selection rests on an emptied admitted set.
+    // Null when the selection rests on an emptied admitted set.
     private SideSelection? ValueSideMember(MemberAccessKoto member, string name, BindingScope scope)
     {
-        if (!this.MayBeValueQualifier(member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left, scope))
-        {
-            return new(null, default, false);
-        }
-
         var receiverType = this.BindNode(member.Left, scope);
         this.ReceiverThroughLayers(member.Left, receiverType);
         this.ReceiverElement(member.Left, receiverType);
@@ -276,11 +292,11 @@ public sealed partial class Binding
             return null;
         }
 
-        return side with { Formed = true };
+        return side;
     }
 
     // SPEC 9.6, 3.4.3: a member of a receiver Type: at the referent of each safe value-reference layer, the payload of an object handle
-    // or view and the target of a qualifying pair layer; `emptied` when it rests on an emptied admitted set. Not formed.
+    // or view and the target of a qualifying pair layer; `emptied` when it rests on an emptied admitted set.
     private SideSelection ReceiverMember(MemberAccessKoto member, string name, BindingScope scope, BoundType? receiverType, out bool emptied)
     {
         emptied = false;
@@ -305,7 +321,7 @@ public sealed partial class Binding
             // case rests the selection on the emptying environment (SPEC 8.3.4).
             if (valueMember is not null || receiverType is null || this.FollowablePair(receiverType, scope, out var pairTarget) is not { } followed)
             {
-                return new(valueMember, valueSelection, false);
+                return new(valueMember, valueSelection);
             }
 
             if (followed == SemanticsMask.None)
@@ -318,24 +334,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 9.6: selects the member of `qualifier.name` from its two paths and publishes it through PublishPath (a MemberAccess step): the
-    // member, its selection, its side and, for a Type-side member, the qualifier.
+    // SPEC 9.6: selects the member of `qualifier.name` from the left's one reading and publishes it through PublishPath (a MemberAccess
+    // step): the member, its selection, its side and, for a Type-side member, the qualifier.
     private BindingSymbol? SelectMember(MemberAccessKoto member, BindingSymbol? qualifier, SideSelection typeSide, SideSelection valueSide, BindingScope scope)
     {
         var typeMember = typeSide.Member;
         var valueMember = valueSide.Member;
-        if (typeSide.Formed && valueSide.Formed && (typeMember is null) == (valueMember is null))
-        {
-            // SPEC 9.6: a qualifier of both namespaces follows each namespace's complete path before one is selected, but the value path
-            // read the Type path's binding of the shared node, so neither finding no member nor both paths finding it decides the form.
-            // Until both paths are evaluated before either publishes (PLAN G488, R7 N1), it is outside the implemented subset, at the
-            // qualifier; the member consulted it, so its own Unsupported, and the Type path's access or missing name, rest on it.
-            this.Fail(member.Left, BindingFailure.Unsupported);
-            this.Fail(member, BindingFailure.Unsupported);
-            return null;
-        }
-
-        if (typeSide.Selection.Ambiguous || valueSide.Selection.Ambiguous || (typeMember is not null && valueMember is not null))
+        if (typeSide.Selection.Ambiguous || valueSide.Selection.Ambiguous)
         {
             this.Fail(member, BindingFailure.Ambiguous, true);
             return null;
@@ -346,8 +351,7 @@ public sealed partial class Binding
         {
             if ((typeSide.Selection.Hidden ?? valueSide.Selection.Hidden) is { } hidden)
             {
-                member.BoundSymbol = hidden;
-                this.Fail(member, BindingFailure.Access);
+                this.PublishHiddenMember(member, hidden);
             }
 
             return null;
@@ -379,40 +383,8 @@ public sealed partial class Binding
         }
 
         return typeMember is not null
-            ? this.PublishMemberAccess(member, selected, qualifier!, LookupRole.Qualifier, typeSelection)
+            ? this.PublishMemberAccess(member, selected, qualifier, LookupRole.Qualifier, typeSelection)
             : this.PublishMemberAccess(member, selected, null, LookupRole.Value, valueSide.Selection);
-    }
-
-    private bool MayBeValueQualifier(Koto node, BindingScope scope)
-    {
-        if (node is TypeKoto)
-        {
-            return false;
-        }
-
-        if (node is IdentifierNameKoto name)
-        {
-            return this.Lookup(name.IdentifierName, scope, node) is not null;
-        }
-
-        if (node is SyntaxFormKoto { Akind: KotoKind.RootName })
-        {
-            return false;
-        }
-
-        if (node is GenericsKoto generic)
-        {
-            return this.MayBeValueQualifier(generic.Identifier!, scope);
-        }
-
-        if (node is MemberAccessKoto member)
-        {
-            return this.MayBeValueQualifier(member.Left, scope) ||
-                (this.TypeName(member.Left, scope) is { } type && this.scopes.TryGetValue(type.Declaration, out var members) &&
-                member.Right is IdentifierNameKoto right && members.Values.ContainsKey(right.IdentifierName));
-        }
-
-        return true;
     }
 
     // SPEC 9.6: the layer walk of a member lookup in a role (SPEC 9.2), its namespace the role's: the first layer with accessible,
@@ -500,8 +472,8 @@ public sealed partial class Binding
     internal readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
 
     // One path of a member access (SPEC 9.6): the member it found (a requirement member or a nested declaration when its lookup found
-    // none), its member lookup, and whether the path was formed (the qualifier bound as a Type or a group, or read as a value).
-    private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection, bool Formed);
+    // none) and its member lookup; default when the path is not formed.
+    private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection);
 
     // A member access's side (PLAN G724, B4): its qualifier is a Type, with no receiver, or a value, the call's receiver.
     private enum MemberSide : byte

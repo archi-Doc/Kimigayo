@@ -117,9 +117,10 @@ public class UseLookupTest
     public void ARoleFollowsItsPosition(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
     // PLAN G724 (SPEC 8.5.2, 6.3.2, 9.6): a path's projection is its walk's end, formed by BindAssociatedProjection. Construction through a
-    // projection qualifier, written or short, constructs the normal form (b1, n01); another Type-side member through it is a located
-    // Unsupported_Kd at the member (b2, a Type function; r16, Cases); a `.(C)` whose reference fails forms nothing, so its record is the
-    // reference's alone (k25); a Name after a projection that names a member Type of the normal form is a located Unsupported_Kd (x08);
+    // projection qualifier, written or short, constructs the normal form (b1, n01); another Type-side member through it is selected among
+    // its normal form's members and its Constraints' requirements (b2, a Type function; r16, Cases; R7-N1 c-b's c4); a `.(C)` whose
+    // reference fails forms nothing, so its record is the reference's alone (k25); a Name after a projection that names a member Type of
+    // the normal form is that Type, formed in the normal form (x08);
     // an unresolved walk records at its failing step (x09: the head, a middle step, a parenthesized head). `L.(C)` is a projection
     // whatever Type its left is, a built-in, an array or a tuple included (SPEC F.5), the base bound with its own records: a missing
     // Contract records at its step, a missing member at the path, a tuple without the conformance is unproven (no tuple conforms to a
@@ -133,16 +134,16 @@ public class UseLookupTest
     [InlineData("func f(x: (i32, u8).(Addable<i32>).Output) -> i32 => 0", "UnprovenConstraint_Kd (i32, u8).(Addable<i32>).Output")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.(C<i32>).Item.init()", "")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.Item.init()", "")]
-    [InlineData(ProjectedP + "func g() -> i32\n    return S.(C<i32>).Item.make()", "Unsupported_Kd S.(C<i32>).Item.make")]
+    [InlineData(ProjectedP + "func g() -> i32\n    return S.(C<i32>).Item.make()", "")]
     [InlineData(
         "contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> M\n    return S.(C<i32>).Item.B(1)\n" +
             "func h() -> M\n    return S.Item.A",
-        "Unsupported_Kd S.(C<i32>).Item.B|Unsupported_Kd S.Item.A")]
+        "")]
     [InlineData(ProjectedP + "func g() -> P\n    return S.(C).Item.init()", "TypeMismatch_Kd C")]
     [InlineData(
         "contract C<T>\n    associate Item\nstruct P\n    public struct Inner\n        public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\n" +
             "func g(x: S.(C<i32>).Item.Inner) -> i32 => 0",
-        "Unsupported_Kd S.(C<i32>).Item.Inner")]
+        "")]
     [InlineData(
         "struct S\n    public struct In\n        public init() => ()\nfunc f(v: Missing.X) -> i32 => 0\nfunc g(v: S.Missing.X) -> i32 => 0\nfunc h(v: (Missing).X) -> i32 => 0",
         "UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd Missing|UnresolvedBinding_Kd S.Missing")]
@@ -151,7 +152,7 @@ public class UseLookupTest
     // PLAN G724, the design's construction rows (SPEC 6.3.2, 8.5.2): construction through a projection qualifier over a parameter
     // with its premise (n05), a generic head written and short (r01, r01c), `Self` (r02), `::` (r03), a nested head (r04), a nested
     // projection (r05), a parenthesized Contract (r06g, r14v) and with arguments (k24); the invalid counterparts: no conformance to
-    // the written reference (b1x; r10, a Type function, whose member is the located Unsupported_Kd), two associated Types of the short
+    // the written reference (b1x; r10, a Type function, whose missing member rests on the projection's record), two associated Types of the short
     // name (b3x). b1x and r10 also record the unsatisfied constraint at the call, which rests on the projection's own record: PLAN
     // G724's BU-61 remainder (one independent record), asserted here as it stands.
     [Theory]
@@ -213,7 +214,7 @@ public class UseLookupTest
     [InlineData(
         ProjectedP +
             "func g() -> i32\n    return S.(C<i64>).Item.make()",
-        "UnsatisfiedConstraint_Kd S.(C<i64>).Item|UnsatisfiedConstraint_Kd S.(C<i64>).Item.make()|Unsupported_Kd S.(C<i64>).Item.make")]
+        "UnsatisfiedConstraint_Kd S.(C<i64>).Item|UnsatisfiedConstraint_Kd S.(C<i64>).Item.make()")]
     public void AProjectionQualifierConstructsItsNormalForm(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
     // PLAN G728 (SPEC 9.7.3, 9.7.1 step 3, 8.8.2): a nested Type named through a Core qualifier whose applied Type also has an associated

@@ -83,6 +83,10 @@ public sealed partial class Binding
         return true;
     }
 
+    // A value's declared Type for a member step (SPEC 9.6): its declaration queried (QueryValueType); none for a Property its header
+    // refused or a header running now.
+    private BoundType? DeclaredValueType(BindingSymbol symbol) => this.QueryValueType(symbol) && symbol.Property?.Refusal is null ? symbol.Type : null;
+
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
