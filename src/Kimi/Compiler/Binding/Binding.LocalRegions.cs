@@ -15,7 +15,8 @@ namespace Kimi.Compiler;
 // initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region. Its readers at a use:
 // RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type), RegionalAt through it; in
 // a nested body, RegionValue (the view's row 6, which A5 reads where the region fails at a longer end): BU-127's solved value of a
-// `let` or `var` region, a `var` region's the meet of its recorded bounds (the owner's O-422 (a)).
+// `let` or `var` region, a `var` region's the meet of its recorded bounds (the owner's O-422 (a)); wherever asked, LetRegionValue (a
+// `let` region's value as published, for StaticOrigin's Owned judgment; B's ruling 28).
 // Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
 // (ResetLocalRegions); a `var` region publishes no value: a use in its own body reads the region, and only RegionValue (a nested body's
 // row 6) reads its meet of recorded bounds. A bound's parent is stored as its store read it at the bound's use (the owner's
@@ -216,6 +217,34 @@ public sealed partial class Binding
     // comparison's relation does not call it: it reads the region (the owner's O-363 (a); the contract above).
     internal BoundOrigin RegionValueAtUse(BoundOrigin origin, Koto use)
         => this.regionValues == 0 || origin.Kind is not (OriginKind.Inference or OriginKind.Intersection) ? origin : this.RegionValueIn(origin, BodyOwner(use));
+
+    // B's ruling 28 (SPEC 15.2.3, 15.4.4): an Origin with each `let` region, itself or a meet's operand, read as its published value
+    // wherever it is asked, not only at a use in the region's own body: the value is a fact of the region, fixed at its declaration (the
+    // reading of Binding.OriginRows' AddRegionValueRows). A judgment of what the Origin itself outlives reads it (StaticOrigin's Owned
+    // judgment); a use that constrains the region does not. A `var` region publishes no value and reads as itself.
+    internal BoundOrigin LetRegionValue(BoundOrigin origin)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return this.Region(origin)?.Value ?? origin;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (this.Region(origin.Operands[i]) is { Value: not null })
+            {
+                var read = BoundOrigin.Static;
+                for (var k = 0; k < origin.Operands.Count; k++)
+                {
+                    read = this.Meet(read, this.LetRegionValue(origin.Operands[k]));
+                }
+
+                return read;
+            }
+        }
+
+        return origin;
+    }
 
     // DECISIONS BU-127's solved value of a local region (the owner's O-422 (a)), null for any other Origin and for a region with no bound:
     // a `let` region's value as published; a `var` region's meet of its recorded bounds, complete once its body is bound (a nested body
