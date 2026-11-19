@@ -328,6 +328,7 @@ internal struct NodeColumns
     internal StampedColumn<Binding.CallInferenceFailure, Binding.PassCounter> CallInferenceFailures; // Pass: the selection a construction's or shape contract's later check rejected (Binding.ConstructorValidation.cs).
     internal StampedColumn<(bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other), Binding.PassCounter> CallableSelectionFailures; // Pass: a failed Callable value call's candidates and shape position (Binding.CallableSelection.cs).
     internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
+    internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
 
     internal void Resize(int length)
     {
@@ -385,6 +386,7 @@ internal struct NodeColumns
         this.CallInferenceFailures.Grow(length);
         this.CallableSelectionFailures.Grow(length);
         this.BaseCallFailures.Grow(length);
+        this.ObjectErasureFailures.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -418,6 +420,7 @@ internal struct NodeColumns
         this.CallInferenceFailures.Freeze(binding);
         this.CallableSelectionFailures.Freeze(binding);
         this.BaseCallFailures.Freeze(binding);
+        this.ObjectErasureFailures.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -480,6 +483,7 @@ internal struct NodeColumns
             CallInferenceFailures = this.CallInferenceFailures.Renumbered(length),
             CallableSelectionFailures = this.CallableSelectionFailures.Renumbered(length),
             BaseCallFailures = this.BaseCallFailures.Renumbered(length),
+            ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
         };
         return columns;
     }

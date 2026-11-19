@@ -463,7 +463,7 @@ public sealed partial class Binding
         {
             this.ReportClauseConstraint(issue.Node, store, reference, requirement, issue.Code);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures?.TryGetValue(issue.Node, out var erasure) == true)
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures.TryGetValue(issue.Node, out var erasure))
         {
             var subject = DiagnosticTypeName(erasure.Source);
             var viewTarget = DiagnosticTypeName(erasure.Target);

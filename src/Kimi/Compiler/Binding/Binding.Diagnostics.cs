@@ -657,7 +657,6 @@ public sealed partial class Binding
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
-        this.objectErasureFailures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
