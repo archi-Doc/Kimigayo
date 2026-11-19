@@ -455,6 +455,25 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rejected: keeping the rule (option (b): the windows the disjoint hunks cost); allowing any clean merge (adjacent hunks are where
     one unit's edit changes the other's context).
 
+- **Q22 The 90% rule is abolished; G396's remaining items are R7 exit conditions** (2026-11-19, the owner in K's dialog, verbatim
+  「あと、「90% ルール」は撤廃します。」 and
+  「G396 の残りの項目、「F7 の 2c-6・2c-7、F8、F10、A6 の 2g 単位、Unsupported_Kd 25個」はR7の出口条件に含めて、きちんと解決してください。」;
+  the [R7, R8 and R9 plan](../../draft/Proposals/2026-11-03%20R7%20R8%20R9%20Implementation%20Plan.md) §10.1 item 6, §5.4 and
+  revision 102; PLAN G396).
+  - Rule 1: a stage exits only when every exit task is done. An exception is the owner's, approved and named per task, never
+    granted by a percentage; nothing passes an exit as an unnamed or unstaged remainder.
+  - Rule 2: PLAN G396's remaining items are R7 exit conditions, to be resolved, not deferred: the items the owner named, A5-F7's
+    last units 2c-6 and 2c-7, A5-F8 with the [Complete Polonius A5 plan](../../draft/Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)'s
+    Appendix B U8s, A5-F10, A6's 2g units with G105 (Appendix B's U11) and the 25 `Unsupported_Kd` producers without a removal
+    stage (DEC O4), and the row's other open items with them: (3)'s 18 unpinned producers; (5) G103, G124, G126, G147 (2), G160's
+    remainder and G263; (6) G391, G216 (b) and G215; (7) X-5's non-blocking findings; (8) to (11). PLAN G396's row is the authority
+    on what remains of each; R7's exit gate checks them item by item.
+  - Context: since R4's exit on 2026-11-03, G396 carried R4's exceptions with no stage that removes them (the plan's §5.4: the
+    middle session's defect stream, "not R7–R9").
+  - Supersedes in part R4-M165: the owner's 90% rule (「90%の状態で良いので」, 「細かい不具合は、後で修正します。」) for any later exit;
+    its "Exceptions, carried past the exit as PLAN G396" clause as a carry with no removal stage (R7's exit is now their stage);
+    and X-2's "the 25 without a removal stage stay under DEC O4". R4's exit, X-1 to X-5 and the landed list stand as history.
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -5586,6 +5605,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     G147 (2) (BU), G160's remainder, G263; G216 (a)'s unjudged forms and record sites (G388-G392, U3), G216 (b), G215; the
     ledger's per-row closure; X-5's non-blocking findings.
   - R6-check: IC, H3-1 and H4 are not done; R5's Q19 second reading runs at this head (H0 §5).
+  - Superseded in part by Q22 (2026-11-19): the owner abolished the 90% rule, so a later stage exits only when every exit task is
+    done; G396's remaining items, the Exceptions above and X-2's 25 producers among them, are R7 exit conditions. R4's exit stands.
 - **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
   「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; BU's review REVISE B1, the fix round under the owner's 「GO」)
   - SPEC 8.4, 8.3.2's refinement row: a Contract's Self, in a Contract reference's Type arguments too, is the conforming Type, and only
