@@ -114,7 +114,7 @@ public partial class Compilation
     private bool hasParsedSource;
     private Binding? binding;
 
-    // The compilation's library (PLAN G949 Stage 2 U3; DECISIONS R8-M?? on landing): the one given before its Binding (UseLibrary: the
+    // The compilation's library (PLAN G949 Stage 2 U3; DECISIONS R8-M55): the one given before its Binding (UseLibrary: the
     // freeze compilation's own, made by KimiLibrary.Unfrozen; a test's library frozen through the seam), else, when the Binding is made,
     // the process's library for its target (KimiLibrary.Of, the key's one reader); fixed when the Binding is made. The default is the
     // input's definition, not a fallback: a late or second UseLibrary refuses, and so does Prepare once the Binding exists (B4).
