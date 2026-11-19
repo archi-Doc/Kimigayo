@@ -11,11 +11,10 @@ namespace Kimi.Compiler;
 // walk the requests start (Enumerate and what it calls) is the entry file's.
 public sealed partial class Binding
 {
-    // Closure(view) (the class header's): the entry of each (view scope, requirement Contract), the entries the outermost request formed
-    // (dropped when it returns unless Kept), and the free entries, each with its lists and their capacity.
-    private readonly Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex = new();
+    // Closure(view) (the class header's): the entries the outermost request formed (dropped when it returns unless Kept); the running
+    // pass's entry of each (view scope, requirement Contract) and its free entries, each with its lists and their capacity, are the
+    // pass's part's, handed over by EnterPass (enumerateIndex, enumerateIndexPool below; PassPart.EnumerateIndex).
     private readonly List<(EvidenceView, BindingSymbol?)> enumerateOwned = new();
-    private readonly Stack<ViewIndex> enumerateIndexPool = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
     // The kept tables (the class header's Kept rows), emptied by ClearKeptRows as their epoch ends, capacity and pooled lists kept:
@@ -28,6 +27,8 @@ public sealed partial class Binding
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<(BoundType A, BoundType B)> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows
     private readonly List<BoundType> enumerateDeferred = new(); // PLAN G881b: the round's mates row (5) did not walk (a cycle)
+    private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
+    private Stack<ViewIndex> enumerateIndexPool; // The running pass's free entries.
 
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
     // the rows of a link of the subject's chain in a view (null while the link is open), each link's rows of the request's last round
@@ -143,16 +144,16 @@ public sealed partial class Binding
                 // the Type it keys) and of row (5)'s mates, which may be deeper than the link they are identical with. Under a path
                 // equation to a deeper projection (SPEC 8.3.3 Limits: allowed; `Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`)
                 // each round's mate supplies a deeper identity and the link Types have no end, so the rounds are bounded
-                // (PremiseClosureLimit): a request still unproven after them is refused (RefuseProof: PremiseClosureLimit, a Resource
-                // record at its use, or at its scope's owner where no check's frame is open; the owner's O-321 (b)), never Unknown by
-                // exhaustion while the pass produces its failures (a query after the pass keeps Unknown: RefuseProof). Whether a
-                // request reaches the bound is a function of (subject, Contract, view): a kept answer never stands for a request
-                // that would extend (the class header).
+                // (PremiseClosureLimit): a request still unproven after them is refused (RefuseProof: PremiseClosureLimit, the Resource
+                // record of the scope's declaration, once: at its first refused use, else at the declaration; O-321 (b), SPEC 8.3.3),
+                // never Unknown by exhaustion while the pass produces its failures (a query after the pass keeps Unknown: RefuseProof).
+                // Whether a request reaches the bound is a function of (subject, Contract, view): a kept answer never stands for a
+                // request that would extend (the class header).
                 for (var (applied, rounds) = (0, 0); !refines && this.enumerateDepth == 1 && this.enumerateIdentities.Count > applied; rounds++)
                 {
                     if (rounds == PremiseClosureLimit)
                     {
-                        this.RefuseProof(this.consultationNode ?? scope.Owner, BindingFailure.PremiseClosureLimit);
+                        this.RefuseProof(scope, BindingFailure.PremiseClosureLimit);
                         break;
                     }
 
@@ -248,7 +249,7 @@ public sealed partial class Binding
         for (var i = start; !supplied && i < this.premiseRows.Count; i++)
         {
             supplied = this.premiseRows[i] is { Available: true, Clause: { Kind: ConstraintKind.Callable } clause } && clause.Mask == atom.Mask &&
-                SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
+                this.SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
@@ -539,7 +540,7 @@ public sealed partial class Binding
         this.enumerateOwned.Clear();
     }
 
-    // The pass ended (ResetCapabilities): every entry goes back to the pool.
+    // The pass ended (ResetCapabilities, as the pass runs again): every entry of the pass goes back to the pass's pool.
     private void ClearClosure()
     {
         foreach (var index in this.enumerateIndex.Values)
@@ -591,7 +592,7 @@ public sealed partial class Binding
 
     // An entry of Closure(view) (the class header's): the serial it was formed at, whether it is Kept, and its buckets by (chain scope,
     // kind, SubjectKey). Its lists stay with it, capacity kept.
-    private sealed class ViewIndex
+    internal sealed class ViewIndex
     {
         private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> lists = new();
         private int used;

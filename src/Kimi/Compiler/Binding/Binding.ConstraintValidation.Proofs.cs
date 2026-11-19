@@ -372,8 +372,12 @@ public sealed partial class Binding
 
     // SPEC 8.3.3 (Limits), 23.1.1 (DECISIONS BU-22's L): an analysis a judgment needs reached an implementation limit (`limit`, a
     // failure whose record's category is Resource), so its negative answer is a resource failure, never Unknown or Refuted. The
-    // limit's record is `site`'s: the open consultation frame's node (the use), else the owner of the scope whose premises the
-    // analysis read (the declaration that reaches the limit), so no refusal is without a node. Inside a proof the answer joins it
+    // limit is the declaration's that reaches it, the declaration whose premise closure the request extends (`scope`'s published
+    // Declaration: a block, a loop body, a match arm or a Closure inside a definition is the definition's, a conformance path's is its
+    // conditional conformance's or else its Type's), and is reported once (SPEC 8.3.3): its record
+    // is at the first refused request's site in the run, the open consultation frame's node (the use; the owner's O-321 (b)), else
+    // the declaration, and a later request of the run, in any of the declaration's bodies, rests on that record (Refusal.Reach),
+    // so no refusal is without a node. Inside a proof the answer joins it
     // as a limit whose Use is that node: an Unknown resting on it is Error wherever it is read again (a capability result, a
     // memo, a source state), and the node is failed where such an answer is no longer combined (EndProof), so the record exists
     // whoever reads the Error and a check failing on it derives from the record; a judgment other evidence proves stands and
@@ -382,19 +386,23 @@ public sealed partial class Binding
     // held for its selection (Refusal.Settle): only the selected candidate's Unknown judgments are obligations (SPEC 10.1). All of it
     // while the pass produces its failures (producing): a query after the pass (a lint, MIR, emission, the editor) fails no node, so
     // its request answers Unknown, as without the analysis (PLAN G651 U2 gives the after-run queries their outcome).
-    private void RefuseProof(Koto site, BindingFailure limit)
+    private void RefuseProof(BindingScope scope, BindingFailure limit)
     {
         if (!this.producing)
         {
             return;
         }
 
-        // The node's refusal, its row of the kept family NodeColumns.Refusals (DECISIONS BU-220), read and written here alone: one cause
-        // a node, so an answer computed again rests on the same cause (the capability engine's fixpoint compares causes by reference).
-        // A Refusal holds no pass state (its node, its limit), so it is kept across passes, as the capability works are: a refused
-        // request allocates it once and a warm pass reuses it (RP8's warm bytes). The library holds no row (no library node is a site).
-        ref var row = ref HirTables.Of(site).Families.Refusals.Ref(site.SyntaxId);
-        var refusal = row ??= new(this, site, limit);
+        var owner = scope.Declaration;
+
+        // The declaration's refusal, its row of the kept family NodeColumns.Refusals (DECISIONS BU-220), read and written here alone:
+        // one cause a declaration, so an answer computed again rests on the same cause (the capability engine's fixpoint compares causes
+        // by reference) and its requests share one record. A Refusal holds no pass state but the run its record's node is for
+        // (Reach), so it is kept across passes, as the capability works are: a refused declaration allocates it once and a warm pass
+        // reuses it (RP8's warm bytes). The library holds no row (no library node is a site or an owner).
+        ref var row = ref HirTables.Of(owner).Families.Refusals.Ref(owner.SyntaxId);
+        var refusal = row ??= new(this, limit);
+        refusal.Reach(this.consultationNode ?? owner);
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
             this.ReadVerdict(ConstraintProof.Unknown, refusal, null);
@@ -482,11 +490,16 @@ public sealed partial class Binding
         internal BoundOrigin? Origin;
     }
 
-    // What a proof that read a refused analysis rests on (RefuseProof): the node the limit is recorded at, failed where an answer
-    // resting on it is no longer combined within the pass (Settle; its first failure only, Fail); its node's row of NodeColumns.Refusals.
-    internal sealed class Refusal(Binding binding, Koto use, BindingFailure limit) : ICheckCause
+    // What a proof that read a refused analysis rests on (RefuseProof): a declaration's limit and the node it is recorded at, failed
+    // where an answer resting on it is no longer combined within the pass (Settle; its first failure only, Fail); its declaration's
+    // row of NodeColumns.Refusals.
+    internal sealed class Refusal(Binding binding, BindingFailure limit) : ICheckCause
     {
-        public Koto Use { get; } = use;
+        private ulong recorded; // The run (Binding.storageVersion) whose record Use holds, 0 before the first.
+
+        // The record's node: the latest refused request's site until the run records the limit (Settle), then the recorded node,
+        // on which every later request of the declaration in the run rests (SPEC 8.3.3: reported once). Set by Reach before any read.
+        public Koto Use { get; private set; } = null!;
 
         public ICheckCause? Next => null;
 
@@ -494,6 +507,15 @@ public sealed partial class Binding
 
         public void Rest()
         {
+        }
+
+        // A request of the declaration refused at `site` (RefuseProof).
+        internal void Reach(Koto site)
+        {
+            if (this.recorded != binding.storageVersion)
+            {
+                this.Use = site;
+            }
         }
 
         // Whether the node was failed: never after the pass; inside a selection's candidate evaluation it is held for the selection
@@ -512,6 +534,7 @@ public sealed partial class Binding
             }
 
             binding.Fail(this.Use, limit);
+            this.recorded = binding.storageVersion;
             return true;
         }
     }

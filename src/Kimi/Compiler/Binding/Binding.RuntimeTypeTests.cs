@@ -75,7 +75,7 @@ public sealed partial class Binding
         }
 
         // SPEC 13.6.4: refinement would give the operand an object form of the target, which an opt-out forbids.
-        if (target.Symbol!.ObjectPayloadOptOut is { } renounced)
+        if (this.ObjectPayloadOptOut(target.Symbol) is { } renounced)
         {
             return this.FailObjectPayload(test, renounced);
         }

@@ -226,14 +226,21 @@ internal static class DiagnosticCorpus
     /// <param name="source">The program.</param>
     /// <param name="outputKind">The project's OutputKind.</param>
     /// <returns>The check's output.</returns>
-    internal static CheckOutput Check(string source, string outputKind)
+    internal static CheckOutput Check(string source, string outputKind) => Check(source, outputKind, string.Empty);
+
+    /// <summary>Checks a program of an output kind with further project settings (default aliases, for example).</summary>
+    /// <param name="source">The program.</param>
+    /// <param name="outputKind">The project's OutputKind.</param>
+    /// <param name="settings">Project file text appended after OutputKind and Targets, such as <c>Alias={"Tools"}</c>.</param>
+    /// <returns>The check's output.</returns>
+    internal static CheckOutput Check(string source, string outputKind, string settings)
     {
         var folder = Path.Combine(Path.GetTempPath(), "kimi-check-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
         {
             var project = Path.Combine(folder, "Program.kimiproj");
-            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{WindowsProfile.Target}\"}}");
+            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{WindowsProfile.Target}\"}}\n{settings}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
             Assert.True(
                 Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),

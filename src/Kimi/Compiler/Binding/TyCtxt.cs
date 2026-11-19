@@ -3,8 +3,10 @@
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
 // of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, and R4-M118's chain
 // judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
-// Input: immutable Type shapes. Output: canonical Types and derived views.
-// Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
+// Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
+// Interned identity is equality, over two levels (PLAN G949 Stage 2 U4; Binding.PassPart.Levels): the library layer's frozen level, filled
+// until the library's seal, and the compilation's, filled after it; values live with the compilation and survive warm rebinds. A
+// compilation-level Type's id is above L (LibraryLayer.TypeCount), from which the numbering goes on. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
 // Type is two interned Types, a declaration's (`PS<raw/u8 during Unstated>`) and a parameter's (`PS<raw/u8>`) (DECISIONS BU-46).
 // Must not resolve source expressions or let consumers duplicate Type construction: every Type but BoundType's statics is made and
@@ -21,16 +23,26 @@ namespace Kimi.Compiler;
 /// contracts (Retains) is discarded with that pass.</summary>
 internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
-    private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.TypeKeys));
-    private int typeCount = BoundType.StaticCount; // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter).
+    // The compilation's level of the interned Types (PLAN G949 Stage 2 U4): the Types interned after the library's seal; the library's
+    // are LibraryLayer.Types, found first (Intern).
+    private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedRoom);
+
+    // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter), numbering on from the library's L once its layer is
+    // sealed (U4), so every Type of the compilation's level has an id above L.
+    private int typeCount = Math.Max(BoundType.StaticCount, library.Layer.TypeCount);
     private int interned; // The Types Intern made: the table's entries.
+    private int programEntries; // The Types of the compilation's level, which hold its room (KeyFree).
+
+    /// <summary>Gets the last id this compilation gave a Type (Binding's freeze reads it as the library's L).</summary>
+    internal int TypeCount => this.typeCount;
 
     /// <summary>Gets the number of interned Types, the entries of their table. Not its keys: a key is a hash of the parts' identity
     /// hashes, which a thread's earlier objects move, so two Types share one at random (PLAN G949's flaky TableCounts row).</summary>
     internal int KeyCount => this.interned;
 
-    /// <summary>Gets the free slots of the interned Types' table: its capacity less its entries, at most its free keys.</summary>
-    internal int KeyFree => this.types.Capacity - this.interned;
+    /// <summary>Gets the free slots of the compilation's level of the interned Types: its capacity less its entries, at most its free
+    /// keys.</summary>
+    internal int KeyFree => this.types.Capacity - this.programEntries;
 
     // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
     private BoundType[] pairScratch = [];
@@ -76,23 +88,25 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 23.1: a length as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundLength length) => Binding.DiagnosticLengthName(length);
 
-    // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
-    // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
-    // not instantiate it. The MIR validator checks calls and bodies by it.
-    internal static BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
-    {
-        var declaration = (FunctionKoto)function.Declaration;
-        count = declaration.Parameters.Count;
-        var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(declaration) : function.Type;
-        return type is null || subst is null ? type : declaration.CodeContext.Compilation.Types.Apply(type, subst);
-    }
+    // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
+    // the MIR's case views resolve a case adaptation.
+    internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
+        => ExplicitAdaptationPlan.Select(source, target, shorthand);
 
     // SPEC 8.2, 8.4: a Type in a definition's body as its premises make it (S for E under `E is S`, T.Element under `T.Element is i32`), as
     // Binding compares Types there: the one premising (Binding.CallableContractType), which Binding.OperandTerminal applies too.
-    internal static BoundType Premised(BindingSymbol definition, BoundType type)
+    internal BoundType Premised(BindingSymbol definition, BoundType type)
+        => binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
+
+    // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
+    // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
+    // not instantiate it. The MIR validator checks calls and bodies by it.
+    internal BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
     {
-        var binding = definition.Declaration.CodeContext.Compilation.Binding;
-        return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
+        var declaration = (FunctionKoto)function.Declaration;
+        count = declaration.Parameters.Count;
+        var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(binding, function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(binding, declaration) : function.Type;
+        return type is null || subst is null ? type : this.Apply(type, subst);
     }
 
     // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key: the root key of `input` (the slot's instantiated Type
@@ -103,13 +117,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // (`S.Item is raw/u8` inside `HA<S>`), an enclosing Type's parameter, which the receiver's instance completes (DECISIONS BU-50); a Type
     // the declaration and the input write with different constructors ends the path there, shown (named limit: a pair layer's owner case,
     // `s/U` read as U itself). Must not decide what a hidden layer reaches (A5's).
-    internal static PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
-        => PlaceKey.Root(input) with { Signature = Signature(function, null, slot, out _) };
-
-    // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
-    // the MIR's case views resolve a case adaptation.
-    internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
-        => ExplicitAdaptationPlan.Select(source, target, shorthand);
+    internal PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
+        => PlaceKey.Root(input) with { Signature = this.Signature(function, null, slot, out _) };
 
     // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.
@@ -211,9 +220,17 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             hash.Add(RuntimeHelpers.GetHashCode(components[i]));
         }
 
+        // The one find over the two levels (Binding.PassPart.Levels; PLAN G949 Stage 2 U4): content in no level is inserted at the open
+        // one, so equal content is one Type in both levels.
         var key = hash.ToHashCode();
-        if (this.types.TryGetValue(key, out var bucket))
+        var levels = Binding.PassPart.Interned(library, library.Layer.Types, this.types);
+        foreach (var level in levels)
         {
+            if (!level.TryGetValue(key, out var bucket))
+            {
+                continue;
+            }
+
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
@@ -239,14 +256,17 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
                 }
             }
         }
-        else
+
+        var open = levels.Open;
+        if (!open.TryGetValue(key, out var into))
         {
-            this.types.Add(key, bucket = new(1));
+            open.Add(key, into = new(1));
         }
 
         var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), instanceContext, binder);
-        bucket.Add(created);
+        into.Add(created);
         this.interned++;
+        this.programEntries += ReferenceEquals(open, this.types) ? 1 : 0;
         return created;
 
         static bool QuantifiesInput(BoundType inputs, Koto binder)

@@ -17,6 +17,7 @@ public sealed partial class Binding
     private bool assuming; // The coinductive step is evaluating (AssumeResidual).
     private bool assumptionVoid; // It read a work never evaluated.
     private int assumptionDepth; // ObligationDepth when its evaluation began: an assumption is not read through a newer obligation.
+    private int assumedReads; // The assumptions read in the running coinductive step (temporary carrier with reentryReads; removal: R7-C2e2 e2-5b).
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -81,6 +82,38 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
+    // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
+    // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
+    // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
+    // arguments are its whole dependence.
+    // A signature is unreadable, none, where its header did not bind (an Item's function, the Type BindConcreteClosure starts with) or
+    // BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300).
+    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
+    {
+        if (type.Kind == BoundTypeKind.Function)
+        {
+            return type.Binder is { } binder ? (type, binder) : null;
+        }
+
+        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
+        {
+            return null;
+        }
+
+        if (type.Symbol?.Declaration is not FunctionKoto definition)
+        {
+            throw new InvalidOperationException($"Callable Type `{type}` names no function (InternalInvariant; BU-73).");
+        }
+
+        if (type.Kind == BoundTypeKind.FunctionItem)
+        {
+            return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
+        }
+
+        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
+    }
+
     private bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
@@ -111,7 +144,7 @@ public sealed partial class Binding
             }
 
             // The judgment is shallow: outer owner Semantics, a Core other than Never, and no inherited opt-out.
-            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || type.Symbol?.ObjectPayloadOptOut is not null
+            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || this.ObjectPayloadOptOut(type.Symbol) is not null
                 ? ConstraintProof.Refuted : ConstraintProof.Proven;
             return true;
         }
@@ -174,38 +207,6 @@ public sealed partial class Binding
         }
 
         return false;
-    }
-
-    // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
-    // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
-    // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
-    // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
-    // arguments are its whole dependence.
-    // A signature is unreadable, none, where its header did not bind (an Item's function, the Type BindConcreteClosure starts with) or
-    // BU-60's view withholds a Closure's held instance (an Origin position closed in no instance, PLAN G300).
-    private (BoundType? Signature, Koto Binder)? CallSignature(BoundType type)
-    {
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            return type.Binder is { } binder ? (type, binder) : null;
-        }
-
-        if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
-        {
-            return null;
-        }
-
-        if (type.Symbol?.Declaration is not FunctionKoto definition)
-        {
-            throw new InvalidOperationException($"Callable Type `{type}` names no function (InternalInvariant; BU-73).");
-        }
-
-        if (type.Kind == BoundTypeKind.FunctionItem)
-        {
-            return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
-        }
-
-        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
     }
 
     private void ResetCapabilities(BindingMode mode)
@@ -317,6 +318,7 @@ public sealed partial class Binding
                 }
                 else if (work.Assumed && consumer.Assumed && this.ObligationDepth == this.assumptionDepth)
                 {
+                    this.assumedReads++;
                     return ConstraintProof.Proven;
                 }
             }
@@ -390,6 +392,14 @@ public sealed partial class Binding
     // The nominal obligations open (the open set's and the conformance verifications in progress, the two guards of SPEC 8.3.3
     // Recursion): an assumption is not read through one opened during the evaluation that reads it (AssumeResidual).
     private int ObligationDepth => this.openObligations.Count + this.conformanceChecks;
+
+    // SPEC 8.3.3 Finality: the reads of a verdict not settled yet, an open obligation's re-entry reads (reentryReads) and the running
+    // coinductive step's assumptions, each valid only at the obligation depth its evaluation began. An answer computed while the count
+    // grows rests on one of them; one computed with it unchanged rests on settled verdicts alone and holds at any deeper obligation
+    // (Formation's nested reads). A whole request inside the computation leaves it unchanged: its step's reads end with the step.
+    // Temporary carrier with reentryReads and assumedReads; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer, which then
+    // says whether an answer rests on a provisional verdict (Formation's Settled and unsettledReads go with it).
+    private int ProvisionalReads => this.reentryReads + (this.assuming ? this.assumedReads : 0);
 
     // SPEC 8.3.3 Limits, 23.1.1 (DECISIONS BU-22): each Unknown or Error work of the request rests on the least Cause by CauseKey among
     // its own (what its last evaluation read from anything but a work) and those of the works it read that settled at its verdict.
@@ -512,6 +522,7 @@ public sealed partial class Binding
 
         this.assuming = true;
         this.assumptionVoid = false;
+        this.assumedReads = 0;
         this.CoinductiveStepWork++;
         while (!this.assumptionVoid && this.assumptionQueue.TryDequeue(out var next))
         {

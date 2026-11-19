@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 15.3.7, 15.6.1, 15.6.4 step 3: a signature's intrinsic well-formedness (every Origin stored below a borrow layer outlives that
-// layer's Origin, and for an input its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
+// layer's Origin, and its Types' own clauses hold) is a premise of its definition and an obligation at each use. For the
 // result, a relation that the callee's inputs and declared relations already prove needs no premise; only the others, which the
 // definition would otherwise fail, are carried to the uses: each call solves its Origins with them and proves them for its substituted
 // result, and a function reference or a conformance proves them from the required contract. Every input relation is a premise, so each
@@ -461,14 +461,14 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2 row 2, 15.3.6 (PLAN G585): a part that waits at `ref/U during a` for a value call's solve is a borrowed owner temporary,
-    // of U (TemporaryTarget) or of its own Type (a fill, a mixed range), at a root or nested row: its Place Origin is an input bound of
+    // of U (Materialization) or of its own Type (a fill, a mixed range), at a root or nested row: its Place Origin is an input bound of
     // `a`, by the key of a named call's evidence walk (InferComposite's Aggregate part, InferLiteral: InferTemporary). A part of Join
     // kind at `ref/(...)`, which InferComposite borrows too, is PLAN G729's exception and no key here: whether a value call takes it
     // is the question of a temporary carried out of its arm.
     private void AddTemporaryBound(Koto part, BoundType pattern, OriginInference inference, BindingScope scope)
     {
         if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } origin } &&
-            (this.KindOf(part) == PartKind.Aggregate || this.TemporaryTarget(part, pattern, scope) is not null))
+            (this.KindOf(part) == PartKind.Aggregate || this.Materialization(part, pattern, scope) is not null))
         {
             AddInputBound(inference, origin, this.PlaceOrigin(part));
         }
@@ -542,9 +542,19 @@ public sealed partial class Binding
     // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
     // once per distinct argument part beside it (TypeMemo's pair) and change of its substituted part between consecutive meets of that
     // pair; each skip prunes a revisit whose first visit completed in the query. Whether that bounds a form whose argument parts alternate
-    // beside a shared pattern part is unshown (PLAN G387).
+    // beside a shared pattern part is unshown (PLAN G387). The visit's requests share a premise session (PLAN G778).
     private bool VisitWellFormedPremises(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
-        => this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+    {
+        var session = this.OpenPremiseSession();
+        try
+        {
+            return this.WellFormedPart(pattern, result, actual, visit with { Query = this.wellFormedParts.Begin(this.storageVersion) });
+        }
+        finally
+        {
+            session?.Close();
+        }
+    }
 
     private bool WellFormedPart(BoundType pattern, BoundType result, BoundType? actual, in WellFormedVisit visit)
     {
@@ -587,7 +597,8 @@ public sealed partial class Binding
 
         // The layer the substituted part forms at the use (WellFormedLayer), its pair layer's slot in the borrow cases its binder has in
         // the visit's relation (its comparison's scope, else the use's: RelationScope).
-        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, visit.Use, visit.Comparison) is { } layer)
+        var at = new UseScope(visit.Use);
+        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, ref at, visit.Comparison) is { } layer)
         {
             var stored = visit with { Query = this.storedParts.Begin(this.storageVersion), Condition = RequiredCondition(layer.Condition) };
             if (!this.VisitStoredPremises(pattern.Components[0], layer.Target, actual?.Components[0], outer, layer.Outer, stored))
@@ -647,7 +658,8 @@ public sealed partial class Binding
         // SPEC 8.1.1, 8.1.2, 15.6.5: a pair layer's slot, the implicit `o` of an original `s/T` included, is stored only in its binder's
         // borrow cases. At a use it is the slot its substitution stores: a borrow's Origin, a caller's pair slot in that pair's borrow
         // cases, and none for a value binding, which leaves the relation vacuous.
-        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot, visit.Comparison) is { } value &&
+        var at = new UseScope(visit.Use);
+        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, ref at, out var slot, visit.Comparison) is { } value &&
             !this.VisitWellFormedPremise(origin, outer, result, value, actual is null ? null : this.OuterOrigin(actual), substituted, visit, RequiredCondition(slot)))
         {
             return false;

@@ -73,6 +73,6 @@ public sealed partial class MirEffectsTest
             }
         }
 
-        static string Self(BindingSymbol function) => TyCtxt.Name(TyCtxt.Signature(function, null, 0, out _)!);
+        string Self(BindingSymbol function) => TyCtxt.Name(c.Types.Signature(function, null, 0, out _)!);
     }
 }

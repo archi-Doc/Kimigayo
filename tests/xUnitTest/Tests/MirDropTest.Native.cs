@@ -156,7 +156,7 @@ public sealed partial class MirDropTest
         {
             if (bodies[i].Source.Module == 0)
             {
-                foreach (var row in program.Drops.RowsOf(i))
+                foreach (var row in program.Drops.RowsOf(bodies[i].Ordinal))
                 {
                     kinds.Add(row.Verdict);
                 }

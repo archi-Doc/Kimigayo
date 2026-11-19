@@ -3,10 +3,11 @@
 // Owns drop elaboration (A2; SPEC 16.2, 16.3.2, 15.1.3; DECISIONS R4-M6, R4-M6a) of one body per Semantics case view.
 // Input: the state MirInit's checks replay holds before each Drop (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
-// no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
+// no subtree event, so no point); the selected view (MirCases); the programs' TyCtxt (MirAnalysis's).
+// Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
 // for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
 // the views judged (A1 and A2 completed them), whether the table holds a body (Holds: the driver's one stepping path closed its entry in
-// this version, a kept library body's in its library version, which a round of A4 or the collector reads, PLAN G951), whether its
+// this version, a kept library body's in its library segment's library step, which a round of A4 or the collector reads, PLAN G951), whether its
 // library store holds it (LibraryHolds, the one per-ordinal fact every owner of a store per segment splits by, PLAN G951 U2-K: only the
 // driver's library step closes an entry there, so the fact is stable from that step's end to the version's end), the body's first
 // A1 or A2 problem, an inline copy's included (its code and its subject in its location's scope; both set it after MirReport.Add; the
@@ -70,7 +71,10 @@ internal readonly record struct MirFlagPoint(MirLocation At, int First, int Coun
 
 /// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (<see cref="MirProgram.Body"/>), the
 /// entries the library step closes (each body's rows, points and own entry there, by its ordinal) in a store of their own, kept while
-/// its library version holds, and the others in the program's, cleared per program version, a body's store read by
+/// its library segment holds, which from that step's end to the version's end holds exactly the library list's bodies
+/// (MirProgram.LibraryBodies), and the others in the program's, cleared where a version starts (MirProgram.ClearProgram and Clear,
+/// after MirProgram.Keeps read it: PLAN G951 U2-K-b, F18; the driver clears both stores once per library segment it begins), a body's
+/// store read by
 /// <see cref="LibraryHolds"/> (PLAN G950, G951 U2-K; <see cref="EndLibrary"/>, <see cref="ClearProgram"/>): the body's verdict rows, ordered by
 /// block, so a Drop's groups are contiguous, in view order; its flag points, ordered by block, each view's in location order; its number of flags; the views it judged, those A1 and A2 completed (all
 /// of the body's, none past A1's arena limit, R4-M15a); and its first A1 or A2 problem (R4-M102). A body not analyzed has none. A group
@@ -105,7 +109,7 @@ internal sealed partial class MirDropTable
     /// <returns>Whether the library store holds it.</returns>
     internal bool LibraryHolds(int body) => this.library.Closed(body);
 
-    /// <summary>Gets whether the table holds a body: the driver's library step has closed its entry in its library version
+    /// <summary>Gets whether the table holds a body: the driver's library step has closed its entry in its library segment
     /// (<see cref="LibraryHolds"/>), or its one stepping path (<see cref="MirAnalysis.Step"/>) in this version (the program store), so step
     /// 2 has run on it (A4's local facts follow its entry in the same step); a round that reads a body the table does not hold misses
     /// (PLAN G951).</summary>
@@ -194,8 +198,8 @@ internal sealed partial class MirDropTable
     internal void Close(int body, int flags, long views, (DiagnosticCode Code, SourceInfo Source)? incomplete)
         => this.writing.Close(body, flags, views, incomplete);
 
-    /// <summary>Removes every body, keeping the storage, for a new library version: the bodies closed next are the library store's (the
-    /// driver's library step).</summary>
+    /// <summary>Removes every body, keeping the storage, for a new library segment (MirProgram.Clear; the driver's library step of a
+    /// segment it begins): the bodies closed next are the library store's.</summary>
     internal void Clear()
     {
         this.library.Clear();
@@ -203,14 +207,20 @@ internal sealed partial class MirDropTable
         this.writing = this.library;
     }
 
-    /// <summary>Ends the library step: the bodies closed so far are the library store's, those closed next the program store's.</summary>
+    /// <summary>Continues the library step in a later version of a kept library segment (PLAN G951 U2-K; A4's
+    /// MirEffects.ContinueLibrary): the bodies closed next are the library store's, after the entries it holds.</summary>
+    internal void ContinueLibrary() => this.writing = this.library;
+
+    /// <summary>Ends the library step: the bodies closed so far are the library store's, those closed next the program store's, which
+    /// starts empty.</summary>
     internal void EndLibrary()
     {
         this.ClearProgram();
         this.writing = this.program;
     }
 
-    /// <summary>Removes the program store's bodies, keeping the library's and the storage, for a new program version.</summary>
+    /// <summary>Removes the program store's bodies, keeping the library's and the storage, for a new program version (MirProgram.ClearProgram;
+    /// the driver's library step again, EndLibrary).</summary>
     internal void ClearProgram() => this.program.Clear();
 
     // The store of a body's entry: the library's where it holds the body (LibraryHolds), else the program's; each is indexed by the ordinal.
@@ -262,9 +272,10 @@ internal sealed partial class MirDropTable
 /// each Drop's state tree and reach (<see cref="Record"/>) and each runtime state event
 /// (<see cref="Event"/>), <see cref="Judge"/> applies a view's
 /// Types to the trees, and <see cref="End"/> numbers the flags and writes the points.</summary>
+/// <param name="typeContext">The Type context of the programs, whose instances' stored Types the state trees read.</param>
 /// <param name="moves">The move paths, built for the body.</param>
 /// <param name="cases">The Semantics case views, the judged view selected.</param>
-internal sealed class MirDrops(MirMoveData moves, MirCases cases)
+internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases cases)
 {
     private readonly List<Node> trees = []; // The state trees of the Drops recorded in the current solve, each in pre-order.
     private readonly List<StateEvent> events = [];
@@ -449,9 +460,9 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             var step = node.Path < 0 ? default : moves.Paths[node.Path];
             MirDataflow.Grow(ref this.types, node.Depth + 1);
             var type = this.types[node.Depth] = node.Depth == 0 ? cases.TypeOf(drop.Terminator.Place)
-                : this.body.ProjectedType(this.types[node.Depth - 1], step.Kind, step.Arg);
+                : this.body.ProjectedType(typeContext, this.types[node.Depth - 1], step.Kind, step.Arg);
             var state = node.State == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : node.State;
-            var verdict = MirTypes.MayNeedDrop(type, this.walked) ? state : MirDropVerdict.Elide;
+            var verdict = MirTypes.MayNeedDrop(typeContext, type, this.walked) ? state : MirDropVerdict.Elide;
             if (verdict == MirDropVerdict.Open && AdtDef.Destructor(type!) is not null)
             {
                 if (runtime)

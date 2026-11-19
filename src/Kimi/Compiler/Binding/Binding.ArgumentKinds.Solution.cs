@@ -22,7 +22,7 @@ public sealed partial class Binding
             Scope = evaluation.Scope,
             Self = evaluation.Self,
             DeclaringType = declaringType,
-            Frame = evaluation.Frame,
+            Frame = evaluation.Frames[candidate],
             Origins = evaluation.Origins,
             Inputs = evaluation.Inputs,
         };
@@ -93,10 +93,32 @@ public sealed partial class Binding
         // from the retained rows (CollectPositionPremises) and read by each discovery (DiscoverPremiseOrigins); its solve returns it.
         internal SlotSet EvidenceNamed;
 
+        // SPEC 10.8 (Unbound slots), 4.3.1 Places: the Type slots that steps 3 and 4 of SPEC 10.1 leave unbound, published before the
+        // late walk (LeaveUnbound; SolveLate, SolveConstruction) and read by it alone (InferComposite): only such a slot takes its
+        // literals whole there; a slot those steps bound gives the parts at its positions their expected Type (10.8).
+        internal SlotSet Left;
+
         // The solution's Type and length slots, read-only: the frame's writes are InferCtxt's (DECISIONS R7-I2).
         internal readonly ReadOnlySpan<BoundType?> Types => this.Frame.Types;
 
         internal readonly ReadOnlySpan<BoundLength?> Lengths => this.Frame.Lengths;
+
+        // Publishes Left in `left`, the caller's scratch. Contract: nothing writes that scratch between this call and the end of the
+        // late walk it precedes (SolveLate's is the trial's `unboundSlots`, which the trial recomputes only after SolveLate; a
+        // nested call's trial has its own).
+        internal void LeaveUnbound(ref SlotSet left)
+        {
+            left.Clear();
+            for (var g = 0; g < CallSlotCount(this.Binder); g++)
+            {
+                if (this.Types[g] is null)
+                {
+                    left.Add(g);
+                }
+            }
+
+            this.Left = left;
+        }
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
@@ -235,7 +257,7 @@ public sealed partial class Binding
                 for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
                 {
                     if (Opens(g, waiting, covariant, blocked) && this.Types[g] is { CarriesOrigin: true } solution &&
-                        !binding.invariantSlots.Contains(g) && !this.FixedSlot(g))
+                        !this.Frame.IsInvariant(g) && !this.FixedSlot(g))
                     {
                         var ordinal = 0;
                         this.Frame.SetType(g, binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal, opened));

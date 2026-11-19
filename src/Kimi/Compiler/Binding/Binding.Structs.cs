@@ -349,11 +349,7 @@ public sealed partial class Binding
             return null;
         }
 
-        member.Right.BindingState = BindingState.Resolved;
-        member.Right.BoundSymbol = constructor;
-        member.BoundSymbol = constructor;
-        this.memberSides[member] = MemberSide.Type; // SPEC 6.3.2: a constructor is never called on a receiver.
-        return constructor;
+        return this.PublishMemberAccess(member, constructor, null, LookupRole.Qualifier, null); // SPEC 6.3.2: never on a receiver; no lookup.
     }
 
     private BoundType? ConstructorQualifierType(Koto syntax, BindingSymbol symbol, BindingScope scope)
@@ -402,7 +398,7 @@ public sealed partial class Binding
     // SPEC 6.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
     private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
     {
-        parent = AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
+        parent = AdtDef.Base(this.types, this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
@@ -496,7 +492,7 @@ public sealed partial class Binding
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
         var type = baseInitializer
-            ? AdtDef.Base(this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
+            ? AdtDef.Base(this.types, this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
             : ((MemberAccessKoto)call.Method).Left.BoundType!;
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)

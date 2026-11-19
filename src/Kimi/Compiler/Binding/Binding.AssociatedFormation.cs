@@ -76,7 +76,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.BindType(syntax, scope) is { } type && !HasSupportedAssociatedFormation(type))
+        if (this.BindType(syntax, scope) is { } type && !this.HasSupportedAssociatedFormation(type))
         {
             this.Fail(declaration, BindingFailure.Unsupported);
         }
@@ -84,7 +84,8 @@ public sealed partial class Binding
 
     private bool CheckAssociatedFormation(BoundType type, Koto use)
     {
-        if (this.CheckTypeOriginRelations(type, this.ConstraintScope(use)) != ConstraintProof.Proven)
+        var at = new UseScope(use);
+        if (this.CheckTypeOriginRelations(type, at.Scope(this)) != ConstraintProof.Proven)
         {
             return false;
         }
@@ -92,7 +93,7 @@ public sealed partial class Binding
         // SPEC 8.1.2: a pair layer's active slot is a conditional borrow layer whose target's Origins outlive it in its binder's borrow
         // cases; a static slot under an admitted exclusive borrow is the occurrence's own formation failure (TypeRoleCauses). Formation
         // is judged at its use, in no comparison (default).
-        if (this.WellFormedLayer(type, use, default) is { } layer &&
+        if (this.WellFormedLayer(type, ref at, default) is { } layer &&
             ((layer.Outer.Kind == OriginKind.Static && IsExclusive(type.Semantics)) ||
             !this.AssociatedOriginsOutlive(layer.Target, layer.Outer, use, RequiredCondition(layer.Condition))))
         {
@@ -119,7 +120,8 @@ public sealed partial class Binding
         }
 
         // Formation's own relation, at its use and in no comparison (default).
-        if (this.StoredSlot(type, use, out var slot, default) is { } origin && !this.ProvesOriginOutlives(origin, outer, use, condition | RequiredCondition(slot)))
+        var at = new UseScope(use);
+        if (this.StoredSlot(type, ref at, out var slot, default) is { } origin && !this.ProvesOriginOutlives(origin, outer, use, condition | RequiredCondition(slot)))
         {
             return false;
         }
@@ -205,7 +207,8 @@ public sealed partial class Binding
     private bool ProvesBorrowedTypeLifetime(BoundType premise, BoundType type, BoundOrigin outer, Koto use, ulong condition = 0)
     {
         // A premise of formation at its use, in no comparison (default).
-        if (this.WellFormedLayer(premise, use, default) is { Condition: not ulong.MaxValue } layer && (condition & layer.Condition) == layer.Condition &&
+        var at = new UseScope(use);
+        if (this.WellFormedLayer(premise, ref at, default) is { Condition: not ulong.MaxValue } layer && (condition & layer.Condition) == layer.Condition &&
             StoresTypeArgument(layer.Target, type) && this.ProvesOriginOutlives(layer.Outer, outer, use, condition))
         {
             return true;

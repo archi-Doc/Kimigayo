@@ -68,15 +68,18 @@ public class NormalizedConstraintProofBindingTest
 
     // DECISIONS R7-C2e2-1: the pairs the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
     // and Derived (an identity view whose table the derived identity fact of `T is K` keeps Provisional: its class keys are not final,
-    // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. Every row
-    // counts (R7-C2e2-2). PLAN x41n's direction check adds 288 (1,416 before it): it asks the rows of `both`'s seeds once per class key
-    // (T with U, T.(Tree).Child with U.(Tree).Child, T.(K).X, U.(Tree).Child.(Tree).Child) in each of the four validation runs (the
-    // first and three certificate rounds), and each of those 16 requests forms `both`'s non-final entry again, 18 pairs each, the
-    // pinned path itself; `twice`'s requests read entries other readers form anyway (0), and the library's and Trees' requests are in
-    // both terms. Before x41n, an entry read across its serial indexed fewer (1,411) and one Kept under a table that is not Final 192.
+    // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. An entry
+    // read across its serial indexes fewer (907); one Kept under a table that is not Final indexes 192. Every row counts (R7-C2e2-2).
+    // 1,416 before PLAN G949 S1-1c: the certificate rounds no longer re-prove environments whose inputs did not change (less work,
+    // not a weakening; both mutations still give other counts), 912 without x41n. PLAN x41n's direction check adds 144: it asks the rows
+    // of `both`'s seeds once per class key (T with U, T.(Tree).Child with U.(Tree).Child, T.(K).X, U.(Tree).Child.(Tree).Child) in each
+    // walk of the environments, and each request forms `both`'s non-final entry again, 18 pairs each, the pinned path itself: 8 requests,
+    // the four seeds in the two walks S1-1c's change signal leaves (the validation step and one certificate round; four walks, 16
+    // requests and +288 before S1-1c); `twice`'s requests read entries other readers form anyway (0), and the library's and Trees'
+    // requests are in both terms.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(1704, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(1056, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
     // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
     // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that

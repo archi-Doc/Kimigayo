@@ -566,7 +566,8 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
-        // f2j (invalid, SPEC 10.7, 15.3.5): Closure; header (b: ref/i32, u: uniq/FX(b)), required (ref/i32, uniq/PC).
+        // f2j (invalid, SPEC 10.7, 15.3.5): Closure; header (b: ref/i32, u: uniq/FX(b)), required (ref/i32, uniq/PC). u's `b` names the
+        // literal's per-call Origin in its own input (SPEC 15.3.4, 8.10; PLAN G972, the owner's O-403 (b)): its record beside the fit's.
         {
             "f2j",
             """
@@ -576,7 +577,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0"
+            "InvalidOriginBinding_Kd b|UnprovenOriginContract_Kd func (b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) => 0"
         },
         // g1i (invalid, SPEC 15.3.5, 10.7, 3.8): raw layer; argument; arg raw/PC, param raw/FX(c).
         {
@@ -1476,12 +1477,12 @@ public partial class TypeBindingTest
         var c = Parse("func f(b: ref/i32, x: uniq/((ref/i32) -> i32) during b, y: uniq/((ref/i32 during b) -> i32) during b, z: uniq/((ref/i32 during static) -> i32) during b, s: ref/((ref/i32) -> i32) during b, t: ref/((ref/i32 during b) -> i32) during b) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var types = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters.Select(x => x.Type.TypeOf()!).ToArray();
-        Assert.True(Binding.FitsType(types[4], types[5]));  // A shared layer is covariant: PC <: FX(b).
-        Assert.False(Binding.FitsType(types[5], types[4])); // The required per-call input is rigid.
-        Assert.False(Binding.FitsType(types[1], types[2])); // An exclusive layer: PC and FX(b) are not equal, either way.
-        Assert.False(Binding.FitsType(types[2], types[1]));
-        Assert.False(Binding.FitsType(types[1], types[3]));
-        Assert.False(Binding.FitsType(types[3], types[1]));
-        Assert.True(Binding.FitsType(types[1], types[1]));
+        Assert.True(c.Binding.FitsType(types[4], types[5]));  // A shared layer is covariant: PC <: FX(b).
+        Assert.False(c.Binding.FitsType(types[5], types[4])); // The required per-call input is rigid.
+        Assert.False(c.Binding.FitsType(types[1], types[2])); // An exclusive layer: PC and FX(b) are not equal, either way.
+        Assert.False(c.Binding.FitsType(types[2], types[1]));
+        Assert.False(c.Binding.FitsType(types[1], types[3]));
+        Assert.False(c.Binding.FitsType(types[3], types[1]));
+        Assert.True(c.Binding.FitsType(types[1], types[1]));
     }
 }

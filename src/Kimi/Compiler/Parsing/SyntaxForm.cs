@@ -124,6 +124,19 @@ public enum SyntaxForm : ushort
     /// binding set or a BorrowOrigin.</summary>
     InheritanceReference,
 
+    /// <summary>A ContractReference (SPEC F.6.2 ContractReference := ContainerReference := NamedReference, F.5): a Container path and at
+    /// most a binding set, in a ConditionalConformance's head, a grouped Contract and a ContractSelector.</summary>
+    ContractReference,
+
+    /// <summary>A grouped Contract after <c>.</c> with its member Name (SPEC F.5 PathSuffix <c>"." "(" ContractReference ")" "." Name</c>).</summary>
+    ContractMember,
+
+    /// <summary>The subject of a ConditionalConformance (SPEC F.6.2): <c>Self</c>.</summary>
+    ConformanceSubject,
+
+    /// <summary>A ConformanceRequirement (SPEC F.6.2, 8.8.1): atoms joined by <c>and</c>, with no <c>not</c> and no <c>or</c>.</summary>
+    ConformanceRequirement,
+
     /// <summary>An extension declaration, which the language does not introduce.</summary>
     ExtensionDeclaration,
 

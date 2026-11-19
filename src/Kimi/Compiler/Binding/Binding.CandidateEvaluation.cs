@@ -10,6 +10,9 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<EvaluatedCandidate> candidateScratch = new();
 
+    // R7-I2 c: one frame per candidate of a selection; a candidate's solution is its own frame, the winner's the call's.
+    private readonly ScratchBuffers<SlotFrame> frameScratch = new();
+
     // SPEC 10.4 step 1: the adaptation classes of the element positions of each candidate's Tuple and array literal arguments, in each
     // fit's order (BoundArgumentOperation.Positions; FitElement appends them); a candidate evaluation removes what it appended when it ends.
     private readonly List<ArgumentAdaptation> positionClasses = new();
@@ -61,6 +64,29 @@ public sealed partial class Binding
 
         var best = StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
         return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+    }
+
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent); a candidate's trial and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity)
+    {
+        var frames = this.frameScratch.Rent(count);
+        for (var i = 0; i < count; i++)
+        {
+            frames[i] = this.infer.Rent(Math.Max(1, capacity));
+        }
+
+        return frames;
+    }
+
+    // Returns a selection's frames in reverse order of their rental; the winner's solution is read before.
+    private void ReturnFrames(SlotFrame[] frames, int count)
+    {
+        for (var i = count - 1; i >= 0; i--)
+        {
+            this.infer.Return(frames[i]);
+        }
+
+        this.frameScratch.Return(frames, clearArray: true);
     }
 
     private readonly ref struct CandidateOrder : IStrictCandidateOrder
@@ -260,7 +286,7 @@ public sealed partial class Binding
 
             // SPEC 10.4 step 2: the structural parts must be identical (Origin bindings never rank, even inside Function Types), or the
             // candidates are incomparable; open slots are never identical.
-            if (x is null || y is null || !FitsStructuralPart(x, y))
+            if (x is null || y is null || !this.FitsStructuralPart(x, y))
             {
                 return false;
             }

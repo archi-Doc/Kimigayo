@@ -148,7 +148,7 @@ public sealed partial class Binding
         var plan = BoundFormatting.Begin(syntax);
         var dummy = plan.Node(FormattingOperation.Storage, BoundType.Unit);
         plan.Acquisition = this.FormattingCall(syntax, KimiDeclarationId.WriterWrite, [source.ArgumentNodes[0], dummy], scope, writerType);
-        if (plan.Acquisition.BoundCall is not { } acquired)
+        if (this.CallOf(plan.Acquisition) is not { } acquired)
         {
             plan.Active = false;
             return Complete(syntax, null);
@@ -227,7 +227,7 @@ public sealed partial class Binding
     {
         var call = this.FormattingCall(plan.Root, KimiDeclarationId.WriterWrite, [plan.Writer, value], scope, writerType);
         plan.Writes.Add(call);
-        return call.BoundCall is not null;
+        return this.CallOf(call) is not null;
     }
 
     private InvocationKoto FormattingCall(Koto root, KimiDeclarationId identity, ReadOnlySpan<Koto> arguments, BindingScope scope, BoundType? declaringType = null)

@@ -23,6 +23,10 @@ public sealed partial class Binding
     // step's own other checks, a self-read being no failed input; the context fails for every later check (DeclarationFailed).
     private Koto? validationStep;
 
+    // The change signal (invalidations) at the start of the latest walk of the pass's environments, -1 at the pass's start (ResetPass):
+    // a walk that changed the binding moved the signal past it (ValidateConstraintEnvironments).
+    private int environmentsJudged = -1;
+
     // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).
     [Flags]
     private enum TypeRoleCause : byte
@@ -168,9 +172,9 @@ public sealed partial class Binding
     }
 
     // The argument a selected call binds a Callable clause's slot with (CallableOriginFailure's ArgumentBinding).
-    private static Koto? CallableArgument(Koto use, IsKoto clause)
+    private Koto? CallableArgument(Koto use, IsKoto clause)
     {
-        if (use is not InvocationKoto { BoundCall: { Target.Declaration: FunctionKoto function } plan } ||
+        if (use is not InvocationKoto invocation || this.CallOf(invocation) is not { Target.Declaration: FunctionKoto function } plan ||
             clause.BoundConstraint?.Subject is not { Kind: BoundTypeKind.Parameter, Symbol: { } slot })
         {
             return null;
@@ -189,10 +193,12 @@ public sealed partial class Binding
     }
 
     // Late witness/Effect failures invalidate declarations even when normalization already erased
-    // their projections. Reuse the ordinary validation until declaration states stop changing.
+    // their projections. Reuse the ordinary validation until declaration states stop changing. The closed clauses are judged before
+    // the environments in each round (the condition's order): a source state published since (PublishSourceStates) reaches a walk's
+    // Error only through the failure ValidateClosedTypeConstraints records first (invalidations).
     private void InvalidateProjectionCertificates(BindingMode mode)
     {
-        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(mode, sourcesOnly: true))
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(mode))
         {
             this.ClearCapabilityResults();
             this.ValidateBaseDeclarations(mode);
@@ -203,14 +209,22 @@ public sealed partial class Binding
         this.ClearCapabilityResults();
     }
 
-    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
-    // already judged them.
-    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
+    // The running pass's environments, its own modules' scopes (In, PLAN G949 S1-r2), judged at the validation step and again in a
+    // certificate round only when a judgment's inputs may have changed since the last walk: a judgment acts on an Error, which rests on a
+    // failed input or on contradictory evidence that only a failure changes (the rounds' contract), and every write of either advances
+    // the change signal (invalidations), the walk's own included, so the walk runs again when the signal moved since the last one began.
+    private bool ValidateConstraintEnvironments(BindingMode mode)
     {
+        if (this.environmentsJudged == this.invalidations)
+        {
+            return false;
+        }
+
+        this.environmentsJudged = this.invalidations;
         var changed = false;
         foreach (var scope in this.scopes.Values.In(this.pass))
         {
-            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
+            if (scope.Constraints is not { } environment)
             {
                 continue;
             }
@@ -236,7 +250,7 @@ public sealed partial class Binding
                 var previous = scope.Owner.BindingState;
                 var restsOnFailure = this.failedCause is not null; // The proof read a failed input (SPEC 23.1.2), which RequireConstraint takes.
                 changed |= !environment.Invalid;
-                environment.Fail(scope.Owner);
+                this.FailEnvironment(environment, scope.Owner);
                 // Other input facts can have independent contradictions. Record a
                 // sole missing-name cause only when this is the entire environment.
                 this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
@@ -253,7 +267,7 @@ public sealed partial class Binding
 
             if (contradiction)
             {
-                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
+                this.FailEnvironment(environment, scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;
             }
 
@@ -429,7 +443,7 @@ public sealed partial class Binding
                     {
                         if (parent is IsKoto { BoundConstraint: not null })
                         {
-                            (scope.Constraints ??= new()).Fail(node);
+                            this.FailEnvironment(scope.Constraints ??= new(), node);
                             break;
                         }
 
@@ -560,7 +574,7 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Error)
         {
             var cause = diagnosticCause ?? this.TakeFailedCause().Use;
-            if (cause is not null && use.BindingFailure == BindingFailure.None)
+            if (cause is not null && this.RecordedFailure(use) == BindingFailure.None)
             {
                 this.Consulted(cause); // SPEC 23.1.2: the proof's evidence explains its outcome, never a record the use's own check owns.
             }
@@ -586,7 +600,7 @@ public sealed partial class Binding
     // owns (the conformance's verdict, or a failure it held before the outcome) never derives from the frame, which is dropped.
     private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame, Koto? diagnosticCause = null)
     {
-        var owned = use.BindingFailure != BindingFailure.None;
+        var owned = this.RecordedFailure(use) != BindingFailure.None;
         this.RequireConstraint(use, proof, mode, diagnosticCause);
         if (owned)
         {
@@ -628,7 +642,7 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.UnprovenConstraint, unresolved);
         }
 
-        var at = CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
+        var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
         var record = new CallableConstraintFact(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, use));
         return this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
@@ -730,7 +744,7 @@ public sealed partial class Binding
             // A determined Core is judged directly and shallowly, even with unbound Type arguments.
             if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && type.Symbol?.Declaration is StructKoto or EnumKoto)
             {
-                return type.Symbol.ObjectPayloadOptOut is null;
+                return this.ObjectPayloadOptOut(type.Symbol) is null;
             }
 
             if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
@@ -767,7 +781,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && required.Symbol.ObjectPayloadOptOut is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
+                if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && stated is { } required && required.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection or BoundTypeKind.SemanticsApplication) && (!objectTarget || (required.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed && required.Symbol?.Declaration is StructKoto or EnumKoto && this.ObjectPayloadOptOut(required.Symbol) is null)) && this.ProveConstraint(fact, scope) == ConstraintProof.Proven)
                 {
                     return true;
                 }

@@ -245,6 +245,21 @@ public sealed partial class Binding
     // element is bound, also after a failed one (SPEC 23.1.2), as a Dictionary literal's parts are (IndependentDictionaryType).
     private BoundType? BindIndependentArrayLiteral(ArrayLiteralKoto literal, BindingScope scope)
     {
+        // SPEC 10.5.1 ¶1-2, 14.9.2 step 3 (PLAN G924 B2): under a call's argument probe the literal waits for its position, its elements
+        // bound on their own: they meet at the call's places (WholeEvidence), never as an independent literal's elements.
+        if (this.UnderArgumentProbe(literal) && this.DecidedLater(literal))
+        {
+            foreach (var part in literal.Elements)
+            {
+                if (!IsUnfittedLiteral(KotoHelper.UnwrapParentheses(part)))
+                {
+                    _ = this.BindNode(part, scope);
+                }
+            }
+
+            return Complete(literal, null);
+        }
+
         BoundType? established = null;
         BoundType? literalDefault = null;
         var collecting = this.collectingElements;
@@ -256,9 +271,10 @@ public sealed partial class Binding
         }
 
         this.collectingElements = collecting;
+        // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's.
         if (collected && established is null && this.DecidedLater(literal))
         {
-            return Complete(literal, null); // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's.
+            return Complete(literal, null);
         }
 
         // Without an established Type, or when an element failed (SPEC 23.1.2: the others are still bound), the waiting parts default.

@@ -206,7 +206,7 @@ public sealed partial class Binding
             // with it in structure and Semantics (SPEC 10.8; Origins are judged after selection). A binding is the caller's Type and never a
             // pattern: in a recursive call or a construction of the enclosing structure its symbols are the callee's own slots.
             return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
-                (this.DirectTarget(whole) is var target && (ReferenceEquals(target, actual) || (FitsStructuralPart(actual, target) && FitsStructuralPart(target, actual)))));
+                (this.DirectTarget(whole) is var target && (ReferenceEquals(target, actual) || (this.FitsStructuralPart(actual, target) && this.FitsStructuralPart(target, actual)))));
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
@@ -244,7 +244,7 @@ public sealed partial class Binding
             {
                 // An incomplete annotation cannot become a generic argument. Established argument evidence is checked
                 // against it at the ordinary result fit; without such evidence the slot remains unsolved.
-                return arguments[slot] is not { } establishedArray || FitsStructuralPart(establishedArray, actual);
+                return arguments[slot] is not { } establishedArray || this.FitsStructuralPart(establishedArray, actual);
             }
 
             // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
@@ -284,24 +284,24 @@ public sealed partial class Binding
                 }
 
                 if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
-                    FitsStructuralPart(actual, previous) && FitsStructuralPart(previous, actual))
+                    this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))
                 {
                     // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
                     // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
                     // kept over covariant ones and the first invariant one over later ones, whatever the argument order, and covariant
                     // bindings meet.
-                    if (!commonOrigins || this.invariantSlots.Contains(slot))
+                    if (!commonOrigins || frame.IsInvariant(slot))
                     {
                         frame.SetType(slot, previous);
                     }
                     else if (invariant)
                     {
                         frame.SetType(slot, actual);
-                        this.invariantSlots.Add(slot);
+                        frame.SetInvariant(slot);
                     }
                     else
                     {
-                        frame.SetType(slot, IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous);
+                        frame.SetType(slot, this.IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous);
                     }
 
                     return true;
@@ -309,9 +309,9 @@ public sealed partial class Binding
 
                 // SPEC 10.8: structural matching compares normalized Types, so two spellings of one Function Type, whose per-call
                 // inputs have distinct binders, are one binding.
-                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && IsSubtype(actual, previous)) ||
+                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && this.IsSubtype(actual, previous)) ||
                     (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function &&
-                    IsSubtype(actual, previous) && IsSubtype(previous, actual)))
+                    this.IsSubtype(actual, previous) && this.IsSubtype(previous, actual)))
                 {
                     frame.SetType(slot, previous);
                     return true;
@@ -329,7 +329,7 @@ public sealed partial class Binding
             frame.SetType(slot, actual);
             if (relateLater && invariant)
             {
-                this.invariantSlots.Add(slot);
+                frame.SetInvariant(slot);
             }
 
             return true;

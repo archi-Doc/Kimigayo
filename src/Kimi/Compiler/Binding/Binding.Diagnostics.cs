@@ -484,7 +484,7 @@ public sealed partial class Binding
         }
 
         // A plain position the walk met is always found by its search; one that is not is a broken contract (design-r2 §2).
-        return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && node.BindingFailure == BindingFailure.None
+        return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && this.RecordedFailure(node) == BindingFailure.None
             ? this.Fail(node, BindingFailure.Internal) : null;
     }
 
@@ -497,7 +497,7 @@ public sealed partial class Binding
     // failure's code.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        if (node.BindingFailure == BindingFailure.None)
+        if (this.RecordedFailure(node) == BindingFailure.None)
         {
             (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
         }
@@ -632,6 +632,7 @@ public sealed partial class Binding
 
     private void ResetPrerequisites()
     {
+        this.invalidations = 0;
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();
@@ -758,7 +759,7 @@ public sealed partial class Binding
 
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {
-        if (use.BindingFailure != BindingFailure.None)
+        if (this.RecordedFailure(use) != BindingFailure.None)
         {
             return;
         }
@@ -776,7 +777,7 @@ public sealed partial class Binding
     }
 
     private Koto? ConformanceDiagnosticCause(Koto owner)
-        => owner is StructKoto or EnumKoto && owner.BindingFailure == BindingFailure.InvalidConstraint ?
+        => owner is StructKoto or EnumKoto && this.RecordedFailure(owner) == BindingFailure.InvalidConstraint ?
             this.constraintDiagnosticCauses?.GetValueOrDefault(owner) : null;
 
     private Koto? FindConformanceDiagnosticCause(Koto owner, BoundConstraint fact)
