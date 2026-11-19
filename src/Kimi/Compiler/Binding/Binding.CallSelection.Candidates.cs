@@ -180,8 +180,9 @@ public sealed partial class Binding
     // SPEC 10.8 Solving ("collected together": every source before the expected result fills; G812 ruling 147): the waiting inputs
     // (SettleWaiting) and the wholes recorded since `wholes` (BindWholes) settle each other. A whole's meet can fix a pair binder whose
     // application a waiting input holds (a Tuple literal at an occurrence of the original `s/T`), and an input inferred only then can
-    // record a whole. So they alternate until a round's wholes fix no slot. A round fixes at least one slot or ends the settle, so it ends
-    // within the call's slots. False when the candidate is inapplicable.
+    // record a whole. So they alternate until a round's wholes fix no slot. The measure is SourcedSlots, the slots with a Type or a
+    // selector: neither pass ever unbinds one within a candidate's trial, so the count never decreases, a round that raises it continues
+    // and one that does not ends the settle, so the rounds are at most the call's slots. False when the candidate is inapplicable.
     private bool SettleSources(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced, int wholes, bool late)
     {
         while (true)

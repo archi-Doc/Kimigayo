@@ -67,12 +67,13 @@ public class InferenceSlotScalingTest
 
     // SPEC 10.8 (G812 ruling 147): the waiting inputs and the wholes settle each other (SettleSources): a Tuple literal at `y: s/T` fixes
     // `s` through its whole's meet, and the n waiting inputs `x: s/(ref/X during b)` it held then settle in the next round (two rounds at
-    // every n), so the call's inference work does not grow faster than linearly in n (n = 30, 60, 120: it stays the same) and the call binds.
+    // every n), so the settle's walks (TermWalkWork: each Type HasOpenApplication and FormedApplication enter) grow linearly in n
+    // (n = 30, 60, 120) and the call binds.
     [Fact]
     public void WaitingInputsAWholeSettlesTakeWorkLinearInTheirCount()
     {
-        long[] work = [.. new[] { 30, 60, 120 }.Select(count => Work(Bound(WaitingThroughAWhole(count))))];
-        Assert.True(MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+        long[] work = [.. new[] { 30, 60, 120 }.Select(count => (long)Bound(WaitingThroughAWhole(count)).Binding.TermWalkWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
     }
 
     // G216 (a) U3a (C-38 B3; DECISIONS BU-104): premise discovery reads the evidence names once per solve, so its reads grow linearly
