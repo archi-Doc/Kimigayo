@@ -364,8 +364,9 @@ public sealed partial class MirBuildTest
 
     // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
     // them (a call's, an indexer's or a view selection's plan, a local's symbol, a closure's definition, a case adaptation's plan, a loop's
-    // iterator symbol, a write of an interpolation, a tuple operator's conforming Type, R5-M75) is published Error and recorded as
-    // InternalInvariant_Kd at it, with an Opaque value in its place, which the validator accepts, never a fault. A node Binding rejected
+    // iterator symbol, a write of an interpolation, a tuple operator's conforming Type, R5-M75; since PLAN G396 (3) Z1 a plain call's
+    // operations covering its parameters, a member access's metadata form, an array literal's array Type) is published Error and recorded
+    // as InternalInvariant_Kd at it, with an Opaque value in its place, which the validator accepts, never a fault. A node Binding rejected
     // that lacks the same fact is an Error derived from its error, without a record.
     [Fact]
     public void AResolvedNodeWithoutItsFactsIsABrokenContract()
@@ -380,7 +381,9 @@ public sealed partial class MirBuildTest
             "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\n" +
             "func discard<s/T>(value: i32) -> ()\n    s is owner or ref or object\n    _ = value@s\n" +
             "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n" +
-            "func text(x: i32) -> string => \"a\\(x)\"\nfunc order(a: (i32, f64), b: (i32, f64)) -> bool => a < b\n");
+            "func text(x: i32) -> string => \"a\\(x)\"\nfunc order(a: (i32, f64), b: (i32, f64)) -> bool => a < b\n" +
+            "func two(a: i32, b: i32) -> i32 => a + b\nfunc paired() -> i32 => two(1, 2)\nstruct Q\n    public var x: i32 = 1\n    public init() => ()\n" +
+            "func field(q: ref/Q) -> i32 => q.x\nfunc shaped() -> isize\n    let values = [1, 2]\n    return values.length\n");
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.ToString() == "one()").ToArray();
         var call = calls[0];
@@ -407,9 +410,17 @@ public sealed partial class MirBuildTest
         var (mapping, types, operations) = (tuple.ArgumentToParameter.ToArray(), tuple.TypeArguments.ToArray(), tuple.ArgumentOperations.ToArray());
         tuple.Set(c.Binding, tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
         tuple.TupleOperator = true; // Its conforming Type is gone.
+        var paired = nodes.OfType<InvocationKoto>().Single(static x => x.ToString() == "two(1, 2)");
+        var two = CallPlan.Of(c.Binding, paired)!;
+        var (pairs, arguments, inputs) = (two.ArgumentToParameter[..1].ToArray(), two.TypeArguments.ToArray(), two.ArgumentOperations[..1].ToArray());
+        two.Set(c.Binding, two.Target, two.ReturnType, two.Receiver, pairs, arguments, operations: inputs); // One input for two parameters.
+        var member = nodes.OfType<MemberAccessKoto>().Single(static x => x.ToString() == "q.x");
+        HirTables.Of(member).Symbols[member.SyntaxId] = null; // A resolved member access without a symbol: a metadata form, which `x` is not.
+        var literal = nodes.OfType<ArrayLiteralKoto>().Single();
+        HirTables.Of(literal).Meanings[literal.SyntaxId] = BoundType.Primitives["i32"];
         c.Binding.CheckBound(); // A Final pass publishes in its Check (DECISIONS BU-81), so the end of the pass runs again over the gaps.
         var program = c.BuildMir();
-        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text, order];
+        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text, order, paired, member, literal];
         Assert.Empty(program.Findings);
         Assert.All(broken.Append(calls[1]), static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         // The broken declaration declares no local, so its name is the builder's own broken contract (B7; Unsupported_Kd before Z1).

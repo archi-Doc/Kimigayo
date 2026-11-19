@@ -57,7 +57,7 @@ internal sealed partial class MirBuilder
         if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
             (receiver is not null && function!.ReceiverIndex < 0))
         {
-            this.Invariant(node, destination); // HasFacts' call row: its operations, defaults and receiver cover the parameters.
+            this.Invariant(node, destination); // A plain call's HasFacts row, an expansion's plan: they cover the parameters.
             return;
         }
 
