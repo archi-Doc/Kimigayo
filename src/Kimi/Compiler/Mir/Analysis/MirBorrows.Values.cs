@@ -136,7 +136,8 @@ internal sealed partial class MirBorrows
     // O-437 (b)), beside it: a read through the reference such a local holds whole (a Deref of the root's own reference) carries only
     // the Loans its referent Type can hold, so where that Type holds no Loan (Holds) it is bounded as a Loan-free payload is, a part of
     // the referent read below the Deref included (arView's `inner[0]`, c84's `res.v`); an element that stores a reference keeps its
-    // Loan (its Type holds one), and a reference the body forms is followed instead (Follows) and keeps O-364 (a). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
+    // Loan (its Type holds one). It starts only on the read's own root, before any reference is followed: a read through a reference
+    // the body forms (Follows), one formed through a call's reference included (`let q = r@follow@ref`), keeps O-364 (a). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
     // referring store: a Ref's Place, or what the local a whole Move or Copy reads refers to; so a Copy out of the payload through a
     // shared match Subject is bounded like a Move, and one through a reference stored more than once where every Place it refers to
     // is. A Field or an element of the result or of a payload, and any other holder's parts, carry what the holder carries (O-364 (a)).
@@ -155,7 +156,7 @@ internal sealed partial class MirBorrows
             while (at != 0 && root >= 0 && !(hopped = this.Follows(root, at, bound, ref reads)))
             {
                 var step = this.body.Projections[at];
-                var referent = step is { Kind: MirProjectionKind.Deref, Prefix: 0 } && ReferenceTypes.IsReference(cases.Type(this.body.Locals[root].Type));
+                var referent = first < 0 && step is { Kind: MirProjectionKind.Deref, Prefix: 0 } && ReferenceTypes.IsReference(cases.Type(this.body.Locals[root].Type));
                 bound = (this.Payload(at) || referent) && (bound || ((step.Kind == MirProjectionKind.Downcast || referent) && !this.Holds(cases.TypeOf(new MirPlace(root, at)), out _)));
                 at = step.Prefix;
             }

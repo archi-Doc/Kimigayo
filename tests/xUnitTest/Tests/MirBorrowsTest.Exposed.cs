@@ -1535,6 +1535,14 @@ public sealed partial class MirBorrowsTest
                 let r = v.index(0)
                 return r@follow
             """,
+        ["viewRefReborrowBad"] = """
+            func viewRefReborrowBad() -> i32
+                var a: Array<i32> = [1, 2]
+                var v = a.sliceUniq()
+                let r = v.index(0)
+                let q = r@follow@ref
+                return q@follow
+            """,
         ["dictPayload"] = """
             func dictPayload() -> i32
                 var d: Dictionary<i64, i32> = [1: 5]
@@ -1557,6 +1565,23 @@ public sealed partial class MirBorrowsTest
                 match s.nOpt()
                     .Some(let r) => k = r@follow
                     .None => k = 0
+                a = 2
+                return k
+            """,
+        ["tupPartGet"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func pr(self: ref/Self) -> (ref/i32 during self, i32) => (self.n@ref, 0)
+            func tupPartGet() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                var k: i32 = 0
+                match s.pr()
+                    (let r, _) => k = r@follow
                 a = 2
                 return k
             """,
@@ -3042,15 +3067,17 @@ public sealed partial class MirBorrowsTest
     [InlineData("viewRet", "")] // V by O-437 (b): the element of a local array's view, returned past the array's end
     [InlineData("viewWrite", "")] // V by O-437 (b): the element Copy, used after a write of the array
     [InlineData("viewWriteOk", "")] // V
-    [InlineData("viewRefUseBad", "viewRefUseBad: a[1]; viewRefUseBad: a[1] = 5")] // I (15.6.4, 15.6): the reference itself retains the view's borrow and is used after the write
+    [InlineData("viewRefUseBad", "viewRefUseBad: a[1]; viewRefUseBad: a[1] = 5; viewRefUseBad: var a: Array<i32> = [1, 2]")] // I (15.6.4, 15.6): the reference itself retains the view's borrow and is used after the write; `v[0]@ref` is a Borrow the body forms through index's reference (4.7.1), so the i32 read through it keeps O-364 (a) and is returned past a's end
     [InlineData("sliceRet", "")] // V (4.7.1: a Slice element retains s.source's shared Loan, whose reach a carries nothing)
     [InlineData("sliceWrite", "")] // V
     [InlineData("elemRefBad", "elemRefBad: x = 2")] // I (4.7.1, O-437 (b)): an element that stores a reference keeps its Loan, its Type holding one
     [InlineData("refGetBad", "")] // V by O-437 (b) (I under O-364 (a), its name's label): a getter's reference result into a Loan-holding struct; the i32 read through it carries nothing
     [InlineData("refReadBad", "refReadBad: a = 2")] // I (O-364 (a), kept by O-437 (b)): the same read through a reference the body forms
     [InlineData("viewRefCopy", "")] // V by O-437 (b): index's reference result kept in a local, then read through
+    [InlineData("viewRefReborrowBad", "viewRefReborrowBad: var a: Array<i32> = [1, 2]")] // I by O-437 (b) as written: q, a reference the body forms through r, keeps O-364 (a) (it reaches v, which carries the uniq Loan on a)
     [InlineData("dictPayload", "")] // V: tryGet's Option payload reference; d carries no Loan, so V under O-364 (a) too
     [InlineData("optPayloadGet", "")] // V by O-437 (b) where an Option payload of a call's result is the call's reference (I under O-364 (a))
+    [InlineData("tupPartGet", "tupPartGet: a = 2")] // V by O-437 (b) if a Tuple element of a call's result is the call's reference, as optPayloadGet's Case payload is; rejected as O-364 (a): `(let r, _)` Copies the result's element `_6.0` into r, which MirBorrows.Holders' Mixing counts as no call's result (only a whole Move or Copy or a Case payload's keeps it one), so the bound starts at r's Deref but Ends reads r (the Middle's reading, D-838)
     [InlineData("rvDerefPlainOk", "")] // V, the control: r reaches x only, which carries nothing
     [InlineData("rvCopyUseBad", "rvCopyUseBad: kk = 2")] // I, the Copy by assignment into an initialized local: d carries w0's Loans and is read after (15.6 Holders' Copy sentence)
     [InlineData("rvPutROk", "")] // V, a Scalar argument the builder spills into a temporary before a borrow argument; d is not used after
