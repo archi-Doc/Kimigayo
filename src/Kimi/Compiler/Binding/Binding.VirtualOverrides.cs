@@ -426,7 +426,7 @@ public sealed partial class Binding
     private void PrepareVirtualOverridePremises(FunctionKoto function, VirtualSlot slot)
     {
         var bodyScope = this.scopes[function];
-        var premises = bodyScope.ImplementationPremises ??= new(function);
+        var premises = bodyScope.ImplementationPremises ??= new(function, function);
         premises.Parent = function.BoundSymbol!.Scope;
         premises.Function = function;
         // ResetPass owns this shared environment. Resetting premises would also erase the body's facts.

@@ -199,12 +199,13 @@ public sealed partial class Binding
             return rested; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
         }
 
-        switch (this.FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter))
+        // A value's fit is judged at its use, in no comparison (default).
+        switch (this.FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter, default))
         {
             case OuterOriginFit.Mismatch:
                 return rested;
             case OuterOriginFit.Relation:
-                this.AddOriginFit(longer, shorter, expected, use, polarity, SlotCondition(actual, this, use));
+                this.AddOriginFit(longer, shorter, expected, use, polarity, SlotCondition(actual, this, use, default));
                 break;
         }
 

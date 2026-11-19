@@ -161,7 +161,7 @@ public class ArchitectureRulesTest
     [InlineData("Project references to R8's deleted components", "src/Kimi", "*.csproj", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
     [InlineData("Test references to R8's deleted components", "tests", "*.cs", DeletedByR8, 0)]
     // R7-I2 (RP6): a slot frame is private to InferCtxt (the type system admits no unlogged write); SlotSolution's trial copies of
-    // its frame fall to 0 with part c.
+    // its frame (PerCallCallables' stand-ins) fall to 0 with PLAN G988 (R7-I2 c keeps the copy: in place it moves constructors).
     [InlineData("SlotSolution's trial copies of a frame", "src/Kimi/Compiler/Binding", "Binding.ArgumentKinds*.cs", @"\btypeScratch\.Rent\(", 1)]
     // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
     [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
@@ -516,16 +516,16 @@ public class ArchitectureRulesTest
     {
         string[] walk =
         [
-            "Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
-            "RowContract", "RowKind", "AddRow",
+            "Enumerate", "EnumerateLink", "EnumerateMates", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
+            "RowContract", "RowKind", "AddRow", "HoldsOpenLink", "RowWeight",
         ];
         string[] allowed =
         [
-            "Add", "AddRow", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey", "ClauseHeads",
-            "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
-            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "ReadSourceState", "Rebuild",
-            "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "RowContract", "RowKind", "SameClass", "SetKey", "SubjectKey", "TryGetValue",
-            "UnresolvedTypeDeclarationContext",
+            "Add", "AddRow", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey",
+            "ClauseHeads", "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault",
+            "HeadDepth", "Heads", "HoldsOpenLink", "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max",
+            "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "RowContract", "RowKind", "RowWeight",
+            "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
         ];
         var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }
             .Select(static x => File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/Compiler/Binding", x)))

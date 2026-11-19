@@ -10,6 +10,9 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<EvaluatedCandidate> candidateScratch = new();
 
+    // R7-I2 c: one frame per candidate of a selection; a candidate's solution is its own frame, the winner's the call's.
+    private readonly ScratchBuffers<SlotFrame> frameScratch = new();
+
     // SPEC 10.4 step 1: the adaptation classes of the element positions of each candidate's Tuple and array literal arguments, in each
     // fit's order (BoundArgumentOperation.Positions; FitElement appends them); a candidate evaluation removes what it appended when it ends.
     private readonly List<ArgumentAdaptation> positionClasses = new();
@@ -61,6 +64,29 @@ public sealed partial class Binding
 
         var best = StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
         return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+    }
+
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent); a candidate's trial and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity)
+    {
+        var frames = this.frameScratch.Rent(count);
+        for (var i = 0; i < count; i++)
+        {
+            frames[i] = this.infer.Rent(Math.Max(1, capacity));
+        }
+
+        return frames;
+    }
+
+    // Returns a selection's frames in reverse order of their rental; the winner's solution is read before.
+    private void ReturnFrames(SlotFrame[] frames, int count)
+    {
+        for (var i = count - 1; i >= 0; i--)
+        {
+            this.infer.Return(frames[i]);
+        }
+
+        this.frameScratch.Return(frames, clearArray: true);
     }
 
     private readonly ref struct CandidateOrder : IStrictCandidateOrder
@@ -318,7 +344,11 @@ public sealed partial class Binding
 
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false);
+    // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
+    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false)
+    {
+        internal Refusal? HeldRefusal { get; init; }
+    }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);

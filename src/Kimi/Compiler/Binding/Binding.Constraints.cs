@@ -41,12 +41,7 @@ public sealed partial class Binding
                 return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
             }
 
-            if ((current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) is { } armScope)
-            {
-                return this.NodeScope(node, armScope);
-            }
-
-            if (this.scopes.TryGetValue(current, out var scope))
+            if (this.ScopeStop(current, child) is { } scope)
             {
                 return this.NodeScope(node, scope);
             }
@@ -96,17 +91,7 @@ public sealed partial class Binding
 
     // SPEC 14.8.2: the scope of the arm of `match` whose body is `body`, its pattern's; null when `body` is no arm's body.
     private BindingScope? ArmScope(MatchKoto match, Koto body)
-    {
-        for (var i = 0; i < match.Arms.Count; i++)
-        {
-            if (ReferenceEquals(match.Arms[i].Body, body))
-            {
-                return this.scopes.GetValueOrDefault(match.Arms[i].Pattern);
-            }
-        }
-
-        return null;
-    }
+        => KotoHelper.IsSelectionBody(match, body) ? this.scopes.GetValueOrDefault(match.Arms[body.SelectionArm].Pattern) : null;
 
     // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
     // Self is an obligation of every conformer rather than a closed proposition. An existence walk: each distinct part visited once
@@ -567,7 +552,7 @@ public sealed partial class Binding
             var environment = scope.Constraints ??= new();
             if (this.AddConstraintFact(environment, requirement))
             {
-                environment.Fail(clause); // The clause failed, or holds a recovery.
+                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
             }
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
