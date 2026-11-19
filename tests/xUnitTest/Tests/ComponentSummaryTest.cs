@@ -54,6 +54,9 @@ public class ComponentSummaryTest
 
     private const string Need = "func need<T>(x: T)\n    T is Owned\n    ()\n";
 
+    // R7-C2e2 e2-5a's valid twin of an instance family beside a Proof (T is K, Wrap is K): no record (AnIndependentRecordBesideAnInstanceFamilyIsKept).
+    private const string MixValid = "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    T is K\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<Wrap<Wrap<i32>>>) -> ()\n    needOwned(r)\npublic func main() => ()\n";
+
     private const string Site = "Unsupported_Kd Array<TreeNode<T.(Tree).Child>>";
 
     // The prototype's id, the queried Type, its premises (U a Type parameter when they name it) and SPEC's Owned, with a projection
@@ -250,7 +253,7 @@ public class ComponentSummaryTest
     [InlineData("g-mix3-use-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 11, 3, 16)]
     [InlineData("g-mix-ctl-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
     [InlineData("g-mix-ctl0-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 10, 3, 0)]
-    [InlineData("g-mix-r", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    T is K\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<Wrap<Wrap<i32>>>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 12, 0, 17)]
+    [InlineData("g-mix-r", MixValid, 12, 0, 17)]
     public void AnIndependentRecordBesideAnInstanceFamilyIsKept(string id, string source, int stored, int unproven, int use, string code = "UnprovenConstraint_Kd")
     {
         var records = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Line: source.AsSpan(0, x.Span!.Value.Start).Count('\n') + 1)).ToArray();
@@ -261,6 +264,11 @@ public class ComponentSummaryTest
             Assert.Empty(records);
         }
     }
+
+    // R7-T1 (B's ruling 14, labelled V: SPEC 15.3.5, 8.6.1; IMPL 21.3.1; the Middle's RP17): the valid twin's use, needOwned over
+    // R<Wrap<Wrap<i32>>>, whose storage passes Binding's bound behind Array, is generated and runs.
+    [Fact]
+    public void TheValidInstanceFamilyTwinExecutes() => ScalarEmissionTest.EmitFixture("ComponentSummaryMixValid", MixValid, string.Empty);
 
     // SPEC 8.3.3 Limits, 23.1.2 (R7-C2e2 e2-5a, DECISIONS BU-22): a work that reaches two located limits, a Tuple of two instances whose
     // summaries are each past the projection bound, rests on the least by key (the earlier stored Type), whichever Tuple order reads them

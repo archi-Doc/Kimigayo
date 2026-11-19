@@ -974,8 +974,11 @@ public sealed partial class InstanceCollectorTest
     // R7-T1 (IMPL 21.3.1, SPEC 6.1; the owner's RQ12): a finite Type past Binding's storage bound that no called signature carries is an
     // instance, whose growth alone R5-M170 bounds: a body local behind raw or ref over Box^n<i32> (61, the bound's twin, to 450) or over S1
     // of a 65-ring, a handle in a generic struct's Field, a by-value local over the ring through rc, a chain of distinct functions within
-    // the height limit (f17's call forming 7,651, f18's 8,101) and its last function's local within it (8,153). Before: from Box^62 on, the
-    // storage-nesting gap (Unsupported_Kd) at the call. GenericStorageEmissionTest.DeepTypesExecute runs one program per form.
+    // the height limit (f17's call forming 7,651, f18's 8,101) and its last function's local within it (8,153); and pick<T>(value: T)
+    // over Option^32<ref/i32> with nothing following the call (labelled V, c3\labels.tsv W1a; SPEC 8.13.3, 8.15.3: a closed generic call
+    // over a finite Type), where A5's own limit is not met (B's rulings 14-15; its twin with a statement following keeps A5's record,
+    // APickPastTheBoundFollowedByAStatementMeetsA5sOwnLimit). Before: from Box^62 on, the storage-nesting gap (Unsupported_Kd) at the
+    // call. GenericStorageEmissionTest.DeepTypesExecute runs one program per form.
     [Theory]
     [InlineData("raw61")]
     [InlineData("raw62")]
@@ -993,10 +996,23 @@ public sealed partial class InstanceCollectorTest
     [InlineData("chain18")]
     [InlineData("chain19")]
     [InlineData("local50")]
+    [InlineData("pick32")]
     public void AFiniteTypePastBindingsBoundIsAnInstance(string shape)
     {
         var c = MinimalEmissionTest.Check(DeepSource(shape));
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+    }
+
+    // R7-T1 (B's ruling 15; labelled V, c3\labels.tsv W1b: SPEC 8.13.3, 8.15.3; IMPL 21.3.2): pick<T>(value: T) over Option^32<ref/i32>
+    // with a statement following the call meets A5's own limit, where A5 tracks the value past the call: its OwnershipDepthLimit_Kd at
+    // pick(v@move) is the program's one record (before R7-T1 the collector's Unsupported_Kd beside it, m2); the twin with nothing
+    // following has none (AFiniteTypePastBindingsBoundIsAnInstance's pick32). The dependence on what follows is the Middle's (RP17).
+    [Fact]
+    public void APickPastTheBoundFollowedByAStatementMeetsA5sOwnLimit()
+    {
+        var c = MinimalEmissionTest.Check(DeepSource("pickThen32"));
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal((nameof(DiagnosticCode.OwnershipDepthLimit_Kd), "pick(v@move)"), (record.Code, record.Text));
     }
 
     // SPEC 8.6.1, 8.2.3, IMPL 21.1 (DECISIONS BU-50, PLAN G271): an instance whose stored part is an associated projection is collected and
@@ -2754,8 +2770,11 @@ public sealed partial class InstanceCollectorTest
 
     // R7-T1's programs over Types past Binding's storage bound (the design's probes), a shape and its number n: a body local f<T>'s Option
     // behind raw or ref over Box^n<i32> (raw, ref) or over S1 of an n-ring (rawRing, refRing), a handle in a generic struct's Field (field),
-    // a by-value local over the ring through rc (valRing); a chain of n distinct functions each adding 450 layers (chain), the 19th with a
-    // body local adding n more (local); growth by 2n layers a generation, grow -> mid -> grow (grow).
+    // a by-value local over the ring through rc (valRing); pick<T>(value: T) over Option^n<ref/i32>, nothing following the call (pick)
+    // or a statement following it (pickThen); a chain of n distinct
+    // functions each adding 450 layers (chain), the 19th, at T = Box^8100<i32>, with a body local adding n more (local) or making an
+    // Array<Box^n<T>> with a capacity, the library's Array.initCapacity (capacity); growth by 2n layers a generation, grow -> mid -> grow
+    // (grow).
     internal static string DeepSource(string shape)
     {
         const string Box = "struct Box<T>\n    public let value: T\n";
@@ -2769,19 +2788,23 @@ public sealed partial class InstanceCollectorTest
             "refRing" => Ring(n) + Local("Option<ref/T>") + "f<S1>()\n" + End,
             "valRing" => Ring(n) + Local("Option<T>") + "f<S1>()\n" + End,
             "field" => Box + "struct W<T>\n    public let p: Option<raw/T>\n" + Local("Option<W<T>>") + $"f<{Nest("Box", n, "i32")}>()\n" + End,
-            "chain" => Chain(n, 0),
-            "local" => Chain(19, n),
+            "pick" => Pick(n),
+            "pickThen" => Pick(n) + End,
+            "chain" => Chain(n, " => 0\n"),
+            "local" => Chain(19, $"\n    let x: Option<raw/{Nest("Box", n, "T")}> = .None\n    return 0\n"),
+            "capacity" => Chain(19, $"\n    let a = Array<{Nest("Box", n, "T")}>.init(capacity: 1)\n    return 0\n"),
             _ => Box + $"func grow<T>(n: i32) -> i32 => if n == 0 => 0 else => mid<{Nest("Box", n, "T")}>(n - 1)\n" +
                 $"func mid<U>(n: i32) -> i32 => grow<{Nest("Box", n, "U")}>(n)\nrequire grow<i32>(3) == 0 else => $abort(\"grow\")\n" + End,
         };
 
         static string Local(string type) => $"func f<T>() -> ()\n    let x: {type} = .None\n    return\n";
 
-        static string Chain(int functions, int local)
+        static string Pick(int n) => $"func pick<T>(value: T) -> T => value@move\nlet v: {Nest("Option", n, "ref/i32")} = .None\nlet w = pick(v@move)\n";
+
+        // The chain's last function's body follows its signature.
+        static string Chain(int functions, string last)
             => Box + string.Concat(Enumerable.Range(1, functions - 1).Select(static i => $"func f{i}<T>() -> i32 => f{i + 1}<{Nest("Box", 450, "T")}>()\n")) +
-                (local == 0 ? $"func f{functions}<T>() -> i32 => 0\n"
-                    : $"func f{functions}<T>() -> i32\n    let x: Option<raw/{Nest("Box", local, "T")}> = .None\n    return 0\n") +
-                "require f1<i32>() == 0 else => $abort(\"chain\")\n" + End;
+                $"func f{functions}<T>() -> i32" + last + "require f1<i32>() == 0 else => $abort(\"chain\")\n" + End;
     }
 
     // K 4.3: a representative is closed and makes every local Type of its body closed.

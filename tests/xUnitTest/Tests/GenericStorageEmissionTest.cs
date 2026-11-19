@@ -72,7 +72,9 @@ public class GenericStorageEmissionTest
     // R7-T1 (IMPL 21.3.1; the Middle's RP17): a program per form of a finite Type past Binding's storage bound that no called signature
     // carries (InstanceCollectorTest.AFiniteTypePastBindingsBoundIsAnInstance) is generated and runs: a local behind raw over Box^62 and
     // behind ref over Box^64, behind raw and ref over a 65-ring, a handle in a generic struct's Field, a by-value local over the ring, a
-    // chain of 19 distinct functions forming 8,101 layers and its last function's local forming 8,153.
+    // chain of 19 distinct functions forming 8,101 layers and its last function's local forming 8,153, and pick<T>(value: T) over
+    // Option^32<ref/i32> with nothing following the call, which prints nothing (labelled V, c3\labels.tsv W1a; B's rulings 14-15: where
+    // A5's own limit is not met).
     [Theory]
     [InlineData("raw62")]
     [InlineData("ref64")]
@@ -82,8 +84,9 @@ public class GenericStorageEmissionTest
     [InlineData("valRing65")]
     [InlineData("chain19")]
     [InlineData("local50")]
-    public void DeepTypesExecute(string shape)
-        => ScalarEmissionTest.EmitFixture("GenericStorageDeep" + char.ToUpperInvariant(shape[0]) + shape[1..], InstanceCollectorTest.DeepSource(shape), "ok\n");
+    [InlineData("pick32", "")]
+    public void DeepTypesExecute(string shape, string stdout = "ok\n")
+        => ScalarEmissionTest.EmitFixture("GenericStorageDeep" + char.ToUpperInvariant(shape[0]) + shape[1..], InstanceCollectorTest.DeepSource(shape), stdout);
 
     // The same instances keep the ordinary checks: a Loan the stored reference holds, an escape beyond its Borrow, a bare transfer
     // and a pair application without an Object Target (SPEC 8.1.2: the slot is present, so its formation needs the target). The escape
