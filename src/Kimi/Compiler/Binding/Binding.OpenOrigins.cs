@@ -228,13 +228,15 @@ public sealed partial class Binding
         => variance == OriginVariance.Covariant ? polarity : variance == OriginVariance.Contravariant ? -polarity : 0;
 
     // Whether OpenSlotOrigins opens `origin`: a fixed Origin the evidence supplied (static, a parameter's or an input's, a local's
-    // region, a borrow's), or a meet of such Origins.
+    // region, a borrow's, an anonymous function's omitted nested input Origin, fixed in its enclosing body), or a meet of such
+    // Origins; an open stand-in is kept (BU-223; PLAN G1127 R1: a local input is no stand-in, so `keep(.Some(a@ref), q)` with a
+    // Closure's `q: ref/(ref/i32)` opens it as rc3v's captures are).
     private static bool OpensAsSlotRegion(BoundOrigin origin)
     {
         switch (origin.Kind)
         {
             case OriginKind.Static or OriginKind.Parameter or OriginKind.Input or OriginKind.Inference or OriginKind.Projection:
-                return !origin.Open;
+                return !origin.IsOpenStandIn;
             case OriginKind.Intersection:
                 for (var i = 0; i < origin.Operands.Count; i++)
                 {

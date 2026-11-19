@@ -328,6 +328,11 @@ public sealed class BoundOrigin
     // Its binder and slot give stable identity; local constraints and value flow determine the actual Loans.
     internal bool Open { get; init; }
 
+    // An open stand-in, which later evidence or the body's solve fills (a call's region, an argument's per-call stand-in): Open and
+    // not a local input, which is fixed in its enclosing body (SPEC 15 Nested signatures). Its readers: the display of an omitted
+    // Origin (OmittedAt) and J2's opening (OpensAsSlotRegion, PLAN G1127 R1), which keeps only a stand-in.
+    internal bool IsOpenStandIn => this.Open && !this.IsLocalInput;
+
     internal BindingSymbol? BorrowCondition { get; set; }
 
     // The body whose binding first formed the atom (Binding.ExecutableBodies.cs; DECISIONS R4-M101 E5): defined for a non-declaration
