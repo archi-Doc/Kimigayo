@@ -14298,6 +14298,13 @@ resumed by R4-M86 (2026-10-20).
     program pass writes no library object either: each such write today (symbol setters, scope writes, `AdtDef` instances,
     `FillVTable`, `EnsureEffectBounds`, owner-keyed origins, lazy names) is made eager in the library pass or moved to the reader's
     store. A record the rule moves is classified by Q13.
+    - **The fact a failure carries** (R7-N5 B4 commit 0; the Front's C1, B's ruling 10; amends "A failure at a library location
+      found by a program pass") is stored with it, by the same decision: the recorder's `SetRecordedFact` writes a node's fact in its
+      module's column at its `SyntaxId` when the running pass binds the node's table, else in the running part's `ForeignFacts` at
+      the index of the node's `ForeignFailures` entry, and `RecordedFact` reads it as `RecordedFailure` reads the failure (the entry
+      first); a fact family's accessor names its column (`FactFamily<T>`), never its store, so no caller decides and no library
+      column is written. It covers `qualificationFailures`, `FailExplained`'s column form and every failure-fact family N5 converts.
+      The facts of a valid follow (`pairFollows`, `implicitPairFollows`) carry no failure and keep the Refusal for a library write.
   - **Refusal (from S1-1).** No step after the freeze writes the library layer: each writer of the library's syntax table (a new id,
     an edit, a HIR row through `HirTables.Of`, so every column and node-family write, an existing plan row, a row's reset, the HIR
     publisher's entry; one `SyntaxTable.Frozen` flag set by the freeze) and of the base conformance store (`ImplTable.Begin`,
@@ -14588,6 +14595,13 @@ resumed by R4-M86 (2026-10-20).
     at one page; the "TableCounts' TypeKeys counts interned Types" line ends with `TableCounts` and `TyCtxt.KeyCount`; S1-r1b's
     "`LibraryLayer.Size` (its table counts at its end; `KimiLibrarySize`'s statement is compared with it)" and "the layer's part at the
     library's stated count, Binding's own at `NodeRoom`" end: both node lists start at their default.
+  - **R7-N5 B4** (the Back's batch, Q-540; design `b4b5b-design.md` §3, B's rulings 1-10; the Front's C-403): six Origin tables
+    become pass families of `NodeColumns`, `StampedColumn<T, Binding.PassCounter>`, one accessor each: `perCallOrigins`,
+    `originTwins`, `pairFollows`, `implicitPairFollows`, `phantomRawOrigins`, `invalidStaticOriginSlots`. `FailExplained` gains its
+    column form (the family named by `FactFamily<T>`, the fact stored by `SetRecordedFact`); **staged removal:** its Dictionary form
+    stays while a family is written through it, and the batch converting the last one (E) deletes it. `PairAdmitted` and
+    `ImplicitPairAdmitted` keep `EnsurePassNode` (ruling O3, PLAN G1070) until the last family reading through it converts.
+    `originInferences` stays out (B's ruling 2, PLAN G1078). Ratchet ("Node-keyed table members in Binding") 76 -> 70.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
