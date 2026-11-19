@@ -67,6 +67,10 @@ public sealed partial class Binding
     private static string PermittedCallsText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
 
+    // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row.
+    private static long? ImplementationLimit(BindingFailure failure)
+        => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
+
     // SPEC 23.2.2's fallback site: the first node whose recorded state is not Resolved, the program part's nodes first, then the library
     // layer's.
     private Koto? FirstIncompleteNode()
@@ -122,9 +126,9 @@ public sealed partial class Binding
         {
             this.ReportCaseLimit(issue.Node, store, requirement);
         }
-        else if (issue.Failure == BindingFailure.TypeHeightLimit)
+        else if (ImplementationLimit(issue.Failure) is { } limit)
         {
-            issue.Node.ReportIn(store, requirement, issue.Code, (long)TypeHeightLimit);
+            issue.Node.ReportIn(store, requirement, issue.Code, limit);
         }
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {

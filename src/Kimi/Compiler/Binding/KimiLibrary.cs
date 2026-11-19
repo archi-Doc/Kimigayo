@@ -530,7 +530,7 @@ public sealed partial class KimiLibrary
         {
             if (!scopes.TryGetValue(container, out var scope))
             {
-                scope = new(container) { Parent = ScopeOf(DeclaringContainer(container)) };
+                scope = new(container, container) { Parent = ScopeOf(DeclaringContainer(container)) };
                 scopes.Add(container, scope);
             }
 

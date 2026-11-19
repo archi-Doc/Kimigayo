@@ -27,7 +27,7 @@ public sealed partial class Binding
         Receiver,
         Shape,
         Owned,
-        Dependence, // The result contract depends on the receiver (ResultDependsOnReceiver).
+        Dependence, // The result contract depends on the receiver (ReceiverIndependence).
         Condition,
     }
 
@@ -244,7 +244,8 @@ public sealed partial class Binding
     // the closure's minimum receiver, and its Owned failure. Diagnostic payload only; no decision reads it.
     private readonly record struct ErasureOutcome(ErasurePart Part, bool SignatureFits, SemanticsKind Receiver, OwnedFact Owned);
 
-    // An erasure's Owned failure (R4-M161): an Error's held cause, and the explaining member (OwnedMember; -1 none, -2 no work) with its
-    // Origin and whether that Origin is Refuted in the forming body.
-    private readonly record struct OwnedFact(ICheckCause? Cause, int Member, BoundOrigin? Origin, bool Refuted);
+    // An erasure's Owned fact (R4-M161; G379 R4, OwnedMember): an Error's held cause; the explaining member (-1 none, -2 no work) with
+    // its Origin; whether a part at any depth is Refuted in the forming body; and whether one is decided only once the body is bound
+    // (Final: read by applicability, ErasedArgumentsEnvironment; the record keeps O-57's recorded limit).
+    private readonly record struct OwnedFact(ICheckCause? Cause, int Member, BoundOrigin? Origin, bool Refuted, bool Final);
 }

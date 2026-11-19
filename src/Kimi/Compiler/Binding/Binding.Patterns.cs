@@ -26,41 +26,6 @@ public sealed partial class Binding
     /// <returns>Whether the current Binding pass indexed this match.</returns>
     public bool TryGetMatch(MatchKoto match, out BoundMatch? plan) => this.matches.TryGetValue(match, out plan);
 
-    private static bool ContainsPattern(BoundMatch plan, int earlier, int later)
-    {
-        var a = plan.PositionStorage[earlier];
-        var b = plan.PositionStorage[later];
-        if (a.Kind is BoundPatternKind.Wildcard or BoundPatternKind.Binding)
-        {
-            return true;
-        }
-
-        if (a.Kind != b.Kind || a.Case != b.Case)
-        {
-            return false;
-        }
-
-        if (a.Kind == BoundPatternKind.Literal)
-        {
-            return a.Literal == b.Literal;
-        }
-
-        var x = earlier + 1;
-        var y = later + 1;
-        while (x < a.End && y < b.End)
-        {
-            if (!ContainsPattern(plan, x, y))
-            {
-                return false;
-            }
-
-            x = plan.PositionStorage[x].End;
-            y = plan.PositionStorage[y].End;
-        }
-
-        return x == a.End && y == b.End;
-    }
-
     private void ResetMatches()
     {
         // The pass counter already left the last pass's matches stale, so every kept plan is reset: the last pass's, the same objects, and
@@ -589,6 +554,7 @@ public sealed partial class Binding
 
     private void CompletePatternAcquisitions()
     {
+        this.PatternContainmentWork = 0;
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
         foreach (var row in this.matches.Values.In(this.pass))
         {
@@ -618,17 +584,7 @@ public sealed partial class Binding
             // Publish coverage warnings only after all Pattern Type checks have completed.
             if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
             {
-                for (var later = 1; later < plan.Arms.Count; later++)
-                {
-                    for (var earlier = 0; earlier < later; earlier++)
-                    {
-                        if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
-                        {
-                            this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, earlier));
-                            break;
-                        }
-                    }
-                }
+                this.WarnContainedPatterns(plan);
             }
         }
     }

@@ -12,7 +12,8 @@ namespace Kimi.Compiler.Mir;
 // it gave (a call's given argument).
 internal sealed partial class MirBuilder
 {
-    private readonly List<(Koto Node, MirPlace Place)> located = []; // The Places the expansions being built located, innermost last.
+    // The Places the expansions being built located, and the right side a derived write built (DerivedWrite), innermost last.
+    private readonly List<(Koto Node, MirPlace Place)> located = [];
 
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
     // match: Some binds the item for the body, None completes the loop with Unit. The body end and a continue clean the iteration up and call
