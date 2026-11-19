@@ -221,7 +221,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("e3c4d30c20af", "leak: var local = values <- local@uniq")]
     [InlineData("0433a531b1ba", "leak: var v = view@move <- v[0]@follow@uniq")]
     [InlineData("38df74b325ce", "leak: var slot = p <- rr@follow@follow@uniq")]
-    [InlineData("27e4888a2ae9", "g: let m: i32 = 5 <- q")]
+    // PLAN G1115 (DECISIONS Q13, a dependent record): y's layer's premise over the pair's solution bounds the call's c, so m@ref's
+    // borrow reaches the returned result and SPEC 15.6.5 names the Refuted relation at the returned value; no conflict forms.
+    [InlineData("27e4888a2ae9", "")]
     [InlineData("d4a09871a00b", "g: let local: i32 = 1 <- x")]
     [InlineData("write-through-store", "w: let local = 1 <- x")]
     [InlineData("content-retention", "cr: let local = 1 <- first(h@ref)")]
@@ -320,7 +322,7 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(46, causes);
+        Assert.Equal(45, causes); // PLAN G1115: 27e4888a2ae9 forms no conflict (AConflictCausedOnlyByRefutedRelationsIsDerived).
     }
 
     // PLAN G824: pair-views-slot's one run covers both views (no view decides a check), which its masked row (the pair layer's
