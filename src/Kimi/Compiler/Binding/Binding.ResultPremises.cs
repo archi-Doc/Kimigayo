@@ -562,10 +562,26 @@ public sealed partial class Binding
             this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
         }
 
+        // J2 (SPEC 15.3.6, 15.2.2; PLAN G936; R7-O1 b1, the Middle's ruling of 2026-11-19): the direct call's rule, one member for both
+        // paths (SlotSolution.OpenWaited): an Origin parameter that a waiting part's position and an evidence position both name is a
+        // variable the waiting part's check bounds too, solved as `(E and region)` with the call's region, so the waiting part is completed
+        // over the region and its Type's clauses are the call's rows (CallRowRelation), never a second judgment of its formation. Only a
+        // function binds Origin parameters (a Function Type's Origins are per-call inputs, SPEC 15.3.4), and a value call's Type slots
+        // are fixed at its callee's reference, so only Origin parameters open.
         var function = binder as FunctionKoto;
+        var waited = solution with { Binder = binder, OriginInference = inference, FirstSolve = true };
+        if (function is not null)
+        {
+            waited.OpenWaited();
+        }
+
         _ = function is not null
             ? this.SolveCallOriginInference(function, inference, origins, inputs, null, select: true)
             : this.SolveOriginInference(inference, origins, inputs, select: true);
+        if (function is not null)
+        {
+            this.RecordOpenings(waited.Call, waited);
+        }
 
         // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
         // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
