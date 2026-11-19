@@ -501,12 +501,12 @@ public sealed partial class Binding
     // (a Constraint's proof, conformance, specialization, a contract match) reads the conjunct as not proven: premises alone.
     // A row's every end is one A5 judges in the body (the Middle's option (b), board C-400), so two ends keep the comparison's own record
     // (SPEC 15.6.1, premises alone): an end that, as written, is the compared implementation's own per-call Origin and that its signature
-    // names in its inputs (NamedInItsInputs, G972's verdict: no per-call binding of SPEC 15.3.7 there; false for every valid signature),
-    // and a shorter end that is another declaration's atom (the view's row 9, ForeignDeclarationAtom) the comparison decides by SPEC: a
-    // Function Item's universal, which it solves, or an enclosing comparison's required per-call Origin, which is rigid (SPEC 15.3.7; a30:
-    // g's result compared under the outer required j0). An anonymous function's per-call Origin there (PerCallBinder's FunctionKoto, G972's
-    // binder set: a literal's x in a nested result comparison, n8r) is a row A5 does not judge, its located limit, since the comparison
-    // does not solve such an Origin yet (D1 (a)); when it does (PLAN D-822), that arm joins this case. A required per-call Origin of this
+    // names in its inputs (NamedInItsInputs, G972's verdict: no per-call binding of SPEC 15.3.7 there; false for every valid signature;
+    // unreached since board D-822: no comparison instantiates an anonymous function's per-call Origin, DefinitionContractFits solves it,
+    // so this arm and C-400's fact it reads are redundant), and a shorter end that is another declaration's atom (the
+    // view's row 9, ForeignDeclarationAtom) the comparison decides by SPEC: a Function Item's universal or an anonymous function's
+    // per-call Origin, both of which it solves (SPEC 15.3.7, DefinitionContractFits; board D-822), or an enclosing comparison's required
+    // per-call Origin, which is rigid (a30: g's result compared under the outer required j0). A required per-call Origin of this
     // comparison is the L1 lift's. The ends arrive as written; the comparison instantiates them here.
     private bool LeavesBodyRows(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition, Koto? clause)
     {
@@ -519,7 +519,7 @@ public sealed partial class Binding
         longer = this.OriginAtUse(comparison.Instantiate(longer), use);
         shorter = this.OriginAtUse(comparison.Instantiate(shorter), use);
         if (!RegionChain(longer, shorter, false, this.formingBody) ||
-            (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter) && PerCallBinder(shorter) is not FunctionKoto))
+            (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter)))
         {
             return false;
         }

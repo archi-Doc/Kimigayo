@@ -46,14 +46,14 @@ public sealed partial class Binding
         return fits;
     }
 
-    // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Closure's or a Function value's signature with a required one at `use`, a
-    // whole-contract comparison: its member Origins and the implementation's conditions, its own well-formedness among them (the
-    // owner's (a); FunctionFits), are proven from the required signature's premises and those of `use` alone (DECISIONS BU-93), its
-    // region conjuncts the premises leave unproven taken by `rows` (CallableInstance.Rows; null: not proven).
-    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
+    // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Function value's signature with a required one at `use` (a Callable
+    // proof's; a Closure's and a Function Item's contract is DefinitionContractFits'), a whole-contract comparison: its member Origins
+    // and the implementation's conditions, its own well-formedness among them (the owner's (a); FunctionFits), are proven from the
+    // required signature's premises and those of `use` alone (DECISIONS BU-93); a region conjunct is not proven (no row reader).
+    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(this, this, use, OriginPart.Contract) { Rows = rows };
-        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
+        var walk = new RelationWalk(this, this, use, OriginPart.Contract);
+        var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected));
         failure = walk.Failure;
         return fits;
     }

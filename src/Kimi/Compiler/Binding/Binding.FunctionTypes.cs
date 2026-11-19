@@ -125,7 +125,7 @@ public sealed partial class Binding
     private static bool SharedReceiver(BoundType actual) => (BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref) == SemanticsKind.Ref;
 
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
-    // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
+    // its contract fits under its conditions (DefinitionContractFits), its complete environment is Owned and its result contract does
     // not depend on its receiver (ReceiverIndependence). Initializations, returns and call arguments share this judgment. A failure
     // publishes its first failed part for its record and Note (erasureOutcomes): the receiver, the signature's structure and the
     // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
@@ -196,7 +196,7 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
-    // of `use`: a Closure's Shared receiver and its signature (CallableSignatureFits), a Function Item's contract (ErasureSignatureFits).
+    // of `use`: a Closure's Shared receiver and its contract (DefinitionContractFits), a Function Item's contract (ErasureSignatureFits).
     // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it. `rows` takes the
     // comparison's region conjuncts (CallableInstance.Rows).
     private bool ErasureFits(BoundType actual, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
