@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases)>? invalidStaticOriginSlots;
+    private readonly InvalidStaticOriginSlotRows invalidStaticOriginSlots;
 
     internal BoundType SelfType(BindingSymbol symbol)
     {
@@ -471,7 +471,7 @@ public sealed partial class Binding
                         var site = OriginFormationSite(node, type);
                         var slot = schema.Origins[i];
                         var cases = this.FailingCase(slot, type, LoanRequirement.Uniq);
-                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
+                        this.FailExplained(InvalidStaticOriginSlotRows.Family, site, BindingFailure.InvalidOrigin, (slot, LoanRequirement.Uniq, cases));
                         if (!ReferenceEquals(site, node))
                         {
                             this.CompleteDependent(node, site);
@@ -561,5 +561,17 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    /// <summary>The `invalidStaticOriginSlots` family's one accessor (DECISIONS BU-220): a pass family, a static Origin bound to a slot
+    /// that requires uniq with its failing cases, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
+    /// present row always has its Slot). Its members keep the names its readers use.</summary>
+    private readonly struct InvalidStaticOriginSlotRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), PassCounter> Family(ref NodeColumns columns) => ref columns.InvalidStaticOriginSlots;
+
+        internal bool TryGetValue(Koto node, out (OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases) invalid)
+            => (invalid = binding.RecordedFact(node, Family)).Slot is not null;
     }
 }

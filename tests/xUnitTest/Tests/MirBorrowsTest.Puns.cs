@@ -1535,7 +1535,11 @@ public sealed partial class MirBorrowsTest
     // (5.2.1 Retained dependencies), and stores spare where that pointer points, other's holder, in either layout. Whether other is
     // live at kk = 2 then rests on the write, so the check is a located Unsupported_Kd (closureMixedRests, borrowedTupleRests;
     // closurePtrBad, whose only part every layout puts the write on, is limit (a)'s); where other is used later, the conflict holds in
-    // either layout (closureMixedLiveBad), and without the write nothing is reported (closureMixedNoWriteOk) (PLAN G775). The same holds
+    // either layout (closureMixedLiveBad) (PLAN G775). Without the write the call is invalid as well (closureMixedNoWriteOk,
+    // selfStoreNoWriteOk; A5 value redesign U3c): the `let` capture q's layer is one the Closure states in its own Fields (SPEC 5.7 Calls,
+    // the owner's O-254 Q1 D), so through it the call may store what a raw layer it writes retains; `other`, which it writes, is a raw
+    // layer without an Origin, so the call may write its own pointer there and store spare, or keep other's address, in storage the body
+    // does not own (15.6.4's composition). The same holds
     // for a location's own store into a holder used after it only through such a write: storing into other a pointer carrying a Loan of
     // other and writing other is valid in every layout (5.2.1: a self-link; 5.5), at most the limit, never a Language error
     // (selfStoreRests); with other's address in storage the body does not own it conflicts (selfStoreEscBad). A decided route stays
@@ -1564,14 +1568,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("otherTypeRests", "otherTypeRests: kk = 2 Unsupported_Kd")]
     [InlineData("otherTypeCallRests", "otherTypeCallRests: kk = 2 Unsupported_Kd")]
     [InlineData("closureMixedRests", "closureMixedRests: kk = 2 Unsupported_Kd")]
-    [InlineData("closureMixedNoWriteOk", "")]
+    [InlineData("closureMixedNoWriteOk", "closureMixedNoWriteOk: kk = 2")] // Invalid without the pun write (U3c; SPEC 5.7 Calls, the owner's O-254 Q1 D).
     [InlineData("closureMixedLiveBad", "closureMixedLiveBad: kk = 2")]
     [InlineData("closurePtrBad", "closurePtrBad: kk = 2 Unsupported_Kd")]
     [InlineData("borrowedTupleRests", "borrowedTupleRests: kk = 2 Unsupported_Kd")]
     [InlineData("selfStoreRests", "selfStoreRests: other = r@follow@raw@raw/u8 Unsupported_Kd")]
     [InlineData("selfStoreEscBad", "selfStoreEscBad: other = r@follow@raw@raw/u8")]
     [InlineData("selfStoreNoEscOk", "")]
-    [InlineData("selfStoreNoWriteOk", "")]
+    [InlineData("selfStoreNoWriteOk", "selfStoreNoWriteOk: other = r@follow@raw@raw/u8")] // Invalid without the pun write (U3c; as closureMixedNoWriteOk).
     [InlineData("viasRestedFirstBad", "viasRestedFirstBad: kk = 2")]
     [InlineData("viasDecidedFirstBad", "viasDecidedFirstBad: kk = 2")]
     [InlineData("ownRestedViasBad", "ownRestedViasBad: kk = 2")]

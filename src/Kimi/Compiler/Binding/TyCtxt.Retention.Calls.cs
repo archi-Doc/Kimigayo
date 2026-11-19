@@ -304,7 +304,7 @@ internal sealed partial class TyCtxt
                 return null;
             }
 
-            bounds[i] = bounds[i] with { Signature = bound };
+            bounds[i] = bounds[i] with { Signature = bound, Declared = bounds[i].Signature };
         }
 
         return binding.Retains(declaration, inputs, result, types, CollectionsMarshal.AsSpan(bounds), scope);

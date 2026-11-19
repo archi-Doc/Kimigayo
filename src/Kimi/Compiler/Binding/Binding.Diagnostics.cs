@@ -507,6 +507,19 @@ public sealed partial class Binding
         return this.Fail(node, failure, unresolved);
     }
 
+    // FailExplained's form for a pass family's column (R7-N5, DECISIONS BU-220): the same rule, the fact stored with the failure by the
+    // recorder (SetRecordedFact: the node's module's column, or the pass's foreign entry's row). The Dictionary form above goes with the
+    // last family converted (batch E's), its staged removal.
+    private BoundType? FailExplained<T>(FactFamily<T> facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
+    {
+        if (this.RecordedFailure(node) == BindingFailure.None)
+        {
+            this.SetRecordedFact(node, facts, fact);
+        }
+
+        return this.Fail(node, failure, unresolved);
+    }
+
     /// <summary>Fails a write whose target's path denies it (SPEC 3.4, 15.1.5), recording the target.</summary>
     /// <param name="node">The write.</param>
     /// <param name="target">The written target.</param>
@@ -662,8 +675,6 @@ public sealed partial class Binding
         this.captureRepeatRows.Clear();
         this.arityFailures?.Clear();
         this.constructorAbsences?.Clear();
-        this.invalidStaticOriginSlots?.Clear();
-        this.phantomRawOrigins?.Clear();
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
         this.rejectedRows.Clear();
