@@ -83,20 +83,6 @@ public sealed partial class Binding
         return proof;
     }
 
-    // R7-C3 (C7): a capability work is keyed by the subject its judge judged (CapabilityKey): the proposition in its form in the view
-    // (ProveProposition's normalization, J1), its subject read as its class's Member (RequestCapability). A reader of the work the judge
-    // formed for a proposition it asked reads that key, never the proposition as written (rv.tp3-u: an anonymous function's header
-    // under `U is W` forms the erasure subject).
-    private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) JudgedCapabilityKey(BoundConstraint asked, BindingScope scope)
-    {
-        var judged = this.NormalizeProofConstraint(asked, scope, out _);
-        return this.CapabilityKey(this.MemberOf(judged.Subject!, scope, out _), judged.Contract!, scope, derivation: false);
-    }
-
-    // The one key of capability works: the judged subject (its class's Member) and the intrinsic Contract in the view.
-    private (BoundConstraint Proposition, BindingScope Scope, bool Derivation) CapabilityKey(BoundType member, BindingSymbol intrinsic, BindingScope scope, bool derivation)
-        => (this.InternConstraint(new(ConstraintKind.Contract, member, contract: intrinsic)), scope, derivation);
-
     private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
     {
         internal BoundType Type { get; } = type;

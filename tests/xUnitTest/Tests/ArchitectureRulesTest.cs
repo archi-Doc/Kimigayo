@@ -249,8 +249,9 @@ public class ArchitectureRulesTest
     [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.cs=2;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=2")]
     // R7-C2c2 c2-4a (design §4's Owner row, review-impl-c24a N4): an identity class's Member reaches the judgments only through
     // MemberOf, which the Contract judge, the capability judge, JudgeConstraintAtom's other arms and ContractTypeCore's (E) arm read;
-    // IdentityClasses.Member's other reader is Refuted. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's Member", "src/Kimi/Compiler", @"\bMemberOf\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Constraints.cs=1;Binding/Binding.ContractTypes.cs=1;Binding/Binding.Contracts.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1")]
+    // IdentityClasses.Member's other reader is Refuted; R7-C3 C7: the capability works' key reads it once more (JudgedCapabilityKey, the
+    // subject the judge judged). A further reader fails here until its row is reviewed.
+    [InlineData("Readers of a class's Member", "src/Kimi/Compiler", @"\bMemberOf\(", "Binding/Binding.Capabilities.cs=2;Binding/Binding.Constraints.cs=1;Binding/Binding.ContractTypes.cs=1;Binding/Binding.Contracts.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1")]
     // R7-C2c2 c2-4b (design R4.12b, R4.12c; ClassForm's contract in Keys.cs): an identity class's one form reaches Types only through
     // ClassForm, read by the one intake of each judgment over identical Types: J1 a proposition's identity (Constraints.cs:
     // NormalizeProofConstraint's subject, required Type and Contract reference; Contracts.cs: ProveConformance's subject and Contract
