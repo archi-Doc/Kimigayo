@@ -286,8 +286,6 @@ public class EnumBindingTest
     [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: bool) -> i64 => 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(a, func (v: bool) -> i64 => 1)")]
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let x = Option.Some(identity)\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity")]
     [InlineData("func f()\n    let x = Option.Some(func (v) => v)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
-    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.Some(identity(1))")]
-    [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "takeGeneric(Option.Some(1))")]
     [InlineData("func f()\n    let x = Option<bool>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    return Option<ref/i32 during a>.None\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.None")]
@@ -305,6 +303,15 @@ public class EnumBindingTest
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
+
+    // SPEC 10.5.1, 6.5.2 (PLAN G924, the owner's O-341 (a)): after selection a part that no expected Type reaches takes its own Type: a
+    // nested call or construction is resolved with no expected result, its literals defaulting, and that Type binds the slot. Both
+    // were ACaseConstructionReportsItsOwnFailure's rows before G924 (UnresolvedBinding_Kd, UnboundTypeArgument_Kd).
+    [Theory]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n")]
+    [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n")]
+    public void ANestedPartAtAnUnboundSlotTakesItsOwnType(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
 
     // SPEC 15.6.1, 10.2 row 2 (PLAN G585, G430; DECISIONS Q13, R4-M108, R4-M111): a payload borrowed from a body Place, a literal's
     // temporary or a local, that does not outlive the Case's Origin is UnsatisfiedOriginRelation_Kd at the payload, twice: Binding's
@@ -358,7 +365,7 @@ public class EnumBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64) -> i32\n    " + statement + "\n    return 0\n");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var construction = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => BoundEnumConstruction.Of(x)).Single(x => x is not null)!;
+        var construction = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => BoundEnumConstruction.Of(c.Binding, x)).Single(x => x is not null)!;
         Assert.Equal("i64", construction.Type.Components[0].Name);
     }
 

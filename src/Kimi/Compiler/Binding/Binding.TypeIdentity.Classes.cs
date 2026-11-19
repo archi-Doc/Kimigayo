@@ -148,9 +148,9 @@ public sealed partial class Binding
                 return true;
             }
 
-            for (var i = 0; i < type.Components.Count; i++)
+            for (var i = 0; i < Arity(type); i++)
             {
-                if (this.Holds(type.Components[i]))
+                if (this.Holds(Component(type, i)))
                 {
                     return true;
                 }
@@ -206,7 +206,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!IsConstructor(a) || !IsConstructor(b))
+            if (a.IsAbstractType || b.IsAbstractType)
             {
                 return false;
             }
@@ -236,8 +236,7 @@ public sealed partial class Binding
         // (R7-C2c2 c2-4); one class is no difference; an abstract Type (IsAbstractType) differs only as
         // a proper part; two constructors differ where their meet conflicts or a pair of their parts differs, or as a proper part.
         // The meet is the premises' own: a Function pair's quantification structure is a compared attribute (Correspond), while an
-        // attribute's Unproven (Origins whose agreement is not proven) decides nothing. Limits: a pair's own `s/T` is no constructor
-        // node in premise meets, and SameHead reads no length arguments.
+        // attribute's Unproven (Origins whose agreement is not proven) decides nothing. Limit: SameHead reads no length arguments.
         internal bool Refuted(BoundType a, BoundType b)
         {
             (a, b) = (this.Applied(this.Target(a)), this.Applied(this.Target(b))); // R7-C3: a family application reads as its instance
@@ -387,8 +386,15 @@ public sealed partial class Binding
         private static bool IsFamily(BoundType type)
             => type is { Kind: BoundTypeKind.AssociatedProjection, OriginArguments.Count: > 0 } && UniversalAssociatedArguments(type);
 
-        private static bool IsConstructor(BoundType type)
-            => type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection);
+        // A node's components (SPEC 8.2.3's Structure): a pair layer's one component is its target (TryPairLayer), so the original `s/T`
+        // is the application of `s` to its target; any other Type's are its Components. Every component walk of a node reads these.
+        private static int Arity(BoundType type) => TryPairLayer(type, out _, out _) ? 1 : type.Components.Count;
+
+        private static BoundType Component(BoundType type, int i) => TryPairLayer(type, out _, out var target) ? target : type.Components[i];
+
+        // SPEC 8.2.3's pair row: a pair layer whose admitted set includes `owner` may be its target itself (PairHead, ProperPart,
+        // MarkCycleEdges). An empty set (8.3.4's Error, 8.3.1's contradictory evidence) admits no `owner`; PairHead decides it first.
+        private static bool MayBeItsTarget(SemanticsMask admitted) => (admitted & SemanticsMask.Owner) != 0;
 
         // An Origin quantified in a Function Type, or a meet with one among its operands (a result's omitted Origin is the meet of the
         // per-call inputs, SPEC 8.10, 15.4.3): quantification structure (8.2.3's Function row).
@@ -418,33 +424,6 @@ public sealed partial class Binding
             for (var i = 0; i < OperandCount(meet); i++)
             {
                 if (ReferenceEquals(Operand(meet, i), operand))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        // Whether a Type holds an Origin quantified in a Function Type, in any Origin slot.
-        private static bool Carries(BoundType type)
-        {
-            if (Quantifies(type.Origin))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (Quantifies(type.OriginArguments[i]))
-                {
-                    return true;
-                }
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (Carries(type.Components[i]))
                 {
                     return true;
                 }
@@ -537,24 +516,27 @@ public sealed partial class Binding
             return answer;
         }
 
-        // A node that is a constructor of its class (R7-C2c2 c2-4b, design R4.1): a constructed Type that is no application admitting
-        // exactly `owner` (that one is its target). The one classification the class graph's edges and cycles (Walk, MarkCycleEdges), the
-        // meets (MeetMembers), the binding grounds and the Member (Scanned) read.
-        private bool Constructs(int n) => IsConstructor(this.types[n]) && !this.transparent[n];
+        // A node that is a constructor of its class (R7-C2c2 c2-4b, design R4.1): no abstract Type (IsAbstractType; the original `s/T`
+        // is a pair application) and no pair layer admitting exactly `owner` (that one is its target). The one classification the class
+        // graph's edges and cycles (Walk, MarkCycleEdges), the meets (MeetMembers), the binding grounds and the Member (Scanned) read.
+        private bool Constructs(int n) => !this.types[n].IsAbstractType && !this.transparent[n];
 
-        // A node's edges in the class graph (SPEC 8.3.3's expansion steps): a constructor's components (the proper-part step) and a
-        // projection's Contract arguments (its Contract reference's components; never its subject). Only a constructor's edges mark a
-        // cycle (MarkCycleEdges): a cycle of projection arguments alone never grows a Type (R7-C2c2 c2-4b, design R2.1, RB2).
-        private IReadOnlyList<BoundType> Edges(int n)
+        // A node's edges in the class graph (SPEC 8.3.3's expansion steps), EdgeCount of them: a constructor's components (the
+        // proper-part step; Arity and Component, a pair layer's one component its target) and a projection's Contract arguments (its
+        // Contract reference's components; never its subject). Only a constructor's edges mark a cycle (MarkCycleEdges): a cycle of
+        // projection arguments alone never grows a Type (R7-C2c2 c2-4b, design R2.1, RB2).
+        private int EdgeCount(int n)
         {
             var type = this.types[n];
             if (this.Constructs(n))
             {
-                return type.Components;
+                return Arity(type);
             }
 
-            return type.Kind == BoundTypeKind.AssociatedProjection && type.Components.Count > 1 ? type.Components[1].Components : [];
+            return type.Kind == BoundTypeKind.AssociatedProjection && type.Components.Count > 1 ? type.Components[1].Components.Count : 0;
         }
+
+        private BoundType Edge(int n, int i) => this.Constructs(n) ? Component(this.types[n], i) : this.types[n].Components[1].Components[i];
 
         // The one class lookup (R7-C2c2 c2-4b, design R4.2): the class of a Type's target (SPEC 8.2.3's pair row), a node's root, else, once
         // the table is closed, the root of the node it is congruent with (the table's own congruence: Signature and Congruent over its
@@ -595,6 +577,33 @@ public sealed partial class Binding
         // joined with its target), else ClassOf.
         private int ComponentClass(BoundType component)
             => this.node.TryGetValue(component, out var n) ? this.Find(n) : this.ClassOf(component);
+
+        // Whether a Type holds an Origin quantified in a Function Type, in any Origin slot.
+        private bool Carries(BoundType type)
+        {
+            if (Quantifies(this.Slot(type).Slot))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (Quantifies(type.OriginArguments[i]))
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < Arity(type); i++)
+            {
+                if (this.Carries(Component(type, i)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // The class's constructor pairs (an owner-only pair application is no constructor): an agreeing pair's parts join, and the state
         // is the worst meet. A "no" that more premises may turn marks the class incomplete.
@@ -854,8 +863,9 @@ public sealed partial class Binding
         }
 
         // SPEC 8.2.3 Cycles and 8.3.3 Unbounded Types: a class on a cycle through a constructor edge is Cyclic; one that is so only through
-        // pair applications admitting `owner` is the Proof row. The class graph (Edges: a constructor's components, a projection's Contract
-        // arguments) is cut into strongly connected components by an iterative Tarjan walk, linear in nodes plus edges, with no depth bound.
+        // pair layers that may be their target (MayBeItsTarget) is the Proof row. The class graph (Edge: a constructor's components,
+        // Arity, and a projection's Contract arguments) is cut into strongly connected components by an iterative Tarjan walk, linear in
+        // nodes plus edges, with no depth bound.
         private void MarkCycles()
         {
             for (var n = 0; n < this.types.Count; n++)
@@ -909,15 +919,14 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var edges = this.Edges(member);
-                if (at >= edges.Count)
+                if (at >= this.EdgeCount(member))
                 {
                     this.stack[^1] = (root, this.next[member], 0);
                     continue;
                 }
 
                 this.stack[^1] = (root, member, at + 1);
-                var target = this.Find(this.node[edges[at]]);
+                var target = this.Find(this.node[this.Edge(member, at)]);
                 if (this.order[target] < 0)
                 {
                     this.Visit(target, ref visits);
@@ -929,7 +938,8 @@ public sealed partial class Binding
             }
         }
 
-        // A component's internal edge lies on a cycle; one through no owner-admitting pair application makes the component Cyclic.
+        // A component's internal edge lies on a cycle; one from no pair layer that may be its target (MayBeItsTarget) makes the
+        // component Cyclic.
         private void MarkCycleEdges()
         {
             for (var member = 0; member < this.types.Count; member++)
@@ -941,10 +951,10 @@ public sealed partial class Binding
                 }
 
                 var from = this.component[this.Find(member)];
-                var mark = type.Kind == BoundTypeKind.SemanticsApplication && (this.Admitted(type) & SemanticsMask.Owner) != 0 ? (byte)1 : (byte)2;
-                for (var i = 0; i < type.Components.Count; i++)
+                var mark = TryPairLayer(type, out _, out _) && MayBeItsTarget(this.Admitted(type)) ? (byte)1 : (byte)2;
+                for (var i = 0; i < Arity(type); i++)
                 {
-                    this.cycle[from] |= this.component[this.Find(this.node[type.Components[i]])] == from ? mark : (byte)0;
+                    this.cycle[from] |= this.component[this.Find(this.node[Component(type, i)])] == from ? mark : (byte)0;
                 }
             }
 
@@ -1021,12 +1031,13 @@ public sealed partial class Binding
             return this.Decompose(x, y);
         }
 
-        // SPEC 8.2.3's pair row (8.3.4's admitted sets). Applications of one `s` share their head. A pair admitting `owner` may be its
-        // target itself and meets every form, and so does one admitting none (8.3.4's Error): the truth varies (Unproven). Otherwise
-        // disjoint outer Semantics (`owner` for a Type that is no Semantics layer, another pair's admitted set) differ; where the heads
+        // SPEC 8.2.3's pair row (8.3.4's admitted sets). Pair layers of one `s` share their head. A pair that may be its target itself
+        // (MayBeItsTarget) meets every form: the truth varies (Unproven). Otherwise
+        // disjoint outer Semantics (`owner` for a Type that is no Semantics layer, another pair's admitted set; an empty set is disjoint
+        // from every one) differ; where the heads
         // may agree the components decide in that case: one head on both sides decomposes, and a head that varies compares them too
-        // while the identity stays Unproven (the premise-error row 4). An application admitting exactly `owner` never meets (Add).
-        // Premises reach it with applications only (a pair's own `s/T` is no constructor node); Refuted with both.
+        // while the identity stays Unproven (the premise-error row 4). A pair layer admitting exactly `owner` never meets (Add).
+        // Every pair layer reaches it, the original `s/T` included (its one component is its target, Arity).
         private byte PairMeet(BoundType x, BoundType y)
         {
             var (head, pair, other, target, component) = this.PairHead(x, y);
@@ -1035,7 +1046,9 @@ public sealed partial class Binding
 
         // The pair row's head (PairMeet's comment): the heads' meet and, where the heads may agree so that the components decide, the
         // pair layer, the other side, the pair's target and the other side's component (null when the head alone decides). A family is
-        // no form of 8.2.3's table (Unsupported).
+        // no form of 8.2.3's table (Unsupported). An empty admitted set on either side is 8.3.4's Error (8.3.1's contradictory
+        // evidence) and disjoint from every set, and a pair differs from another form where its admitted set is disjoint from the other's
+        // outer Semantics (8.2.3): Conflict, decided before the other tests read the sets (one binder's shared head, MayBeItsTarget).
         private (byte Head, BoundType Pair, BoundType Other, BoundType Target, BoundType? Component) PairHead(BoundType x, BoundType y)
         {
             var (pair, other) = x.IsPairLayer ? (x, y) : (y, x);
@@ -1045,16 +1058,20 @@ public sealed partial class Binding
             }
 
             var paired = TryPairLayer(other, out var otherWhole, out var otherTarget);
+            var admitted = binding.AdmittedSemantics(whole, this.scope!);
+            var outer = !paired ? (other.Kind == BoundTypeKind.Semantics ? other.Semantics.ToMask() : SemanticsMask.Owner)
+                : ReferenceEquals(whole, otherWhole) ? admitted : binding.AdmittedSemantics(otherWhole, this.scope!);
+            if (admitted == SemanticsMask.None || outer == SemanticsMask.None)
+            {
+                return (Conflict, pair, other, target, null); // An empty set: 8.3.4's Error, disjoint from every set (8.2.3).
+            }
+
             if (paired && ReferenceEquals(whole, otherWhole))
             {
                 return (One, pair, other, target, otherTarget);
             }
 
-            var admitted = binding.AdmittedSemantics(whole, this.scope!);
-            var outer = paired ? binding.AdmittedSemantics(otherWhole, this.scope!)
-                : other.Kind == BoundTypeKind.Semantics ? other.Semantics.ToMask() : SemanticsMask.Owner;
-            if (((admitted | (paired ? outer : SemanticsMask.None)) & SemanticsMask.Owner) != 0 || admitted == SemanticsMask.None ||
-                outer == SemanticsMask.None)
+            if (MayBeItsTarget(admitted) || (paired && MayBeItsTarget(outer)))
             {
                 return (Unproven, pair, other, target, null);
             }
@@ -1070,7 +1087,7 @@ public sealed partial class Binding
 
         // SPEC 8.2.3 (Refuted, Cycles): whether `part` is a proper part of `whole` up to structure (Origins are never a known
         // difference): a route of steps into constructors' components, a pair layer's target included, with one step that is no pair
-        // admitting `owner` or none (`s/V` may be V itself), as the class graph's cycle edges count it (MarkCycleEdges); an abstract
+        // that may be its target (MayBeItsTarget), as the class graph's cycle edges count it (MarkCycleEdges); an abstract
         // Type and a family end a route (Reaches).
         private bool ProperPart(BoundType part, BoundType whole)
         {
@@ -1081,8 +1098,7 @@ public sealed partial class Binding
 
             if (TryPairLayer(whole, out _, out var target))
             {
-                return this.Admitted(whole) is var admitted && ((admitted & SemanticsMask.Owner) != 0 || admitted == SemanticsMask.None)
-                    ? this.ProperPart(part, target) : Reaches(part, target);
+                return MayBeItsTarget(this.Admitted(whole)) ? this.ProperPart(part, target) : Reaches(part, target);
             }
 
             for (var i = 0; i < whole.Components.Count; i++)
@@ -1096,17 +1112,12 @@ public sealed partial class Binding
             return false;
         }
 
-        // A pair layer's target and the other side's component as the meet's part, its Origin compared as Decompose compares one; a
-        // pair's own `s/T` holds its target apart from its components (TryPairLayer). `head` is the heads' meet.
+        // A pair layer's target and the other side's component as the meet's part, the two layers' slots compared as Decompose compares
+        // an Origin (Slot: a pair layer's outer Origin only in its admitted borrow cases). `head` is the heads' meet.
         private byte PairParts(BoundType pair, BoundType target, BoundType other, BoundType component, byte head)
         {
-            if (pair.Components.Count == 1 && other.Components.Count == 1)
-            {
-                return Math.Max(head, this.Decompose(pair, other));
-            }
-
             this.parts.Add((target, component));
-            return Math.Max(head, this.OriginMeet(pair.Origin, other.Origin));
+            return Math.Max(head, this.OriginMeet(this.Slot(pair).Slot, this.Slot(other).Slot));
         }
 
         // A constructor pair outside a Function pair: its components are its parts, its Origins and length compared by their domains.
@@ -1140,10 +1151,10 @@ public sealed partial class Binding
         private byte Correspond(BoundType x, BoundType y)
         {
             var paired = x.IsPairLayer || y.IsPairLayer;
-            var structural = IsConstructor(x) && IsConstructor(y) && !paired;
+            var structural = !x.IsAbstractType && !y.IsAbstractType && !paired;
             if (!structural && !(x.Kind == y.Kind && ReferenceEquals(x.Symbol, y.Symbol) && x.Kind != BoundTypeKind.Parameter))
             {
-                if (!Carries(x) && !Carries(y))
+                if (!this.Carries(x) && !this.Carries(y))
                 {
                     this.parts.Add((x, y));
                     return One;
@@ -1318,7 +1329,7 @@ public sealed partial class Binding
             return One;
         }
 
-        // The admitted set of a pair application's binder in this view (SPEC 8.3.4).
+        // The admitted set of a pair layer's binder in this view (SPEC 8.3.4); All for any other Type.
         private SemanticsMask Admitted(BoundType application)
             => TryPairLayer(application, out var whole, out _) ? binding.AdmittedSemantics(whole, this.scope!) : SemanticsMask.All;
 
@@ -1329,15 +1340,15 @@ public sealed partial class Binding
         // SPEC 8.2.3's pair row: with exactly `owner` admitted, `s/V` is `V` itself.
         private BoundType Target(BoundType type)
         {
-            while (type.Kind == BoundTypeKind.SemanticsApplication && this.Admitted(type) == SemanticsMask.Owner)
+            while (this.Admitted(type) == SemanticsMask.Owner)
             {
-                type = type.Components[0];
+                type = Component(type, 0);
             }
 
             return type;
         }
 
-        // A node is added with its subterms; an application admitting exactly `owner` is its target from the start: joined with it,
+        // A node is added with its subterms; a pair layer admitting exactly `owner` is its target from the start: joined with it,
         // and no constructor (no head, no proper part, no cycle edge).
         private int Add(BoundType type)
         {
@@ -1346,9 +1357,9 @@ public sealed partial class Binding
                 return n;
             }
 
-            for (var i = 0; i < type.Components.Count; i++)
+            for (var i = 0; i < Arity(type); i++)
             {
-                this.Add(type.Components[i]);
+                this.Add(Component(type, i));
             }
 
             n = this.types.Count;
@@ -1360,7 +1371,7 @@ public sealed partial class Binding
             this.transparent.Add(!ReferenceEquals(target, type));
             if (!ReferenceEquals(target, type))
             {
-                this.pending.Add((n, this.node[type.Components[0]]));
+                this.pending.Add((n, this.node[Component(type, 0)]));
             }
 
             this.Work++;

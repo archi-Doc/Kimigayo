@@ -15,11 +15,17 @@ public sealed partial class Binding
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
         => this.ClassForm(this.ContractType(type, scope), scope, out _);
 
-    // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
-    private static bool SameCallableSignature(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (IsSubtype(a, b, a.Binder) && IsSubtype(b, a, b.Binder));
+    private static SemanticsKind CallableReceiver(SemanticsMask mask)
+        => mask == SemanticsMask.Ref ? SemanticsKind.Ref : mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
 
-    private static bool SameProofPremise(BoundConstraint a, BoundConstraint b)
+    private static SemanticsKind WeakestReceiver(SemanticsKind a, SemanticsKind b)
+        => a == SemanticsKind.Ref || b == SemanticsKind.Ref ? SemanticsKind.Ref : a == SemanticsKind.Uniq || b == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
+
+    // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
+    private bool SameCallableSignature(BoundType a, BoundType b)
+        => ReferenceEquals(a, b) || (this.IsSubtype(a, b, a.Binder) && this.IsSubtype(b, a, b.Binder));
+
+    private bool SameProofPremise(BoundConstraint a, BoundConstraint b)
     {
         if (ReferenceEquals(a, b))
         {
@@ -28,17 +34,11 @@ public sealed partial class Binding
 
         if (a.Kind == ConstraintKind.Not && b.Kind == ConstraintKind.Not)
         {
-            return SameProofPremise(a.Left!, b.Left!);
+            return this.SameProofPremise(a.Left!, b.Left!);
         }
 
-        return a.Kind == ConstraintKind.Callable && b.Kind == ConstraintKind.Callable && a.Mask == b.Mask && ReferenceEquals(a.Subject, b.Subject) && SameCallableSignature(a.RequiredType!, b.RequiredType!);
+        return a.Kind == ConstraintKind.Callable && b.Kind == ConstraintKind.Callable && a.Mask == b.Mask && ReferenceEquals(a.Subject, b.Subject) && this.SameCallableSignature(a.RequiredType!, b.RequiredType!);
     }
-
-    private static SemanticsKind CallableReceiver(SemanticsMask mask)
-        => mask == SemanticsMask.Ref ? SemanticsKind.Ref : mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
-
-    private static SemanticsKind WeakestReceiver(SemanticsKind a, SemanticsKind b)
-        => a == SemanticsKind.Ref || b == SemanticsKind.Ref ? SemanticsKind.Ref : a == SemanticsKind.Uniq || b == SemanticsKind.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
 
     private BoundType? SelectValueCall(InvocationKoto call, BindingScope scope, BoundType type, BoundType? expected)
     {
@@ -63,7 +63,7 @@ public sealed partial class Binding
                 var signature = this.CallableContractType(fact.RequiredType!, scope);
                 var receiver = CallableReceiver(fact.Mask);
                 var index = 0;
-                while (index < count && !SameCallableSignature(candidates[index].Signature, signature))
+                while (index < count && !this.SameCallableSignature(candidates[index].Signature, signature))
                 {
                     index++;
                 }
@@ -110,7 +110,7 @@ public sealed partial class Binding
             var stride = call.ArgumentNodes.Count + 1;
             var operations = this.argumentOperationScratch.Rent(count * stride);
             var evaluated = this.candidateScratch.Rent(count);
-            var classBase = this.positionClasses.Count;
+            var positionBase = this.positionOperations.Count;
             try
             {
                 var applicable = 0;
@@ -156,7 +156,7 @@ public sealed partial class Binding
             {
                 this.argumentOperationScratch.Return(operations, clearArray: true);
                 this.candidateScratch.Return(evaluated, clearArray: true);
-                this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+                this.positionOperations.RemoveRange(positionBase, this.positionOperations.Count - positionBase);
             }
         }
         finally
@@ -198,7 +198,7 @@ public sealed partial class Binding
         return this.FailWaitingSelection(call, failure);
     }
 
-    private bool ReportCallableSelection(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    private bool ReportCallableSelection(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (!this.callableSelectionFailures.TryGetValue(node, out var failure))
         {
@@ -226,7 +226,8 @@ public sealed partial class Binding
 
         if (code == DiagnosticCode.ParameterShapeMismatch_Kd)
         {
-            node.Report(
+            node.ReportIn(
+                store,
                 requirement,
                 code,
                 failure.Mode,
@@ -240,7 +241,7 @@ public sealed partial class Binding
             var note = code == DiagnosticCode.ReceiverShapeMismatch_Kd ? "Distinct Callable signatures require one receiver; each signature uses its weakest declared receiver (SPEC 8.10)"
                 : code == DiagnosticCode.AmbiguousBinding_Kd ? "No Callable signature is better than every other applicable signature under the ordinary argument ranking rules (SPEC 10.4)"
                 : "No Callable signature applies; candidate checks use positional arguments and any fixed expected result (SPEC 8.10, 10.1)";
-            node.Report(requirement, code, evidence: code == DiagnosticCode.ReceiverShapeMismatch_Kd ? null : [failure.Count], related: related, note: note);
+            node.ReportIn(store, requirement, code, evidence: code == DiagnosticCode.ReceiverShapeMismatch_Kd ? null : [failure.Count], related: related, note: note);
         }
 
         return true;

@@ -187,7 +187,7 @@ public sealed partial class Binding
 
             if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
             {
-                environment.Fail(scope.Owner);
+                this.FailEnvironment(environment, scope.Owner);
                 this.FailExplained(ref this.contractAgreementFailures, scope.Owner, BindingFailure.InvalidAssociatedType, new(left.Contract, right.Contract, a.RequiredType, b.RequiredType, x.Symbol));
             }
         }
@@ -208,9 +208,9 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    foreach (var a in left.PathStorage)
+                    foreach (var a in this.impls.PathsOf(left))
                     {
-                        foreach (var b in right.PathStorage)
+                        foreach (var b in this.impls.PathsOf(right))
                         {
                             if (!a.IsVerified || !b.IsVerified || this.ContractOverlapScope(a.Scope, left.Contract, right.Contract) is not { } scope)
                             {

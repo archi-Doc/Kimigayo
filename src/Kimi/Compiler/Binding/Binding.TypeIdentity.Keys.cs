@@ -346,7 +346,7 @@ public sealed partial class Binding
         // conformance's binding (SPEC 8.2.3 Projections), an obligation while the conformance is being declared (8.2.3 Identity
         // premises): no abstract Type, so it never represents a class and is never formed by its class (ContractTypeCore's (E) and
         // ProjectionSpecification complete it).
-        internal bool OfConstructed(BoundType type) => type.Kind == BoundTypeKind.AssociatedProjection && IsConstructor(this.Target(type.Components[0]));
+        internal bool OfConstructed(BoundType type) => type.Kind == BoundTypeKind.AssociatedProjection && !this.Target(type.Components[0]).IsAbstractType;
 
         internal void SetForm(BoundType type, BoundType formed) => this.forms[type] = formed;
 
@@ -363,7 +363,9 @@ public sealed partial class Binding
         // The one class-validity rule and member scan behind both answers: a Type's class (ClassOf: any node, constructed ones included,
         // or a Type congruent with one) in state One whose meets are complete, scanned once per table (its members are fixed after
         // Close), whatever the number asked. The Member is a constructor as the cycle marking counts it (Constructs), so every step from
-        // a class into its Member's components is a class graph edge MarkCycleEdges marks (design R4.1).
+        // a class into its Member's components is a class graph edge MarkCycleEdges marks (design R4.1). Its Kind list names the
+        // members that may key a class (R7-M25: a Type parameter, the original `s/T` among them, or an associated projection), not SPEC
+        // 8.2.3's abstract Type, which the meets test by IsAbstractType.
         private (BoundType? Least, BoundType? Member) Scanned(BoundType type)
         {
             var root = this.ClassOf(type);

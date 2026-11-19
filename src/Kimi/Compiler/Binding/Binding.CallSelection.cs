@@ -84,7 +84,6 @@ public sealed partial class Binding
         evaluation.ChildSlices[(index * 2) + 1] = -1; // R3: composed at the candidate's first solve.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
-        evaluation.Frame.ClearTypes(CallSlotCount(function));
         if (this.MeasureCallInference)
         {
             this.inferenceMappings++;
@@ -125,7 +124,7 @@ public sealed partial class Binding
 
         if (function.IsConstructor && declaringType is not null)
         {
-            declaringType = this.ConstructionType(function, declaringType, evaluation.Frame.Types) ?? declaringType;
+            declaringType = this.ConstructionType(function, declaringType, evaluation.Frames[index].Types) ?? declaringType;
         }
 
         // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
@@ -167,8 +166,6 @@ public sealed partial class Binding
         evaluation.Winner = index;
         if (saved)
         {
-            evaluation.Frame.Types[..CallSlotCount(function)].CopyTo(evaluation.AllTypes.AsSpan(index * evaluation.MaxGenerics));
-            evaluation.Frame.Lengths[..CallSlotCount(function)].CopyTo(evaluation.AllLengths.AsSpan(index * evaluation.MaxGenerics));
             evaluation.Origins.AsSpan(0, evaluation.OriginSlots).CopyTo(evaluation.AllOrigins.AsSpan(index * evaluation.OriginSlots));
             evaluation.Inputs.AsSpan(0, evaluation.InputSlots).CopyTo(evaluation.AllInputs.AsSpan(index * evaluation.InputSlots));
         }
@@ -229,8 +226,9 @@ public sealed partial class Binding
         internal bool Receiver;
     }
 
-    // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. The saved
-    // arrays retain each applicable candidate's slots and mapping only when several candidates are compared.
+    // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. Each candidate's
+    // slots are its own frame (Frames, R7-I2 c); the saved arrays retain each applicable candidate's mapping, Origins and input Origins
+    // only when several candidates are compared.
     private struct CallEvaluation
     {
         internal InvocationKoto Call;
@@ -240,7 +238,7 @@ public sealed partial class Binding
         internal BoundType? Expected;
         internal BoundType? Self;
         internal RequirementGroup? Requirements;
-        internal SlotFrame Frame;
+        internal SlotFrame[] Frames;
         internal BoundType?[] ExplicitTypes;
         internal BoundLength?[] ExplicitLengths;
         internal int[] Mapping;
@@ -253,12 +251,9 @@ public sealed partial class Binding
         internal int[] ChildSlices;
         internal int OperationStride;
         internal int SavedCandidates;
-        internal BoundType?[] AllTypes;
-        internal BoundLength?[] AllLengths;
         internal int[] AllMaps;
         internal BoundOrigin[] AllOrigins;
         internal BoundOrigin[] AllInputs;
-        internal int MaxGenerics;
         internal int OriginSlots;
         internal int InputSlots;
         internal int Count;

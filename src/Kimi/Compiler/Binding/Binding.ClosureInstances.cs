@@ -82,17 +82,16 @@ public sealed partial class Binding
     // signature (a parameter contravariant, the result covariant, each layer's target as ComponentVariance composes it); equal
     // occurrences keep their variance, different ones are invariant. One query of `visitedParts` meets each distinct part once per
     // polarity (a state bit per polarity): Join is idempotent, so a part met again at a polarity adds nothing (DECISIONS BU-63). The
-    // table is the definition's compilation's Binding's, whether or not the caller reads premises (`binding`).
-    private static OriginVariance ClosureArgumentVariance(BoundType type, int index, Binding? binding)
+    // table is this Binding's, whether or not the caller reads premises (`binding`).
+    private OriginVariance ClosureArgumentVariance(BoundType type, int index, Binding? binding)
     {
         if (BoundClosure.Of(type) is not { Signature: { } signature, EnvironmentType: { } definition } || index >= definition.OriginArguments.Count)
         {
             return OriginVariance.Invariant;
         }
 
-        var owner = type.Symbol!.Declaration!.CodeContext.Compilation.Binding;
-        var query = owner.visitedParts.Begin(owner.storageVersion);
-        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused, owner, query);
+        var query = this.visitedParts.Begin(this.storageVersion);
+        var variance = Occurrences(signature, definition.OriginArguments[index], OriginVariance.Covariant, binding, OriginVariance.Unused, this, query);
         return variance == OriginVariance.Unused ? OriginVariance.Invariant : variance;
 
         static OriginVariance Occurrences(BoundType type, BoundOrigin atom, OriginVariance polarity, Binding? binding, OriginVariance seen, Binding owner, uint query)
@@ -105,7 +104,7 @@ public sealed partial class Binding
             seen = Names(OwnedOrigin(type), atom) ? Join(seen, polarity) : seen;
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                seen = Names(type.OriginArguments[i], atom) ? Join(seen, ComposeVariance(polarity, OriginArgumentVariance(type, i, binding))) : seen;
+                seen = Names(type.OriginArguments[i], atom) ? Join(seen, ComposeVariance(polarity, owner.OriginArgumentVariance(type, i, binding))) : seen;
             }
 
             for (var i = 0; i < type.Components.Count; i++)
@@ -309,7 +308,7 @@ public sealed partial class Binding
                 switch (this.types.EnclosingDeclaration(symbol))
                 {
                     case { Declaration: FunctionKoto } function when instance is not null && ReferenceEquals(function, instance.Target):
-                        if (closure is not null && this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
+                        if (closure is not null && this.types.Instance(closure.Signature.Components[1], instance) is not ({ }, not StorageOutcome.Limit))
                         {
                             return null;
                         }

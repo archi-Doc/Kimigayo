@@ -340,7 +340,8 @@ public static partial class Parser
             reader.Diagnostic.Add(origin.Span, DiagnosticCode.LegacyBorrowOrigin_Kd);
             var cause = reader.Diagnostic.LastError;
             reader.Advance(); // The slash belongs to the malformed Type, not to its enclosing parameter list.
-            return RecoverRejectedPrefix(ref reader, type.Span.Start, ParseType(ref reader, TypeContext.Type), cause);
+            var written = ParseType(ref reader, TypeContext.Type);
+            return RecoverRejectedPart(ref reader, SourceSpan.FromBounds(type.Span.Start, written.Span.End), written, cause);
         }
 
         return annotated;

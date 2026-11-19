@@ -147,7 +147,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, value.OriginArguments.Count); i++)
             {
-                Bind(pattern.OriginArguments[i], value.OriginArguments[i], ComposeVariance(polarity, OriginArgumentVariance(pattern, i, this)));
+                Bind(pattern.OriginArguments[i], value.OriginArguments[i], ComposeVariance(polarity, this.OriginArgumentVariance(pattern, i, this)));
             }
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)
@@ -274,6 +274,8 @@ public sealed partial class Binding
             ref var row = ref HirTables.Of(node).Families.InitializerOrigins.Ref(node.SyntaxId);
             row = row is null ? value : throw new ArgumentException($"`initializerOrigins` already holds a row at `{node}`.", nameof(node));
         }
+
+        internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.InitializerOrigins.Get(node.SyntaxId) : null) is not null;

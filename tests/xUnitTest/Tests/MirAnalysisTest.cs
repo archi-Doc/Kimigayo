@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Kimi;
@@ -674,7 +673,7 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Body(0).Source, 0, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 0, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
@@ -900,29 +899,31 @@ public sealed class MirAnalysisTest
         Assert.Throws<InvalidOperationException>(() => analysis.Step(program, c.SourceModules.Length));
     }
 
-    // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2): Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of
-    // the body (MirDropTable.Holds): a body a lookup built after the version's steps and nothing stepped has no A1 or A2 facts, so it is not
-    // judged without a problem; once the one stepping path steps it, it is. An explicit builder with the program's root range builds X3 and
-    // its analysis runs; a lookup then builds Stopwatch.reset, which X3 never reaches; the premise (a body built after the run, not held)
-    // is asserted before the judgment is read; the program stands for the compilation's latest analysis's, injected as R5-M183's hover rows
-    // inject a fact. Fail-before: the judgment read the body's existence, findings, records and problems only, so the unstepped body read
-    // as judged. X3 as above.
+    // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2), row H3-C through Compilation (U2's N8; the design review of U2-K-b's N5):
+    // Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of the body (MirDropTable.Holds): a body its version
+    // built and no step stepped has no A1 or A2 facts, so it is not judged without a problem; once a version steps it, it is. swap erased at
+    // 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected by the implementation's storage bound (PLAN G128: one located
+    // Unsupported_Kd where the collector refuses the instance after its lookup built swap's body), so nothing steps swap: the premise
+    // (built at its library ordinal, not held) is asserted before the judgment is read; the edit into swap at u8 (valid) steps it.
+    // Transitional with G950KeptPathTest's row K1-K: it holds until R7 removes the bound. Replaces the seam that injected an explicit
+    // program by reflection. Fail-before: the judgment read the body's existence, findings, records and problems only, so the unstepped
+    // body read as judged.
     [Fact]
     public void ABodyBuiltButNotSteppedIsNotJudged()
     {
-        var c = MirBuildTest.Compile(LazySource("X3"));
-        var reset = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "reset");
-        var analysis = new MirAnalysis(c.Types);
-        var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
-        var count = program.Bodies.Length;
-        var body = program[reset]!;
-        Assert.Equal(count, body.Ordinal);
-        Assert.False(program.Drops.Holds(body.Ordinal));
-        typeof(Compilation).GetField("mir", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(c, program);
-        Assert.False(c.JudgedWithoutProblem(reset.Decl!));
-        analysis.Step(program, c.SourceModules.Length);
-        Assert.True(program.Drops.Holds(body.Ordinal));
-        Assert.True(c.JudgedWithoutProblem(reset.Decl!));
+        const string swap = "let action: (uniq/{0}, uniq/{0}) -> () = ::Kimi.Intrinsics.swap\n";
+        var c = MirBuildTest.Compile(string.Format(swap, string.Concat(Enumerable.Repeat("[1 of ", 70)) + "u8" + new string(']', 70)));
+        _ = c.Analyze();
+        Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
+        var (program, eager) = (c.BuildMir(), new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1));
+        var body = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+        Assert.Equal((eager[body.Key]!.Ordinal, false), (body.Ordinal, program.Drops.Holds(body.Ordinal)));
+        var declaration = body.Key.Decl!;
+        Assert.False(c.JudgedWithoutProblem(declaration));
+        Edit(c, string.Format(swap, "u8"));
+        _ = c.Analyze();
+        Assert.Empty(c.Problems);
+        Assert.True(c.JudgedWithoutProblem(declaration));
     }
 
     // PLAN G951 U2 (the review's N1: hover's rows H1 and H2 restated at Compilation.JudgedWithoutProblem, since hover writes the ownership
@@ -939,6 +940,22 @@ public sealed class MirAnalysisTest
         Assert.True(c.JudgedWithoutProblem(c.Library.GetSymbol(KimiDeclarationId.WriteLine)!));
         Assert.Null(c.BuildMir()[start]);
         Assert.False(c.JudgedWithoutProblem(start.Decl!));
+    }
+
+    // Row H2-K (PLAN G951 U2-K-b; M-K1's Q1, HOVER's ownership line): a library function an earlier version of the compilation reached and
+    // the latest does not stays judged without a problem, since the kept library list keeps its body, stepped by the library step of
+    // every later version of the segment (a fresh pipeline would have no body: pending). X3 (valid, SPEC 10.5.3, 7.7.4) reaches
+    // Stopwatch.start; the edit into Hello (valid, SPEC 22.7) does not.
+    [Fact]
+    public void ALibraryFunctionAnEarlierVersionReachedStaysJudged()
+    {
+        var c = MirBuildTest.Compile(LazySource("X3"));
+        var start = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "start");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.JudgedWithoutProblem(start.Decl!));
+        Edit(c, LazySource("docs/examples/Hello/Hello.kimi"));
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.JudgedWithoutProblem(start.Decl!));
     }
 
     // PLAN G951 U2, rows S1 and its guard (the design's §4; the review's N3): the record rule (SPEC 23.1.2, 23.2.2; DECISIONS R5-M168; the
@@ -997,18 +1014,28 @@ public sealed class MirAnalysisTest
             "    public func brokenOf<T>(value: T, condition: bool) -> i32\n        var second: i32\n        if condition\n" +
             "            second = 2\n        return second\n";
         var c = CompilationTestHelper.Parse(program + "\n");
-        c.Library.Kotonoha.AddSource(new("G951Probe.kimi", Probe));
+        var library = CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.AddSource(new("G951Probe.kimi", Probe)));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         string[] expected = reached.Length == 0 ? [] : [$"UninitializedPlace_Kd {reached}"];
         Assert.Equal(expected.Length == 0, c.Analyze().IsVerified);
+        Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
+
+        // h7 and g1 (PLAN G949 Stage 2 U3): the library is frozen through the seam and read, so a second compilation over it shows the
+        // reached body's record again, once, and the first compilation's records are its own.
+        var other = CompilationTestHelper.Parse(program + "\n");
+        other.UseLibrary(library);
+        Assert.True(other.Bind().IsComplete, MinimalEmissionTest.Describe(other));
+        Assert.True(other.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.Equal(expected.Length == 0, other.Analyze().IsVerified);
+        Assert.Equal(expected, other.Problems.Select(x => $"{x.Code} {Line(other, x.Subject)}"));
         Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
     // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and
     // replayed at the library step in a version that keeps the library segment: one analysis over two versions of one compilation reports
     // an A1 problem seeded into a library body after each build (a copy of a new Var no path initializes, in a new block the entry block
-    // enters first) in each version, at its location, once. Every version takes the library step until G950-K, so the row pins the replay
+    // enters first) in each version, at its location, once. With G950-K the second version keeps the segment, so the row pins the replay
     // on the kept path (as InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion pins A3b there).
     [Fact]
     public void ALibraryStepProblemIsInEveryVersion()
@@ -1132,6 +1159,26 @@ public sealed class MirAnalysisTest
             $"{drops.FlagsOf(body.Ordinal)} {drops.ViewsOf(body.Ordinal)} {drops.Incomplete(body.Ordinal)?.Code}";
     }
 
+    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), the review's Yp (X2's use,
+    // then a root function's), X3, H1 (a library heap buffer dropped), Requirements, or a repository file; G950KeptPathTest's row KV-2
+    // reads X1 and X2.
+    internal static string LazySource(string name)
+    {
+        const string apply = "func apply<F>(action: ref/F) -> ()\n    F is Callable<(uniq/::Kimi.Time.Stopwatch) -> ()>\n        effect confined\n" +
+            "    var watch = ::Kimi.Time.Stopwatch.init()\n    action(watch@uniq)\n\n";
+        return name switch
+        {
+            "X1" => apply + "apply(::Kimi.Time.Stopwatch.reset)\n",
+            "X2" => apply + "apply(::Kimi.Time.Stopwatch.start)\n",
+            "Yp" => apply + "func noisy(watch: uniq/::Kimi.Time.Stopwatch) -> ()\n    Console.writeLine(\"noisy\")\n\n" +
+                "apply(::Kimi.Time.Stopwatch.start)\napply(noisy)\n",
+            "X3" => MirBuildTest.StopwatchAction,
+            "H1" => "let buffer = ::Kimi.Text.heap(16)\n",
+            "Requirements" => Requirements,
+            _ => Repository.ReadText(name.Split('/')),
+        };
+    }
+
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().
     private static string RequireEnds(int n)
     {
@@ -1153,23 +1200,13 @@ public sealed class MirAnalysisTest
     // The first line of a syntax's text.
     private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
 
-    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), the review's Yp (X2's use,
-    // then a root function's), X3, H1 (a library heap buffer dropped), Requirements, or a repository file.
-    private static string LazySource(string name)
+    // A compilation's next Binding pass: its program edited into a source, then a final pass and the startup check.
+    private static void Edit(Compilation c, string source)
     {
-        const string apply = "func apply<F>(action: ref/F) -> ()\n    F is Callable<(uniq/::Kimi.Time.Stopwatch) -> ()>\n        effect confined\n" +
-            "    var watch = ::Kimi.Time.Stopwatch.init()\n    action(watch@uniq)\n\n";
-        return name switch
-        {
-            "X1" => apply + "apply(::Kimi.Time.Stopwatch.reset)\n",
-            "X2" => apply + "apply(::Kimi.Time.Stopwatch.start)\n",
-            "Yp" => apply + "func noisy(watch: uniq/::Kimi.Time.Stopwatch) -> ()\n    Console.writeLine(\"noisy\")\n\n" +
-                "apply(::Kimi.Time.Stopwatch.start)\napply(noisy)\n",
-            "X3" => MirBuildTest.StopwatchAction,
-            "H1" => "let buffer = ::Kimi.Text.heap(16)\n",
-            "Requirements" => Requirements,
-            _ => Repository.ReadText(name.Split('/')),
-        };
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        c.Binding.Bind(BindingMode.Final);
+        _ = c.Binding.CheckStartup(OutputKind.Application);
     }
 
     // A compilation of a source, built with a root range and analyzed with its source modules as roots, as Compilation's driver does.

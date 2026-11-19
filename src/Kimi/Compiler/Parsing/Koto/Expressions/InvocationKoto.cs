@@ -15,14 +15,6 @@ public sealed class InvocationKoto : ApplicationKoto
     {
     }
 
-    /// <summary>Gets the selected call plan of a named callee for the current Binding, or null before selection.</summary>
-    [Transitional("R7", Reason = "Call plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
-    public CallPlan? BoundCall => this.HasCurrentBinding && this.CallStorage is { Kind: not CalleeKind.Value } plan ? plan : null;
-
-    /// <summary>Gets the checked invocation of a callable value for the current Binding.</summary>
-    [Transitional("R7", Reason = "Call plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
-    public CallPlan? BoundValueCall => this.HasCurrentBinding && this.CallStorage is { Kind: CalleeKind.Value } plan ? plan : null;
-
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Invocation;
 
@@ -39,9 +31,10 @@ public sealed class InvocationKoto : ApplicationKoto
     // Allocated only when at least one argument is labeled.
     private string?[]? argumentLabels;
 
-    /// <summary>Gets the argument labels in argument order. A positional argument has a null label.</summary>
+    /// <summary>Gets the argument labels in argument order. A positional argument has a null label. A call without a label forms its
+    /// list on each read and stores none (PLAN G1072: no compiler reader, and a read never writes a frozen node).</summary>
     public IReadOnlyList<string?> ArgumentLabels
-        => this.argumentLabels ??= new string?[this.ArgumentNodes.Count];
+        => this.argumentLabels ?? new string?[this.ArgumentNodes.Count];
 
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

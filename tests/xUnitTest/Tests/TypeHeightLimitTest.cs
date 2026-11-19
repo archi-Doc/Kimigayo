@@ -169,7 +169,9 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     // or a pass element that publishes facts (a source state's declaration, an override's premises). A Type past the limit formed there
     // is TypeHeightLimit_Kd at that node, never InternalInvariant_Kd or a Language record (an agreement's first path is `Self is Named`);
     // `{0}` one layer less is accepted, or keeps the form's own record (`Derived`'s Unsupported_Kd, from a later phase that this harness
-    // runs only after Binding accepts; the CLI keeps it beside the height record). Fail-before: dev gives InternalInvariant_Kd.
+    // runs only after Binding accepts; the CLI keeps it beside the height record). Fail-before: dev gives InternalInvariant_Kd. The
+    // `T is V` row reaches the class's Member through V, a node no premise rewrites (ContractTypeCore's (E) arm); fail-before: c2-4a's
+    // b5c260990 formed its Type past the limit unrefused and accepted the program.
     // R7-C3 (the design review's C1; F's C2 ruling 257 (2)): struct E's clause is spelled at the limit (`D12<{0}>` written), so E's
     // validation pass forms the Type past the limit in its own frame; the forms as first written are
     // AClauseValidatedAsWrittenStaysWithinTheLimit's rows.
@@ -178,6 +180,7 @@ public class TypeHeightLimitTest(ITestOutputHelper output)
     [InlineData("struct E<T>\n    T is {0}\n    D12<{0}>.Item is Sealed\n    var v: i32\n", "struct E", null)]
     [InlineData("struct E<T>\n    T is {0}\n    D12<{0}>.Item is Sealed\n    var v: i32\n    public func get(self: ref/Self) -> i32\n        return self.v\n", "struct E", null)]
     [InlineData("func f<T>(x: i32) -> i32\n    T is D12<{0}>\n    T is HasItem\n    T.Item is Sealed\n    return x\n", "func f", null)]
+    [InlineData("func f<T, V>(x: i32) -> i32\n    T is D12<{0}>\n    T is V\n    V is HasItem\n    V.Item is Sealed\n    return x\n", "func f", null)]
     [InlineData("struct G<T>\n    D12<T>.Item is Sealed\n    Self is HasItem\n    associate HasItem.Item is i32\nstruct S\n    G<{0}>.Item is Sealed\n    var v: i32\n", "struct S", null)]
     [InlineData("contract Named\ncontract Tagged: Named\nstruct Tag<T>\n    var value: i32\n    Self is Named when T is HasItem, T.Item is Sealed\n    Self is Tagged when T is D12<{0}>\n", "Self is Named", null)]
     [InlineData("open struct Base<T>\n    public virtual func f(self: objref/Self) -> i32\n        T is HasItem\n        T.Item is Sealed\n        return 1\nstruct Derived : Base<D12<{0}>>\n    override func f(self: objref/Self) -> i32 => 2\n", "override func f", nameof(DiagnosticCode.Unsupported_Kd))]

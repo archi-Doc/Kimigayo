@@ -307,11 +307,9 @@ public class GenericFunctionReferenceTest
         Assert.Contains("only the 1st parameter's per-call Origin would satisfy Type parameter 'T'", console.Text, StringComparison.Ordinal);
     }
 
-    // SPEC 10.8: two spellings of one Function Type bind one slot, and a result-only per-call slot wrapped in an anonymous function is accepted.
+    // SPEC 10.8: two spellings of one Function Type bind one slot.
     [Theory]
     [InlineData("func keep<T>(f: T) -> T => f@move\nlet m: ((ref/i32) -> ref/i32) -> (ref/i32) -> ref/i32 = keep")]
-    [InlineData(ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)")]
-    [InlineData(ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(func (a, b) => g(a, b), x@ref, x@ref)")]
     [InlineData(Identity + "let e: (i64) -> i64 = identity<i64>")]
     [InlineData(Identity + "let e: (Wrapping<i32>) -> Wrapping<i32> = identity<Wrapping<i32>>")]
     [InlineData(Identity + "let e: (char) -> char = identity<char>")]
@@ -325,6 +323,21 @@ public class GenericFunctionReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 10.2.2 item 2 (PLAN G924, K's revision; F's rulings 74 and 88; K on the board, 11-17 10:22): at an expected `ref/U` a
+    // declared result `T` is a returned value, matched against U. An anonymous function's result Type, fixed by its contextual
+    // Function Type, is that expected result for its body, so `g(a, b)` binds `T = i32` and the body returns the borrow of a
+    // temporary: invalid, where the earlier text bound `T = ref/i32` and accepted both (mk2_bare's move in another form; a declared
+    // `ref/T` result is matched against `ref/U`, mk2_ref).
+    [Theory]
+    [InlineData(ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)")]
+    [InlineData(ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(func (a, b) => g(a, b), x@ref, x@ref)")]
+    public void AResultOnlySlotAtAnExpectedReferenceIsAReturnedValue(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.Equal([nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code).Distinct());
     }
 
     // SPEC 10.6: the record's cause is its own; an independent error stays visible and a use of the annotated binding adds none.

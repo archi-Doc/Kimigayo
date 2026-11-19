@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly QualificationFailureRows qualificationFailures;
     private Dictionary<(Koto Use, bool Type), QualificationFact>? qualificationStops;
-    private Dictionary<Koto, QualificationFact>? qualificationFailures;
 
     private enum QualificationNamespace : byte
     {
@@ -20,9 +20,10 @@ public sealed partial class Binding
     {
         Receiver,
         Inherited,
+        Case,
     }
 
-    private readonly record struct QualificationFact(
+    internal readonly record struct QualificationFact(
         BindingScope Container,
         BindingScope Scope,
         BindingSymbol Member,
@@ -32,11 +33,15 @@ public sealed partial class Binding
         Koto? At = null,
         Koto? BaseClause = null)
     {
-        internal bool Type => this.Role != LookupRole.Value;
+        internal bool Type => !InValueNamespace(this.Role);
     }
 
     private static bool IsInstanceMember(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 || (symbol.Kind == BindingSymbolKind.Property && symbol.Scope.Owner is StructKoto or ContractKoto or EnumKoto);
+
+    // SPEC 9.5, 18.2.1 (PLAN G632; R7-N1 c2): what an unqualified Name never selects at any stage, opened members included: a Case or a
+    // member that needs a receiver (an inherited declaration is InheritedStop's).
+    private static bool NeedsQualification(BindingSymbol symbol) => symbol.EnumCase is not null || IsInstanceMember(symbol);
 
     private string? RootQualifier(BindingScope scope, QualificationFact fact)
     {
@@ -85,11 +90,27 @@ public sealed partial class Binding
         return null;
     }
 
+    // A candidate qualified by its Type (no receiver): the repair's `Self.` or `Container.` (ReportQualification).
     private bool HasReceiverlessCandidate(BindingSymbol head, BindingScope scope, LookupRole role)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
             if (!IsInstanceMember(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 9.5: a candidate an unqualified value Name may select at a Container or import stage: 9.5's stop's one predicate, read by
+    // ValueStage and, through AddImport's Selectable, ImportStageEnd (the repair's question is HasReceiverlessCandidate).
+    private bool HasUnqualifiedCandidate(BindingSymbol head, BindingScope scope)
+    {
+        for (var candidate = head; candidate is not null; candidate = candidate.Next)
+        {
+            if (!NeedsQualification(candidate) && this.Accessible(candidate, scope))
             {
                 return true;
             }
@@ -148,7 +169,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var names = role == LookupRole.Value ? members.Values : members.Types;
+            var names = InValueNamespace(role) ? members.Values : members.Types;
             for (var candidate = names.GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
                 if (!IsGenericParameter(candidate) && HasLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
@@ -161,9 +182,9 @@ public sealed partial class Binding
         return null;
     }
 
-    private void ReportQualification(Koto node, DiagnosticRequirement requirement)
+    private void ReportQualification(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
-        var fact = this.qualificationFailures![node];
+        var fact = this.qualificationFailures[node];
         var container = fact.Container.Owner.BoundSymbol!;
         var instance = false;
         for (var member = fact.Member; member is not null; member = member.Next)
@@ -233,13 +254,14 @@ public sealed partial class Binding
 
         var at = fact.At!;
         var nameSpace = fact.Type ? QualificationNamespace.Type : QualificationNamespace.Value;
-        node.Report(
+        node.ReportIn(
+            store,
             requirement,
             DiagnosticCode.QualificationRequired_Kd,
             fact.Name,
             container.Name,
             at: at,
-            evidence: fact.BaseClause is null ? [nameSpace, QualificationCause.Receiver, instance] : [nameSpace, QualificationCause.Inherited, instance, fact.Member.Scope.Owner.BoundSymbol!.Name],
+            evidence: fact.BaseClause is null ? [nameSpace, fact.Member.EnumCase is null ? QualificationCause.Receiver : QualificationCause.Case, instance] : [nameSpace, QualificationCause.Inherited, instance, fact.Member.Scope.Owner.BoundSymbol!.Name],
             related: fact.BaseClause is null ? [("declaration", fact.Member.Declaration, "declaration requiring qualification")] : [("declaration", fact.Member.Declaration, "inherited declaration"), ("base", fact.BaseClause, "base clause of " + container.Name)],
             repairs: repairs?.ToArray());
 
@@ -290,6 +312,19 @@ public sealed partial class Binding
             var verified = selected ? RepairConditionSet.Selection : RepairConditionSet.None;
             var required = (selected ? RepairConditionSet.None : RepairConditionSet.Selection) | (fact.Type ? RepairConditionSet.None : RepairConditionSet.UsageLegality);
             (repairs ??= []).Add(new(RepairKind.Qualify, [fact.Name, prefix], [node.Edit(new(fact.At!.Span.Start, 0), prefix)], verified, required));
+        }
+    }
+
+    /// <summary>The `qualificationFailures` family's one accessor (DECISIONS BU-220): a pass family, the qualification stop a failed
+    /// Name or Type at a node required (Fail), kept in the node's module's NodeColumns at its SyntaxId (a present fact always has its
+    /// Container, so the column's default is none). Its members keep the names its readers use.</summary>
+    private readonly struct QualificationFailureRows(Binding binding)
+    {
+        internal QualificationFact this[Koto node]
+        {
+            get => (node.SyntaxOwner is { } table ? table.Hir.Families.QualificationFailures.Get(node.SyntaxId, binding) : default) is { Container: not null } fact
+                ? fact : throw new KeyNotFoundException($"`{node}` has no qualification failure in this pass.");
+            set => HirTables.Of(node).Families.QualificationFailures.Ref(node.SyntaxId, binding) = value;
         }
     }
 }

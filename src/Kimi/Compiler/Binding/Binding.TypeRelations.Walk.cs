@@ -8,8 +8,10 @@ namespace Kimi.Compiler;
 // - Responsibility: whether `actual` is a subtype of `expected`, part by part, and a Function Type by one Callable comparison
 //   (FunctionFits), two at an invariant position, one each way (SPEC 3.8, 15.3.5), whose implementation conditions it judges at every
 //   nesting when it has a Binding.
-// - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads, and in whose view the root's two sides
-//   are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), and which Origin bindings count (OriginPart).
+// - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
+//   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads, and in
+//   whose view the root's two sides are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), and which Origin
+//   bindings count (OriginPart).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
@@ -112,6 +114,7 @@ public sealed partial class Binding
     // One walk of the relation with its query and its result (see the file contract).
     private struct RelationWalk
     {
+        private readonly Binding owner;
         private readonly Binding? binding;
         private readonly Koto? use;
         private readonly List<ComparisonFailure>? facts;
@@ -123,8 +126,9 @@ public sealed partial class Binding
         private int endedAt;
         private bool formed; // whether the root's pair was formed (J3: only the root forms; its parts are parts of formed Types)
 
-        internal RelationWalk(Binding? binding, Koto? use, OriginPart part)
+        internal RelationWalk(Binding owner, Binding? binding, Koto? use, OriginPart part)
         {
+            this.owner = owner;
             this.binding = binding;
             this.use = use;
             this.part = part;
@@ -132,16 +136,16 @@ public sealed partial class Binding
         }
 
         // A recording root's walk: its facts follow `facts`' current end, which the root truncates back once it has read them.
-        internal RelationWalk(Binding binding, Koto use, List<ComparisonFailure> facts)
-            : this(binding, use, OriginPart.Judged)
+        internal RelationWalk(Binding owner, Binding binding, Koto use, List<ComparisonFailure> facts)
+            : this(owner, binding, use, OriginPart.Judged)
         {
             this.facts = facts;
             this.start = facts.Count;
         }
 
         // CheckTypeUse's root: also one FitPart per part outside every Callable comparison, appended to `parts`, which the root truncates.
-        internal RelationWalk(Binding binding, Koto use, List<ComparisonFailure> facts, List<FitPart> parts)
-            : this(binding, use, facts)
+        internal RelationWalk(Binding owner, Binding binding, Koto use, List<ComparisonFailure> facts, List<FitPart> parts)
+            : this(owner, binding, use, facts)
         {
             this.parts = parts;
         }
@@ -213,7 +217,7 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
+                outer = this.owner.FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
             }
 
             var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;
@@ -242,7 +246,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var variance = OriginArgumentVariance(actual, i, this.binding);
+                var variance = this.owner.OriginArgumentVariance(actual, i, this.binding);
                 var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
                 if (both ? !this.OriginFits(a, b, instance) || !this.OriginFits(b, a, instance) :
                     variance == OriginVariance.Covariant ? !this.OriginFits(a, b, instance) : !this.OriginFits(b, a, instance))

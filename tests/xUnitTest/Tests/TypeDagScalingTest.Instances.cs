@@ -129,6 +129,32 @@ public partial class TypeDagScalingTest
         Assert.Equal(Enumerable.Range(1, size).Select(static i => $"D{i}").Order(StringComparer.Ordinal), diagnosed.Order(StringComparer.Ordinal));
     }
 
+    // DECISIONS BU-12 (R7-T1, C-406's C2): the storage verdict (Binding.PrepareTypeStorage, the one storage query) decides each distinct Type of a
+    // storage once per pass, so an inline Box and a fixed array nested N deep cost linear in N: Prepared within the height bound (64),
+    // Limit past it, and the pass's memo gives the same verdict again; a walk that stalls fails at the deadline, never hangs.
+    [Theory]
+    [InlineData(30, "Prepared")]
+    [InlineData(60, "Prepared")]
+    [InlineData(120, "Limit")]
+    public async Task AStorageVerdictIsLinearInItsNesting(int depth, string expected)
+    {
+        var boxes = string.Concat(Enumerable.Repeat("Box<", depth)) + "i32" + new string('>', depth);
+        var arrays = string.Concat(Enumerable.Repeat("[1 of ", depth)) + "i32" + new string(']', depth);
+        var source = $"struct Box<T>\n    public var value: T\nfunc f(b: {boxes}, a: {arrays}) -> ()\n    return\npublic func main() => ()\n";
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(
+            () =>
+            {
+                var c = MirBuildTest.Compile(source);
+                var types = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters
+                    .Select(static x => x.Type.TypeOf()!).ToArray();
+                return types.Select(c.Binding.PrepareTypeStorage).Concat(types.Select(c.Binding.PrepareTypeStorage)).ToArray();
+            },
+            cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+        Assert.Equal(Enumerable.Repeat(expected, 4), (await run).Select(static x => x.ToString()));
+    }
+
     // D1 to Dn (structs, or enums whose Case A holds the part), each storing the next at its Type argument doubled (a Tuple, or a Tuple of
     // two fixed arrays), the last storing the argument; D1 at i32, at `raw/i32` for `raw`, or at `ref/i32 during a` for `ref`, whose
     // Closure with two captures also takes a second chain `during b`. A struct chain's functions read the path to Dn's argument.

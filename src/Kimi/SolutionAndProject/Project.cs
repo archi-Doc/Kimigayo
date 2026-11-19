@@ -214,35 +214,60 @@ public partial class Project
     public Task<bool> Check(CancellationToken cancellationToken)
         => this.BuildCore(false, cancellationToken);
 
-    /// <summary>Checks product sources and records a Library build or links an Application.</summary>
+    /// <summary>Checks product sources and records a Library build or links an Application. The toolchain boundary (R9-B2): the
+    /// toolchain's classification (<see cref="NativeToolchain.IsToolchainFailure"/>) applies only around the toolchain's calls (the
+    /// artifact paths and the record's invalidation; the native build or the Library record), and such a failure fails the build with its
+    /// message (IMPL 20.3; SPEC 23.2.2). The compiler's steps run between them, outside both catches, each result with its own fault path;
+    /// any other exception under the build (the compiler's read of the checked metadata, the rendering of a toolchain failure, or one the
+    /// toolchain leaves) ends the build's own result as Faulted (DIAGNOSTICS rule 9).</summary>
     /// <param name="cancellationToken">Cancels checking, generation and native tool processes.</param>
     /// <returns>Whether this OutputKind's checks and artifacts succeeded.</returns>
     public async Task<bool> Build(CancellationToken cancellationToken = default)
     {
         try
         {
-            var paths = ArtifactPaths.Create(this);
-            NativeToolchain.Invalidate(paths);
+            ArtifactPaths paths;
+            try
+            {
+                paths = ArtifactPaths.Create(this);
+                NativeToolchain.Invalidate(paths);
+            }
+            catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+            {
+                return this.ToolchainFailed(ex);
+            }
+
             var application = this.ProjectFile.OutputKind == OutputKind.Application;
             if (!await this.BuildCore(application, cancellationToken, paths).ConfigureAwait(false))
             {
                 return false;
             }
 
-            if (application)
+            // A Library's record restates the front end's metadata of its one checked target (BuildTargets).
+            var metadata = application ? null : this.buildMetadata.Single();
+            try
             {
-                await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+                if (application)
+                {
+                    await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    NativeToolchain.RecordLibrary(this, metadata!, paths, cancellationToken);
+                }
             }
-            else
+            catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
             {
-                NativeToolchain.RecordLibrary(this, paths, cancellationToken);
+                return this.ToolchainFailed(ex);
             }
 
             return true;
         }
-        catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+        catch (Exception ex) when (this.Faults(ex, null))
         {
-            this.kimigayo.WriteLine(DiagnosticSeverity.Error, ex.Message);
+            // The build's own result, after the results finalized at their own points: an empty owner with the fault, finalized over the
+            // Emission partition, the last a build's compiler steps reach (a Library's build has none; an empty owner orders no record).
+            this.Publish(new DiagnosticOwner(), DiagnosticPartition.Emission, DiagnosticPartition.Emission, null, fault: ex);
             return false;
         }
     }
@@ -250,8 +275,19 @@ public partial class Project
     /// <summary>Executes the last successfully built Application without rebuilding.</summary>
     /// <param name="cancellationToken">Cancels the child process.</param>
     /// <returns>The application's exit code.</returns>
-    public Task<int> Run(CancellationToken cancellationToken = default)
-        => NativeToolchain.RunProject(this, cancellationToken);
+    public async Task<int> Run(CancellationToken cancellationToken = default)
+    {
+        // The toolchain's classification around its call only (PLAN G984): a failure before launch fails the run with its message (IMPL 20.3).
+        try
+        {
+            return await NativeToolchain.RunProject(this, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+        {
+            this.ToolchainFailed(ex);
+            return 1;
+        }
+    }
 
     /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
@@ -324,15 +360,24 @@ public partial class Project
 
     private bool BuildTargetsAndPublish(bool emit, CancellationToken cancellationToken, ArtifactPaths? paths, CheckContext? context)
     {
-        // A check request's caller finalizes its own diagnostics; a command renders the preparation result here.
+        // The project's own result (its configuration, lock and target-selection records): a check request's caller finalizes its own
+        // diagnostics; a command renders it here, with the fault of an exception that ends it (DIAGNOSTICS rule 9; R9-B2): the project's
+        // own checks', a target's report after its results (Emit), or a target's preparation before its front end (BuildTarget's, whose
+        // own records are then not rendered: a known limit).
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
+        Exception? fault = null;
         try
         {
             return this.BuildTargets(emit, cancellationToken, paths, context, diagnostics);
         }
+        catch (Exception ex) when (this.Faults(ex, context))
+        {
+            fault = ex;
+            return false;
+        }
         finally
         {
-            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
+            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context, fault: fault);
         }
     }
 
@@ -662,10 +707,18 @@ public partial class Project
         return false;
     }
 
-    // SPEC 23.2.2, DIAGNOSTICS rule 9: a command renders an exception that ends a result (the front end's or the Emission result) as that
-    // result's fault, CheckFaulted_Kd, and then fails; a check request's caller (CheckService) handles its own, and cancellation propagates.
+    // SPEC 23.2.2, DIAGNOSTICS rule 9: a command renders an exception that ends a result (the project's own checks', the front end's, the
+    // Emission result or the build's) as that result's fault, CheckFaulted_Kd, and then fails; a check request's caller (CheckService)
+    // handles its own, and cancellation propagates.
     private bool Faults(Exception exception, CheckContext? context)
         => context is null && this.kimigayo.RendersDiagnostics && exception is not OperationCanceledException;
+
+    // IMPL 20.3, SPEC 23.2.2: a toolchain, output or configuration failure fails the build with the toolchain's message.
+    private bool ToolchainFailed(Exception exception)
+    {
+        this.kimigayo.WriteLine(DiagnosticSeverity.Error, exception.Message);
+        return false;
+    }
 
     // SPEC 23.3: a command renders each result once it is finalized; a check request's caller finalizes its own.
     private void Publish(DiagnosticOwner diagnostics, DiagnosticPartition first, DiagnosticPartition last, CheckContext? context, bool rejected = false, Exception? fault = null)

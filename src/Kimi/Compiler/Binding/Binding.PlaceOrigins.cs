@@ -47,11 +47,6 @@ public sealed partial class Binding
         return source;
     }
 
-    internal static Koto PlaceOriginBinder(Koto source) => source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) is { } getter ? getter
-        : source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
-        ? CandidateOriginBinder(candidate)
-        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
-
     // SPEC 7.7.2, 15.8.2: an environment binding is a Place of its closure, distinct from the closure's parameters, which share
     // the closure as binder; the i-th binding's Projection slot is -2 - i.
     internal static int EnvironmentSlot(int index) => -2 - index;
@@ -90,6 +85,11 @@ public sealed partial class Binding
         return source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
             ? SymbolOriginSlot(symbol) : 0;
     }
+
+    internal Koto PlaceOriginBinder(Koto source) => this.PropertyCall(source, PropertyAccessorKind.Get) is { } getter ? getter
+        : source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
+        ? CandidateOriginBinder(candidate)
+        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
 
     // The dependency of a borrow prepared from a source: through an implicitly followed pair layer it is the layer's own
     // (SPEC 13.5.5), as the adaptation recorded it; otherwise the source Place's.
@@ -176,10 +176,10 @@ public sealed partial class Binding
                 walk.Met = this.MeetWith(walk.Met, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin);
                 return true;
             case PathStep.Candidate:
-                walk.Met = this.MeetWith(walk.Met, this.OriginAtom(PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
+                walk.Met = this.MeetWith(walk.Met, this.OriginAtom(this.PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
                 return true;
             case PathStep.Root when walk.Met is not null || walk.Unbounded is not null:
-                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.OriginAtom(PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
+                walk.Met = this.MeetWith(walk.Met, walk.Dereferenced ? this.EnvironmentContainment(path.BoundSymbol) : this.OriginAtom(this.PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
                 return true;
             case PathStep.Root or PathStep.Receiver or PathStep.RawFollow:
                 return true;
@@ -257,7 +257,7 @@ public sealed partial class Binding
         => this.HelperOrigin(source) ?? (KotoHelper.UnwrapParentheses(source) is var slot &&
             (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
             slot is InvocationKoto)
-            ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source));
+            ? this.OriginAtom(this.PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source));
 
     // SPEC 13.5.6: the Origin of a Borrow of the Place `source` designates; a caller typing the Places reached through a receiver
     // names one of them, never the receiver.
@@ -315,7 +315,7 @@ public sealed partial class Binding
         // A pair layer's Origin is that of the reference it may hold, so the layer itself is its own dependency.
         var layer = ElementAccess.AccessType(this, source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
         return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
-            ? (ElementAccess.IsRawRoot(source) ? this.RawAnchor(place, place) : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source)))
+            ? (ElementAccess.IsRawRoot(source) ? this.RawAnchor(place, place) : this.OriginAtom(this.PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source)))
             : reachedThrough ? layer.Origin!
             : this.MeetWith(layer.Origin!, IsExclusive(layer.Semantics) ? this.EnvironmentContainment(source.BoundSymbol) : null)!;
     }

@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 //   in the use-site context, its outer arguments from its path or the environment (9.7.1), its Origins, and the completion of its syntax.
 // - Inputs: the reference's syntax, the declaration its lookup selected, the use-site scope. Outputs: the bound reference (the declaration
 //   itself when it has no parameters, or for its own parameters inside it), each level completed with it; null after a located failure.
-// - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax. Its callers: that path, internal
+// - BoundContractReference interns the symbol of a reference Type already formed, and reads no syntax; a reference the library layer's
+//   part holds is complete (State 2) from the library's seal and never rebuilt (PLAN G949 Stage 2 U4: the internal-invariant form). Its callers: that path, internal
 //   Type substitution, a compiler-made reference of a library Contract (arithmetic operators), and readers of a formed reference
 //   (ContractReferenceOf).
 // - Prohibitions: no other member forms a Contract's Constructed Type from Type-argument syntax. The path reads no subject, substitutes
@@ -20,8 +21,13 @@ namespace Kimi.Compiler;
 //   library Contract) take symbols the compiler holds, never a written Contract.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
+
+    // CompleteEffectBounds' scratch: the running part's entries, copied before EnsureEffectBounds may add one; empty between uses.
+    private readonly List<BindingSymbol> boundScratch = new();
+
+    // The running pass's bound Contract references (PassPart.BoundContracts, EnterPass); a lookup finds the layer's part first.
+    private Dictionary<BoundType, BindingSymbol> boundContracts;
 
     // SPEC 8.6.1, 9.7.1 (R7-N1e2-1R): a Contract use names its declaration, the selection its lookup published (its Symbols entry, written
     // once, never a bound reference), and the bound reference its Type arguments formed is its Type (the Meaning column). This writes
@@ -165,9 +171,17 @@ public sealed partial class Binding
             return reference.Symbol;
         }
 
-        if (this.boundContracts.TryGetValue(reference, out var cached) && cached.Contract!.State == 2)
+        var found = PassPart.Find(PassPart.Parts(this.Library.Layer.Part.BoundContracts, this.boundContracts), reference, out var cached);
+        if (found is not null && cached!.Contract!.State == 2)
         {
             return cached;
+        }
+
+        // PLAN G949 Stage 2 U4: a frozen entry is complete (State 2) at the seal and never reset (ResetContracts resets the running part
+        // only), so a rebuild in place of one is a broken contract.
+        if (ReferenceEquals(found, this.Library.Layer.Part.BoundContracts) && this.Library.Frozen)
+        {
+            throw new InvalidOperationException("A frozen bound Contract reference is incomplete after the library's seal (InternalInvariant; PLAN G949 Stage 2 U4).");
         }
 
         var declaration = reference.Symbol!;
@@ -245,6 +259,34 @@ public sealed partial class Binding
         }
 
         return bound;
+    }
+
+    // SPEC 8.11.1 (PLAN G949 S1-1, E3 and w1 (i)): every Contract of the running pass has its effect bounds: each Contract its modules
+    // declare (the `symbols` family's rows, those no node of the pass holds included, such as the library's `#Lang` markers, which
+    // PrepareEffectBounds' shapes never reach) and every bound Contract reference of the running part, the references its bounds
+    // substitute included (EnsureEffectBounds may add one), so no later pass computes the effect bounds of a Contract another pass made
+    // (census O5, O15).
+    private void CompleteEffectBounds()
+    {
+        foreach (var symbol in this.symbols.Values.In(this.pass))
+        {
+            if (symbol.Contract is { } contract)
+            {
+                this.EnsureEffectBounds(contract);
+            }
+        }
+
+        for (var done = -1; done != this.boundContracts.Count;)
+        {
+            done = this.boundContracts.Count;
+            this.boundScratch.AddRange(this.boundContracts.Values);
+            for (var i = 0; i < this.boundScratch.Count; i++)
+            {
+                this.EnsureEffectBounds(this.boundScratch[i].Contract!);
+            }
+
+            this.boundScratch.Clear();
+        }
     }
 
     private BindingSymbol SubstituteRequirementContract(BindingSymbol contract, BoundType reference)

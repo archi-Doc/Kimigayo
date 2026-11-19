@@ -138,30 +138,39 @@ public sealed partial class Binding
     private void CollectDeclarationRows()
     {
         var remaining = 0;
-        for (var i = 0; i < this.obligations.Count; i++)
+        var session = this.OpenPremiseSession(); // PLAN G778: the rows at one anchor share its premise environment.
+        try
         {
-            var obligation = this.obligations[i];
-            if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Body.IsBody: false, Longer: { } longer, Shorter: { } shorter } ||
-                !DeclarationAtom(longer = this.OriginAtUse(longer, obligation.Use)) || !DeclarationAtom(shorter = this.OriginAtUse(shorter, obligation.Use)))
+            for (var i = 0; i < this.obligations.Count; i++)
             {
-                this.obligations[remaining++] = obligation;
-                continue;
-            }
+                var obligation = this.obligations[i];
+                if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Body.IsBody: false, Longer: { } longer, Shorter: { } shorter } ||
+                    !DeclarationAtom(longer = this.OriginAtUse(longer, obligation.Use)) ||
+                    !DeclarationAtom(shorter = this.OriginAtUse(shorter, obligation.Use)))
+                {
+                    this.obligations[remaining++] = obligation;
+                    continue;
+                }
 
-            this.obligationSet.Remove(obligation);
-            if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
-            {
-                continue;
-            }
+                this.obligationSet.Remove(obligation);
+                if (obligation.Discharge == OriginDischarge.CallBorrows || this.PublishedPremise(obligation, longer, shorter))
+                {
+                    continue;
+                }
 
-            if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: not null } unbound)
-            {
-                this.unboundRows.Add((obligation, longer, shorter, unbound));
+                if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: not null } unbound)
+                {
+                    this.unboundRows.Add((obligation, longer, shorter, unbound));
+                }
+                else
+                {
+                    this.fixedRows.Add((obligation, longer, shorter));
+                }
             }
-            else
-            {
-                this.fixedRows.Add((obligation, longer, shorter));
-            }
+        }
+        finally
+        {
+            session?.Close();
         }
 
         this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);

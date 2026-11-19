@@ -330,7 +330,7 @@ public sealed partial class Binding
         {
             var row = this.childRows[j];
             var parent = row.Parent < 0 ? root : this.positionRows[first + (row.Parent - (start - sliceStart))];
-            var type = PartChildPattern(KotoHelper.UnwrapParentheses(parent.Part), row.Index, parent.Type);
+            var type = ExpectedChild(KotoHelper.UnwrapParentheses(parent.Part), row.Index, parent.Type);
             this.positionRows.Add(row with { Type = type });
             derived = type is not null;
         }
@@ -367,7 +367,7 @@ public sealed partial class Binding
         {
             var child = this.positionParts.Count;
             var element = this.AddChildPosition(start, start + 1, i, type);
-            var elementPattern = PartChildPattern(core, i, pattern);
+            var elementPattern = ExpectedChild(core, i, pattern);
             for (int j = child, end = this.positionParts.Count; element is not null && j < end; j++)
             {
                 var node = this.positionParts[j];

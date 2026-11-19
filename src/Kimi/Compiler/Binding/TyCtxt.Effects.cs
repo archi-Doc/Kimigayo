@@ -105,7 +105,7 @@ internal sealed partial class TyCtxt
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             if (entry.Row is { Calls: >= 0 and var calls } && library.GetSymbol(entry.Id) is { } operation &&
-                binding.CallableReceiver(operation, Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
+                binding.CallableReceiver(operation, this.Signature(operation, null, calls, out _)!) != SemanticsKind.Ref)
             {
                 throw new InvalidOperationException($"{operation.Name}'s published Callable input is not called through `ref` (InternalInvariant).");
             }
@@ -126,7 +126,7 @@ internal sealed partial class TyCtxt
         {
             if (!this.proven.TryGetValue(type, out var copy))
             {
-                copy = binding.CopiesInEveryCase(type, premises); // SPEC 8.14, 8.15.2: per Semantics case (G642).
+                copy = binding.ProveCopy(type, premises) == ConstraintProof.Proven; // SPEC 8.14, 8.15.2: per Semantics case (G642).
                 this.proven.Add(type, copy);
             }
 

@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 public sealed partial class DocumentationSource
 {
     private readonly List<DocumentationComment> comments = new();
-    private readonly Compilation? optionalOwner;
+    private Compilation? optionalOwner;
     private bool hasParseErrors;
     private bool failed;
 
@@ -92,6 +92,18 @@ public sealed partial class DocumentationSource
     /// <param name="Indent">The indentation before the comment prefix.</param>
     /// <param name="Recognized">Whether the prefix occupies an admitted position.</param>
     internal readonly record struct Candidate(SourceSpan Span, int Indent, bool Recognized);
+
+    /// <summary>Detaches the frozen library's documentation (PLAN G949 Stage 2 U2b; design 5.2): every comment's text is formed (its lazy
+    /// cache, so no reader writes it) and the optional owner cleared, so no documentation object names a compilation.</summary>
+    internal void Detach()
+    {
+        foreach (var comment in this.comments)
+        {
+            _ = comment.GetText();
+        }
+
+        this.optionalOwner = null;
+    }
 
     internal void AddLine(int start, int end)
     {

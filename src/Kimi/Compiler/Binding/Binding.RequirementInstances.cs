@@ -124,7 +124,8 @@ public sealed partial class Binding
 
         // A bound reference in the caller's instance, the one form InstanceContract reads it for.
         var recorded = call.RequirementContract;
-        var reference = recorded is { Type: { } bound } && IsBoundContractReference(recorded) ? this.InstantiateStorageType(bound, outer) : null;
+        var reference = recorded is { Type: { } bound } && IsBoundContractReference(recorded) &&
+            this.types.Instance(bound, this.types.StorageSubst(outer)) is ({ } instance, not StorageOutcome.Limit) ? instance : null;
         var contract = this.InstanceContract(recorded, self, reference);
         var witness = this.ResolveRequirementWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration));
         return witness.Kind switch
@@ -139,7 +140,7 @@ public sealed partial class Binding
         CallPlan Copy(BindingSymbol target)
         {
             var copy = destination ?? new CallPlan();
-            copy.Set(target, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
+            copy.Set(this, target, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
             copy.TupleOperator = call.TupleOperator;
             return copy;
         }
@@ -157,7 +158,7 @@ public sealed partial class Binding
             Translate(function.Origins, origins);
             Translate(function.InputOrigins, inputs);
             var resolved = destination ?? new CallPlan();
-            resolved.Set(witness.Target!, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: witness.Declaring, origins: origins.AsSpan(0, function.Origins.Length), inputOrigins: inputs.AsSpan(0, function.InputOrigins.Length), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments, defaults: call.DefaultArguments);
+            resolved.Set(this, witness.Target!, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: witness.Declaring, origins: origins.AsSpan(0, function.Origins.Length), inputOrigins: inputs.AsSpan(0, function.InputOrigins.Length), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments, defaults: call.DefaultArguments);
             this.ProjectWitnessCall(resolved, function.BasePath, witness.Declaring!);
             return resolved;
         }

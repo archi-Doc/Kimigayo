@@ -24,7 +24,7 @@ public sealed partial class Binding
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && this.impls.PathsOf(result).Count != 0 ? result : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -114,7 +114,7 @@ public sealed partial class Binding
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration) || identity.Paths.Count == 0)
+            if (!ReferenceEquals(identity.Contract.Declaration, contract.Declaration) || this.impls.PathsOf(identity).Count == 0)
             {
                 continue;
             }
@@ -135,16 +135,16 @@ public sealed partial class Binding
     {
         foreach (var bound in this.boundContracts.Values)
         {
-            bound.Contract!.State = 0;
+            bound.Contract!.State = 0; // The running pass's own entries (PassPart.BoundContracts): a pass never resets another's.
         }
 
         this.ResetAssociatedInference();
         this.failedCause = null;
-        this.reentryReads = 0;
+        this.dependence = int.MaxValue;
+        this.heldObligations = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view is the pass's.
-        this.conformancesRegistered = false;
+        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view and step are the pass's.
 
         this.projectionUses.Clear();
         this.userIterations.Clear();
@@ -467,8 +467,6 @@ public sealed partial class Binding
             => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference, out _), scope, self, normalize);
     }
 
-    private bool IsLibraryDeclaration(Koto declaration) => declaration.Kotonoha.Syntax.IsLibrary;
-
     private void ValidateConformances(BindingMode mode, bool final)
     {
         this.contractHeadersReady = true;
@@ -513,22 +511,22 @@ public sealed partial class Binding
             this.InvalidateAssociatedEvidence();
             foreach (var identity in this.impls.InPass.Identities)
             {
-                if (identity.PathStorage.Count != 0)
+                if (this.impls.PathsOf(identity).Count != 0)
                 {
                     this.failedCause = null;
                     this.conformanceChecks++;
-                    var frame = this.BeginConsultation(identity.PathStorage[0].Use); // The agreement's judgment is at its first path's use.
+                    var frame = this.BeginConsultation(this.impls.PathsOf(identity)[0].Use); // The agreement's judgment is at its first path's use.
                     var agreement = this.VerifyConformanceAgreement(identity);
                     this.conformanceChecks--;
                     var explicitPath = false;
-                    foreach (var path in identity.PathStorage)
+                    foreach (var path in this.impls.PathsOf(identity))
                     {
                         explicitPath |= path.InheritedFrom is null;
                     }
 
                     if (explicitPath || agreement == ConstraintProof.Error)
                     {
-                        this.RequireConstraintInFrame(identity.PathStorage[0].Use, agreement, mode, frame);
+                        this.RequireConstraintInFrame(this.impls.PathsOf(identity)[0].Use, agreement, mode, frame);
                     }
                     else
                     {
@@ -582,14 +580,15 @@ public sealed partial class Binding
                     }
 
                     var declaringContract = members[i].Contract;
-                    if (a.BoundSymbol!.Type is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
+                    var sa = new FnSig(a);
+                    if (sa.Result is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
                     {
                         this.Fail(a, BindingFailure.Access);
                     }
 
-                    for (var p = 0; p < a.Parameters.Count; p++)
+                    for (var p = 0; p < sa.InputCount; p++)
                     {
-                        if (a.Parameters[p].Type.BoundType is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
+                        if (sa.Input(p) is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
                         {
                             this.Fail(a, BindingFailure.Access);
                         }
@@ -605,22 +604,28 @@ public sealed partial class Binding
 
                     for (var j = 0; j < i; j++)
                     {
-                        if (members[j].Symbol.Declaration is not FunctionKoto b || a.GenericArguments.Count != b.GenericArguments.Count || a.Parameters.Count != b.Parameters.Count)
+                        if (members[j].Symbol.Declaration is not FunctionKoto b)
+                        {
+                            continue;
+                        }
+
+                        var sb = new FnSig(b);
+                        if (sa.GenericCount != sb.GenericCount || sa.InputCount != sb.InputCount)
                         {
                             continue;
                         }
 
                         var sameSignature = true;
                         var differentLabels = false;
-                        for (var p = 0; p < a.Parameters.Count; p++)
+                        for (var p = 0; p < sa.InputCount; p++)
                         {
-                            if (a.Parameters[p].Type.BoundType is not { } ta || b.Parameters[p].Type.BoundType is not { } tb)
+                            if (sa.Input(p) is not { } ta || sb.Input(p) is not { } tb)
                             {
                                 sameSignature = false;
                                 break;
                             }
 
-                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract, out _), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract, out _), scope), a, b);
+                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract, out _), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract, out _), scope), sa.Binder, sb.Binder);
                             differentLabels |= a.Parameters[p].ExternalName != b.Parameters[p].ExternalName;
                         }
 

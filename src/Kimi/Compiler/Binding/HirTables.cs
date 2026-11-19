@@ -62,10 +62,6 @@ internal struct HirTables
 
     internal static BindingState State(Koto node) => node.SyntaxOwner is { } table ? table.Hir.States[node.SyntaxId] : default;
 
-    // Resolve the state first: Compilation.Binding is lazy and must remain uncreated for unresolved nodes.
-    internal static bool HasCurrentBinding(Koto node) => State(node) == BindingState.Resolved &&
-        (node.CodeContext.Compilation.Binding.IsRunning || node.CodeContext.Compilation.Binding.Result != default);
-
     internal static BindingFailure Failure(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Failures[node.SyntaxId] : default;
 
     internal static object? Meaning(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Meanings[node.SyntaxId] : null;
@@ -102,7 +98,7 @@ internal struct HirTables
     internal static HirRes ResOf(Koto node) => Symbol(node) is not { } symbol ? HirRes.None : symbol.Kind switch
     {
         BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate => HirRes.Local,
-        BindingSymbolKind.Parameter => DefaultParameters.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
+        BindingSymbolKind.Parameter => Binding.InLaterDefault(node, symbol) ? HirRes.PreparedParam : HirRes.Param,
         BindingSymbolKind.Capture => HirRes.Capture,
         BindingSymbolKind.Storage => HirRes.Field,
         BindingSymbolKind.Property => Binding.IsStatic(symbol) ? HirRes.Static : HirRes.Field,
@@ -131,10 +127,17 @@ internal struct HirTables
     /// <returns>Whether it destroys in place, transferring nothing.</returns>
     internal static bool DestroysInPlace(DiscardKoto discard) => PlanOf(discard).Flag;
 
-    /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
+    /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of the source modules from the latest completed Binding pass,
+    /// once per pass; the library module's are published by the library pass (<see cref="LibraryVersion"/>).</summary>
     /// <param name="compilation">The bound compilation.</param>
     /// <returns>The pass the columns describe, 0 before the first.</returns>
     internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
+
+    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1, S1-1 and Stage 2 U3): Binding.Frozen
+    /// once the compilation's library is frozen, the same in every compilation of the process; 0 for a library not frozen.</summary>
+    /// <param name="compilation">The compilation.</param>
+    /// <returns>The version.</returns>
+    internal static ulong LibraryVersion(Compilation compilation) => compilation.Binding.LibraryVersion;
 
     /// <summary>Gets a node's plan row, or the default row when it has none.</summary>
     /// <param name="node">The node.</param>
@@ -157,6 +160,7 @@ internal struct HirTables
     {
         if (node.SyntaxOwner is { } table && table.Hir.PlanIndexes[node.SyntaxId] is var index and not 0)
         {
+            table.EnsureWritable(nameof(PlanFor));
             return ref table.Hir.Plans[index];
         }
 
@@ -178,7 +182,9 @@ internal struct HirTables
     internal static ref HirTables Of(Koto node)
     {
         SyntaxTable.EnsureId(node);
-        return ref node.SyntaxOwner!.Hir;
+        var table = node.SyntaxOwner!;
+        table.EnsureWritable(nameof(Of));
+        return ref table.Hir;
     }
 
     /// <summary>Clears a node's base row, as Binding's first visit of a pass does; its plan row stays for reuse.</summary>
@@ -187,6 +193,7 @@ internal struct HirTables
     {
         if (node.SyntaxOwner is { } table)
         {
+            table.EnsureWritable(nameof(Reset));
             table.Hir.CopyBase(0, table.Hir, node.SyntaxId);
         }
     }
@@ -298,6 +305,9 @@ internal struct NodeColumns
     internal PagedColumn<InvocationKoto?> ResolvedKeys; // Kept: a selection key's synthesized `resolved` call (Binding.Ranges.cs).
     internal PagedColumn<BoundMatch?> MatchPlans; // Kept: the plan object a match keeps across rebinds (Binding.Patterns.cs).
     internal PagedColumn<Binding.Refusal?> Refusals; // Kept: the refusal a refused analysis's site holds (Binding.ConstraintValidation.Proofs.cs).
+    internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
+    internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
+    internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
 
     internal void Resize(int length)
     {
@@ -339,6 +349,29 @@ internal struct NodeColumns
         this.ResolvedKeys.Grow(length);
         this.MatchPlans.Grow(length);
         this.Refusals.Grow(length);
+        this.AliasTargets.Grow(length);
+        this.ImportedContainers.Grow(length);
+        this.QualificationFailures.Grow(length);
+    }
+
+    // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
+    // which would leave the library's edit family stale with no later library pass to rewrite it).
+    internal void Freeze(Binding binding)
+    {
+        this.VirtualOverrides.Freeze(binding);
+        this.VirtualEffectBounds.Freeze(binding);
+        this.Specializations.Freeze(binding);
+        this.ImplicitConstructorDecisions.Freeze(binding);
+        this.AssociatedOrigins.Freeze(binding);
+        this.ObjectErasures.Freeze(binding);
+        this.InheritedOriginTypes.Freeze(binding);
+        this.DeferredConstraints.Freeze(binding);
+        this.Matches.Freeze(binding);
+        this.Adaptations.Freeze(binding);
+        this.ShapeContractHeads.Freeze(binding);
+        this.AliasTargets.Freeze(binding);
+        this.ImportedContainers.Freeze(binding);
+        this.QualificationFailures.Freeze(binding);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -413,6 +446,9 @@ internal struct NodeColumns
             ResolvedKeys = this.ResolvedKeys.Renumbered(length),
             MatchPlans = this.MatchPlans.Renumbered(length),
             Refusals = this.Refusals.Renumbered(length),
+            AliasTargets = this.AliasTargets.Renumbered(length),
+            ImportedContainers = this.ImportedContainers.Renumbered(length),
+            QualificationFailures = this.QualificationFailures.Renumbered(length),
         };
         return columns;
     }

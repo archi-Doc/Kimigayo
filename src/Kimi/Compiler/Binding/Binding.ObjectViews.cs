@@ -17,7 +17,7 @@ public sealed partial class Binding
     internal bool TryGetObjectErasure(Koto use, out ObjectErasureEvidence evidence)
     {
         evidence = default;
-        return HirTables.HasCurrentBinding(use) && this.objectErasures.TryGetValue(use, out evidence);
+        return this.IsCurrent(use) && this.objectErasures.TryGetValue(use, out evidence);
     }
 
     // SPEC 3.4.3: a field access lends the handle's payload in the access mode already checked by Binding.
@@ -175,7 +175,7 @@ public sealed partial class Binding
     private bool ObjectUpcastFits(ConversionKoto conversion, BoundType actual, BoundType target)
     {
         var core = actual.Components[0];
-        for (var parent = core; parent is not null; parent = AdtDef.Base(parent))
+        for (var parent = core; parent is not null; parent = AdtDef.Base(this.types, parent))
         {
             if (parent.Symbol?.Declaration.BindingState == BindingState.Invalid)
             {
@@ -209,7 +209,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
-            if (this.IsBarePlace(conversion.Left) && !this.CopiesInEveryCase(actual, this.ConstraintScope(conversion)))
+            if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
             {
                 return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
             }

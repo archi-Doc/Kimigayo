@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // The end of a Binding pass (Check; DECISIONS BU-81, refining R2b-D2).
 // - Responsibility: the pass's failure producers (the definition obligations, the needed conformance paths and capability sites, the
 //   call and runtime-test Constraint checks, the part prerequisites, Unvisited to Unresolved); in a Final pass, then, the HIR of the
-//   pass's modules (PublishPass; until PLAN G949 S1-r1b every module, the library included) and H1's TransferRequired judgment over it
+//   pass's modules (PublishPass: the library pass's the library module, the program pass's the source modules) and H1's TransferRequired judgment over it
 //   (CheckTransfers, DECISIONS BU-84), with one republication when it failed a node; then the counting of the node states and the
 //   collection of the issues, which ends the pass's failure production (producing: a refusal after it fails no node, Binding.RefuseProof).
 // - Inputs: the bound nodes, the obligations, the needed sites and paths, the facts the pass recorded.
@@ -21,13 +21,14 @@ public sealed partial class Binding
     // Each call Binding synthesized in this pass, with its consumer (BindSynthesizedCall).
     private Dictionary<InvocationKoto, Koto>? synthesizedCalls;
 
-    // Whether a node failed now is this pass's failure: from a pass's start (Bind) or a re-check's (CheckBound) until Check has
-    // counted the node states. After it the pass is published: its lints, MIR, emission and the editor's queries fail no node.
+    // Whether a node failed now is this pass's failure: from a pass's start (RunPass: the library pass's and the program pass's) or a
+    // re-check's (CheckBound) until Check has counted the node states. After it the pass is published: its lints, MIR, emission and the
+    // editor's queries fail no node.
     private bool producing;
 
     private void Check(BindingMode mode)
     {
-        this.producing = true; // A re-check's start (CheckBound); a Bind raised it at its own.
+        this.producing = true; // A re-check's start (CheckBound); a pass raised it at its own (RunPass).
         try
         {
             this.ProduceFailures(mode);
@@ -73,16 +74,19 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(node, invalidTarget);
             }
-            else if (node is InvocationKoto { BoundCall: { } } synthesized &&
-                this.synthesizedCalls?.GetValueOrDefault(synthesized) is { BindingFailure: not BindingFailure.None } consumer)
+            else if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call)
             {
-                // SPEC 23.1.2: a synthesized call is its consumer's witness call (an iteration's entry or step, an index, a view, a range, a
-                // requirement, a write); a consumer that has already failed leaves the call resting on it.
-                this.CompleteDependent(synthesized, consumer);
-            }
-            else if (node is InvocationKoto { BoundCall: { } call })
-            {
-                this.RequireClauses(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
+                // A call's verdict at its use (VerdictUse); a synthesized call rests on its failed consumer, failed before or by this verdict.
+                var consumer = this.synthesizedCalls?.GetValueOrDefault(invocation);
+                if (consumer is not { BindingFailure: not BindingFailure.None })
+                {
+                    this.RequireClauses(this.VerdictUse(node), this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
+                }
+
+                if (consumer is { BindingFailure: not BindingFailure.None })
+                {
+                    this.CompleteDependent(node, consumer);
+                }
             }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
@@ -112,14 +116,29 @@ public sealed partial class Binding
     }
 
     // SPEC 10.1, 23.1.2 (DECISIONS: G572 U2a): a call Binding synthesizes for a consumer (an iteration's entry and step, an
-    // index, a view, a range, an operator's or a comparison's requirement, a formatting write, an object creation) is bound into `nodes`,
-    // so the Final loop judges its obligation, and with its consumer, which rests on it when that loop fails it (SettleSynthesizedCalls):
-    // no Resolved node stands over a failed call.
+    // index, a view, a range, an operator's or a comparison's requirement, a formatting write, an object creation, a Property use's
+    // accessor call) is bound into `nodes`, so the Final loop judges its obligation, recorded at its consumer as an invocation's verdict
+    // at the invocation, and a consumer rests on a call failed before that loop, by its selection (SettleSynthesizedCalls): no Resolved
+    // node stands over a failed call.
     private BoundType? BindSynthesizedCall(Koto consumer, InvocationKoto call, BindingScope scope)
+    {
+        this.AddSynthesizedCall(consumer, call);
+        return this.BindCall(call, scope, null);
+    }
+
+    // SPEC 23.1.2, 11.3 (PLAN G214): the node a call's verdict (its Type's formation, its step five) is recorded at, failed with its
+    // Type: an invocation's (or a call its own selection failed) is itself, a synthesized call's its consumer, whose witness call it is
+    // (an iteration's entry or step, an index, a view, a range, a requirement, a write, a Property use's accessor call), at its span.
+    private Koto VerdictUse(Koto node)
+        => node.BindingFailure == BindingFailure.None && node is InvocationKoto call && this.synthesizedCalls?.GetValueOrDefault(call) is { } consumer
+            ? consumer : node;
+
+    // A synthesized call joins `nodes` with its consumer; an accessor call is bound by BindPropertyCall to the accessor's execution view
+    // (SPEC 11.3: a read or write is a call of that function), the others by BindCall.
+    private void AddSynthesizedCall(Koto consumer, InvocationKoto call)
     {
         this.nodes.Add(call);
         (this.synthesizedCalls ??= new(ReferenceEqualityComparer.Instance))[call] = consumer;
-        return this.BindCall(call, scope, null);
     }
 
     private void SettleSynthesizedCalls()
@@ -139,43 +158,55 @@ public sealed partial class Binding
     }
 
     // The pass's part of the summary (PassPart.Counts): each node's state, counted once the failures are decided, and each failed node's
-    // issue, or its derived issue.
+    // issue, or its derived issue: the pass's own nodes, then the nodes of other modules it failed (PassPart.ForeignFailures), in the
+    // order it failed them. Such a node was counted by its own pass in its earlier state, so the pass adds the state it recorded and
+    // takes the earlier one off: the Bind's Result counts every node once, by its final state. A CheckBound rerun keeps the list (its
+    // Fail calls return at the recorded failures), so the record is published once again, not twice.
     private void CountStates(BindingMode mode)
     {
-        var resolved = 0;
-        var unresolved = 0;
-        var invalid = 0;
+        Span<int> counts = stackalloc int[3]; // Resolved, Unresolved, Invalid.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            var node = this.nodes[i];
-            switch (node.BindingState)
-            {
-                case BindingState.Resolved:
-                    resolved++;
-                    break;
-                case BindingState.Invalid:
-                    invalid++;
-                    break;
-                default:
-                    unresolved++;
-                    break;
-            }
-
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
-            {
-                if (this.IsDerived(node))
-                {
-                    this.derivedIssues.Add(node);
-                }
-                else
-                {
-                    this.issues.Add(new(node, this.CodeOf(node, node.BindingFailure)) { Failure = node.BindingFailure, Problem = this.SlotProblem(node) });
-                }
-
-                this.CollectProblems(node);
-            }
+            counts[Tally(this.nodes[i].BindingState)]++;
+            this.CollectIssue(this.nodes[i], mode);
         }
 
-        this.pass.Part.Counts = new(mode, resolved, unresolved, invalid);
+        for (var i = 0; i < this.foreignFailures.Count; i++)
+        {
+            var (node, before, state, _) = this.foreignFailures[i];
+            counts[Tally(state)]++;
+            counts[Tally(before)]--;
+            this.CollectIssue(node, mode);
+        }
+
+        this.pass.Part.Counts = new(mode, counts[0], counts[1], counts[2]);
+
+        static int Tally(BindingState state) => state switch
+        {
+            BindingState.Resolved => 0,
+            BindingState.Invalid => 2,
+            _ => 1,
+        };
+    }
+
+    // A failed node's issue of a Final pass, or its derived issue, with its problems.
+    private void CollectIssue(Koto node, BindingMode mode)
+    {
+        var failure = mode == BindingMode.Final && this.RecordedState(node) != BindingState.Resolved ? this.RecordedFailure(node) : BindingFailure.None;
+        if (failure == BindingFailure.None)
+        {
+            return;
+        }
+
+        if (this.IsDerived(node))
+        {
+            this.derivedIssues.Add(node);
+        }
+        else
+        {
+            this.issues.Add(new(node, this.CodeOf(node, failure)) { Failure = failure, Problem = this.SlotProblem(node) });
+        }
+
+        this.CollectProblems(node);
     }
 }

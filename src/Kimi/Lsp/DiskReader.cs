@@ -73,7 +73,7 @@ internal static class DiskReader
         {
             return new() { Absent = true };
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             return InputState.Unestablished(ex.GetType().Name + ": " + ex.Message);
         }
@@ -102,7 +102,7 @@ internal static class DiskReader
         {
             return new() { DiskNames = [], Names = [] };
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             return InputState.Unestablished(ex.GetType().Name + ": " + ex.Message);
         }
@@ -118,7 +118,7 @@ internal static class DiskReader
             var info = new FileInfo(path);
             return info.Exists ? (info.LastWriteTimeUtc.Ticks, info.Length) : (0, -1);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             return (0, -1);
         }
@@ -133,7 +133,7 @@ internal static class DiskReader
         {
             return Directory.Exists(directory) ? Directory.GetLastWriteTimeUtc(directory).Ticks : 0;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             return 0;
         }
@@ -150,7 +150,7 @@ internal static class DiskReader
             Span<byte> head = stackalloc byte[3];
             return stream.ReadAtLeast(head, 3, false) == 3 && head.SequenceEqual("﻿"u8);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (CheckInputSource.IsReadFailure(ex))
         {
             return false;
         }

@@ -12,9 +12,9 @@ internal sealed partial class MirBuilder
     // Base step reads it), so its initializer or base call, a part of the declaration it rejected, is not placed.
     private void Construct(BoundType self, FunctionKoto constructor)
     {
-        if (constructor.BaseInitializer is { } baseCall && AdtDef.Base(self) is not null)
+        if (constructor.BaseInitializer is { } baseCall && AdtDef.Base(compilation.Types, self) is not null)
         {
-            this.Initialize(this.body.Project(new(0), MirProjectionKind.Base, 1), baseCall);
+            this.Initialize(this.body.Project(compilation.Types, new(0), MirProjectionKind.Base, 1), baseCall);
         }
 
         for (var i = 0; i < AdtDef.Count(self); i++)

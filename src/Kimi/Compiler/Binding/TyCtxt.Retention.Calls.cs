@@ -17,7 +17,7 @@ internal sealed partial class TyCtxt
     // Per callee, signature or erased destruction's receiver, Type instantiation and the premise scope or binder the computation reads;
     // kept across passes with no edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
     // A signature's contract reads its local regions' bounds (Binding.AddRegionMeet), so its key holds the region graph's version: a read while
-    // a body binds (Binding.ResultDependsOnReceiver) is kept apart from the whole-body one A5 reads (DECISIONS: G570).
+    // a body binds (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS: G570).
     private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int Regions), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.
@@ -237,13 +237,13 @@ internal sealed partial class TyCtxt
     }
 
     // A callee's declared parameter and result Types, in its own terms.
-    private static BoundType[] Declared(BindingSymbol callee)
+    private BoundType[] Declared(BindingSymbol callee)
     {
-        var result = Signature(callee, null, -1, out var count)!;
+        var result = this.Signature(callee, null, -1, out var count)!;
         var declared = new BoundType[count + 1];
         for (var i = 0; i < count; i++)
         {
-            declared[i] = Signature(callee, null, i, out _)!;
+            declared[i] = this.Signature(callee, null, i, out _)!;
         }
 
         declared[count] = result;
@@ -265,7 +265,7 @@ internal sealed partial class TyCtxt
         BoundType[] inputs;
         if (declaration.IsDestructor)
         {
-            if (this.Instance(AdtDef.ReceiverType(declaration)!, types, scope) is not { } layer)
+            if (this.Instance(AdtDef.ReceiverType(binding, declaration)!, types, scope) is not { } layer)
             {
                 return null;
             }
@@ -292,7 +292,7 @@ internal sealed partial class TyCtxt
         }
 
         var bounds = this.retentionBounds;
-        if (!binding.HandedSignatures(declaration, Declared(callee), bounds))
+        if (!binding.HandedSignatures(declaration, this.Declared(callee), bounds))
         {
             return null;
         }
@@ -318,7 +318,7 @@ internal sealed partial class TyCtxt
     // the Type is a broken contract: MIR's validator reads the same Signature.
     private BoundType? Instance(BindingSymbol callee, Subst? types, int slot, BindingScope? scope, out int count)
     {
-        var declared = Signature(callee, null, slot, out count) ?? throw new InvalidOperationException($"{callee.Name}'s signature has no Type at {slot}.");
+        var declared = this.Signature(callee, null, slot, out count) ?? throw new InvalidOperationException($"{callee.Name}'s signature has no Type at {slot}.");
         return this.Instance(declared, types, scope);
     }
 

@@ -7,17 +7,26 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.3.3 Recursion: a nominal obligation `T is C` is open while ResolveConformance proves it; a request reaching an
-    // open obligation reads no evidence (Unknown), from whichever scope it asks (the obligation, not the requester, is the key). Its
-    // value counts those requests while it is open (reentryReads).
-    private readonly Dictionary<(BoundType Type, BindingSymbol Contract), int> openObligations = new();
+    // SPEC 8.3.3 Recursion (R7-C2e2 e2-3b): the obligations being proven, each open at its depth (the number open when it opened; they
+    // nest, every open and close a try/finally pair): a nominal `T is C` while ResolveConformance proves it, keyed by the obligation,
+    // not the requester, and a declaration path while VerifyConformance verifies it (every instance), keyed by the path. A request
+    // reaching an open one reads no evidence (Unknown).
+    private readonly Dictionary<Obligation, int> openObligations = new();
 
-    // SPEC 8.3.3 Finality: the re-entry reads of the obligations now open, the open set's and a path's being verified (Checking). An
-    // answer computed while the count grows read no evidence at an obligation still pending, so it is no fact once that obligation's
-    // proof ends; an obligation's reads leave the count with its proof, so an answer enclosing the whole proof rests on its settled
-    // result. Its reader is the capability engine, which keeps no such work past its outermost request (ForgetPendingCapabilities).
-    // Temporary carrier; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
-    private int reentryReads;
+    // SPEC 8.3.3 Finality: the least depth of an open obligation the answers in progress read (int.MaxValue: none), which an answer's
+    // reader asks at its boundary (BeginAnswer, EndAnswer).
+    private int dependence = int.MaxValue;
+
+    // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): how many of the open obligations the innermost requirement's evidence holds
+    // pending: those open when it began (ProveRequirement); 0 in a formation read (a verification's body, the binding cache's formation,
+    // the inferred bindings' collection: what it forms is judged where written, after the conformance holds). A projection whose route's
+    // evidence depends on a held obligation names no Type in that evidence (EndHeldAnswer): its part stays the projection, so exactly the
+    // judgments that read the part read the obligation pending. Written only by this file's brackets (BeginEvidence, BeginVerification,
+    // BeginFormation and their ends) and ResetContracts; read only through HeldPending.
+    private int heldObligations;
+
+    // An open obligation's key: an instance's (Type, Contract), or a declaration path being verified.
+    private readonly record struct Obligation(BoundType? Type, BindingSymbol? Contract, BoundConformancePath? Path);
 
     // A pair's overlap scope, kept with its left path (BoundConformancePath.OverlapScopes); both paths share their Type, so their store.
     private static BindingScope OverlapScope(BoundConformancePath a, BoundConformancePath b)
@@ -31,7 +40,7 @@ public sealed partial class Binding
             }
         }
 
-        var scope = new BindingScope(a.Declaration);
+        var scope = new BindingScope(a.Declaration, a.Type.Declaration); // SPEC 8.9.2: the pair's agreement is the Type's.
         scopes.Add((b, scope));
         return scope;
     }
@@ -105,9 +114,9 @@ public sealed partial class Binding
         }
 
         var proof = ConstraintProof.Proven;
-        for (var i = 0; i < identity.PathStorage.Count; i++)
+        for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
-            var a = identity.PathStorage[i];
+            var a = this.impls.PathsOf(identity)[i];
             var available = this.VerifyConformance(a);
             if (a.InheritedFrom is not null && available != ConstraintProof.Proven)
             {
@@ -122,7 +131,7 @@ public sealed partial class Binding
             proof = CombineProof(proof, available, true);
             for (var j = 0; j < i; j++)
             {
-                var b = identity.PathStorage[j];
+                var b = this.impls.PathsOf(identity)[j];
                 if (b.InheritedFrom is not null && !b.IsVerified)
                 {
                     continue;
@@ -232,11 +241,18 @@ public sealed partial class Binding
 
             var outer = this.scopes[container];
             var scope = this.GetScope(syntax, outer);
+            if (IsRecovery(target, out _) || IsRecovery(target.Right, out _))
+            {
+                // SPEC 23.1.2: a head whose subject or ContractReference Parsing rejected (F.6.2) explains the conformance's verdicts.
+                this.AddPrerequisite(syntax, IsRecovery(target, out _) ? target : target.Right);
+            }
+
             if (!conditions)
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
+                // A subject other than Self is Parsing's record (F.6.2, ParseConformanceConditions); its head rests (the prerequisite above).
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
@@ -311,7 +327,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                (scope.Constraints ??= new()).Fail(syntax);
+                this.FailEnvironment(scope.Constraints ??= new(), syntax);
             }
         }
     }
@@ -339,13 +355,13 @@ public sealed partial class Binding
         }
 
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable &&
-            ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Equatable))
+            TyCtxt.OperatorTableRuns(type, KimiDeclarationId.Equatable))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
-                : ComparisonTypes.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+                : TyCtxt.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
-        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && TyCtxt.IsComposite(type))
         {
             return contract.Declaration.BindingState == BindingState.Invalid
                 ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false, out _);
@@ -395,7 +411,7 @@ public sealed partial class Binding
             }
         }
 
-        if (identity is null || identity.PathStorage.Count == 0)
+        if (identity is null || this.impls.PathsOf(identity).Count == 0)
         {
             return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
@@ -405,12 +421,9 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var key = (type, contract);
-        ref var reentries = ref CollectionsMarshal.GetValueRefOrAddDefault(this.openObligations, key, out var open);
-        if (open)
+        var key = new Obligation(type, contract, null);
+        if (!this.OpenObligation(key))
         {
-            reentries++;
-            this.reentryReads++;
             return ConstraintProof.Unknown;
         }
 
@@ -418,9 +431,9 @@ public sealed partial class Binding
         {
             this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
-            for (var i = 0; i < identity.PathStorage.Count; i++)
+            for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
-                var path = identity.PathStorage[i];
+                var path = this.impls.PathsOf(identity)[i];
                 var definition = this.VerifyConformance(path);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
@@ -452,33 +465,127 @@ public sealed partial class Binding
         }
         finally
         {
-            this.openObligations.Remove(key, out var read);
-            this.reentryReads -= read;
+            this.openObligations.Remove(key);
         }
     }
 
-    // A request reaching a path being verified reads no evidence (SPEC 8.3.3 Recursion), counted as the open set's is.
-    private ConstraintProof ReentryRead(BoundConformancePath path)
+    // The start of an answer whose dependence a reader asks: the depth now and the dependence of the answers enclosing it.
+    private (int Depth, int Enclosing) BeginAnswer()
     {
-        path.Reentries++;
-        this.reentryReads++;
-        return ConstraintProof.Unknown;
+        var mark = (this.openObligations.Count, this.dependence);
+        this.dependence = int.MaxValue;
+        return mark;
     }
 
-    // Ends a path's verification: its re-entry reads leave the count.
-    private void EndChecking(BoundConformancePath path)
+    // SPEC 8.3.3 Finality ("a fact depends on a judgment when it does not hold with that judgment's result held pending"): whether the
+    // answer begun at `mark`, with `verdict`, depends on an obligation open before it began: it read one (an obligation opened and closed
+    // inside it reads at or above its depth) and is Unknown. A re-entry reads Unknown, so the answer already holds the obligation pending,
+    // and the proof rules are monotone in an Unknown operand: a Proven or Refuted answer stays decided whatever the obligation settles to
+    // (Error absorbs, but a failed obligation has its own record: record selection, Q13), so it depends on none. The enclosing answers
+    // keep what it read.
+    private bool EndAnswer((int Depth, int Enclosing) mark, ConstraintProof verdict)
     {
-        path.Checking = false;
-        this.reentryReads -= path.Reentries;
-        path.Reentries = 0;
+        var read = this.dependence < mark.Depth;
+        this.dependence = Math.Min(mark.Enclosing, this.dependence);
+        return read && verdict == ConstraintProof.Unknown;
     }
 
-    // SPEC 8.6.1, 8.3.1: evidence about an instance of a generic declaration (a conformance or a capability) holds only for
-    // the bindings the declaration's Constraints allow, so it rests on the instance's formation, which proves each Constraint with
-    // SPEC 8.3.3's re-entry rule: a Constraint whose obligation is open supplies none.
+    // SPEC 8.6.3: the start of a requirement's evidence, an answer holding pending every obligation open when it began (heldObligations).
+    private (int Depth, int Enclosing, int Held) BeginEvidence()
+    {
+        var mark = this.BeginAnswer();
+        var held = this.heldObligations;
+        this.heldObligations = mark.Depth;
+        return (mark.Depth, mark.Enclosing, held);
+    }
+
+    // The evidence's verdict: Unknown when it depends on an obligation it held pending (EndAnswer), since it then supplies none.
+    private ConstraintProof EndEvidence((int Depth, int Enclosing, int Held) mark, ConstraintProof verdict)
+    {
+        this.heldObligations = mark.Held;
+        return this.EndAnswer((mark.Depth, mark.Enclosing), verdict) ? ConstraintProof.Unknown : verdict;
+    }
+
+    // Whether the evidence in progress holds pending the obligation at `depth` (int.MaxValue: none).
+    private bool HeldPending(int depth) => depth < this.heldObligations;
+
+    // Whether no evidence in progress holds an obligation pending: a formation read (the outermost obligation not held).
+    private bool FormationRead => !this.HeldPending(0);
+
+    // Whether the answer begun at `mark`, with `verdict`, depends (EndAnswer) on an obligation the evidence in progress holds pending: an
+    // answer, such as a path's evidence, that supplies none to that evidence.
+    private bool EndHeldAnswer((int Depth, int Enclosing) mark, ConstraintProof verdict)
+    {
+        var read = this.dependence;
+        return this.EndAnswer(mark, verdict) && this.HeldPending(read);
+    }
+
+    // Opens an obligation at the next depth; when it is open already, the request reads no evidence there: false, and the answers in
+    // progress read it.
+    private bool OpenObligation(Obligation key)
+    {
+        ref var depth = ref CollectionsMarshal.GetValueRefOrAddDefault(this.openObligations, key, out var open);
+        if (open)
+        {
+            this.dependence = Math.Min(this.dependence, depth);
+            return false;
+        }
+
+        depth = this.openObligations.Count - 1;
+        return true;
+    }
+
+    // Whether a request reaching `key` finds it open (it then reads no evidence, and the answers in progress read it).
+    private bool ReadOpen(Obligation key)
+    {
+        if (!this.openObligations.TryGetValue(key, out var depth))
+        {
+            return false;
+        }
+
+        this.dependence = Math.Min(this.dependence, depth);
+        return true;
+    }
+
+    // SPEC 8.3.3 Recursion, 8.6.3 (R7-C2e2 e2-3b Revision 4): opens a declaration path's verification (VerifyConformance,
+    // VerifyInheritedConformance); false when it is open already. Its body is a formation read (a specification's identity atom,
+    // signatures, normalization: judged where written, after the conformance holds), so it holds no obligation pending (`held`, the
+    // enclosing count, which EndVerification restores); only its requirements' evidence does (BeginEvidence).
+    private bool BeginVerification(BoundConformancePath path, out int held)
+    {
+        var opened = this.OpenObligation(new(null, null, path));
+        held = opened ? this.BeginFormation() : this.heldObligations;
+        return opened;
+    }
+
+    private void EndVerification(BoundConformancePath path, int held)
+    {
+        this.openObligations.Remove(new(null, null, path));
+        this.EndFormation(held);
+    }
+
+    // SPEC 8.6.3: a formation read inside whatever answer reads it (a verification's body, the binding cache's formation, the inferred
+    // bindings' collection): what it forms is judged where written, so it holds no obligation pending; EndFormation restores the count.
+    private int BeginFormation()
+    {
+        var held = this.heldObligations;
+        this.heldObligations = 0;
+        return held;
+    }
+
+    private void EndFormation(int held) => this.heldObligations = held;
+
+    // Whether a declaration path is being verified (its obligation open).
+    private bool Verifying(BoundConformancePath path) => this.openObligations.ContainsKey(new(null, null, path));
+
+    // SPEC 8.6.1, 8.6.3, 8.3.1: evidence about an instance of a generic declaration (a conformance, a capability, a stored instance)
+    // holds only for the bindings the declaration's Constraints allow, so it rests on those Constraints at the instance's arguments (the
+    // formation step alone, BeginTypeFormation and EndTypeFormation; R7-C2e2 e2-3b R2.5), each proven with SPEC 8.3.3's re-entry rule: a
+    // Constraint whose obligation is open supplies none. An argument's own formation is its written site's, judged there.
     private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
         => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
-            : type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown;
+            : type.Components.Count != symbol.Schema.GenericSlots.Count ? ConstraintProof.Unknown
+            : this.BeginTypeFormation(type, scope) is { } proof ? this.EndProof(this.EndTypeFormation(type, scope, proof)) : ConstraintProof.Error;
 
     // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
     // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
@@ -491,12 +598,9 @@ public sealed partial class Binding
             return false;
         }
 
-        var key = (type, contract);
-        ref var reentries = ref CollectionsMarshal.GetValueRefOrAddDefault(this.openObligations, key, out var open);
-        if (open)
+        var key = new Obligation(type, contract, null);
+        if (!this.OpenObligation(key))
         {
-            reentries++;
-            this.reentryReads++;
             return true;
         }
 
@@ -507,9 +611,9 @@ public sealed partial class Binding
                 if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
                     !this.IdentityRefuted(instance, required, scope, type))
                 {
-                    for (var p = 0; p < bindings[i].PathStorage.Count; p++)
+                    for (var p = 0; p < this.impls.PathsOf(bindings[i]).Count; p++)
                     {
-                        if (this.ProveConformanceConditions(bindings[i].PathStorage[p], type, scope) != ConstraintProof.Refuted)
+                        if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope) != ConstraintProof.Refuted)
                         {
                             return true;
                         }
@@ -521,8 +625,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.openObligations.Remove(key, out var read);
-            this.reentryReads -= read;
+            this.openObligations.Remove(key);
         }
     }
 
@@ -557,8 +660,8 @@ public sealed partial class Binding
         }
 
         // The conditional conformance's own failure, as its owner decides it: a premise error keeps the context (SPEC 8.2.3), so the
-        // conditions are judged and the error is the scope's one record, not the target's again.
-        if (premises.Parent is { } conditional && this.InvalidDeclarationCause(conditional) is not null)
+        // conditions are judged and the error is the scope's one record, not the target's again: the reading check rests on it.
+        if (premises.Parent is { } conditional && this.ReadFailedDeclaration(conditional) is not null)
         {
             return ConstraintProof.Error;
         }

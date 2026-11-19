@@ -67,12 +67,12 @@ public sealed partial class MirEffectsTest
         {
             foreach (var nested in container.NestedContainers)
             {
-                var witnesses = (nested.SymbolOf() is { } type ? c.Semantics.Conformances(type) ?? [] : []).SelectMany(static x => x.Witnesses);
+                var witnesses = (nested.SymbolOf(c) is { } type ? c.Semantics.Conformances(type) ?? [] : []).SelectMany(static x => x.Witnesses);
                 implementations.AddRange(witnesses.Where(x => ReferenceEquals(x.Identity.Contract, contract)).Select(static x => x.Implementation));
                 Conformers(nested, contract);
             }
         }
 
-        static string Self(BindingSymbol function) => TyCtxt.Name(TyCtxt.Signature(function, null, 0, out _)!);
+        string Self(BindingSymbol function) => TyCtxt.Name(c.Types.Signature(function, null, 0, out _)!);
     }
 }

@@ -254,7 +254,7 @@ public sealed partial class Binding
                 // comparison): the two are compared in the implementation's view, each in its form there (8.2.3); the parameter keeps
                 // its Type as bound and a record names the Types as written.
                 var (required, bound) = (this.ClassForm(pattern, scope, out _), actual is null ? null : this.ClassForm(actual, scope, out _));
-                var fits = ReferenceEquals(required, bound) || (bound is not null && SameExceptRawOrigins(required, bound) && IsSubtype(required, bound));
+                var fits = ReferenceEquals(required, bound) || (bound is not null && SameExceptRawOrigins(required, bound) && this.IsSubtype(required, bound));
                 valid &= fits;
                 if (actual is not null && !fits)
                 {
@@ -278,7 +278,7 @@ public sealed partial class Binding
             function.BoundSymbol!.Type = actualResult;
             var (requiredResult, boundResult) = (this.ClassForm(result, scope, out _), actualResult is null ? null : this.ClassForm(actualResult, scope, out _));
             var resultFits = ReferenceEquals(requiredResult, boundResult) ||
-                (boundResult is not null && SameExceptRawOrigins(requiredResult, boundResult) && IsSubtype(boundResult, requiredResult));
+                (boundResult is not null && SameExceptRawOrigins(requiredResult, boundResult) && this.IsSubtype(boundResult, requiredResult));
             if (actualResult is not null && !resultFits)
             {
                 incompatible ??= ImplementationOriginMismatch(function.ReturnType ?? function, definition, result, actualResult, "the result");

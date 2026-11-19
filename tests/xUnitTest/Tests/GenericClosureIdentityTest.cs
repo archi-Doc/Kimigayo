@@ -162,13 +162,13 @@ public class GenericClosureIdentityTest
         var c = MinimalEmissionTest.Analyze(Identity + "_ = identity([1, 2])\n_ = identity([3, 4])\n_ = identity([5])");
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "identity").Select(x => x.CallOf()!).ToArray();
-        var first = c.Binding.InstantiateStorageType(closure, calls[0])!;
-        var same = c.Binding.InstantiateStorageType(closure, calls[1])!;
-        var different = c.Binding.InstantiateStorageType(closure, calls[2])!;
+        var first = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[0]))!;
+        var same = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[1]))!;
+        var different = c.Types.ReadableInstance(closure, c.Types.StorageSubst(calls[2]))!;
         Assert.Same(first, same);
         Assert.NotSame(first, different);
-        Assert.False(Binding.FitsType(first, different));
-        Assert.False(Binding.FitsType(different, first));
+        Assert.False(c.Binding.FitsType(first, different));
+        Assert.False(c.Binding.FitsType(different, first));
         Assert.Empty(first.Components);
     }
 
@@ -180,7 +180,7 @@ public class GenericClosureIdentityTest
         var c = MinimalEmissionTest.Analyze(TwoClosures);
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var call = nodes.OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pair").CallOf()!;
-        var closures = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(x => c.Binding.InstantiateStorageType(x.ClosureOf()!.EnvironmentType!, call)!).ToArray();
+        var closures = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(x => c.Types.ReadableInstance(x.ClosureOf()!.EnvironmentType!, c.Types.StorageSubst(call))!).ToArray();
         Assert.Equal(2, closures.Length);
         Assert.Same(closures[0].InstanceContext, closures[1].InstanceContext);
         Assert.Same(c.Types.SubstOf(call), closures[0].InstanceContext);

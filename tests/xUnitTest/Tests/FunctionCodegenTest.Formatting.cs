@@ -387,6 +387,31 @@ public sealed partial class FunctionCodegenTest
         Assert.All(leafCalls, x => Assert.Equal(integer.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
     }
 
+    // SPEC 22.5.1, 22.10.2 (PLAN G71): the position and range Types' format bodies that write carry `#CallerLocation`, so the write
+    // instance passes the location it received to the body, and the body forwards its own to each of its writes, whose reservation
+    // Aborts at the user's write (fail-before: a body without the pair, its writes passing a Core.kimi line).
+    [Theory]
+    [InlineData("FromEnd<i32>")]
+    [InlineData("Range<i32, FromEnd<i32>>")]
+    [InlineData("ClosedRange<i32, i32>")]
+    [InlineData("ResolvedRange")]
+    public void APositionBodyWriteForwardsItsCallersLocation(string type)
+    {
+        var source = $"func wlDirect(writer: uniq/Utf8Writer, v: {type}) -> Result<(), BufferFull> => writer.write(v)\n";
+        var c = Analyze(source, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var bodies = FunctionsOf(ir, c, "format").ToArray();
+        var writes = FunctionsOf(ir, c, "write").ToArray();
+        var direct = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "wlDirect"))), x => writes.Contains(x.Callee!));
+        Assert.EndsWith($", ptr @, i64 {Located(source, "writer.write(v)")})", direct.Shape, StringComparison.Ordinal);
+        var outer = direct.Callee!;
+        var call = Assert.Single(CallsOf(outer), x => bodies.Contains(x.Callee!));
+        Assert.Equal(outer.Parameters.TakeLast(2), call.Operands.TakeLast(2));
+        var inner = CallsOf(call.Callee!).Where(x => writes.Contains(x.Callee!)).ToArray();
+        Assert.NotEmpty(inner);
+        Assert.All(inner, x => Assert.Equal(call.Callee!.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
+    }
+
     // SPEC 22.10.1, 22.9.2, 7.7.4 (R8-W1b-4, W1c): a user formatter runs through the write body and the conversion bodies, a direct write, a
     // conversion, an Item's Value call and an erased Item alike, each given its result slot, its operands (a write's adapter and value, a
     // conversion's value, tryFormat's array) and the user's location (CallerLocation rows), nothing else; the write instance alone calls
@@ -584,7 +609,7 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(LlvmModuleText.FormatInteger128Runtime, text, StringComparison.Ordinal);
     }
 
-    // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes (FormattingTypes.Bound), a
+    // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes (TyCtxt.FormatBound), a
     // wrapping integer's its argument's and an isize's an i64's, and -1 exactly where the Type is unbounded (a string, a view, a Type
     // without built-in formatting): the one table, which an owning interpolation's estimate, and so Text.toString, reads (R8-W1c).
     [Fact]
@@ -593,9 +618,9 @@ public sealed partial class FunctionCodegenTest
         string[] names = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize", "f32", "f64", "char"];
         Assert.Equal(
             [4, 3, 6, 5, 11, 10, 20, 20, 40, 39, 20, 20, 17, 24, 4],
-            names.Select(static x => FormattingTypes.Bound(BoundType.Primitives[x])));
+            names.Select(static x => TyCtxt.FormatBound(BoundType.Primitives[x])));
         BoundType[] others = [BoundType.Boolean, BoundType.Unit, BoundType.String, BoundType.Range, BoundType.WrappingOf(BoundType.Primitives["u8"])];
-        Assert.Equal([5, 2, -1, -1, 3], others.Select(FormattingTypes.Bound));
+        Assert.Equal([5, 2, -1, -1, 3], others.Select(TyCtxt.FormatBound));
     }
 
     // The byte length of a site's location text (SPEC 22.5.1).

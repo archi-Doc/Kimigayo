@@ -14,8 +14,8 @@ public sealed partial class Binding
     // natively (a built-in Type; under source operators also a numeric Type, by IEEE), else by the Contract's mapping for the Type: its
     // witness when the Type is closed, its requirement in every instance when it has an abstract part.
     internal static ComparisonKind ComparisonKindOf(BoundType self, KimiDeclarationId? contract, bool operators)
-        => ComparisonTypes.IsComposite(self) ? ComparisonKind.Composite
-            : ComparisonTypes.OperatorTableRuns(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
+        => TyCtxt.IsComposite(self) ? ComparisonKind.Composite
+            : TyCtxt.OperatorTableRuns(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin
             : self.HasAbstractPart ? ComparisonKind.Requirement : ComparisonKind.Witness;
 
     // The legacy composition under the Contract's mapping: CallPlan leaves from RequirementImplementation under the built-in target's scope (a
@@ -84,7 +84,7 @@ public sealed partial class Binding
     private (ConstraintProof Proof, BoundConstraint? Failed) ComparisonProof(
         BoundType type, BindingSymbol contract, BindingScope scope, bool operators, uint query)
     {
-        if (!ComparisonTypes.IsComposite(type))
+        if (!TyCtxt.IsComposite(type))
         {
             if (operators && type.IsNumeric)
             {

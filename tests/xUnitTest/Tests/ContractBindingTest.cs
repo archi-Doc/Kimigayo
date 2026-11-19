@@ -189,7 +189,6 @@ public class ContractBindingTest
     [InlineData("contract D\n    associate Item\n    associate Self.Item is i32", false)]
     [InlineData("contract D\n    associate Item\n    associate ::D.Item is i32", false)]
     [InlineData("contract D\n    associate Item\n    associate (D).Item is i32", false)]
-    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ((C)).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\n    associate (Self).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\ncontract E: C\n    associate D.Item is i32", false)]
     [InlineData("group G\n    contract C\n        associate Item\n    contract D: C\n        associate (G.D).Item is i32", false)]
@@ -222,17 +221,14 @@ public class ContractBindingTest
     [InlineData("contract C<T>\n    associate Item\nstruct S\n    Self is C<i32>\n    associate (C<i64>).Item is i32", false)]
     [InlineData("contract C<U>\n    associate Item\nstruct S<T>\n    Self is C<T>\n    associate (C<i32>).Item is i32", false)]
     [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate (Self).Item is i32", false)]
-    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ((C)).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nstruct S\n    Self is C\n    associate (D).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nstruct S\n    Self is C\n    associate D.Item is i32", false)]
     [InlineData("struct C\n    let v: i32 = 0\ncontract D\n    associate Item\nstruct S\n    Self is D\n    associate (C).Item is i32", false)]
     [InlineData("contract C\n    associate Item\nenum E\n    A\n    associate (C).Item is i32", false)]
     [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate Self.Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nenum E\n    A\n    Self is C\n    associate (D).Item is i32", false)]
-    [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate ((C)).Item is i32", false)]
     [InlineData("contract C\n    associate Item\ncontract K\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate (K).Item is T", false)]
     [InlineData("contract C\n    associate Item\ncontract D: C\nstruct W<T>\n    Self is C when T is Copy\n        associate (D).Item is T", false)]
-    [InlineData("contract C\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate ((C)).Item is T", false)]
     public void ATypesAssociatedSpecificationNamesAConformance(string source, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
@@ -280,16 +276,32 @@ public class ContractBindingTest
     // in a signature, a function's Constraint region or a Contract's Constraint.
     [Theory]
     [InlineData("func one<T>(source: ref/T) -> T.(C).Item\n    T is C\n    return source.get()", true)]
-    [InlineData("func one<T>(source: ref/T) -> T.((C)).Item\n    T is C\n    return source.get()", false)]
     [InlineData("func one<T>(source: ref/T) -> T.(::C).Item\n    T is C\n    return source.get()", true)]
     [InlineData("func f<T>(x: ref/T) -> i32\n    T is C\n    T.(C).Item is i32\n    return 0", true)]
-    [InlineData("func f<T>(x: ref/T) -> i32\n    T is C\n    T.((C)).Item is i32\n    return 0", false)]
     [InlineData("contract D: C\n    Self.(C).Item is i32", true)]
-    [InlineData("contract D: C\n    Self.((C)).Item is i32", false)]
     public void AProjectionsContractIsOneGroupedReference(string use, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\n" + use);
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
+    }
+
+    // SPEC F.6.2 (PB3, F's ruling 16): a grouped Contract holds a ContractReference, a NamedReference, so a group inside it, `((C))`, in an
+    // associate selector or a `.(C).` suffix is Parsing's record at the inner group (ContractReference); Binding rejected it on base.
+    [Theory]
+    [InlineData("contract C\n    associate Item\ncontract D: C\n    associate ((C)).Item is i32")]
+    [InlineData("contract C\n    associate Item\nstruct S\n    Self is C\n    associate ((C)).Item is i32")]
+    [InlineData("contract C\n    associate Item\nenum E\n    A\n    Self is C\n    associate ((C)).Item is i32")]
+    [InlineData("contract C\n    associate Item\nstruct W<T>\n    Self is C when T is Copy\n        associate ((C)).Item is T")]
+    [InlineData("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\nfunc one<T>(source: ref/T) -> T.((C)).Item\n    T is C\n    return source.get()")]
+    [InlineData("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\nfunc f<T>(x: ref/T) -> i32\n    T is C\n    T.((C)).Item is i32\n    return 0")]
+    [InlineData("contract C\n    associate Item\n    func get(self: ref/Self) -> Self.Item\ncontract D: C\n    Self.((C)).Item is i32")]
+    public void AGroupInAGroupedContractIsOneParsingRecord(string source)
+    {
+        var record = Assert.Single(TestDiagnostics.Of(CompilationTestHelper.Parse(source, "Hello.kimi"), "Hello.kimi"));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains("Expected contract reference", record.Message, StringComparison.Ordinal);
+        Assert.Equal(source.IndexOf("((C))", StringComparison.Ordinal) + 1, record.Span.Start);
+        Assert.Equal(3, record.Span.Length);
     }
 
     // SPEC 8.5.1 Qualification, 8.5.2, 9.7 (PLAN G705): a Contract qualifier is a bound Contract reference, so a Contract with Type
@@ -912,26 +924,31 @@ public class ContractBindingTest
     }
 
     // PLAN G949 S1-r2 (s1r1-design 1.4; review-s1r2 C1): ImplTable's pass view lists only the stores of the pass's modules. Begun again
-    // at the run's own value (so no row goes stale) with the source modules alone, it lists the program's paths, identities and Type
-    // lists and no library one; with the library alone, the library's; with both, the composed lists.
+    // at the overlay's own value (the run's, so no row goes stale) with the source modules alone, it lists the program's paths,
+    // identities and Type lists and no library one; at the pass's last registrar step the composed lists are that view, then the base's
+    // rows, each a library Type's, and they equal the composed lists after the Bind. PLAN G949 S1-1 (B6; ruling 203 (3b)): no pass
+    // begins the frozen base again (its Begin clears the base's admission points, a write to the frozen layer), so the base's rows are
+    // read through a program pass's composed lists, not a library-only view.
     [Fact]
     public void ThePassViewListsOnlyThePassModulesStores()
     {
         var c = Sources("Self is C");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var impls = Impls(c);
+        var (paths, identities) = (impls.Paths.ToList(), impls.Identities.ToList());
         impls.Begin(impls.Pass, new(c.SourceModules, null, new(0)));
         Assert.NotEmpty(impls.InPass.Paths);
         Assert.All(impls.InPass.Paths, static x => Assert.False(Library(x.Type)));
         Assert.All(impls.InPass.Identities, static x => Assert.False(Library(x.Type)));
         Assert.All(impls.InPass.ByType, static x => Assert.All(x, static y => Assert.False(Library(y.Type))));
-        impls.Begin(impls.Pass, new([], c.Binding.Library.Kotonoha, new(0)));
-        Assert.NotEmpty(impls.InPass.Paths);
-        Assert.All(impls.InPass.Paths, static x => Assert.True(Library(x.Type)));
-        Assert.All(impls.InPass.Identities, static x => Assert.True(Library(x.Type)));
-        impls.Begin(impls.Pass, new(c.SourceModules, c.Binding.Library.Kotonoha, new(0)));
-        Assert.Equal(impls.Paths.ToList(), impls.InPass.Paths.ToList());
-        Assert.Equal(impls.Identities.ToList(), impls.InPass.Identities.ToList());
+        var (programPaths, programIdentities) = (impls.InPass.Paths.ToList(), impls.InPass.Identities.ToList());
+        impls.Advance(ImplTable.AdmissionPoint.AssociatedBindings);
+        var (libraryPaths, libraryIdentities) = (impls.Paths.Skip(programPaths.Count).ToList(), impls.Identities.Skip(programIdentities.Count).ToList());
+        Assert.NotEmpty(libraryPaths);
+        Assert.All(libraryPaths, static x => Assert.True(Library(x.Type)));
+        Assert.All(libraryIdentities, static x => Assert.True(Library(x.Type)));
+        Assert.Equal(paths, [.. programPaths, .. libraryPaths]);
+        Assert.Equal(identities, [.. programIdentities, .. libraryIdentities]);
 
         static bool Library(BindingSymbol type) => type.Declaration.Kotonoha.Syntax.IsLibrary;
     }
@@ -973,6 +990,38 @@ public class ContractBindingTest
         var first = paths.FindIndex(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
         Assert.Equal(["B: C", "G: C", "H: C"], paths.Take(first).Select(static x => x.Type.Name + ": " + x.Contract.Name));
         Assert.DoesNotContain(paths.Skip(first), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
+    }
+
+    // PLAN G949 S1-r1b (c15's extension, F's ruling 65; s1r1-design 8.8): EffectObligations reads three per-pass sources in order:
+    // ImplTable's paths, the virtual declarations and the selected uses of bounded Callable clauses, each list Binding's own part's
+    // entries, then LibraryLayer.Part's (S1-b2's commits 3a-3c). From the split the library pass fills the layer's part and the program
+    // pass Binding's own; the library declares no `virtual` and no bounded Callable clause, so the layer's three lists (the virtual
+    // declarations, the uses and the clauses) are empty and Binding's own part holds every row: the program's obligations stand in the
+    // three sources' order, and AvailableCallableEffects finds apply's bound in the program part's clause. Fails on a head that hands
+    // the program pass the layer's lists or composes them first. Valid: each confined body is confined (SPEC 8.11.2-8.11.4).
+    [Fact]
+    public void TheEffectSourcesAreTheProgramPartsInTheirOrder()
+    {
+        const string Contract = "contract C\n    func get(self: ref/Self) -> i32\n        effect confined\n";
+        var c = CompilationTestHelper.ParseSuccess(Contract + "struct S\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => 1\n" +
+            "open struct Base\n    public init() => ()\n    public virtual func score(self: objref/Self) -> i32\n        effect confined\n        return 1\n" +
+            "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n" +
+            "func entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(["S: Self is C get", "Base: public virtual func score(self: objref/Self) -> i32 score", ": f@ref entry"], EffectRows(c).Where(static x => !x.Library).Select(static x => x.Row));
+        var (layer, own) = (c.Library.Layer.Part, (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        Assert.Equal((0, 0, 0), (layer.VirtualDeclarations.Count, layer.CallableEffectUses.Count, layer.CallableEffectClauses.Count));
+        Assert.Equal("score", Assert.Single(own.VirtualDeclarations).Name);
+        var clause = Assert.Single(own.CallableEffectClauses);
+        var use = Assert.Single(own.CallableEffectUses);
+        Assert.Equal("f@ref", use.At.ToString());
+        Assert.Same(clause, use.Clause);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.ValueCallOf() is not null);
+        var plan = call.ValueCallOf()!;
+        var evidence = new List<EffectEvidence>();
+        Assert.True(c.Binding.AvailableCallableEffects(plan.CalleeType.Components[0], plan.DeclaredSignature, plan.ReceiverKind, c.Binding.ConstraintScope(call), evidence));
+        Assert.Same(clause, Assert.Single(evidence).Clause);
     }
 
     // PLAN G949 S1-b1 (the Front's RR2): a path the sweep removed is taken from the pool for the next new key, emptied of the
@@ -1023,6 +1072,77 @@ public class ContractBindingTest
         Assert.Same(identity, path.Identity);
         Assert.NotSame(scope, path.Scope);
         Assert.Same(path, path.Scope.ConformancePath);
+    }
+
+    // PLAN G949 S1-r1b, rule (a) (F's rulings 169 and 170; the S1-r2 note's v6: R5, R6, R10; SPEC 8.6.1, 8.5.2, 9.6): a program pass reads a
+    // library Type's conformances as registered only from its own registrar's step. A Self clause binds before the program's conformance
+    // declarations register (pass 0), so a projection over a library Type there finds no associated Type yet; it is an early read judged
+    // again at point 1 (VerifyEarlyProjections, G621: a member it finds then rests on its location-only Unsupported_Kd, R5, R6), and a
+    // conditional conformance (Range's Iterable when S is PrimitiveInteger) is not registered at point 1 either (R10: no IteratorType).
+    // These are today's records; from the split the library pass registers the base before the program pass, and a program pass that read
+    // the base from its start would find Array's Element at once (R5 and R6 lose their Unsupported_Kd) and Range's IteratorType at point 1
+    // (R10 moves: on the trial split it read three InvalidConstraint_Kd and an AmbiguousBinding_Kd).
+    [Theory]
+    [InlineData("contract K<T>\nstruct W\n    Self is K<Kimi.Array<i32>.Element>", "InvalidConstraint_Kd Unsupported_Kd")]
+    [InlineData("contract K<T>\nstruct V\n    Self is K<i32>\nstruct W\n    Self is K<Kimi.Dictionary<i32, i32>.Element>", "InvalidConstraint_Kd Unsupported_Kd")]
+    [InlineData("contract K<T>\nstruct W\n    Self is K<Kimi.Range<i32, i32>.IteratorType>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    public void ALibraryConformanceIsReadFromItsRegistrarsStep(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // PLAN G949 S1-r1b, rule (a) at ImplTable's lookups (F's ruling 170 condition (2), and g9 of the S1-r2 note's C7): a reader that does not
+    // bind the library reads a library identity with the paths of the registrar steps it reached. OwningIterator's and BorrowingIterator's
+    // LendingIterator identity has its direct path from the Self-clause registrar (point 1) and the ancestor path of `Self is Iterator when
+    // I is Iterator` from the conditional registrar (point 2): one path at point 1, two at point 2. Range's Iterable is conditional only: not
+    // found and not in Range's list at point 1, found with its path at point 2. The reader's step is set on the compilation's overlay after a
+    // Bind (the one pass binds the library, so its own reads are every row's).
+    [Fact]
+    public void ALibraryIdentityReadsThePathsOfTheStepsItsReaderReached()
+    {
+        var c = CompilationTestHelper.ParseSuccess(string.Empty);
+        Assert.True(c.Bind().IsComplete);
+        var impls = Impls(c);
+        var identities = impls.Identities.ToArray();
+        var (owning, lending) = Named("OwningIterator", "LendingIterator");
+        var (borrowing, _) = Named("BorrowingIterator", "LendingIterator");
+        var (range, iterable) = Named("Range", "Iterable");
+        var direct = impls.PathsOf(impls.Find(owning, lending)!)[0];
+        var all = (impls.Paths.Count, impls.Identities.Count, impls.ByType.Count);
+        typeof(ImplTable).GetField("holdsBase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, false);
+        var counts = new List<(int, int, int)>();
+        foreach (var point in Enum.GetValues<ImplTable.AdmissionPoint>())
+        {
+            // Every step (review-s1r1b Part 2, N1): the composed lists' base parts are their prefixes at the step, and a path is found
+            // by its key from its point on.
+            typeof(ImplTable).GetField("step", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, point);
+            counts.Add((impls.Paths.Count, impls.Identities.Count, impls.ByType.Count));
+            Assert.Equal(point != ImplTable.AdmissionPoint.PassStart, impls.TryPath(direct.Type, direct.Contract, direct.Declaration, direct.RootContract) is not null);
+            if (point is ImplTable.AdmissionPoint.PassStart or ImplTable.AdmissionPoint.AssociatedBindings)
+            {
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.Find(owning, lending) is null);
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.OfType(range) is not { Count: not 0 });
+                continue;
+            }
+
+            var first = point == ImplTable.AdmissionPoint.SelfClauses;
+            foreach (var adapter in (BindingSymbol[])[owning, borrowing])
+            {
+                var identity = impls.Find(adapter, lending);
+                Assert.NotNull(identity);
+                Assert.Equal(first ? 1 : 2, impls.PathsOf(identity).Count);
+            }
+
+            var conditional = impls.Find(range, iterable);
+            Assert.Equal(first, conditional is null);
+            Assert.Equal(first ? 0 : 1, conditional is null ? 0 : impls.PathsOf(conditional).Count);
+            Assert.Equal(!first, impls.OfType(range)?.Exists(x => ReferenceEquals(x.Contract, iterable)) == true);
+        }
+
+        Assert.Equal((0, 0, 0), counts[0]);
+        Assert.Equal(all, counts[^1]);
+        Assert.All(counts.Zip(counts.Skip(1)), x => Assert.True(x.First.Item1 <= x.Second.Item1 && x.First.Item2 <= x.Second.Item2 && x.First.Item3 <= x.Second.Item3, string.Join(", ", counts)));
+        Assert.True(counts[1].Item1 < counts[2].Item1, $"point 2 adds paths: {string.Join(", ", counts)}");
+
+        (BindingSymbol Type, BindingSymbol Contract) Named(string type, string contract)
+            => identities.Where(x => x.Type.Name == type && x.Contract.Name == contract).Select(static x => (x.Type, x.Contract)).Single();
     }
 
     // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.
@@ -1100,7 +1220,7 @@ public class ContractBindingTest
             }
             else if (property.GetSetMethod(true) is { } setter)
             {
-                var value = type == typeof(bool) ? true : type == typeof(int) ? 1
+                var value = type == typeof(bool) ? true : type == typeof(int) ? 1 : type.IsEnum ? Enum.ToObject(type, 1)
                     : values.FirstOrDefault(type.IsInstanceOfType) ?? (type.IsAbstract || type.IsValueType ? null : RuntimeHelpers.GetUninitializedObject(type));
                 setter.Invoke(model, [value]);
             }
@@ -1113,7 +1233,7 @@ public class ContractBindingTest
         foreach (var property in PassState(model))
         {
             var value = property.GetValue(model);
-            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 }, $"{model.GetType().Name}.{property.Name}: {value}");
+            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 } || (value is Enum e && Convert.ToInt64(e) == 0), $"{model.GetType().Name}.{property.Name}: {value}");
         }
     }
 

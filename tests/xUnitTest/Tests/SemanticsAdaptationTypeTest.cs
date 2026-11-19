@@ -192,7 +192,7 @@ public class SemanticsAdaptationTypeTest
         var expected = c.Binding.SemanticsAdaptation(pair, shorter, BoundOrigin.Static, pair.Scope);
         Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.Raw)];
-        Assert.False(Binding.FitsType(c.Binding.CaseType(actual, cases), c.Binding.CaseType(expected, cases)));
+        Assert.False(c.Binding.FitsType(c.Binding.CaseType(actual, cases), c.Binding.CaseType(expected, cases)));
     }
 
     [Fact]
@@ -202,11 +202,11 @@ public class SemanticsAdaptationTypeTest
         var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static, pair.Scope);
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "f").ToArray();
         Assert.Equal(2, calls.Length);
-        var owner = c.Binding.InstantiateStorageType(type, calls[0].CallOf()!);
+        var owner = c.Types.ReadableInstance(type, c.Types.StorageSubst(calls[0].CallOf()!));
         Assert.NotNull(owner);
         Assert.Equal(SemanticsKind.Obj, owner.Semantics);
         Assert.Same(BoundType.I32, owner.Components[0]);
-        var borrow = c.Binding.InstantiateStorageType(type, calls[1].CallOf()!);
+        var borrow = c.Types.ReadableInstance(type, c.Types.StorageSubst(calls[1].CallOf()!));
         Assert.NotNull(borrow);
         Assert.Equal(SemanticsKind.Ref, borrow.Semantics);
         Assert.Equal(SemanticsKind.Ref, borrow.Components[0].Semantics);
@@ -220,7 +220,7 @@ public class SemanticsAdaptationTypeTest
             "func f<s/T>(value: s/T)\n    s is obj or ref\n    T is ObjectPayload\n    let adapted = value@move@s\n    let carried = pass(adapted@move)\n    _ = carried@move");
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "pass").CallOf()!;
         var parameter = call.Target.Schema!.GenericSlots[0].Symbol;
-        var projected = c.Binding.InstantiateStorageType(parameter.Type!, call);
+        var projected = c.Types.ReadableInstance(parameter.Type!, c.Types.StorageSubst(call));
         Assert.NotNull(projected);
         ReadOnlySpan<PairCase> objects = [new(pair, SemanticsKind.Obj)];
         ReadOnlySpan<PairCase> references = [new(pair, SemanticsKind.Ref)];
@@ -237,8 +237,8 @@ public class SemanticsAdaptationTypeTest
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static, pair.Scope);
         var call = new CallPlan();
-        call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
-        var substituted = c.Binding.InstantiateStorageType(callee.Parameters[0].Type.TypeOf()!, call);
+        call.Set(c.Binding, callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
+        var substituted = c.Types.ReadableInstance(callee.Parameters[0].Type.TypeOf()!, c.Types.StorageSubst(call));
         Assert.NotNull(substituted);
         ReadOnlySpan<PairCase> owner = [new(pair, SemanticsKind.Owner)];
         ReadOnlySpan<PairCase> borrow = [new(pair, SemanticsKind.ObjRef)];
@@ -255,10 +255,10 @@ public class SemanticsAdaptationTypeTest
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static, pair.Scope);
         var call = new CallPlan();
-        call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
+        call.Set(c.Binding, callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var original = callee.Parameters[0].Type.TypeOf()!;
         var written = c.Types.Intern(original.Kind, original.Symbol, original.Semantics, [], origin: BoundOrigin.Static);
-        var substituted = c.Binding.InstantiateStorageType(written, call);
+        var substituted = c.Types.ReadableInstance(written, c.Types.StorageSubst(call));
         Assert.NotNull(substituted);
         ReadOnlySpan<PairCase> borrow = [new(pair, SemanticsKind.ObjRef)];
         Assert.Same(BoundOrigin.Static, c.Binding.CaseType(substituted, borrow).Origin);

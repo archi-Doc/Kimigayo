@@ -12,9 +12,26 @@ public sealed partial class Binding
     private readonly PropertyUpdateStorageRows propertyUpdateStorage;
     private readonly PropertyUpdateInputRows propertyUpdateInputs;
 
+    // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
+    // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
+    // is standard. That target locates the Field's Place, and the target's own getter is not called for it; an update's read by the
+    // getter is a value, which no Place walk takes. A getter result, and every path rooted in it, stays a root (11.5). Read by
+    // NextPathStep, PlaceOriginSource, ElementAccess's path roots and ClosureEffects' owned-part climb; NextPathStep's InlinePart case,
+    // IsBarePlace, IsStaticField and TakeJudgment still decide the Field's Place on their own (D-827).
     internal static bool IsGetterResult(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
-            KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
+        => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
+            place.BoundSymbol?.Property is { Getter.IsStandard: false } property && !(property.Setter.IsStandard && IsWriteTarget(place, out _));
+
+    // SPEC 13.7.1: whether a node, taken as its outermost group (Grouped), is the target of `=` (write) or of a compound assignment,
+    // `++` or `--` (an update): a Property use's write role, read by its binding and IsGetterResult (UseOf reads the same role from the
+    // parent's HirOp: D-827).
+    internal static bool IsWriteTarget(Koto node, out bool write)
+    {
+        var target = Grouped(node);
+        var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+        write = assignment && target.Parent!.Akind == KotoKind.Equals;
+        return assignment || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+    }
 
     // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
     // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
@@ -157,7 +174,7 @@ public sealed partial class Binding
     // `get`'s result (the read Type).
     private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
         => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
-            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind)) is { } setter && this.CallOf(setter) is { ArgumentOperations.Length: > 0 } call
                 ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
@@ -263,6 +280,9 @@ public sealed partial class Binding
                 receiverOperation = new(receiver, actual, adapted, kind, quality, selection.Path, 0, proof);
             }
 
+            // SPEC 13.7.1: the input the update at `node` computed (its propertyUpdateInputs row) stands for an operand the expansion
+            // already evaluated, the call's Evaluated argument; a write's input is its source operand.
+            var evaluated = input is not null && ReferenceEquals(input, this.propertyUpdateInputs.GetValueOrDefault(node));
             if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
                 call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
                 (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
@@ -270,7 +290,7 @@ public sealed partial class Binding
             {
                 var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
                 Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
-                call = new(node, method, arguments) { CallStorage = new() { Evaluated = input is EvaluatedKoto ? 0 : -1 } };
+                call = new(node, method, arguments) { CallStorage = new() { Evaluated = evaluated ? 0 : -1 } };
                 this.propertyCalls[(node, accessor.Kind)] = call;
             }
 
@@ -283,7 +303,7 @@ public sealed partial class Binding
             var count = 0;
             if (input is not null)
             {
-                if (input is EvaluatedKoto)
+                if (evaluated)
                 {
                     Complete(input, inputType); // The update supplies its checked Output, never the original RHS.
                 }
@@ -327,7 +347,7 @@ public sealed partial class Binding
 
                 result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
 
-                call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
+                call.CallStorage!.Set(this, function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
                 for (var i = 0; i < count; i++)
                 {
@@ -340,6 +360,8 @@ public sealed partial class Binding
                     Binding = this, Call = call, Binder = function, Origins = origins, Inputs = inputs, DeclaringType = declaringType, Rows = rows.AsSpan(0, count),
                 };
                 this.JudgeSelectedCall(call, solution, operations.AsSpan(0, count + 1), []);
+                this.RequireResultPremises(function, result, call); // SPEC 15.6.1, 15.6.4 step 3: the getter's result premises.
+                this.AddSynthesizedCall(node, call); // SPEC 11.3, 15.6.4 step 3: its Types' formation, judged as every call's, at the use (Check).
                 Complete(call, result);
                 return true;
             }

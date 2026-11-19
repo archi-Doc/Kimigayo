@@ -9,22 +9,42 @@ namespace XunitTest;
 
 public class TimeLibraryTest
 {
+    private const string Started = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()";
+    private const string Restarted = "var watch = Kimi.Time.Stopwatch.init()\nwatch.restart()";
+    private const string Snapshot = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\n_ = watch.elapsed()";
+    private const string Twice = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nwatch.start()\nwatch.stop()";
+    private const string TwiceSnapshot = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nwatch.start()\n_ = watch.elapsed()";
+    private const string Clock = ": abort KIMI_E_CLOCK: Elapsed-time counter failed\n";
+    private const string Overflow = ": abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
+    private const string Largest = "0,18446744073709,18446744073709,18446744073710";
+
+    // SPEC 22.8.2, 22.5.2 and IMPL 21.4.5: a failed counter or frequency query, a nonpositive frequency, a negative counter and a counter
+    // going backward Abort with KIMI_E_CLOCK, an accumulation beyond u64 (frequency 1: 18446744073709 ticks fit, one more does not) with
+    // KIMI_E_INT_OVERFLOW. SPEC 22.5.1: each reports the start of the user's Stopwatch call, the frequency's static-storage access
+    // included, and through a function value that call (MirBuildTest.StopwatchAction). The fake counter returns its values in order and
+    // fails once they run out.
     [Theory]
-    [InlineData(0, 3, 1, 10, "FrequencyFailure", 13, "Performance counter frequency query failed")]
-    [InlineData(1, 0, 1, 10, "FrequencyZero", 14, "Invalid performance counter frequency")]
-    [InlineData(1, 3, 0, 10, "CounterFailure", 7, "Performance counter query failed")]
-    [InlineData(1, 3, 1, -1, "CounterNegative", 8, "Negative performance counter")]
-    [InlineData(1, 3, 1, 10, "CounterBackwards", 18, "Performance counter moved backwards")]
-    public void InvalidClockAborts(int frequencyResult, long frequency, int counterResult, long counter, string name, int line, string message)
+    [InlineData("FrequencyFailure", Started, 0, 3, "10,20", "Hello.kimi:2:1" + Clock)]
+    [InlineData("FrequencyZero", Started, 1, 0, "10,20", "Hello.kimi:2:1" + Clock)]
+    [InlineData("FrequencyNegative", Started, 1, -1, "10,20", "Hello.kimi:2:1" + Clock)]
+    [InlineData("CounterFailure", Started, 1, 3, "", "Hello.kimi:2:1" + Clock)]
+    [InlineData("CounterNegative", Started, 1, 3, "-1", "Hello.kimi:2:1" + Clock)]
+    [InlineData("CounterBackwards", Started, 1, 3, "10,9", "Hello.kimi:3:1" + Clock)]
+    [InlineData("RestartFailure", Restarted, 1, 3, "", "Hello.kimi:2:1" + Clock)]
+    [InlineData("RestartFrequency", Restarted, 0, 3, "10", "Hello.kimi:2:1" + Clock)]
+    [InlineData("ElapsedFailure", Snapshot, 1, 3, "10", "Hello.kimi:3:5" + Clock)]
+    [InlineData("ElapsedBackwards", Snapshot, 1, 3, "10,9", "Hello.kimi:3:5" + Clock)]
+    [InlineData("ConversionOverflow", Started, 1, 1, "0,18446744073710", "Hello.kimi:3:1" + Overflow)]
+    [InlineData("StopOverflow", Twice, 1, 1, Largest, "Hello.kimi:5:1" + Overflow)]
+    [InlineData("ElapsedOverflow", TwiceSnapshot, 1, 1, Largest, "Hello.kimi:5:5" + Overflow)]
+    [InlineData("ErasedFrequency", MirBuildTest.StopwatchAction, 0, 3, "10", "Hello.kimi:3:1" + Clock)]
+    [InlineData("ErasedFailure", MirBuildTest.StopwatchAction, 1, 3, "", "Hello.kimi:3:1" + Clock)]
+    public void InvalidClockAborts(string name, string source, int frequencyResult, long frequency, string counter, string stderr)
     {
-        var c = MinimalEmissionTest.Analyze("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()");
-        var ir = CompilationTestHelper.WriteIr(c);
-        var nativeCounter = "@test.counter = internal global i64 " + counter + "\ndefine i32 @QueryPerformanceCounter(ptr %out) { %value = load i64, ptr @test.counter store i64 %value, ptr %out %next = sub i64 %value, 1 store i64 %next, ptr @test.counter ret i32 " + counterResult + " }";
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
         var nativeFrequency = "define i32 @QueryPerformanceFrequency(ptr %out) { store i64 " + frequency + ", ptr %out ret i32 " + frequencyResult + " }";
-        ir = ir.Replace("declare dllimport i32 @QueryPerformanceCounter(ptr)", nativeCounter, StringComparison.Ordinal)
+        ir = ir.Replace("declare dllimport i32 @QueryPerformanceCounter(ptr)", Counter(counter), StringComparison.Ordinal)
             .Replace("declare dllimport i32 @QueryPerformanceFrequency(ptr)", nativeFrequency, StringComparison.Ordinal);
-        var column = line switch { 7 => 74, 13 => 76, 18 => 38, 14 => 35, _ => 36 };
-        var stderr = "compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/Time.kimi:" + line + ":" + column + ": abort KIMI_E_ABORT: " + message + "\n";
         ScalarEmissionTest.WriteFixture("TimeLibrary" + name, ir, string.Empty, 1, stderr);
     }
 
@@ -71,24 +91,6 @@ public class TimeLibraryTest
             require watch.elapsed().rawMicroseconds == 0 else => $abort("Reset")
             """;
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
-        const string Counter = """
-            @test.counter.index = internal global i64 0
-            @test.counter.values = internal constant [7 x i64] [i64 10, i64 14, i64 15, i64 20, i64 24, i64 35, i64 42]
-            define i32 @QueryPerformanceCounter(ptr %out) {
-              %index = load i64, ptr @test.counter.index
-              %valid = icmp ult i64 %index, 7
-              br i1 %valid, label %read, label %failure
-            read:
-              %slot = getelementptr [7 x i64], ptr @test.counter.values, i64 0, i64 %index
-              %value = load i64, ptr %slot
-              store i64 %value, ptr %out
-              %next = add i64 %index, 1
-              store i64 %next, ptr @test.counter.index
-              ret i32 1
-            failure:
-              ret i32 0
-            }
-            """;
         const string Frequency = """
             @test.frequency.read = internal global i1 false
             define i32 @QueryPerformanceFrequency(ptr %out) {
@@ -104,7 +106,7 @@ public class TimeLibraryTest
             """;
         Assert.Contains("declare dllimport i32 @QueryPerformanceCounter(ptr)", ir);
         Assert.Contains("declare dllimport i32 @QueryPerformanceFrequency(ptr)", ir);
-        ir = ir.Replace("declare dllimport i32 @QueryPerformanceCounter(ptr)", Counter, StringComparison.Ordinal)
+        ir = ir.Replace("declare dllimport i32 @QueryPerformanceCounter(ptr)", Counter("10,14,15,20,24,35,42"), StringComparison.Ordinal)
             .Replace("declare dllimport i32 @QueryPerformanceFrequency(ptr)", Frequency, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("TimeLibraryDeterministic", ir, string.Empty);
     }
@@ -163,10 +165,36 @@ public class TimeLibraryTest
     public void ConvertsCounterExactlyWithoutWideArithmetic(string ticks, string frequency, string expected)
     {
         var c = CompilationTestHelper.Parse("Kimi.Time.probe()");
-        c.Library.Kotonoha.AddSource(new("TimeProbe.kimi", "public group Time\n    public func probe()\n        require counterMicroseconds(" + ticks + ", " + frequency + ") == " + expected + " else => $abort(\"Conversion\")"));
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.AddSource(new("TimeProbe.kimi", "public group Time\n    public func probe()\n        require counterMicroseconds(" + ticks + ", " + frequency + ") == " + expected + " else => $abort(\"Conversion\")")));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
         ScalarEmissionTest.WriteFixture("TimeLibraryConversion" + ticks + "_" + frequency, CompilationTestHelper.WriteIr(c), string.Empty);
+    }
+
+    // A fake QueryPerformanceCounter: it returns the comma-separated values in order and fails once they run out.
+    private static string Counter(string values)
+    {
+        var items = values.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var count = items.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var initializer = items.Length == 0 ? "zeroinitializer" : "[i64 " + string.Join(", i64 ", items) + "]";
+        return $$"""
+            @test.counter.index = internal global i64 0
+            @test.counter.values = internal constant [{{count}} x i64] {{initializer}}
+            define i32 @QueryPerformanceCounter(ptr %out) {
+              %index = load i64, ptr @test.counter.index
+              %valid = icmp ult i64 %index, {{count}}
+              br i1 %valid, label %read, label %failure
+            read:
+              %slot = getelementptr [{{count}} x i64], ptr @test.counter.values, i64 0, i64 %index
+              %value = load i64, ptr %slot
+              store i64 %value, ptr %out
+              %next = add i64 %index, 1
+              store i64 %next, ptr @test.counter.index
+              ret i32 1
+            failure:
+              ret i32 0
+            }
+            """;
     }
 }

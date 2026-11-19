@@ -111,7 +111,7 @@ public sealed partial class Binding
         }
 
         var structural = this.ResultStructure();
-        var guessed = this.guessedCompletion ??= new(this.ResultNeverEvidence, this.RecordGuess);
+        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess);
         var nodes = this.guessNodes ??= new();
         guessed.Clear();
         nodes.Clear();
@@ -344,35 +344,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (ElementAccess.IsRawRoot), pointer
-    // arithmetic, noinit, or one of the node's calls whose selected target is an unsafe function (the requirement is checked after
-    // selection); null while Binding has not resolved an expression, whose need is then unknown.
-    private static bool? RequiresUnsafe(Koto node)
-    {
-        if (node.BindingState != BindingState.Resolved)
-        {
-            return node is ExpressionKoto or NoInitKoto ? null : false;
-        }
-
-        if (node is NoInitKoto || ElementAccess.IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
-            ReferenceTypes.IsPointer(arithmetic.Left.BoundType)))
-        {
-            return true;
-        }
-
-        for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
-        {
-            if (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Modifier: var modifier } && (modifier & ModifierKind.Unsafe) != 0)
-            {
-                return true;
-            }
-        }
-
-        // SPEC 5.7: a claim needs an unsafe context unless the premises prove that its operand's Origin fits.
-        return node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType.RawOrigin: { } claimed } claim &&
-            !claim.CodeContext.Compilation.Binding.ClaimFits(claim, claimed) ? null : false;
-    }
-
     // One node's records in sequence, a discarded tail's innermost root first; the comparison is total, so the order is stable.
     private static int CompareLints((Koto Node, LintRow Row, Koto? Root) x, (Koto Node, LintRow Row, Koto? Root) y)
     {
@@ -388,6 +359,35 @@ public sealed partial class Binding
         }
 
         return order != 0 ? order : (y.Root?.SyntaxId ?? 0).CompareTo(x.Root?.SyntaxId ?? 0);
+    }
+
+    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (ElementAccess.IsRawRoot), pointer
+    // arithmetic, noinit, or one of the node's calls whose selected target is an unsafe function (the requirement is checked after
+    // selection); null while Binding has not resolved an expression, whose need is then unknown.
+    private bool? RequiresUnsafe(Koto node)
+    {
+        if (node.BindingState != BindingState.Resolved)
+        {
+            return node is ExpressionKoto or NoInitKoto ? null : false;
+        }
+
+        if (node is NoInitKoto || ElementAccess.IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
+            ReferenceTypes.IsPointer(arithmetic.Left.BoundType)))
+        {
+            return true;
+        }
+
+        for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
+        {
+            if (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Modifier: var modifier } && (modifier & ModifierKind.Unsafe) != 0)
+            {
+                return true;
+            }
+        }
+
+        // SPEC 5.7: a claim needs an unsafe context unless the premises prove that its operand's Origin fits.
+        return node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType.RawOrigin: { } claimed } claim &&
+            !this.ClaimFits(claim, claimed) ? null : false;
     }
 
     // The last step of a Final pass: one walk of each source module (the library is not linted).
@@ -475,7 +475,7 @@ public sealed partial class Binding
         {
             this.lints.Add((node, LintRow.OverlappingLabel, null));
         }
-        else if (node is InvocationKoto call && CallPlan.Of(call) is { Target.LibraryDeclaration: KimiDeclarationId.WriterWrite } write)
+        else if (node is InvocationKoto call && CallPlan.Of(this, call) is { Target.LibraryDeclaration: KimiDeclarationId.WriterWrite } write)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
@@ -624,7 +624,7 @@ public sealed partial class Binding
     {
         // Binding's structural completion with its Never evidence, cleared once per walk: the descents of discarded tails and the
         // end arrivals compose each node's completion once.
-        private readonly StructuralCompletion completion = new(binding.ResultNeverEvidence);
+        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence);
 
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;
@@ -681,7 +681,7 @@ public sealed partial class Binding
         // Unsafe Block's permission, which an operation whose need is unknown may also use.
         private void LintUnsafe(Koto node)
         {
-            switch (RequiresUnsafe(node))
+            switch (binding.RequiresUnsafe(node))
             {
                 case true when !KotoHelper.IsUnsafeContext(node):
                     binding.lints.Add((node, LintRow.UnsafeBlockRequired, null));
@@ -712,7 +712,7 @@ public sealed partial class Binding
 
         private void VisitFunction(FunctionKoto function)
         {
-            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(function))
+            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(binding.compilation, function))
             {
                 return;
             }

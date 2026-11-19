@@ -5,11 +5,13 @@
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
 // substitution and Origin forwarding.
 // Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance with its
-// storage verdict (Instance; Compose with the part deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
+// storage verdict (Instance: the substitution, then Binding's one storage query, Binding.PrepareTypeStorage; Compose with the part
+// deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
 // Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict, guarded by
 // it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
-// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
-// arrays Fit grows are reused.
+// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
+// compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
+// grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
 
 using System.Runtime.CompilerServices;
@@ -100,12 +102,12 @@ internal sealed partial class TyCtxt
             : this.Intern(closure, null, erased, [], [], [], []);
     }
 
-    // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
+    // The substitution Binding's storage instantiation of a call applies (Instance(type, StorageSubst(call))): its target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
     // that SubstOf adds, as the old analyses have always instantiated a call's Types. A second substitution per call beside SubstOf, it
-    // goes when the readers of that CallPlan form apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own go with R7's
-    // CallPlan pipeline (DECISIONS R5-M36).
-    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of the CallPlan form of InstantiateStorageType to SubstOf.")]
+    // goes when its readers apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own (requirement instantiation and
+    // formatting implementations) go with R7's CallPlan pipeline (DECISIONS R5-M36).
+    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of StorageSubst, Binding's requirement instantiation and formatting implementations, to SubstOf.")]
     internal Subst StorageSubst(CallPlan call)
         => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
@@ -160,9 +162,14 @@ internal sealed partial class TyCtxt
     // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
     internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
 
-    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36), which Binding computes until R7
-    // moves it here (Binding.StorageInstance, then Binding.PrepareTypeStorage): the identity keeps the Type, whose storage it does not query
-    // (Prepared); null and Limit where the substitution does not complete.
+    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): the substitution
+    // (Binding.StorageInstance), then the instance's storage verdict (DECISIONS BU-12: Binding.PrepareTypeStorage, the one storage query,
+    // a function of the Type alone, a limit taking precedence, memoized per pass by the Type, so a warm query allocates nothing; never
+    // queried during a walk, whose guard throws). Two answers are no walk verdict (PLAN G242): the identity keeps the
+    // Type as Prepared without a walk, since a binder's own Types are open and their storage is no instance's; a substitution that does not
+    // complete gives no instance and a Limit (BU-36's contract substitution that does not complete). Rejected keeps its instance, a part
+    // Binding rejected holding, placing and destroying nothing (BU-38), so Binding's own readers, during its passes, read every verdict but
+    // a Limit (Binding.Formatting, RequirementInstances, ClosureInstances).
     internal (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType type, Subst subst)
     {
         if (subst.IsIdentity)
@@ -284,9 +291,16 @@ internal sealed partial class TyCtxt
             hash.Add(RuntimeHelpers.GetHashCode(input));
         }
 
+        // The one find over the two levels (Binding.PassPart.Levels; PLAN G949 Stage 2 U4).
         var key = hash.ToHashCode();
-        if (this.substs.TryGetValue(key, out var bucket))
+        var levels = Binding.PassPart.Interned(library, library.Layer.Substs, this.substs);
+        foreach (var level in levels)
         {
+            if (!level.TryGetValue(key, out var bucket))
+            {
+                continue;
+            }
+
             for (var i = 0; i < bucket.Count; i++)
             {
                 var subst = bucket[i];
@@ -297,13 +311,15 @@ internal sealed partial class TyCtxt
                 }
             }
         }
-        else
+
+        var open = levels.Open;
+        if (!open.TryGetValue(key, out var into))
         {
-            this.substs.Add(key, bucket = new(1));
+            open.Add(key, into = new(1));
         }
 
         var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray());
-        bucket.Add(created);
+        into.Add(created);
         return created;
     }
 }

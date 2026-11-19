@@ -73,16 +73,6 @@ public sealed partial class Binding
         return height > StorageHeightLimit ? StorageOutcome.Limit : rejected ? StorageOutcome.Rejected : StorageOutcome.Prepared;
     }
 
-    internal BoundType? InstantiateStorageType(BoundType type, CallPlan call) => this.InstantiateStorageType(type, this.types.StorageSubst(call));
-
-    // A declared Type in the instance a substitution makes (StorageInstance) unless its storage is a Limit, null then, the instantiation
-    // Binding's passes and the old analyses read until R7 (TyCtxt.Apply reads TyCtxt.Instance, which publishes the verdict).
-    // Rejected storage passes through, as retention reads it (DECISIONS BU-36, BU-38): a part Binding rejected holds, destroys and
-    // violates nothing, while its other parts stay checked; outside Binding's passes it is read only on a complete Binding, where no
-    // storage is Rejected.
-    internal BoundType? InstantiateStorageType(BoundType type, Subst subst)
-        => this.StorageInstance(type, subst) is { } result && this.PrepareTypeStorage(result) != StorageOutcome.Limit ? result : null;
-
     // A declared Type in the instance a substitution makes: its binder's slots and stored Origins substituted in one pass (PLAN G457),
     // normalized in the binder's Constraint scope (a Contract's Self the conforming Type), its closures closed in the substitution; null
     // where one of these steps does not complete. Its storage is not prepared.
@@ -353,12 +343,8 @@ public sealed partial class Binding
             return null;
         }
 
-        member.Right.BindingState = BindingState.Resolved;
-        member.Right.BoundSymbol = constructor;
-        member.BoundSymbol = constructor;
-        this.memberSelections[member] = new(constructor, declaring, null);
-        this.memberSides[member] = MemberSide.Type; // SPEC 6.3.2: a constructor is never called on a receiver.
-        return constructor;
+        // SPEC 6.3.2: never on a receiver; no lookup. The selection publishes the declaring Type (memberSelections; C-i).
+        return this.PublishMemberAccess(member, constructor, null, LookupRole.Qualifier, new MemberSelection(constructor, declaring, null));
     }
 
     private BoundType? ConstructorQualifierType(Koto syntax, BindingSymbol symbol, BindingScope scope)
@@ -407,7 +393,7 @@ public sealed partial class Binding
     // SPEC 6.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
     private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
     {
-        parent = AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
+        parent = AdtDef.Base(this.types, this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
@@ -439,7 +425,7 @@ public sealed partial class Binding
         return this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, new ConstructorAbsence(type, null));
     }
 
-    private void ReportConstructorAbsence(Koto node, ConstructorAbsence absence, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportConstructorAbsence(Koto node, DiagnosticCollection? store, ConstructorAbsence absence, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var type = absence.Type;
         var name = DiagnosticTypeName(type);
@@ -455,11 +441,11 @@ public sealed partial class Binding
                 var note = $"{name} has a synthesized constructor only when {omitted} selects a constructor of {baseName}; an Unknown premise of a candidate can change that selection, and the constructor is decided once for every {declared} (SPEC 6.3.6, 8.3.3)";
                 if (decision.Cause is { } premise)
                 {
-                    node.Report(requirement, code, evidence: [name, "init", premise.ToString()], note: note, related: [("constraint", premise, "unproven premise"), ("declaration", clause, "omitted base clause")]);
+                    node.ReportIn(store, requirement, code, evidence: [name, "init", premise.ToString()], note: note, related: [("constraint", premise, "unproven premise"), ("declaration", clause, "omitted base clause")]);
                 }
                 else
                 {
-                    node.Report(requirement, code, evidence: [name, "init"], note: note, related: [("declaration", clause, "omitted base clause")]);
+                    node.ReportIn(store, requirement, code, evidence: [name, "init"], note: note, related: [("declaration", clause, "omitted base clause")]);
                 }
 
                 return;
@@ -471,20 +457,20 @@ public sealed partial class Binding
                 OmittedBaseOutcome.NoneApplicable => $"no constructor of {baseName} applies without arguments",
                 _ => $"more than one constructor of {baseName} applies without arguments",
             };
-            node.Report(requirement, code, note: $"{name} has no constructor: {omitted} selects none, since {reason} (SPEC 6.3.6)", related: [("declaration", clause, "omitted base clause")]);
+            node.ReportIn(store, requirement, code, note: $"{name} has no constructor: {omitted} selects none, since {reason} (SPEC 6.3.6)", related: [("declaration", clause, "omitted base clause")]);
         }
         else if (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto { ConstructorAvailability: ConstructorAvailability.MissingInitializer, UninitializedField: { } field } })
         {
-            node.Report(requirement, code, note: $"{name} has no constructor: its Field {field.NameKoto.IdentifierName} has no initializer, so none is synthesized (SPEC 6.3.6)", related: [("declaration", field.NameKoto, "no initializer")]);
+            node.ReportIn(store, requirement, code, note: $"{name} has no constructor: its Field {field.NameKoto.IdentifierName} has no initializer, so none is synthesized (SPEC 6.3.6)", related: [("declaration", field.NameKoto, "no initializer")]);
         }
         else if (type.IsWrappingInteger || type.Symbol?.Declaration is StructKoto { ConstructorAvailability: ConstructorAvailability.CompilerManaged })
         {
-            node.Report(requirement, code, note: $"{name} is a Kimi Type whose representation the compiler manages; it has only the constructors its declaration declares (SPEC 22.1)");
+            node.ReportIn(store, requirement, code, note: $"{name} is a Kimi Type whose representation the compiler manages; it has only the constructors its declaration declares (SPEC 22.1)");
         }
         else
         {
             var subject = type.Kind == BoundTypeKind.Parameter ? "The Type parameter " + name : name;
-            node.Report(requirement, code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.3)");
+            node.ReportIn(store, requirement, code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.3)");
         }
     }
 
@@ -501,7 +487,7 @@ public sealed partial class Binding
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
         var type = baseInitializer
-            ? AdtDef.Base(this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
+            ? AdtDef.Base(this.types, this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
             : this.memberSelections[(MemberAccessKoto)call.Method].DeclaringType!; // ConstructorMember's published declaring Type (C-i)
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)

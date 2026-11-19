@@ -136,18 +136,22 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                     continue;
                 }
 
+                // The toolchain's classification around its call only (PLAN G984): a build failure (IMPL 20.6.4: 2).
                 try
                 {
                     await NativeToolchain.Build(project, paths, (severity, message) => kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
-                    pinnedExecutables.Add(new FileStream(paths.Executable, FileMode.Open, FileAccess.Read, FileShare.Read));
-                    compilation.Tests.WriteManifest(stem + ".test.json", paths.Executable);
-                    artifacts.Add(compilation.Tests, paths);
                 }
                 catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
                 {
                     errors.Add(project.Name + ": " + ex.Message);
                     exit = 2;
+                    continue;
                 }
+
+                // The runner's startup: the pinned executable and its case manifest (IMPL 20.6.4: a failure is the runner's, 3).
+                pinnedExecutables.Add(new FileStream(paths.Executable, FileMode.Open, FileAccess.Read, FileShare.Read));
+                compilation.Tests.WriteManifest(stem + ".test.json", paths.Executable);
+                artifacts.Add(compilation.Tests, paths);
             }
 
             if (exit != 0)
@@ -213,7 +217,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
         {
             exit = 130;
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
+        catch (Exception ex) when (ex is CommandInputException or IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
         {
             errors.Add(ex.Message);
             exit = runDirectory is null ? 2 : 3;

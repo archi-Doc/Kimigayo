@@ -157,6 +157,13 @@ public sealed class NumberLiteralKoto : ExpressionKoto
         }
     }
 
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields()
+    {
+        this.EnsureParsedValue();
+        _ = this.Literal;
+    }
+
     private static bool IsIntegerText(ReadOnlySpan<char> text)
         => (text.Length > 1 && text[0] == '0' && text[1] is 'x' or 'X' or 'b' or 'B' or 'o' or 'O') || !NumberLiteralHelper.HasFloatMarker(text);
 

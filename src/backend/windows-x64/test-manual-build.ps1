@@ -24,10 +24,16 @@ function Expect-Failure([object] $data, [string] $bin, [string] $message) {
 }
 try {
     $data = $original | ConvertFrom-Json
-    $data.schemaVersion = 1
-    Expect-Failure $data $LlvmBin 'schema 3 is required'
-    $data.schemaVersion = 2
-    Expect-Failure $data $LlvmBin 'schema 3 is required'
+    $data.schemaVersion = 3
+    Expect-Failure $data $LlvmBin "'schemaVersion' is not this compiler's"
+    $data.schemaVersion = 4.5
+    Expect-Failure $data $LlvmBin "'schemaVersion' is not this compiler's"
+    $data = $original | ConvertFrom-Json
+    $data.externalDeclarations = @(@{ symbol = 'observer_notify'; dllimport = 'yes' })
+    Expect-Failure $data $LlvmBin "'externalDeclarations.dllimport' is missing or not a JSON Boolean"
+    $data = $original | ConvertFrom-Json
+    $data.PSObject.Properties.Remove('externalDeclarations')
+    Expect-Failure $data $LlvmBin "'externalDeclarations' is missing or not a JSON Array"
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kimi_backend') | Add-Member -NotePropertyName input -NotePropertyValue 'override.lib'
     Expect-Failure $data $LlvmBin 'Invalid backend toolchain resolution'
@@ -45,15 +51,15 @@ try {
     Expect-Failure $data $LlvmBin 'IR/manifest SHA-256.*mismatch'
     $data = $original | ConvertFrom-Json
     $data.backendSupport.artifactSha256 = '0' * 64
-    Expect-Failure $data $LlvmBin 'Invalid backend supply identity'
+    Expect-Failure $data $LlvmBin "'backendSupport.artifactSha256' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.backendSupport.packageVersion = 'unreviewed'
-    Expect-Failure $data $LlvmBin 'Invalid backend supply identity'
-    $data = $original | ConvertFrom-Json
-    $data.expectedUndefinedSymbols = @(@{ symbol = 'missing'; provider = 'unknown' })
-    Expect-Failure $data $LlvmBin 'Invalid backend supply identity or runtime dependency'
+    Expect-Failure $data $LlvmBin "'backendSupport.packageVersion' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.codegen.cpu = 'native'
+    Expect-Failure $data $LlvmBin "'codegen.cpu' is not this compiler's"
+    $data = $original | ConvertFrom-Json
+    $data.optimization = 'O3'
     Expect-Failure $data $LlvmBin 'supported Windows Application profile'
     if ($MismatchedLlvmBin) {
         $data = $original | ConvertFrom-Json
