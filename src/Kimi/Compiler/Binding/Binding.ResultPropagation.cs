@@ -472,10 +472,12 @@ public sealed partial class Binding
             context.Conflict();
         }
 
-        types.Clear(); // A nested result decided above reused the list.
+        types.Clear(); // A nested result decided above reused the lists.
+        this.resultValues.Clear();
         if (common is not null && context.Outcome == JoinOutcome.Undecided)
         {
             types.Add(common);
+            this.resultValues.Add(null);
         }
         else
         {
@@ -492,8 +494,9 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
     // by its late Type (BindWaitedSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either;
     // a failed source (PartFailed), unbound or typed, is no candidate and is the join's cause, on which it rests at its verdict (SPEC
-    // 23.1.2; rule W, DECISIONS BU-79), and any other unbound source makes the join pending. Returns whether a source awaits.
-    private bool ResultCandidates(ResultContext context, List<BoundType> types)
+    // 23.1.2; rule W, DECISIONS BU-79), and any other unbound source makes the join pending. Each candidate's source node is `values`'
+    // element at its index. Returns whether a source awaits.
+    private bool ResultCandidates(ResultContext context, List<BoundType> types, List<Koto?> values)
     {
         var awaiting = false;
         for (var i = 0; i < context.Sources.Count; i++)
@@ -519,6 +522,7 @@ public sealed partial class Binding
                 else if (!awaits)
                 {
                     types.Add(source);
+                    values.Add(context.SourceNodes[i]);
                     context.HasTyped = true;
                 }
             }
