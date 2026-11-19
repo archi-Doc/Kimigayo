@@ -22251,6 +22251,9 @@ R8-M* and R9-M* by the stage of the recording unit.
 
   - Superseded in part by R8-M25 (G662's remainder): `Column` reads `MirTypes.Operates`, whose comparison rows are
     `OperatorCompares`; the Backend no longer reads `ComparisonTypes`.
+  - Amended by R7-T2 U3: `ComparisonTypes`' rules are now `TyCtxt.Comparison`'s: the statement is `TyCtxt.OperatorCompares`
+    (`TyCtxt.Comparison.cs`, beside `ComparisonKind`), a pure `TyCtxt` function, with `TyCtxt.IsComposite` and
+    `TyCtxt.OperatorTableRuns`; the root `ComparisonTypes` is deleted.
 - **R8-M21 The interpolation-bound term: BoundLength's `Values` and Binding's `LengthOperation`** (2026-11-09; R8-W2 a1-0 and a1,
   the Back's design §4a, its design review 3 ACCEPT, in the Front's files with the Front's consent, C-179; the Back's reviewer's
   implementation review B1 fixed)
