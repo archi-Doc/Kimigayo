@@ -1,15 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type.
-    internal static BoundType ComparisonReferent(BoundType type)
+    // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type; a string comparison operand is
+    // one whose terminal Type is string.
+    [return: NotNullIfNotNull(nameof(type))]
+    internal static BoundType? ComparisonReferent(BoundType? type)
     {
-        while (type.SafeReferent is { } referent)
+        while (type?.SafeReferent is { } referent)
         {
             type = referent;
         }
@@ -54,8 +57,8 @@ public sealed partial class Binding
     private BoundType? CompleteComparison(
         BinaryKoto binary, BoundType left, BoundType right, BindingScope scope, OperatorApplicability decision)
     {
-        if ((ReferenceTypes.EndsInString(left) || ReferenceEquals(left, BoundType.Never)) &&
-            (ReferenceTypes.EndsInString(right) || ReferenceEquals(right, BoundType.Never)))
+        if ((ReferenceEquals(ComparisonReferent(left), BoundType.String) || ReferenceEquals(left, BoundType.Never)) &&
+            (ReferenceEquals(ComparisonReferent(right), BoundType.String) || ReferenceEquals(right, BoundType.Never)))
         {
             this.CompareInPlace(binary.Left);
             this.CompareInPlace(binary.Right);

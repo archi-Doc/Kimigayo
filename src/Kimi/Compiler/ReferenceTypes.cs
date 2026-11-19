@@ -7,9 +7,6 @@ namespace Kimi.Compiler;
 /// <summary>The explicitly implemented reference representation, independent of Origin identity.</summary>
 internal static class ReferenceTypes
 {
-    // SPEC 4.6.2: the library ResolvedRange struct, which the compiler produces for indices and a key site applies without a resolve call.
-    internal static bool IsResolvedRange(BoundType? type) => type is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
-
     // SPEC 5.1: a raw pointer is a Copy address value; null is its only literal.
     internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
 
@@ -39,40 +36,6 @@ internal static class ReferenceTypes
         for (var i = 0; i < formal.Components.Count; i++)
         {
             if (!StorageMatches(formal.Components[i], actual.Components[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // SPEC 13.4: a string comparison operand is a string or safe reference layers ending in one.
-    internal static bool EndsInString(BoundType? type)
-    {
-        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            type = type.Components[0];
-        }
-
-        return ReferenceEquals(type, BoundType.String);
-    }
-
-    internal static bool IndependentResult(BoundType? type)
-    {
-        if (type is { IsScalar: true } || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceEquals(type, BoundType.Never))
-        {
-            return true;
-        }
-
-        if (type is not { Kind: BoundTypeKind.Tuple or BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0 })
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (!IndependentResult(type.Components[i]))
             {
                 return false;
             }

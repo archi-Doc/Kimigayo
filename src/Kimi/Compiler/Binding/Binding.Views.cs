@@ -34,7 +34,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var range = ReferenceTypes.IsResolvedRange(key) || this.ProvesClosedContract(key, this.Library.PositionRange, scope);
+        var range = key is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange } || this.ProvesClosedContract(key, this.Library.PositionRange, scope);
         if (!range && !this.ProvesClosedContract(key, this.Library.Position, scope))
         {
             this.RecordMismatch(source.Right, source.Right, key, new(null, MismatchForm.PositionType), ComparisonFailure.Shape);

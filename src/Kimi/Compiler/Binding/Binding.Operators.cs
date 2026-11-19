@@ -13,7 +13,7 @@ public sealed partial class Binding
     // SPEC 13.3.1: a primitive without arithmetic (bool, Unit, char, string) or safe reference layers ending in string.
     // Never fitting needs a valid counterpart Type; it is not numeric capability. Pointer displacement follows SPEC 5.3.
     private static bool NonNumericOperand(BoundType type)
-        => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
+        => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceEquals(ComparisonReferent(type), BoundType.String);
 
     // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): whether a plain write Binding rejected after BindBinary's one destination check admitted its
     // destination (CheckDestination, then the Holder admission), the write's plan row's Mode, written at each binding of the write: its
@@ -380,7 +380,7 @@ public sealed partial class Binding
     // a single ref or uniq layer is inspected as it is.
     private void StringThroughLayers(Koto operand, BoundType type)
     {
-        if (type.Components.Count == 1 && ReferenceTypes.EndsInString(type) && !ReferenceEquals(type.SafeReferent, BoundType.String) &&
+        if (type.Components.Count == 1 && ReferenceEquals(ComparisonReferent(type), BoundType.String) && !ReferenceEquals(type.SafeReferent, BoundType.String) &&
             this.SharedReferenceThroughLayers(type, BoundType.String, this.ConstraintScope(operand), out _) is { } shared)
         {
             this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);
