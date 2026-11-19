@@ -541,7 +541,7 @@ public class ArchitectureRulesTest
         [
             "Add", "AddRow", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
             "AvailableContractPremise", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
-            "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
+            "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
             "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
             "RowContract", "RowKind", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",

@@ -603,17 +603,17 @@ public sealed partial class Binding
     // as the environment's failed node. The witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's premises
     // (ContractSolver) can add one too, a failed clause's Error passed through or a null substitution, and name no node, so such an
     // environment stays valid (PLAN G651's open item).
-    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null, IsKoto? origin = null)
     {
         if (fact.HasUnresolved)
         {
             return false;
         }
 
-        environment.Add(fact, source);
+        environment.Add(fact, source, origin);
         if (fact.Kind == ConstraintKind.And)
         {
-            return this.AddConstraintFact(environment, fact.Left!, source) | this.AddConstraintFact(environment, fact.Right!, source);
+            return this.AddConstraintFact(environment, fact.Left!, source, origin) | this.AddConstraintFact(environment, fact.Right!, source, origin);
         }
 
         return fact.Kind == ConstraintKind.Error;

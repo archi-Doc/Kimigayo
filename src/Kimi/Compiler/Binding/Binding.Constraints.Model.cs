@@ -127,7 +127,9 @@ internal sealed class ConstraintEnvironment
 
     internal HashSet<BoundConstraint> DirectFacts { get; } = new(ReferenceEqualityComparer.Instance);
 
-    internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
+    // A derived fact's Origin is the source declaration's clause it instantiates (R7-C3, F's C2 ruling 282: it is that premise, Failed
+    // where the origin is; Binding.DerivedFailure reads it); none for a supply that instantiates no clause.
+    internal List<(BoundConstraint Fact, BindingSymbol Source, IsKoto? Origin)> DerivedFacts { get; } = new();
 
     // R7-C2c2 c2-4b (DECISIONS R4.13): the first Declared of DerivedFacts are the declaration's own supply (Declares).
     internal int Declared { get; private set; }
@@ -149,14 +151,14 @@ internal sealed class ConstraintEnvironment
     // The number of changes of this environment's state.
     internal int Version { get; private set; }
 
-    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise; an Error fact's writer names the failed node
-    // (Fail).
-    internal void Add(BoundConstraint fact, BindingSymbol? source)
+    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise, the instance of its clause `origin`; an
+    // Error fact's writer names the failed node (Fail).
+    internal void Add(BoundConstraint fact, BindingSymbol? source, IsKoto? origin)
     {
-        var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFacts.Contains((fact, source));
+        var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFrom(fact, source);
         if (source is not null && availability)
         {
-            this.DerivedFacts.Add((fact, source));
+            this.DerivedFacts.Add((fact, source, origin));
         }
 
         var added = this.Facts.Add(fact);
@@ -274,5 +276,18 @@ internal sealed class ConstraintEnvironment
         this.UnprovenInputs?.Clear();
         this.HasAssociatedProjection = false;
         this.HasTypeIdentity = false;
+    }
+
+    private bool DerivedFrom(BoundConstraint fact, BindingSymbol source)
+    {
+        for (var i = 0; i < this.DerivedFacts.Count; i++)
+        {
+            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact) && ReferenceEquals(this.DerivedFacts[i].Source, source))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

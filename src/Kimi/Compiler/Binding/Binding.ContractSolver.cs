@@ -692,7 +692,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                foreach (var (_, _, premise) in new ContractSupply(this, shape, root, view.Premises))
+                foreach (var (_, _, premise, _) in new ContractSupply(this, shape, root, view.Premises))
                 {
                     // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
                     // deferred mate's walk keeps none (EnumerateClosed; the class header's Extension).
@@ -908,6 +908,22 @@ public sealed partial class Binding
         return true;
     }
 
+    // R7-C3 (F's C2 rulings 273, 282): a premise derived from a Failed premise is Failed: it is that premise, its origin clause, whose
+    // state the origin's environment holds (FailedClauseRead), so its cause is the origin declaration's record. No state is copied.
+    private PremiseFailure? DerivedFailure(ConstraintEnvironment environment, BoundConstraint fact)
+    {
+        for (var i = 0; i < environment.DerivedFacts.Count; i++)
+        {
+            if (environment.DerivedFacts[i] is { Origin: { BoundConstraint: { } origin } clause } derived && ReferenceEquals(derived.Fact, fact) &&
+                this.FailedClauseRead(clause, origin) is { } failure)
+            {
+                return failure;
+            }
+        }
+
+        return null;
+    }
+
     // An availability read of the outermost walk: its Completion joins the walk's (the class header's Kept rows).
     private bool WalkAvailable(bool available, Completion completion)
     {
@@ -937,6 +953,12 @@ public sealed partial class Binding
         if (environment.DirectFacts.Contains(fact))
         {
             return true;
+        }
+
+        if (this.DerivedFailure(environment, fact) is { } failure)
+        {
+            this.ScopeReads.Limit ??= failure;
+            return false;
         }
 
         var read = Completion.Complete;
@@ -1016,11 +1038,11 @@ public sealed partial class Binding
     private void AddContractPremises(BoundContract shape, BoundType self, BindingScope scope)
     {
         var environment = scope.Constraints ??= new();
-        foreach (var (ancestor, declaration, premise) in new ContractSupply(this, shape, self, scope))
+        foreach (var (ancestor, declaration, premise, clause) in new ContractSupply(this, shape, self, scope))
         {
             if (premise is not null)
             {
-                this.AddConstraintFact(environment, premise, shape.Symbol);
+                this.AddConstraintFact(environment, premise, shape.Symbol, clause);
                 continue;
             }
 
@@ -1045,7 +1067,8 @@ public sealed partial class Binding
         private int ancestor = -1;
         private int next; // The declaration's next item: 0 the declaration itself, i + 1 its clause i.
 
-        public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise) Current { get; private set; }
+        // Clause: the clause Premise instantiates (its origin, a premise of the declaration's environment; R7-C3, ruling 282).
+        public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise, IsKoto? Clause) Current { get; private set; }
 
         // The number of the declaration's ancestors (Enumerate's ancestor row reads them alone).
         public readonly int AncestorCount => this.Origin.Ancestors.Count;
@@ -1066,7 +1089,7 @@ public sealed partial class Binding
                 if (this.next == 0)
                 {
                     var instantiated = this.ancestor < 0 ? shape : this.InstantiatedAncestor(this.ancestor);
-                    (this.next, this.Current) = (1, (this.ancestor, instantiated, null));
+                    (this.next, this.Current) = (1, (this.ancestor, instantiated, null, null));
                     return true;
                 }
 
@@ -1076,7 +1099,7 @@ public sealed partial class Binding
                     if (declaration.ClauseStorage[this.next - 1].BoundConstraint is { } constraint &&
                         binding.DependentConstraint(constraint, contractSelf: true))
                     {
-                        this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol));
+                        this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol), declaration.ClauseStorage[this.next - 1]);
                         this.next++;
                         return true;
                     }

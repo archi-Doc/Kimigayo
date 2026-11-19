@@ -246,34 +246,57 @@ public sealed partial class Binding
             }
 
             changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
-            foreach (var fact in environment.Facts)
+            if (this.JudgeFacts(scope, environment, environment, mode, ref changed))
             {
-                if (environment.IsFailed(fact))
-                {
-                    continue; // The premise's own judgment ran once; its state is Failed.
-                }
+                continue;
+            }
 
-                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
-                this.failedCause = null;
-                var frame = this.BeginConsultation(scope.Owner);
-                var proof = this.ProveConstraint(fact, scope);
-                if (proof != ConstraintProof.Error)
+            // SPEC 8.2.3 (F's C2 ruling 282, the owner's O-296 (a)): a premise error is reported where the premises causing it first
+            // meet. A scope's own premises meet its enclosing scopes' there, so their premises are judged in this view too: a
+            // conditional conformance's conditions against its Type's premises (l2). The enclosing premise stays valid in its own scope.
+            for (var enclosing = scope.Parent; enclosing is not null; enclosing = enclosing.Parent)
+            {
+                if (enclosing.Constraints is { } inherited && this.JudgeFacts(scope, environment, inherited, mode, ref changed))
                 {
-                    this.DropConsultation(frame);
-                    continue;
+                    break;
                 }
-
-                var previous = scope.Owner.BindingState;
-                changed |= this.FailPremise(environment, fact, scope.Owner); // R7-C3: the premise's own judgment writes its state Failed
-                // Other input facts can have independent contradictions. Record a
-                // sole missing-name cause only when this is the entire environment.
-                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                changed |= previous != scope.Owner.BindingState;
-                break;
             }
         }
 
         return changed;
+    }
+
+    // The judgment of `facts`' premises in `scope`'s view, in its owner's frame; the first Error is the owner's record, and a premise of
+    // the scope's own environment fails with it (FailPremise). Whether one failed.
+    private bool JudgeFacts(BindingScope scope, ConstraintEnvironment environment, ConstraintEnvironment facts, BindingMode mode, ref bool changed)
+    {
+        foreach (var fact in facts.Facts)
+        {
+            if (facts.IsFailed(fact) || this.DerivedFailure(facts, fact) is not null)
+            {
+                continue; // The premise's own judgment ran once; its state is Failed (here, or at its origin: ruling 282).
+            }
+
+            // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+            this.failedCause = null;
+            var frame = this.BeginConsultation(scope.Owner);
+            var proof = this.ProveConstraint(fact, scope);
+            if (proof != ConstraintProof.Error)
+            {
+                this.DropConsultation(frame);
+                continue;
+            }
+
+            var previous = scope.Owner.BindingState;
+            changed |= this.FailPremise(environment, fact, scope.Owner); // R7-C3: the premise's own judgment writes its state Failed
+            // Other input facts can have independent contradictions. Record a
+            // sole missing-name cause only when this is the entire environment.
+            this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, facts.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+            changed |= previous != scope.Owner.BindingState;
+            return true;
+        }
+
+        return false;
     }
 
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)

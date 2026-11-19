@@ -130,7 +130,7 @@ public sealed partial class Binding
             for (var i = 0; i < other.DerivedFacts.Count; i++)
             {
                 var derived = other.DerivedFacts[i];
-                this.AddConstraintFact(environment, derived.Fact, derived.Source);
+                this.AddConstraintFact(environment, derived.Fact, derived.Source, derived.Origin);
             }
         }
     }

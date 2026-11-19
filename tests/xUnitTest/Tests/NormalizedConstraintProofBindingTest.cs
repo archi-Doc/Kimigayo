@@ -170,10 +170,12 @@ public class NormalizedConstraintProofBindingTest
     // These three counts under e2-3a (each publication forgets the Kept entries, ForgetKeptTables, so a walk after one forms its views'
     // entries again): dev's f6324930d (PLAN G949 S1-1c) skips the program pass's certificate round when its validation walk recorded no
     // failure, and with it that round's entries: 108 -> 106, 97 -> 95, 28/26 -> 24/22 (dev, whose entries live for the epoch: 98, 89,
-    // 22/20 either way). With the skip disabled the counts are e2-3a's again.
+    // 22/20 either way). With the skip disabled the counts are e2-3a's again. R7-C3 (F's C2 ruling 282 (1), the owner's O-296 (a); SPEC
+    // 8.2.3: a premise error is reported where the premises first meet): each conformance scope with premises judges the struct's
+    // premises in its own view (ValidateConstraintEnvironments), whose entries add 6 and 5: 30 and 27.
     [Theory]
-    [InlineData("T", "U", 24)]
-    [InlineData("U", "T", 22)]
+    [InlineData("T", "U", 30)]
+    [InlineData("U", "T", 27)]
     public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
     {
         var source = "struct Q\n    Self is C\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
