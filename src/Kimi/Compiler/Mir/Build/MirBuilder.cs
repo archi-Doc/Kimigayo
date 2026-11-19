@@ -390,7 +390,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each at its written Type occurrence
         // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration.
-        for (var position = 0; !template && function is not null && position < this.Arity(function); position++)
+        for (var position = 0; !template && function is not null && position < CallPlan.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
             var parameter = CallPlan.Parameter(compilation.Binding, function, slot)!;

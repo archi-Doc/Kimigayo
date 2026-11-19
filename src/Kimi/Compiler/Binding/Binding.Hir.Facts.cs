@@ -69,7 +69,7 @@ public sealed partial class Binding
                 return keyed && selected && Planned(this.IndexerCall(index, exclusive: true), out _); // indexUniq, bound only beside index.
             case HirOp.Call: // A call the builder builds as it is (no expansion supplies its inputs) covers its parameters.
                 return CallPlan.Of(this, node) is { } call && Complete(call) && (call.TupleOperator
-                    ? call is { ConformingType: not null, ArgumentOperations.Length: 2 } : ExpansionPlan.Of(this, node) is not null || Covers(call));
+                    ? call is { ConformingType: not null, ArgumentOperations.Length: 2 } : ExpansionPlan.Of(this, node) is not null || call.Covers());
             case HirOp.Assign or HirOp.CompoundAssign:
                 var target = KotoHelper.UnwrapParentheses(node is BinaryKoto update ? update.Left : ((UnaryKoto)node).Operand);
                 if (!Planned(this.PropertyCall(target, PropertyAccessorKind.Get), out var getter) ||
@@ -121,16 +121,6 @@ public sealed partial class Binding
         {
             var direct = call.Kind == CalleeKind.Virtual && call.VirtualIsDirect;
             return Sourced(call.ArgumentOperations) && (!direct || (call.VirtualImplementation is { } body && HirTables.Symbol(body) is not null));
-        }
-
-        // SPEC 7.3: a call's operations, omitted defaults and receiver cover its signature's parameters, a receiver only where the function
-        // takes one.
-        static bool Covers(CallPlan call)
-        {
-            var value = call.Kind == CalleeKind.Value;
-            var receiver = value || call.Receiver is null ? 0 : 1;
-            var arity = value ? call.Signature.Components[0].Components.Count : (call.Target.Declaration as FunctionKoto)?.Parameters.Count;
-            return call.ArgumentOperations.Length + call.DefaultArguments.Length + receiver == arity && (receiver == 0 || call.Target.ReceiverIndex >= 0);
         }
 
         static bool Sourced(ReadOnlySpan<BoundArgumentOperation> operations)
