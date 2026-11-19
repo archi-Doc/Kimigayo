@@ -375,10 +375,12 @@ public sealed partial class Binding
             this.VisitWellFormedPremises(
                 implementation, implementation, required, new(WellFormedSubject.Input, null, use, WellFormedAction.Prove) { Comparison = comparison });
 
-    // SPEC 15.3.7: a whole-contract comparison proves the implementation's result premises for its substituted result from the
-    // required contract's premises at `use`.
+    // SPEC 15.3.7 (the owner's (a)): a whole-contract comparison proves the implementation's result condition for its substituted result
+    // from the required contract's premises at `use`: a named function's result premises; an anonymous function's result
+    // well-formedness, which is no premise of its body (SPEC 15.3.4, 15.6.1, DECISIONS R4-M162) and which every comparison judges.
     private bool ProvesResultPremises(FunctionKoto function, BoundType result, Koto use, in CallableInstance comparison)
-        => !CarriesResultPremises(function) ||
+        => function.IsAnonymous ? !result.StoresOrigin || this.VisitWellFormedPremises(result, result, null, new(WellFormedSubject.Input, null, use, WellFormedAction.Instance) { Comparison = comparison })
+            : !CarriesResultPremises(function) ||
             this.VisitWellFormedPremises(
                 function.BoundSymbol!.Type!,
                 result,
