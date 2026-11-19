@@ -27,8 +27,8 @@
 // version allocates nothing.
 // Rounds (PLAN G951's round rule; the one commit of A4's rounds and the instance collector's runs): one round at a time, which Begin opens
 // for a body value (A4's obligations' NoBody, MirRecordClass.Collection) and Commit or Drop ends; any other order is a broken contract and
-// throws. While it is open, Add holds each problem of that body value, which no producer outside the round adds meanwhile and which
-// carries no facts (one with facts is a recording rule's defect, held as the round's, Defect); every other problem, such as a construction
+// throws. While it is open, Add holds each problem of that body value with its facts (a row kept as data, Kept; R7-T1: the collector's
+// height record carries its limit), which no producer outside the round adds meanwhile; every other problem, such as a construction
 // record of a body a lookup builds during the round, is added at once. Commit adds the held problems in order as Add adds them; Drop
 // discards them, so a round that missed commits nothing; Clear closes a round. A kept row (Keep, Replay) was committed when it was kept
 // and is replayed outside any round, so a round holds only its own version's problems.
@@ -49,7 +49,7 @@ internal sealed partial class MirReport
     private readonly List<MirProblem> problems = [];
     private readonly List<ProblemFact> facts = [];
     private readonly List<(int Start, int Count)> spans = []; // Each problem's facts.
-    private readonly List<MirProblem> held = []; // The open round's problems, which carry no facts (Begin).
+    private readonly Kept held = new(); // The open round's problems with their facts (Begin).
     private int? round; // The body value of the open round's problems (Begin), or none.
 
     /// <summary>Gets the problems in the order they were first added.</summary>
@@ -73,12 +73,7 @@ internal sealed partial class MirReport
     {
         if (problem.Body == this.round)
         {
-            if (!facts.IsEmpty)
-            {
-                return this.Defect(problem); // A round's problems carry no facts (Rounds).
-            }
-
-            this.held.Add(problem);
+            this.held.Add(problem, facts);
             return -1;
         }
 
@@ -129,7 +124,7 @@ internal sealed partial class MirReport
     internal void Clear()
     {
         (this.isMerged, this.round) = (false, null);
-        this.held.Clear();
+        this.held.Clear(0);
         this.index.Clear();
         this.problems.Clear();
         this.facts.Clear();
@@ -143,23 +138,23 @@ internal sealed partial class MirReport
     internal void Begin(int body)
         => this.round = this.round is { } open ? throw new InvalidOperationException($"A round of {body} began in the open round of {open} (InternalInvariant).") : body;
 
-    /// <summary>Ends a clean round: adds the problems it held, in order, as Add adds them.</summary>
+    /// <summary>Ends a clean round: adds the problems it held, in order, each with its facts, as Add adds them.</summary>
     internal void Commit()
     {
         this.End();
-        foreach (var problem in this.held)
+        for (var row = 0; row < this.held.Count; row++)
         {
-            this.Add(problem);
+            this.Add(this.held[row], this.held.Facts(row));
         }
 
-        this.held.Clear();
+        this.held.Clear(0);
     }
 
     /// <summary>Ends a round that missed: drops the problems it held.</summary>
     internal void Drop()
     {
         this.End();
-        this.held.Clear();
+        this.held.Clear(0);
     }
 
     /// <summary>Keeps the problems added from an index on as data, each with its facts as Add left them: a library segment's rows
@@ -269,8 +264,10 @@ internal sealed partial class MirReport
         }
     }
 
-    /// <summary>Rows of a report kept as data (<see cref="Keep"/>): the problems with their facts and the index the first had in its report,
-    /// from which <see cref="Replay"/> moves their Cause facts. It references no analysis, so its owner can hold it across versions.</summary>
+    /// <summary>Rows of a report kept as data, read in two ways: a library segment's rows (<see cref="Keep"/>), the problems with their facts
+    /// and the index the first had in its report, from which <see cref="Replay"/> moves their Cause facts; and the open round's held problems
+    /// (<see cref="Begin"/>; R7-T1), kept from 0, which Commit adds through Add and which are never replayed. It references no analysis, so
+    /// its owner can hold it across versions.</summary>
     internal sealed class Kept
     {
         private readonly List<MirProblem> problems = [];
