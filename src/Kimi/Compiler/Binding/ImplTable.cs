@@ -330,15 +330,16 @@ internal sealed class ImplTable
         (this.Pass, this.listPass) = (Binding.Frozen, this.listPass == this.Pass ? Binding.Frozen : this.listPass);
     }
 
-    /// <summary>Gets the first path the pass made current and left unsettled: not verified, or still Checking, or at its OCC-X limit
-    /// (Unsupported). The library's freeze refuses one (Binding.FreezeLibrary; PLAN G949 Stage 2 U3, design R3.7 C1): a frozen path
-    /// stops verification at its IsVerified return, so no reading compilation verifies one on the shared object.</summary>
+    /// <summary>Gets the first path the pass made current and left unsettled: not verified, or at its OCC-X limit (Unsupported); a path
+    /// whose verification is still open is the obligation table's (Binding.Verifying), which the freeze asks too. The library's freeze
+    /// refuses one (Binding.FreezeLibrary; PLAN G949 Stage 2 U3, design R3.7 C1): a frozen path stops verification at its IsVerified
+    /// return, so no reading compilation verifies one on the shared object.</summary>
     /// <returns>The path, or null when every current path is verified.</returns>
     internal BoundConformancePath? UnsettledPath()
     {
         foreach (var path in this.paths.Values)
         {
-            if (path.Current && (!path.IsVerified || path.Checking || path.Unsupported))
+            if (path.Current && (!path.IsVerified || path.Unsupported))
             {
                 return path;
             }

@@ -6,8 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class KimiLibrary
 {
-    // Only immutable text and tokens are shared. SourceDocument's lazy line map and the mutable
-    // syntax/binding graph belong to each compilation. No resource IO on rebind.
+    // Only immutable text and tokens are shared across freezes. Each freeze makes its own SourceDocuments and syntax/binding graph, which
+    // every compilation reading that library shares (PLAN G949 Stage 2 U3), their line maps formed by the freeze (PLAN G1072). No resource
+    // IO on rebind.
     private static class Sources
     {
         internal static readonly Source[] All =

@@ -172,9 +172,7 @@ public sealed partial class Binding
         if (symbol.Property is { } property)
         {
             var target = Grouped(node);
-            var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-            var write = assignment && target.Parent!.Akind == KotoKind.Equals;
-            var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+            var update = IsWriteTarget(node, out var write) && !write;
             if (IsSpecialField(node, out var specialFunction) && specialFunction.IsConstructor)
             {
                 if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
