@@ -12,9 +12,14 @@ public sealed partial class Binding
     private readonly PropertyUpdateStorageRows propertyUpdateStorage;
     private readonly PropertyUpdateInputRows propertyUpdateInputs;
 
+    // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
+    // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
+    // is standard. That target locates the Field's Place, and the target's own getter is not called for it; an update's read by the
+    // getter is a value, which no Place walk takes. A getter result, and every path rooted in it, stays a root (11.5). The one answer
+    // of every Place walk (NextPathStep, PlaceOriginSource, ElementAccess, ClosureEffects).
     internal static bool IsGetterResult(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
-            KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
+        => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
+            place.BoundSymbol?.Property is { Getter.IsStandard: false } property && !(property.Setter.IsStandard && IsWriteTarget(place, out _));
 
     // SPEC 13.7.1: whether a node, taken as its outermost group (Grouped), is the target of `=` (write) or of a compound assignment,
     // `++` or `--` (an update): the one reading of a Property use's write role.
