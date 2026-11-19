@@ -118,6 +118,14 @@ public sealed partial class MirBorrowsTest
         "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: uniq/(ref/i32 during b) during w) -> i32\n" +
         PairNoise + "    putAny(t, p@follow@ref)\n";
 
+    private const string PairPutSame = "func putAny<U>(t: uniq/U, v: U) => ()\nfunc inspect<T>(value: ref/T) => ()\n" +
+        "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: uniq/(ref/i32 during b) during w) -> i32\n" +
+        PairNoise + "    putAny(t, p@follow@ref)\n";
+
+    private const string PairPickSame = "func pickAny<U>(u: U, v: U) -> U\n    return u@move\nfunc inspect<T>(value: ref/T) => ()\n" +
+        "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: ref/i32 during b) -> ref/i32 during b\n" +
+        PairNoise + "    let h = pickAny(t, p@follow@ref)\n";
+
     private const string PairPick = "func pickAny<U, V>(u: U, v: V) -> U\n    return u@move\nfunc inspect<T>(value: ref/T) => ()\n" +
         "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: ref/i32 during b) -> ref/i32 during b\n" +
         PairNoise + "    let h = pickAny(t, p@follow@ref)\n";
@@ -430,8 +438,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("partLoan", "pa3Bad: inner@ref 1|pa3Bad: leaf.value = 5 1|pa3ConcreteBad: inner@ref 1|pa3ConcreteBad: leaf.value = 5 1|pa3ConcreteOk: inner@ref 1|pa3Ok: inner@ref 1|pa3WholeBad: inner@ref 1|pa3WholeBad: leaf.value = 5 1|pa5FirstBad: inner.0@ref 1|pa5FirstBad: leaf.value = 5 1|pa5Second: inner.1@ref 1|pa5Second: leaf.value = 5 1")]
     // An address names its Place as a Loan does (SPEC 5.2.1 condition 1, 15.6 Addresses; PLAN G667a): x holds the addresses of h.0 and
     // h.2, of two Types, and putPast writes v (r's Loan) into h.0 past x's first element, so h's holder takes the Reached entry of h.0's
-    // Type and keeps r's Loan. A control row: dev's address, which named h by its whole Type, kept it too.
-    [InlineData("partAddress", "twoTypesPastBad: kk = 2 1")]
+    // Type and keeps r's Loan. A control row: dev's address, which named h by its whole Type, kept it too. The twin with the use first
+    // (twoTypesPastOk) is invalid as well (A5 value redesign U3c): x.0 and, through x.1, h.2 are raw layers without an Origin in storage
+    // putPast writes, so it may write its own pointer there and store v through it in storage the body does not own, used after every
+    // point (SPEC 15.6.4's composition, example twoLayers; 5.7 Calls: also as a Tuple element); dev accepted it.
+    [InlineData("partAddress", "twoTypesPastBad: kk = 2 1|twoTypesPastOk: kk = 2 1")]
     public void ACallKeepsTheArgumentByTheStoragesTypeWhateverItsPosition(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
@@ -479,14 +490,18 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
     // Revision 4 (MirOrigins.Outlives; PLAN G824's F1): the pair (c, b) holds by z's implied premise c: b (SPEC 15.3.3), so v, the shared
-    // Loan on p.*, may be kept (SPEC 15.6.4) by putAny's *t, storage the body does not own, and by pickAny's result h, which f returns:
+    // Loan on p.*, may be kept (SPEC 15.6.4) by putAny's *t, storage the body does not own, and by pickAny's result h, which f returns,
+    // where v is the callee's own U (the Same forms; PLAN G935: with `v: V` neither holds a V, the owner's O-360 (a), so those forms are
+    // valid, relabelled from the instantiated reading):
     // `p@follow = 5` conflicts, and without the write nothing does. r's rows (x's Fixed node, the local borrow's Finite one) are not the
     // pair's. Fail-before: the walk from c read every edge of the atoms before c, so those nodes failed the pair, the Loan was dropped and
     // the invalid forms accepted.
     [Theory]
-    [InlineData(PairPut, "    p@follow = 5\n    return 0\n", "f: p@follow = 5")]
+    [InlineData(PairPutSame, "    p@follow = 5\n    return 0\n", "f: p@follow = 5")]
+    [InlineData(PairPut, "    p@follow = 5\n    return 0\n", "")]
     [InlineData(PairPut, "    return 0\n", "")]
-    [InlineData(PairPick, "    p@follow = 5\n    return h\n", "f: p@follow = 5")]
+    [InlineData(PairPickSame, "    p@follow = 5\n    return h\n", "f: p@follow = 5")]
+    [InlineData(PairPick, "    p@follow = 5\n    return h\n", "")]
     [InlineData(PairPick, "    return h\n", "")]
     public void APairsWalkReadsNoUnrelatedRow(string form, string tail, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(form + tail)));

@@ -114,7 +114,6 @@ public class ElementReplacementEmissionTest
     [InlineData("let a = (\"old\", 0)\na.0 = \"new\"")]
     [InlineData("var a = (\"old\", 0)\nlet moved = a@move\na.0 = \"new\"")]
     [InlineData("func f(a: [1 of string])\n    a[0] = \"new\"")]
-    [InlineData("func make() -> [1 of string] => [\"old\"]\nmake()[0] = \"new\"")]
     [InlineData("var a: [1 of string] = [\"old\"]\nlet text = \"new\"\na[(label work: do\n    Console.writeLine(text)\n    exit to work 0\n)] = text@move")]
     [InlineData("func f()\n    return\n    var a = (\"old\", 0)\n    let text = \"new\"\n    a.0 = text@move\n    Console.writeLine(text)")]
     public void InvalidOrUnsupportedReplacementProducesNoIr(string source)

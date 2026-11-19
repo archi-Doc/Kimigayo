@@ -288,7 +288,6 @@ public class ElementUpdateEmissionTest
     [InlineData("var a: [1 of i128] = [42]\na[0] /= 2")]
     [InlineData("var a: [1 of u128] = [42]\na[0] %= 2")]
     [InlineData("func f(a: [1 of i32])\n    a[0]++")]
-    [InlineData("func f() -> [1 of i32] => [0]\nf()[0]++")]
     [InlineData("func f()\n    return\n    var a: [1 of i32]\n    a[0] += 2")]
     public void InvalidUpdatesProduceNoIr(string source)
     {

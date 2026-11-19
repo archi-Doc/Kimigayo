@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
+    private readonly CallablePremiseFailureRows callablePremiseFailures;
 
     // Each selected use of a bounded Callable clause, once per pass: the running pass's part (PassPart, EnterPass).
     private List<CallableEffectUse> callableEffectUses;
@@ -176,4 +176,24 @@ public sealed partial class Binding
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.
     internal readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
+
+    /// <summary>The `callablePremiseFailures` family's one accessor (DECISIONS BU-220): a pass family, an implementation's bounded Callable
+    /// clause that its requirement's premises do not declare, with that requirement, stored with the use's failure by the recorder
+    /// (RecordedFact; a present row always has its Clause); the first failure a use records stays. Its members keep the names its readers
+    /// use.</summary>
+    private readonly struct CallablePremiseFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(IsKoto Clause, FunctionKoto Requirement), PassCounter> Family(ref NodeColumns columns) => ref columns.CallablePremiseFailures;
+
+        internal void TryAdd(Koto use, (IsKoto Clause, FunctionKoto Requirement) failure)
+        {
+            if (!this.TryGetValue(use, out _))
+            {
+                binding.SetRecordedFact(use, Family, failure);
+            }
+        }
+
+        internal bool TryGetValue(Koto use, out (IsKoto Clause, FunctionKoto Requirement) failure) => (failure = binding.RecordedFact(use, Family)).Clause is not null;
+    }
 }

@@ -69,7 +69,8 @@ internal sealed partial class MirBorrows
     }
 
     // A destruction of a case Type over a receiver value: each drop it runs, as a call whose input 0 is the receiver (the view's operand
-    // `call.Operand`, position 0 = call.Count), through each output (Keep); a Limit retention is the depth limit at the location.
+    // `call.Operand`, position 0 = call.Count), through each output (Keep, with the drop row's retention as the plan: the drop composes
+    // as its own call does, whatever call or terminator destroys the value); a Limit retention is the depth limit at the location.
     private void Compose(ulong[] state, in MirTerminator call, int receiver, BoundType type, bool checks)
     {
         var (start, count) = this.DropRows(type);
@@ -80,9 +81,14 @@ internal sealed partial class MirBorrows
         {
             var retention = this.dropRows[i];
             this.deep |= checks && retention.IsLimit;
+            if (this.writeCount > 0 && !retention.IsLimit && !retention.Writes.IsEmpty)
+            {
+                this.SourceSlots(call, retention.Result.Kinds.Length, 0); // Its receiver at position 0, for Keep's Sourcing.
+            }
+
             foreach (var written in retention.IsLimit ? default : retention.Writes)
             {
-                this.Keep(state, call, written, checks);
+                this.Keep(state, call, retention, written, checks);
             }
         }
     }

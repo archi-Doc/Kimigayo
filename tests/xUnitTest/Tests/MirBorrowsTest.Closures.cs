@@ -19,7 +19,11 @@ public sealed partial class MirBorrowsTest
     // Semantics layer) keep the argument's Loan in the environment, as a direct call storing a captured value through a captured exclusive
     // referent keeps that value's Loan in the referent (directStoreBad, directStoreTypedBad: PLAN G269's class B), where the dev MIR
     // accepted them all; a store past a captured exclusive reference also stores the receiver's own content (rule G's self-store, OQ-F7-3
-    // (a)), so the read of `holder` or `slot` after the call errs.
+    // (a)), so the read of `holder` or `slot` after the call errs. That read, `holder@follow` or `slot@follow`, carries what it reaches,
+    // the capture's exclusive Loan on holder or slot itself included (SPEC 15.6: a read through a reference carries the Loans of what it
+    // reaches), with what that local carries (slot's shared Loan on long), and the result it is returned in holds them whatever its Type
+    // (15.6 Holders; the value-flow rule H), so it also outlives their storage (`var holder`, `var slot`, `let long`: records added on
+    // rejected programs under DECISIONS Q13 rule W).
     // A Closure captured into another Closure is read as its body sees it too (nestedVarStoreBad: the `var` local's own Type names the
     // Origins its initializer infers, so its store into `last` was lost on the dev MIR and at 5c5d47ff2; BU's review B1).
     // A `let` binding (letOk, updateOk), a read before the write (exchangeOk), a referent no later use reads (directStoreOk,
@@ -30,11 +34,14 @@ public sealed partial class MirBorrowsTest
     public void AClosureCallStoresIntoItsReceiver()
         => Assert.Equal(
             ["exchangeBad: z@follow = 42", "blockBad: let y: i32 = 5", "holderBad: z@follow = 42", "holderBad: holder@follow",
-                "holderMovedBad: z@follow = 42", "holderMovedBad: holder@follow", "slotBad: z@follow = 42", "slotMovedBad: z@follow = 42",
+                "holderBad: var holder: ref/i32 during x = x", "holderMovedBad: z@follow = 42", "holderMovedBad: holder@follow",
+                "holderMovedBad: var holder: ref/i32 during x = x", "slotBad: z@follow = 42", "slotMovedBad: z@follow = 42",
                 "varBad: z@follow = 42", "updateBad: z@follow = 43", "refStoreBad: z@follow = 42", "refStoreBad: holder@follow",
-                "refExchangeBad: z@follow = 42", "refTwiceBad: z@follow = 42", "refTwiceBad: holder@follow",
-                "directStoreBad: let short = 2", "directStoreBad: slot@follow", "directStoreTypedBad: let short = 2",
-                "directStoreTypedBad: slot@follow", "nestedVarStoreBad: z@follow = 42"],
+                "refStoreBad: var holder: ref/i32 during x = x", "refExchangeBad: z@follow = 42", "refTwiceBad: z@follow = 42",
+                "refTwiceBad: holder@follow", "refTwiceBad: var holder: ref/i32 during x = x",
+                "directStoreBad: let short = 2", "directStoreBad: slot@follow", "directStoreBad: var slot = long@ref",
+                "directStoreBad: let long = 1", "directStoreTypedBad: let short = 2", "directStoreTypedBad: slot@follow",
+                "directStoreTypedBad: var slot = long@ref", "directStoreTypedBad: let long = 1", "nestedVarStoreBad: z@follow = 42"],
             Problems("""
                 func exchangeBad(z: uniq/i32, x: ref/i32) -> i32
                     origin z outlives x
@@ -707,7 +714,8 @@ public sealed partial class MirBorrowsTest
 
     // Rule G's self-store reaches a Closure receiver as a method's `self` (OQ-F7-3 (a); DECISIONS R4-M148): a call through a receiver whose
     // content is exclusively borrowed storage stores that content, the capture's own Loan, past it, so a read of the captured binding after
-    // the call errs (holderReadBad, by SPEC 15.6.4's per-argument letter; PLAN G148 (2)'s GXS would recover it), also where the stored part
+    // the call errs (holderReadBad, by SPEC 15.6.4's per-argument letter; PLAN G148 (2)'s GXS would recover it; the read, returned, also
+    // outlives holder's storage: the value-flow rule H, a record added under DECISIONS Q13 rule W), also where the stored part
     // is abstract and so may be an exclusive reference (R4-M147's Q1 (a)): in every case view (selfPair, selfPairChild), as for the method
     // analog (methodAbstract, unchanged), and beside the argument's true store into the environment (pairStoreBad, pairCellBad: `v@follow
     // = x` in the uniq view) and the argument's store into the environment given one kind for every holder W reaches, E past the written
@@ -719,7 +727,8 @@ public sealed partial class MirBorrowsTest
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(
-            ["holderReadBad: holder@follow 1", "methodAbstract: slot 1", "methodAbstract: var slot = other 1",
+            ["holderReadBad: holder@follow 1", "holderReadBad: var holder: ref/i32 during x = x 1", "methodAbstract: slot 1",
+                "methodAbstract: var slot = other 1",
                 "pairCellBad: cell.item@follow 3", "pairCellBad: var cell = Cell2c3.init(item: other@move) 3",
                 "pairCellRead: cell.item@follow 3", "pairCellRead: var cell = Cell2c3.init(item: other@move) 3",
                 "pairStoreBad: slot@follow 3", "pairStoreBad: var slot = other@move 3",
@@ -1088,8 +1097,9 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        // stores' two Language problems and held's uniq view's; held's owner view and limited record located Unsupported_Kd.
-        Assert.Equal(3, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0));
+        // stores' three Language problems (its returned read outlives holder: rule H, DECISIONS Q13 rule W) and held's uniq view's; held's
+        // owner view and limited record located Unsupported_Kd.
+        Assert.Equal(4, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0));
     }
 
     // A program's Loan problems and located Unsupported_Kd in its own bodies, each with its function, subject, code and views (bit i for view
