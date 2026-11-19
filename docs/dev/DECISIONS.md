@@ -10529,6 +10529,13 @@ resumed by R4-M86 (2026-10-20).
     destroys nothing in any instance.
   - Amended by BU-228 (the sa unit, 2026-11-19): the one Copy verdict is now `ProveCopy`, which judges a pair layer per admitted case;
     `CopiesInEveryCase` is removed and `TyCtxt.CopyFacts` reads `ProveCopy`.
+  - **`CopyFacts`' key** (R7-N5 B5b, the Middle's RP17 C-411; supersedes BU-88's "one per node a definition's premises are read at
+    (`Binding.DefinitionUse`)"): one `CopyFacts` per definition, keyed by the definition's declaration symbol, never an instance's (a
+    symbol is its declaration's identity; every reader passes a MIR body key's `Decl` or none), and one `topLevelCopies` slot for none
+    (a module's top-level statements, the library root's premises); both TyCtxt views, cleared in `ResetViews`. Reason the node key
+    no longer holds: a node-keyed memo would be a `NodeColumns` family (BU-220), and a library definition's facts are this
+    compilation's proofs, which the frozen library's columns cannot hold. The answers are unchanged (`EffectPremises(definition)`
+    depends only on `DefinitionUse(definition)`); no two definitions shared one premises node on the 44 milestones.
 - **BU-87 A Waiting join publishes what it awaits: `ResultContext.Awaiting`** (2026-11-03; PLAN G335, scheduled by the owner after the
   joint landing, 「合同着地が完了したら、下記のOpen issuesに着手してください。」, and kept with BU on dev's joins on 2026-11-03 (PLAN G396))
   - The defect: position waiting (AwaitsFor, SPEC 14.9.2 step 3) re-walked every Waiting join a source held, down to its leaves,
@@ -14602,6 +14609,12 @@ resumed by R4-M86 (2026-10-20).
     stays while a family is written through it, and the batch converting the last one (E) deletes it. `PairAdmitted` and
     `ImplicitPairAdmitted` keep `EnsurePassNode` (ruling O3, PLAN G1070) until the last family reading through it converts.
     `originInferences` stays out (B's ruling 2, PLAN G1078). Ratchet ("Node-keyed table members in Binding") 76 -> 70.
+  - **R7-N5 B5b** (the Back's batch, Q-541; design `b4b5b-design.md` §4-§5, B's rulings 4, 7, 9): `effectBoundRejections` and
+    `callablePremiseFailures`, step-cleared at `PrepareEffectBounds`, become pass families of `NodeColumns`
+    (`StampedColumn<T, Binding.PassCounter>`), their Clears deleted: the order probe found no read or write of either before its step
+    in any pass over every class of the suite, so the pass stamp is the step's reset (the N5 design's §3 rule 2). Both are failure
+    facts stored through the recorder (`SetRecordedFact`). `TyCtxt.copies` stays a view memo outside `NodeColumns` and is keyed by
+    the definition's declaration symbol (`topLevelCopies` for none; BU-88's key line). Ratchet 70 -> 67.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
