@@ -308,7 +308,7 @@ public sealed partial class Binding
         }
 
         var contract = this.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        if (!ComparisonTypes.IsComposite(type))
+        if (!TyCtxt.IsComposite(type))
         {
             return this.OperatorRequirement(type, contract, scope, BindingFailure.UnsatisfiedConstraint);
         }
