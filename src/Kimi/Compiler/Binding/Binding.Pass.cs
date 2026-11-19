@@ -74,7 +74,6 @@ public sealed partial class Binding
         this.arrayInferenceFailures?.Clear();
         this.noInitFailures?.Clear();
         this.ResetSyntheticCalls();
-        this.implicitPairFollows.Clear();
         foreach (var construction in this.enumConstructions.Values.In(this.pass))
         {
             construction!.IsValid = false;

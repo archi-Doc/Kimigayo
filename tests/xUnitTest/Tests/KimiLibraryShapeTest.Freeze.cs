@@ -56,6 +56,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.QualificationFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.PerCallOrigins"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.PairFollows"] = "never written: the library follows no pair layer",
+        ["NodeColumns.ImplicitPairFollows"] = "never written: the library follows no pair layer",
         ["NodeColumns.OriginTwins"] = "never written: a twin is a failed relation's record, and the library pass records no failure",
     };
 

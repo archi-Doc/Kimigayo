@@ -189,8 +189,8 @@ public partial class SyntaxIdTest
     // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
     // generic container's group whose struct a parameter names; QualificationFailures: a member read without its `self.`, a failure
     // family's program, which reports its failure at each Bind; R7-N5's: PerCallOrigins, a call only an argument's own per-call Origin
-    // would satisfy; OriginTwins, a body-local borrow's failed local clause, A5's twin; PairFollows, a `@follow` of a pair layer). Checked
-    // after each edit (N5-5's review C1):
+    // would satisfy; OriginTwins, a body-local borrow's failed local clause, A5's twin; PairFollows, a `@follow` of a pair layer;
+    // ImplicitPairFollows, Milestone28's implicit follows). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -211,6 +211,7 @@ public partial class SyntaxIdTest
     [InlineData("PerCallOrigins", "func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(pick)\n", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("OriginTwins", "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n", DiagnosticCode.UnsatisfiedOriginRelation_Kd)]
     [InlineData("PairFollows", "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc view<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref\n")]
+    [InlineData("ImplicitPairFollows", "milestone:Milestone28")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

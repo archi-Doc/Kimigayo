@@ -10,7 +10,7 @@ public sealed partial class Binding
     private readonly PairFollowRows pairFollows;
 
     // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.3, 7.3), with their admitted sets.
-    private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
+    private readonly ImplicitPairFollowRows implicitPairFollows;
     private int termWalks;
 
     /// <summary>Gets the steps the walks of one Type's parts took in the latest pass (PLAN G647): a layer (ref, uniq or pair) followed by
@@ -305,5 +305,19 @@ public sealed partial class Binding
 
         internal SemanticsMask GetValueOrDefault(Koto node)
             => node.SyntaxOwner is { } table ? table.Hir.Families.PairFollows.Get(node.SyntaxId, binding) : SemanticsMask.None;
+    }
+
+    /// <summary>The `implicitPairFollows` family's one accessor (DECISIONS BU-220): a pass family, the admitted set of a receiver's stored
+    /// pair layer that selection follows implicitly, kept in the receiver's module's NodeColumns at its SyntaxId (None, the column's
+    /// default, for any other node). Its members keep the names its readers use.</summary>
+    private readonly struct ImplicitPairFollowRows(Binding binding)
+    {
+        internal SemanticsMask this[Koto node]
+        {
+            set => HirTables.Of(node).Families.ImplicitPairFollows.Ref(node.SyntaxId, binding) = value;
+        }
+
+        internal SemanticsMask GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.ImplicitPairFollows.Get(node.SyntaxId, binding) : SemanticsMask.None;
     }
 }
