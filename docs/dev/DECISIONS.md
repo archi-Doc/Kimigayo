@@ -11026,6 +11026,9 @@ resumed by R4-M86 (2026-10-20).
     `make<F>(f: ref/F, u: i64)`). A Literal at T is no evidence (SPEC 10.2.1), so `make(c@ref, 1)` keeps the fact. Open: an environment
     judgment on an unsolved slot still makes the candidate Pending before an independent Constraint's refutation. L531's
     unsubstituted-Origin return stays fact-less: valid programs reach it.
+  - Amended by R7-M52 (R7-P2 commit 1, 2026-11-19): the per-slot judgment is the solve's frame's (`SlotFrame.EnvironmentJudgment`),
+    written by `Infer` in its own frame and read by the candidate's trial; the Binding fields `environmentJudgments` and
+    `environmentScratch` are deleted.
 
 - **BU-84 TransferRequired is judged in Binding** (2026-11-03; superseded in part by R5-M185; R6-check H1; the owner's Q8 approval
   「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-package.md` §3.7 and `Q8-design-2.md` §2.7; H0's division, R5-M182; Q14's runs 1
@@ -22326,6 +22329,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     G988.
   - **Cost named:** an N-candidate call rents N frames (N-1 more) and a `frameScratch` array on every call; drops N clears, the
     saves and the restore; warm Bind 0 B at N = 10/20/40. RP8 in c's window (design-c P2.4 N1).
+  - Amended by R7-M52 (R7-P2 commit 1): `SlotFrame` gains the environment-judgment column beside the invariant marks; the store's
+    column list is stated once there.
 - **R7-M41 A judgment about a Type reads its identity class** (Front, 2026-11-19; R7-C2c2 c2-4a, Q-514; Major, an acceptance
   mover; design `design-c24.md` Revision 1 with R1.4 and R1.8: the design review and R1.8's short check ACCEPT WITH NOTES, the
   implementation review ACCEPT WITH NOTES, F's C2 ruling 146; F's C2 rulings 125-234; the owner's O-344 (a), O-345 (b), O-410 (a);
@@ -22652,6 +22657,43 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Deleted:** `HasCallRelation`.
   - **Rejected:** a split by caller (b1a/b1b, a second rule); Binding keeping a judgment for enclosing-call-region ends (a second
     judge); keeping `HasCallRelation` (a suppression that reads no failed input).
+- **R7-M52 A call's evaluation is one explicit argument and a candidate's result is one row** (Back, 2026-11-19; R7-P2, plan §5.1's
+  P2 row; design `back\notes\r7-p2\p2-design.md` Revisions 0-1c, the Front's design review C-408 (commit 1 ACCEPT WITH CONDITIONS),
+  B's rulings 1-13; Major, behaviour-preserving) SPEC 10.2.2, 10.5.2, 10.8, 10.8.1, 8.10, 7.7.4. P2's one entry: each of its commits
+  adds its part here. Supersedes in part BU-86's writer sentence ("records the judgment per slot (`environmentJudgments`, ...)": the
+  judgment is now its solve's frame's) and amends R7-M40's column list.
+  - **Commit 1: the trial's fields leave the Binding** (`4e75e382f`).
+    - **Representation.** (a) The frame's environment-judgment column (BU-86's judgment, under R7-M40's rule that a solve's per-slot
+      marks are its frame's): `SlotFrame.EnvironmentJudgment(slot)` and `SetEnvironmentJudgment(slot, j)`, a typed `PendingJudgment?`
+      column of `InferCtxt`, grown with the frame, cleared by `ClearTypes` (so by `FixCallSlots` at every trial's and re-trial's
+      start) and at Return. Typed, it is outside the store's `object?[]` undo log, so it is written only with no snapshot open
+      (asserted; the store's contract says so). `Infer` writes its own slot's judgment in its own frame when the slot has none; the
+      trial's one read (`EnvironmentJudgment`, `TryCandidateCore`) reads the candidate's frame. (b) `SolveBinder`
+      (`Binding.CallSlots.cs`, beside `CallSlotOwner`), the binder of one solve, which the unifier is given: a candidate's function (a
+      constructor included), an enum constructing a Case, a referenced function. A readonly struct made only from a `FunctionKoto` or
+      an `EnumKoto`, through one private constructor that forms its `SlotOwner` by `CallSlotOwner` once per solve. Its `Declaration`'s
+      Constraints decide a read Type (`InfersReadReferent`, SPEC 10.2.2 step 1, 3.5.3); its `SlotOwner`'s slots are the ones bound
+      (`ContainerSlot`, `InferLength`). It is `Infer`'s fourth parameter, whose meaning changed (slot owner to binder), so its type
+      changed: a caller written for the old meaning does not compile. `SlotSolution.Solve` is a view of its `Binder`, like
+      `SlotOwner`; the function references' solves pass `new(function)`.
+    - **The store's columns, stated once:** a frame's Type slots, length slots, invariant marks and environment judgments, read
+      through read-only views and written only through `SlotFrame`. G812's pair-slot selectors and solve node and R7-C3's view are not
+      on dev at this landing; each joins this list when it lands.
+    - **Rule.** No Binding field carries a trial's value to the unifier: the solve's binder is `Infer`'s argument and a slot's
+      environment judgment is its solve's frame's, so a nested solve under a trial reads its own binder's Constraints and writes its
+      own frame.
+    - **Deleted:** `Binding.activeInferenceFunction`, `environmentJudgments` and `environmentScratch`, with `TryCandidate`'s six
+      bracket lines (save, set, rent, restore, return), and `CallSlotOwner(function)` at the expected-result `Infer`
+      (`TryCandidateCore`). The trial's bracket keeps `OpenTrial`/`CloseTrial`, the `wholes` mark and the acquisition.
+    - **Rejected:** the judgments as a `SlotSolution` member reached through `SignatureEvidence` (a destination that is not
+      evidence); boxed judgments in the logged `object?[]` columns (an allocation per judgment); the argument `Koto` alone in an
+      `object?[]` column (the slot symbol is not derivable from the index); the environment set kept in the trial's bracket or beside
+      the frame; the binder on the frame (`ShapeEvidence`'s frame serves every candidate in turn, `FunctionReferences` takes a frame
+      from outside); the binder as a reordered `Koto` parameter (it breaks the old callers once, but the type then says nothing); a
+      caller census at landing instead of the type (a reading, not a guarantee).
+    - **Cost:** Bind time unchanged within the measurement, warm Bind 0 B, cold first Bind -560 B to +376 B: the judgments move from
+      one pooled array of at least 16 per renting trial depth to one of max(capacity, 4) per pooled frame. Scaling: no new walk.
+  - Commits 2a, 2b0, 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
