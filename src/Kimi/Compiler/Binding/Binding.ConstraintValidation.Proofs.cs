@@ -398,7 +398,9 @@ public sealed partial class Binding
 
         // A side is read as the judge identifies it in the view (8.2.3: a fact about a Type is evidence for an identical one).
         bool Reads(BoundConstraint proposition, BoundConstraint premise)
-            => proposition.Subject is { } subject && (Side(subject, premise.Subject) || Side(subject, premise.RequiredType));
+            => premise.Kind is ConstraintKind.Not or ConstraintKind.And or ConstraintKind.Or
+                ? (premise.Left is { } left && Reads(proposition, left)) || (premise.Right is { } right && Reads(proposition, right))
+                : proposition.Subject is { } subject && (Side(subject, premise.Subject) || Side(subject, premise.RequiredType));
 
         bool Side(BoundType subject, BoundType? side)
             => side is not null && (ReferenceEquals(subject, side) || this.IdentityProven(subject, side, scope));
