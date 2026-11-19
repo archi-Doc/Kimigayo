@@ -435,10 +435,10 @@ public sealed partial class Binding
     // is (FailErasedOwned; a reference part by its written arguments, FailUnformedOwned): the erasure comes after a selection that
     // the split leaves open, and its Owned proof reads no unformed Type. The selection is first judged in each combination of split
     // cases (SelectionOnSplit, G812 ruling 139): where it fails in every one the call keeps its own record, the canonical run's
-    // classification, as BindCall records it with no evaluation to explain it (FailWaitingSelection). Each anonymous function awaiting
-    // the call in a part's tree is completed as a value call's part on the split completes it (CompleteSplitPart, G812 rulings 134,
-    // 136), at the Type the trial of the candidate the canonical run selects (SelectedCandidate) forms for its position in the
-    // canonical case, as SlotSolution.Type forms a parameter.
+    // classification, as BindCall records it with no evaluation to explain it (FailWaitingSelection). Each part awaiting the call is
+    // completed as a value call's part on the split is (CompleteValueCallPart; G812 rulings 134, 136, 143), at the parameter the trial
+    // of the candidate the canonical run selects (SelectedCandidate) forms in the canonical case, marked open where a split binding
+    // decides it (OpenForm), as SlotSolution.Type forms a parameter; the call rests on the first that fails (CompleteOnSplit).
     private BoundType? FailUnformedCall(ref CallEvaluation evaluation, bool fails, ProbedSelection canonical)
     {
         var call = evaluation.Call;
@@ -449,19 +449,18 @@ public sealed partial class Binding
         }
 
         var shaped = canonical.Kind == CallSelection.Selected ? this.SelectedCandidate(ref evaluation, canonical.Winner) : -1;
+        Koto? completion = null;
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
             var part = call.ArgumentNodes[a];
-            if (shaped >= 0 && evaluation.Evaluated[shaped] is { Symbol.Declaration: FunctionKoto function } candidate &&
-                function.Parameters[evaluation.Mapping[a]].Type.BoundType is { } declared)
-            {
-                var trial = (function, Frame: evaluation.Frames[shaped], evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType);
-                _ = this.CompleteSplitPart(
-                    part,
+            if (shaped >= 0 && evaluation.Evaluated[shaped] is { Symbol.Declaration: FunctionKoto function } candidate && part.BoundType is null &&
+                this.KindOf(part) != PartKind.Typed && function.Parameters[evaluation.Mapping[a]].Type.BoundType is { } declared &&
+                this.OpenForm(
                     declared,
-                    trial,
-                    static (binding, s, type) => binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths),
-                    evaluation.Scope);
+                    (function, Frame: evaluation.Frames[shaped], evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType),
+                    static (binding, s, type) => binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths)) is { } parameter)
+            {
+                completion ??= this.CompleteOnSplit(part, parameter, evaluation.Scope) ? part : null;
             }
 
             if (ErasedByEveryCandidate(ref evaluation, a) is not { } erased)
@@ -479,7 +478,7 @@ public sealed partial class Binding
             }
         }
 
-        return FailedShapeMember(in evaluation) is { } failed ? this.CompleteDependent(call, failed) : this.Fail(call, BindingFailure.Unsupported, true);
+        return (FailedShapeMember(in evaluation) ?? completion) is { } failed ? this.CompleteDependent(call, failed) : this.Fail(call, BindingFailure.Unsupported, true);
     }
 
     // DECISIONS D3 with rule W (G812 ruling 139; temporary with it): a named call's selection judged in each combination of split

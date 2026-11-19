@@ -196,8 +196,9 @@ public sealed partial class Binding
     //   where its failure is its own record (CompleteFailedPart); the parts before it passed that case, and the result is judged
     //   only where it failed first (a call that forms no result checks none: BindValueCall);
     // - a part whose parameter reads no split layer is completed at it as the unsplit path completes it (CompleteValueCallPart): its
-    //   check rests on nothing, so an anonymous function's body is judged; in any other part that fails in no case, each anonymous
-    //   function its tree holds is completed at the canonical case's Type for its position (CompletePartOnSplit, CompleteSplitPart);
+    //   check rests on nothing, so an anonymous function's body is judged; any other part that fails in no case and awaits the call is
+    //   completed the same way at the canonical case's open formed parameter (CompletePartOnSplit, OpenForm), where every check that
+    //   reads a position a split binding decides rests;
     // - the call then fails by itself on a misfit, or where it fails in every combination with no part failing so; else it rests on
     //   a failed part (rule W), else on the split (one located Unsupported_Kd, O-332 (a)).
     private BoundType? BindValueCallOnSplit(InvocationKoto call, BindingScope scope, BoundType callee, BoundType? expected, int mark)
@@ -266,15 +267,39 @@ public sealed partial class Binding
         }
     }
 
-    // G812 rulings 132, 136: a part of a value call on the split that fails in no case, completed: one whose run read no split layer at
-    // the parameter that run formed (H2), any other by the walk of its tree (CompleteSplitPart), each anonymous function in it at the
-    // Type the canonical case forms for its position, as ItemPart forms the Item's parameter (none past the Item's parameters: the
-    // call fails by its count). The part that failed so, else null.
+    // G812 rulings 132, 136, 143: a part of a value call on the split that fails in no case, completed by the unsplit completion
+    // (CompleteValueCallPart): one whose run read no split layer at the parameter that run formed (H2), any other part awaiting the call
+    // at the Item's parameter in the canonical case, marked open where a split binding decides it (OpenForm, as ItemPart forms the
+    // parameter; none past the Item's parameters: the call fails by its count). A typed part awaits nothing; one at a parameter open as a
+    // whole rests (RestsAtOpenPosition). The part that failed so, else null (CompleteOnSplit).
     private Koto? CompletePartOnSplit(Koto argument, in SplitPart part, BoundType item, BindingScope scope, int i)
-        => !part.Split ? (part.Parameter is { } parameter && this.CompleteValueCallPart(argument, parameter, scope) is null ? argument : null)
-            : ((FunctionKoto)item.Symbol!.Declaration).Parameters is var parameters && i < parameters.Count && parameters[i].Type.BoundType is { } declared
-                ? this.CompleteSplitPart(argument, declared, (item, scope), static (binding, state, type) => binding.ItemPart(type, state.item, (FunctionKoto)state.item.Symbol!.Declaration, state.scope), scope)
-                : null;
+        => (!part.Split ? part.Parameter
+            : this.KindOf(argument) != PartKind.Typed && ((FunctionKoto)item.Symbol!.Declaration).Parameters is var parameters && i < parameters.Count &&
+                parameters[i].Type.BoundType is { } declared
+                ? this.OpenForm(declared, (item, scope), static (binding, state, type) => binding.ItemPart(type, state.item, (FunctionKoto)state.item.Symbol!.Declaration, state.scope))
+                : null) is { } parameter && this.CompleteOnSplit(argument, parameter, scope) ? argument : null;
+
+    // DECISIONS D3 (rule W): a resting part of a split call completed at `parameter` by the unsplit completion (CompleteValueCallPart),
+    // read by no check of that call but its failure (SPEC 23.1.2: the call rests on a failed part, CompleteDependent; as
+    // CompleteUnselected, no frame is open): whether it failed, by a record of its own or one it rests on. A part that rests where a split
+    // binding decides its position (RestsAtOpenPosition, there or below it) completes nothing and fails nothing.
+    private bool CompleteOnSplit(Koto part, BoundType parameter, BindingScope scope)
+    {
+        if (RestsAtOpenPosition(part, parameter))
+        {
+            return false;
+        }
+
+        var consultation = this.SuspendConsultation();
+        try
+        {
+            return this.CompleteValueCallPart(part, parameter, scope) is null && (part.BindingFailure != BindingFailure.None || this.prerequisites.ContainsKey(part));
+        }
+        finally
+        {
+            this.ResumeConsultation(consultation);
+        }
+    }
 
     // G812 ruling 132: whether one part of a value call's split check (an argument, or the result after them) fails in every case of
     // the bindings it reads, by its own search, and the waiting part it fails at with the canonical case's Type where every failing

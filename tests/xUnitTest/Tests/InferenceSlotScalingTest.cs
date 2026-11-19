@@ -99,10 +99,10 @@ public class InferenceSlotScalingTest
         string List(Func<int, string> item) => string.Join(", ", all.Select(item));
     }
 
-    // DECISIONS D3 (G812 ruling 136): the walk of a split part's tree completes every anonymous function it reaches, each by one
-    // one-run search (CanonicalForm), so a tree chain of n Tuple elements each holding a contextual Case whose payload is an anonymous
-    // function (`(.Some(func (x) => true), (...))` at `(Option<(s0/Box) -> i32>, (...))`) takes split runs linear in n, and each
-    // body keeps its record (7c04029eb completed none: one run and Unsupported_Kd alone at every n).
+    // DECISIONS D3 (G812 rulings 136, 143): a resting part is completed at its open formed parameter (OpenForm, one one-run search per
+    // part), so a tree chain of n Tuple elements each holding a contextual Case whose payload is an anonymous function
+    // (`(.Some(func (x) => true), (...))` at `(Option<(s0/Box) -> i32>, (...))`) takes split runs at most linear in n, and each body
+    // keeps its record (7c04029eb completed none: one run and Unsupported_Kd alone at every n).
     [Fact]
     public void ASplitPartsTreeCompletesItsAnonymousFunctionsInRunsLinearInItsDepth()
     {
@@ -154,6 +154,32 @@ public class InferenceSlotScalingTest
                 string.Concat(all.Select(i => $"    let b{i} = Box.init({i})\n")) +
                 $"    return put<U0>(u0@move, {string.Join(", ", all.Select(i => $"b{i}@move"))}, func (x) => true, {(ambiguous ? "stop()" : "g@move")})\n";
             Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+            return MinimalEmissionTest.Analyze(source).Binding.SplitCaseRuns;
+        }
+    }
+
+    // DECISIONS D3 (G812 rulings 141, 142; the Middle's C-359 re-check of 8b5807535): SelectionOnSplit's second search (every combination
+    // asked whether it selects the canonical run's candidate, which reads no split) over a tree chain of n rL4-shaped named calls
+    // (`h(w_i@move, 6, <level i + 1>)`: `h<s/W>`, refused only through the split, beside the applicable `h<X>`): every level accepted, as
+    // h<X> is selected in every case, in split runs linear in n (n = 30, 60, 120; the Middle's rq30 and rq60).
+    [Fact]
+    public void ANamedCallsSecondSelectionSearchTakesRunsLinearInItsChain()
+    {
+        var runs = new[] { 30, 60, 120 }.Select(Runs).ToArray();
+        Assert.True(runs[0] < runs[1] && MirBorrowsTest.Grows(runs, 2), $"runs {string.Join(", ", runs)}");
+
+        static long Runs(int count)
+        {
+            var call = "0";
+            for (var i = count - 1; i >= 0; i--)
+            {
+                call = $"h(w{i}@move, 6, {call})";
+            }
+
+            var source = "func h<s/W>(m: s/W, n: s/(ref/i64 during b), j: i32) -> i32\n    s is owner\n    return 0\n" +
+                "func h<X>(m: X, n: i32, j: i32) -> i32\n    return 1\n" +
+                $"func call<t/U>(m: t/U, {string.Join(", ", Enumerable.Range(0, count).Select(i => $"w{i}: U"))}) -> i32\n    t is owner or ref\n    return {call}\n";
+            Assert.Equal("clean", DiagnosticCorpus.RecordProfile(source));
             return MinimalEmissionTest.Analyze(source).Binding.SplitCaseRuns;
         }
     }

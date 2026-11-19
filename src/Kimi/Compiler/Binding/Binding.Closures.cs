@@ -235,6 +235,14 @@ public sealed partial class Binding
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, OpenParts open = default)
     {
+        if (expected is { ContainsOpen: true })
+        {
+            // DECISIONS D3 (temporary with BoundTypeKind.Open): the expected signature's parts a split binding decides are open, read
+            // once from its marks (OpenParts.Of) and then removed.
+            open = OpenParts.Of(expected, open);
+            expected = this.Unmarked(expected);
+        }
+
         // SPEC 8.11.1: a literal's effect items are judged as every function's are (BindEffectBound), on every path; a literal
         // declares no bound.
         for (var i = 0; i < function.EffectBounds.Count; i++)
@@ -491,5 +499,23 @@ public sealed partial class Binding
     private readonly record struct OpenParts(bool Result, ulong Inputs)
     {
         internal bool Input(int i) => i < 64 && (this.Inputs & (1UL << i)) != 0;
+
+        // DECISIONS D3: `open` with the parts of `expected` that hold a mark: an input or the result, or every part where the whole is
+        // marked (a signature a split binding decides as a whole).
+        internal static OpenParts Of(BoundType expected, OpenParts open)
+        {
+            if (expected is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })
+            {
+                return new(true, ulong.MaxValue);
+            }
+
+            var bits = open.Inputs;
+            for (var i = 0; i < Math.Min(inputs.Components.Count, 64); i++)
+            {
+                bits |= inputs.Components[i].ContainsOpen ? 1UL << i : 0;
+            }
+
+            return new(open.Result || result.ContainsOpen, bits);
+        }
     }
 }

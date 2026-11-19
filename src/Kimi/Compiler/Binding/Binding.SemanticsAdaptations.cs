@@ -334,31 +334,6 @@ public sealed partial class Binding
         return rests;
     }
 
-    // DECISIONS D3 (temporary with it; G812 ruling 134): the canonical case's Type of a declared Type (OpenForm) without its marks, and
-    // of a Function Type its parts whose own formation read a split binding (OpenParts: an input or the result holding a mark); none
-    // where its formation read one that no part accounts for (the Type is open as a whole).
-    private (BoundType? Type, OpenParts Open) CanonicalForm<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
-    {
-        var marked = this.OpenForm(declared, state, form);
-        if (marked is not { ContainsOpen: true })
-        {
-            return (marked, default);
-        }
-
-        if (marked is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })
-        {
-            return default;
-        }
-
-        var open = new OpenParts(result.ContainsOpen, 0);
-        for (var i = 0; i < Math.Min(inputs.Components.Count, 64); i++)
-        {
-            open = inputs.Components[i].ContainsOpen ? open with { Inputs = open.Inputs | (1UL << i) } : open;
-        }
-
-        return (this.Unmarked(marked), open);
-    }
-
     // DECISIONS D3 (temporary with it; G812 rulings 134, 143; the owner's O-428 (a)): the Type `form` gives a declared Type in the
     // canonical case, each binding at its first admitted Semantics (a search's first run, RestsOnSplitCases), marked open
     // (BoundTypeKind.Open) at each position whose formation read a split binding (OpenMarked); null where it formed none. The split
@@ -366,11 +341,20 @@ public sealed partial class Binding
     private BoundType? OpenForm<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
     {
         this.openForm = null;
-        _ = this.RestsOnSplitCases(this.unformedWrites, (declared, state, form), static (binding, check) =>
+        var query = this.BeginSelectionQuery(); // A query: its formations publish nothing (their obligations, causes and counters).
+        try
         {
-            binding.openForm = binding.OpenMarked(check.declared, check.state, check.form);
-            return false;
-        });
+            _ = this.RestsOnSplitCases(this.unformedWrites, (declared, state, form), static (binding, check) =>
+            {
+                binding.openForm = binding.OpenMarked(check.declared, check.state, check.form);
+                return false;
+            });
+        }
+        finally
+        {
+            this.EndSelectionQuery(query);
+        }
+
         return this.openForm;
     }
 

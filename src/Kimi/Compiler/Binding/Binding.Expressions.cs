@@ -145,6 +145,13 @@ public sealed partial class Binding
     private static BindingState CompletedState(BindingState state, BoundType? type)
         => state == BindingState.Invalid ? state : type is null ? BindingState.Unresolved : BindingState.Resolved;
 
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; rule W): an unbound part other than an anonymous function at a position a split
+    // binding decides as a whole: every check of it reads the position, so it rests, unbound, as a part awaiting its position does,
+    // and is bound on its own once its call ends (CompleteUnselected). A typed part there holds (the relation holds at a mark); an
+    // anonymous function reads the mark (BindClosure: every part open).
+    private static bool RestsAtOpenPosition(Koto node, BoundType? expected)
+        => expected is { Kind: BoundTypeKind.Open } && node.BoundType is null && KotoHelper.UnwrapParentheses(node) is not FunctionKoto { IsAnonymous: true };
+
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
 
@@ -218,7 +225,7 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected))
+        if (this.WaitsForPosition(node, expected) || this.AwaitsCallAtResult(node, expected) || RestsAtOpenPosition(node, expected))
         {
             return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later, a result for its call.
         }
@@ -233,6 +240,9 @@ public sealed partial class Binding
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
+        // DECISIONS D3 (temporary with BoundTypeKind.Open): an anonymous function reads the marks of its expected signature (BindClosure)
+        // and is then adapted at the unmarked one, the erasure's signature having been judged case by case.
+        var closure = KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true };
         if (expected is { ContainsParameter: true })
         {
             expected = this.SubstituteIdentityPremises(expected, scope);
@@ -260,6 +270,11 @@ public sealed partial class Binding
         else
         {
             actual = this.BindNodeCore(node, scope, expected);
+        }
+
+        if (closure && expected is { ContainsOpen: true })
+        {
+            expected = this.Unmarked(expected);
         }
 
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))

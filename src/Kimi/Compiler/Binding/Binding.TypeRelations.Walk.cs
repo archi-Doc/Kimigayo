@@ -257,9 +257,9 @@ public sealed partial class Binding
 
         private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance, Koto? own)
         {
-            if (this.Discharged(actual, expected))
+            if (this.Discharged(actual, expected) || actual.Kind == BoundTypeKind.Open || expected.Kind == BoundTypeKind.Open)
             {
-                return true;
+                return true; // DECISIONS D3 (rule W): a position a split binding decides holds without a record, judged case by case.
             }
 
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
