@@ -1924,7 +1924,11 @@ public sealed partial class TyCtxtTest
         {
             foreach (var local in body.Locals)
             {
-                Visit(local.Type!);
+                // A local of no Type (a failed slot or a temp derived from one, MirLocal; PLAN G1073) stores nothing to erase.
+                if (local.Type is { } type)
+                {
+                    Visit(type);
+                }
             }
         }
 
