@@ -419,6 +419,11 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
+        if (this.FailedPremiseRead(type, scope) is { } failed)
+        {
+            return this.RestOnFailure(failed); // R7-C3 (B1'): as ProveProposition's intake; the direct callers read the failed premises too
+        }
+
         type = this.MemberOf(type, scope, out _); // R7-C2c2 c2-4 (design R1.1): the Contract judge's subject is its class's Member
 
         // R7-C2c2 c2-4b (design R4.12b, J1): the Contract judge's own entry is J1's intake too, since its direct callers bypass

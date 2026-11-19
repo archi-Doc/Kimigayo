@@ -373,12 +373,12 @@ public sealed partial class Binding
         return ConstraintProof.Error;
     }
 
-    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the failed premise a proposition reads, when one of its operands, as written or in its form, is a
-    // side of a failed premise of the view (FailPremise), or identical with one in the view; every other proposition is judged in the
-    // valid remainder.
-    private PremiseFailure? FailedPremiseRead(BoundConstraint written, BoundConstraint normalized, BindingScope scope)
+    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the failed premise a judgment of `subject` reads, when the subject is a side of a failed premise of
+    // the view (FailPremise), or identical with one in the view; every other judgment is in the valid remainder. Both judge intakes ask
+    // it (ProveProposition: the subject as written and in its form; ProveConformance, whose direct callers bypass ProveProposition).
+    private PremiseFailure? FailedPremiseRead(BoundType? subject, BindingScope scope)
     {
-        for (var current = scope; current is not null; current = current.Parent)
+        for (var current = scope; current is not null && subject is not null; current = current.Parent)
         {
             if (current.Constraints is not { FailedPremise: { } failure, FailedPremises: { } premises })
             {
@@ -387,7 +387,7 @@ public sealed partial class Binding
 
             foreach (var premise in premises)
             {
-                if (Reads(written, premise) || Reads(normalized, premise))
+                if (Reads(premise))
                 {
                     return failure;
                 }
@@ -396,18 +396,17 @@ public sealed partial class Binding
 
         return null;
 
-        // A side is read as the judge identifies it in the view (8.2.3: a fact about a Type is evidence for an identical one).
-        bool Reads(BoundConstraint proposition, BoundConstraint premise)
+        bool Reads(BoundConstraint premise)
             => premise.Kind is ConstraintKind.Not or ConstraintKind.And or ConstraintKind.Or
-                ? (premise.Left is { } left && Reads(proposition, left)) || (premise.Right is { } right && Reads(proposition, right))
-                : proposition.Subject is { } subject && (Side(subject, premise.Subject) || Side(subject, premise.RequiredType));
+                ? (premise.Left is { } left && Reads(left)) || (premise.Right is { } right && Reads(right))
+                : Side(premise.Subject) || Side(premise.RequiredType);
 
         // A side is read as the judge identifies it in the view (8.2.3: a fact about a Type is evidence for an identical one): one Type,
         // identical by the view's classes, or one form (a side only the failed premise held in the table, `T.(Holder).Item` under
         // `T is PH`, still completes to P).
-        bool Side(BoundType subject, BoundType? side)
-            => side is not null && (ReferenceEquals(subject, side) || this.IdentityProven(subject, side, scope) ||
-                ReferenceEquals(this.CallableContractType(subject, scope), this.CallableContractType(side, scope)));
+        bool Side(BoundType? side)
+            => side is not null && (ReferenceEquals(subject, side) || this.IdentityProven(subject!, side, scope) ||
+                ReferenceEquals(this.CallableContractType(subject!, scope), this.CallableContractType(side, scope)));
     }
 
     // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its
