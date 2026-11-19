@@ -297,7 +297,6 @@ internal struct NodeColumns
     internal StampedColumn<bool?, Binding.PassCounter> DeferredConstraints; // Pass: whether a clause waits for the conformances (Binding.Constraints.cs).
     internal StampedColumn<BoundMatch?, Binding.PassCounter> Matches; // Pass: the plan of a match the pass indexed (Binding.Patterns.cs).
     internal StampedColumn<BoundAdaptation, Binding.PassCounter> Adaptations; // Pass: the implicit adaptation selected for an expression (Binding.ArgumentOperations.cs).
-    internal StampedColumn<bool, Binding.PassCounter> PerCallNamings; // Pass: whether a nested signature's inputs name the per-call Origin of this input (Binding.OriginDeclarations.cs).
     internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
     internal PagedColumn<Binding.OriginDeclaration?> OriginDeclarations; // Kept: an owner's declared Origins (Binding.OriginDeclarations.cs).
     internal PagedColumn<List<string>?> DiscoveredOrigins; // Kept: a binder's discovered Origin names (Binding.OriginDeclarations.cs).
@@ -345,7 +344,6 @@ internal struct NodeColumns
         this.OpenOrigins.Grow(length);
         this.AssociatedOrigins.Grow(length);
         this.ShapeContractHeads.Grow(length);
-        this.PerCallNamings.Grow(length);
         this.InheritedOriginTypes.Grow(length);
         this.DeferredConstraints.Grow(length);
         this.Matches.Grow(length);
@@ -392,7 +390,6 @@ internal struct NodeColumns
         this.Matches.Freeze(binding);
         this.Adaptations.Freeze(binding);
         this.ShapeContractHeads.Freeze(binding);
-        this.PerCallNamings.Freeze(binding);
         this.AliasTargets.Freeze(binding);
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
@@ -430,7 +427,6 @@ internal struct NodeColumns
             OpenOrigins = this.OpenOrigins.Renumbered(length),
             AssociatedOrigins = this.AssociatedOrigins.Renumbered(length),
             ShapeContractHeads = this.ShapeContractHeads.Renumbered(length),
-            PerCallNamings = this.PerCallNamings.Renumbered(length),
             InheritedOriginTypes = this.InheritedOriginTypes.Renumbered(length),
             DeferredConstraints = this.DeferredConstraints.Renumbered(length),
             Matches = this.Matches.Renumbered(length),

@@ -696,11 +696,11 @@ public sealed partial class Binding
         => name is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement ? BindingFailure.Unsupported : missing;
 
     // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
-    // explains the miss, otherwise the Name is missing.
+    // explains the miss, otherwise it is the resolver's miss (FailUnselected).
     private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
         => this.ReportUnavailableQualifier(name, scope) is { } qualifier
             ? this.CompleteDependent(name, qualifier)
-            : this.Fail(name, this.MissingFailure(name, missing), true);
+            : this.FailUnselected(name, this.MissingFailure(name, missing));
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.
