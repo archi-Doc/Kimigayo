@@ -274,6 +274,7 @@ public sealed partial class Binding
             this.SettleViewSerials();
             this.CompleteLocalRegions();
             this.CompleteNegations(); // D-4 (PLAN G949 Stage 2 U2b): every library constraint's negation.
+            pass.Library.Syntax.CompleteLazyFields(); // PLAN G1072: every library node's and document's lazily filled fields, before the freeze counts records.
             this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
         }
 
