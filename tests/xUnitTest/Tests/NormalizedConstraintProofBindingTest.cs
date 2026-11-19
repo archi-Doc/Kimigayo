@@ -239,13 +239,14 @@ public class NormalizedConstraintProofBindingTest
     // DECISIONS R7-C2e1 (F1): `T is K` supplies `T.(K).X is Q` and Q's clause `T.(K).X.(Q).Y is i32` (SPEC 8.3.2), so the written premise
     // asks `i32 is Marker`, which a primitive's fixed conformances refute (SPEC 8.7.1): f's premises contradict, and each use of them is
     // InvalidConstraint_Kd. f's view's environment is written after its facts are first read in the pass, so a kept reading is valid only
-    // under the serial naming the environment's state. Both orders.
+    // under the serial naming the environment's state. Both orders. R7-C3 (C2 rulings 243, 250 (2), F's (c); Q13): a use that reads the
+    // failed premise rests on f's record: 9 -> 3 (f@11, the two g calls).
     [Theory]
     [InlineData("x.q()\n    g<i32>()\n")]
     [InlineData("g<i32>()\n    x.q()\n")]
     public void AReadingIsKeptOnlyForTheEnvironmentItWasFormedIn(string uses)
         => Assert.Equal(
-            "9*InvalidConstraint_Kd",
+            "3*InvalidConstraint_Kd",
             DiagnosticCorpus.RecordProfile("contract Marker\ncontract Q\n    associate Y\n    Self.(Q).Y is i32\n    func q(self: ref/Self) -> ()\n" +
                 "contract K\n    associate X is Q\nfunc g<Z>()\n    Z is Marker\n    ()\nfunc f<T>(x: ref/T.(K).X)\n    T is K\n    T.(K).X.(Q).Y is Marker\n" +
                 "    g<T.(K).X.(Q).Y>()\n    " + uses));
