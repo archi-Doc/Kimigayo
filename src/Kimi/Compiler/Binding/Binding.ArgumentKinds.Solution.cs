@@ -127,6 +127,9 @@ public sealed partial class Binding
 
         internal readonly int OriginCount => CallOriginCount(this.Binder);
 
+        // The binder as the unifier's input (Infer); a binder is a function or an enum.
+        internal readonly SolveBinder Solve => this.Binder is FunctionKoto function ? new(function) : new((EnumKoto)this.Binder);
+
         // The candidate's function, for the operations of a call.
         internal readonly FunctionKoto Function => (FunctionKoto)this.Binder;
 

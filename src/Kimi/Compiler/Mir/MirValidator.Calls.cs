@@ -17,7 +17,7 @@ namespace Kimi.Compiler.Mir;
 // - Invariants: Call returns false when its arguments are out of range, and the location is then not walked; an intrinsic row after
 //   the arity row sees the row's operand count.
 // - Prohibitions: no argument or result Type of a signature (MirValidator.Signatures); an intrinsic row's Type only through the Type
-//   tier's TypeOf and SPEC 3.1's one Scalar predicate (ScalarTypes.Supports, which the builder's records read too).
+//   tier's TypeOf and SPEC 3.1's one Scalar predicate (BoundType.IsScalar, which the builder's records read too).
 internal sealed partial class MirValidator
 {
     // A whole local's index, -1 for another Place.
@@ -29,11 +29,11 @@ internal sealed partial class MirValidator
         private readonly bool Ensures(in MirTerminator call) => Slot(body, call) >= 0 ||
             (body.Operands[call.Start] is { Kind: MirOperandKind.Const } operand && (uint)operand.Arg >= (uint)body.Consts.Length);
 
-        // SPEC 17.6.3 (F8b, DECISIONS R5-M136): a testRecordValue records a Scalar (SPEC 3.1, ScalarTypes.Supports), its value (operand 1
+        // SPEC 17.6.3 (F8b, DECISIONS R5-M136): a testRecordValue records a Scalar (SPEC 3.1, BoundType.IsScalar), its value (operand 1
         // of its row's 2, after its side) of a Scalar Type or of one the Type tier reads as unknown: an Opaque temp's, which code generation
         // never sees, or the Never value, which fits any operand (SPEC 3.8) and which the builder never records.
         private readonly bool Records(in MirTerminator call)
-            => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || ScalarTypes.Supports(type);
+            => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || type.IsScalar;
 
         // DECISIONS R5-M166: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement (Reversed only
         // Comparable's) through its own Contract (Contract null) on a Self whose comparison under source operators TyCtxt.Comparison composes
