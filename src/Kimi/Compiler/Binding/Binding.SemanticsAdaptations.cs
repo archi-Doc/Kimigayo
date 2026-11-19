@@ -577,9 +577,13 @@ public sealed partial class Binding
     private bool UnformedSince(int mark) => this.unformedWrites != mark;
 
     // DECISIONS D3 with rule W (G812 rulings 141, 156): whether a check over `types` read a position a split binding decides: a formation
-    // since `mark` that formed none (UnformedSince), or one of the Types holding the open formed Type's mark (BoundTypeKind.Open, which an
-    // inference slot takes from its marked position), so that a check that failed there failed through the split: an Unknown.
-    private bool ReadsSplitDecided(int mark, ReadOnlySpan<BoundType?> types)
+    // since `mark` that formed none (UnformedSince), or one of the Types holding the open formed Type's mark (HoldsMark), so that a check
+    // that failed there failed through the split: an Unknown.
+    private bool ReadsSplitDecided(int mark, ReadOnlySpan<BoundType?> types) => HoldsMark(types) || this.UnformedSince(mark);
+
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 159): whether one of the Types holds the open formed Type's mark,
+    // which an inference slot takes from its marked position below a split call's completion (OpenForm), the one former of marks.
+    private static bool HoldsMark(ReadOnlySpan<BoundType?> types)
     {
         foreach (var type in types)
         {
@@ -589,7 +593,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.UnformedSince(mark);
+        return false;
     }
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
