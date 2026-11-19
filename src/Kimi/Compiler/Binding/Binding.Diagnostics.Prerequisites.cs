@@ -249,15 +249,15 @@ public sealed partial class Binding
                 Complete(place.Parent!, null);
             }
 
-            // The late rest's located limit (D-823, PLAN: one dependency relation every late rest passes through): a bound match whose
-            // Subject is the rested node itself, as its consumer takes it (Grouped), bound its Pattern trees and arm bodies against the
-            // Subject's Type, and its bindings' uses are on no parent chain, so it reports one Unsupported_Kd and HIR publishes it as an
-            // Error without its arms. A Subject that is a Place built on the node rests above, and a match still binding rests through
-            // its own binder (BindMatch).
-            var taken = Grouped(node);
-            if (taken.Parent is MatchKoto { BindingState: BindingState.Resolved } match && ReferenceEquals(match.Expression, taken))
+            // The late rest's located limit (D-823, PLAN: one dependency relation every late rest passes through): a bound match, `try`
+            // (a match) or `for` whose Subject (SPEC 15.1.6) is a node the walk rested, the use, a group or a Place built on it, bound its
+            // Pattern trees, arms or body against the Subject's Type, and its bindings' uses are on no parent chain, so it reports one
+            // Unsupported_Kd and HIR publishes it as an Error without them. `top` is the outermost rested node, its groups included: the
+            // node its consumer takes (Grouped, R4-M145). A consumer still binding rests through its own binder (BindMatch).
+            if (top.Parent is { BindingState: BindingState.Resolved } consumer &&
+                ReferenceEquals(top, consumer switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null }))
             {
-                this.Fail(match, BindingFailure.Unsupported, true);
+                this.Fail(consumer, BindingFailure.Unsupported, true);
             }
 
             return null;

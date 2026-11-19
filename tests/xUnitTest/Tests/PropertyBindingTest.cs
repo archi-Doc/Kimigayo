@@ -658,23 +658,34 @@ public partial class PropertyBindingTest
     public void APlaceBuiltOnAUseOfAFailedGetterRestsOnIt(string run)
         => Assert.Equal([nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), nameof(DiagnosticCode.UnsatisfiedConstraint_Kd)], DiagnosticCorpus.Check(FailedGetter + run).Diagnostics.Select(static x => x.Code));
 
-    // A struct P, non-Copy unless the Copy twin opts in, and a W whose custom getter returns its stored Option<P>.
-    private const string NonCopyP = "struct P\n    public var x: i32 = 0\n    public var o: Option<i32> = .None\n    public init() => ()\n";
+    // A struct P, non-Copy unless the Copy twin opts in, and a W whose custom getter returns its stored Option<P> or P.
+    private const string NonCopyP = "struct P\n    public var x: i32 = 0\n    public var o: Option<i32> = .None\n    public var items: Array<i32> = []\n    public init() => ()\n";
     private const string OptionGetter = "struct W\n    public var opt: Option<P> = .None\n        get() -> Option<P> => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n";
+    private const string PosGetter = "struct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public init() => ()\n";
 
-    // SPEC 23.1.2 (D-823): a bound match whose Subject is a late-rested use itself, also through a group, bound its Pattern trees and arms
-    // against the use's Type: the late rest's located limit, one Unsupported_Kd at the match beside the declaration's record (before,
-    // InternalInvariant_Kd). Twins: a Subject that is a Place built on the use and a Field of a follow Place on a failed handle getter rest
-    // with the use (the declaration's record alone), and over a Copy P the getter is valid.
+    // SPEC 23.1.2, 15.1.6 (D-823): a bound match, `try` or `for` whose Subject is a node a late rest took with it (the use, a group or a
+    // Place built on it) bound its Pattern trees, arms or body against the use's Type: the late rest's located limit, one Unsupported_Kd
+    // at the consumer beside the declaration's record (before, InternalInvariant_Kd or a located Unsupported_Kd at the Place). The arms
+    // are not published, so an arm's result `q`, a binding of the resting Subject, adds no TransferRequired_Kd (a dependent record).
+    // Twins: a Field of a follow Place on a failed handle getter rests with the use (the declaration's record alone), and over a Copy P
+    // the getter is valid.
     [Theory]
     [InlineData(NonCopyP + OptionGetter + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; Unsupported_Kd match w.opt")]
     [InlineData(NonCopyP + OptionGetter + "    return match w.opt\n        .Some(_) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; Unsupported_Kd match w.opt")]
     [InlineData(NonCopyP + OptionGetter + "    return match (w.opt)\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; Unsupported_Kd match (w.opt)")]
+    [InlineData(NonCopyP + OptionGetter + "    let r = match (w.opt)\n        .Some(let q) => q\n        .None => P.init()\n    return r.x\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; Unsupported_Kd match (w.opt)")]
     [InlineData(NonCopyP + "struct W\n    public var t: (P, i32) = (P.init(), 1)\n        get() -> (P, i32) => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return match w.t\n        (_, let b) => 1\n", "UnsatisfiedConstraint_Kd var t: (P, i32) = (P.init(), 1); Unsupported_Kd match w.t")]
-    [InlineData(NonCopyP + "struct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return match w.pos.o\n        .Some(let n) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init()")]
+    [InlineData(NonCopyP + "struct W\n    public var t: (P, Option<i32>) = (P.init(), .None)\n        get() -> (P, Option<i32>) => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return match (w.t.1)\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); Unsupported_Kd match (w.t.1)")]
+    [InlineData(NonCopyP + "struct W\n    public var fa: [2 of P] = [P.init(), P.init()]\n        get() -> [2 of P] => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return match (w.fa[0])\n        _ => 1\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; Unsupported_Kd match (w.fa[0])")]
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> i32\n    return match w.pos.o\n        .Some(let n) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); Unsupported_Kd match w.pos.o")]
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> i32\n    return match (w.pos.o)\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); Unsupported_Kd match (w.pos.o)")]
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> i32\n    return match ((w.pos.o))\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); Unsupported_Kd match ((w.pos.o))")]
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try w.pos.o\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); Unsupported_Kd try w.pos.o")]
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try (w.pos.o)\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); Unsupported_Kd try (w.pos.o)")]
+    [InlineData(NonCopyP + PosGetter + "func look(v: ref/i32) -> () => ()\nfunc run(w: uniq/W)\n    for v in (w.pos.items) => look(v)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); Unsupported_Kd for v in (w.pos.items) => look(v)")]
     [InlineData(NonCopyP + "struct W\n    public var h: rc/P = P.init()@rc\n        get() -> rc/P => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return w.h@follow.x\n", "UnsatisfiedConstraint_Kd var h: rc/P = P.init()@rc")]
     [InlineData("struct P\n    Self is Copy\n    public var x: i32 = 0\n    public init() => ()\n" + OptionGetter + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "")]
-    public void AMatchOverALateRestedUseIsALocatedLimit(string program, string records)
+    public void AMatchTryOrForOverALateRestedSubjectIsALocatedLimit(string program, string records)
     {
         var source = "public func main() => ()\n" + program;
         Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]}")));
