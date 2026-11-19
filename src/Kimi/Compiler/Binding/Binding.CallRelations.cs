@@ -317,62 +317,18 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.5: judges `longer outlives shorter` (and the reverse for `==`) at `at`. A meet at the longer end decomposes, so each
-    // failing operand is its own record (SPEC 15.3.6).
+    // SPEC 15.6.1, 15.6.4 step 3, 15.6.5 (R7-O1 b1a): a selected call's relation `longer outlives shorter` (`==` when `equality`) at `at`,
+    // formed as a row of the body (FormBodyRelation), which A5 judges; Binding judges no call position. Its row carries the fit's
+    // destination (the completed parameter Type), a declared relation's clause, and, for an `==` whose fresh Origin or Type slot another
+    // input fixed, that input (SPEC 15.6.1, Location; SPEC 10.8: the first invariant binding of a slot is its solution).
     private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null, bool wellFormed = false, ulong condition = 0)
     {
-        if (ReferenceEquals(longer, shorter))
-        {
-            return;
-        }
-
-        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
-        {
-            for (var i = 0; i < longer.Operands.Count; i++)
-            {
-                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context, slot, wellFormed, condition);
-            }
-
-            return;
-        }
-
-        // Complete initializer-owned holes before deferring finite constraints to the body graph.
-        var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
-        var backwardProven = !equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
-        if (BodyChain(longer, shorter, equality, this.formingBody))
-        {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));
-            return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
-        }
-
-        var forward = forwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at, this.formingBody, condition);
-        var backward = backwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at, this.formingBody, condition);
-        if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
-        {
-            // An equality fails as one `==` record; a fresh Origin or a Type slot fixed by another input relates that input (SPEC 15.6.1,
-            // Location; SPEC 10.8: the first invariant binding of a slot is its solution).
-            var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
-                : variable is not null ? this.EqualitySource(context, variable, shorter)
-                : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
-            var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
-            var destination = declared ? null : context.Parameter;
-            var supplier = this.SuppliedAtUse(longer, at);
-            var declaredClause = declared ? clause : null;
-            var fact = new OriginRelationFact(at, longer, supplier, shorter, equality, destination, refuted, declaredClause, declared, fixedBy, wellFormed);
-            this.callRelationScratch.Add((at, fact));
-            return;
-        }
-
-        // A chain between body Origins needs region inference over Loan edges: ownership reports it as the located limit at `at`.
-        if (forward == OriginJudgment.Unrepresentable)
-        {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, WellFormed: wellFormed, Condition: condition));
-        }
-
-        if (backward == OriginJudgment.Unrepresentable)
-        {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, shorter, longer, WellFormed: wellFormed, Condition: condition));
-        }
+        var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
+            : variable is not null ? this.EqualitySource(context, variable, shorter)
+            : slot is not null ? this.SlotEqualitySource(context, slot, shorter) : null;
+        this.FormBodyRelation(new(
+            BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality,
+            Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition, FixedBy: fixedBy));
     }
 
     // The input, other than the failing one, whose parameter names the callee's Origin `variable` and whose adapted Type carries the

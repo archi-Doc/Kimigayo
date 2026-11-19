@@ -56,10 +56,13 @@ public sealed partial class MirBorrowsTest
                 let r = keepStatic(5)
                 inspect(r)
             """);
-        Assert.Equal(2, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd));
+        // R7-O1 b1: the two relations (`c.n` and `chosen(...).n` outliving static) are rows the stratum judges, Binding's records no more,
+        // so the arguments are no longer opaque (R4-M109 superseded for call positions); the Loan records below hold as before.
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         new Stratum(c.Types).Run(program);
+        Assert.Equal(["field", "kept"], Problems(c, program, [DiagnosticCode.UnprovenOriginRelation_Kd]).Select(static x => x.Split(':')[0]));
         Assert.Equal(["kept: s MovedPlace_Kd", "literal: 5"], Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
     }
 
