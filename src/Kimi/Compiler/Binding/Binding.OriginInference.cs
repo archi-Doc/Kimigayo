@@ -68,7 +68,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (pattern.Origin is { } p && actual.Origin is { } a && !InactiveOuterOrigin(pattern, this, null, inference.Comparison))
+        if (pattern.Origin is { } p && actual.Origin is { } a && !this.InactiveOuterOrigin(pattern, this, null, inference.Comparison))
         {
             // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, as the walk's (SlotCondition).
             Add(p, a, polarity, SlotCondition(actual, this, inference.Use, inference.Comparison));
@@ -76,7 +76,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
-            var variance = OriginArgumentVariance(pattern, i, this);
+            var variance = this.OriginArgumentVariance(pattern, i, this);
             Add(pattern.OriginArguments[i], actual.OriginArguments[i], ComposePolarity(polarity, variance), 0);
         }
 
@@ -138,8 +138,22 @@ public sealed partial class Binding
     // With `select`, candidate applicability: the bounds are not judged, since the Origin relations of a fit never change a selection
     // (SPEC 15.6.1, 10.4); the selected call judges them after selection. A call's inputs' well-formedness (SPEC 15.6.4 step 3) also
     // shortens the solution (OriginInference.WellFormed), and the selected call judges it at each input (RequireInputPremises), so it
-    // is never verified here.
+    // is never verified here. The trials' requests share a premise session (PLAN G778).
     private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, bool select = false)
+    {
+        var session = this.OpenPremiseSession();
+        try
+        {
+            return this.SolveOriginInferenceInSession(inference, origins, inputs, declaringType, select);
+        }
+        finally
+        {
+            session?.Close();
+        }
+    }
+
+    private bool SolveOriginInferenceInSession(
+        OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, bool select)
     {
         var binder = inference.Binder;
         var use = inference.Use;

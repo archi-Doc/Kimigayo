@@ -18,7 +18,7 @@ internal sealed partial class MirBuilder
     // places it (input).
     private void Match(MirPlace destination, MatchKoto match, bool input)
     {
-        var plan = BoundMatch.Of(match)!;
+        var plan = BoundMatch.Of(compilation.Binding, match)!;
         if (plan.Invalid || plan.Pending)
         {
             this.Opaque(match, destination); // A Pattern or guard of it failed.
@@ -115,12 +115,12 @@ internal sealed partial class MirBuilder
         else if (position is { Kind: BoundPatternKind.Case, Case.Ordinal: var ordinal })
         {
             this.CaseTest(place, ordinal, next, position.Source);
-            (place, tested) = (this.body.Project(place, MirProjectionKind.Downcast, ordinal), true);
+            (place, tested) = (this.body.Project(compilation.Types, place, MirProjectionKind.Downcast, ordinal), true);
         }
 
         for (var child = index + 1; child < position.End; child = plan.Positions[child].End)
         {
-            tested |= this.Pattern(plan, child, this.body.Project(place, MirProjectionKind.Field, plan.Positions[child].Element), start, next);
+            tested |= this.Pattern(plan, child, this.body.Project(compilation.Types, place, MirProjectionKind.Field, plan.Positions[child].Element), start, next);
         }
 
         return tested;

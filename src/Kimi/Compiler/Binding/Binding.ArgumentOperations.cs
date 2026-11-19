@@ -9,7 +9,10 @@ namespace Kimi.Compiler;
 public enum ArgumentAdaptation : byte
 {
     Exact,
-    Literal,
+
+    // SPEC 10.4 step 1, 10.2 (PLAN G924; the class Expected-Type fitting): a part checked against its expected Type by value, an
+    // untyped literal, a literal-only expression, a literal form or a value join; at `ref/U` its one temporary is CrossSemanticsBorrow.
+    ExpectedTypeFitting,
     SameSemanticsReborrow,
     CrossSemanticsBorrow,
 
@@ -52,8 +55,8 @@ public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, Bound
 /// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it. AdaptedType is
 /// the Type the adaptation supplies, whose Origin relations to ParameterType are judged after selection (SPEC 15.6.1). MissingOrigin
 /// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).
-/// Positions: a Tuple or array literal argument's element positions' adaptation classes in the fit's order (SPEC 10.4 step 1, 10.5.1),
-/// a range of the candidate evaluation's positionClasses; Adaptation is then the literal's own fit.</summary>
+/// Positions: a Tuple or array literal argument's element positions' operations in the fit's order, recursively (SPEC 10.5.1; ranked
+/// by their classes, 10.4 step 1), a range of the candidate evaluation's positionOperations; Adaptation is then the literal's own fit.</summary>
 public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false, Range Positions = default);
 
 public sealed partial class Binding
@@ -79,8 +82,12 @@ public sealed partial class Binding
     /// selects no candidate no other table holds it (a resolved call's is CallPlan.ReceiverOperation).</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
     /// <param name="operation">The selected operation; an Unknown proof is not permission to execute.</param>
-    /// <returns>Whether this pass selected an operation for the use.</returns>
-    public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation) => this.receiverOperations.TryGetValue(use, out operation);
+    /// <returns>Whether this pass selected an operation for the use; a node of the frozen library is refused (EnsurePassNode).</returns>
+    public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation)
+    {
+        EnsurePassNode(use, nameof(this.TryGetReceiverOperation));
+        return this.receiverOperations.TryGetValue(use, out operation);
+    }
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);

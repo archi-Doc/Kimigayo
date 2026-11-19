@@ -32,7 +32,7 @@ dotnet src/Kimi/bin/Release/net10.0/Kimi.dll build docs/examples/Hello/Hello.kim
 dotnet src/Kimi/bin/Release/net10.0/Kimi.dll run docs/examples/Hello/Hello.kimiproj --no-build
 ```
 
-`build` publishes `Hello.ll` and schema 3 `Hello.link.json`, verifies IR and native build inputs, and invokes LLVM directly from C#. It links the installed backend/kernel32 libraries and publishes the executable after a successful link. `Hello.link.build.json` records compilation success separately from toolchain verification, which is not performed in ordinary builds.
+`build` publishes `Hello.ll` and schema 4 `Hello.link.json`, verifies IR and native build inputs, and invokes LLVM directly from C#. It links the installed backend/kernel32 libraries and publishes the executable after a successful link. `Hello.link.build.json` records compilation success separately from toolchain verification, which is not performed in ordinary builds.
 
 `run --no-build` executes an existing binary without source compilation or LLVM, requiring a successful build record and matching executable hash. Ordinary `run` builds current sources first and never runs an old binary after failure. `kimi run path/to/program.exe` directly executes the selected binary. Each form forwards stdout/stderr and exit status.
 

@@ -34,7 +34,7 @@ public class ArchitectureRulesTest
     // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and
     // DependencyLock (ArtifactFiles.Replace only).
     private const string BuildReaders = "SolutionAndProject/DependencyLock.cs;SolutionAndProject/Project.cs;Unit/Command/BuildCommand.cs;" +
-        "Unit/Command/CommandExecution.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
+        "Unit/Command/CommandExecution.cs;Unit/Command/RestoreCommand.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
 
     // The R7-R9 plan's unit M1 (ComponentIsReadOnlyByItsReaders): Documentation's readers, hover's projection in check and its rendering in
     // the LSP. The compiler reads only the association, Core's DocumentationSource, which Documentation reads in turn.
@@ -43,7 +43,7 @@ public class ArchitectureRulesTest
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
     private const string NameEvaluations = "ResolvePath|ResolveName|ResolveValue|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|ReadAgain|PublishPath";
 
-    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=20;" +
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=21;" +
         "Binding.Types.cs=2";
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
@@ -65,9 +65,9 @@ public class ArchitectureRulesTest
     // R6-check H14 (D7): a read or write of a Koto semantic slot, as a member access or as a property pattern's name, nested or not (a
     // static `BoundType.X` argument is neither).
     private const string SemanticSlotReads = @"(?<!Compiler)\.(?:" + SemanticSlots + @")\b|[{,]\s*(?:" + SemanticSlots + @")(?:\.\w+)*\s*:";
-    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=11;" +
-        "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;Koto/Expressions/InvocationKoto.cs=4;" +
-        "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=4";
+    private const string ParsingSemanticSlotSites = "Koto/Declarations/FunctionKoto.cs=9;Koto/Expressions/BinaryKoto.cs=5;" +
+        "Koto/Expressions/ControlFlow/ForKoto.cs=1;Koto/Expressions/FormattingKoto.cs=2;" +
+        "Koto/Expressions/SyntheticKoto.cs=4;Koto/Expressions/UnaryKoto.cs=2;Koto/Koto.Ownership.cs=4;Koto/Koto.cs=3";
 
     // DECISIONS R5-M162 and R5-M163 (plan §4.9 row G10, §5.4 item 4): the old generator's components R6-gen deleted, their stems
     // included, and the old analysis's instance entry points; the R8 runtime helpers are not among them. A letter in brackets keeps the
@@ -94,6 +94,23 @@ public class ArchitectureRulesTest
     private const string ReplacedByWitnessTable = @"\w*FixedArrayEntry\b|" +
         @"\b(?:FixedArrayWitness|RentFixedArrayArguments|ReturnFixedArrayArguments|FixedArraySlots)\b|" +
         @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
+
+    // The R7-R9 plan's §10.2 item 3 (R8-X1): the components, members, kinds and templates R8 deleted (DECISIONS R8-M6, R8-M11, R8-M12,
+    // R8-M14, R8-M18, R8-M22, R8-M24, R8-M30, R8-M39, R8-M44, R8-M45, R8-M46, R8-M48, R8-M52) and its Transitional tag; no source, test or
+    // project file names one. The intrinsic writer's deleted member counts only qualified, its bare name being an English word. A letter in
+    // brackets keeps the pattern from matching its source.
+    private const string DeletedByR8 =
+        @"\bLegacyRuntimeHelper[s]|\bLegacyWrite[r]\b|\b(?:StorageKernel|Format|StringFormat|Writer)Kin[d]\b|" +
+        @"\b(?:Array|Dictionary)Helpe[r](?:Row|Kind)?\b|\bDictionaryCalle[e]\b|\b(?:KimiLibrary|TyCtxt)\.DictionaryStorag[e]\b|\bLengthWor[d]\b|" +
+        @"\bHelperNeed[s]\b|\bUtf8(?:Buffer|Format)Runtim[e]\b|\bCompilerFunctio[n](?:Kind|Effect)?\b|\bIntrinsicDispositio[n]\.(?:Of|Effect)\b|" +
+        @"\bKimiLibraryContaine[r]\b|\bIs(?:Storage|Raw)Operatio[n]\b|\bIsUnsource[d]\b|\bRuntimeAb[i]\.(?:TextWriter|WriteLine)\b|" +
+        @"\bFormattin[g](?:Helper)?Row\b|\bForma[t](?:Estimate|Fixed|Heap)\b|\bIntrinsicWriter\.Unproduce[d]\b|Transitional\(""R[8]""";
+
+    // The same for the seven names R8 deleted that tests still use (DECISIONS R8-M11, R8-M19, R8-M24, R8-M30, R8-M44, R8-M48): six in
+    // fail-before and history comments, one as the label of FunctionCodegenTest's first FormattingPrograms row, a live test name. Only the
+    // sources and the project file must not name them.
+    private const string DeletedByR8InSources =
+        @"\bBodylessWitnes[s]\b|\bLegacyRo[w]\b|\bBuiltinForma[t]\b|\bFormattin[g]Rows\b|\bForma[t](?:Buffer|Finish|Segment)\b";
 
     // PLAN G609 (InterfaceEnumerationsStayAtTheirSites): the compiler's cold interface enumerations, by top-level type and method.
     private const string InterfaceEnumerationSites = "DeclarationContainerKoto.TryParsePropertyOrFunction=1;DeclarationContainerKoto.WriteAsBlockItem=2;" +
@@ -138,8 +155,13 @@ public class ArchitectureRulesTest
     [InlineData("Playground references to the old control-flow analysis", "src/Playground", "*.cs", DeletedByH10b2, 0)]
     // R8-S1a (RP6): no second statement of a table row; the test class FixedArrayEntryTest keeps its own name.
     [InlineData("Compiler references to the paths the library witness table replaced", "src/Kimi", "*.cs", ReplacedByWitnessTable, 0)]
+    // The R7-R9 plan's §10.2 item 3 (R8-X1): the same for R8's deleted components, the project file included (it lists every embedded
+    // template).
+    [InlineData("Source references to R8's deleted components", "src", "*.cs", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
+    [InlineData("Project references to R8's deleted components", "src/Kimi", "*.csproj", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
+    [InlineData("Test references to R8's deleted components", "tests", "*.cs", DeletedByR8, 0)]
     // R7-I2 (RP6): a slot frame is private to InferCtxt (the type system admits no unlogged write); SlotSolution's trial copies of
-    // its frame fall to 0 with part c.
+    // its frame (PerCallCallables' stand-ins) fall to 0 with PLAN G988 (R7-I2 c keeps the copy: in place it moves constructors).
     [InlineData("SlotSolution's trial copies of a frame", "src/Kimi/Compiler/Binding", "Binding.ArgumentKinds*.cs", @"\btypeScratch\.Rent\(", 1)]
     // R6-check H14 (D7; DECISIONS R5-M9): the reads of the Koto semantic slots outside Binding end, area by area; comments count.
     [InlineData("Mir reads of Koto semantic slots", "src/Kimi/Compiler/Mir", "*.cs", SemanticSlotReads, 0)]
@@ -206,8 +228,9 @@ public class ArchitectureRulesTest
     [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
     // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions, and is read outside the component
     // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
+    // PLAN G949 S1-1 (B4): the freeze's verify half reads the library's states in the component (LibraryQueryFault, three reads).
     [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
-    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=4;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
+    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=7;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
     // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row and outside it, for a requirement's call and (PLAN
     // G949 S1-r2, DECISIONS BU-120's line) a demand before the gate; the walk's declaration is the third count. All three go at R7-C2
     // (PLAN G375). A conformance computes none (the owner's O-44).
@@ -253,28 +276,51 @@ public class ArchitectureRulesTest
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
     [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
-    // memo's order is read only by the walk or memo that assigns it, so the dump prints it as # and compares the rest of its row. Each row
-    // counts every name through which the number is reached, its holder and a member returning it included:
+    // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
+    // number is reached, its holder and a member returning it included:
     // - a scope's view serial and the chain state it names: declared in BindingModel and read by ContractSolver's SerialOf, whose callers
-    //   compare the serial for equality only (ContractSolver, its Rows and TypeIdentity's memo);
-    // - an Origin requirement work's Consumer mark: read by OriginRequirements' edge collection;
+    //   compare the serial for equality only (ContractSolver, its Rows and TypeIdentity's memo). From PLAN G949 S1-1 the library pass
+    //   settles every library scope's serial before the freeze (SettleViewSerials) and the dump compares it by value, so w1 sees a later
+    //   step's write to a library scope's (G949 ruling 205 C2);
+    // - an Origin requirement work's Consumer mark: read by OriginRequirements' edge collection; compared by value from S1-1 too, since a
+    //   frozen library work is never active, so no later call marks it;
     // - an inline summary's Tarjan Index and Low: read in InlineLayouts, the one file that names the summary, its stores or Summary, the
-    //   member returning one (ComponentSummaries' own Summary shares the name and is counted too). All are Binding's private members, so
-    //   only Binding's partial files, in its directory, reach them.
-    // A further reader fails here until the dump's rule is reviewed.
-    [InlineData("Readers of a scope's view serial and state", "src/Kimi/Compiler", @"\bView(?:Serial|State)\b|\bSerialOf\b", "Binding/Binding.ContractSolver.Rows.cs=3;Binding/Binding.ContractSolver.cs=8;Binding/Binding.TypeIdentity.cs=3;Binding/BindingModel.cs=3")]
+    //   member returning one (ComponentSummaries' own Summary shares the name and is counted too); the dump prints them as # and compares
+    //   the rest of their row. All are Binding's private members, so only Binding's partial files, in its directory, reach them.
+    // A further reader fails here until its use is reviewed (equality only for a serial or a mark; the dump's # rule for a Tarjan number).
+    [InlineData("Readers of a scope's view serial and state", "src/Kimi/Compiler", @"\bView(?:Serial|State)\b|\bSerialOf\b", "Binding/Binding.ContractSolver.Rows.cs=3;Binding/Binding.ContractSolver.cs=12;Binding/Binding.TypeIdentity.cs=3;Binding/BindingModel.cs=3")]
     [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
     [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
     // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
-    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run (Binding.Passes.cs)
-    // and Invalidate on an edit (Binding.cs; G949 S1-r1a, its premise reviewed there). A further caller (S1-r1b's library pass among them)
-    // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
-    // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run, the library
+    // pass's and the program pass's, and ResetPasses for each pass on an edit (Invalidate; Binding.Passes.cs; G949 S1-r1a and S1-r1b, the
+    // premise reviewed there: an epoch store a pass reads is its own part's or ends at that pass's start, so after a Bind the program
+    // pass's epoch is the one the shared stores hold, and the layer's part's closure index the library pass's). A further caller fails
+    // here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's spelling);
+    // the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name. PLAN G949 S1-1 (B4): an edit's
+    // revocation resets the program pass alone, in Invalidate (Binding.cs), where S1-r1b's ResetPasses reset both passes in the driver.
     [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
+    // PLAN G949 S1-r1b (review-r1a RC1, review-s1r1 Re-check 3 RC-c): the running part's bounded Callable clauses are written by their
+    // owner (Binding.EffectDeclarations.cs) and handed over by the driver (Binding.Passes.cs); every reader reads the pass's view
+    // (selectableEffectClauses), which holds the library layer's clauses too. A read of the running part alone (CollectCallableEffectUses'
+    // guard, AvailableCallableEffects) would skip a library callee's bounded clause in a program that states none, which no program
+    // can show until the library declares one (KimiLibraryShapeTest.TheLibraryDeclaresNoBoundedCallableClause).
+    [InlineData("The running part's Callable effect clauses are read through the pass's view", "src/Kimi/Compiler", @"\bthis\.callableEffectClauses\b", "Binding/Binding.EffectDeclarations.cs=2;Binding/Binding.Passes.cs=1")]
+    // PLAN G949 S1-r1b (review-s1r1b N-c): AvailableEffectBounds reads the composed view of every pass's effect bounds, which holds the
+    // program part of the previous Bind while the library pass runs, so only readers after the Bind call it: EffectObligations (MIR's
+    // effect solve), SemanticQuery and the hover (and its own overload). An in-pass caller fails here; it takes the pass's view, as
+    // selectableEffectClauses does for the Callable clauses (PassPart's in-pass rule).
+    [InlineData("Every pass's effect bounds are read after the Bind", "src/Kimi", @"\bAvailableEffectBounds\(", "Checking/Hover/HoverBuilder.Effects.cs=2;Compiler/Binding/Binding.EffectDeclarations.cs=3;Compiler/Binding/Binding.EffectObligations.cs=2;Compiler/Binding/SemanticQuery.cs=2")]
+    // PLAN G949 S1-r1b (rule (a), F's ruling 170): inside a pass Binding reads a conformance identity's paths only through ImplTable.PathsOf,
+    // the one read that applies the running pass's admission to a library identity (from S1-r1b's split its point-1 paths while the
+    // conditional registrar has not run: OwningIterator's and BorrowingIterator's LendingIterator identity gains its Iterator ancestor's path
+    // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. The one other
+    // match is an inference batch's Paths (Binding.AssociatedInference.cs), not an identity's.
+    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.AssociatedInference.cs=1;Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
     // PLAN G949 Stage 2 (R8-L1 under O-381 (b)): a reader reaches its Binding's facts through its own Binding, never through a node's
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
-    // by file: the route units lower them (U0b-1, U0b-6, U0b-P3, U0b-N5) to CodeContext's and the parser's, which R7 owns.
-    [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Binding/AdtDef.cs=2;Compiler/Binding/Binding.AssociatedOrigins.cs=1;Compiler/Binding/Binding.ClosureInstances.cs=1;Compiler/Binding/Binding.Documentation.cs=1;Compiler/Binding/Binding.Enums.cs=1;Compiler/Binding/Binding.Lints.cs=1;Compiler/Binding/Binding.OriginDiagnostics.cs=1;Compiler/Binding/Binding.Patterns.Model.cs=1;Compiler/Binding/Binding.PlaceOrigins.cs=1;Compiler/Binding/Binding.Retention.cs=1;Compiler/Binding/Binding.TypeRelations.Origins.cs=2;Compiler/Binding/BindingModel.cs=1;Compiler/Binding/CallPlan.cs=5;Compiler/Binding/ExpansionPlan.cs=1;Compiler/Binding/HirTables.cs=2;Compiler/Binding/TestDefinition.cs=2;Compiler/Binding/TyCtxt.cs=2;Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
+    // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
+    [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

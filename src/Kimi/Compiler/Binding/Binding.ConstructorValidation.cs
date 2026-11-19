@@ -88,7 +88,7 @@ public sealed partial class Binding
 
     // The reference check restores the original declaration group, including inference-rejected
     // candidates. Syntax mappings are unchanged; only binding-dependent applicability is rerun.
-    private bool ValidateFixedConstruction(InvocationKoto call, BindingScope scope, BoundType? expected, BoundType construction, ReadOnlySpan<EvaluatedCandidate> original, int selected, int[] allMaps, int[] mapping, SlotFrame frame, BoundOrigin[] origins, BoundOrigin[] inputs, BoundOrigin[] allOrigins, BoundOrigin[] allInputs, int originStride, int inputStride, BoundArgumentOperation[] operations, int stride, bool[] completedWaiting, BoundType?[] waitingContexts)
+    private bool ValidateFixedConstruction(InvocationKoto call, BindingScope scope, BoundType? expected, BoundType construction, ReadOnlySpan<EvaluatedCandidate> original, int selected, int[] allMaps, int[] mapping, SlotFrame[] frames, BoundOrigin[] origins, BoundOrigin[] inputs, BoundOrigin[] allOrigins, BoundOrigin[] allInputs, int originStride, int inputStride, BoundArgumentOperation[] operations, int stride, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var count = original.Length;
         var argumentCount = call.ArgumentNodes.Count;
@@ -97,7 +97,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(argumentCount);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
-        var classBase = this.positionClasses.Count;
+        var positionBase = this.positionOperations.Count;
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
         FunctionKoto? unproven = null;
         try
@@ -149,7 +149,7 @@ public sealed partial class Binding
                         Binder = function,
                         Scope = scope,
                         DeclaringType = construction,
-                        Frame = frame,
+                        Frame = frames[i], // R7-I2 c: a re-trial of candidate i writes its own frame.
                         Origins = origins,
                         Inputs = inputs,
                         FixedConstruction = true,
@@ -189,10 +189,10 @@ public sealed partial class Binding
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
                         // SPEC 10.5, 10.8: the context its completion used, S for a waiting callable and else the parameter Type.
                         var contextPattern = this.WasWaitingCallable(call.ArgumentNodes[a]) ? this.ExpectedCallSignature(function, pattern) : pattern;
-                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, frame.Types, scope, null, origins, inputs, construction, frame.Lengths);
+                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, frames[i].Types, scope, null, origins, inputs, construction, frames[i].Lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
-                            (context is null || usedContext is null || !IsSubtype(context, usedContext) || !IsSubtype(usedContext, context)))
+                            (context is null || usedContext is null || !this.IsSubtype(context, usedContext) || !this.IsSubtype(usedContext, context)))
                         {
                             return Reject(function, ConstructionCheck.WaitingContext);
                         }
@@ -233,7 +233,7 @@ public sealed partial class Binding
             }
 
             checkedOperations.AsSpan(selected * stride, stride).CopyTo(operations.AsSpan(selected * stride, stride));
-            _ = this.FixCallSlots(call, selectedFunction, construction, [], [], frame, fixedConstruction: true);
+            _ = this.FixCallSlots(call, selectedFunction, construction, [], [], frames[selected], fixedConstruction: true);
             if (count > 1)
             {
                 allMaps.AsSpan(selected * argumentCount, argumentCount).CopyTo(mapping);
@@ -248,7 +248,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
-            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+            this.positionOperations.RemoveRange(positionBase, this.positionOperations.Count - positionBase);
             this.argumentOperationScratch.Return(checkedOperations, clearArray: true);
             this.candidateScratch.Return(checkedCandidates, clearArray: true);
         }

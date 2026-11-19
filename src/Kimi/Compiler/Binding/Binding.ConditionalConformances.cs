@@ -31,7 +31,7 @@ public sealed partial class Binding
             }
         }
 
-        var scope = new BindingScope(a.Declaration);
+        var scope = new BindingScope(a.Declaration, a.Type.Declaration); // SPEC 8.9.2: the pair's agreement is the Type's.
         scopes.Add((b, scope));
         return scope;
     }
@@ -105,9 +105,9 @@ public sealed partial class Binding
         }
 
         var proof = ConstraintProof.Proven;
-        for (var i = 0; i < identity.PathStorage.Count; i++)
+        for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
         {
-            var a = identity.PathStorage[i];
+            var a = this.impls.PathsOf(identity)[i];
             var available = this.VerifyConformance(a);
             if (a.InheritedFrom is not null && available != ConstraintProof.Proven)
             {
@@ -122,7 +122,7 @@ public sealed partial class Binding
             proof = CombineProof(proof, available, true);
             for (var j = 0; j < i; j++)
             {
-                var b = identity.PathStorage[j];
+                var b = this.impls.PathsOf(identity)[j];
                 if (b.InheritedFrom is not null && !b.IsVerified)
                 {
                     continue;
@@ -232,11 +232,18 @@ public sealed partial class Binding
 
             var outer = this.scopes[container];
             var scope = this.GetScope(syntax, outer);
+            if (IsRecovery(target, out _) || IsRecovery(target.Right, out _))
+            {
+                // SPEC 23.1.2: a head whose subject or ContractReference Parsing rejected (F.6.2) explains the conformance's verdicts.
+                this.AddPrerequisite(syntax, IsRecovery(target, out _) ? target : target.Right);
+            }
+
             if (!conditions)
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
+                // A subject other than Self is Parsing's record (F.6.2, ParseConformanceConditions); its head rests (the prerequisite above).
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
@@ -311,7 +318,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                (scope.Constraints ??= new()).Fail(syntax);
+                this.FailEnvironment(scope.Constraints ??= new(), syntax);
             }
         }
     }
@@ -395,7 +402,7 @@ public sealed partial class Binding
             }
         }
 
-        if (identity is null || identity.PathStorage.Count == 0)
+        if (identity is null || this.impls.PathsOf(identity).Count == 0)
         {
             return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
@@ -418,9 +425,9 @@ public sealed partial class Binding
         {
             this.BeginProof(); // The paths are one disjunction (DECISIONS BU-22).
             var result = ConstraintProof.Refuted;
-            for (var i = 0; i < identity.PathStorage.Count; i++)
+            for (var i = 0; i < this.impls.PathsOf(identity).Count; i++)
             {
-                var path = identity.PathStorage[i];
+                var path = this.impls.PathsOf(identity)[i];
                 var definition = this.VerifyConformance(path);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
@@ -507,9 +514,9 @@ public sealed partial class Binding
                 if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
                     !this.IdentityRefuted(instance, required, scope, type))
                 {
-                    for (var p = 0; p < bindings[i].PathStorage.Count; p++)
+                    for (var p = 0; p < this.impls.PathsOf(bindings[i]).Count; p++)
                     {
-                        if (this.ProveConformanceConditions(bindings[i].PathStorage[p], type, scope) != ConstraintProof.Refuted)
+                        if (this.ProveConformanceConditions(this.impls.PathsOf(bindings[i])[p], type, scope) != ConstraintProof.Refuted)
                         {
                             return true;
                         }
@@ -557,8 +564,8 @@ public sealed partial class Binding
         }
 
         // The conditional conformance's own failure, as its owner decides it: a premise error keeps the context (SPEC 8.2.3), so the
-        // conditions are judged and the error is the scope's one record, not the target's again.
-        if (premises.Parent is { } conditional && this.InvalidDeclarationCause(conditional) is not null)
+        // conditions are judged and the error is the scope's one record, not the target's again: the reading check rests on it.
+        if (premises.Parent is { } conditional && this.ReadFailedDeclaration(conditional) is not null)
         {
             return ConstraintProof.Error;
         }

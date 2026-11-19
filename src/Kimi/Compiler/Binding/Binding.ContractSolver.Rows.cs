@@ -11,11 +11,10 @@ namespace Kimi.Compiler;
 // walk the requests start (Enumerate and what it calls) is the entry file's.
 public sealed partial class Binding
 {
-    // Closure(view) (the class header's): the entry of each (view scope, requirement Contract), the entries the outermost request formed
-    // (dropped when it returns unless Kept), and the free entries, each with its lists and their capacity.
-    private readonly Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex = new();
+    // Closure(view) (the class header's): the entries the outermost request formed (dropped when it returns unless Kept); the running
+    // pass's entry of each (view scope, requirement Contract) and its free entries, each with its lists and their capacity, are the
+    // pass's part's, handed over by EnterPass (enumerateIndex, enumerateIndexPool below; PassPart.EnumerateIndex).
     private readonly List<(EvidenceView, BindingSymbol?)> enumerateOwned = new();
-    private readonly Stack<ViewIndex> enumerateIndexPool = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
     // The kept tables (the class header's Kept rows), emptied by ClearKeptRows as their epoch ends, capacity and pooled lists kept:
@@ -28,6 +27,8 @@ public sealed partial class Binding
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<(BoundType A, BoundType B)> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows
     private readonly List<BoundType> enumerateDeferred = new(); // PLAN G881b: the round's mates row (5) did not walk (a cycle)
+    private Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex; // The running pass's Closure(view) entries.
+    private Stack<ViewIndex> enumerateIndexPool; // The running pass's free entries.
 
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
     // the rows of a link of the subject's chain in a view (null while the link is open), each link's rows of the request's last round
@@ -176,11 +177,12 @@ public sealed partial class Binding
     // class-key pairs an earlier table filed there (the view's, a previous round's or a previous root's), files the view's facts
     // under its own keys and walks the root and its key: a round reads its own table alone. Rows only grow from one root, so a round
     // that adds none ends the closure (Unknown). The rounds are counted from the root's first walk and the re-rootings from the
-    // subject; past PremiseClosureLimit of either, a request still unproven is refused (RefuseProof: PremiseClosureLimit, at its use
-    // or its scope's owner; the owner's O-321 (b)). Each re-rooting lowers the root in Order, so the re-rootings' refusal needs 33
-    // roots each joined to a lower one only by its own closure: none is known (the measured requests re-root at most twice). An
-    // extending request's rounds, rows and verdict are a function of (its final root, Contract, the declaration's grounds); whether
-    // a request extends is its first walk's (the class header's Extension).
+    // subject; past PremiseClosureLimit of either, a request still unproven is refused (RefuseProof: PremiseClosureLimit, the
+    // Resource record of the scope's declaration, once: at its first refused use, else at the declaration; O-321 (b), SPEC 8.3.3).
+    // Each re-rooting lowers the root in Order, so the re-rootings' refusal needs 33 roots each joined to a lower one only by its own
+    // closure: none is known (the measured requests re-root at most twice). An extending request's rounds, rows and verdict are a
+    // function of (its final root, Contract, the declaration's grounds); whether a request extends is its first walk's (the class
+    // header's Extension).
     private bool ExtendClosed(BoundType root, BindingSymbol contract, BindingScope scope, EvidenceView view, ViewIndex index)
     {
         this.enumerateIdentities.Clear();
@@ -189,7 +191,7 @@ public sealed partial class Binding
         {
             if (rounds > PremiseClosureLimit || restarts > PremiseClosureLimit)
             {
-                this.RefuseProof(this.consultationNode ?? scope.Owner, BindingFailure.PremiseClosureLimit);
+                this.RefuseProof(scope, BindingFailure.PremiseClosureLimit);
                 return false;
             }
 
@@ -280,7 +282,7 @@ public sealed partial class Binding
         for (var i = start; !supplied && i < this.premiseRows.Count; i++)
         {
             supplied = this.premiseRows[i] is { Available: true, Clause: { Kind: ConstraintKind.Callable } clause } && clause.Mask == atom.Mask &&
-                SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
+                this.SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
@@ -559,7 +561,7 @@ public sealed partial class Binding
         this.enumerateOwned.Clear();
     }
 
-    // The pass ended (ResetCapabilities): every entry goes back to the pool.
+    // The pass ended (ResetCapabilities, as the pass runs again): every entry of the pass goes back to the pass's pool.
     private void ClearClosure()
     {
         foreach (var index in this.enumerateIndex.Values)
@@ -611,7 +613,7 @@ public sealed partial class Binding
 
     // An entry of Closure(view) (the class header's): the serial it was formed at, whether it is Kept, and its buckets by (chain scope,
     // kind, SubjectKey). Its lists stay with it, capacity kept.
-    private sealed class ViewIndex
+    internal sealed class ViewIndex
     {
         private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> lists = new();
         private int used;

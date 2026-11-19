@@ -221,7 +221,7 @@ public sealed partial class Binding
 
     // J2: the polarity of Origin argument `index` of `type` at `polarity` (SlotComponentPolarity's), by its variance.
     private static int OriginArgumentPolarity(BoundType type, int index, int polarity, Binding binding)
-        => polarity == ContractPolarity ? ContractPolarity : ComposePolarity(polarity, OriginArgumentVariance(type, index, binding));
+        => polarity == ContractPolarity ? ContractPolarity : ComposePolarity(polarity, binding.OriginArgumentVariance(type, index, binding));
 
     // The polarity of a position of `variance` at `polarity` (1, -1 or 0), the one composition of an Origin solve's walks.
     private static int ComposePolarity(int polarity, OriginVariance variance)

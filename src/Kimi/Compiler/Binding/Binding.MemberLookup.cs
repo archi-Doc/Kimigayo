@@ -11,14 +11,15 @@ public sealed partial class Binding
     private readonly Dictionary<MemberAccessKoto, MemberSelection> memberSelections = new(
         KimiLibrarySize.Stated.MemberSelections, ReferenceEqualityComparer.Instance);
 
-    // The side of each member access whose member was selected (PLAN G724, B4): published by the former that selected it (SelectMember,
-    // BaseMember, ConstructorMember), its own fact beside the lookup's selection, since a constructor access has a side and no selection.
+    // The side of each member access whose member was selected (PLAN G724, B4): published by PublishPath's MemberAccess step of the former
+    // that selected it (SelectMember, BaseMember, ConstructorMember, a length argument's group member), its own fact beside the lookup's
+    // selection, since a constructor access has a side and no selection.
     private readonly Dictionary<MemberAccessKoto, MemberSide> memberSides = new(KimiLibrarySize.Stated.MemberSides, ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
 
-    /// <summary>Gets the layers LookupTypeMember searched in the latest pass, read by the scaling tests.</summary>
+    /// <summary>Gets the layers LookupMember searched in the latest pass, read by the scaling tests.</summary>
     internal int MemberWalkWork => this.memberWalks;
 
     // SPEC 9.1: a generic parameter belongs to its declaration's own scope and is no member of the Type.
@@ -124,7 +125,9 @@ public sealed partial class Binding
         for (var i = 0; i < structure.NestedContainers.Count; i++)
         {
             var nested = structure.NestedContainers[i];
-            if (this.LookupTypeMember(baseType, nested.Name, scope, typeRole: true).Member is not null)
+
+            // Any inherited Type member reserves the name (Qualifier: every Type member but a pair binder, which no struct declares).
+            if (this.LookupMember(baseType, nested.Name, scope, LookupRole.Qualifier).Member is not null)
             {
                 this.Fail(nested, BindingFailure.Duplicate);
                 this.Fail(structure, BindingFailure.Duplicate);
@@ -147,7 +150,7 @@ public sealed partial class Binding
 
             // Names reserve the declaration layer regardless of signatures or conditions.
             // The original derived receiver supplies protected access, including Properties.
-            if (this.LookupTypeMember(baseType, entry.Key, scope, this.SelfType(structure.BoundSymbol!)).Member is not null)
+            if (this.LookupMember(baseType, entry.Key, scope, LookupRole.Value, this.SelfType(structure.BoundSymbol!)).Member is not null)
             {
                 this.Fail(structure, BindingFailure.Duplicate);
                 return false;
@@ -218,7 +221,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var selection = this.LookupTypeMember(qualifiedType, name, scope);
+            var selection = this.LookupMember(qualifiedType, name, scope, LookupRole.Value);
             return originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !selection.Ambiguous ? selection.Member : null)
                 ? null : new(selection.Member ?? typeMember, selection, true);
         }
@@ -236,7 +239,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var selection = this.LookupTypeMember(groupType, name, scope);
+            var selection = this.LookupMember(groupType, name, scope, LookupRole.Value);
             return new(selection.Member, selection, true);
         }
 
@@ -269,7 +272,7 @@ public sealed partial class Binding
             {
                 // A nominal member takes priority over a requirement member of the same receiver.
                 valueMember = this.RequirementMember(member, scope, receiverType, false);
-                valueSelection = this.LookupTypeMember(receiverType, name, scope, receiverType);
+                valueSelection = this.LookupMember(receiverType, name, scope, LookupRole.Value, receiverType);
                 valueMember = valueSelection.Member ?? valueMember;
             }
 
@@ -290,8 +293,8 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 9.6: selects the member of `qualifier.name` from its two paths and publishes it: the member, its selection and, for a Type-side
-    // member, the qualifier.
+    // SPEC 9.6: selects the member of `qualifier.name` from its two paths and publishes it through PublishPath (a MemberAccess step): the
+    // member, its selection, its side and, for a Type-side member, the qualifier.
     private BindingSymbol? SelectMember(MemberAccessKoto member, BindingSymbol? qualifier, SideSelection typeSide, SideSelection valueSide, BindingScope scope)
     {
         var typeMember = typeSide.Member;
@@ -350,17 +353,9 @@ public sealed partial class Binding
             return null;
         }
 
-        this.memberSelections[member] = typeMember is not null ? typeSelection : valueSide.Selection;
-        this.memberSides[member] = typeMember is not null ? MemberSide.Type : MemberSide.Value;
-        if (typeMember is not null)
-        {
-            PublishQualifier(member.Left, qualifier!);
-        }
-
-        member.BoundSymbol = selected;
-        member.Right.BoundSymbol = selected;
-        member.Right.BindingState = BindingState.Resolved;
-        return selected;
+        return typeMember is not null
+            ? this.PublishMemberAccess(member, selected, qualifier!, LookupRole.Qualifier, typeSelection)
+            : this.PublishMemberAccess(member, selected, null, LookupRole.Value, valueSide.Selection);
     }
 
     private bool MayBeValueQualifier(Koto node, BindingScope scope)
@@ -395,11 +390,13 @@ public sealed partial class Binding
         return true;
     }
 
-    // Access and namespace select the layer. Receiver/argument/accessor checks never reopen it.
-    private MemberSelection LookupTypeMember(BoundType type, string name, BindingScope use, BoundType? receiver = null, BoundMemberPath? path = null, bool typeRole = false)
+    // SPEC 9.6: the layer walk of a member lookup in a role (SPEC 9.2), its namespace the role's: the first layer with accessible,
+    // role-compatible declarations. Receiver/argument/accessor checks never reopen it.
+    private MemberSelection LookupMember(BoundType type, string name, BindingScope use, LookupRole role, BoundType? receiver = null, BoundMemberPath? path = null)
     {
         // SPEC 22.1 (PLAN G32): a fixed array has no declaration; its members are the functions of the Kimi member group.
-        if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && !typeRole && this.Library.FixedArrayMembers is { } fixedMembers &&
+        var values = InValueNamespace(role);
+        if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && values && this.Library.FixedArrayMembers is { } fixedMembers &&
             this.scopes.TryGetValue(fixedMembers, out var fixedScope))
         {
             return fixedScope.Values.TryGetValue(name, out var fixedMember) && this.Accessible(fixedMember, use, receiverType: receiver)
@@ -421,9 +418,9 @@ public sealed partial class Binding
             this.memberWalks++;
             var symbol = layer.Symbol!;
             var scope = this.scopes[symbol.Declaration];
-            for (var candidate = (typeRole ? scope.Types : scope.Values).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
+            for (var candidate = (values ? scope.Values : scope.Types).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
             {
-                if (IsGenericParameter(candidate))
+                if (IsGenericParameter(candidate) || !HasLookupRole(candidate, role))
                 {
                     continue;
                 }

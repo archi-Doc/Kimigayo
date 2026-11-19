@@ -15,6 +15,15 @@ internal abstract class CheckInputSource
     /// <summary>Gets the source that reads the disk directly.</summary>
     public static CheckInputSource Disk { get; } = new DiskInputSource();
 
+    /// <summary>Tells whether an exception is a failure to name, list or read a user's input (SPEC 23.2.1; IMPL 20.3.1): an I/O or
+    /// access failure, or a path the host cannot name. Its readers apply it only around their own reads of an input, where it reports
+    /// the input's failure (the command's Input error, a dependency's input failure, the language server's unestablished input); any
+    /// other exception there is the compiler's. A missing input is decided by each reader before it (absence is not a failure).</summary>
+    /// <param name="ex">The exception a read raised.</param>
+    /// <returns><see langword="true"/> for a read failure.</returns>
+    public static bool IsReadFailure(Exception ex)
+        => ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException;
+
     /// <summary>Reads a whole project or lock file.</summary>
     /// <param name="path">The full path.</param>
     /// <returns>The file bytes.</returns>

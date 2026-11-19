@@ -528,10 +528,14 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.3, 15.6.1: a Type's own clauses are premises of its definition and obligations of each use, so a local annotation
-    // proves them substituted with the Origins its Type binds, also for a Type nested in it. Each is an obligation at the Type
-    // occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is never a premise of
-    // the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered;
-    // its result is judged at its own occurrence (BindFunctionType; DECISIONS R4-M162).
+    // proves them substituted with the Origins its Type binds, also for a Type nested in it. A fixed-fixed one (no body chain) that the
+    // premises at the occurrence entail (PublishedPremise: the enclosing declarations' and, inside a nested signature, its own inputs',
+    // its per-call Origins fixed, so for every choice of them) is Binding's direct proof and forms no row (2a0-D D1; as
+    // CollectDeclarationRows); each other, a body chain included (a local's inferred Origin, which region inference reads), is an
+    // obligation at the Type occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is
+    // never a premise of the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered;
+    // a nested signature's written result, a Function Type's or an anonymous function's, is formed at its own occurrence (FormNestedResult;
+    // DECISIONS R4-M162).
     private void AddTypeClauseObligations(BoundType type, Koto occurrence)
     {
         this.termWalks++;
@@ -542,9 +546,11 @@ public sealed partial class Binding
             {
                 var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-                if (!ReferenceEquals(a, b))
+                var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax);
+                if (!ReferenceEquals(a, b) &&
+                    (BodyChain(this.OriginAtUse(a, occurrence), this.OriginAtUse(b, occurrence), relation.Equality, this.formingBody) || !this.PublishedPremise(obligation, a, b)))
                 {
-                    this.AddObligation(new(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax));
+                    this.AddObligation(obligation);
                 }
             }
         }

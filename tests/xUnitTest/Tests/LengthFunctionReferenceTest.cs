@@ -43,7 +43,7 @@ public sealed class LengthFunctionReferenceTest
         Assert.Equal(3, items.Length);
         Assert.Same(items[0], items[1]);
         Assert.NotSame(items[0], items[2]);
-        Assert.False(Binding.FitsType(items[0], items[2]));
+        Assert.False(c.Binding.FitsType(items[0], items[2]));
         Assert.Equal("function item keep<2, i32>", Binding.DiagnosticTypeName(items[0]));
     }
 

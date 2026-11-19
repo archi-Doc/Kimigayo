@@ -35,12 +35,12 @@ public sealed partial class Binding
         for (var r = start; r < this.premiseRows.Count; r++)
         {
             if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact, Raw: { } raw, Stated: { } stated } ||
-                !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
+                !this.SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
             {
                 continue;
             }
 
-            var clauses = this.callableEffectClausesView;
+            var clauses = this.selectableEffectClauses;
             for (var i = 0; i < clauses.Count; i++)
             {
                 var clause = clauses[i];
@@ -92,12 +92,12 @@ public sealed partial class Binding
     private void CollectCallableEffectUses()
     {
         this.callableEffectUses.Clear();
-        // A use may select a library callee's bounded clause, so the test reads every pass's clauses (review-r1a B2), as
+        // A use may select a library callee's bounded clause, so the test reads the clauses the pass may select (review-r1a B2), as
         // AvailableCallableEffects does; the uses collected are the pass's own (its nodes).
-        for (var i = 0; i < this.nodes.Count && this.callableEffectClausesView.Count != 0; i++)
+        for (var i = 0; i < this.nodes.Count && this.selectableEffectClauses.Count != 0; i++)
         {
             var node = this.nodes[i];
-            if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
+            if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
             {
                 this.CheckCallableEffectUses(node, function.TypeConstraints, SubstitutionOf(function, call), call);
             }

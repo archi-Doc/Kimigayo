@@ -68,7 +68,7 @@ public sealed partial class Binding
     private InvocationKoto? nestedOperandProbe;
 
     // A recorded part's relation to its call (DECISIONS BU-74), a column of its record, one writer and one reader per bit: Awaits, its
-    // producer recorded it as awaiting its call (RecordPart's row; Awaits); Taken, on a call argument's own record, its call has
+    // producer recorded it as awaiting its call (RecordPart's row; Awaits), until its call's defaults resolved it alone (EndAwait); Taken, on a call argument's own record, its call has
     // selected and takes it (TakeArgument; TakenByCall). Taken ends no Awaits: a taken Join argument stays Join for TryCandidate's
     // re-check (KindOf), and a taken Literal or Typed argument does not start awaiting.
     [Flags]
@@ -189,9 +189,52 @@ public sealed partial class Binding
     // which gave it the fixed expected call signature S as its context, as WasDeferred does for a Call.
     private bool WasWaitingCallable(Koto node) => this.RecordedPart(node).Kind is PartKind.Function or PartKind.Reference;
 
-    // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
+    // SPEC 10.5.1 (PLAN G924, the owner's O-408 (a)): the order in which, after selection, the parts at positions that hold a slot still
+    // unsolved take their own Types (SlotSolution.DefaultArguments, DefaultPayloads), each step over the slots the steps before it left
+    // unsolved: the literals' defaults, then the waiting nested calls (constructions included), which do not feed each other.
+    private static readonly PartKind[] OwnTypeSteps = [PartKind.Literal, PartKind.Call];
+
+    // SPEC 10.2.1 (PLAN G924, the owner's O-341 (a)): the Type a part that no expected Type reaches takes for the selected candidate of
+    // its call (OwnType), once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
-        => this.RecordedPart(part) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
+        => this.RecordedPart(part) is { Default: { } own } ? own : null;
+
+    // SPEC 10.2.1, 10.5.1 (PLAN G924, the owner's O-341 (a)): after selection, the own Type of a part that no expected Type reaches,
+    // which binds a still-unbound slot: a literal's default, a waiting nested call's resolution with no expected result (its own
+    // literals defaulting); none for any other part. A failure is the part's own record and never reselects. The resolved call awaits
+    // its call no more, whatever the resolution gave it (EndAwait).
+    private BoundType? OwnType(Koto part, BindingScope scope)
+    {
+        switch (this.KindOf(part))
+        {
+            case PartKind.Literal:
+                return this.PartDefault(part, scope);
+            case PartKind.Call when this.AwaitsCall(part):
+                var type = this.BindNode(part, scope, null);
+                this.EndAwait(part);
+                return type;
+            default:
+                return null;
+        }
+    }
+
+    // SPEC 10.5.1 (the owner's O-341 (a)): the one writer that ends Awaits: the selected candidate's defaults resolved the waiting
+    // nested call alone (OwnType), so it is no waiting part any more: one that got no Type and no failure of its own (it rests on a
+    // part of its own, such as an anonymous function without a Type) is a failed part to its readers (PartFailed), as one with its
+    // own failure already is. A failed resolution whose failure is reported, its own record or one it rests on at any depth
+    // (FailureReported), is final (SPEC 10.5.1: a failure is an error and never reselects; 23.1.2): it is Invalid, so the call's
+    // re-check rests on it (FitArgument's rule-W row) and no later binding at the Type its call fixed (the argument's, a payload's or
+    // an element's completion) retries it and loses that record; one resting only on parts without a record stays provisional
+    // (PLAN G924, rulings 113 B1 and 115 B2).
+    private void EndAwait(Koto part)
+    {
+        ref var record = ref this.PartRecord(part);
+        record = record with { Relation = record.Relation & ~CallRelation.Awaits };
+        if (KotoHelper.UnwrapParentheses(part) is { BoundType: null } failed && this.FailureReported(failed))
+        {
+            failed.BindingState = BindingState.Invalid;
+        }
+    }
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
     // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one row:
@@ -467,10 +510,10 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds or that holds a waiting part, or of a
     // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
-    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the Literal parts'
-    // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another (its
-    // Constraints are the selected call's obligation, CheckDefaulted), and a slot still unbound is the inference boundary, a failed
-    // argument part included (rule W). False when the call is complete: waiting or failed.
+    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the parts' own Types
+    // apply to the selected candidate step by step (OwnTypeSteps), its checks running once more after each; a failure reports that
+    // candidate, never another (its Constraints are the selected call's obligation, CheckDefaulted), and a slot still unbound is the
+    // inference boundary, a failed argument part included (rule W). False when the call is complete: waiting or failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
         if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
@@ -494,21 +537,24 @@ public sealed partial class Binding
             return true;
         }
 
-        if (solution.DefaultArguments(evaluation.Mapping, out var applied) is { } misfit)
-        {
-            this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
-            return false;
-        }
-
         var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
-        if (applied && !this.CheckDefaulted(ref evaluation, winner, solution, operations))
+        foreach (var kind in OwnTypeSteps)
         {
-            return false;
-        }
+            if (solution.DefaultArguments(evaluation.Mapping, kind, out var applied) is { } misfit)
+            {
+                this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
+                return false;
+            }
 
-        if (!evaluation.Evaluated[winner].Unsolved)
-        {
-            return true;
+            if (applied && !this.CheckDefaulted(ref evaluation, winner, solution, operations))
+            {
+                return false;
+            }
+
+            if (!evaluation.Evaluated[winner].Unsolved)
+            {
+                return true;
+            }
         }
 
         if (this.DeferNestedCall(call, evaluation.Expected))
@@ -522,8 +568,8 @@ public sealed partial class Binding
                 call,
                 selected,
                 evaluation.Scope,
-                evaluation.Frame.Types,
-                evaluation.Frame.Lengths,
+                evaluation.Frames[winner].Types,
+                evaluation.Frames[winner].Lengths,
                 evaluation.Mapping,
                 operations,
                 evaluation.Expected,
@@ -566,99 +612,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // The independent Type of the parts at a position (Binding.ArgumentKinds.Positions.cs): a Tuple's, a fill's, a join's or a join
-    // position's from its children; with `fitLiterals`, a Literal part gives its default once DefaultArguments applied it. A part of
-    // Type Never, also a position Never in every source, gives none (SPEC 10.8; DECISIONS BU-2 U3's D6).
-    private BoundType? IndependentPositionType(int position, bool fitLiterals)
-    {
-        var end = this.positionParts.Count;
-        if (end - position != 1)
-        {
-            return this.PositionKind(position, end, out var type) switch
-            {
-                PartKind.Typed => type,
-                PartKind.Literal => fitLiterals ? this.DefaultOf(this.FirstLiteral(position, end)) : null,
-                PartKind.Aggregate => this.IndependentShapeType(position, end, this.PartsShape(position, end)!, fitLiterals),
-                _ => null,
-            };
-        }
-
-        var source = KotoHelper.UnwrapParentheses(this.positionParts[position]);
-        if (source.BoundType is { } actual && !this.AwaitsPosition(source))
-        {
-            return ReferenceEquals(actual, BoundType.Never) ? null : actual; // SPEC 10.8: a Never part supplies no evidence.
-        }
-
-        if (source is RangeKoto range && IsMixedRange(range))
-        {
-            // SPEC 4.6.2: without an expected range, a literal-only boundary takes the integer Type of the typed one; its default (rule 3)
-            // applies only to the selected candidate (SPEC 10.2.1).
-            var start = this.IndependentRangeBoundary(range.Start, this.StartType);
-            var last = this.IndependentRangeBoundary(range.End, this.EndType);
-            start ??= this.DefaultOf(range.Start!) ?? this.RangeTyping(range.Start!, last);
-            last ??= this.DefaultOf(range.End!) ?? this.RangeTyping(range.End!, start);
-            if (start is null || last is null)
-            {
-                return null;
-            }
-
-            var symbol = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
-            return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, last]);
-        }
-
-        if (source is TupleLiteralKoto or ArrayLiteralKoto { FillCount: not null })
-        {
-            return this.IndependentShapeType(position, end, source, fitLiterals);
-        }
-
-        if (this.ComposedJoin(source) is not null)
-        {
-            return this.IndependentChildType(position, end, 0, fitLiterals);
-        }
-
-        return fitLiterals ? this.DefaultOf(source) : null;
-    }
-
-    // The independent Type an aggregate shape forms from its child positions' (ShapeType), as a join's Type is formed (SPEC 14.9.2
-    // step 2: an array's one element position, AddPartsAt), none when one has none.
-    private BoundType? IndependentShapeType(int start, int end, Koto shape, bool fitLiterals)
-    {
-        var count = ShapeChildren(shape);
-        var children = this.RentTypes(count);
-        try
-        {
-            for (var i = 0; i < count; i++)
-            {
-                var position = this.positionParts.Count;
-                this.AddPartsAt(start, end, i);
-                var child = this.IndependentPositionType(position, fitLiterals);
-                this.ClosePosition(position);
-                if (child is null)
-                {
-                    return null;
-                }
-
-                children[i] = child;
-            }
-
-            return this.ShapeType(shape, children.AsSpan(0, count));
-        }
-        finally
-        {
-            this.typeScratch.Return(children, clearArray: true);
-        }
-    }
-
-    // The independent Type of child position `index` of [start, end).
-    private BoundType? IndependentChildType(int start, int end, int index, bool fitLiterals)
-    {
-        var child = this.positionParts.Count;
-        this.AddChildPosition(start, end, index, null);
-        var type = this.IndependentPositionType(child, fitLiterals);
-        this.ClosePosition(child);
-        return type;
-    }
-
     // The independent Type of a written range boundary: Start or End when omitted, the read Type of a typed one, or null for a
     // literal-only one.
     private BoundType? IndependentRangeBoundary(Koto? boundary, BoundType omitted)
@@ -688,16 +641,16 @@ public sealed partial class Binding
         return KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(integer) : integer;
     }
 
-    // SPEC 10.5.1, 4.6.2: an Aggregate's parts: each element of a Tuple or array literal is prepared as an argument at its position (a
-    // function reference among them waits when it needs S), the payloads of a contextual Case likewise, and the written boundaries of a
-    // mixed range on their own, since a boundary is never waiting.
+    // SPEC 10.5.1, 4.6.2, 12.3.1 (PLAN G924 rule A): an Aggregate's parts: each element of a Tuple or array literal is prepared as an
+    // argument at its position (a function reference among them waits when it needs S), the payloads of a contextual Case likewise, and
+    // the written boundaries of a mixed range too, each checked against its S or E (a nested call there waits for its call).
     private bool PrepareComposite(Koto part, BindingScope scope)
     {
         var source = KotoHelper.UnwrapParentheses(part);
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            return (range.Start is null || IsUnfittedLiteral(range.Start) || this.BindNode(range.Start, scope) is not null) &
-                (range.End is null || IsUnfittedLiteral(range.End) || this.BindNode(range.End, scope) is not null);
+            return (range.Start is null || IsUnfittedLiteral(range.Start) || this.PrepareArgument(range.Start, scope, default, callableContext: false)) &
+                (range.End is null || IsUnfittedLiteral(range.End) || this.PrepareArgument(range.End, scope, default, callableContext: false));
         }
 
         var elements = source is ArrayLiteralKoto array ? array.Elements : ((TupleLiteralKoto)source).Elements;

@@ -162,7 +162,7 @@ internal sealed partial class MirBuilder
         }
 
         if (secures && value.Kind == MirOperandKind.Move && this.body.Locals[value.Place.Root] is var secured &&
-            MirTypes.MayNeedDrop(secured.Type, this.walked))
+            MirTypes.MayNeedDrop(compilation.Types, secured.Type, this.walked))
         {
             // SPEC 14.10.3, 16.2.2: on the assumed path the transfer completes after its operand is evaluated and before any cleanup, so
             // the secured operand is delivered there too, not destroyed: where its Type may need drop (Created's rule), moved into a sink

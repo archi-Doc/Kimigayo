@@ -7,8 +7,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 10.5, 10.7, 7.7.4, 15.2.3: a call's applicability uses only the signature part of an erasure; the Shared receiver and the Owned
-// environment of a Closure value are judged after selection, at the argument, and a failure there never selects another candidate.
+// SPEC 10.1, 10.2, 10.5, 7.7.4, 15.2.3: a call's applicability uses an erasure's signature part, its Shared receiver and its Owned
+// environment where the forming body refutes it; the rest of a Closure value's erasure is judged after selection, at the argument.
 public class ErasureAfterSelectionTest
 {
     private const string Call = "func call(action: (i32) -> i32, x: i32) -> i32 => action(x)\nfunc run<T>(action: (T) -> i32, x: T) -> i32 => action(x@move)\n";
@@ -29,17 +29,18 @@ public class ErasureAfterSelectionTest
 
     private const string GenericK = "func k<T>(g: (T) -> T, x: T) -> T\n    return x@move\n";
 
+    // SPEC 7.7.4, 10.1, 10.2, 15.6.5 (G379 (a) Revision 3; the owner's O-404): a stored Closure holding a borrow of a body local (not
+    // Owned) or with an Exclusive receiver has no erasure row, so its lone candidate is not applicable: one record at the call.
     [Theory]
-    [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
-    [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "y@ref")]
-    [InlineData("    var total = 0\n    var f = func [var total] (n: i32) -> i32\n        total = total + n\n        return total\n    let r = call(f, 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Exclusive call")]
-    [InlineData("    var total = 0\n    var f = func [var total] (n: i32) -> i32\n        total = total + n\n        return total\n    let r = run(f, 2)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Exclusive call")]
-    public void AStoredClosureIsJudgedAtTheArgumentAfterSelection(string body, string code, string fact)
+    [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = call(f, 1)\n", "call(f, 1)")]
+    [InlineData("    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let r = run(f, 2)\n", "run(f, 2)")]
+    [InlineData("    var total = 0\n    var f = func [var total] (n: i32) -> i32\n        total = total + n\n        return total\n    let r = call(f, 1)\n", "call(f, 1)")]
+    [InlineData("    var total = 0\n    var f = func [var total] (n: i32) -> i32\n        total = total + n\n        return total\n    let r = run(f, 2)\n", "run(f, 2)")]
+    public void AStoredClosureFailingAnErasureConditionLeavesNoApplicableCandidate(string body, string call)
     {
         var source = Call + "public func main() -> ()\n" + body;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, "f"), (error.Code, Text(source, error.Span)));
-        Assert.Contains(fact, error.Note, StringComparison.Ordinal);
+        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), call), (error.Code, Text(source, error.Span)));
     }
 
     // SPEC 15.2.3: a capture of a generic Type that is not proven Owned is Unknown, so the record is UnprovenConstraint_Kd at the argument.
@@ -51,27 +52,27 @@ public class ErasureAfterSelectionTest
         Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "f@move"), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 10.7: an erasure and a concrete acquisition are incomparable, and an Owned or receiver failure cannot reopen selection, so the
-    // erasure candidate stays applicable beside the F candidate and the call is ambiguous (both selected the F candidate; the second one
-    // printed 1). The Note names that incomparability.
+    // SPEC 7.7.4, 10.1 step 5, 10.2 (G379 (a) Revision 3; the owner's O-404): an erasure applies exactly when its conditions hold, so a
+    // Closure holding a borrow of a body local (not Owned, SPEC 15.6.5) or with an Exclusive receiver makes the erasure candidate
+    // inapplicable and the F candidate is selected. This replaces A7 (an erasure condition never made it inapplicable), whose one basis,
+    // SPEC 10.7's sentence that a receiver or Owned failure cannot reopen selection, the 2026-10-15 rewrite removed.
     [Theory]
     [InlineData("F is Callable<(i32) -> i32>\n    return action(x)", "    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n")]
     [InlineData("F is Callable<owner, (i32) -> i32>\n    return action@move(x)", "    var total = 0\n    var f = func [var total] (n: i32) -> i32\n        total = total + n\n        return total\n")]
-    public void AnErasureConditionNeverMakesTheErasureCandidateInapplicable(string clause, string body)
+    public void AFailingErasureConditionMakesTheErasureCandidateInapplicable(string clause, string body)
     {
         var source = "func call(action: (i32) -> i32, x: i32) -> i32 => action(x)\nfunc call<F>(action: F, x: i32) -> i32\n    " + clause + "\npublic func main() -> ()\n" + body + "    let r = call(f@move, 1)\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), "call(f@move, 1)"), (error.Code, Text(source, error.Span)));
-        Assert.Contains("incomparable (SPEC 10.2.2, 10.7)", error.Note, StringComparison.Ordinal);
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
-    // SPEC 23.1.2: each failing erasure argument is its own problem, so every one is reported, and a converting one is not.
+    // SPEC 10.1, 23.1.2: erasure arguments that are not Owned leave the lone candidate inapplicable, one failure: NoApplicableOverload_Kd
+    // at the call, as two arguments of a mismatched structure are.
     [Fact]
-    public void EveryFailingErasureArgumentIsReported()
+    public void FailingErasureArgumentsOfALoneCandidateAreOneRecordAtTheCall()
     {
         var source = "func call3(a: (i32) -> i32, b: (i32) -> i32, c: (i32) -> i32) -> i32 => a(1) + b(2) + c(3)\npublic func main() -> ()\n    let y: i32 = 2\n    let f = func [y@ref] (n: i32) => n + y@follow\n    let h = func [y] (n: i32) => n + y\n    let g = func [y@ref] (n: i32) => n * y@follow\n    let r = call3(f, h, g)\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Equal([(nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "f"), (nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "g")], errors.Select(x => (x.Code, Text(source, x.Span))));
+        Assert.Equal([(nameof(DiagnosticCode.NoApplicableOverload_Kd), "call3(f, h, g)")], errors.Select(x => (x.Code, Text(source, x.Span))));
     }
 
     // SPEC 7.7.4: a stored closure with a Shared receiver and an Owned environment converts at both parameters, and the calls run.

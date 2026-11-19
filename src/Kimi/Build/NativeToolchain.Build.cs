@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Kimi.Diagnostics;
 using static Kimi.Build.ArtifactFiles;
 
@@ -41,45 +40,40 @@ internal static partial class NativeToolchain
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, cancellationToken));
         var manifest = document.RootElement;
         ValidateManifest(manifest);
-        var ir = ResolvePath(manifest.GetProperty("irFile").GetString()!, directory);
-        var optimization = manifest.GetProperty("codegen").GetProperty("optimization").GetString()!;
+        var ir = ResolvePath(LinkManifest.Text(manifest, "irFile"), directory);
+        var optimization = LinkManifest.Text(manifest, "optimization");
         var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
-        var bin = llvmBin is not null ? ResolvePath(llvmBin, Directory.GetCurrentDirectory()) :
-            manifest.TryGetProperty("toolchain", out var configured) && configured.TryGetProperty("llvmBin", out var value) ?
-                ResolvePath(value.GetString()!, directory) : null;
+        var configured = llvmBin is null && manifest.TryGetProperty("toolchain", out var toolchain) ? LinkManifest.Text(toolchain, "toolchain.llvmBin") : null;
+        var bin = llvmBin is not null ? ResolvePath(llvmBin, Directory.GetCurrentDirectory()) : configured is null ? null : ResolvePath(configured, directory);
         await new NativeBuild(null, paths, manifest, directory, optimization, report, cancellationToken).Run(toolchainRoot, bin);
     }
 
+    // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
+    // O2 whose external declarations each state a nonempty symbol, once, and its dllimport form (the declarations' one rule, checked
+    // before any tool). Every read is LinkManifest's, so a malformed manifest fails here, naming its field.
     internal static void ValidateManifest(JsonElement root)
     {
-        if (root.GetProperty("schemaVersion").GetInt32() != 3)
-        {
-            throw new InvalidDataException("Link manifest schema 3 is required. Re-emit the manifest for automatic backend toolchain resolution.");
-        }
-
-        var code = root.GetProperty("codegen");
-        var support = root.GetProperty("backendSupport");
-        var application = States(
-            root,
-            ("target", WindowsProfile.Target),
-            ("outputKind", "Application"),
-            ("entry", WindowsProfile.EntrySymbol),
-            ("subsystem", WindowsProfile.Subsystem));
-        if (!application || !StatesCodegen(code))
+        LinkManifest.CheckFixed(root);
+        if (LinkManifest.Text(root, "optimization") is not ("O0" or "O2") || LinkManifest.Text(root, "outputKind") != "Application" ||
+            LinkManifest.Text(root, "entry") != WindowsProfile.EntrySymbol || LinkManifest.Text(root, "subsystem") != WindowsProfile.Subsystem)
         {
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
 
-        var valid = StatesSupport(support) && SequenceEqual(root.GetProperty("providedRuntimeSymbols"), [WindowsProfile.FloatMarker]);
-        foreach (var dependency in root.GetProperty("expectedUndefinedSymbols").EnumerateArray())
+        var symbols = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var declaration in LinkManifest.Items(root, "externalDeclarations"))
         {
-            valid &= dependency.GetProperty("provider").GetString() == WindowsProfile.BackendLibrary &&
-                Array.IndexOf(WindowsProfile.ProvidedSymbols, dependency.GetProperty("symbol").GetString()) >= 0;
-        }
+            var symbol = LinkManifest.Text(declaration, "externalDeclarations.symbol");
+            if (symbol.Length == 0)
+            {
+                throw new InvalidDataException("Invalid external declaration.");
+            }
 
-        if (!valid)
-        {
-            throw new InvalidDataException("Invalid backend supply identity or runtime dependency.");
+            _ = LinkManifest.Flag(declaration, "externalDeclarations.dllimport");
+            if (!symbols.Add(symbol))
+            {
+                throw new InvalidDataException("Duplicate external declaration.");
+            }
         }
     }
 
@@ -108,40 +102,14 @@ internal static partial class NativeToolchain
         }
     }
 
-    // Whether a manifest's codegen section restates the profile's code generation settings and the pinned LLVM release, at O0 or O2.
-    private static bool StatesCodegen(JsonElement code)
-        => States(code, ("profile", WindowsProfile.Name), ("llvmVersion", ToolchainIdentity.LlvmVersion), ("cpu", WindowsProfile.Cpu)) &&
-            SequenceEqual(code.GetProperty("features"), [WindowsProfile.Features]) &&
-            States(
-                code,
-                ("relocationModel", WindowsProfile.RelocationModel),
-                ("codeModel", WindowsProfile.CodeModel),
-                ("unwindTables", WindowsProfile.UnwindTables)) &&
-            code.GetProperty("optimization").GetString() is "O0" or "O2";
-
-    // Whether a manifest's backendSupport section is the adopted backend supply's identity (SPEC 21.4.7).
-    private static bool StatesSupport(JsonElement support)
-        => States(support, ("packageId", ToolchainIdentity.BackendPackageId)) &&
-            support.GetProperty("abiVersion").GetInt32() == ToolchainIdentity.BackendAbiVersion &&
-            States(
-                support,
-                ("packageVersion", ToolchainIdentity.BackendVersion),
-                ("artifactSha256", ToolchainIdentity.BackendSha256),
-                ("library", WindowsProfile.BackendLibrary)) &&
-            SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols);
-
-    // The external functions of the hash-verified pre-optimization IR, keyed by symbol, with their dllimport form.
-    private static Dictionary<string, bool> ReadExternalDeclarations(string ir)
+    // The external functions the module declares, keyed by symbol, with their dllimport form: the manifest's externalDeclarations, which
+    // publication writes from the generation result (R9-B1); ValidateManifest checked their shape and that each symbol is declared once.
+    private static Dictionary<string, bool> ReadExternalDeclarations(JsonElement manifest)
     {
         var declared = new Dictionary<string, bool>(StringComparer.Ordinal);
-        foreach (var line in File.ReadLines(ir))
+        foreach (var declaration in LinkManifest.Items(manifest, "externalDeclarations"))
         {
-            // A quoted name escapes every quote, so its closing quote is the next one.
-            if (line.StartsWith("declare ", StringComparison.Ordinal) && line.IndexOf('@') is var at and >= 0 &&
-                (at + 1 < line.Length && line[at + 1] == '"' ? line.IndexOf('"', at + 2) + 1 : line.IndexOf('(', at)) is var end and > 0)
-            {
-                declared[LlvmModuleText.SymbolFromName(line.AsSpan(at + 1, end - at - 1))] = line.StartsWith("declare dllimport ", StringComparison.Ordinal);
-            }
+            declared.Add(LinkManifest.Text(declaration, "externalDeclarations.symbol"), LinkManifest.Flag(declaration, "externalDeclarations.dllimport"));
         }
 
         return declared;
@@ -167,8 +135,9 @@ internal static partial class NativeToolchain
     /// <summary>One native build of a checked IR/manifest pair: its inputs, its record and its tools. The constructor takes the build's
     /// fixed inputs: the project whose supplies it checks (none for a standalone manifest), the pair, the root its records redact, the
     /// optimization and the host's report and cancellation. <see cref="Run"/> takes the toolchain selection, which it resolves after the
-    /// pair's check, and runs the steps once, in order: the pair's identity, the tools, the libraries, the object, its inspection and the
-    /// link; a step that fails throws and leaves the record at the last state written.</summary>
+    /// pair's check, and runs the steps once, in order: the pair's identity, the tools, the libraries, the object, its inspection, the
+    /// link and the report; the steps fill the record and <see cref="Run"/> writes each of its states, the success last, so a step that
+    /// fails, the report included, throws and leaves the record at the last incomplete state written (IMPL 20.3.2).</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -217,6 +186,7 @@ internal static partial class NativeToolchain
             var undefined = await this.Inspect(obj);
             await this.Link(obj, libraries, undefined);
             this.report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
+            WriteRecord(this.paths.Record, this.record);
         }
 
         // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
@@ -236,13 +206,13 @@ internal static partial class NativeToolchain
         private string CheckPair()
         {
             var irHash = Hash(this.paths.Ir);
-            if (ResolvePath(this.manifest.GetProperty("irFile").GetString()!, this.outputDirectory) != this.paths.Ir ||
-                irHash != this.manifest.GetProperty("irSha256").GetString())
+            if (ResolvePath(LinkManifest.Text(this.manifest, "irFile"), this.outputDirectory) != this.paths.Ir ||
+                irHash != LinkManifest.Text(this.manifest, "irSha256"))
             {
                 throw new InvalidDataException("IR/manifest SHA-256 or path mismatch.");
             }
 
-            if (this.optimization != this.manifest.GetProperty("codegen").GetProperty("optimization").GetString())
+            if (this.optimization != LinkManifest.Text(this.manifest, "optimization"))
             {
                 throw new InvalidDataException("Project and manifest optimization differ; re-emit the inputs.");
             }
@@ -273,10 +243,10 @@ internal static partial class NativeToolchain
             var libraries = new List<string>();
             var libraryIdentities = new JsonArray();
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var item in this.manifest.GetProperty("libraries").EnumerateArray())
+            foreach (var item in LinkManifest.Items(this.manifest, "libraries"))
             {
-                var name = item.GetProperty("name").GetString()!;
-                var kind = item.GetProperty("kind").GetString();
+                var name = LinkManifest.Text(item, "libraries.name");
+                var kind = LinkManifest.Text(item, "libraries.kind");
                 if (!seen.Add(name) || kind is not ("import" or "static"))
                 {
                     throw new InvalidDataException("Invalid or duplicate native library.");
@@ -293,8 +263,8 @@ internal static partial class NativeToolchain
                     CheckSupply(this.project, name, kind, hash);
                 }
 
-                if (item.TryGetProperty("sha256", out var assertion) &&
-                    (assertion.GetString() is not { Length: 64 } expected || !expected.Equals(hash, StringComparison.OrdinalIgnoreCase)))
+                if (LinkManifest.OptionalText(item, "libraries.sha256") is { } assertion &&
+                    (assertion.Length != 64 || !assertion.Equals(hash, StringComparison.OrdinalIgnoreCase)))
                 {
                     throw new InvalidDataException($"Native library '{name}' does not match its manifest Sha256 assertion.");
                 }
@@ -331,7 +301,7 @@ internal static partial class NativeToolchain
 
             if (name != WindowsProfile.BackendLibrary)
             {
-                return StageInput(ResolvePath(item.GetProperty("input").GetString()!, this.outputDirectory), this.paths.Stem, out stagedHash);
+                return StageInput(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory), this.paths.Stem, out stagedHash);
             }
 
             var backend = ToolchainResolver.ResolveBackend(item, toolchainRoot, this.outputDirectory);
@@ -342,7 +312,7 @@ internal static partial class NativeToolchain
                     "or install the matching compiler toolchain package.");
             }
 
-            if (item.TryGetProperty("input", out _))
+            if (LinkManifest.OptionalText(item, "libraries.input") is not null)
             {
                 backend = StageInput(backend, this.paths.Stem, out stagedHash);
                 if (stagedHash != ToolchainIdentity.BackendSha256)
@@ -380,8 +350,9 @@ internal static partial class NativeToolchain
             return obj;
         }
 
-        // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the IR declares
-        // in the same form; one _fltused definition, unwind information and no default library. Returns the undefined symbols' listing.
+        // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
+        // declares (the manifest's) in the same form; one _fltused definition, unwind information and no default library. Returns the undefined
+        // symbols' listing.
         private async Task<string> Inspect(string obj)
         {
             var undefined = await this.Tool("llvm-nm", "--undefined-only", "--format=posix", obj);
@@ -396,7 +367,7 @@ internal static partial class NativeToolchain
                 }
 
                 // SPEC 22.6: a foreign import is referenced through __imp_ when dllimport and directly otherwise.
-                declared ??= ReadExternalDeclarations(this.paths.Ir);
+                declared ??= ReadExternalDeclarations(this.manifest);
                 var imported = symbol.StartsWith("__imp_", StringComparison.Ordinal);
                 if (!declared.TryGetValue(imported ? symbol[6..] : symbol, out var dllimport) || dllimport != imported)
                 {
@@ -416,7 +387,8 @@ internal static partial class NativeToolchain
             return undefined;
         }
 
-        // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked state.
+        // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked
+        // state, which Run publishes last.
         private async Task Link(string obj, List<string> libraries, string undefined)
         {
             var temporary = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
@@ -437,7 +409,6 @@ internal static partial class NativeToolchain
                 this.record["executable"] = Path.GetFileName(this.paths.Executable);
                 this.record["executableSha256"] = Hash(this.paths.Executable);
                 this.record["objectUndefinedSymbols"] = undefined.Trim();
-                WriteRecord(this.paths.Record, this.record);
             }
             finally
             {

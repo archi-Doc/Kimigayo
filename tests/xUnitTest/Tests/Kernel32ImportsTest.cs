@@ -63,7 +63,7 @@ public sealed class Kernel32ImportsTest
     [Theory]
     [InlineData("{{__kimi_exit}}\r\n  unreachable\n}\n", "  unreachable\n}\n")]
     [InlineData("{{__kimi_exit}}\n  ret\r void\r\r\n}\r", "  ret\r void\r\n}\r")]
-    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1812\n")]
+    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1912\n")]
     [InlineData("{{__kimi_exit}}\n  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)\n", "  ret ptr inttoptr (i64 4096 to ptr)\n")]
     [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
@@ -230,6 +230,18 @@ public sealed class Kernel32ImportsTest
         entry[field] = "changed";
         using var invalid = JsonDocument.Parse(entry.ToJsonString());
         Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash"));
+    }
+
+    // PLAN G983 (form J): a kernel32 record that is not the JSON its reader expects (a field missing or of another kind, or not an
+    // object) states other generation conditions, InvalidDataException with its repair, never a JSON accessor's failure.
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("{\"generator\":7}")]
+    public void InstallationRejectsAMalformedRecord(string entry)
+    {
+        using var invalid = JsonDocument.Parse(entry);
+        Assert.Contains("Run setup.ps1 again", Assert.Throws<InvalidDataException>(() => Kernel32Imports.ValidateInstallation(invalid.RootElement, "actual library hash")).Message);
     }
 
     [Fact]

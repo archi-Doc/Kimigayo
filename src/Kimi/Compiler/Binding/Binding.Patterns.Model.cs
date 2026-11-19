@@ -109,11 +109,12 @@ public sealed class BoundMatch
 
     /// <summary>Gets the Pattern plan (PatternPlan, plan 5.3) the current pass made for a match or a try, or the Some/None decomposition
     /// of a for loop over a user iteration entry, whose positions bind its iteration bindings; null for another node or loop.</summary>
+    /// <param name="binding">The reader's Binding, whose pass made the plan.</param>
     /// <param name="node">The match, try or for loop.</param>
     /// <returns>The plan, or null.</returns>
-    internal static BoundMatch? Of(Koto node) => node switch
+    internal static BoundMatch? Of(Binding binding, Koto node) => node switch
     {
-        MatchKoto match => match.CodeContext.Compilation.Binding.TryGetMatch(match, out var plan) ? plan : null,
+        MatchKoto match => binding.TryGetMatch(match, out var plan) ? plan : null,
         ForKoto { Iteration.Decomposition: { IsCurrent: true } decomposition } => decomposition,
         _ => null,
     };

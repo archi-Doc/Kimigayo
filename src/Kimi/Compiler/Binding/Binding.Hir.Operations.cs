@@ -38,18 +38,6 @@ public sealed partial class Binding
     private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto or CharLiteralKoto { Value: null } ||
         node.BindingFailure != BindingFailure.None || (node.Parent is BinaryKoto write && ReferenceEquals(write.Right, node) && AdmittedMisfit(write));
 
-    // Whether a parent covers a child, which it does not evaluate as a value: the callee of a selected call or construction (a value call's
-    // callee is evaluated unless its receiver operation uses what the callee reaches), any child of a macro (its call shape), the name
-    // Type arguments apply to.
-    private static bool Covers(Koto parent, Koto child) => parent switch
-    {
-        InvocationKoto call => ReferenceEquals(child, call.Method) && (CallPlan.Of(call) is not { Kind: CalleeKind.Value } plan ||
-            (plan.ReceiverOperation.Source is { } source && !ReferenceEquals(source, child))),
-        MacroKoto => true,
-        GenericsKoto generics => ReferenceEquals(child, generics.Identifier),
-        _ => false,
-    };
-
     // A published declaration whose body Binding bound builds it, a virtual body no instance applies included (checked, never generated:
     // virtual-dispatch 3, 6.3); an accessor's body is a part of its Property.
     private static bool HasBody(Koto declaration) => PartsPublished(declaration) && declaration switch
@@ -59,13 +47,25 @@ public sealed partial class Binding
         _ => ((PropertyKoto)declaration).InitializerKoto is { BindingState: not BindingState.Unvisited },
     };
 
+    // Whether a parent covers a child, which it does not evaluate as a value: the callee of a selected call or construction (a value call's
+    // callee is evaluated unless its receiver operation uses what the callee reaches), any child of a macro (its call shape), the name
+    // Type arguments apply to.
+    private bool Covers(Koto parent, Koto child) => parent switch
+    {
+        InvocationKoto call => ReferenceEquals(child, call.Method) && (CallPlan.Of(this, call) is not { Kind: CalleeKind.Value } plan ||
+            (plan.ReceiverOperation.Source is { } source && !ReferenceEquals(source, child))),
+        MacroKoto => true,
+        GenericsKoto generics => ReferenceEquals(child, generics.Identifier),
+        _ => false,
+    };
+
     // A name evaluates what its symbol is; a Property with a custom accessor is its accessor calls.
-    private static HirOp NameOp(Koto node) => node.BoundSymbol?.Kind switch
+    private HirOp NameOp(Koto node) => node.BoundSymbol?.Kind switch
     {
         null => node is MemberAccessKoto { BindingState: BindingState.Resolved } ? HirOp.PrimitiveOp : HirOp.Name, // The metadata of a sequence.
         BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate or
             BindingSymbolKind.Storage or BindingSymbolKind.LengthParameter or BindingSymbolKind.Function => HirOp.Name,
-        BindingSymbolKind.Property => CallPlan.Of(node) is not null ? HirOp.Call : IsStatic(node.BoundSymbol) ? HirOp.Name : HirOp.Field,
+        BindingSymbolKind.Property => CallPlan.Of(this, node) is not null ? HirOp.Call : IsStatic(node.BoundSymbol) ? HirOp.Name : HirOp.Field,
         BindingSymbolKind.EnumCase => HirOp.Aggregate,
         _ => HirOp.Syntax,
     };
@@ -106,7 +106,7 @@ public sealed partial class Binding
     private HirOp KindOp(Koto node) => node switch
     {
         BoolLiteralKoto or CharLiteralKoto or NumberLiteralKoto or StringLiteralKoto or UnitLiteralKoto or NullLiteralKoto => HirOp.Literal,
-        UnaryKoto when KotoHelper.SignedNumber(node, out _) is not null && CallPlan.Of(node) is null => HirOp.Literal, // Binding fits a signed number once.
+        UnaryKoto when KotoHelper.SignedNumber(node, out _) is not null && CallPlan.Of(this, node) is null => HirOp.Literal, // Binding fits a signed number once.
         InterpolatedStringKoto or MacroKoto when node.Formatting is not null => HirOp.Interpolation,
         InterpolatedStringKoto => HirOp.Syntax, // The text a $tryWrite writes: its segments and expressions are the macro's writes.
         LabeledKoto or ParenthesizedKoto or ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer } => HirOp.Group,
@@ -136,15 +136,15 @@ public sealed partial class Binding
         FunctionKoto => HirOp.Closure,
         IsKoto { IsRuntimeTest: true } => HirOp.RuntimeTypeTest,
         IndexKoto index => (this.IndexerCall(index, false) ?? this.IndexerCall(index, true) ?? this.ViewRangeCall(index)) is null ? HirOp.Index : HirOp.Call,
-        RangeKoto or FromEndIndexKoto => CallPlan.Of(node) is null ? HirOp.Range : HirOp.Call,
-        InvocationKoto => CallPlan.Of(node) is null && node.BoundSymbol?.Kind == BindingSymbolKind.EnumCase ? HirOp.Aggregate : HirOp.Call,
+        RangeKoto or FromEndIndexKoto => CallPlan.Of(this, node) is null ? HirOp.Range : HirOp.Call,
+        InvocationKoto => CallPlan.Of(this, node) is null && node.BoundSymbol?.Kind == BindingSymbolKind.EnumCase ? HirOp.Aggregate : HirOp.Call,
         MemberAccessKoto { Right: NumberLiteralKoto } => HirOp.Field,
-        MemberAccessKoto or IdentifierNameKoto or GenericsKoto or SyntaxFormKoto => NameOp(node),
+        MemberAccessKoto or IdentifierNameKoto or GenericsKoto or SyntaxFormKoto => this.NameOp(node),
         UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } or
             BinaryKoto { Akind: > KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals } => HirOp.CompoundAssign,
         BinaryKoto { Akind: KotoKind.Equals } => HirOp.Assign,
         BinaryKoto { Akind: KotoKind.And or KotoKind.Or } => HirOp.Logical,
-        UnaryKoto or BinaryKoto { Akind: not (KotoKind.OriginRelation or KotoKind.Is) } => CallPlan.Of(node) is null ? HirOp.PrimitiveOp : HirOp.Call,
+        UnaryKoto or BinaryKoto { Akind: not (KotoKind.OriginRelation or KotoKind.Is) } => CallPlan.Of(this, node) is null ? HirOp.PrimitiveOp : HirOp.Call,
         _ => HirOp.Unset,
     };
 
@@ -191,22 +191,14 @@ public sealed partial class Binding
                     return HirPosition.None;
                 case VariableKoto variable:
                     return ReferenceEquals(node, variable.InitializerKoto) && parentOp is HirOp.Body or HirOp.Let ? HirPosition.Evaluated : HirPosition.None;
-                case MatchKoto match:
-                    for (var i = 0; i < match.Arms.Count; i++)
-                    {
-                        if (ReferenceEquals(node, match.Arms[i].Pattern))
-                        {
-                            return HirPosition.Pattern;
-                        }
-                    }
-
-                    return position;
+                case MatchKoto:
+                    return node.SelectionRole == SelectionRole.Pattern ? HirPosition.Pattern : position;
                 case ForKoto loop:
                     return ReferenceEquals(node, loop.Iterable) || ReferenceEquals(node, loop.Body) || ReferenceEquals(node, loop.Iteration?.Receiver) ? position : HirPosition.None;
                 case InvocationKoto or MacroKoto:
-                    return Covers(parent, node) ? position | HirPosition.Covered : position;
+                    return binding.Covers(parent, node) ? position | HirPosition.Covered : position;
                 case GenericsKoto:
-                    return Covers(parent, node) ? position | HirPosition.Covered : HirPosition.None;
+                    return binding.Covers(parent, node) ? position | HirPosition.Covered : HirPosition.None;
                 case MemberAccessKoto or ConversionKoto or IsKoto:
                     return ReferenceEquals(node, ((BinaryKoto)parent).Left) ? position : HirPosition.None;
                 case ArrayLiteralKoto array:

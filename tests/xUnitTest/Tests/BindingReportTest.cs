@@ -15,6 +15,13 @@ public sealed class BindingReportTest
 {
     private const string Import = "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(a: bool) -> i32\n";
 
+    // review-r2's `wrapped` shape (Finding 3): need's T is Copy for Wrap<S<C>> rests on C is Callable<() -> ref/i32>, whose closure
+    // result borrows its hidden environment receiver. Invalid: SPEC 8.10 and 15.6.1 make that Origin part Unknown, never Refuted, and
+    // SPEC 8.3.3 rejects an Unknown at Final, so the record is UnprovenConstraint_Kd at need's argument, the value whose Type binds T.
+    private const string Wrapped = "struct S<C>\n    public init() => ()\n    Self is Copy when C is Callable<() -> ref/i32>\n" +
+        "struct Wrap<T>\n    public init() => ()\n    Self is Copy when T is Copy\nfunc need<T>(value: T) -> ()\n    T is Copy\n    return\n" +
+        "func wrap<F>(f: ref/F) -> Wrap<S<F>> => Wrap<S<F>>.init()\npublic func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    need(wrap(f@ref))\n";
+
     private static readonly SourceRef Subject = new(0, 5);
     private static readonly SourceRef Other = new(0, 6);
     private static readonly DiagnosticRequirement Mismatch = DiagnosticRequirement.Binding(BindingFailure.TypeMismatch);
@@ -277,12 +284,69 @@ public sealed class BindingReportTest
         Assert.InRange(time.ElapsedMilliseconds, 0, 30_000);
     }
 
+    // PLAN G949 S1-r1b (v12; s1r1-design 8.7, F's ruling 58): a Bind's records are the same cold (a new compilation), after a second
+    // Bind and after a Provisional Bind followed by a Final one, so no record depends on the Binds before it (M5: each pass's first
+    // capability epoch follows the epoch before it, from the split the library pass's). A guard: no reachable program differed even
+    // before S1-e's CapabilityWork.Reset emptied a work's Fact (review-r2 Finding 3). The programs: the program-independence row's ten
+    // (valid) and review-r2's `wrapped` shape, which reaches that hand-out (invalid, Wrapped's label).
+    [Theory]
+    [InlineData("")]
+    [InlineData("docs/examples/Hello/Hello.kimi")]
+    [InlineData("tests/milestones/Milestone26.kimi")]
+    [InlineData("tests/milestones/Milestone27.kimi")]
+    [InlineData("tests/milestones/Milestone30.kimi")]
+    [InlineData("tests/milestones/Milestone31.kimi")]
+    [InlineData("tests/milestones/Milestone32.kimi")]
+    [InlineData("tests/milestones/Milestone35.kimi")]
+    [InlineData("docs/examples/Ranges/Ranges.kimi")]
+    [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
+    [InlineData(Wrapped)]
+    public void ABindsRecordsAreTheSameColdWarmAndAfterAProvisionalBind(string program)
+    {
+        var source = program.EndsWith(".kimi", StringComparison.Ordinal) ? Repository.ReadText(program.Split('/')) : program;
+        var c = Prepared(source);
+        c.Binding.Bind(BindingMode.Final);
+        var cold = Records(c);
+        c.Binding.Bind(BindingMode.Final);
+        Assert.Equal(cold, Records(c));
+        var provisional = Prepared(source);
+        provisional.Binding.Bind(BindingMode.Provisional);
+        provisional.Binding.Bind(BindingMode.Final);
+        Assert.Equal(cold, Records(provisional));
+        if (program == Wrapped)
+        {
+            var record = Assert.Single(TestDiagnostics.Of(c));
+            Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "wrap(f@ref)"), (record.Code, record.Text));
+            Assert.Contains("hidden environment receiver (SPEC 8.10)", record.Note, StringComparison.Ordinal);
+        }
+    }
+
     private static string ManyParts(int count)
         => "group Native\n    #LibraryImport(\"kernel32\", \"VirtualFree\")\n    public unsafe func imported(" +
             string.Join(", ", Enumerable.Range(0, count).Select(static i => $"p{i}: string")) + ") -> i32\n";
 
     private static BindingProblem Problem(SourceRef subject, DiagnosticRequirement requirement, ushort condition = 0)
         => new(DiagnosticCode.TypeMismatch_Kd, requirement, subject, condition);
+
+    // A new compilation of one source (none for the empty program), not yet bound.
+    private static Compilation Prepared(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        if (source.Length != 0)
+        {
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        }
+
+        return c;
+    }
+
+    // The latest Bind's records, each with its reason, related locations, Note and repairs, as the check's JSON writes them.
+    private static string Records(Compilation c)
+    {
+        c.Binding.ReportDiagnostics();
+        return System.Text.Json.JsonSerializer.Serialize(c.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission), DiagnosticJsonContext.Default.DiagnosticResult);
+    }
 
     private static int[] Chain(BindingReport report, SourceRef subject)
     {

@@ -9,21 +9,28 @@
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the installed toolchain.
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
-// Compilation.Diagnostics; Binding.Startup.OutputKind and Binding.LibraryImports (an import's Library and Kind); the enum OutputKind,
-// which project configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease;
-// CompilationBuildMetadata, through Project.BuildMetadata; the Backend's LlvmModuleText.SymbolFromName; and of Kimi.Diagnostics the
-// record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
+// Compilation.Diagnostics, and its result Compilation.Generated (GeneratedModule: the output kind, the required libraries and the
+// external declarations, each an ExternalFunction read for its Symbol and DllImport; R9-B1); the enum OutputKind, which project
+// configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
+// Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
 // Output: the pair, the build record, the staged libraries, the object with its inspection and the executable, each published by
 // replacement; and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
-// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception its host renders (IsToolchainFailure).
+// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception: one IsToolchainFailure classifies is
+// the toolchain's, which its host renders as a message; any other ends the result it interrupted as Faulted (CheckFaulted_Kd): under
+// Project.Build the build's (R9-B2), under a command the command's own (CommandExecution, PLAN G984).
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
 // Must not: check source semantics, or read compiler state outside the list above.
-// Temporary: the two reads of Binding (Startup.OutputKind, LibraryImports) and SymbolFromName (ReadExternalDeclarations' IR re-parse)
-// end with the plan's unit R9-B1, when the generation result carries the output kind, the required libraries and the external
-// declarations. The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
+// The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
+// The link manifest's fixed fields (one table) and its readers are LinkManifest's: no manifest read raises an accessor's exception (R9-B1).
+// The build record's, the installation's and kernel32's readers compare ArtifactFiles' total reads (Member, Text, Number) with what they
+// expect, so a malformed record fails as their InvalidDataException (PLAN G983), and IsToolchainFailure lists no JSON accessor's type
+// (KeyNotFoundException, InvalidOperationException). Known limit (R9-M10's, narrowed): inside the toolchain's calls the set still
+// classifies by type whatever raised the exception, so one of its remaining kinds (publication's, R5-M165; Win32Exception;
+// JsonException) raised by the host's report or a defect here prints as the toolchain's failure; any other type is a fault.
+// The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
 
 using System.ComponentModel;
 using System.Diagnostics;
@@ -43,10 +50,13 @@ internal static partial class NativeToolchain
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    // A failure of the native build or of a toolchain command: publication's kinds (an output, a configuration or a supply), a tool that
-    // does not start, or a manifest, record or installation file that is not the JSON its reader expects.
+    // A failure of a toolchain step (the native build, a Library's record, a run or a toolchain command): publication's kinds (an output,
+    // a configuration or a supply), a tool that does not start, or a manifest, record or installation file that does not parse (JsonException)
+    // or is not what its reader expects (its InvalidDataException, PLAN G983). Its readers apply it only around the toolchain's own calls:
+    // Project.Build and Project.Run (a compiler step's exception is its result's fault, R9-B2), CommandExecution.Toolchain (build
+    // --Manifest, run <exe>, toolchain verify) and TestCommand around its native build (PLAN G984).
     internal static bool IsToolchainFailure(Exception ex)
-        => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
+        => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException;
 
     internal static void Invalidate(ArtifactPaths paths)
     {
@@ -54,9 +64,9 @@ internal static partial class NativeToolchain
         WriteRecord(paths.Record, CreateBuildRecord());
     }
 
-    internal static void RecordLibrary(Project project, ArtifactPaths paths, CancellationToken cancellationToken)
+    // A checked Library's record, with the front end's metadata of its one target, which the project reads (a compiler step's read).
+    internal static void RecordLibrary(Project project, CompilationBuildMetadata metadata, ArtifactPaths paths, CancellationToken cancellationToken)
     {
-        var metadata = project.BuildMetadata.Single();
         var record = new JsonObject
         {
             ["status"] = "checked", ["outputKind"] = "Library", ["input"] = project.FilePath,
@@ -77,9 +87,9 @@ internal static partial class NativeToolchain
 
         using var record = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Record, cancellationToken));
         var root = record.RootElement;
-        if (root.GetProperty("status").GetString() is not ("linked" or "executed") ||
-            root.GetProperty("optimization").GetString() != project.ProjectFile.Optimization ||
-            root.GetProperty("executableSha256").GetString() != Hash(paths.Executable))
+        if (Text(Member(root, "status")) is not ("linked" or "executed") ||
+            Text(Member(root, "optimization")) != project.ProjectFile.Optimization ||
+            Text(Member(root, "executableSha256")) != Hash(paths.Executable))
         {
             throw new InvalidDataException("The latest build failed or the binary was changed. Run 'kimi build' first.");
         }

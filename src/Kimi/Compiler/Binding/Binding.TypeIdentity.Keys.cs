@@ -195,7 +195,9 @@ public sealed partial class Binding
         // The one class-validity rule and member scan behind both answers: a Type's class (ClassOf: any node, constructed ones included,
         // or a Type congruent with one) in state One whose meets are complete, scanned once per table (its members are fixed after
         // Close), whatever the number asked. The Member is a constructor as the cycle marking counts it (Constructs), so every step from
-        // a class into its Member's components is a class graph edge MarkCycleEdges marks (design R4.1).
+        // a class into its Member's components is a class graph edge MarkCycleEdges marks (design R4.1). Its Kind list names the
+        // members that may key a class (R7-M25: a Type parameter, the original `s/T` among them, or an associated projection), not SPEC
+        // 8.2.3's abstract Type, which the meets test by IsAbstractType.
         private (BoundType? Least, BoundType? Member) Scanned(BoundType type)
         {
             var root = this.ClassOf(type);

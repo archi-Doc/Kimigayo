@@ -178,7 +178,7 @@ public sealed partial class Binding
                 uses.Use((node as TestVerificationKoto)?.Message);
                 break;
             case MatchKoto match:
-                var plan = BoundMatch.Of(match);
+                var plan = BoundMatch.Of(this, match);
                 Subject(match.Expression, plan?.SubjectBorrow, ref uses);
                 Bindings(plan, ref uses);
                 for (var i = 0; i < match.Arms.Count; i++)
@@ -190,9 +190,9 @@ public sealed partial class Binding
                 break;
             case ForKoto loop:
                 uses.Use(loop.Iterable);
-                Bindings(BoundMatch.Of(loop), ref uses);
+                Bindings(BoundMatch.Of(this, loop), ref uses);
                 break;
-            case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
+            case MacroKoto { Formatting.Acquisition: { } acquisition } when this.CallOf(acquisition) is { ArgumentOperations: [var writer, ..] }:
                 uses.Use(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
                 break;
         }
@@ -209,7 +209,7 @@ public sealed partial class Binding
         }
 
         var unselected = node is IndexKoto ? this.IndexerCall(node, !this.SelectsUniq(node, exclusive))?.CallStorage : null;
-        for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+        for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
         {
             uses.Call(i);
             if (ReferenceEquals(call, unselected))
@@ -326,7 +326,7 @@ public sealed partial class Binding
         {
             ConversionKoto conversion => ReferenceEquals(conversion.Left, child) && this.BorrowsExclusively(conversion),
             ForKoto loop => ReferenceEquals(loop.Iterable, child) && loop.Mode == SubjectMode.Exclusive,
-            MatchKoto match => ReferenceEquals(match.Expression, child) && BoundMatch.Of(match) is { Mode: SubjectMode.Exclusive },
+            MatchKoto match => ReferenceEquals(match.Expression, child) && BoundMatch.Of(this, match) is { Mode: SubjectMode.Exclusive },
             _ => parentOp is HirOp.Assign or HirOp.CompoundAssign && ReferenceEquals(Operand(parent), child),
         };
 
