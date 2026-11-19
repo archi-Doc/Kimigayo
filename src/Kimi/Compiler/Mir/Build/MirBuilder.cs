@@ -81,9 +81,10 @@ internal sealed partial class MirBuilder(Compilation compilation)
             return this.program;
         }
 
-        // The library version (PLAN G950-K): Binding's library publication version, per compilation and written once at the library's
-        // freeze (G949 S1-1, ruling 174), so a later version keeps the segment while each version keeps it. A built version follows a
-        // Bind whose library pass froze (a thrown library pass publishes no Result and builds no MIR): 0 is a broken contract.
+        // The library version (PLAN G950-K): Binding's library publication version, Binding.Frozen once the compilation's library is
+        // frozen (G949 Stage 2 U3), so the same in every version of every compilation, and a later version keeps the segment while each
+        // version keeps it. A built version follows a Bind over a frozen library (a refused or thrown library pass publishes no Result
+        // and builds no MIR): 0 is a broken contract.
         var libraryVersion = HirTables.LibraryVersion(compilation);
         if (libraryVersion == 0)
         {

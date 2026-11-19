@@ -182,7 +182,7 @@ public sealed partial class Binding
         return null;
     }
 
-    private void ReportQualification(Koto node, DiagnosticRequirement requirement)
+    private void ReportQualification(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
         var fact = this.qualificationFailures![node];
         var container = fact.Container.Owner.BoundSymbol!;
@@ -254,7 +254,8 @@ public sealed partial class Binding
 
         var at = fact.At!;
         var nameSpace = fact.Type ? QualificationNamespace.Type : QualificationNamespace.Value;
-        node.Report(
+        node.ReportIn(
+            store,
             requirement,
             DiagnosticCode.QualificationRequired_Kd,
             fact.Name,

@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private void ReportOverrideFailure(FunctionKoto function, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportOverrideFailure(FunctionKoto function, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var failure = this.overrideFailures![function];
         var related = failure.First is null ? null : failure.Second is null
@@ -42,14 +42,14 @@ public sealed partial class Binding
         var span = failure.Span ?? (failure.At is null ? function.DispatchModifierSpan : null);
         if (report.Evidence is null)
         {
-            function.Report(requirement, DiagnosticCode.InternalInvariant_Kd, at: failure.At, span: span);
+            function.ReportIn(store, requirement, DiagnosticCode.InternalInvariant_Kd, at: failure.At, span: span);
             return;
         }
 
-        function.Report(requirement, code, at: failure.At, span: span, note: report.Note, evidence: report.Evidence, related: related);
+        function.ReportIn(store, requirement, code, at: failure.At, span: span, note: report.Note, evidence: report.Evidence, related: related);
     }
 
-    private void ReportVirtualDeclarationFailure(FunctionKoto function, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportVirtualDeclarationFailure(FunctionKoto function, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var cause = this.virtualDeclarationFailures![function];
         var note = cause switch
@@ -64,10 +64,10 @@ public sealed partial class Binding
             _ => throw new UnreachableException(),
         };
         (string, Koto, string?)[] related = [("declaration", function, "the virtual or override declaration")];
-        function.Report(requirement, code, span: function.DispatchModifierSpan, note: note, evidence: [cause], related: related);
+        function.ReportIn(store, requirement, code, span: function.DispatchModifierSpan, note: note, evidence: [cause], related: related);
     }
 
-    private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var cause = this.baseCallFailures![reference];
         var note = cause switch
@@ -80,6 +80,6 @@ public sealed partial class Binding
             BaseCallCause.NotInstanceFunction => "base.name(arguments) must name an instance function; use Type qualification for receiverless functions",
             _ => throw new UnreachableException(),
         };
-        reference.Report(requirement, code, note: note, evidence: [cause]);
+        reference.ReportIn(store, requirement, code, note: note, evidence: [cause]);
     }
 }

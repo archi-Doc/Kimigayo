@@ -133,8 +133,8 @@ internal struct HirTables
     /// <returns>The pass the columns describe, 0 before the first.</returns>
     internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
 
-    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1 and S1-1): the run whose library pass
-    /// published it and froze the library, 0 before; per compilation (its own Binding's run counter) and constant from the freeze.</summary>
+    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1, S1-1 and Stage 2 U3): Binding.Frozen
+    /// once the compilation's library is frozen, the same in every compilation of the process; 0 for a library not frozen.</summary>
     /// <param name="compilation">The compilation.</param>
     /// <returns>The version.</returns>
     internal static ulong LibraryVersion(Compilation compilation) => compilation.Binding.LibraryVersion;

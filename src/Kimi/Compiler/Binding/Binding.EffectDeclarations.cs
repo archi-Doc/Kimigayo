@@ -578,25 +578,25 @@ public sealed partial class Binding
 
     // An item's record, and its selector's own (judged on its own, BindEffectBound) as its second record (DIAGNOSTICS 4.3, several
     // problems of one node).
-    private void ReportEffectBound(EffectBoundKoto effect, DiagnosticRequirement requirement)
+    private void ReportEffectBound(EffectBoundKoto effect, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
         if (this.effectBoundRejections?.TryGetValue(effect, out var rejection) != true)
         {
-            effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd);
+            effect.ReportIn(store, requirement, DiagnosticCode.InvalidEffectBound_Kd);
             return;
         }
 
-        this.ReportEffectRejection(effect, requirement, rejection, 0);
+        this.ReportEffectRejection(effect, store, requirement, rejection, 0);
         if (effect.Selector is { } selector && this.effectBoundRejections.TryGetValue(selector, out var own))
         {
-            this.ReportEffectRejection(effect, requirement, own, 1);
+            this.ReportEffectRejection(effect, store, requirement, own, 1);
         }
     }
 
     // SPEC 8.11.1: the Reason names the cause, the Note its path and the related locations the bounded declaration (a function
     // requirement, an original virtual slot or the Constraint of a Callable effect list) and an earlier bound. The text is formed
     // here, only for published records.
-    private void ReportEffectRejection(EffectBoundKoto effect, DiagnosticRequirement requirement, in EffectBoundRejection rejection, ushort condition)
+    private void ReportEffectRejection(EffectBoundKoto effect, DiagnosticCollection? store, DiagnosticRequirement requirement, in EffectBoundRejection rejection, ushort condition)
     {
         var selector = effect.Selector?.ToString();
         var name = (rejection.Target as FunctionKoto)?.Name ?? effect.Name?.ToString();
@@ -643,7 +643,7 @@ public sealed partial class Binding
             related![^1] = ("bound", earlier, "the bound declared earlier");
         }
 
-        effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd, note: note, evidence: [cause], related: related, condition: condition);
+        effect.ReportIn(store, requirement, DiagnosticCode.InvalidEffectBound_Kd, note: note, evidence: [cause], related: related, condition: condition);
 
         static string EffectOwner(EffectBoundKoto effect)
             => effect.Parent switch
