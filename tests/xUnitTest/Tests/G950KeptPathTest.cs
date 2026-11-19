@@ -29,8 +29,13 @@ public sealed class G950KeptPathTest
     // The library's generic swap erased at a declared Function Type (SPEC 10.5.3, 7.7.4) over a Type: the Back's program for row K1-K.
     private const string Swap = "let action: (uniq/{0}, uniq/{0}) -> () = ::Kimi.Intrinsics.swap\n";
 
+    // capacity91's records (R7-T1): the height refusal at the requesting call, the local's glue past the type-driven height cap.
+    private static readonly DiagnosticCode[] Refused = [DiagnosticCode.GenerationResourceLimit_Kd, DiagnosticCode.TypeHeightLimit_Kd];
+
     // The programs the class writes: Bad, row M4's (the focused re-review), whose record rests on a library callee's A4 summary, and
-    // PLAN G951 U2-K's: X3 (MirBuildTest's) and swap at u8 and at 70 nested arrays.
+    // PLAN G951 U2-K's: X3 (MirBuildTest's) and swap at u8 and at 70 nested arrays; R7-T1's refused library instance (capacity91: a chain
+    // of 19 distinct functions whose last makes an Array<Box^91<T>> at T = Box^8100<i32>, refused in Array.initCapacity, whose local
+    // uniq/Array<...> passes IMPL A.4's height) and its valid twin at u8.
     private static readonly Dictionary<string, string> Own = new(StringComparer.Ordinal)
     {
         ["bad"] = "let text: string = 1\n::Kimi.Console.writeLine(\"Hello, world!\")\n",
@@ -41,6 +46,8 @@ public sealed class G950KeptPathTest
         ["x3"] = MirBuildTest.StopwatchAction,
         ["swap"] = string.Format(Swap, "u8"),
         ["swap70"] = string.Format(Swap, string.Concat(Enumerable.Repeat("[1 of ", 70)) + "u8" + new string(']', 70)),
+        ["capacity"] = "let a = Array<u8>.init(capacity: 1)\n",
+        ["capacity91"] = InstanceCollectorTest.DeepSource("capacity91"),
     };
 
     // g7's sequences: each tests/mir program after a warm rebind and after Provisional then Final; the design review's six edits into
@@ -96,8 +103,8 @@ public sealed class G950KeptPathTest
     // in one version and not in the next ones, then again; (c) the library's generic instances across versions, and a library generic
     // function refused at one Type and collected at another; (d) an edit that removes the caller that demanded library bodies.
     // Labels (SPEC, before any output): Hello, X3, the milestones and swap at u8 valid; swap at 70 nested [1 of ...] valid
-    // (SPEC 10.5.3, 7.7.4; no rule bounds a Type's nesting), rejected by the implementation's storage bound with one located
-    // Unsupported_Kd (PLAN G128).
+    // (SPEC 10.5.3, 7.7.4; no rule bounds a Type's nesting), rejected by Layout's inline depth, GenerationResourceLimit_Kd at swap's
+    // local (R7-T1; before, the storage bound's located Unsupported_Kd, PLAN G128).
     [Theory]
     [InlineData("example/Hello x3 example/Hello warm x3")]
     [InlineData("milestone/Milestone26 milestone/Milestone31 milestone/Milestone26 warm")]
@@ -301,40 +308,39 @@ public sealed class G950KeptPathTest
     }
 
     // Row K1-K (R-K2'': A2 does not hold a demanded library body; the Back's C1 on C-378, with C4: the product row
-    // ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped merged into this one at G950-K): swap70's version ends
-    // with swap built at its library ordinal and not held (the premise, asserted; the collector refuses the instance after its lookup
-    // built swap's body), so the next version (swap at
-    // u8) takes a new library segment, steps swap and equals a fresh pipeline; the one after it (warm) keeps that segment, and swap70
-    // again keeps it too, swap held by the library store while the fresh pipeline builds swap and steps nothing: the case Snapshot's
-    // rule compares with an eager step of the body (the Back's C3 (a)), asserted to arise here. Transitional: it holds until R7 removes
-    // the bound, and the row then needs another refusal. swap erased at 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected
-    // by the implementation's storage bound (PLAN G128: one located Unsupported_Kd); swap at u8 is valid.
+    // ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped merged into this one at G950-K): capacity91's version ends with
+    // Array.initCapacity built at its library ordinal and not held (the premise, asserted; the collector refuses the instance after its
+    // lookup built the body), so the next version (capacity at u8) takes a new library segment, steps it and equals a fresh pipeline; the
+    // one after it (warm) keeps that segment, and capacity91 again keeps it too, the body held by the library store while the fresh
+    // pipeline builds it and steps nothing: the case Snapshot's rule compares with an eager step of the body (the Back's C3 (a)), asserted
+    // to arise here. capacity91 is valid (SPEC 8.13.3; labels c3\labels.tsv R1) and rejected by IMPL A.4's height where initCapacity's
+    // local forms 8,193 (TypeHeightLimit_Kd at the requesting call) and by the type-driven height cap of its local's glue
+    // (GenerationResourceLimit_Kd, R5-M171); capacity at u8 is valid. Before R7-T1 the row's refusal was swap at 70 nested arrays, the
+    // storage-nesting gap, now an instance (B's ruling 14).
     [Fact]
     public void ARefusedLibraryInstanceEndsTheKeptSegment()
     {
-        var c = Compile("swap70");
+        var c = Compile("capacity91");
         _ = c.Analyze();
-        Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
+        Assert.Equal(Refused, c.Problems.Select(static x => x.Code).Order());
         var (program, eager) = (c.BuildMir(), new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1));
-        var swap = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
-        Assert.Equal(("swap", eager[swap.Key]!.Ordinal, false), (swap.Key.Decl?.Name, swap.Ordinal, program.Drops.Holds(swap.Ordinal)));
+        var refused = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Decl?.Name == "initCapacity");
+        Assert.Equal((eager[refused.Key]!.Ordinal, false), (refused.Ordinal, program.Drops.Holds(refused.Ordinal)));
         var segment = program.LibrarySegment;
-        var (own, fresh) = Next(c, "swap");
+        var (own, fresh) = Next(c, "capacity");
         Assert.Equal(fresh, own);
         Assert.Empty(c.Problems);
         Assert.Equal(segment + 1, c.BuildMir().LibrarySegment);
-        foreach (var then in new[] { "warm", "swap70" })
+        foreach (var then in new[] { "warm", "capacity91" })
         {
             (own, fresh) = Next(c, then);
             Assert.Equal(fresh, own);
             program = c.BuildMir();
-            Assert.Equal((segment + 1, true), (program.LibrarySegment, program.Drops.LibraryHolds(program[swap.Key]!.Ordinal)));
+            Assert.Equal((segment + 1, true), (program.LibrarySegment, program.Drops.LibraryHolds(program[refused.Key]!.Ordinal)));
         }
 
-        var analysis = new MirAnalysis(c.Types);
-        var unstepped = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
-        _ = Compilation.Collect(analysis, new InstanceCollector(c.Types, c.Layout), unstepped, c.SourceModules.Length);
-        Assert.False(unstepped.Drops.Holds(Assert.Single(unstepped.Bodies.ToArray(), static x => x.Source.IsLibrary).Ordinal));
+        var unstepped = CompilerThread.Run(c, static s => FreshPipeline(s).Program);
+        Assert.False(unstepped.Drops.Holds(Assert.Single(unstepped.Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Decl?.Name == "initCapacity").Ordinal));
     }
 
     // Row B1-S (the review's B1; R-K2''): a library body its version built and no step stepped ends the kept segment. Hello over an
@@ -426,22 +432,21 @@ public sealed class G950KeptPathTest
         Assert.Equal(Fresh(c), Codes(program));
     }
 
-    // Row MR-4 (the design review's N5): a program whose demanded library body is never held ends its segment in every version: swap
-    // erased at 70 nested [1 of ...u8] (valid, SPEC 10.5.3, 7.7.4; rejected by the storage bound with one located Unsupported_Kd, PLAN
-    // G128), then two warm versions, each a new segment (the refused swap is built and never stepped), each equal to a fresh pipeline,
-    // nothing thrown; each such version numbers the library's slots again (K-4's cold cost per version, M-B2). Both paths. Transitional
-    // with K1-K.
+    // Row MR-4 (the design review's N5): a program whose demanded library body is never held ends its segment in every version:
+    // capacity91 (valid; K1-K's refused library instance, Array.initCapacity), then two warm versions, each a new segment (the refused
+    // body is built and never stepped), each equal to a fresh pipeline, nothing thrown; each such version numbers the library's slots
+    // again (K-4's cold cost per version, M-B2). Both paths. Before R7-T1: swap at 70 nested arrays (B's ruling 14).
     [Fact]
     public void AProgramEndingItsSegmentEndsItInEveryVersion()
     {
-        var c = Compile("swap70");
+        var c = Compile("capacity91");
         _ = c.Analyze();
         var segment = c.BuildMir().LibrarySegment;
         for (var version = 1; version <= 2; version++)
         {
             var (own, fresh) = Next(c, "warm");
             Assert.Equal(fresh, own);
-            Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
+            Assert.Equal(Refused, c.Problems.Select(static x => x.Code).Order());
             Assert.Equal(segment + version, c.BuildMir().LibrarySegment);
         }
     }
@@ -620,11 +625,12 @@ public sealed class G950KeptPathTest
     {
         Edit(c, then);
         _ = c.Analyze();
-        var (own, set) = (c.BuildMir(), c.Instances!);
-        var analysis = new MirAnalysis(c.Types);
-        var fresh = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
-        var freshSet = Compilation.Collect(analysis, new InstanceCollector(c.Types, c.Layout), fresh, c.SourceModules.Length);
-        return (Snapshot(c, own, set, fresh), Snapshot(c, fresh, freshSet, fresh));
+        return CompilerThread.Run(c, static s =>
+        {
+            var (own, set) = (s.BuildMir(), s.Instances!);
+            var (fresh, freshSet) = FreshPipeline(s);
+            return (Snapshot(s, own, set, fresh), Snapshot(s, fresh, freshSet, fresh));
+        });
     }
 
     // The next Binding pass of a compilation: a warm rebind, Provisional then Final, or an edit into another program, then Finish.
@@ -644,12 +650,17 @@ public sealed class G950KeptPathTest
     }
 
     // A fresh pipeline's report over a compilation's state, in Compilation's configuration (Codes).
-    private static string Fresh(Compilation c)
+    private static string Fresh(Compilation c) => CompilerThread.Run(c, static s => Codes(FreshPipeline(s).Program));
+
+    // A fresh pipeline over a compilation's state in Compilation's configuration: a builder's, an analysis's and a collector's of the
+    // source modules' root range, collected through Compilation.Collect's loop (PLAN G951 U2). It walks Types as deep as the
+    // compilation's own BuildMir does, so its callers run it on the compile stack as BuildMir's site does (CompilerThread.Run; IMPL
+    // A.4's host stack is a compiler thread's): capacity91's Types (8,100 layers) overflow a test thread's stack in the collector.
+    private static (MirProgram Program, CheckedSet Set) FreshPipeline(Compilation c)
     {
         var (analysis, roots) = (new MirAnalysis(c.Types), c.SourceModules.Length);
         var program = analysis.Run(new MirBuilder(c).Build(roots), roots);
-        _ = Compilation.Collect(analysis, new InstanceCollector(c.Types, c.Layout), program, roots);
-        return Codes(program);
+        return (program, Compilation.Collect(analysis, new InstanceCollector(c.Types, c.Layout), program, roots));
     }
 
     // A report's rows, each its code and location.

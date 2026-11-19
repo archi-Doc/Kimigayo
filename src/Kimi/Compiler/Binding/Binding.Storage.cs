@@ -22,7 +22,10 @@ public sealed partial class Binding
     // (CompleteProjections, DECISIONS BU-50), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
-    // (R5-M39).
+    // (R5-M39). The formation owns its height refusals inside the instance collector's answer frame (Binding.TypeHeight, R7-T1): a stored
+    // Type past IMPL A.4's height leaves its part null and the instance's HeightLimit set, the cause every reader of the instance reads
+    // (Binding's storage walk a limit, Layout its HeightLimit), so no record is made here and none at a second reader; outside the frame
+    // the refusal is recorded as before and HeightLimit stays false.
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -35,7 +38,9 @@ public sealed partial class Binding
         {
             // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
             // refreshes it in this run) is never current, so the refreshed ADT forms it again.
+            var formation = this.OpenFormation();
             this.Substitute(type, adt, instance);
+            instance.HeightLimit = this.CloseAnswer(formation);
             instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
         }
 
