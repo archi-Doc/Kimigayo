@@ -155,7 +155,7 @@ internal enum MirAggregateKind : byte
 internal enum MirConstKind : byte
 {
     // Type: one of MirTypes.HoldsIntegerConstant's family. Bits: an integer Type's value as its N-bit payload, sign-extended
-    // (ScalarTypes.Normalize), the one encoding of each value (G620); else a char's Unicode scalar value, a raw pointer's null (0) or
+    // (TyCtxt.Normalize), the one encoding of each value (G620); else a char's Unicode scalar value, a raw pointer's null (0) or
     // a generic literal, 0 through 127, of a Type whose instance decides it (MirValidator.Holds).
     Integer,
     Float, // Bits: the IEEE bits.

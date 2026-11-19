@@ -498,7 +498,9 @@ public sealed partial class HirFormsTest
     // included), a getter and a raw pointer's pointee or element select index, and an rc payload offers no exclusive receiver. An
     // exclusive receiver over Binding's in-place read states its own borrow. A discarded element (SPEC 14.2.2) is a bare acquisition: a
     // stored exclusive reference's Reborrow selects indexUniq through the discard row's claim (PLAN G426) in every Discard Context, in
-    // groups, below a Field and by a pair layer's exclusive case; a Copy element selects index.
+    // groups, below a Field and by a pair layer's exclusive case; a Copy element selects index. A raw address of an element is a read
+    // (SPEC 4.7.1 step 3, 5.4; the owner's O-445 (A)): it selects index on a `var` receiver as on a `let` one, and the pointer has the
+    // selected reference's shared authority (SPEC 5.2.1 (3)).
     [Fact]
     public void AnExclusiveUseOfTheElementSelectsIndexUniq()
     {
@@ -583,6 +585,10 @@ public sealed partial class HirFormsTest
                 var ptrs = Pair<raw/i32>.init(p, p)
                 unsafe => *ptrs[0] = 5
                 unsafe => ptrs[1][0] = 6
+                var two = Pair<i32>.init(1, 2)
+                let q = two[0]@raw
+                let fixed = Pair<i32>.init(1, 2)
+                let r = fixed[0]@raw
             struct Shelf {a}
                 public var d: Dictionary<i32, uniq/i32 during a>
             struct Link {a}
@@ -631,6 +637,7 @@ public sealed partial class HirFormsTest
             "objs[0].bump() indexUniq", "entries[1].bump() indexUniq", "require rcs[0].level() == 2 else => $abort(\"rc\") index",
             "require ds[1].peek() == 0 else => $abort(\"base\") index", "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index",
             "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index", "unsafe => ptrs[1][0] = 6 index",
+            "let q = two[0]@raw index", "let r = fixed[0]@raw index",
             "entries[1] indexUniq", "(entries[1]) indexUniq", "d[1] indexUniq", "(d[1]) indexUniq", "e[1] indexUniq", "(e[1]) indexUniq",
             "if c => d[1] indexUniq", "d[1] indexUniq", "true => d[1] indexUniq", "((d[1])) indexUniq", "shelf.d[1] indexUniq",
             "links[1].link indexUniq", "pair[0] indexUniq", "(pair[0]) indexUniq", "d[1] indexUniq", "d[1] index", "ints[0] index",
