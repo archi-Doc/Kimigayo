@@ -17,7 +17,7 @@
 // witness's executing accessor under its implementing Type's instance, a library group's function under its own slots.
 // Builtin: a compiler function under the call's substitution, whose bound reference instantiates the requirement's signature. Storage: a
 // standard property witness's implementing Field under the call's substitution, Access its operation (Copy, Borrow or Set; AccessorCall for
-// every other kind). Refused: OCC-X. Limit: the conforming Self's storage nests past its bound (PrepareTypeStorage's Limit); a Self whose
+// every other kind). Refused: OCC-X. Limit: the conforming Self's storage nests past its bound (StorageVerdict's Limit); a Self whose
 // storage rests on a part Binding rejected passes through, since what the call runs does not depend on that part (DECISIONS BU-38), and
 // the instance its target needs is its reader's to admit. None: no answer, also for an abstract Self, which for a closed accepted Self is
 // a broken contract that its reader records as InternalInvariant_Kd.
@@ -135,7 +135,7 @@ internal sealed partial class TyCtxt
             return default;
         }
 
-        if (binding.PrepareTypeStorage(self) == Binding.StorageOutcome.Limit)
+        if (this.StorageVerdict(self) == Binding.StorageOutcome.Limit)
         {
             return new(RequirementTargetKind.Limit, null, null, default);
         }

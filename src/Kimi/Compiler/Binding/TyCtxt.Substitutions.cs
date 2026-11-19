@@ -4,8 +4,9 @@
 // synthesizes, and their application to a Type and composition (SPEC 8.1.3, 8.6.4, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
 // substitution and Origin forwarding.
-// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance with its
-// storage verdict (Instance; Compose with the part deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
+// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a closed instance Type's storage verdict, the one
+// storage query (StorageVerdict); a Type or a substitution in an instance with its storage verdict (Instance: the substitution, then
+// StorageVerdict; Compose with the part deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
 // Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict, guarded by
 // it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
@@ -101,12 +102,12 @@ internal sealed partial class TyCtxt
             : this.Intern(closure, null, erased, [], [], [], []);
     }
 
-    // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
+    // The substitution Binding's storage instantiation of a call applies (Instance(type, StorageSubst(call))): its target's slots,
     // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
     // that SubstOf adds, as the old analyses have always instantiated a call's Types. A second substitution per call beside SubstOf, it
-    // goes when the readers of that CallPlan form apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own go with R7's
-    // CallPlan pipeline (DECISIONS R5-M36).
-    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of the CallPlan form of InstantiateStorageType to SubstOf.")]
+    // goes when its readers apply SubstOf instead: the old analyses' went at R6-check H10b, Binding's own (requirement instantiation and
+    // formatting implementations) go with R7's CallPlan pipeline (DECISIONS R5-M36).
+    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of StorageSubst, Binding's requirement instantiation and formatting implementations, to SubstOf.")]
     internal Subst StorageSubst(CallPlan call)
         => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
@@ -161,9 +162,18 @@ internal sealed partial class TyCtxt
     // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
     internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
 
-    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36), which Binding computes until R7
-    // moves it here (Binding.StorageInstance, then Binding.PrepareTypeStorage): the identity keeps the Type, whose storage it does not query
-    // (Prepared); null and Limit where the substitution does not complete.
+    // DECISIONS BU-12, BU-36: the storage verdict of a closed instance Type, the one storage query: Binding's storage walk
+    // (Binding.PrepareTypeStorage), a function of the Type alone, a limit taking precedence; memoized per pass by the Type (its storage
+    // marks, cleared at ResetPass), so a warm query allocates nothing. Never queried during a walk (the walk's guard throws). Storage is
+    // the instance's stored Types (TyCtxt.Raw).
+    internal Binding.StorageOutcome StorageVerdict(BoundType type) => binding.PrepareTypeStorage(type);
+
+    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): the substitution
+    // (Binding.StorageInstance), then the instance's StorageVerdict. Two answers are no walk verdict (PLAN G242): the identity keeps the
+    // Type as Prepared without a walk, since a binder's own Types are open and their storage is no instance's; a substitution that does not
+    // complete gives no instance and a Limit (BU-36's contract substitution that does not complete). Rejected keeps its instance, a part
+    // Binding rejected holding, placing and destroying nothing (BU-38), so Binding's own readers, during its passes, read every verdict but
+    // a Limit (Binding.Formatting, RequirementInstances, ClosureInstances).
     internal (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType type, Subst subst)
     {
         if (subst.IsIdentity)
@@ -172,7 +182,7 @@ internal sealed partial class TyCtxt
         }
 
         var instance = binding.StorageInstance(type, subst);
-        return (instance, instance is null ? Binding.StorageOutcome.Limit : binding.PrepareTypeStorage(instance));
+        return (instance, instance is null ? Binding.StorageOutcome.Limit : this.StorageVerdict(instance));
     }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under

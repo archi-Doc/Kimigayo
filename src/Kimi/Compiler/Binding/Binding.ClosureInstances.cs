@@ -308,7 +308,7 @@ public sealed partial class Binding
                 switch (this.types.EnclosingDeclaration(symbol))
                 {
                     case { Declaration: FunctionKoto } function when instance is not null && ReferenceEquals(function, instance.Target):
-                        if (closure is not null && this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
+                        if (closure is not null && this.types.Instance(closure.Signature.Components[1], instance) is not ({ }, not StorageOutcome.Limit))
                         {
                             return null;
                         }
