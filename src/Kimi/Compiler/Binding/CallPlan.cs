@@ -240,7 +240,9 @@ public sealed class CallPlan
     }
 
     /// <summary>Gets the number of parameters a function's signature declares, an accessor's <c>self</c> and <c>value</c> included
-    /// (SPEC 7.3): the one count a call's coverage (<see cref="Covers"/>) and a body's parameters read.</summary>
+    /// (SPEC 7.3): the one count a call's coverage (<see cref="Covers"/>) and a body's parameters read. The function's declaration is a
+    /// <see cref="FunctionKoto"/> (a closure and an accessor's executing function are too); a declaration of another kind is a broken
+    /// contract, whose failure is the cast's <see cref="InvalidCastException"/>.</summary>
     /// <param name="function">A function, a closure or an accessor's executing function.</param>
     /// <returns>The count.</returns>
     internal static int Arity(BindingSymbol function) => ((FunctionKoto)function.Declaration).Parameters.Count;
