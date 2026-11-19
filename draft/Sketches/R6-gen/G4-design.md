@@ -26,7 +26,7 @@ where they differ, this table holds.
 
 Base: `origin/claude/r6-g3` `f6828983f` (G3's phase-1 checkpoint, carrying G2 at `bd4f31b0c`). `claude/r6-g3`'s local merge `703297a9d`
 (G2's `13da65219`) is unpushed; the worktree `bin/worktrees/r6-g3` is clean, so phase 2 has not changed a file yet. "Plan" is the
-[R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`,
+[R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`,
 `T/` = `tests/xUnitTest/Tests/`. Line numbers are at the base. No build, test or probe was run. Counts come from grep and a method-span
 script over the base (scratch only). **(H)** marks an unchecked claim. **(P2)** marks anything that depends on G3 phase 2's final shape,
 whose brief (Q1 (b), Q2 (a)) is known but whose text is not. To avoid PLAN's issue G4 (Weak), commit messages say "R6-gen G4".

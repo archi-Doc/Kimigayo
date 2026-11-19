@@ -1,6 +1,6 @@
 # A5 step 1 records
 
-Working records for step 1 of [the A5 plan](../../Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md), not
+Working records for step 1 of [the A5 plan](../../Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md), not
 authority: SPEC and DECISIONS decide. The design these records correct is [design A3](../A5%20Step%200/design-A3.md); its
 §12 errata and §9 item 11 state the outcome, and the prototype stays in the step 0 folder (round 10).
 

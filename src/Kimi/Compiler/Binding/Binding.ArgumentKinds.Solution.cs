@@ -363,8 +363,18 @@ public sealed partial class Binding
 
         // Whether the callable value converts to the common Function Type: a function group by one of its functions (SPEC 7.7.4).
         private readonly bool FitsCallable(Koto node, BoundType type)
-            => node.BoundType is { } actual
-                ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+        {
+            var binding = this.Binding;
+            if (node.BoundType is not { } actual)
+            {
+                return binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+            }
+
+            var rows = binding.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
+            var fits = binding.ErasureSignatureFits(actual, type, node, binding.comparisonRows, out _);
+            binding.DropComparisonRows(rows);
+            return fits;
+        }
 
         // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot
         // that its declaring Type gives (an open construction slot is its own parameter there).

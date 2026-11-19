@@ -267,7 +267,9 @@ public class AssociatedOriginBindingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var local = KotoTree.Walk(f).OfType<VariableKoto>().Single();
-        Assert.Same(f, local.NameKoto.TypeOf()!.Origin!.Binder);
+        var region = local.NameKoto.TypeOf()!.Origin!; // The `let` local's slot is its region, whose value is f's input (PLAN G492-a (ii)).
+        Assert.Same(local, region.Binder);
+        Assert.Same(f, c.Binding.RegionValueAtUse(region, local).Binder);
     }
 
     private static TheoryData<string, bool> Spellings(params string[] sources)

@@ -1,6 +1,6 @@
 # A5 step 0 records
 
-Status (2026-10-17): step 0 is complete (unit 0b closed by prototype round 10); the step 0 design work of [the A5 plan](../../Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)
+Status (2026-10-17): step 0 is complete (unit 0b closed by prototype round 10); the step 0 design work of [the A5 plan](../../Changes/2026-10-16%20Complete%20Polonius%20A5%20Plan.md)
 (plan §6.2) is done.
 
 - **Current design: [design-A3.md](design-A3.md).** Review round 3 confirmed it.

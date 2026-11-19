@@ -145,6 +145,7 @@ public sealed partial class Binding
     // `result`, judged in the conformance scope `scope` of D, P and the requirement's premises, which gives its relations their
     // premises and its pair binders their admitted sets (Binding.RelationScope; PLAN G801). The one producer of a comparison's scope:
     // a callable implementation's comparison (CompareCallableContracts) and a stored Field's bridge (MatchPropertyOperation) form theirs here.
+    // It has no row sink (CallableInstance.Rows): a contract match is no reader of region conjuncts, so its premises alone decide (B-3).
     private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder, BindingScope scope)
     {
         var demanded = inputs.Length == 0 ? BoundType.Unit : this.types.Tuple(inputs);
