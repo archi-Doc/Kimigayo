@@ -206,15 +206,10 @@ public sealed partial class Binding
     // The change signal's one writer: Fail, FailEnvironment and an evidence record made Invalid with no failure of its own call it.
     private void Invalidated() => this.invalidations++;
 
+    // The recorder: records the failure it is given and decides none (a miss's qualification is the resolver's, FailUnselected).
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
         this.Invalidated();
-        if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
-        {
-            failure = BindingFailure.QualificationRequired;
-            this.qualificationFailures[node] = qualification;
-            unresolved = false;
-        }
 
         // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
         if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
@@ -378,11 +373,10 @@ public sealed partial class Binding
     // a failure explained by the Origin rule, or any other definite failure, is direct.
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
-    // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses).
-    private bool IsDerived(Koto node)
-    {
-        var failure = this.RecordedFailure(node);
-        return IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
+    // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
+    // requirement judged: the caller passes the problem's (CollectIssue: the node's recorded failure).
+    private bool IsDerived(Koto node, BindingFailure failure)
+        => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
@@ -395,7 +389,6 @@ public sealed partial class Binding
             this.formationCauses?.ContainsKey(read) == true) ||
             (failure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
             this.KeepsPremiseErrorContext(premise));
-    }
 
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
     // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
