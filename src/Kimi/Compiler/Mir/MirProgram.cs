@@ -106,8 +106,8 @@ internal sealed class MirProgram
 
     /// <summary>Gets the library version the library segment was built for (0: none), which <see cref="MirBuilder.Build"/> stamps
     /// (<see cref="EndLibrary"/>) and compares to keep the segment (PLAN G950-K): Binding's library publication version
-    /// (<see cref="HirTables.LibraryVersion"/>), per compilation and written once at the library's freeze (G949 S1-1, ruling 174), so
-    /// the same in every version of a compilation.</summary>
+    /// (<see cref="HirTables.LibraryVersion"/>), Binding.Frozen once the compilation's library is frozen (G949 Stage 2 U3), so the same
+    /// in every version of every compilation.</summary>
     internal ulong LibraryVersion { get; private set; }
 
     /// <summary>Gets the count of the library segments this program has built, which <see cref="EndLibrary"/> advances and nothing

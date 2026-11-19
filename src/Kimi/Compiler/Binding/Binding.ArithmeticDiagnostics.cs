@@ -110,7 +110,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private void ReportArithmeticSelection(Koto use, DiagnosticRequirement requirement, ArithmeticSelectionFailure failure)
+    private void ReportArithmeticSelection(Koto use, DiagnosticCollection? store, DiagnosticRequirement requirement, ArithmeticSelectionFailure failure)
     {
         var related = new (string Role, Koto Node, string? Message)[failure.Plan.Candidates.Count];
         for (var i = 0; i < related.Length; i++)
@@ -128,7 +128,8 @@ public sealed partial class Binding
             ArithmeticSelectionCause.Ambiguous => "Multiple proven conformances fit the counterpart structure",
             _ => throw new UnreachableException(),
         };
-        use.Report(
+        use.ReportIn(
+            store,
             requirement,
             DiagnosticCode.ArithmeticSelection_Kd,
             ArithmeticOperatorText(ArithmeticContractSyntax.Operator(failure.Id)),

@@ -88,7 +88,7 @@ public sealed partial class Binding
         return this.FailExplained(ref this.clauseConstraints, use, failure, clause, unresolved);
     }
 
-    private void ReportClauseConstraint(Koto use, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportClauseConstraint(Koto use, DiagnosticCollection? store, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var call = fact.Declaration is not null;
         var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
@@ -99,7 +99,8 @@ public sealed partial class Binding
         var role = owner is not null ? $"required by {owner}" : call ? "required by the called declaration" : "required by the referenced declaration";
         var note = $"{(call ? "Call" : "Function Item")} {member}{(owner is null ? null : ": " + owner)} requires {clause}; this condition {outcome}" +
             (subject is null ? " under the supplied bindings" : $" for {subject}");
-        use.Report(
+        use.ReportIn(
+            store,
             requirement,
             code,
             evidence: subject is null ? null : [subject, owner ?? member, clause],
