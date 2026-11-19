@@ -436,9 +436,10 @@ public sealed partial class Binding
     // the split leaves open, and its Owned proof reads no unformed Type. The selection is first judged in each combination of split
     // cases (SelectionOnSplit, G812 ruling 139): where it fails in every one the call keeps its own record, the canonical run's
     // classification, as BindCall records it with no evaluation to explain it (FailWaitingSelection). Each part awaiting the call is
-    // completed as a value call's part on the split is (CompleteValueCallPart; G812 rulings 134, 136, 143), at the parameter the trial
-    // of the candidate the canonical run selects (SelectedCandidate) forms in the canonical case, marked open where a split binding
-    // decides it (OpenForm), as SlotSolution.Type forms a parameter; the call rests on the first that fails (CompleteOnSplit).
+    // judged and completed as a value call's part on the split is (CompleteNamedPartOnSplit; G812 rulings 134, 136, 143, 156), at the
+    // parameter the trial of the candidate the canonical run selects (SelectedCandidate) forms, as SlotSolution.Type forms a parameter:
+    // in each case of the bindings it reads, then in the canonical case, marked open where a split binding decides it (OpenForm); the
+    // call rests on the first that fails.
     private BoundType? FailUnformedCall(ref CallEvaluation evaluation, bool fails, ProbedSelection canonical)
     {
         var call = evaluation.Call;
@@ -454,13 +455,12 @@ public sealed partial class Binding
         {
             var part = call.ArgumentNodes[a];
             if (shaped >= 0 && evaluation.Evaluated[shaped] is { Symbol.Declaration: FunctionKoto function } candidate && part.BoundType is null &&
-                this.KindOf(part) != PartKind.Typed && function.Parameters[evaluation.Mapping[a]].Type.BoundType is { } declared &&
-                this.OpenForm(
-                    declared,
-                    (function, Frame: evaluation.Frames[shaped], evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType),
-                    static (binding, s, type) => binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths)) is { } parameter)
+                this.KindOf(part) != PartKind.Typed && function.Parameters[evaluation.Mapping[a]].Type.BoundType is { } declared)
             {
-                completion ??= this.CompleteOnSplit(part, parameter, evaluation.Scope) ? part : null;
+                completion ??= this.CompleteNamedPartOnSplit(
+                    (call, a, declared, evaluation.Scope),
+                    (function, Frame: evaluation.Frames[shaped], evaluation.Scope, evaluation.Self, evaluation.Origins, evaluation.Inputs, candidate.DeclaringType),
+                    static (binding, s, type) => binding.CallType(type, s.function, s.Frame.Types, s.Scope, s.Self, s.Origins, s.Inputs, s.DeclaringType, s.Frame.Lengths));
             }
 
             if (ErasedByEveryCandidate(ref evaluation, a) is not { } erased)
@@ -479,6 +479,32 @@ public sealed partial class Binding
         }
 
         return (FailedShapeMember(in evaluation) ?? completion) is { } failed ? this.CompleteDependent(call, failed) : this.Fail(call, BindingFailure.Unsupported, true);
+    }
+
+    // DECISIONS D3 with rule W (G812 rulings 143, 156; SPEC 23.1.2): argument `a` of a named call on the split, awaiting the call, at the
+    // parameter `form` gives its declared Type in the canonical run's candidate. It is judged in each case of the bindings it reads as
+    // a value call's part is (JudgeSplitPart, ArgumentPartFails), so one failing in every case at a waiting part is completed at the
+    // canonical case's Type, where that failure is its record (CompleteFailedPart); any other is completed at the open formed parameter
+    // (OpenForm, CompleteOnSplit). The part that failed so, else null: the call rests on it.
+    private Koto? CompleteNamedPartOnSplit<TState>(
+        (InvocationKoto Call, int A, BoundType Declared, BindingScope Scope) part, TState state, Func<Binding, TState, BoundType, BoundType?> form)
+    {
+        var argument = part.Call.ArgumentNodes[part.A];
+        this.PrepareWaitingCases(argument, part.Scope); // A run binds nothing (G812 ruling 123).
+        var (fails, waiting, type) = this.JudgeSplitPart(
+            (part, argument, state, form),
+            static (binding, c) =>
+            {
+                binding.EnterRunPart();
+                return binding.EndRunPart(c.part.A, binding.ArgumentPartFails(c.argument, c.part.Declared, c.state, c.form, c.part.Scope, c.part.Call, out _, out _));
+            });
+        if (fails && waiting is not null)
+        {
+            this.CompleteFailedPart(waiting, type!, part.Scope);
+            return waiting;
+        }
+
+        return this.OpenForm(part.Declared, state, form) is { } parameter && this.CompleteOnSplit(argument, parameter, part.Scope) ? argument : null;
     }
 
     // DECISIONS D3 with rule W (G812 ruling 139; temporary with it): a named call's selection judged in each combination of split
