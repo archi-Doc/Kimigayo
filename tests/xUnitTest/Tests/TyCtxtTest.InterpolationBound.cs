@@ -54,7 +54,7 @@ public sealed partial class TyCtxtTest
         BoundType[] values = [BoundType.I32, BoundType.String];
         Assert.Equal(
             [(17L, (BoundLength?)null), (0L, null)],
-            values.Select(x => types.Apply(region, types.Synthesized(g, null, [x, BoundType.Boolean], []))!)
+            values.Select(x => types.Apply(region, types.Synthesized(g, null, [x, BoundType.Boolean], [])).Type!)
                 .Select(static x => (x.Length, x.LengthExpression)));
         var keep = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Kind: BoundTypeKind.FunctionItem })!;
         var item = types.Intern(keep.Kind, keep.Symbol, keep.Semantics, keep.Components.ToArray(), lengthArguments: [term]);
@@ -89,7 +89,7 @@ public sealed partial class TyCtxtTest
         [
             .. parameters[1..].SelectMany(x => new[]
             {
-                types.Apply(region, types.Synthesized(target, null, [x], []))!.Length,
+                types.Apply(region, types.Synthesized(target, null, [x], [])).Type!.Length,
                 types.Compose(inner, types.Synthesized(target, null, [x], [])).Subst!.Lengths[0]!.Value,
             }),
         ];
@@ -98,7 +98,7 @@ public sealed partial class TyCtxtTest
         var selfTerm = types.InterpolationBound(types.Tuple([take.Parameters[1].Type.TypeOf()!]), 6);
         var selfRegion = types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [u8], lengthExpression: selfTerm);
         var contract = types.Identity(nodes.OfType<ContractKoto>().Single()).Target.Type!;
-        Assert.Equal(17, types.Apply(selfRegion, types.Synthesized(types.Identity(take).Target, parameters[1], contract))!.Length);
+        Assert.Equal(17, types.Apply(selfRegion, types.Synthesized(types.Identity(take).Target, parameters[1], contract)).Type!.Length);
 
         // A hint over S.Item folds alike through InstanceLength, its instance read: 11 + literal for IntItem, the literal for TextItem.
         var hint = types.InterpolationHint(types.Tuple([parameters[0]]), 6);
