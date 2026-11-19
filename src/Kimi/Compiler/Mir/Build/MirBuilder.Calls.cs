@@ -87,8 +87,8 @@ internal sealed partial class MirBuilder
                 out _);
             var slot = defaults ? this.Slot(parameter, receiver) : (MirPlace?)null;
             var view = ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter;
-            var operand = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: false } ? this.Dispatched(receiver, view!, slot)
-                : this.Operand(receiver, view, input: true, slot);
+            var operand = ReferenceEquals(receiver, given) ? value : call is { Kind: CalleeKind.Virtual, VirtualIsDirect: false }
+                ? this.Dispatched(receiver, view!, slot) : this.Operand(receiver, view, input: true, slot);
             operand = slot is null && last > -2 ? this.Secure(operand, receiver) : operand;
             this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
         }

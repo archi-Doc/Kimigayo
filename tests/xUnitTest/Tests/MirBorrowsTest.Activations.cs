@@ -92,4 +92,38 @@ public sealed partial class MirBorrowsTest
         output.WriteLine($"d 8, 16, 32: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }
+
+    // R7 plan Z23 (SPEC 8.15.2, 8.14, 4.7.1 step 3; the design's C6): a selection by case acquires per case, and A5's views follow the case
+    // branch's side: a5's take of v[0] under a live `view = v@ref` conflicts in the uniq view only (view 1: its ref view borrows the
+    // receiver shared for index; dev 5dd6543e6 recorded both views), and a12's take of the Field below v[0] is accepted in both views.
+    [Fact]
+    public void ASelectionByCaseConflictsOnlyInTheViewsThatReborrow()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public var uniqCalls: i32 = 0
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    self.uniqCalls += 1
+                    return self.first@uniq
+            struct Holder<T>
+                public var link: T
+                public init(link: T) => self.link = link@move
+            func a5<s/T>(v: uniq/Two<s/T>) -> i32
+                s is ref or uniq
+                let view = v@ref
+                let x = v[0]
+                _ = x
+                return view.uniqCalls
+            func a12<s/T>(v: uniq/Two<Holder<s/T>>) -> ()
+                s is ref or uniq
+                let y = v[0].link
+                _ = y
+            """;
+        Assert.Equal(["a5: v[0] CallActivationConflict_Kd views 2"], ViewProblems(Source));
+    }
 }

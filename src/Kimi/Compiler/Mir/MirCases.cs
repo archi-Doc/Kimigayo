@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Semantics-case views of a MIR body.
-// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition and adaptation views; a pair layer's binder and
-// whether a call's input of a Type is reserved.
+// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition, adaptation and case branch views, a decider's
+// decision; a pair layer's binder and whether a call's input of a Type is reserved.
 // Case order is stable; views share the body and reuse their storage.
 // Must not copy the body per case or re-bind source syntax.
 
@@ -14,8 +14,8 @@ namespace Kimi.Compiler.Mir;
 /// <summary>The Semantics cases of a MIR body (plan 5.6.1, SPEC 8.15) as views of the one body, which is never copied per case: a view
 /// gives each pair binder of <see cref="MirBody.Binders"/> one of its admitted Semantics, and under it a Type is its case Type
 /// (<see cref="Type"/>), a PairLayer step the Place itself or the referent of its case's reference or handle (<see cref="Layer"/>), a
-/// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>) and an Adapt the operation its case selects (<see cref="Adapt"/>), the only
-/// case-dependent forms. The analyses that depend on the case (R4:
+/// PairAcquire a Copy or a Reborrow (<see cref="Reborrows"/>), an Adapt the operation its case selects (<see cref="Adapt"/>) and a
+/// CaseSwitch the side its decider selects (<see cref="Branch"/>), the only case-dependent forms. The analyses that depend on the case (R4:
 /// A1, A4's local facts, A5) run once per view. Views are numbered with the last binder advancing fastest, each through its admitted
 /// set in SemanticsMask order, so view i is its case bit i. The selected view is kept in reused
 /// storage, so selecting views allocates nothing once it has held the widest body's binders.</summary>
@@ -204,6 +204,31 @@ internal sealed class MirCases(TyCtxt types)
     /// <param name="acquire">A PairAcquire operand.</param>
     /// <returns>Whether it Reborrows.</returns>
     internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.TypeOf(acquire));
+
+    /// <summary>Gets whether a CaseSwitch of the selected body takes its exclusive side under the selected view (SPEC 8.14, 4.7.1 step
+    /// 3): where its decider's case Type is an exclusive reference (<see cref="MirTypes.IsExclusive"/>, the rule <see cref="Reborrows"/>
+    /// applies), the case in which the take it decides Reborrows; else its shared side. A case-free decider (a default's copy) is its own
+    /// case Type, so it selects one side in every view.</summary>
+    /// <param name="branch">A CaseSwitch of the selected body.</param>
+    /// <returns>Whether the exclusive side is taken.</returns>
+    internal bool Branch(in MirTerminator branch) => MirTypes.IsExclusive(this.Type(this.Body.Consts[branch.Operand.Arg].Type));
+
+    /// <summary>Gets the views of a body in which a decider selects a CaseSwitch's exclusive side (<see cref="Branch"/>'s rule, evaluated
+    /// per view, stored nothing): the builder's decision of where a case branch splits the views. The selected view is not kept.</summary>
+    /// <param name="body">A body whose binders are collected.</param>
+    /// <param name="decider">The decider.</param>
+    /// <returns>The views, bit i for view i.</returns>
+    internal ulong Decision(MirBody body, BoundType decider)
+    {
+        var bits = 0UL;
+        for (var view = 0L; view < Count(body); view++)
+        {
+            _ = this.Select(body, view);
+            bits |= MirTypes.IsExclusive(this.Type(decider)) ? 1UL << (int)view : 0;
+        }
+
+        return bits;
+    }
 
     /// <summary>Gets what an Adapt of the selected body is under the selected view (SPEC 8.14, 13.5.3): the operation Binding selects
     /// (<see cref="TyCtxt.Adaptation"/>) from the case Type of its source token to the case Type of its target, as that operation's

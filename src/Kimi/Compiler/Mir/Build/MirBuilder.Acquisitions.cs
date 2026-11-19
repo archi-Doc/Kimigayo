@@ -4,7 +4,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Acquisitions (SPEC 3.5, 10.2, 13.5.6, 15.1.5): a node's Place formed and taken (Take), a Place as its consumer's acquisition and
+// Acquisitions (SPEC 3.5, 10.2, 13.5.6, 15.1.5): a node's Place formed and taken (Formed; a take by case, Take, MirBuilder.Cases.cs), a
+// Place as its consumer's acquisition and
 // adaptation take it (Acquire), by the pair layer's case (ByCase), and the one borrow rule (Ref, Lent), each formed in a temp or the place
 // given (Temporary, Borrow); a Place in an Opaque temp is lent by none (Unlent; DECISIONS R4-M149).
 internal sealed partial class MirBuilder
@@ -16,7 +17,7 @@ internal sealed partial class MirBuilder
     // SPEC 3.5, 4.7.4: a take of a node, its Place formed (a temporary's value held, Value) and taken as Acquire takes it, into the place
     // given where the acquisition forms its value there: a take formed again reads the nodes an expansion located (Located), so its
     // Place's receivers and keys are evaluated once, and acquires into the place its first forming gave.
-    private MirOperand Take(Koto node, HirAdjust adjust, BoundType? expected, bool input, bool reserves, MirPlace? into)
+    private MirOperand Formed(Koto node, HirAdjust adjust, BoundType? expected, bool input, bool reserves, MirPlace? into)
     {
         var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
         return this.Acquire(adjust, place, expected, reserves, node, into);

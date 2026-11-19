@@ -6,7 +6,8 @@
 // form of an accepted program has its row; a form the backend does not generate is the capability table's gap at check (DECISIONS
 // R5-M146). Each concern file (Files) owns its rows, in its header or at its writer: the forms it
 // writes and the DECISIONS entries behind them. This file dispatches each statement, rvalue and terminator to its row, writes the unconditional
-// branch and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
+// branch (a CaseSwitch's: the side the item's view selects) and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead
+// and EndBorrow generate nothing (package C 3.9).
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
 // exactness (A2, R4-M6a, R4-M102: an inexact body reaching Write is a broken contract); the compilation's Layout and runtime location texts;
@@ -210,6 +211,9 @@ internal sealed partial class FunctionCodegen
                 return;
             case MirTerminatorKind.SwitchInt:
                 this.Switch(terminator);
+                return;
+            case MirTerminatorKind.CaseSwitch: // The side the item's view selects (MirCases.Branch): an unconditional branch.
+                this.Branch(MirUses.Successor(this.body, terminator, this.cases.Branch(terminator) ? 0 : 1));
                 return;
             case MirTerminatorKind.Return:
                 this.Return();

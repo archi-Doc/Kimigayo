@@ -3154,7 +3154,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // (MirReport keeps the first problem and its facts); Work and Bytes count this instance's A5 runs only.
     private sealed class Stratum
     {
-        private readonly MirDataflow flow = new(new MirReach());
+        private readonly MirDataflow flow;
         private readonly MirMoveData moves;
         private readonly MirReport obligations = new(); // A4's obligation problems, which A5 does not read.
         private readonly MirCases cases;
@@ -3166,6 +3166,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         {
             this.moves = new(types);
             this.cases = new(types);
+            this.flow = new(new MirReach(), this.cases);
             this.effects = new(types, this.cases, this.flow);
             this.origins = new(types, this.cases);
             this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins);

@@ -158,9 +158,10 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
     }
 }
 
-/// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges) or a SwitchInt's
+/// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges), a SwitchInt's
 /// otherwise, whose value-target pairs are <see cref="Count"/> entries of <see cref="MirBody.Cases"/> from <see cref="Start"/>, as a
-/// Call's arguments are of <see cref="MirBody.Operands"/>. <see cref="Operand"/> is a SwitchInt's operand or a Value callee,
+/// Call's arguments are of <see cref="MirBody.Operands"/>, or a CaseSwitch's shared side, whose one entry is its exclusive side.
+/// <see cref="Operand"/> is a SwitchInt's operand, a CaseSwitch's decider (a TypeToken constant) or a Value callee,
 /// <see cref="Place"/> a Call's destination or the dropped Place, <see cref="CheckTarget"/> the block only the checks reach
 /// (-1: none), and <see cref="Places"/> whether a Call is a construction's insertion, not a call of the program: each operand a Move of
 /// a whole temp it transfers into the construction, the first the construction's exclusive borrow, formed in the Call's block
@@ -182,6 +183,9 @@ internal readonly record struct MirTerminator(
 
     internal static MirTerminator SwitchInt(MirOperand operand, int start, int count, int otherwise, SourceInfo source) =>
         new(MirTerminatorKind.SwitchInt, source, otherwise, Operand: operand, Start: start, Count: count);
+
+    internal static MirTerminator CaseSwitch(MirOperand decider, int exclusive, int shared, SourceInfo source) =>
+        new(MirTerminatorKind.CaseSwitch, source, shared, Operand: decider, Start: exclusive, Count: 1); // exclusive: its Cases entry.
 
     internal static MirTerminator Call(
         MirCallee callee,

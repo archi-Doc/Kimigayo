@@ -131,6 +131,7 @@ internal static class MirDescriptors
     {
         MirTerminatorKind.Goto => Row(MirAccess.None, effects: MirEffect.None),
         MirTerminatorKind.SwitchInt => Row(MirAccess.None, effects: MirEffect.None),
+        MirTerminatorKind.CaseSwitch => Row(MirAccess.None, effects: MirEffect.None),
         MirTerminatorKind.Unreachable => Row(MirAccess.None, effects: MirEffect.None),
         MirTerminatorKind.Call => Row(MirAccess.Writes | MirAccess.Defines, effects: MirEffect.None),
         MirTerminatorKind.Drop => Row(MirAccess.DropUse, effects: MirEffect.None),
@@ -244,18 +245,18 @@ internal static class MirUses
     {
         MirTerminatorKind.Goto or MirTerminatorKind.Drop => 1,
         MirTerminatorKind.Call => terminator.Target >= 0 ? 1 : 0,
-        MirTerminatorKind.SwitchInt => terminator.Count + 1,
+        MirTerminatorKind.SwitchInt or MirTerminatorKind.CaseSwitch => terminator.Count + 1,
         _ => 0,
     };
 
     /// <summary>Gets a successor of a terminator: at -1 its CheckTarget (-1: none), else a runtime successor, a SwitchInt's case targets in
-    /// order, then its otherwise target.</summary>
+    /// order, then its otherwise target, a CaseSwitch's exclusive side, then its shared side.</summary>
     /// <param name="body">The body.</param>
     /// <param name="terminator">The terminator.</param>
     /// <param name="index">The successor's index from -1, below <see cref="Successors"/>.</param>
-    /// <param name="view">The view the edge is taken under, a view of the body selected, or null for none: every terminator's edges are
-    /// the same in every view.</param>
-    /// <returns>The successor block.</returns>
+    /// <param name="view">The view the edge is taken under, a view of the body selected, or null for none: a CaseSwitch has the one
+    /// edge to the side the view selects (<see cref="MirCases.Branch"/>), every other terminator the same edges in every view.</param>
+    /// <returns>The successor block; -1 for none.</returns>
     internal static int Successor(MirBody body, in MirTerminator terminator, int index, MirCases? view = null)
     {
         if (index < 0)
@@ -263,7 +264,13 @@ internal static class MirUses
             return terminator.CheckTarget;
         }
 
-        return terminator.Kind == MirTerminatorKind.SwitchInt && index < terminator.Count ? body.Cases[terminator.Start + index].Target : terminator.Target;
+        if (terminator.Kind == MirTerminatorKind.CaseSwitch && view is not null && index != (view.Branch(terminator) ? 0 : 1))
+        {
+            return -1;
+        }
+
+        return terminator.Kind is MirTerminatorKind.SwitchInt or MirTerminatorKind.CaseSwitch && index < terminator.Count
+            ? body.Cases[terminator.Start + index].Target : terminator.Target;
     }
 
     private static void Walk<TVisitor>(MirBody body, MirCases? view, MirLocation location, ref TVisitor visitor)
