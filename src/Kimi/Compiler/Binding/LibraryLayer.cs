@@ -17,14 +17,14 @@ namespace Kimi.Compiler;
 //   the refused library pass's Binding-side records as located facts, which Core publishes, and the first record the freeze counted,
 //   where Core publishes the refusal's own record (the syntax list stays its own records' owner, the module's DiagnosticOwner's: form (R));
 //   each interner level, which only its interner's find reads (PassPart.Levels) and only its insert writes, until the seal.
-// - Invariants: never a region of an overlay store and never copied into one; its stores fill and reset with each library pass, one
-//   per compilation: the library pass fills them once and S1-1's freeze stamps them Frozen (Binding.FreezeLibrary); written only by
-//   the library's registrations and the library pass. The library version is per compilation (HirTables.LibraryVersion, the run of
-//   the compilation's own Binding that froze the library), and the library HIR is identical in every Bind of a compilation after the
-//   freeze (G949 ruling 174). A refused layer's part is reset, nothing in it is Frozen and its Size is the refused pass's measure
-//   (Binding's FreezeLibrary refuses; the next Bind runs the library pass again); besides its refusal, which owns its Binding-side
-//   records and refers to the syntax list it does not own, it keeps only its interner levels' objects (immutable, found again by the
-//   next run), which no reader of a refused library reads. An interner level is filled until the library's table freezes (the seal,
+// - Invariants: never a region of an overlay store and never copied into one; its stores are filled once per process and target, in
+//   the freeze compilation's library pass, and S1-1's freeze stamps them Frozen (Binding.FreezeLibrary); written only by the library's
+//   registrations and that pass; read by every compilation of the target (PLAN G949 Stage 2 U3). The library's publication version is
+//   Binding.Frozen once frozen (HirTables.LibraryVersion), the same in every compilation, and the library HIR is identical in each.
+//   A refused layer's part is reset, nothing in it is Frozen and its Size is the refused pass's measure (Binding's FreezeLibrary
+//   refuses); a refused layer is never bound again (the driver reads its refusal first), so no compilation interns into its levels or
+//   reads them; besides its refusal, which owns its Binding-side records and refers to the syntax list it does not own, it keeps only
+//   its interner levels' objects (immutable). An interner level is filled until the library's table freezes (the seal,
 //   KimiLibrary.Frozen) and only read after it; no content of a level is in the compilation's level, so no frozen object holds a
 //   compilation-level one.
 // - Prohibitions: no field holds a Compilation, Binding, TyCtxt, DiagnosticOwner or diagnostic collection (C-376 condition 3); no

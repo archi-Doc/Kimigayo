@@ -37,6 +37,21 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal((1, runs), (eager.Runs, lazy.Runs));
     }
 
+    // g2 (PLAN G949 Stage 2 U3; C-381 §2): MIR stays per compilation over the shared frozen library. Milestone31's checked set, records and
+    // module are the same before and after Hello's compilation built, analyzed and collected over the same library: the analysis and the
+    // collector key their library state on the program, so each takes the library step for its own (labels as above).
+    [Fact]
+    public void AProgramsCollectionIsTheSameAfterAnotherCompilationsOverOneLibrary()
+    {
+        var milestone = Repository.ReadText("tests", "milestones", "Milestone31.kimi");
+        var before = Collected(milestone, static c => c.SourceModules.Length);
+        _ = Collected(Repository.ReadText("docs", "examples", "Hello", "Hello.kimi"), static c => c.SourceModules.Length);
+        var after = Collected(milestone, static c => c.SourceModules.Length);
+        Assert.Equal(before.Items, after.Items);
+        Assert.Equal(before.Records, after.Records);
+        Assert.Equal(before.Module, after.Module);
+    }
+
     // C-378 §3's limit row through a missed run (DECISIONS R5-M171). Labels: valid (SPEC 22.4.1, 7.7.4); IMPL 21.3.2: the 2 GiB parameter
     // Type is over the layout limit, one GenerationResourceLimit_Kd per declaration at its least use; DECISIONS R5-M82: the settable static
     // is A3b's static-storage gap at its declaration. X3 with both, built lazily: the first run reaches both uses and misses at

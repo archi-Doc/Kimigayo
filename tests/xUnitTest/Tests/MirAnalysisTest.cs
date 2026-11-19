@@ -1014,11 +1014,21 @@ public sealed class MirAnalysisTest
             "    public func brokenOf<T>(value: T, condition: bool) -> i32\n        var second: i32\n        if condition\n" +
             "            second = 2\n        return second\n";
         var c = CompilationTestHelper.Parse(program + "\n");
-        c.Library.Kotonoha.AddSource(new("G951Probe.kimi", Probe));
+        var library = CompilationTestHelper.UseEditedLibrary(c, static x => x.Kotonoha.AddSource(new("G951Probe.kimi", Probe)));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         string[] expected = reached.Length == 0 ? [] : [$"UninitializedPlace_Kd {reached}"];
         Assert.Equal(expected.Length == 0, c.Analyze().IsVerified);
+        Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
+
+        // h7 and g1 (PLAN G949 Stage 2 U3): the library is frozen through the seam and read, so a second compilation over it shows the
+        // reached body's record again, once, and the first compilation's records are its own.
+        var other = CompilationTestHelper.Parse(program + "\n");
+        other.UseLibrary(library);
+        Assert.True(other.Bind().IsComplete, MinimalEmissionTest.Describe(other));
+        Assert.True(other.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.Equal(expected.Length == 0, other.Analyze().IsVerified);
+        Assert.Equal(expected, other.Problems.Select(x => $"{x.Code} {Line(other, x.Subject)}"));
         Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 

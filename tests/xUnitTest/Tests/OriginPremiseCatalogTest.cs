@@ -95,15 +95,19 @@ public class OriginPremiseCatalogTest
     }
 
     // R5, SPEC 15.6.1, 15.6.5: a borrow of a complete local Place is well-formed, so the Origins stored in the Place outlive the
-    // borrow's Origin. That Origin is body-local, hence finite, so the body proves the relation without any premise.
+    // borrow's Origin. That Origin is body-local, hence finite, so the body proves the relation without any premise: the program is
+    // accepted and forms no premise closure. Changed by decision (PLAN G949 Stage 2 U3, design §8: the library pass leaves the
+    // compilation; B's U3 ruling 43): the row was ABorrowedLocalPlaceSuppliesItsStoredOrigins, whose clause `EdgesOf(LocalPlace) != 0`
+    // held only because the library pass shared the compilation's metrics (its 19 LocalPlace edges; this program forms none). R5's edge
+    // stays pinned by the rows whose programs form it (ANestedBodyKeepsLocalPlaceForItsOwnLocals, AComparisonInTheDeclaringBodyKeepsLocalPlace).
     [Fact]
-    public void ABorrowedLocalPlaceSuppliesItsStoredOrigins()
+    public void ABorrowedLocalPlaceProvesItsRelationWithoutAPremise()
     {
         var source = "enum E<T>\n    Some(T)\n    None\nlet text = \"hello\"\nlet savedText = text@ref\nlet inner = (savedText, 42)\nlet input = inner@ref\n" +
             "let value: E<ref/(ref/string during savedText, i32) during input> = .Some(input)\nmatch value@ref\n    .Some((let saved, _)) => Console.writeLine(saved@follow)\n    .None => $abort(\"none\")\n";
         var (codes, metrics, _) = Check(source);
         Assert.Empty(codes);
-        Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
+        Assert.Equal(0, metrics.Closures);
     }
 
     // SPEC 15.2.2, 15.3.4, 15.6.1 (PLAN G491): R5 is the well-formedness obligation of the body that declares the local, never a premise

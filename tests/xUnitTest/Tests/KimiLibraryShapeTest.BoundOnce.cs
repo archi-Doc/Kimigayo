@@ -335,6 +335,7 @@ public partial class KimiLibraryShapeTest
         for (var i = 0; i < lines.Length; i++)
         {
             var printer = new Printer(false);
+            printer.Attach(c);
             printer.Node(table.Nodes[table.ParsedCount + 1 + i]!);
             lines[i] = $"{table.ParsedCount + 1 + i} {printer.ToString().TrimEnd('\n')}";
         }

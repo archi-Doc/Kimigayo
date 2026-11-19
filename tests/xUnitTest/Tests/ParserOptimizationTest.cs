@@ -195,7 +195,7 @@ public class ParserOptimizationTest
     [InlineData("#Layout(\"C\") struct S", AttributeKind.Layout)]
     [InlineData("#Other struct S", AttributeKind.Unknown)]
     public void TheLibraryClassifiesTheImplementationAttributes(string source, AttributeKind expected)
-        => Assert.Equal(expected, ParseAttribute(Compilation.CreateForTest().Library.Kotonoha, source).Kind);
+        => Assert.Equal(expected, ParseAttribute(new KimiLibrary(Compilation.CreateForTest()).Kotonoha, source).Kind);
 
     // SPEC 6.7 (R8-G1 row L7 and row L6's rule): a constructor parsed into the Kimi library also takes the implementation Attributes,
     // in their order; every other Attribute before init is misplaced and attaches to nothing. Before a user init each one is
@@ -213,7 +213,7 @@ public class ParserOptimizationTest
     public void ALibraryConstructorTakesOnlyTheImplementationAttributes(string attributes, string taken, int misplaced)
     {
         var c = Compilation.CreateForTest();
-        var library = c.Library.Kotonoha;
+        var library = new KimiLibrary(c).Kotonoha;
         library.CreateCodeContext().Parse(library.RootKoto, $"public struct Probe\n    public let x: i32\n    {attributes}\n    public init(x: i32)\n        self.x = x\n");
         var probe = Assert.Single(library.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Probe" });
         var init = Assert.Single(probe.Members.OfType<FunctionKoto>(), static x => x.IsConstructor);
@@ -272,7 +272,7 @@ public class ParserOptimizationTest
     public void OnlyALibraryImplementationKindOmitsTheBody(bool library, string declaration, int missing, int constraints, bool body)
     {
         var c = Compilation.CreateForTest();
-        var kotonoha = library ? c.Library.Kotonoha : c.Kotonoha;
+        var kotonoha = library ? new KimiLibrary(c).Kotonoha : c.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, $"public struct Probe<T>\n    public let x: i32\n    {declaration}\n");
         var probe = Assert.Single(kotonoha.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Probe" });
         var function = Assert.Single(probe.Members.OfType<FunctionKoto>(), static x => !x.IsImplicitConstructor);
@@ -286,7 +286,7 @@ public class ParserOptimizationTest
     public void AReplacedNameIsClassifiedByItsKotonoha()
     {
         var c = Compilation.CreateForTest();
-        foreach (var (kotonoha, expected) in new[] { (c.Library.Kotonoha, AttributeKind.Unsupported), (c.Kotonoha, AttributeKind.Unknown) })
+        foreach (var (kotonoha, expected) in new[] { (new KimiLibrary(c).Kotonoha, AttributeKind.Unsupported), (c.Kotonoha, AttributeKind.Unknown) })
         {
             var attribute = ParseAttribute(kotonoha, "#Test(1) struct S");
             Assert.Equal(AttributeKind.Test, attribute.Kind);
