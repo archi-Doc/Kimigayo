@@ -43,15 +43,6 @@ public sealed partial class Binding
         var walk = new RelationWalk(this, this, use, this.comparisonFacts);
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
         failure = walk.Failure;
-
-        // SPEC 23.1.2 (PLAN G739): a fit that holds by a resting position leaves its positions as rows, as its failing path does. The
-        // query-like callers (ArgumentOperations' try-then-read, ResultPropagation's late fits, an enum's and a control-flow join's) form
-        // them too, on rejected programs only.
-        if (fits && this.fitRested)
-        {
-            _ = this.CheckTypeUse(actual, expected, use, out _);
-        }
-
         return fits;
     }
 
@@ -77,9 +68,11 @@ public sealed partial class Binding
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
 
     // SPEC 10.2, 15.4.4, 15.6.1: a value at a value position: the fit at the use, or else the use-site fit at `value`, whose Origin
-    // positions are rows A5 judges (R7-O1). `failure` is the use-site fit's, which a caller that records it passes on.
+    // positions are rows A5 judges (R7-O1). A fit that holds by a resting position (fitRested) leaves its positions as rows too, as its
+    // failing path does (SPEC 23.1.2, PLAN G739); a pure FitsTypeAt forms none (H11b D2, PLAN G820). `failure` is the use-site fit's,
+    // which a caller that records it passes on.
     private bool FitsValueAt(BoundType actual, BoundType expected, Koto use, Koto value, out ComparisonFailure failure)
-        => this.FitsTypeAt(actual, expected, use, out failure) || this.CheckTypeUse(actual, expected, value, out failure);
+        => (this.FitsTypeAt(actual, expected, use, out failure) && !this.fitRested) || this.CheckTypeUse(actual, expected, value, out failure);
 
     // SPEC 15.6.1, 15.6.5 (R7-O1): a fit whose structure holds leaves each differing Origin position the premises do not prove as a row
     // that A5 judges and reports at the value (FormBodyRelation); this is the one entry to the positions' rows (CheckTypeUseCore recurses

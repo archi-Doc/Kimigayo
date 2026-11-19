@@ -15,7 +15,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // SPEC 23.1.2 (PLAN G739): whether an Origin position of the recording fit being walked held by resting (FitOrigin), cleared at the
-    // fit's entry (FitsTypeAt, CheckTypeUseCore), which forms the fit's rows from it (CheckTypeUse).
+    // fit's entry (FitsTypeAt, CheckTypeUseCore); a recording fit that held so forms its rows (FitsValueAt: CheckTypeUse).
     private bool fitRested;
 
     // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first record.
