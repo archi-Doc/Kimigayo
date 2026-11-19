@@ -71,6 +71,11 @@ public enum BoundTypeKind : byte
     Array,
     Dictionary,
     FunctionItem,
+
+    // DECISIONS D3 (temporary, removed with D3's representation (R); the owner's O-428 (a), G812 ruling 143): the canonical case's Type
+    // (its one component) at a position a split binding decides, formed only by a split call's completion (Binding.OpenForm); every
+    // check that reads it rests, as rule W's failed part does. Never a node's published Type.
+    Open,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.7.2).</summary>
@@ -475,6 +480,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
     private readonly bool containsNested;
+    private readonly bool containsOpen;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
@@ -513,6 +519,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
+        var open = kind == BoundTypeKind.Open;
         var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
@@ -523,6 +530,7 @@ public sealed class BoundType : IEquatable<BoundType?>
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
             nested |= components[i].containsNested;
+            open |= components[i].containsOpen;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -555,6 +563,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
         this.containsNested = nested;
+        this.containsOpen = open;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -713,6 +722,9 @@ public sealed class BoundType : IEquatable<BoundType?>
     // PLAN G846): a Closure Type, or the Item of a function that is no Container's member. A gate, a superset of the Items
     // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
     internal bool ContainsNested => this.containsNested;
+
+    // DECISIONS D3 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
+    internal bool ContainsOpen => this.containsOpen;
 
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
     /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>

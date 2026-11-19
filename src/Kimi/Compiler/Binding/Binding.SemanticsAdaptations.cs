@@ -48,8 +48,8 @@ public sealed partial class Binding
 
     private ulong splitCarried;
 
-    // DECISIONS D3 (G812 ruling 134): what CanonicalForm's run formed.
-    private (BoundType? Type, OpenParts Open) canonicalForm;
+    // DECISIONS D3 (G812 rulings 134, 143): what OpenForm's run formed.
+    private BoundType? openForm;
 
     // A finite Type family stores complete case Types in SemanticsOrder, packed by its Length mask.
     // Only the selecting binder is a dependency; no source expression or operation plan is retained.
@@ -334,32 +334,109 @@ public sealed partial class Binding
         return rests;
     }
 
-    // DECISIONS D3 (temporary with it; G812 ruling 134): the Type `form` gives a declared Type in the canonical case, each binding at
-    // its first admitted Semantics (a search's first run, RestsOnSplitCases), and of a Function Type its parts whose own formation read a
-    // split binding (OpenParts); none where its formation read one that no part accounts for (the Type is open as a whole).
+    // DECISIONS D3 (temporary with it; G812 ruling 134): the canonical case's Type of a declared Type (OpenForm) without its marks, and
+    // of a Function Type its parts whose own formation read a split binding (OpenParts: an input or the result holding a mark); none
+    // where its formation read one that no part accounts for (the Type is open as a whole).
     private (BoundType? Type, OpenParts Open) CanonicalForm<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
     {
-        this.canonicalForm = default;
+        var marked = this.OpenForm(declared, state, form);
+        if (marked is not { ContainsOpen: true })
+        {
+            return (marked, default);
+        }
+
+        if (marked is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })
+        {
+            return default;
+        }
+
+        var open = new OpenParts(result.ContainsOpen, 0);
+        for (var i = 0; i < Math.Min(inputs.Components.Count, 64); i++)
+        {
+            open = inputs.Components[i].ContainsOpen ? open with { Inputs = open.Inputs | (1UL << i) } : open;
+        }
+
+        return (this.Unmarked(marked), open);
+    }
+
+    // DECISIONS D3 (temporary with it; G812 rulings 134, 143; the owner's O-428 (a)): the Type `form` gives a declared Type in the
+    // canonical case, each binding at its first admitted Semantics (a search's first run, RestsOnSplitCases), marked open
+    // (BoundTypeKind.Open) at each position whose formation read a split binding (OpenMarked); null where it formed none. The split
+    // call's completion is its one maker.
+    private BoundType? OpenForm<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
+    {
+        this.openForm = null;
         _ = this.RestsOnSplitCases(this.unformedWrites, (declared, state, form), static (binding, check) =>
         {
-            var type = binding.FormReadsSplit(check.declared, check.state, check.form, out var split);
-            var open = default(OpenParts);
-            if (check.declared is { Kind: BoundTypeKind.Function, Components: [var inputs, var result] } && type is { Kind: BoundTypeKind.Function })
-            {
-                for (var i = 0; i < Math.Min(inputs.Components.Count, 64); i++)
-                {
-                    _ = binding.FormReadsSplit(inputs.Components[i], check.state, check.form, out var input);
-                    open = input ? open with { Inputs = open.Inputs | (1UL << i) } : open;
-                }
-
-                _ = binding.FormReadsSplit(result, check.state, check.form, out var formed);
-                open = open with { Result = formed };
-            }
-
-            binding.canonicalForm = split && open == default ? default : (type, open);
+            binding.openForm = binding.OpenMarked(check.declared, check.state, check.form);
             return false;
         });
-        return this.canonicalForm;
+        return this.openForm;
+    }
+
+    // DECISIONS D3: in a run, `form` of `declared`, marked open where its formation read a split binding: at the innermost declared
+    // component whose own formation read one; a part no component accounts for (a pair layer, an Origin, a formation that changed the
+    // Type's shape) is marked whole.
+    private BoundType? OpenMarked<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
+    {
+        var type = this.FormReadsSplit(declared, state, form, out var split);
+        var count = declared.Components.Count;
+        if (!split || type is null)
+        {
+            return type;
+        }
+
+        if (declared.IsPairLayer || count == 0 || type.Kind != declared.Kind || type.Components.Count != count)
+        {
+            return this.types.Open(type);
+        }
+
+        var parts = this.typeScratch.Rent(count);
+        try
+        {
+            var marked = false;
+            for (var i = 0; i < count; i++)
+            {
+                var part = this.OpenMarked(declared.Components[i], state, form);
+                parts[i] = part is { ContainsOpen: true } ? part : type.Components[i];
+                marked |= part is { ContainsOpen: true };
+            }
+
+            return marked ? this.types.Rebuild(type, parts.AsSpan(0, count)!, type.Origin, (BoundOrigin[])type.OriginArguments) : this.types.Open(type);
+        }
+        finally
+        {
+            this.typeScratch.Return(parts, clearArray: true);
+        }
+    }
+
+    // DECISIONS D3: `type` with its open marks removed, the canonical case's Type.
+    private BoundType Unmarked(BoundType type)
+    {
+        if (!type.ContainsOpen)
+        {
+            return type;
+        }
+
+        if (type.Kind == BoundTypeKind.Open)
+        {
+            return this.Unmarked(type.Components[0]);
+        }
+
+        var parts = this.typeScratch.Rent(type.Components.Count);
+        try
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                parts[i] = this.Unmarked(type.Components[i]);
+            }
+
+            return this.types.Rebuild(type, parts.AsSpan(0, type.Components.Count)!, type.Origin, (BoundOrigin[])type.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(parts, clearArray: true);
+        }
     }
 
     // DECISIONS D3: `form` of a declared Type in a run, with whether it read a split binding or formed none.
