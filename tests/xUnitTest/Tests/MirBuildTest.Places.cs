@@ -510,7 +510,8 @@ public sealed partial class MirBuildTest
         const string Declarations = "func change(value: uniq/i32) => value@follow = 1\nstruct Counter\n    var count: i32\n    public init() => self.count = 0\n" +
             "    public func bump(self: uniq/Self) => self.count = self.count + 1\nstruct Holder {a}\n    public var link: uniq/i32 during a\n" +
             "    public var counter: uniq/Counter during a\n    public var o: uniq/Option<i32> during a\n";
-        var program = Compile(Declarations + body + "public func main() => ()\n").BuildMir();
+        var c = Compile(Declarations + body + "public func main() => ()\n");
+        var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.Empty(program.Records(MirRecordClass.Construction));
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
@@ -518,7 +519,7 @@ public sealed partial class MirBuildTest
         var refs = f.Statements.ToArray().Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref }).Select(static x => x.Rvalue.Type!)
             .Where(static x => x.Semantics == SemanticsKind.Uniq).ToArray();
         Assert.True(refs.Length >= reborrows);
-        Assert.All(refs, static x => Assert.Equal(OriginKind.Intersection, x.Origin?.Kind));
+        Assert.All(refs, x => Assert.Equal(OriginKind.Intersection, (x.Origin is { Kind: OriginKind.Inference, Binder: { } local } region ? c.Binding.RegionValueAtUse(region, local) : x.Origin)?.Kind));
     }
 
     // SPEC 13.6.1, 15.1.5 (DECISIONS BU-27): an object upcast of a stored exclusive reference to a view of its own Semantics Reborrows it,

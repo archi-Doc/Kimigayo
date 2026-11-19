@@ -9,8 +9,9 @@ namespace Kimi.Compiler;
 // - Responsibility: a clause that does not bind (FailOriginClause: a guessed operator or an unavailable operand), the first such clause,
 //   `Failure`, and each one's bound Origins (FailedClauses); the slots its bound Origins name (RestsOnFailedClause); `PendingFailure`'s
 //   one writer (RestPendingOn: path a here, path c at the Type, alias target and Case payload sites) and its reader (UnboundCause); an
-//   end that rests on a failed part (Rests) and rule W's one per-conjunct split (HoldsResting; DECISIONS Q13, PLAN G739). A fixed-fixed
-//   relation only a failed clause's repair could prove is a body row A5 judges (R7-O1 H; BU-159's counted dependent until H11b-0 U3).
+//   end that rests on a failed part (Rests; a `let` region through its published value) and rule W's one per-conjunct split
+//   (HoldsResting; DECISIONS Q13, PLAN G739). A fixed-fixed relation only a failed clause's repair could prove is a body row A5 judges
+//   (R7-O1 H; BU-159's counted dependent until H11b-0 U3).
 // - Inputs: the declaration CompleteOriginDeclaration completes and its clauses' bound operands; the part that failed before completion
 //   (path c); a pending slot's atom; an Unbound atom.
 // - Outputs: the clause's InvalidOrigin failure or its dependence on the unavailable operand; the named slots left Unbound; the part an
@@ -49,12 +50,19 @@ public sealed partial class Binding
             OriginOwner(binder) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) &&
             declaration.PendingCause is { } failure ? failure : binder.BindingFailure != BindingFailure.None ? binder : null;
 
-    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): whether an end holds an Unbound atom that rests on a failed part (UnboundCause).
+    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): whether an end holds an Unbound atom that rests on a failed part (UnboundCause). A
+    // `let` region rests as its published value does (PLAN G492-a (ii)): the value is the one input its declaration fixes for the slot,
+    // so a check on the region reads that input directly; the relation still reads the region itself (the owner's O-363 (a)).
     private bool Rests(BoundOrigin origin)
     {
         if (origin.Kind == OriginKind.Unbound)
         {
             return this.UnboundCause(origin) is not null;
+        }
+
+        if (origin.Kind == OriginKind.Inference && this.Region(origin) is { Value: { } value })
+        {
+            return this.Rests(value);
         }
 
         for (var i = 0; i < origin.Operands.Count; i++)

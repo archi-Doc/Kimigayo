@@ -91,7 +91,8 @@ public sealed partial class MirOriginsTest
     // source, fixed target): both rows of r7-inv (one direction of its `==`), a chain through a local region (the j-f chain), a meet at the
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
     // ways (one problem with Equality set), a local's callable store (cd1535825466, 597510880fb0, cab8c776076f), a Closure's parameter fit
-    // (8e4cca7290b1), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
+    // (8e4cca7290b1; with it the inner Closure's store of its parameter into its `var` capture of the `let` local `start`, whose slot is
+    // start's own region, a fixed Origin of that body: PLAN G492-a (ii), the owner's O-261 Q1 (a)), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
     // since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
     // its written Type is a local's (PLAN G215's twin); a nested result's relation among enclosing Origins, the containing declaration's,
@@ -106,7 +107,7 @@ public sealed partial class MirOriginsTest
     [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h: H{x} = H.init(a)\n        origin x.s == b\n    return 0\n", "H.init(a): in0 > in1")]
     [InlineData(Holder + "func use(a: ref/i32, b: ref/i32, h0: H{p}, k: (H{q}) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    return k(h0@move)\n", "h0@move: in0 > in1")]
     [InlineData(ClauseBound, "h0@move: in2 > in1")]
-    [InlineData(Closures, "a: closure.in0 > in0")]
+    [InlineData(Closures, "n: in0 > Inference", "a: closure.in0 > in0")]
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", "q@follow@follow@uniq: b > a")]
     [InlineData(LayerCount, "ref/(ref/i32 during a) during b: a > b")]
     [InlineData("struct Pair {a, b}\n" + PairInit + InitP, "ref/(ref/i32 during b) during a: b > a")]

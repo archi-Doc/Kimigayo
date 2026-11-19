@@ -7,7 +7,7 @@ both except `scripts/verify.ps1`, `scripts/verification-selection.ps1` and VERIF
 Read-only: no build, test or native run. Counts are `git grep`/Python scans of `tests/xUnitTest/**/*.cs` (scripts under
 `scratchpad/deep/py/`). (H) marks an inference I did not verify.
 
-Short names: A5P = `draft/Proposals/2026-10-16 Complete Polonius A5 Plan.md`; PLAN10 = `draft/Proposals/2026-10-10 Compiler
+Short names: A5P = `draft/Changes/2026-10-16 Complete Polonius A5 Plan.md`; PLAN10 = `draft/Proposals/2026-10-10 Compiler
 Size Reduction and Single MIR Plan.md`; PRE5 = `draft/Proposals/2026-10-12 Pre-R5 Work Items.md`; DEC/ARCH/VER/PLAN = origin/dev
 `docs/dev/DECISIONS.md`, `COMPILER_ARCHITECTURE.md`, `VERIFICATION.md`, `PLAN.md`.
 

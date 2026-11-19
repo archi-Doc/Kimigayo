@@ -673,9 +673,9 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // o2u
     [InlineData("func w2u(x: Option<ref/(ref/i32 during k) during c>, y: uniq/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [a, var b] () -> ()\n        w2u(.Some(a@ref), b@uniq)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@ref), b@uniq)")]
     // w1i
-    [InlineData("func same3w<T>(x: Option<uniq/T during c>, y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        same3w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
+    [InlineData("func same3w<T>(x: Option<uniq/T during c>, y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        same3w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)|UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
     // o2w
-    [InlineData("func w2w(x: Option<uniq/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        w2w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
+    [InlineData("func w2w(x: Option<uniq/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        w2w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)|UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
     // l1i
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use() -> i32\n    var x = 5\n    var y = 6\n    let a = x@ref\n    let b = y@ref\n    let r = keep(.Some(a@ref), b@ref)\n    y = 7\n    let s = r\n    return 0\n", "ComparisonLoanConflict_Kd@y = 7")]
     // l2i

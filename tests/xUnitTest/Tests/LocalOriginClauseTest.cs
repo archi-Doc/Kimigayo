@@ -522,7 +522,8 @@ public partial class LocalOriginClauseTest
         Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
-    // A fixed aggregate expectation still infers its omitted inner Origins when a source carries a mutable local's region.
+    // A fixed aggregate expectation still infers its omitted inner Origins when a source carries a mutable local's region. The `let`
+    // local's slot is its region (PLAN G492-a (ii)), whose value at a use in its own body is the solved meet (RegionValueAtUse).
     [Theory]
     [InlineData("(a and b)", null)]
     [InlineData("a", "UnprovenOriginRelation_Kd")]
@@ -536,7 +537,9 @@ public partial class LocalOriginClauseTest
             var c = MinimalEmissionTest.Analyze(source);
             var body = Assert.Single(c.BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
             var pair = Assert.Single(body.Locals.ToArray(), static x => x.Name == "pair");
-            Assert.Equal(OriginKind.Intersection, pair.Type.Components[1].Origin!.Kind);
+            var region = pair.Type.Components[1].Origin!;
+            Assert.Equal(OriginKind.Inference, region.Kind);
+            Assert.Equal(OriginKind.Intersection, c.Binding.RegionValueAtUse(region, region.Binder!).Kind);
         }
     }
 

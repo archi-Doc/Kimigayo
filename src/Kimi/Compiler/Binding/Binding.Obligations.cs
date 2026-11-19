@@ -77,9 +77,10 @@ public sealed partial class Binding
     // fixed) and does not fit as a whole decomposes, each operand its own relation (SPEC 15.3.6); a body chain's meet stays one row, whose
     // node and edge per operand A5's MeetNode rule gives (2a0-D D15); (2) the fit's answer at the use, both directions for `==`, by
     // FitConjunct: outside candidate trials and collected fits FitOriginOutlives, which bounds an open initializer's omitted Origin
-    // (SPEC 15.4.4), inside them the pure FitsOriginOutlives; (3) a body chain (an end not fixed in the body, an Unbound end included, or a region chain) is the row
-    // whatever (2) said, since its obligation bounds the region graph (RecordLocalRegionBound); (4) a fixed-fixed relation (2) proves
-    // needs no row; (5) any other is the row, through AddObligation, whose Unstated rule is SPEC 5.7's.
+    // (SPEC 15.4.4), inside them the pure FitsOriginOutlives; (3) a body chain (an end not fixed in the body, an Unbound end included,
+    // or a region chain) is the row whatever (2) said, since its obligation bounds the region graph (RecordLocalRegionBound), its ends
+    // read as the fit reads them, a `let` region of the use's body as its value (RegionValueAtUse; PLAN G492-a (ii)); (4) a fixed-fixed
+    // relation (2) proves needs no row; (5) any other is the row, through AddObligation, whose Unstated rule is SPEC 5.7's.
     private void FormBodyRelation(in BindingObligation row)
     {
         var (at, longer, shorter, equality, condition) = (row.Use, row.Longer!, row.Shorter!, row.Equality, row.Condition);
@@ -88,7 +89,7 @@ public sealed partial class Binding
             return;
         }
 
-        var chain = BodyChain(longer, shorter, equality, this.formingBody);
+        var chain = BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), equality, this.formingBody);
         if (!chain && !equality && longer.Kind == OriginKind.Intersection && !this.FitConjunct(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)

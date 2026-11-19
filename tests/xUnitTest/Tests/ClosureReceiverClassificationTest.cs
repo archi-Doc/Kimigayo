@@ -302,7 +302,7 @@ public class ClosureReceiverClassificationTest
     {
         var source = "struct P\n    public var x: i32 = 0\n    public init() => ()\npublic func main() -> ()\n" + head +
             "    let f = func [r] () -> i32\n        let s: " + type + " during r = r\n        return 0\n    let v = f()\n";
-        Assert.Equal("UnprovenOriginRelation_Kd r; InvalidAssignment_Kd f", Records(source));
+        Assert.Equal($"UnprovenOriginRelation_Kd let s: {type} during r = r; InvalidAssignment_Kd f", Records(source));
     }
 
     // SPEC 7.3.3 (check 1), 7.7.3, 13.5.5: an object callee supplies only its payload authority. rc, arc and objref grant shared access,

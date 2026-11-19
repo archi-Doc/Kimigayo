@@ -99,13 +99,23 @@ public class FunctionItemTest
     [InlineData("x6meet", "func h(anchor0: ref/u8 during a, anchor1: ref/u8 during b) -> i32\n    if true\n        func pk(x: ref/u8 during (a and b)) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("y1fnsig", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(f: (ref/u8 during a) -> i32) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("y3fnsigT", "func h<T>(x: ref/T) -> i32\n    if true\n        func pk(f: (T) -> i32) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
-    [InlineData("y5local", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("o8eraT", "func h<T>(x: T) -> i32\n    if true\n        func pk(y: T) -> i32 => 0\n        let g: (T) -> i32 = pk\n        return g(x@move)\n    return 0\n", "pk\n        return g")]
     [InlineData("e4hide", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let g: (ref/u8 during static) -> i32 = pk\n        return need(g@move)\n    return 0\n", null)]
     [InlineData("e5hidec", "func h(anchor0: ref/u8 during a) -> i32\n    let g: (ref/u8 during static) -> i32 = func (x: ref/u8 during a) -> i32 => 0\n    return need(g@move)\n", null)]
     [InlineData("x3fnnest", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk<U>(y: U) -> i32 => 0\n        return need(pk<(ref/u8) -> i32>)\n    return 0\n", null)]
     public void AnItemIsOwnedOnlyWhenWhatItsSignatureNamesIs(string id, string body, string? at)
         => AssertOwnedRecord(id, Need + body + "public func main() -> () => ()\n", at);
+
+    // DECISIONS BU-56's interim (until PLAN G230 (A)), for a `let` local as for a `var` one (PLAN G492-a (ii), the owner's O-394 (a)): a
+    // nested function's written Origin naming an enclosing local's Origin (`during r`) is a located Unsupported_Kd there. y5local
+    // (invalid: pk is not Owned, SPEC 15.3.4) keeps its Owned record, at the Item, beside it, as its `var` twin's; y5ok2 (valid, SPEC
+    // 15.3.4, 10.8: r read at the call is its value) has the limit alone.
+    [Theory]
+    [InlineData("y5local", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "Unsupported_Kd r; UnprovenConstraint_Kd pk")]
+    [InlineData("y5localv", "func h(anchor0: ref/u8 during a) -> i32\n    var r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "Unsupported_Kd r; UnprovenConstraint_Kd pk")]
+    [InlineData("y5ok2", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    func pk(x: ref/u8 during r) -> i32 => 0\n    return pk(r)\n", "Unsupported_Kd r")]
+    public void ALocalsOriginInANestedSignatureIsTheInterimsLimit(string id, string body, string records)
+        => Assert.Equal((id, records), (id, Records(Need + body + "public func main() -> () => ()\n")));
 
     // SPEC 15.2.3, 15.3.4, 7.7.4, 6.1.3, 3.5 (PLAN G826, G811-o revisions 1-2): an Item's Owned parts are its bound arguments, a
     // requirement Contract's inherited Origins included, and the atoms its declared signature inherits from an enclosing body (an

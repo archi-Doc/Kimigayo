@@ -4,12 +4,13 @@
 // the body's fixed-fixed oracle, which A5 judges with (MirOrigins); Binding.OriginRows.cs computes them.
 // Input: a body as an ExecutableBody (MIR's key form, MirDefKey.Body; a Getter's or Setter's execution function names its accessor), after
 // Bind, and for an atom MIR reads the MIR site it is read at.
-// Output: OriginRows, OriginAtom (an atom's index in the body's table), MeetAtom (a canonical meet's), UniversalRelations and OriginLayers
-// (the layer units with rows).
+// Output: OriginRows, OriginAtom (an atom's index in the body's table), MeetAtom (a canonical meet's), MeetOperand (an operand of a table
+// meet, as the meet holds it), UniversalRelations and OriginLayers (the layer units with rows).
 // Every site the view publishes or takes is a SourceRef, the one way MIR names syntax (ARCH rows 29 and 90; DECISIONS R4-M113): the view
 // converts its rows' sites once and reads a MIR site's syntax itself.
-// Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved at its use
-// (OriginAtUse) and meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is Binding's
+// Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved once, at its
+// use: a row's end as its row reads it (a Compared row's as the slot), a MIR Origin at its site as the value, a meet's operands as the meet
+// holds them; meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is Binding's
 // to judge (DECISIONS BU-26) and in no slice; a constructor's own body's slice is its rows, then its layer's (the struct's Field
 // initializers), each atom in its forming unit's part, Fixed atoms shared; a broken contract throws in a complete compilation
 // (CheckFaulted_Kd, DECISIONS BU-102), so MIR trusts every row and atom it reads.
@@ -77,8 +78,19 @@ internal readonly record struct OriginRow(
     BoundOrigin Supplier);
 
 /// <summary>An atom of a body's table with its class there; <c>EnclosingCallRegion</c>: the atom is an enclosing body's call region, or a meet
-/// with such an operand (row 6), which A5's failing chains read (the nested-body limit).</summary>
-internal readonly record struct OriginAtomEntry(BoundOrigin Atom, OriginAtomKind Kind, ProjectionRole Role, bool EnclosingCallRegion = false);
+/// with such an operand (row 6), which A5's failing chains read (the nested-body limit); <c>Value</c>: an enclosing body's local region's solved
+/// value (row 6; PLAN G492-a (ii), DECISIONS BU-127, O-422 (a)), whose operands A5 judges where the region fails at a longer end, null for
+/// any other atom.</summary>
+internal readonly record struct OriginAtomEntry(BoundOrigin Atom, OriginAtomKind Kind, ProjectionRole Role, bool EnclosingCallRegion = false, BoundOrigin? Value = null)
+{
+    // SPEC 15.3.6: the operands of what the entry holds as a meet's operands are read (TyCtxt.MeetOperand, A5's split of a failed source):
+    // a row-6 local region's solved value, else the atom; one, the held Origin itself, when it is no meet.
+    internal int HeldOperands => this.Held.Kind == OriginKind.Intersection ? this.Held.Operands.Count : 1;
+
+    private BoundOrigin Held => this.Value ?? this.Atom;
+
+    internal BoundOrigin HeldOperand(int index) => this.Held.Kind == OriginKind.Intersection ? this.Held.Operands[index] : this.Held;
+}
 
 internal sealed partial class TyCtxt
 {
@@ -87,6 +99,11 @@ internal sealed partial class TyCtxt
 
     // SPEC 15.6.5: an atom's index in a body's table, resolved at its use (a MIR site) and classed there; an atom no row names is appended.
     internal int OriginAtom(ExecutableBody body, BoundOrigin origin, SourceRef site) => binding.OriginAtomIn(body, origin, site);
+
+    // SPEC 15.3.6: the index of an operand of a meet atom of a body's table, as the meet holds it (the view resolved the meet once, at its
+    // use), or of a row-6 local region's solved value (OriginAtomEntry.HeldOperand); never resolved again at the asking site, which only locates
+    // a broken contract.
+    internal int MeetOperand(ExecutableBody body, int meet, int index, SourceRef site) => binding.MeetOperandIn(body, meet, index, site);
 
     // SPEC 15.3.6: the index of the canonical meet of two atoms of a body's table (A5's meet law), interned there once; a meet of Fixed atoms
     // is Fixed, and its part is its operands' union (PartOf), as for every meet, also when their parts differ (a layer atom beside a body

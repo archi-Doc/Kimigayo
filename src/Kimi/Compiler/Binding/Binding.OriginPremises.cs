@@ -383,7 +383,7 @@ public sealed partial class Binding
             var places = environment.Places;
             if (environment.Shorter is { } shorter && closure.TryNode(shorter, out var start))
             {
-                places.Add(start);
+                closure.AddPlace(start, places);
             }
 
             for (var i = 0; i < places.Count; i++)
@@ -392,6 +392,31 @@ public sealed partial class Binding
                 {
                     this.AddStoredPremises(environment, stored, places[i], OriginPremiseRule.LocalPlace, false);
                     closure.AddLongerEnds(places[i], OriginPremiseRule.LocalPlace, places);
+                }
+                else if (this.LocalRegionOf(environment, places[i], body) is { } region)
+                {
+                    // SPEC 15.4.4, 15.6.5 (PLAN G492): a region of a local of the body is bounded by each Origin the body recorded as
+                    // outliving it, a stored value's or another region's, in turn; a later store only adds bounds.
+                    for (var bound = 0; this.LocalRegionBound(region, bound) is { } longer; bound++)
+                    {
+                        AddPremiseEdge(environment, this.PremiseNode(environment, longer), places[i], OriginPremiseRule.LocalPlace);
+                    }
+
+                    closure.AddLongerEnds(places[i], OriginPremiseRule.LocalPlace, places);
+                }
+            }
+
+            // J1 (the owner's O-264 Q5 (a), O-286 (a)): the recorded bounds of every other region of the body that the request or the
+            // comparison's premises name, and of a region among them in turn, each node and bound once (O(N + B) per request); R5's
+            // start stays the request's shorter end (G491's (b): a Borrow such a bound names gets no stored premises).
+            for (var node = 0; node < closure.NodeCount; node++)
+            {
+                if (!closure.IsPlace(node) && this.LocalRegionOf(environment, node, body) is { } named)
+                {
+                    for (var bound = 0; this.LocalRegionBound(named, bound) is { } longer; bound++)
+                    {
+                        AddPremiseEdge(environment, this.PremiseNode(environment, longer), node, OriginPremiseRule.LocalPlace);
+                    }
                 }
             }
 
@@ -420,6 +445,12 @@ public sealed partial class Binding
         => environment.Closure.Origin(node) is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
             this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
             !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? stored : null;
+
+    // R5's region: the region `node` is, when it is a slot of a local of the use's own body other than the one being declared; otherwise
+    // null. A nested body or signature has no such premise: there the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
+    private BoundOrigin? LocalRegionOf(OriginPremiseEnvironment environment, int node, Koto? body)
+        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: VariableKoto variable } region && IsLocalRegion(region) &&
+            !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? region : null;
 
     // A required signature's own well-formedness: its inputs' and its result's.
     private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)

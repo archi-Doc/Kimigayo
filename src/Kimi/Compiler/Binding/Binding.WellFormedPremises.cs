@@ -309,12 +309,14 @@ public sealed partial class Binding
 
         // Forms the premise that `longer`, stored in `type`, outlives the layer's Origin (`value`, the layer's at the use), unless it is
         // held: it holds by itself; `kept`, the argument's Origin at the same position, satisfies it, since the argument's Type is well
-        // formed and the fit, judged on its own, makes its outer Origin outlive the substituted one; or the named function's definition
-        // proves it without its result premise.
+        // formed and the fit, judged on its own, makes its outer Origin outlive the substituted one (the two compared as the fit reads
+        // them at the use: OriginAtUse, a `let` region of the use's body as its value; PLAN G492-a (ii)); or the named function's
+        // definition proves it without its result premise.
         private bool Premise(BoundOrigin longer, BoundType type, BoundOrigin value, BoundOrigin? kept, ulong condition)
         {
             condition |= this.layer.Condition;
-            if (OriginOutlives(longer, this.layer.Outer) || OriginOutlives(value, this.layer.Substituted) || ReferenceEquals(value, kept) ||
+            if (OriginOutlives(longer, this.layer.Outer) || OriginOutlives(value, this.layer.Substituted) ||
+                (kept is not null && ReferenceEquals(this.binding.OriginAtUse(value, this.use, this.comparison), this.binding.OriginAtUse(kept, this.use, this.comparison))) ||
                 this.DefinitionProves(longer, condition))
             {
                 return false;

@@ -23,6 +23,11 @@ public sealed partial class Binding
         Signature,
     }
 
+    // SPEC 10.8 (PLAN G492-a (ii)): an argument part's Type as its call reads it, once per call: its evidence and the operation the
+    // selected call forms from it (FitArgument, the completion), so the operation's later readers (BU-99's replaced test, step 5's
+    // formation proof, MIR) read the Origins the solve read; a `let` region of the part's body is read as its value (RegionValuesAt).
+    private BoundType? ArgumentTypeAt(Koto part) => part.BoundType is { } type ? this.RegionValuesAt(type, part) : null;
+
     // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is
     // Evidence, and a part recorded as waiting (Case, Call, Function, Reference) or Literal a Signature position. An aggregate (by its
     // form, ClassifyPart) is a Signature position whose child positions contribute each by its parts (G216 (a) U2.2 U2, the child
@@ -139,7 +144,7 @@ public sealed partial class Binding
                 var source = arguments[i];
                 if (this.Function.Parameters[mapping[i]].Type.BoundType is not { } parameter || this.CallableSlot(parameter) is not { } callableSlot ||
                     binding.KindOf(source) == PartKind.Function || binding.WasDeferred(source) ||
-                    source.BoundType is not { } actual ||
+                    this.Binding.ArgumentTypeAt(source) is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     !binding.TryCallable(actual, this.Scope, out var actualSignature, out _))
                 {
@@ -256,7 +261,7 @@ public sealed partial class Binding
                 case PartKind.Typed when binding.DefaultOf(node) is not null:
                     return !late || binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null || this.InferOwnType(pattern, node);
                 default:
-                    if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
+                    if (this.Binding.ArgumentTypeAt(node) is not { } actual || ReferenceEquals(actual, BoundType.Never))
                     {
                         return true;
                     }
@@ -553,7 +558,7 @@ public sealed partial class Binding
         {
             var binding = this.Binding;
             var source = KotoHelper.UnwrapParentheses(boundary);
-            if (source.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
+            if (this.Binding.ArgumentTypeAt(source) is not { } actual || ReferenceEquals(actual, BoundType.Never))
             {
                 return true; // SPEC 10.8: a Never-typed boundary is no evidence.
             }
