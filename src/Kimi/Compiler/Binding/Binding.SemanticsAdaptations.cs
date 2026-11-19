@@ -196,6 +196,21 @@ public sealed partial class Binding
     // no Type over another target is formed under it (ApplySemantics, SubstituteFamily; PLAN G886: its representation is the remainder).
     private static bool HasOwnSelector(BoundType binding) => binding.Kind == BoundTypeKind.Parameter || binding.Semantics == SemanticsKind.Parameter;
 
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 159): whether one of the Types holds the open formed Type's mark,
+    // which an inference slot takes from its marked position below a split call's completion (OpenForm), the one former of marks.
+    private static bool HoldsMark(ReadOnlySpan<BoundType?> types)
+    {
+        foreach (var type in types)
+        {
+            if (type is { ContainsOpen: true })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 7.5, 8.3.4, 8.15.1, 10.8: the scope whose premises judge an abstract Type, by the Type's one meaning where it is read. A source's
     // outer Semantics at a call (its evidence, while EnterEvidence holds the solve's node) is judged under the premises at that node, a
     // conditional member's leading region and an enclosing `when` condition included, wherever the Type is in scope there. Any other
@@ -580,21 +595,6 @@ public sealed partial class Binding
     // since `mark` that formed none (UnformedSince), or one of the Types holding the open formed Type's mark (HoldsMark), so that a check
     // that failed there failed through the split: an Unknown.
     private bool ReadsSplitDecided(int mark, ReadOnlySpan<BoundType?> types) => HoldsMark(types) || this.UnformedSince(mark);
-
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 159): whether one of the Types holds the open formed Type's mark,
-    // which an inference slot takes from its marked position below a split call's completion (OpenForm), the one former of marks.
-    private static bool HoldsMark(ReadOnlySpan<BoundType?> types)
-    {
-        foreach (var type in types)
-        {
-            if (type is { ContainsOpen: true })
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none. For a
