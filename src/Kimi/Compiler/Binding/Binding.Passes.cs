@@ -354,6 +354,9 @@ public sealed partial class Binding
     // own nodes plus each foreign node's final state less its earlier one.
     internal sealed class PassPart
     {
+        // The facts the failures in ForeignFailures carry, each at its entry's index (Binding.SetRecordedFact).
+        private NodeColumns foreignFacts;
+
         internal List<Koto> Nodes { get; } = new();
 
         internal List<BindingIssue> Issues { get; } = new();
@@ -423,6 +426,10 @@ public sealed partial class Binding
         // The nodes outside the pass's modules that the pass wrote, in the order it first wrote them: each with its state before (its own
         // pass's), and the state and failure the pass recorded, which the recorder reads in place of its columns (RecordedState).
         internal List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> ForeignFailures { get; } = new();
+
+        // The facts the failures of ForeignFailures carry, at their entries' indexes: a pass family's row, stamped by the pass as every
+        // pass family's (the list and these rows end with the pass).
+        internal ref NodeColumns ForeignFacts => ref this.foreignFacts;
 
         internal BindingResult Counts { get; set; }
 

@@ -135,6 +135,29 @@ public sealed partial class Binding
         }
     }
 
+    // The fact a failure carries (a failure-fact family's row, such as `qualificationFailures`' stop), stored with its failure by the
+    // recorder's one decision (DECISIONS G949 S1 as R7-N5 B4 amends it): a node of a module the running pass binds in its
+    // module's column at its SyntaxId, any other node in the part's foreign columns at its entry's index (PassPart.ForeignFacts), the
+    // row its entry names; its readers read it as RecordedFailure reads the failure, so no caller chooses a store.
+    private T RecordedFact<T>(Koto node, FactFamily<T> family)
+        => this.IndexOfForeign(node) is var i and >= 0 ? family(ref this.pass.Part.ForeignFacts).Get(i, this)
+            : node.SyntaxOwner is { } table ? family(ref table.Hir.Families).Get(node.SyntaxId, this) : default!;
+
+    private void SetRecordedFact<T>(Koto node, FactFamily<T> family, T fact)
+    {
+        if (this.pass.Binds(node.SyntaxOwner))
+        {
+            family(ref HirTables.Of(node).Families).Ref(node.SyntaxId, this) = fact;
+            return;
+        }
+
+        this.ForeignEntry(node);
+        var row = this.IndexOfForeign(node);
+        ref var facts = ref this.pass.Part.ForeignFacts;
+        facts.Resize(this.foreignFailures.Count);
+        family(ref facts).Ref(row, this) = fact;
+    }
+
     // A foreign node's entry, listed at the pass's first write to it with its columns as they stood (State and Before the state its own
     // pass counted): a node a check cleared (ClearFailure) and fails again keeps its one entry with that first state (review-s1r1b N2),
     // so a node enters the list once per pass.

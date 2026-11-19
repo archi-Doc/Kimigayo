@@ -257,6 +257,13 @@ internal struct HirTables
     }
 }
 
+/// <summary>A pass family's column in a <see cref="NodeColumns"/>: a fact family's accessor names its column so the recorder can choose
+/// the columns that hold the fact (Binding.RecordedFact, Binding.SetRecordedFact; DECISIONS G949 S1 as R7-N5 B4 amends it).</summary>
+/// <typeparam name="T">The family's row.</typeparam>
+/// <param name="columns">The columns.</param>
+/// <returns>The family's column.</returns>
+internal delegate ref StampedColumn<T, Binding.PassCounter> FactFamily<T>(ref NodeColumns columns);
+
 /// <summary>
 /// Binding's private node families of one module (DECISIONS BU-220): one column per family, indexed by the SyntaxId of the node that keys
 /// it. A kept family's <see cref="PagedColumn{T}"/> keeps its rows across passes, and a renumbering moves each row with its node
