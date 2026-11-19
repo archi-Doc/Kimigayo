@@ -26,7 +26,7 @@ public sealed partial class Binding
     // The first premise an Instance or Prove visit fails (longer, shorter).
     private (BoundOrigin Longer, BoundOrigin Shorter)? failedResultPremise;
 
-    // The failure of the last Item solve that did not hold (ContractFits; ItemContractFits reads it), and the declared clause a solve's
+    // The failure of the last Item solve that did not hold (ContractFits; DefinitionContractFits reads it), and the declared clause a solve's
     // CheckCallOriginRelations did not prove, with its substituted ends.
     private ComparisonFailure contractFailure;
     private (BoundOrigin Longer, BoundOrigin Shorter, bool Equality, Koto Syntax)? failedCallClause;
@@ -78,14 +78,16 @@ public sealed partial class Binding
         internal ulong Condition { get; init; }
     }
 
-    // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
-    // required contract, under the use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a
-    // fixed Origin of an enclosing function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same
-    // solution. An open evidence region still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
-    internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
+    // SPEC 15.3.7, 10.7, 15.3.6: the contract comparison of a callable definition, a Function Item's or an anonymous function's (a
+    // Closure Type's, board D-822): only the implementation's instantiable call Origins are solved, all together, including an Item's
+    // named and result-only universals and every per-call Origin of a direct borrowed input, against the required contract, under the
+    // use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a fixed Origin of an enclosing
+    // function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
+    // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
+    internal bool DefinitionContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
     {
         failure = default;
-        if (item.Kind != BoundTypeKind.FunctionItem || item.Symbol is not { Declaration: FunctionKoto function } symbol)
+        if (item.Kind is not (BoundTypeKind.FunctionItem or BoundTypeKind.Closure) || item.Symbol is not { Declaration: FunctionKoto function } symbol)
         {
             return false;
         }

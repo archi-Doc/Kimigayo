@@ -187,7 +187,7 @@ public sealed partial class Binding
         failure = default;
         return actual.Kind == BoundTypeKind.Closure
             ? expected.Kind == BoundTypeKind.Function && SharedReceiver(actual) &&
-                this.ClosureSignature(actual) is { } signature && this.CallableSignatureFits(signature, expected, SignatureOwner(actual), use, out failure)
+                this.ClosureSignature(actual) is { } signature && this.DefinitionContractFits(actual, signature, expected, use, out failure)
             : this.ErasureSignatureFits(actual, expected, use, out failure);
     }
 
@@ -225,7 +225,7 @@ public sealed partial class Binding
         failure = default;
         return expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
-            this.ItemContractFits(actual, signature, expected, use, out failure)) ||
+            this.DefinitionContractFits(actual, signature, expected, use, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && SharedReceiver(actual) && this.ClosureSignature(actual) is { } closureSignature &&
             this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
     }
@@ -249,6 +249,7 @@ public sealed partial class Binding
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
+        var closure = item is { Kind: BoundTypeKind.Closure } ? this.ClosureSignature(item) : null;
 
         // The owner's (a): every proof of the comparison, its solve's too, assumes the required signature's own well-formedness.
         var comparison = new CallableInstance(null, null, required, required.Binder, null);
@@ -257,7 +258,7 @@ public sealed partial class Binding
         this.contractFailure = default;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (function.Parameters[i].Type.BoundType is not { } written || Bound(written) is not { } parameter)
+            if (Input(i) is not { } parameter)
             {
                 return false;
             }
@@ -269,7 +270,7 @@ public sealed partial class Binding
             this.CollectOriginInference(parameter, parameters.Components[i], inference);
         }
 
-        if (symbol.Type is { } writtenResult && Bound(writtenResult) is { } produced)
+        if (Output() is { } produced)
         {
             inference.Source = (ComparisonFailure.ResultStep, null, false);
             this.CollectOriginInference(produced, required.Components[1], inference, result: true);
@@ -285,7 +286,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (Substitute(Bound(function.Parameters[i].Type.BoundType!)!) is not { } parameter)
+            if (Input(i) is not { } written || Substitute(written) is not { } parameter)
             {
                 return false;
             }
@@ -322,7 +323,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (symbol.Type is not { } output || Bound(output) is not { } boundResult || Substitute(boundResult) is not { } result)
+        if (Output() is not { } boundResult || Substitute(boundResult) is not { } result)
         {
             return false;
         }
@@ -342,6 +343,15 @@ public sealed partial class Binding
         }
 
         return true;
+
+        // The implementation's input `i` and result as the compared value reads them: a Closure's from its signature, any other's from
+        // the definition's written Types through its item, container or frame (Bound).
+        BoundType? Input(int i)
+            => closure is not null ? this.ContractType(closure.Components[0].Components[i], this.ConstraintScope(use))
+                : function.Parameters[i].Type.BoundType is { } written ? Bound(written) : null;
+
+        BoundType? Output()
+            => closure is not null ? this.ContractType(closure.Components[1], this.ConstraintScope(use)) : symbol.Type is { } written ? Bound(written) : null;
 
         BoundType? Bound(BoundType type)
         {

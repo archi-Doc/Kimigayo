@@ -35,7 +35,7 @@ public sealed partial class Binding
     internal bool FitsStructuralPart(BoundType actual, BoundType expected)
         => new RelationWalk(this, null, null, OriginPart.Everywhere).Fits(actual, expected);
 
-    // SPEC 10.7, 15.6.1: a Function Item's signature part for its contract fit (ItemContractFits, the one caller; PLAN G379 (b)):
+    // SPEC 10.7, 15.6.1: a Function Item's signature part for its contract fit (DefinitionContractFits, the one caller; PLAN G379 (b)):
     // subtyping against the required signature, its result Never when the implementation's is (CompatibleResult), judged without
     // recording a bound and without premises; `own` is the declaration whose per-call inputs the implementation's signature names.
     internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own, out ComparisonFailure failure)
