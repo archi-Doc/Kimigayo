@@ -443,9 +443,34 @@ public sealed partial class Binding
                 return (premise.Left is { } left && Reads(left)) || (premise.Right is { } right && Reads(right));
             }
 
+            // R7-C3 gate 2 (SPEC 8.3.4, 8.15.2): a failed Semantics premise empties its pair's set, which every judgment of a Type with
+            // that layer as a part reads (ea9-posq: `(s/A) -> i32 is (obj/Leaf) -> i32` compares s/A).
+            if (premise.Kind == ConstraintKind.Semantics)
+            {
+                return premise.Subject is { } layer && HasPart(subject, layer);
+            }
+
             for (var read = subject; read is not null; read = read is { Kind: BoundTypeKind.AssociatedProjection, Components: [var under, ..] } ? under : null)
             {
                 if (Side(read, premise.Subject) || Side(read, premise.RequiredType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool HasPart(BoundType type, BoundType part)
+        {
+            if (ReferenceEquals(type, part))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (HasPart(type.Components[i], part))
                 {
                     return true;
                 }

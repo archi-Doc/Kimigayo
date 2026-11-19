@@ -552,7 +552,8 @@ public sealed partial class Binding
     private void FailTypeRole(BindingObligation obligation)
     {
         var causes = this.TypeRoleCauses(obligation);
-        if ((causes & TypeRoleCause.Role) != 0 && this.InvalidDeclarationContextCause(obligation.Use) is { } failed)
+        if ((causes & TypeRoleCause.Role) != 0 && (this.InvalidDeclarationContextCause(obligation.Use) ??
+            (obligation.Type is { } type ? this.FailedPremiseRead(type, this.ConstraintScope(obligation.Use))?.Use : null)) is { } failed)
         {
             causes &= ~TypeRoleCause.Role;
             if (causes == TypeRoleCause.None)
