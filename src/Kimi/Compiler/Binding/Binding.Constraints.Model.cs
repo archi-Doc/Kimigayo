@@ -138,7 +138,7 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the premises whose proof is Error (FailPremise), out of the evidence; and what a proof that reads
     // one rests on (PremiseFailure, Use = the declaration that holds the record).
-    internal List<BoundConstraint> FailedPremises { get; } = new();
+    internal List<BoundConstraint>? FailedPremises { get; private set; } // allocated at the first failed premise
 
     internal PremiseFailure? FailedPremise { get; private set; }
 
@@ -214,7 +214,7 @@ internal sealed class ConstraintEnvironment : ICheckCause
         {
             this.DirectFacts.Remove(fact);
             this.DerivedFacts.RemoveAll(x => ReferenceEquals(x.Fact, fact));
-            this.FailedPremises.Add(fact);
+            (this.FailedPremises ??= new()).Add(fact);
             this.FailedPremise ??= new(owner);
             this.Version++;
         }
@@ -248,7 +248,7 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.DerivedFacts.Clear();
         this.Declared = 0;
         this.Failed = null;
-        this.FailedPremises.Clear();
+        this.FailedPremises?.Clear();
         this.FailedPremise = null;
         this.HasAssociatedProjection = false;
         this.HasTypeIdentity = false;

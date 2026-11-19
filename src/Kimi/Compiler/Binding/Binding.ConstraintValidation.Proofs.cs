@@ -380,12 +380,12 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { FailedPremise: { } failure } environment)
+            if (current.Constraints is not { FailedPremise: { } failure, FailedPremises: { } premises })
             {
                 continue;
             }
 
-            foreach (var premise in environment.FailedPremises)
+            foreach (var premise in premises)
             {
                 if (Reads(written, premise) || Reads(normalized, premise))
                 {
