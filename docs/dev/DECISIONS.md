@@ -21494,6 +21494,7 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Plan: RP7 and RP21 end (Q14); RQ6's units run one prototype-first candidate unless the owner instructs otherwise; R8-R1 and
     R8-G1 are Major units under their approved design.
   - Reason: the middle session ran the windows besides its defect stream, and three sessions edited the same documents.
+  - Amended by T-M2: P13 is the Tatara session's from 2026-11-19; the Back keeps P11–P12.
 - **R7-M5 A struct has one base clause, `StructKoto.BaseClause`, read under the binder's role** (2026-11-08; R7-N2a, b; Major; design review) SPEC 6.2.2, 8.7.3, 9.2, 9.4.2, 9.6.
   - `StructKoto.BaseClause` is a struct's one clause; `.Bases` stays where the container may be an enum or a Contract.
   - A base clause read as a declaration reads `NoContainer`, the binder's role, at every read.
@@ -25671,6 +25672,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
   - Amended by R9-M10: Build reads `CompilationBuildMetadata` as the value `Project.Build` passes (`RecordLibrary`'s argument), not
     through `Project.BuildMetadata`.
+  - Amended by T-M2: `src/Kimi/Build`, the Middle's under this entry, is the Tatara lane's from 2026-11-19; the Middle reviews its
+    units.
 - **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
   part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
   ACCEPT; the Front's consent C-224 and the Back's C-225)
@@ -26074,3 +26077,31 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends R9-M10 (its known limit (3) closes: outside `Project.Build` the set applies only around a command's own toolchain calls
     and `kimi test`'s native build) and R5-M169 (its rejected catch in `CommandExecution` concerned generation's exceptions, which
     the Emission result owns; the command's own result has this one).
+
+## Tatara (adopted 2026-11-19)
+
+Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
+holds the owner's decisions 1–13). Units of the Tatara lane record their entries here as T-M*.
+
+- **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
+  「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
+  「下書きを承認します。作業を続けて下さい。」 with one addition, now the plan's §6,
+  「LLVMがバージョンアップすることもある。それに合わせて更新できるように、道を準備しておいてください。」)
+  - Rule: the plan is the formal plan for the build chain in one process (generation, inspection and link through `tatara.dll`;
+    `kimi tatara`), with decisions 1–13 as its §2 lists them, each as recommended. Stage A (units A1–A4) replaces only the executor;
+    stage B (B5–B8) changes rules, each unit after its owner question; an LLVM update is one unit under the plan's §6.
+  - Rejected: one stage changing executor and rules together (differences could not be told apart); generation directories for the
+    executable (an output contract change, reclamation and embedded-path rules, for the one gain of rebuilding while the old
+    executable runs; can be added later); switching single-shot `kimi build` first (every session's native checks ride the external
+    path); Tatara as the Middle's work (its seats are full); building LLVM from source by default (hours of CPU); replacing the setup
+    tools too; static linking from the start (two forms); the build procedure in C++ (rules in two languages).
+- **T-M2 The Tatara lane** (owner, 2026-11-19; the plan's decisions 4, 11 and 12)
+  - Rule: the Tatara session (T, the plan's author) plans and implements P13 (`src/Kimi/Build`) and `src/Tatara`; the Middle reviews
+    its units; seats 1+1. AGENTS (Roles), WORKFLOW (Sessions) and COMPILER_ARCHITECTURE (the sessions paragraph, the stage ledger)
+    name it from the plan's adopting commit.
+  - Amends R9-M6 (`src/Kimi/Build` was the Middle's) and R7-M4 (P13 was the Back's).
+- **T-M3 The executor seam is temporary** (Tatara, 2026-11-19; the plan's §4; recorded at the adoption so the stage ledger can name
+  it, and redrafted by T with unit A2's own request)
+  - Rule: from unit A2 to unit A4, `NativeBuild` runs its three tool operations (generate, inspect, link) through one of two
+    executors, the external tools or Tatara.
+  - Temporary, with its removal condition: unit A4 deletes the external executor and the seam; P13 then calls Tatara directly.
