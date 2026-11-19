@@ -69,8 +69,8 @@ public sealed partial class Binding
         internal BoundType? Self;
         internal BoundType? DeclaringType;
         internal SlotFrame Frame;
-        internal BoundOrigin[] Origins;
-        internal BoundOrigin[] Inputs;
+        internal Span<BoundOrigin> Origins;
+        internal Span<BoundOrigin> Inputs;
         internal bool FixedConstruction;
 
         // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
@@ -126,6 +126,9 @@ public sealed partial class Binding
         internal readonly bool Constructor => !ReferenceEquals(this.SlotOwner, this.Binder);
 
         internal readonly int OriginCount => CallOriginCount(this.Binder);
+
+        // The binder as the unifier's input (Infer); a binder is a function or an enum.
+        internal readonly SolveBinder Solve => this.Binder is FunctionKoto function ? new(function) : new((EnumKoto)this.Binder);
 
         // The candidate's function, for the operations of a call.
         internal readonly FunctionKoto Function => (FunctionKoto)this.Binder;
@@ -363,15 +366,25 @@ public sealed partial class Binding
 
         // Whether the callable value converts to the common Function Type: a function group by one of its functions (SPEC 7.7.4).
         private readonly bool FitsCallable(Koto node, BoundType type)
-            => node.BoundType is { } actual
-                ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+        {
+            var binding = this.Binding;
+            if (node.BoundType is not { } actual)
+            {
+                return binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+            }
+
+            var rows = binding.comparisonRows.Count; // SPEC 15.6.1: a selection takes and drops the region conjuncts.
+            var fits = binding.ErasureSignatureFits(actual, type, node, binding.comparisonRows, out _);
+            binding.DropComparisonRows(rows);
+            return fits;
+        }
 
         // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot
         // that its declaring Type gives (an open construction slot is its own parameter there).
         private readonly bool FixedSlot(int slot)
             => slot < this.Fixed.Types.Length && this.Fixed.Types[slot] is { } bound && OwnSlot(bound, this.SlotOwner) != slot;
 
-        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
+        private readonly Span<BoundOrigin> InputSpan() => this.Inputs.Slice(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.

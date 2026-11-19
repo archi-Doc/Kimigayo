@@ -91,8 +91,13 @@ public class InputDependentValueCallTest
         Assert.Equal(OriginKind.Projection, origin.Kind);
     }
 
-    private const string Swap = "func pass(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
-        "        let old = start\n        start = n\n        return old\n";
+    private const string SwapClosure = "    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n";
+
+    // The capture's slot is written `during x`, so the Closure body holds by identity (PLAN G492-a (ii)); SwapOmitted leaves it to the
+    // `let` local's own region.
+    private const string Swap = "func pass(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 during x = x\n" + SwapClosure;
+
+    private const string SwapOmitted = "func pass(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n" + SwapClosure;
 
     // SPEC 8.10, 15.6.4: an input or result written over a fixed Origin of the calling body, here an input of the enclosing function,
     // is no per-call input of the callee: the argument is fitted to it as written and the result keeps it, whatever slot it occupies.
@@ -113,12 +118,20 @@ public class InputDependentValueCallTest
 
     // A fixed input is fitted as written; a finite local cannot satisfy an enclosing fixed Origin. Each row: the records in result
     // order, by code and text. Where the callee keeps the argument, A5 also records the local's end at its declaration (the MIR's
-    // records, H5; counted by code, Q13).
+    // records, H5; counted by code, Q13). PLAN G492-a (ii): a capture written `during x` (Swap) or `during r` (hp1a) keeps the argument
+    // in that region, so the block local's end is recorded; unwritten (hp1 and SwapOmitted's two rows, the last three), the captured
+    // `let` local's slot is its own region, a fixed Origin of the Closure body with no premise relating it to the written one (SPEC
+    // 7.7.2, 15.6.5; the owner's O-261 Q1 (a)), so the store (and hp1's return) is Unknown there, as its `var start` twin's on the base,
+    // and the Loan conflict, which the base reported for the `let` form, is not reported beside it. SwapOmitted's second row is the
+    // base's accepted fixture "FixedResult" as it was written, rejected by that rule alone.
     [Theory]
     [InlineData(Swap + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
-    [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
+    [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 during x = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
     [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let local: i32 = 5\n    return c(local@ref)\n", "UnsatisfiedOriginRelation_Kd local@ref")]
-    [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", "ComparisonLoanConflict_Kd let y: i32 = 5")]
+    [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start: ref/i32 during r = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", "ComparisonLoanConflict_Kd let y: i32 = 5")]
+    [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", "UnprovenOriginRelation_Kd n|UnprovenOriginRelation_Kd old|ComparisonLoanConflict_Kd let y: i32 = 5")]
+    [InlineData(SwapOmitted + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", "UnprovenOriginRelation_Kd n|ComparisonLoanConflict_Kd let local: i32 = 5|UnsatisfiedOriginRelation_Kd local@ref")]
+    [InlineData(SwapOmitted + "    let r = c(x)\n    return c(r)\n", "UnprovenOriginRelation_Kd n")]
     public void AFixedInputIsNoPerCallInput(string body, string records)
     {
         var source = body + "public func main() => ()\n";
@@ -151,14 +164,17 @@ public class InputDependentValueCallTest
     // SPEC 15.6.4 (H3b T30): G65's reproduction whose store through the Closure's capture `holder@uniq` keeps the direct Loan naming its
     // own target past layer 1. It is valid, but the MIR rejects it by the SPEC's letter with one record at `return holder@follow`'s
     // operand, not at the store. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2), GXS adopted with its
-    // extension, restores the acceptance and moves the row back to FixedInputsPreserveTheirActualLoans as valid.
+    // extension, restores the acceptance and moves the row back to FixedInputsPreserveTheirActualLoans as valid. Since the A5 landing the
+    // storage end of holder also conflicts, a record added on a program rejected anyway (DECISIONS Q13), as in FixedOriginRetentionTest's
+    // ClosureStoresOfTheActualArgumentAreRefusedPendingGxs.
     [Fact]
     public void AFixedInputStoredThroughACaptureIsRefusedPendingGxs()
     {
         var source = "func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n" + "\npublic func main() => ()";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        var at = MirTargetSide.At("return holder@follow", "holder@follow").Resolve(source);
-        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), at.Start, at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+        var (end, at) = (MirTargetSide.At("var holder: ref/i32 during x = x").Resolve(source), MirTargetSide.At("return holder@follow", "holder@follow").Resolve(source));
+        Assert.Equal(
+            [(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), end.Start, end.Length), (nameof(DiagnosticCode.ComparisonLoanConflict_Kd), at.Start, at.Length)],
+            DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
     }
 
     // SPEC 15.6.4: a value call through a Function Type whose result is written over an input of the enclosing function binds as an

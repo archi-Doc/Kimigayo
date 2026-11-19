@@ -176,11 +176,11 @@ internal sealed class MirCases(TyCtxt types)
     /// <summary>Gets the case Type (<see cref="Type"/>) of a Type that may be unknown: none for none, a local or static of no Type (a slot
     /// Binding failed, <see cref="MirLocal"/>; PLAN G1073) and a temp of no Type derived from one, accessed only as MirValidator's Bounded
     /// admits. The case readers of each such access take it (rule W: a Type of no Type holds, points and encloses nothing): of every local,
-    /// the holder test, the walk's guard and the raw-holding test of a body's inputs; of a whole write, a store's receiving part, the pointer
-    /// test of its destination and the raw-holding test of a Call's destination; of the delivery into <c>_0</c> and of a read by an rvalue
-    /// that takes its Type from its operands, the enclosed-layer test of a read operand and the pointer test of a read input, and of that
-    /// rvalue's first operand the raw-displacement test (A5's Keeps). No case reader reads a storage's beginning or end, the Return's Move of
-    /// <c>_0</c> or an Opaque site's root.</summary>
+    /// the holder test, the walk's guard and the raw-holding test of a body's inputs; of a whole write, a store's receiving part and the
+    /// pointer test of its destination; of the delivery into <c>_0</c> and of a read by an rvalue that takes its Type from its operands, the
+    /// enclosed-layer test of a read operand, the pointer test of a read input and the whole-value test of a Use (A5's Whole, the write
+    /// slots), and of that rvalue's first operand the raw-displacement test (A5's Keeps). No case reader reads a storage's beginning or end,
+    /// the Return's Move of <c>_0</c> or an Opaque site's root.</summary>
     /// <param name="type">The Type, or none.</param>
     /// <returns>The case Type, or none.</returns>
     internal BoundType? KnownType(BoundType? type) => type is null ? null : this.Type(type);

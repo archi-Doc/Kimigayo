@@ -11,8 +11,11 @@ namespace Kimi.Compiler;
 //   case assignment (SPEC 8.15.2: each assigned pair binder's layers take its case, every other layer its weakest case; the empty
 //   assignment is every layer at its weakest case, which an operation valid in every case reads) and the
 //   one diagnostic for a capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority);
-//   whether a Place offers Write (Writable); whether a receiver can be exclusively acquired for indexUniq or an exclusive view
-//   (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
+//   whether a Place offers Write (Writable), as a whole Place, the question of an assignment's whole target and of a pair layer's
+//   owner-case operand (WritablePlace), and what a part's owner grants it or lends it (WritableOwner, LendsOwner: the one reading
+//   of SPEC 15.1.5's writable roots for a part, a writable temporary's included, WritableTemporary, whose whole Temporary Place no
+//   lowering writes yet, IsTemporaryPlace); whether a receiver can be
+//   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
 //   borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace and, for a handle, LendsHandle, with the static root), with the
 //   one diagnostic for a written Borrow it may not (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow);
 //   whether an explicit discard's allowed Take of a raw Place destroys it in place (DestroysInPlace, SPEC 14.2.4; the HIR publisher
@@ -328,7 +331,7 @@ public sealed partial class Binding
             return payload.Left.BoundType?.Semantics switch
             {
                 SemanticsKind.ObjUniq => !this.ReachedThroughShared(payload.Left),
-                SemanticsKind.Obj => this.Writable(payload.Left),
+                SemanticsKind.Obj => this.WritableOwner(payload.Left),
                 _ => false,
             };
         }
@@ -350,7 +353,7 @@ public sealed partial class Binding
             inline.Left.BoundType?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array &&
             ElementAccess.TryType(this, inline, out _, out _))
         {
-            return this.Writable(inline.Left) || ElementAccess.WritableRoot(this, inline.Left) is not null;
+            return this.WritableOwner(inline.Left);
         }
 
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(this, nested.Left)) &&
@@ -374,7 +377,7 @@ public sealed partial class Binding
         // owning handle or in the owner case of a pair layer too (no member is selected through a raw pointer).
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
             this.LayerAuthority(field.Left, []) is null && AdtDef.IsStruct(DeclaringType(field.Left.BoundType)) &&
-            Receiver(field.Left) is null && !this.Writable(field.Left) && ElementAccess.WritableRoot(this, field.Left) is null)
+            Receiver(field.Left) is null && !this.WritableOwner(field.Left))
         {
             return false; // A mutable field still requires a mutable owning root.
         }
@@ -392,11 +395,36 @@ public sealed partial class Binding
     }
 
     // SPEC 15.1.5: whether a receiver's own binding permits exclusive acquisition, which storage rooted in a let binding or an owned
-    // parameter does not: an exclusive reference (also held in a let binding), a writable Place, an inline part of a writable root
-    // or a Temporary Value. Its path's shared layers are the caller's (ExclusivelyAcquirable, PathAuthority).
+    // parameter does not: an exclusive reference (also held in a let binding), or an owner granting Write (WritableOwner: a writable
+    // Place, an inline part of a writable root, a writable temporary; a getter result is none, SPEC 11.5). Its path's shared layers are
+    // the caller's (ExclusivelyAcquirable, PathAuthority).
     private bool AcquirableByBinding(Koto receiver, ReadOnlySpan<PairCase> assignment)
-        => this.LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || this.Writable(receiver) || ElementAccess.WritableRoot(this, receiver) is not null ||
-            !this.IsBarePlace(receiver);
+        => this.LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || this.WritableOwner(receiver);
+
+    // SPEC 13.7.1, 13.5.5, 15.1.5: whether a whole Place offers Write by its path and binding, the question of an assignment's whole
+    // target and of a pair layer's owner-case operand (P itself): Writable, or an inline part of a writable root
+    // (ElementAccess.WritableRoot; the Property permissions on its path are the binding's: ValidPropertyWritePath, BindReference). A
+    // Temporary Value is none, also parenthesized: it is no Place expression (SPEC 13.7.1, the owner's O-438 (a)). Nor yet is a
+    // writable temporary's whole Temporary Place (IsTemporaryPlace): SPEC grants it Write, but no lowering writes it whole, so
+    // AccessFailure names the write Unsupported.
+    private bool WritablePlace(Koto place) => this.Writable(place) || ElementAccess.WritableRoot(this, place) is not null;
+
+    // SPEC 15.1.5, 3.4.1, 3.6: whether the owner a standard projection, a member selection or a payload selects from grants the part
+    // Write by its root's permission: a whole Place offering Write (WritablePlace) or a writable temporary, in whose Temporary Place
+    // the part is a Place (WritableTemporary).
+    private bool WritableOwner(Koto owner) => this.WritablePlace(owner) || this.WritableTemporary(owner);
+
+    // SPEC 3.6, 11.5, 15.1.5: a newly owned temporary, a writable root: a Temporary Value (no Place, IsBarePlace) that is no getter
+    // result, or its whole Temporary Place as a Place expression designates it (IsTemporaryPlace). Its callers pass an owner whose own
+    // Type adds no layer (a borrow value's referent keeps the capability its layer gives: LayerAuthority, PathAuthority) or test a
+    // shared path first.
+    private bool WritableTemporary(Koto node) => this.IsTemporaryPlace(node) || (!this.IsBarePlace(node) && !IsGetterResult(node));
+
+    // SPEC 13.5.5, 3.6: whether a Place expression designates a writable temporary's whole Temporary Place: a pair layer's selection
+    // whose weakest case keeps the operand's own path (PairAuthority: the owner case selects P itself) of a writable temporary.
+    private bool IsTemporaryPlace(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair &&
+            PairAuthority(this.PairAdmitted(pair)) is null && this.WritableTemporary(pair.Left);
 
     // SPEC 3.4.3, 13.5.5, 15.6.2: the layer a Place's own Type adds to a path below the Place: Ref when its reference layers pass a
     // shared one, Uniq when they pass an exclusive reference or objuniq view, none for an owned Type or an owning obj handle (whose
@@ -455,8 +483,10 @@ public sealed partial class Binding
     // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
     // exclusive reference grants Read and Write but not Take, as no case of a pair layer does (SPEC 13.5.5; only a pair layer adds the
     // owner case), a writable part of a special receiver that SPEC lends exclusively but its row does not yet is unsupported
-    // (Receiver, SPEC 6.3.4), and otherwise the binding itself forbids the access, also through a selection whose receiver it cannot
-    // exclusively acquire, or an object payload offers no Take. `layers` are the cases of the layers the path passes (PathAuthority).
+    // (Receiver, SPEC 6.3.4), as is a write of a writable temporary's whole Temporary Place, which no lowering writes yet
+    // (IsTemporaryPlace, SPEC 13.5.5), and otherwise the binding itself forbids the access, also through a selection whose receiver
+    // it cannot exclusively acquire, or an object payload offers no Take. `layers` are the cases of the layers the path passes
+    // (PathAuthority).
     private BindingFailure AccessFailure(Koto target, out SemanticsMask layers, bool take = false)
         => this.PathAuthority(target, [], out _, out layers) switch
         {
@@ -464,6 +494,7 @@ public sealed partial class Binding
             SemanticsKind.Uniq when take => BindingFailure.ExclusivePathTake,
             _ when take && (layers & SemanticsMask.Owner) != 0 => BindingFailure.ExclusivePathTake,
             SemanticsKind.Owner when !take && this.ReceiverOfPart(target) is { LendsFields: false } && this.Writable(target) => BindingFailure.Unsupported,
+            SemanticsKind.Owner when !take && this.IsTemporaryPlace(target) => BindingFailure.Unsupported,
             _ => BindingFailure.InvalidAssignment,
         };
 
@@ -511,9 +542,9 @@ public sealed partial class Binding
     // SPEC 3.4, 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
     // lifetime: an operand whose root, through parentheses and inline parts (both keep a Place's classification, SPEC 3.4, 4.7.1), is
     // no Place (IsBarePlace), such as a call result, a Case construction, a callable value or a getter
-    // result; a part of it is lent with it. A newly owned temporary has exclusive writable capability, lent exclusively only when
-    // spelled or as a Receiver Expression (SPEC 7.3, 15.1.5) and not through an inline part here, and a getter result only shared
-    // (SPEC 11.5).
+    // result; a part of it is lent shared with it. A writable temporary (WritableTemporary) is lent exclusively here as a whole, when
+    // spelled or as a Receiver Expression (SPEC 7.3, 15.1.5); its parts are LendsPlace's (LendsOwner), which adds their Property
+    // permissions (SPEC 11.2); a getter result is lent only shared (SPEC 11.5).
     private bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
@@ -526,7 +557,7 @@ public sealed partial class Binding
         // SPEC 15.6.2, 5.7: as for a Place, a shared layer on the path, a raw pointer's included, denies an exclusive borrow.
         var inline = unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(this, stored);
         return !this.IsBarePlace(root) &&
-            (!exclusive || (spelled && !IsGetterResult(root) && !inline && !this.ReachedThroughShared(unwrapped))) &&
+            (!exclusive || (spelled && !inline && this.WritableTemporary(root) && !this.ReachedThroughShared(unwrapped))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
 
@@ -579,7 +610,7 @@ public sealed partial class Binding
     // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field or static storage at the root
     // of the path that lends it (SPEC 15.6.2: through inline parts, elements and an owning handle's payload, an own step), if any; a
     // node, not a bool, as the structure limits leave this member one bool parameter, the mode. Below a pair layer the walk asks
-    // BorrowablePlace (PairCapability): no static's Type has one.
+    // LendsOwner (PairCapability) and drops the static root: no static's Type has one.
     private bool LendsPlace(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
     {
         staticRoot = null;
@@ -679,7 +710,7 @@ public sealed partial class Binding
                 // the Field is lent in either mode; past another reference, view or raw pointer it is shared; an owned receiver, also
                 // past a pair layer admitting owner, lends it as the receiver Place does.
                 return this.LayerAuthority(access.Left, []) == SemanticsKind.Uniq ||
-                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.LendsPlace(access.Left, scope, exclusive, out staticRoot));
+                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.LendsOwner(access.Left, scope, exclusive, out staticRoot));
             }
 
             return true;
@@ -687,7 +718,7 @@ public sealed partial class Binding
 
         if (source is BinaryKoto part && ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(this, part, out _, out _))
         {
-            return this.LendsPlace(part.Left, scope, exclusive, out staticRoot);
+            return this.LendsOwner(part.Left, scope, exclusive, out staticRoot);
         }
 
         // A closure environment binding is a Place of its own (SPEC 7.7.2), borrowable like a local; a static Property's storage outside
@@ -700,6 +731,11 @@ public sealed partial class Binding
         staticRoot = source.BoundSymbol is { } symbol && StaticStorageAccess(symbol, scope) ? source : null;
         return true;
     }
+
+    // SPEC 3.4.1, 3.4.2, 3.6, 15.1.5: whether the owner of a standard projection lends the part in a mode: a Place it lends (LendsPlace)
+    // or a writable temporary, in whose Temporary Place the part is a Place (WritableTemporary), as WritableOwner grants it Write.
+    private bool LendsOwner(Koto owner, BindingScope scope, bool exclusive, out Koto? staticRoot)
+        => this.LendsPlace(owner, scope, exclusive, out staticRoot) || this.WritableTemporary(owner);
 
     // The forms of one path step (NextPathStep).
     private enum PathStep : byte

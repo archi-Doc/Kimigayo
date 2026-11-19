@@ -1,7 +1,7 @@
 # A5 Step 2, unit 2x-S1: SPEC readings
 
 Date: 2026-10-19, revised after the independent review. Base: `dev` at `48a42168`; PLAN G148 is cited at `d55bce08`. Unit 2x-S1 of
-the [A5 Step 2 Implementation Plan](../../Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md) (PD23, §4.1). It changes
+the [A5 Step 2 Implementation Plan](../../Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md) (PD23, §4.1). It changes
 no SPEC, IMPL, compiler, library or test file, and not the tracked prototype.
 
 Evidence by case id: `spec-readings-cases.cs` (prototype cases in the MIR-fact "forms" a reading compares, §7) and

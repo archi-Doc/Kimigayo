@@ -198,7 +198,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.IsDerived(node))
+        if (this.IsDerived(node, failure))
         {
             this.derivedIssues.Add(node);
         }

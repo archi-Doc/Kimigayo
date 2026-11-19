@@ -99,7 +99,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                operations[i] = operations[i] with { SourceType = argument.BoundType };
+                operations[i] = operations[i] with { SourceType = this.ArgumentTypeAt(argument) };
             }
             else if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType &&
                 operations[i].ParameterType is { Kind: BoundTypeKind.Function } erasedType && operations[i].Adaptation == ArgumentAdaptation.Erasure)

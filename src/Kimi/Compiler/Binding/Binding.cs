@@ -80,6 +80,7 @@ public sealed partial class Binding
         this.virtualOverrides = new(this);
         this.originDeclarations = new(this);
         this.discoveredOrigins = new(this);
+        this.perCallNamings = new(this);
         this.initializerOrigins = new(this);
         this.propertyCalls = new(this);
         this.storageProjections = new(this);
@@ -92,6 +93,14 @@ public sealed partial class Binding
         this.aliasTargets = new(this);
         this.importedContainers = new(this);
         this.qualificationFailures = new(this);
+        this.perCallOrigins = new(this);
+        this.originTwins = new(this);
+        this.pairFollows = new(this);
+        this.implicitPairFollows = new(this);
+        this.phantomRawOrigins = new(this);
+        this.invalidStaticOriginSlots = new(this);
+        this.callablePremiseFailures = new(this);
+        this.effectBoundRejections = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
@@ -129,78 +138,6 @@ public sealed partial class Binding
 
     /// <summary>Gets the Type context: interned Types and substitutions.</summary>
     internal TyCtxt Types => this.types;
-
-    /// <summary>Gets the entries of the tables KimiLibrarySize sizes, as the latest pass left them.</summary>
-    internal KimiLibrarySize.Tables TableCounts
-        => new(
-            this.nodesView.Count,
-            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
-            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
-            this.types.KeyCount,
-            this.Library.Layer.Constraints.Count + this.constraints.Count,
-            this.pendingAssociatedTypes.Count,
-            this.memberSelections.Count,
-            this.memberSides.Count,
-            this.capabilityNodes.Count,
-            this.substitutedParts.Count);
-
-    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
-    /// (symbols, their parameters, scopes, Origin atoms, open regions, associated Origins, special receivers) its arena's slots no page
-    /// holds.</summary>
-    internal KimiLibrarySize.Tables TableFree
-        => new(
-            this.programPart.Nodes.Capacity + this.Library.Layer.Part.Nodes.Capacity - this.nodesView.Count,
-            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Free,
-            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Free,
-            this.types.KeyFree,
-            this.constraints.Capacity - this.constraints.Count,
-            this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
-            this.memberSelections.Capacity - this.memberSelections.Count,
-            this.memberSides.Capacity - this.memberSides.Count,
-            this.capabilityNodes.Capacity - this.capabilityNodes.Count,
-            this.substitutedParts.Free);
 
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>

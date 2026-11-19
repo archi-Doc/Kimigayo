@@ -618,8 +618,17 @@ public class PairFollowTest
     // SPEC 13.5.5, 3.4.3: a member selected through a pair layer follows it as @follow does: with owner admitted, a Field inline
     // in the operand needs it exclusively writable (a let binding or an owned parameter is not), no case offers Take, and a uniq
     // reference stored in the operand still grants Write through it. A user index through a pair layer is the located limit
-    // (PLAN G179), unlike its reference-layer twins.
+    // (PLAN G179), unlike its reference-layer twins. With owner admitted, `@follow` of a newly owned temporary selects its whole
+    // Temporary Place (P itself, SPEC 3.6: exclusively writable), a valid target no lowering writes whole yet: the located limit, also
+    // parenthesized and for an update (D-827); a let local's is not writable, the referent under `s is uniq` is, and a ref case
+    // shares it.
     [Theory]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p@move@follow = P.init(1)", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner\n    (p@move)@follow = P.init(1)", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: s/i32)\n    s is owner or uniq\n    x@move@follow += 1", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let q = p@move\n    q@follow = P.init(1)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or ref\n    p@move@follow = P.init(1)", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p@move@follow = P.init(1)", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v += 1", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v++", DiagnosticCode.InvalidAssignment_Kd)]
@@ -785,6 +794,21 @@ public class PairFollowTest
     [InlineData("borrow", 17)]
     [InlineData("borrow", 33)]
     public void EveryQualifyingPairLayerIsFollowed(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, true, layers);
+
+    // Q20 B1 (D-827; SPEC 13.5.5, 3.6): through any number of owner-case `@follow`s of a newly owned temporary, a part of its Temporary
+    // Place is written and the whole Place is the located limit, as through one: WritableTemporary sees through each selection once
+    // (IsTemporaryPlace), and a ref case still shares the path.
+    [Theory]
+    [InlineData(33)]
+    [InlineData(65)]
+    public void OwnerCaseFollowsReachTheTemporaryAtAnyDepth(int layers)
+    {
+        var target = "n@move" + string.Concat(Enumerable.Repeat("@follow", layers));
+        var head = $"struct N\n    public var v: i32 = 0\n    public init() => ()\nfunc f<s/T>(n: {TypeDagScalingTest.PairLayers(layers, "N")}, m: s/T)\n";
+        Assert.Empty(Codes(MinimalEmissionTest.Analyze(head + $"    s is owner or uniq\n    {target}.v = 1\n")));
+        Assert.Equal([DiagnosticCode.Unsupported_Kd], Codes(MinimalEmissionTest.Analyze(head + $"    s is owner or uniq\n    {target} = N.init()\n")));
+        Assert.Equal([DiagnosticCode.SharedPathAccess_Kd], Codes(MinimalEmissionTest.Analyze(head + $"    s is owner or ref\n    {target}.v = 1\n")));
+    }
 
     // PLAN G703 (SPEC 8.7.4, 8.1.1; 3.4.3, 3.5.3, 10.2; 13.5.2): a pair target standing alone has the capabilities its Constraints
     // prove, as a Type slot has; a value read follows qualifying pair layers at every read position (an annotated let, an argument,

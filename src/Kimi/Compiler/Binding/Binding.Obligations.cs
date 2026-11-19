@@ -70,6 +70,41 @@ public sealed partial class Binding
         _ => true,
     };
 
+    // SPEC 15.6.1, 15.6.5 (R7-O1; DECISIONS draft "A body's Origin relations are judged by A5 alone"): the one rule for a relation formed
+    // in an executable body: Binding judges none; it is a row of the body's C1-F4 view, which A5 judges, unless it is a fixed-fixed
+    // relation the fit's answer proves both ways. In order: (1) a meet at the longer end that does not fit as a whole decomposes, each
+    // operand its own relation (SPEC 15.3.6); (2) the fit's answer at the use, both directions for `==`, by FitConjunct: outside
+    // candidate trials and collected fits FitOriginOutlives, which bounds an open initializer's omitted Origin (SPEC 15.4.4), inside them
+    // the pure FitsOriginOutlives; (3) a body chain (an end not fixed in the body, an Unbound end included, or a region chain) is the row
+    // whatever (2) said, since its obligation bounds the region graph (RecordLocalRegionBound), its ends read as the fit reads them, a
+    // `let` region of the use's body as its value (RegionValueAtUse; PLAN G492-a (ii)); (4) a fixed-fixed relation (2) proves needs no
+    // row; (5) any other is the row, through AddObligation, whose Unstated rule is SPEC 5.7's.
+    private void FormBodyRelation(in BindingObligation row)
+    {
+        var (at, longer, shorter, equality, condition) = (row.Use, row.Longer!, row.Shorter!, row.Equality, row.Condition);
+        if (ReferenceEquals(longer, shorter))
+        {
+            return;
+        }
+
+        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitConjunct(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
+        {
+            for (var i = 0; i < longer.Operands.Count; i++)
+            {
+                this.FormBodyRelation(row with { Longer = longer.Operands[i] });
+            }
+
+            return;
+        }
+
+        var forward = this.FitConjunct(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
+        var backward = !equality || this.FitConjunct(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
+        if (BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), equality, this.formingBody) || !forward || !backward)
+        {
+            this.AddObligation(row);
+        }
+    }
+
     private void AddObligation(BindingObligation obligation)
     {
         // Rulings S4, design-final §13 A2: a relation with an Unstated end forms no obligation; a Refuted one is recorded at its use,

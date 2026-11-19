@@ -99,7 +99,7 @@ internal sealed partial class MirBuilder
         var start = this.Operands(binary);
         for (var side = 0; side < 2; side++)
         {
-            if (ScalarTypes.Supports(this.TypeOf(this.arguments[start + side])))
+            if (this.TypeOf(this.arguments[start + side]) is { IsScalar: true })
             {
                 this.arguments[start + side] = this.Secure(this.arguments[start + side], side == 0 ? binary.Left : binary.Right);
             }
@@ -108,7 +108,7 @@ internal sealed partial class MirBuilder
         for (var side = 0; side < 2; side++)
         {
             var value = this.arguments[start + side];
-            if (ScalarTypes.Supports(this.TypeOf(value)))
+            if (this.TypeOf(value) is { IsScalar: true })
             {
                 var record = this.arguments.Count;
                 this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.I32, side))));

@@ -936,7 +936,7 @@ public class ContractBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var impls = Impls(c);
         var (paths, identities) = (impls.Paths.ToList(), impls.Identities.ToList());
-        impls.Begin(impls.Pass, new(c.SourceModules, null, new(0)));
+        impls.Begin(impls.Pass, new(c.SourceModules, null, new()));
         Assert.NotEmpty(impls.InPass.Paths);
         Assert.All(impls.InPass.Paths, static x => Assert.False(Library(x.Type)));
         Assert.All(impls.InPass.Identities, static x => Assert.False(Library(x.Type)));
