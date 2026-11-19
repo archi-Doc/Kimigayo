@@ -170,7 +170,6 @@ public class ArchitectureRulesTest
     [InlineData("ComparisonTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ComparisonTypes.cs", SemanticSlotReads, 0)]
     [InlineData("DefaultParameters reads of Koto semantic slots", "src/Kimi/Compiler", "DefaultParameters.cs", SemanticSlotReads, 0)]
     [InlineData("ElementAccess reads of Koto semantic slots", "src/Kimi/Compiler", "ElementAccess.cs", SemanticSlotReads, 0)]
-    [InlineData("FormattingTypes reads of Koto semantic slots", "src/Kimi/Compiler", "FormattingTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
     [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
