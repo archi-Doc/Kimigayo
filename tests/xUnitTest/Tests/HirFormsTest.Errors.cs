@@ -13,7 +13,9 @@ namespace XunitTest;
 public sealed partial class HirFormsTest
 {
     // Declarations whose callers' inputs need an Origin relation between fixed Origins the premises do not prove, whatever the input's
-    // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved.
+    // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved. State's
+    // static Places, which a call's input borrows, are the inputs Binding still rejects after selection: the located limit until P42
+    // (FailStaticBorrow; DECISIONS BU-25).
     private const string DerivedInputs = """
         struct Tally
             public var n: i32 = 0
@@ -34,6 +36,10 @@ public sealed partial class HirFormsTest
                 ()
         func keepStatic(x: ref/i32 during static) -> ref/i32 during static => x
         func peek(value: ref/i32) => ()
+        group State
+            public var tally: Tally = Tally.init()
+            public var leaf: Leaf = Leaf.init()
+            public var handle: obj/Tally = Kimi.Intrinsics.makeObj<Tally>(Tally.init())
 
         """;
 
@@ -175,6 +181,24 @@ public sealed partial class HirFormsTest
         Assert.All(nodes, x => Assert.Equal((false, BindingFailure.None, new HirAdjust(Enum.Parse<HirAcquire>(acquire), Enum.Parse<HirAdaptation>(adaptation))), (HirTables.Op(x) == HirOp.Error, x.FailureOf(), HirTables.AdjustOf(x))));
     }
 
+    // SPEC 23.1.2 (DECISIONS R4-M109, amending R4-M88 Rule 2; superseded for call positions only, ACallPositionsInputKeepsItsConsumersAdjust):
+    // an Error node a consumer takes, here an input Binding rejects after selection (a static Place's Borrow, the located limit), is
+    // published (Temporary, None), its derived value taken as it is, whatever adaptation its consumer wrote: a shared borrow of an argument
+    // or a receiver, a base borrow or a payload projection.
+    [Theory]
+    [InlineData("func f()\n    peek(State.tally.n)\n", "State.tally.n")]
+    [InlineData("func f()\n    _ = State.tally.viewStatic()\n", "State.tally")]
+    [InlineData("func f()\n    _ = State.leaf.look()\n", "State.leaf")]
+    [InlineData("func f()\n    _ = State.handle.viewStatic()\n", "State.handle")]
+    public void AnErrorInputIsItsConsumersDerivedValue(string body, string text)
+    {
+        var c = MinimalEmissionTest.Analyze(DerivedInputs + body);
+        HirTables.Publish(c);
+        var nodes = Reachable(c.Kotonoha).Where(x => x.ToString() == text && HirTables.Op(x) is not HirOp.Syntax).ToArray();
+        var error = Assert.Single(nodes, static x => HirTables.Op(x) == HirOp.Error);
+        Assert.Equal((BindingFailure.Unsupported, new HirAdjust(HirAcquire.Temporary, HirAdaptation.None)), (error.FailureOf(), HirTables.AdjustOf(error)));
+    }
+
     // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): a plain write Binding rejected for its value's fit after admitting its destination keeps
     // Assign, its target its own Op (a local's Name, a setter's Call) and its value, which Binding resolved, the Error taken as its derived
     // value (Temporary, None); a write its destination check refuses (a Field of a computed Property's value, SPEC 3.4) and a compound
@@ -275,11 +299,13 @@ public sealed partial class HirFormsTest
     // no plan-row Adjust). `fail`'s receiver, whose getter's `during static` the premises do not prove, is no rejected input since R7-O1 b1
     // (the relation is A5's row; R4-M109 superseded for call positions), so it takes the two accessors' own Adjusts as `box` does: the
     // setter's exclusive Reborrow in the column, the getter's reference read in the plan row (fail-before: an Error, both its derived value).
+    // `limit`'s receiver, a static Place both accessors borrow, Binding still rejects after selection (the located limit): an Error, whose
+    // column and plan row are both its derived value (R4-M109).
     [Fact]
     public void AnUpdateReceiverPublishesEachAccessorsAdjust()
     {
         var c = MinimalEmissionTest.Analyze(DerivedInputs + "func bump(step: i32)\n    var box = Tally.init()\n    box.count += step\n    peek(box.n)\n" +
-            "func fail(t: uniq/Tally) => t.item += 1\n");
+            "func fail(t: uniq/Tally) => t.item += 1\nfunc limit() => State.tally.item += 1\n");
         HirTables.Publish(c);
         var nodes = Reachable(c.Kotonoha);
         var box = nodes.Single(static x => x.ToString() == "box" && x.Parent?.ToString() == "box.count");
@@ -291,6 +317,9 @@ public sealed partial class HirFormsTest
         Assert.Equal(
             (HirOp.Name, new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None, ExclusiveMode: true), new HirAdjust(HirAcquire.None, HirAdaptation.ReferenceRead)),
             (HirTables.Op(receiver), HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust));
+        var limited = nodes.Single(static x => x.ToString() == "State.tally" && x.Parent?.ToString() == "State.tally.item");
+        var derived = new HirAdjust(HirAcquire.Temporary, HirAdaptation.None);
+        Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(limited), HirTables.AdjustOf(limited), HirTables.PlanOf(limited).Adjust));
     }
 
     // SPEC 23.1.2 (DECISIONS BU-103, BU-110): a consumed Place or a Pattern binding whose acquisition failed is published Failed: a Param
