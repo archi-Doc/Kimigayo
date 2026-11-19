@@ -95,6 +95,25 @@ public sealed partial class Binding
     // Self.
     private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
+    // R7-C3 (F's C2 rulings 273, 274; SPEC 8.2.3, 23.1.2): a conformance's verification reads its Contract's premises (the Self requirements
+    // every conformer meets, its associated bounds among them), each through the one consult (AvailableConstraintFact): a failed one
+    // rests the verification on the Contract's record (ModuleBindingTest's late witness of `associate Item is Source.(Origin).Item`).
+    private bool ConsultsFailedContractPremise(Koto contract)
+    {
+        if (!this.scopes.TryGetValue(contract, out var scope) || scope.Constraints is not { FailedPremises.Count: > 0 } environment)
+        {
+            return false;
+        }
+
+        var failed = false;
+        foreach (var fact in environment.Facts)
+        {
+            failed |= environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _);
+        }
+
+        return failed;
+    }
+
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
     // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state.
@@ -119,7 +138,7 @@ public sealed partial class Binding
         }
 
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid ||
-            this.InvalidDeclarationContext(conformance.Contract.Declaration) ||
+            this.ConsultsFailedContractPremise(conformance.Contract.Declaration) || this.InvalidDeclarationContext(conformance.Contract.Declaration) ||
             this.InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
