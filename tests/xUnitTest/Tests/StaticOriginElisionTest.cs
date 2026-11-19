@@ -50,7 +50,9 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(declarations + "group Values\n    public var view: " + type + "\nlet present = 1");
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Equal(code, Assert.Single(TestDiagnostics.Of(c)).Code);
+
+        // No initializer fits an exclusive static Type, so the missing one stays its own record (SPEC 11.8, 23.1.2).
+        Assert.Equal([code, "MissingSyntax_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -113,7 +115,8 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var code = exclusive ? "InvalidOriginBinding_Kd" : "Unsupported_Kd";
-        Assert.Equal([code, "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
+        string[] codes = exclusive ? [code, "MissingSyntax_Kd", "TypeMismatch_Kd"] : [code, "TypeMismatch_Kd"]; // The exclusive field has no initializer (SPEC 11.8).
+        Assert.Equal(codes, result.Diagnostics.Select(static x => x.Code));
         var record = result.Diagnostics[0];
         Assert.Equal(exclusive ? DiagnosticCategory.Language : DiagnosticCategory.Unsupported, record.Category);
         if (exclusive)
