@@ -4,11 +4,15 @@
 // synthesizes, and their application to a Type and composition (SPEC 8.1.3, 8.6.4, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
 // substitution and Origin forwarding.
-// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance with its
-// storage verdict (Instance: the substitution, then Binding's one storage query, Binding.PrepareTypeStorage; Compose with the part
-// deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
-// Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict, guarded by
-// it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
+// Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type in an instance by the substitution alone,
+// with its Formation (Apply); a Type or a substitution in an instance with its storage verdict (Instance: Apply, then Binding's one
+// storage query, Binding.PrepareTypeStorage; Compose with its Formation and the part deciding the verdict; DECISIONS BU-36, BU-38,
+// R4-M139); Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict,
+// guarded by it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
+// Formation, this file's representation: whether a substitution formed its instance, the cause travelling with a null one (Apply's
+// Type, Compose's Subst): Formed (and only then an instance), Incomplete (a step that does not complete), HeightLimit (Binding.TypeHeight's
+// refusal answered to the query that opened its answer frame, recorded by that query's reader). A cause is the substitution's alone: it
+// never reads storage, which Instance's verdict publishes beside it.
 // Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
 // compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
 // grows are reused.
@@ -33,6 +37,21 @@ internal sealed partial class TyCtxt
 
     // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
     private BoundLength?[] noLengths = [];
+
+    // Whether a substitution formed its instance (Apply, Compose), the cause a null instance carries (the header's contract).
+    internal enum Formation : byte
+    {
+        /// <summary>Every step of the substitution completed: the instance is formed.</summary>
+        Formed,
+
+        /// <summary>A step does not complete (BU-36's contract substitution that does not complete), or Binding.TypeHeight refused a
+        /// Type outside an answer frame, recording it itself (the consultation's node, else PLAN G651's site-less record).</summary>
+        Incomplete,
+
+        /// <summary>The substitution forms a Type above IMPL A.4's height limit and Binding.TypeHeight answered the query that opened its
+        /// answer frame instead of recording it (PLAN G651's after-run site; until R7-T1's collector query opens one, never given).</summary>
+        HeightLimit,
+    }
 
     // DIAGNOSTICS rule 8 (DECISIONS BU-38): whether Binding is complete, so has rejected no part: a Rejected storage verdict (Instance,
     // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and the C1-F4 view's (BU-102).
@@ -159,45 +178,40 @@ internal sealed partial class TyCtxt
     // the identity keeps it; null where the substitution does not complete it.
     internal BoundLength? InstanceLength(BoundLength length, Subst subst) => subst.IsIdentity ? length : binding.InstanceLength(length, subst);
 
-    // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
-    internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
+    // SPEC 8.1.3: a declared Type in the instance a substitution makes, by the substitution alone (Binding.StorageInstance), with its
+    // Formation: the identity keeps the Type; null exactly where the substitution does not form it, with the cause. No storage is walked
+    // or prepared (Instance gives the verdict).
+    internal (BoundType? Type, Formation Cause) Apply(BoundType type, Subst subst)
+        => subst.IsIdentity ? (type, Formation.Formed)
+            : binding.StorageInstance(type, subst) is { } instance ? (instance, Formation.Formed) : (null, Formation.Incomplete);
 
-    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): the substitution
-    // (Binding.StorageInstance), then the instance's storage verdict (DECISIONS BU-12: Binding.PrepareTypeStorage, the one storage query,
-    // a function of the Type alone, a limit taking precedence, memoized per pass by the Type, so a warm query allocates nothing; never
-    // queried during a walk, whose guard throws). Two answers are no walk verdict (PLAN G242): the identity keeps the
-    // Type as Prepared without a walk, since a binder's own Types are open and their storage is no instance's; a substitution that does not
-    // complete gives no instance and a Limit (BU-36's contract substitution that does not complete). Rejected keeps its instance, a part
-    // Binding rejected holding, placing and destroying nothing (BU-38), so Binding's own readers, during its passes, read every verdict but
-    // a Limit (Binding.Formatting, RequirementInstances, ClosureInstances).
+    // A declared Type in the instance a substitution makes with its storage's verdict (DECISIONS BU-36): Apply, then the instance's
+    // storage verdict (Verdict).
     internal (BoundType? Type, Binding.StorageOutcome Storage) Instance(BoundType type, Subst subst)
     {
-        if (subst.IsIdentity)
-        {
-            return (type, Binding.StorageOutcome.Prepared);
-        }
-
-        var instance = binding.StorageInstance(type, subst);
-        return (instance, instance is null ? Binding.StorageOutcome.Limit : binding.PrepareTypeStorage(instance));
+        var instance = this.Apply(type, subst).Type;
+        return (instance, this.Verdict(instance, subst));
     }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
     // the substitution of the call omitting the default: each binding of the inner one in the outer instance (a length's interpolation-bound
     // term over its value Types' instance, Binding.InstanceLength), so applying
-    // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with the
-    // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
-    // keeps the composed substitution, its Types instantiated; null and Limit when the outer instance does not substitute an
-    // inner Type, length, conforming Self or declaring Type, or one's storage is a limit. Part is the verdict's deciding part (R4-M139):
-    // the instance of the first part reaching it in the order Compose walks (conforming Self, declaring Type, Types by index); null when
-    // Prepared, when a length decides, or when that part has no instance. Instance gives a Limit exactly where it gives no instance, so
-    // Part is never null when Rejected.
-    internal (Subst? Subst, Binding.StorageOutcome Storage, BoundType? Part) Compose(Subst inner, Subst outer)
+    // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with its
+    // Formation and the verdict of its parts' storage in the outer instance (Instance's), the worst one, so a limit wins (DECISIONS BU-36,
+    // BU-38). Subst is null exactly where the outer instance does not form an inner Type, length, conforming Self or declaring Type,
+    // Cause the first such part's (Apply's; a length's Incomplete) and the verdict then a Limit, as Instance gives; a Rejected or Limit
+    // storage keeps the composed substitution, its Types instantiated. Part is the verdict's deciding part (R4-M139): the instance of the
+    // first part reaching it in the order Compose walks (conforming Self, declaring Type, Types by index); null when Prepared, when a
+    // length decides, or when that part has no instance. A Limit is the only verdict of a part without an instance, so Part is never null
+    // when Rejected, nor when a Limit keeps its Subst.
+    internal (Subst? Subst, Formation Cause, Binding.StorageOutcome Storage, BoundType? Part) Compose(Subst inner, Subst outer)
     {
         if (outer.IsIdentity)
         {
-            return (inner, Binding.StorageOutcome.Prepared, null);
+            return (inner, Formation.Formed, Binding.StorageOutcome.Prepared, null);
         }
 
+        var cause = Formation.Formed;
         var storage = Binding.StorageOutcome.Prepared;
         var part = default(BoundType);
         var types = Fit(ref this.composedTypes, inner.Types.Length);
@@ -213,15 +227,19 @@ internal sealed partial class TyCtxt
         for (var i = 0; i < lengths.Length; i++)
         {
             lengths[i] = inner.Lengths[i] is { } length ? binding.InstanceLength(length, outer) : null;
-            if (lengths[i] is null && inner.Lengths[i] is not null && storage != Binding.StorageOutcome.Limit)
+            if (lengths[i] is null && inner.Lengths[i] is not null)
             {
-                (storage, part) = (Binding.StorageOutcome.Limit, null);
+                cause = cause == Formation.Formed ? Formation.Incomplete : cause;
+                if (storage != Binding.StorageOutcome.Limit)
+                {
+                    (storage, part) = (Binding.StorageOutcome.Limit, null);
+                }
             }
         }
 
-        if (storage == Binding.StorageOutcome.Limit)
+        if (cause != Formation.Formed)
         {
-            return (null, storage, part);
+            return (null, cause, storage, part);
         }
 
         for (var i = 0; i < origins.Length; i++)
@@ -230,13 +248,15 @@ internal sealed partial class TyCtxt
                 ? binding.ForwardOrigin(origin, outer.Target, outer.Declaring, outer.Origins, outer.Inputs, outer.Types) : null!;
         }
 
-        return (this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]), storage, part);
+        return (this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]), cause, storage, part);
 
-        // A part in the outer instance; its verdict joins the composition's in the verdicts' order (a limit, then Rejected), the first part
-        // reaching the worst one deciding it.
+        // A part in the outer instance (Apply), the first that does not form giving the cause; its verdict joins the composition's in the
+        // verdicts' order (a limit, then Rejected), the first part reaching the worst one deciding it.
         BoundType? Part(BoundType type)
         {
-            var (instance, verdict) = this.Instance(type, outer);
+            var (instance, formation) = this.Apply(type, outer);
+            var verdict = this.Verdict(instance, outer);
+            cause = cause == Formation.Formed ? formation : cause;
             if (verdict > storage)
             {
                 (storage, part) = (verdict, instance);
@@ -260,6 +280,16 @@ internal sealed partial class TyCtxt
 
         return scratch.AsSpan(0, length);
     }
+
+    // An applied Type's storage verdict, Instance's and Compose's parts': no instance is a Limit, whatever the cause (BU-36's contract
+    // substitution that does not complete); the identity's Type is Prepared without a walk (PLAN G242), since a binder's own Types are open
+    // and their storage is no instance's; any other instance's is Binding's walk (DECISIONS BU-12: Binding.PrepareTypeStorage, the one
+    // storage query, a function of the Type alone, a limit taking precedence, memoized per pass by the Type, so a warm query allocates
+    // nothing; never queried during a walk, whose guard throws). Rejected keeps its instance, a part Binding rejected holding, placing and
+    // destroying nothing (BU-38), so Binding's own readers, during its passes, read every verdict but a Limit (Binding.Formatting,
+    // RequirementInstances, ClosureInstances).
+    private Binding.StorageOutcome Verdict(BoundType? instance, Subst subst)
+        => instance is null ? Binding.StorageOutcome.Limit : subst.IsIdentity ? Binding.StorageOutcome.Prepared : binding.PrepareTypeStorage(instance);
 
     // SPEC 8.13.3: a substitution holds one length entry per slot, the selection key's form, as a CallPlan does. The lengths are empty (the
     // binder has no length slot) or one per slot of the Types.

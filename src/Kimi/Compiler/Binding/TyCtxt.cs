@@ -101,14 +101,15 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         => binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
 
     // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
-    // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
-    // not instantiate it. The MIR validator checks calls and bodies by it.
+    // its call gives (a constructor's: its object), under a call's substitution, by the substitution alone (Apply: its storage unread);
+    // null past its parameters or where the substitution does not form it. The MIR validator checks calls and bodies by it; the MIR
+    // builder, code generation and the instance collector's property-witness agreement read it.
     internal BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
     {
         var declaration = (FunctionKoto)function.Declaration;
         count = declaration.Parameters.Count;
         var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(binding, function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(binding, declaration) : function.Type;
-        return type is null || subst is null ? type : this.Apply(type, subst);
+        return type is null || subst is null ? type : this.Apply(type, subst).Type;
     }
 
     // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key: the root key of `input` (the slot's instantiated Type

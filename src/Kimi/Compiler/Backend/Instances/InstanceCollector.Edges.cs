@@ -164,8 +164,8 @@ internal sealed partial class InstanceCollector
         }
 
         var representative = this.Set.Items[item].Representative;
-        var (subst, storage, _) = callee.Subst is { } inner && representative is not null
-            ? this.types.Compose(inner, representative) : (callee.Subst, Binding.StorageOutcome.Prepared, null);
+        var (subst, _, storage, _) = callee.Subst is { } inner && representative is not null
+            ? this.types.Compose(inner, representative) : (callee.Subst, TyCtxt.Formation.Formed, Binding.StorageOutcome.Prepared, null);
         if (!this.Made(storage, subject))
         {
             return -1;

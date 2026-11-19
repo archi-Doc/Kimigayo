@@ -69,13 +69,14 @@ public sealed partial class Binding
         return signature;
     }
 
-    // The call signature a Closure Type's definition declares, under the Type's closure context (CallPlan.DeclaredSignature; retention
-    // reads a call in the definition's world). Under a withheld held instance (PLAN G300) it stays the definition's, but the nested
+    // The call signature a Closure Type's definition declares, under the Type's closure context as every reader of an instance reads one
+    // (TyCtxt.ReadableInstance, DECISIONS R4-M139; CallPlan.DeclaredSignature; retention reads a call in the definition's world); null
+    // where it is not readable. Under a withheld held instance (PLAN G300) it stays the definition's, but the nested
     // definitions it names are closed under that instance (CloseHeldNested), so that they are withheld with it and none is read in
     // the definition's identity outside its frame.
     internal BoundType? ClosureDefinitionSignature(BoundType type)
         => BoundClosure.Of(type) is not { } closure ? null
-            : TyCtxt.NestedInstance(type) is { } context ? this.types.Apply(closure.Signature, context)
+            : TyCtxt.NestedInstance(type) is { } context ? this.types.ReadableInstance(closure.Signature, context)
             : TyCtxt.HeldType(type) is { } held ? this.CloseHeldNested(closure.Signature, held) : closure.Signature;
 
     // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's

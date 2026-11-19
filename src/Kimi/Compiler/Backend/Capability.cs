@@ -4,7 +4,7 @@
 // generate on windows-x64, IMPL 21.3.3's operation rows and the decided D2 rows of the R5 plan's PD27 list, each with its removal condition;
 // the capability check of COMPILER_ARCHITECTURE's closed vocabularies, which the instance collector reads, at the definition stage (A3b) and
 // per instance.
-// Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose substitution TyCtxt.Apply cannot make, and of
+// Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose storage verdict TyCtxt.Instance gives a Limit, and of
 // a nested function called without its enclosing instance (until PLAN G149) or a Closure no instance closed (a held instance with an Origin
 // position until PLAN G300's per-use opening, a generic container's group static until P42; DECISIONS R5-M157, BU-60), and of a
 // requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67);
@@ -24,7 +24,7 @@ namespace Kimi.Compiler.Backend;
 /// <summary>A row of the capability table: a form or instance the backend does not generate (IMPL 21.3.3).</summary>
 internal enum CapabilityGap : byte
 {
-    // An instance whose stored Types nest past Binding's bound, so TyCtxt.Apply refuses it (PLAN G128).
+    // An instance whose stored Types nest past Binding's bound, so its storage verdict (TyCtxt.Instance) is a Limit (PLAN G128).
     [Transitional("R7", Reason = "PLAN G128's storage bound gives way to a substitution TyCtxt.Apply makes (R5 PD30; the owner's PD27 list, R5-M146).")]
     StorageNesting,
 
