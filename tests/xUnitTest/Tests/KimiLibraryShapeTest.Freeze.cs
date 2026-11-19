@@ -54,6 +54,14 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.AliasTargets"] = "never written: the library declares no alias",
         ["NodeColumns.ImportedContainers"] = "never written: the library declares no alias, so no qualifier selects an alias import",
         ["NodeColumns.QualificationFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.PerCallOrigins"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.PairFollows"] = "never written: the library follows no pair layer",
+        ["NodeColumns.ImplicitPairFollows"] = "never written: the library follows no pair layer",
+        ["NodeColumns.OriginTwins"] = "never written: a twin is a failed relation's record, and the library pass records no failure",
+        ["NodeColumns.PhantomRawOrigins"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.InvalidStaticOriginSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.CallablePremiseFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.EffectBoundRejections"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
@@ -69,8 +77,10 @@ public partial class KimiLibraryShapeTest
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, FieldInfo[]> FreezeFieldsOf = new();
 
     // The objects the walk does not enter: the compilation-wide roots and syntax (a library node by its own symbol), Binding and its
-    // memos, TyCtxt's interners and the library's registrar.
-    private static readonly HashSet<Type> WalkEnds = [typeof(Compilation), typeof(Binding), typeof(TyCtxt), typeof(KimiLibrary), typeof(Kotonoha), typeof(CodeContext), typeof(SyntaxTable), typeof(HirTables)];
+    // memos, TyCtxt's interners and the library's registrar; and a NodeColumns, whose library rows the walk reaches through the
+    // library's families (LibraryLayer.Families) and whose part copy (PassPart.ForeignFacts) holds rows only at the part's foreign
+    // entries, which the library part never has (R7-N5 B4, C1: AFactALibraryNodesFailureCarriesIsRecordedWithIt).
+    private static readonly HashSet<Type> WalkEnds = [typeof(Compilation), typeof(Binding), typeof(TyCtxt), typeof(KimiLibrary), typeof(Kotonoha), typeof(CodeContext), typeof(SyntaxTable), typeof(HirTables), typeof(NodeColumns)];
 
     /// <summary>Gets c2's programs (the design's coverage row c2: R8-M32's ten), as the layer rows name them.</summary>
     public static TheoryData<string> ReferencePrograms

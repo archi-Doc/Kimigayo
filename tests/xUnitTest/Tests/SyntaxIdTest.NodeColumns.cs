@@ -188,7 +188,11 @@ public partial class SyntaxIdTest
     // inherited Origins; DeferredConstraints: Milestone10's clause decisions; Matches: Milestone10's match plans; Adaptations: Milestone10's
     // implicit adaptations; VirtualOverrides: that program's override; AliasTargets and ImportedContainers: an unnamed alias of a
     // generic container's group whose struct a parameter names; QualificationFailures: a member read without its `self.`, a failure
-    // family's program, which reports its failure at each Bind). Checked after each edit (N5-5's review C1):
+    // family's program, which reports its failure at each Bind; R7-N5's: PerCallOrigins, a call only an argument's own per-call Origin
+    // would satisfy; OriginTwins, a body-local borrow's failed local clause, A5's twin; PairFollows, a `@follow` of a pair layer;
+    // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
+    // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; CallablePremiseFailures, an implementation's Callable
+    // bound its requirement lacks). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -206,6 +210,14 @@ public partial class SyntaxIdTest
     [InlineData("AliasTargets", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
     [InlineData("ImportedContainers", "alias Outer<i32>.Helpers\nstruct Outer<T>\n    public group Helpers\n        public struct Tag\nfunc f(value: Tag) => ()\n")]
     [InlineData("QualificationFailures", "struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count\n", DiagnosticCode.QualificationRequired_Kd)]
+    [InlineData("PerCallOrigins", "func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(pick)\n", DiagnosticCode.MissingOriginBinding_Kd)]
+    [InlineData("OriginTwins", "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n", DiagnosticCode.UnsatisfiedOriginRelation_Kd)]
+    [InlineData("PairFollows", "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc view<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref\n")]
+    [InlineData("ImplicitPairFollows", "milestone:Milestone28")]
+    [InlineData("PhantomRawOrigins", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\n    let p: raw/i32 during a\n", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("InvalidStaticOriginSlots", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\nfunc g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")\n", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("EffectBoundRejections", "enum E\n    A\n    effect confined\n    B\n", DiagnosticCode.InvalidEffectBound_Kd)]
+    [InlineData("CallablePremiseFailures", "contract Runner\n    func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\nstruct Worker\n    Self is Runner\n    public func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\n            effect confined\n        return callback()\n", DiagnosticCode.IncompatibleContractImplementation_Kd)]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
@@ -319,7 +331,8 @@ public partial class SyntaxIdTest
 
         if (!type.IsValueType)
         {
-            return RuntimeHelpers.GetUninitializedObject(type);
+            // An abstract field (a Koto, as PerCallOriginFact's Argument) takes an instance of a concrete derived type.
+            return RuntimeHelpers.GetUninitializedObject(type.IsAbstract ? type.Assembly.GetTypes().First(x => !x.IsAbstract && type.IsAssignableFrom(x)) : type);
         }
 
         if (Nullable.GetUnderlyingType(type) is { } inner)

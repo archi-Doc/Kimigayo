@@ -376,7 +376,8 @@ public partial class KimiLibraryShapeTest
             // ResetViews drops only TyCtxt's view memos, which a later read forms again, equal).
             ["Binding.instances"] = Rule.Memo, // An ADT's storage at a Type (n9): Fields and parts a function of the Type; Version the run's currency.
             ["Binding.types.instances"] = Rule.Memo, // Whether a definition instantiates: a function of its scope chain.
-            ["Binding.types.copies"] = Rule.Memo, // A premises node's Copy facts, each a function of the node and the Type proven.
+            ["Binding.types.copies"] = Rule.Memo, // A definition's Copy facts, each a function of the definition and the Type proven.
+            ["Binding.types.topLevelCopies"] = Rule.Memo, // The top-level statements' Copy facts (no definition), each a function of the Type proven.
             ["Binding.types.retentions"] = Rule.Memo, // A callee's retention by callee, Subst, premise scope and region version.
             ["Binding.types.handedCallables"] = Rule.Memo, // HandedCallables' answer per interned Type.
             ["Binding.types.comparisons"] = Rule.Memo, // A comparison's composition by Contract, Type and operator form.
