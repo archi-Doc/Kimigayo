@@ -12,7 +12,6 @@ public sealed partial class Binding
     private readonly OriginDeclarationRows originDeclarations;
 
     private readonly DiscoveredOriginRows discoveredOrigins;
-    private readonly PerCallNamingRows perCallNamings;
     private OriginRewriteVisitor? originRewriteVisitor;
 
     private static Koto? OriginOwner(Koto node)
@@ -42,15 +41,39 @@ public sealed partial class Binding
         _ => node.Akind is KotoKind.EnumCase or KotoKind.AssociatedType,
     };
 
-    // SPEC 15.3.4: the nested signature whose per-call Origin `origin` is, a Function Type's or an anonymous function's (the omitted
-    // Origin of a direct borrowed input); null for every other Origin.
-    private static Koto? PerCallBinder(BoundOrigin origin)
-        => origin.Binder is FunctionTypeKoto || origin is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } } ? origin.Binder : null;
+    // SPEC 15.3.4, 8.10 (PLAN G972, the owner's O-403 (b)): where a written Origin may name a nested signature's per-call Origin, a
+    // Function Type's or an anonymous function's (the omitted Origin of a direct borrowed input): inside its binder only (inner per-call
+    // Origins cannot escape their binder), and there not in its inputs, whose every slot and borrow layer is fixed by a complete Type or
+    // an outer Origin expression (nested Origins stay fixed), so in its result and body.
+    private static bool OriginVisible(BoundOrigin origin, Koto use)
+    {
+        if (origin.Binder is FunctionTypeKoto || origin is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } })
+        {
+            var binder = origin.Binder;
+            if (!IsWithin(use, binder))
+            {
+                return false;
+            }
 
-    // The Type node of a nested signature's per-call Origin's own input, which keys that per-call Origin's naming verdict
-    // (perCallNamings); null for every other Origin.
-    private static Koto? OwnInput(BoundOrigin perCall)
-        => perCall is { Kind: OriginKind.Input, Occurrence: null } && PerCallBinder(perCall) is { } binder && (uint)perCall.Slot < (uint)InputCount(binder) ? InputType(binder, perCall.Slot) : null;
+            for (var i = 0; i < InputCount(binder); i++)
+            {
+                if (InputType(binder, i) is { } input && IsWithin(use, input))
+                {
+                    return false;
+                }
+            }
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (!OriginVisible(origin.Operands[i], use))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     // SPEC 15.3.5: the variance of a position nested at `inner` within a position of variance `outer`; an unused position is compared
     // as an invariant one (RelationWalk).
@@ -73,55 +96,6 @@ public sealed partial class Binding
         BoundTypeKind.Constructed when type.Symbol?.Schema is { } schema && component < schema.GenericSlots.Count => schema.GenericSlots[component].OriginVariance,
         _ => OriginVariance.Covariant,
     };
-
-    // SPEC 15.3.4, 8.10 (PLAN G972, the owner's O-403 (b)): where a written Origin may name a nested signature's per-call Origin, a
-    // Function Type's or an anonymous function's (the omitted Origin of a direct borrowed input): inside its binder only (inner per-call
-    // Origins cannot escape their binder), and there not in its inputs, whose every slot and borrow layer is fixed by a complete Type or
-    // an outer Origin expression (nested Origins stay fixed), so in its result and body. A naming it rejects in an input is published
-    // once, at the per-call Origin's own input (perCallNamings, board C-400), for every comparison of the signature (NamedInItsInputs).
-    private bool OriginVisible(BoundOrigin origin, Koto use)
-    {
-        if (PerCallBinder(origin) is { } binder)
-        {
-            if (!IsWithin(use, binder))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < InputCount(binder); i++)
-            {
-                if (InputType(binder, i) is { } input && IsWithin(use, input))
-                {
-                    if (OwnInput(origin) is { } own)
-                    {
-                        this.perCallNamings.Add(own);
-                    }
-
-                    return false;
-                }
-            }
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (!this.OriginVisible(origin.Operands[i], use))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // SPEC 15.3.4, 8.10 (PLAN G972; board C-400): whether a written Origin in an input of `perCall`'s nested signature names it, the
-    // input half of OriginVisible's verdict as it published it (the Origin stays bound, SPEC 23.1.2): one read per query. Such a signature
-    // names its per-call Origin outside its own input's outer layer, so instantiating it there is no per-call binding of SPEC 15.3.7; false
-    // for every valid signature. Read by a comparison judging an end that, as written, is `perCall`, after the signature's inputs are bound.
-    private bool NamedInItsInputs(BoundOrigin perCall)
-    {
-        this.OriginProofMetrics?.NamingRead();
-        return OwnInput(perCall) is { } own && this.perCallNamings.Contains(own);
-    }
 
     // SPEC 15.3.5: the variance of a Type's Origin argument `index`, the one reading every relation, fit and walk takes: a Closure Type's
     // by its occurrences in its definition's signature (ClosureArgumentVariance, DECISIONS R4-M159); a declared Type's by its schema's
@@ -711,7 +685,7 @@ public sealed partial class Binding
             if (node.BoundOrigin is { } origin)
             {
                 node.BoundOrigin = binding.ResolveOrigin(origin, declaration);
-                if (!binding.OriginVisible(node.BoundOrigin, node))
+                if (!OriginVisible(node.BoundOrigin, node))
                 {
                     binding.Fail(node, BindingFailure.InvalidOrigin);
                 }
@@ -724,18 +698,6 @@ public sealed partial class Binding
 
             node.VisitChildren(this);
         }
-    }
-
-    /// <summary>The `perCallNamings` family's one accessor (DECISIONS BU-220): a pass family, whether a written Origin in a nested
-    /// signature's inputs names the per-call Origin of the input that keys it (PLAN G972's verdict, board C-400), kept in its module's
-    /// NodeColumns at that input's SyntaxId as a `bool` (false, all-zero: no such naming). OriginVisible writes it where it rejects the
-    /// naming, while the signature's inputs are bound, before any comparison of the signature reads it (NamedInItsInputs); the pass counter
-    /// empties it for the next pass. A valid program writes none, so it allocates nothing.</summary>
-    private readonly struct PerCallNamingRows(Binding binding)
-    {
-        internal void Add(Koto input) => HirTables.Of(input).Families.PerCallNamings.Ref(input.SyntaxId, binding) = true;
-
-        internal bool Contains(Koto input) => input.SyntaxOwner is { } table && table.Hir.Families.PerCallNamings.Get(input.SyntaxId, binding);
     }
 
     /// <summary>The `originDeclarations` family's one accessor (DECISIONS BU-220): a kept family, an owner's declared Origins (SPEC 15.3),

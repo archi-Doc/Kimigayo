@@ -51,8 +51,8 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3, 13.5.5: the referent below one safe value-reference layer (ref, uniq, or a pair layer whose admitted set in `scope` lies
-    // in value or valueborrow), or null for any other Type. A layer admitting no case ends the walk (stopped: it has no node to rest; its
-    // operand's consumer would; PLAN G750).
+    // in value or valueborrow), or null for any other Type: also the referent an update locates its receiver at (BindPropertyUpdate). A
+    // layer admitting no case ends the walk (stopped: it has no node to rest; its operand's consumer would; PLAN G750).
     private BoundType? LayerBelow(BoundType type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent
             : this.FollowablePair(type, scope, out var target) is { } admitted && admitted != SemanticsMask.None ? target : null;
