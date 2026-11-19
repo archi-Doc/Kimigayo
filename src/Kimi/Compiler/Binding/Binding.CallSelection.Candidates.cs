@@ -830,14 +830,19 @@ public sealed partial class Binding
             }
 
             var proofMark = this.unformedWrites;
-            var proof = solution.Prove(frame.Types[..CallOwnSlots(function).Count], waitingCallables, unsolvedSlots);
-            if (proof is ConstraintProof.Refuted or ConstraintProof.Error && this.UnformedSince(proofMark))
+            var slots = frame.Types[..CallOwnSlots(function).Count];
+            var proof = solution.Prove(slots, waitingCallables, unsolvedSlots);
+            var splitDecided = this.ReadsSplitDecided(proofMark, slots);
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Error && splitDecided)
             {
-                proof = ConstraintProof.Unknown; // D3: a proof that read a Type no binding represents (dt2) is Unknown through the split.
+                // D3: a proof that read a position a split binding decides (a Type no binding represents, dt2; a slot holding the open
+                // formed Type's mark, G812 ruling 156) is Unknown through the split.
+                proof = ConstraintProof.Unknown;
             }
 
-            // D3 (G812 ruling 141, L2): an Unknown proof over pair slots a binding that forms none sources reads the split without its case.
-            this.premiseReadsSplit = proof == ConstraintProof.Unknown && this.SelectsUnformed(frame.Selectors[..CallSlotCount(function)]);
+            // D3 (G812 rulings 141, 156): an Unknown proof over pair slots a binding that forms none sources (L2), or over a position a split
+            // binding decides, reads the split without its case.
+            this.premiseReadsSplit = proof == ConstraintProof.Unknown && (splitDecided || this.SelectsUnformed(frame.Selectors[..CallSlotCount(function)]));
 
             var failure = ClauseFailure(this.TakeTrialClause(call), function.BoundSymbol); // The trial's clause fact, before a later proof's.
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))

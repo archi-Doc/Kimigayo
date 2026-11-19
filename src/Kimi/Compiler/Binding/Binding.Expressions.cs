@@ -152,11 +152,12 @@ public sealed partial class Binding
     private static bool RestsAtOpenPosition(Koto node, BoundType? expected)
         => expected is { Kind: BoundTypeKind.Open } && node.BoundType is null && KotoHelper.UnwrapParentheses(node) is not FunctionKoto { IsAnonymous: true };
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; rule W; G812 ruling 151): a node bound at a position holding a mark that forms
-    // no Type and has no failure cause (no record of its own, no failed or resting input: HasFailureCauses) formed none because a part
-    // of it rests at its open position (RestsAtOpenPosition), the split's own limit. It rests there as that part does, so its reader
-    // does not take it as a failed input (SPEC 23.1.2: a rest has a reported cause): a Tuple whose element rests so, a Case whose
-    // payload does, and every form above them.
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; rule W; G812 rulings 151, 156): a node bound at a position holding a mark that
+    // forms no Type and has no failure cause (no record of its own, no failed or resting input: HasFailureCauses) formed none because a
+    // part of it rests at its open position (RestsAtOpenPosition) or a check of it read a position a split binding decides (a waiting
+    // call's premise, PremiseReadsSplit), the split's own limit. It rests there as that part does, so its reader does not take it as a
+    // failed input (SPEC 23.1.2: a rest has a reported cause): a Tuple whose element rests so, a Case whose payload does, a waiting
+    // call, and every form above them.
     private bool RestsBelowOpenPosition(Koto node, BoundType? type, BoundType? expected)
         => type is null && expected is { ContainsOpen: true } && !this.HasFailureCauses(node);
 

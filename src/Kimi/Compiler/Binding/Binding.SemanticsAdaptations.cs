@@ -576,6 +576,22 @@ public sealed partial class Binding
     // failed since then failed through the split: an Unknown, not a failure of its own.
     private bool UnformedSince(int mark) => this.unformedWrites != mark;
 
+    // DECISIONS D3 with rule W (G812 rulings 141, 156): whether a check over `types` read a position a split binding decides: a formation
+    // since `mark` that formed none (UnformedSince), or one of the Types holding the open formed Type's mark (BoundTypeKind.Open, which an
+    // inference slot takes from its marked position), so that a check that failed there failed through the split: an Unknown.
+    private bool ReadsSplitDecided(int mark, ReadOnlySpan<BoundType?> types)
+    {
+        foreach (var type in types)
+        {
+            if (type is { ContainsOpen: true })
+            {
+                return true;
+            }
+        }
+
+        return this.UnformedSince(mark);
+    }
+
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none. For a
     // binding that forms no Type it is unrepresented (Unformed, D3): the slot is kept and the candidate rests on the split.
