@@ -1621,7 +1621,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   T's dialog on 2026-11-19 (relayed verbatim by T, board D-876: decisions 1–5 「→推奨の内容でOKです。」, decisions 6–11
   「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan 「下書きを承認します。作業を続けて下さい。」 with one
   addition, now its §6, 「LLVMがバージョンアップすることもある。それに合わせて更新できるように、道を準備しておいてください。」; DECISIONS
-  T-M1–T-M3). It is adopted as a working plan: nothing is implemented, no section is integrated into SPEC or IMPL, and no text is
+  T-M1, T-M2). It is adopted as a working plan: nothing is implemented, no section is integrated into SPEC or IMPL, and no text is
   frozen. The adopting commit adds the Tatara lane to AGENTS, WORKFLOW and COMPILER_ARCHITECTURE (decision 12).
 - Its specification work goes separately, each as an explicit revision recorded here when it lands: IMPL §20.3 gains a `tatara` row
   with unit A3; IMPL §20.3.2's Toolchain wording changes with unit A4; IMPL §20.3.2 and §20.4 change again with B5 and B6, each after
