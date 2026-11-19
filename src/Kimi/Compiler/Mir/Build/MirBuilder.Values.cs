@@ -192,10 +192,8 @@ internal sealed partial class MirBuilder
 
         if (adjust.Acquire == HirAcquire.Unset)
         {
-            // Unset means that no consumer takes the node, so a value taken without its Adjust is a broken HIR contract (DECISIONS BU-103):
-            // InternalInvariant_Kd, the value a derived Opaque.
-            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
-            return MirOperand.Move(this.Unsupported(node, derived: true, expected));
+            // Unset means that no consumer takes the node, so a value taken without its Adjust is a broken HIR contract (DECISIONS BU-103).
+            return MirOperand.Move(this.Invariant(node, expected));
         }
 
         if (adjust.Acquire == HirAcquire.Failed)
@@ -409,8 +407,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Const(this.body.Const(known));
         }
 
-        this.Record(node, DiagnosticCode.InternalInvariant_Kd);
-        return MirOperand.Move(this.Unsupported(node, derived: true));
+        return MirOperand.Move(this.Invariant(node));
     }
 
     // Appends the operands evaluated onto the argument stack from start to the body's operands together, and pops them.
@@ -486,8 +483,7 @@ internal sealed partial class MirBuilder
     // lends (Unlent; DECISIONS R4-M149).
     private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)
     {
-        var temp = this.Temp(type ?? TypeOf(node), node);
-        this.opaqueTemps.Add(temp.Root);
+        var temp = this.OpaqueTemp(type ?? TypeOf(node), node);
         if (derived)
         {
             this.Opaque(node, temp);
@@ -503,9 +499,16 @@ internal sealed partial class MirBuilder
     // A broken HIR contract's value (Invariant) in a temp of the Type its consumer expects, else of its own: an Opaque temp (Unlent).
     private MirPlace Invariant(Koto node, BoundType? type = null)
     {
-        var temp = this.Temp(type ?? TypeOf(node), node);
-        this.opaqueTemps.Add(temp.Root);
+        var temp = this.OpaqueTemp(type ?? TypeOf(node), node);
         this.Invariant(node, temp);
+        return temp;
+    }
+
+    // A temp of a Type holding an Opaque value, which nothing lends (Unlent; DECISIONS R4-M149).
+    private MirPlace OpaqueTemp(BoundType type, Koto node)
+    {
+        var temp = this.Temp(type, node);
+        this.opaqueTemps.Add(temp.Root);
         return temp;
     }
 }

@@ -104,11 +104,9 @@ internal sealed partial class MirBuilder
         if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
             stored.Components is not [var referent] || !MirTypes.Agrees(compilation.Types, this.body, named, referent))
         {
-            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
-            var temp = this.Temp(stored, node);
-            this.opaqueTemps.Add(temp.Root);
+            var temp = this.OpaqueTemp(stored, node);
             this.SiteRoots(place);
-            this.Site(node, temp, Completes(node));
+            this.Invariant(node, temp, Completes(node));
             return MirOperand.Move(temp);
         }
 

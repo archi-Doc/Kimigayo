@@ -423,11 +423,10 @@ public sealed partial class MirBuildTest
         Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text, order, paired, member, literal];
         Assert.Empty(program.Findings);
         Assert.All(broken.Append(calls[1]), static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
-        // The broken declaration declares no local, so its name is the builder's own broken contract (B7; Unsupported_Kd before Z1).
-        var name = nodes.OfType<IdentifierNameKoto>().Single(static x => x.ToString() == "x" && x.Parent is JumpKoto);
-        Assert.Equal(
-            broken.Select(SourceRef.Of).Append(SourceRef.Of(name)),
-            program.Records(MirRecordClass.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject));
+        Assert.Equal(broken, HirTables.Of(call).Broken!); // The publisher's list: the resolved nodes without their facts, not the rejected one.
+        // Each is recorded once; a use of a broken node's result (the name of the broken `let x`) is not this contract's subject.
+        var internals = program.Records(MirRecordClass.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject).ToArray();
+        Assert.All(broken, x => Assert.Single(internals, y => y == SourceRef.Of(x)));
         Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records(MirRecordClass.Construction).Select(static x => x.Subject));
     }
 
@@ -436,8 +435,9 @@ public sealed partial class MirBuildTest
     // which the validator accepts. Each row publishes one node so by hand after the publish (fail-before: Unsupported_Kd at the same node):
     // a call whose operations do not cover its parameters (B2), a PrimitiveOp of no operator form (B4), a member access without a metadata
     // form (B5), a Downcast Place outside a Pattern (B6), a local's name its body does not bind (B7), an instance Property's storage without a
-    // receiver (B8), an Op that is no value (B12), a storage projection taken as an operand (B13), an array literal of no array Type (B14),
-    // a capture whose source no binding holds (B15), and a target that is no Place without a setter (B16).
+    // receiver (B8), an Op that is no value (B12), a storage projection taken as an operand, and a base borrow or an erasure whose consumer
+    // gives no Type (B13; `t.0` an operand of `+`, SPEC 13.4), an array literal of no array Type (B14), a capture whose source no binding
+    // holds (B15), and a target that is no Place without a setter (B16).
     [Theory]
     [InlineData("B2")]
     [InlineData("B4")]
@@ -447,6 +447,8 @@ public sealed partial class MirBuildTest
     [InlineData("B8")]
     [InlineData("B12")]
     [InlineData("B13")]
+    [InlineData("B13 BaseBorrow")]
+    [InlineData("B13 Erasure")]
     [InlineData("B14")]
     [InlineData("B15")]
     [InlineData("B16")]
@@ -460,7 +462,8 @@ public sealed partial class MirBuildTest
         Koto Initializer(string name) => nodes.OfType<VariableKoto>().Single(x => x.ToString().StartsWith($"let {name} =", StringComparison.Ordinal)).InitializerKoto!;
         var far = HirTables.Symbol(nodes.OfType<VariableKoto>().Single(static x => x.ToString().StartsWith("let far", StringComparison.Ordinal)))!;
         var call = (InvocationKoto)Initializer("s");
-        var name = nodes.OfType<MemberAccessKoto>().Single(static x => x.ToString() == "t.0").Left;
+        var element = nodes.OfType<MemberAccessKoto>().Single(static x => x.ToString() == "t.0");
+        var name = element.Left;
         var assignment = nodes.OfType<BinaryKoto>().Single(static x => x.ToString() == "p.x = 5");
         Koto node = site switch
         {
@@ -469,6 +472,7 @@ public sealed partial class MirBuildTest
             "B5" => Initializer("r"),
             "B6" => nodes.OfType<ConversionKoto>().Single(static x => x.ToString() == "q@follow").Left,
             "B7" or "B8" => name,
+            "B13 BaseBorrow" or "B13 Erasure" => element,
             "B14" => Initializer("a"),
             "B15" => Initializer("c"),
             _ => assignment,
@@ -491,8 +495,9 @@ public sealed partial class MirBuildTest
             case "B7" or "B8":
                 hir.Symbols[node.SyntaxId] = site == "B7" ? far : HirTables.Symbol(assignment.Left);
                 break;
-            case "B13":
-                hir.Adjusts![node.SyntaxId] = new(HirAcquire.Copy, HirAdaptation.StorageProjection);
+            case "B13" or "B13 BaseBorrow" or "B13 Erasure":
+                var adaptation = site == "B13" ? HirAdaptation.StorageProjection : site == "B13 BaseBorrow" ? HirAdaptation.BaseBorrow : HirAdaptation.Erasure;
+                hir.Adjusts![node.SyntaxId] = new(HirAcquire.Copy, adaptation);
                 break;
             case "B14":
                 hir.Meanings[node.SyntaxId] = BoundType.Primitives["i32"];
