@@ -251,7 +251,7 @@ public sealed partial class Binding
             syntax.BoundOrigin = result;
         }
 
-        if (result is null || !OriginVisible(result, syntax))
+        if (result is null || !this.OriginVisible(result, syntax))
         {
             _ = failedOperand is null ? this.Fail(syntax, BindingFailure.InvalidOrigin) : this.CompleteDependent(syntax, failedOperand);
         }
