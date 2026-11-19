@@ -25,8 +25,10 @@ internal sealed partial class MirBuilder
             return;
         }
 
+        // The Subject's Type, none for a Subject of no Type (KnownType, PLAN G1073: a use of a failed getter Binding keeps as the
+        // Subject, G492-a (iii) and D-823), whose patterns' accesses are the validator's findings (PLAN G1076's open issue), never a fault.
         var scope = this.OpenScope(block: false);
-        var subject = this.Hold(plan.SubjectBorrow ?? TypeOf(match.Expression), match.Expression, MirLocalRole.Subject);
+        var subject = this.Hold(plan.SubjectBorrow ?? KnownType(match.Expression), match.Expression, MirLocalRole.Subject);
         this.Assign(subject, match.Expression);
         this.Made(subject);
         var after = this.Open(match, destination);

@@ -55,8 +55,11 @@ public class OwnershipJoinTest
             var program = c.BuildMir();
             var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "inspect");
             var selected = Assert.Single(body.Locals.ToArray(), static x => x.Name == "selected");
-            Assert.Equal(OriginKind.Intersection, selected.Type!.Origin!.Kind);
-            Assert.Equal(2, selected.Type.Origin.Operands.Count);
+            var region = selected.Type!.Origin!; // The `let` local's slot is its region, whose value is the join's meet (PLAN G492-a (ii)).
+            Assert.Equal(OriginKind.Inference, region.Kind);
+            var value = c.Binding.RegionValueAtUse(region, region.Binder!);
+            Assert.Equal(OriginKind.Intersection, value.Kind);
+            Assert.Equal(2, value.Operands.Count);
             Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code.IsLoanConflict());
             foreach (var owner in new[] { "a", "b" })
             {

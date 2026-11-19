@@ -284,7 +284,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // parameter. Each form stores spare (r's Loan) through a pointer into a Slice's elements: into values, dead after (direct, tuple,
     // dynamic: valid; dev gave their Slices that storage) or used after (usedAfter, subUsedAfter, readAfter), or into storage the body
     // does not own, used after every point (written, writtenSub, parameter, parameterArray). values holds raw pointers, so it is a holder
-    // (a Loan-free array's storage address takes Φ_E by the untracked rule, R4-M120).
+    // by its Type (a Loan-free array is one once exposed: MirBorrowsTest.Exposed's fSliceKeepDirectOk).
     [Fact]
     public void ARangeSelectionsSliceReachesWhatItsBackingReaches()
         => Assert.Equal(
@@ -593,11 +593,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // SPEC 14.9, 14.10.3 (F10): Loans flow forward over every path, joined at heads, around loops into the next iteration, and into code
-    // only the checks reach; a holder reassigned before its next use carries nothing across.
+    // only the checks reach; a holder reassigned before its next use carries nothing across. Every check applies in the assumed state: a
+    // Loan formed after a `return` conflicts there (formedAfterReturn), one whose last use precedes the write does not (afterReturnEnded);
+    // a write after a `return` with no live Loan is accepted (checkOnlyWrite, PLAN G106's check-only row) and one after `$abort` meets a
+    // live Loan (abortedWrite); an unreachable parameter's referent is checked as a local is (deadParameter, deadParameterEnded; STATUS's
+    // former R1 limit).
     [Fact]
     public void LoansFlowOverJoinsLoopsAndCheckOnlyCode()
         => Assert.Equal(
-            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2"],
+            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2", "formedAfterReturn: x = 2", "abortedWrite: x = \"new\"", "deadParameter: p@follow = 5"],
             Problems("""
                 func loopCarry(flag: bool)
                     var x = 1
@@ -627,6 +631,43 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     return 1
                     x = 2
                     inspect(r)
+                    return 2
+                func afterReturnEnded() -> i32
+                    var x = 1
+                    let r = x@ref
+                    return 1
+                    inspect(r)
+                    x = 2
+                    return 2
+                func formedAfterReturn() -> i32
+                    var x = 1
+                    return 1
+                    let r = x@ref
+                    x = 2
+                    inspect(r)
+                    return 2
+                func checkOnlyWrite()
+                    var x = "s"
+                    return
+                    x = "new"
+                    inspect(x@ref)
+                func abortedWrite()
+                    var x = "s"
+                    let r = x@ref
+                    $abort("t")
+                    x = "new"
+                    inspect(r)
+                func deadParameter(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    p@follow = 5
+                    c@follow = 2
+                    return 2
+                func deadParameterEnded(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    c@follow = 2
+                    p@follow = 5
                     return 2
                 """));
 
@@ -936,13 +977,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // its holder errs at the holder's next use (inspect(w)), as SPEC 15.6.4 decides per argument. Valid: a shared reborrow's parent past
     // the guard (sharedParent), reads through the argument's own holder (peeked, peekedGiven), a loop over an exclusive parameter or a Field
     // then an append (bumped, bagged: their elements hold no Loan) and Milestone24's writer, whose Loan<uniq/u8> refers to Loan-free
-    // storage (the guard stops at it).
+    // storage (the guard stops at it). rawPointee's x ends while storage the body does not own may keep what a chain of reads through p
+    // carries (A5 value redesign U3c; SPEC 15.6.4's composition: p is a raw layer without an Origin that putRaw writes; 23.1.2).
     [Fact]
     public void ACallStoresIntoEveryHolderItsArgumentReaches()
         => Assert.Equal(
             [
                 "twoLayers: b = 3", "twoLayers: inspect(w)", "threeLayers: b = 3", "threeLayers: inspect(w)", "hiddenLayer: b = 3",
-                "hiddenLayer: inspect(w)", "rawPointee: b = 3", "parameterRoute: b = 3", "acrossLayers: z = 5", "acrossLayers: inspect(w)",
+                "hiddenLayer: inspect(w)", "rawPointee: b = 3", "rawPointee: var x = 1", "parameterRoute: b = 3", "acrossLayers: z = 5",
+                "acrossLayers: inspect(w)",
                 "takenOut: s.n = 5", "takenOut: s.r@follow", "keptOut: s.n = 5", "keptOut: s.r@follow", "siblingCopy: x2 = 5",
                 "siblingCopy: w1@follow", "swapped: w2 = x1@ref", "swapped: w1@follow", "escapes: var b = 2",
             ],
@@ -1076,8 +1119,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // three). Each is a Language problem: a self-row returning a route's own Loan to its holder, read twice (twoLayersRead,
     // acrossLayersRead); and through an iterator, whose stored raw layer steps Exclusive and passes the guard through its members' referents
     // (R4-M147), an exclusive iteration over a local collection of shared references, then reads (iterated), or over exclusive elements,
-    // then a shared one (exclusiveElements, MemberThroughLayersTest's program, with the ends of b and the array, whose Loans the iterator's
-    // stores carry to E: its value names b's exclusive Loan, b holding none, so it carries Φ_E by the untracked rule, R4-M116 PQ-2), and an
+    // then a shared one (exclusiveElements, MemberThroughLayersTest's program; the iterator's stores land in b, an exposed holder, and
+    // the array, so the ends of b and the array observe no Loan: the A5 value redesign's U6, where R4-M116 PQ-2's untracked rule carried
+    // them to E), and an
     // exclusive parameter's iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values
     // is formed, R4-M68).
     [Fact]
@@ -1124,8 +1168,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(
             [
                 "twoLayersRead: w@follow@ref", "twoLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref",
-                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive",
-                "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq]", "exclusiveElements: var b = Data.init()", "bumpRefs: values",
+                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive", "bumpRefs: values",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1715,6 +1758,143 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     r.n += 1
                 """));
 
+    // SPEC 13.7.2, 11.3.1 (Z11, 2d-2): an update through a setter reserves the setter's receiver where it locates it, the getter and the
+    // standard get read the receiver beside the reservation, and the setter's call activates it. Shared reads coexist with it (the getter's
+    // Borrow, a user operator's operand Borrows, SPEC 13.7.2's `holder.item += delta`, a shared Borrow ended before the update, a written
+    // `@uniq` receiver); a shared Borrow of the receiver live across the write conflicts at the activation, for every receiver: a local, a
+    // parameter's referent, a Field path and an element, in a compound assignment, an increment and with a standard get; a simple assignment
+    // starts no writeback (SPEC 13.7.1). A live `uniq` Loan of the receiver, or of a Field of it, across the update conflicts where the
+    // update first reads the receiver (SPEC 15.6.2), and with a standard get also at its read of the storage; a written `@uniq` receiver
+    // meets a live shared Loan where it is formed.
+    [Fact]
+    public void ASettersReservationProtectsItsReceiverUntilTheWrite()
+        => Assert.Equal(
+            [
+                "iLocal: g.level += 1 CallActivationConflict_Kd", "iParam: g.level += 1 CallActivationConflict_Kd",
+                "iField: h.gauge.level += 1 CallActivationConflict_Kd", "iElement: gs[1].level += 1 CallActivationConflict_Kd",
+                "iPostfix: g.level++ CallActivationConflict_Kd", "iStoredSetter: g.mark += 1 CallActivationConflict_Kd",
+                "iAssign: g.level = 5 CallActivationConflict_Kd", "iUniq: g", "iUniqStoredSetter: g", "iUniqStoredSetter: g.mark += 1",
+                "iUniqField: g", "iUniqIncrement: g", "iWrittenUniq: g@uniq",
+            ],
+            Problems("""
+                struct WGauge
+                    var hits: i32 = 0
+                    public var count: i32 = 0
+                    public var mark: i32 = 0
+                        set(value: i32) -> () => storage = value
+                    public computed level: i32
+                        get() -> i32 => self.hits
+                        set(value: i32) -> () => self.hits = value
+                    public init() => ()
+                struct WRack
+                    public var gauge: WGauge = WGauge.init()
+                    public init() => ()
+                struct WAmount
+                    Self is Addable<WAmount>
+                    associate Addable<WAmount>.Output is WAmount
+                    public let n: i32
+                    public init(n: i32) => self.n = n
+                    public func added(self: ref/Self, right: ref/WAmount) -> WAmount => WAmount.init(self.n + right.n)
+                struct WPurse
+                    var total: i32 = 0
+                    public computed amount: WAmount
+                        get() -> WAmount => WAmount.init(self.total)
+                        set(value: WAmount) -> () => self.total = value.n
+                    public init() => ()
+                func vLocal() -> i32
+                    var g = WGauge.init()
+                    g.level += 2
+                    g.mark *= 3
+                    g.level = 5
+                    _ = ++g.level
+                    return g.level--
+                func vParam(g: uniq/WGauge)
+                    g.level += 1
+                    g.level--
+                func vField()
+                    var h = WRack.init()
+                    h.gauge.level += 1
+                func vElement(i: isize)
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    gs[1].level += 1
+                    var all: Array<WGauge> = [WGauge.init()]
+                    all[i].level += 1
+                func vOperator(delta: WAmount)
+                    var p = WPurse.init()
+                    let other = WPurse.init()
+                    p.amount += delta
+                    p.amount += other.amount
+                func vEnded(g: uniq/WGauge)
+                    let r = g@ref
+                    inspect(r)
+                    g.level += 1
+                func iLocal()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iParam(g: uniq/WGauge)
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iField()
+                    var h = WRack.init()
+                    let r = h.gauge@ref
+                    h.gauge.level += 1
+                    inspect(r)
+                func iElement()
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    let r = gs[1]@ref
+                    gs[1].level += 1
+                    inspect(r)
+                func iPostfix() -> i32
+                    var g = WGauge.init()
+                    let r = g@ref
+                    let old = g.level++
+                    inspect(r)
+                    return old
+                func iStoredSetter()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.mark += 1
+                    inspect(r)
+                func iAssign()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level = 5
+                    inspect(r)
+                func inspectU(value: uniq/WGauge) => ()
+                func inspectI(value: uniq/i32) => ()
+                func vWrittenUniq()
+                    var g = WGauge.init()
+                    g@uniq.level += 1
+                func iUniq()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.level += 1
+                    inspectU(u)
+                func iUniqStoredSetter()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.mark += 1
+                    inspectU(u)
+                func iUniqField()
+                    var g = WGauge.init()
+                    let u = g.count@uniq
+                    g.level += 1
+                    inspectI(u)
+                func iUniqIncrement()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    ++g.level
+                    inspectU(u)
+                func iWrittenUniq()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g@uniq.level += 1
+                    inspect(r)
+                """));
+
     // SPEC 15.6.7 (A3 E1, PLAN G119; 36h, 38a–38c, 38e–38i, 107): while a reservation waits for its call, a write or destruction of its
     // Place's prefix reaches it across references, a destroying activation included, but neither a write of what is not on its route nor of
     // a distinct constant index; replacing a cursor ends the Loan of its old route (38f, SPEC 15.6.3's deepest).
@@ -2140,9 +2320,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     bump(value)
                 """));
 
-    // SPEC 15.6 (A3 E13 (1a); prototype 140, u1-u2, c1): an operand's own value is used by its operation after its access, an rvalue's
-    // single one's too, so moving or reading a holder that carries a Loan on its own part errs where it is evaluated, whether the value is
-    // used later or not; a holder whose Loan is on another root does not.
+    // SPEC 15.6 (A3 E13 (1a) as superseded by (c2); prototype 140, u1-u2, c1): an operand's own value is used by its operation after its
+    // access where the operation keeps it, an rvalue's value operands and a call's inputs, so moving or reading a holder that carries a Loan
+    // on its own part errs where it is evaluated, whether the value is used later or not; a holder whose Loan is on another root does not.
     [Fact]
     public void AnOperandIsCheckedWithItsOwnValue()
         => Assert.Equal(
@@ -2202,6 +2382,76 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var s = S.init(r: z@ref)
                     s.r = s.n@ref
                     let c = func [s@move] () => ()
+                """));
+
+    // SPEC 15.6 ((c2), superseding A3 E13 (1a)'s operand sentence): an operation that keeps none of its operands (a comparison, arithmetic)
+    // uses them at its point and gives a value that carries none, so its read of a holder carrying a Loan on its own Place is checked only
+    // against the values used after it and the values it stores; change3 may store amount, a Copy of item.1, in *target, so value carries
+    // the uniq Loan on itself. Valid: sibling, siblingReturn, u2eq, u2arith; invalid: siblingTwiceV (value, which carries the Loan, is used
+    // after its first read), siblingHolderBad (k), siblingStoredBad (w), u2eqUsed (s), u2call (a call keeps its input).
+    [Fact]
+    public void AnOperationKeepingNoOperandUsesItAtItsPoint()
+        => Assert.Equal(
+            [
+                "siblingTwiceV: value == 8", "siblingHolderBad: value", "siblingStoredBad: value", "siblingStoredBad: value = 3", "u2eqUsed: s.n == 1",
+                "u2eqUsed: s@ref", "u2call: giveN(s.n)",
+            ],
+            Problems(Order + """
+                func change3(target: uniq/i32, amount: i32) => target@follow = amount + 1
+                func giveN(a: i32) => ()
+                func sibling() -> bool
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    return value == 8
+                func siblingReturn() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let b = value == 8
+                    return 1
+                func siblingTwiceV() -> bool
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let b = value == 8
+                    return b and value == 9
+                func siblingHolderBad() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let k = item.1
+                    let w = value
+                    return k + w
+                func siblingStoredBad() -> i32
+                    var value = 42
+                    let item = (value@uniq, 7)
+                    change3(item.0, item.1)
+                    let w = value
+                    value = 3
+                    return w
+                func u2eq() -> bool
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    return s.n == 1
+                func u2eqUsed() -> bool
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    let b = s.n == 1
+                    inspect(s@ref)
+                    return b
+                func u2arith() -> i32
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    return s.n + 1
+                func u2call()
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    giveN(s.n)
                 """));
 
     // SPEC 15.6, 15.6.3, 15.6.7 (A3 E13 (1b), (1c), (1d); prototype a1-a2, rf1-rf2, b1-b2, 41o, d1-d3): an activation takes the other
@@ -2702,14 +2952,16 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the `if` it leaves, is witnessed by its
     // declaration, the value retaining the Loan: a chain between body Origins (OriginRelationDiagnosticTest) and a fixed input's capture
-    // (InputDependentValueCallTest).
+    // (InputDependentValueCallTest), its slot written `during r`: unwritten, a captured `let` local's slot is its own region (PLAN G492-a
+    // (ii)), a fixed Origin of the Closure body no premise relates to r's, so the body's store is Unknown and no Loan is followed
+    // (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's row; the owner's O-261 Q1 (a)).
     [Theory]
     [InlineData(
         "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
         "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",
         "let w = 9: Anchor w@ref, Store var keep = h.item")]
     [InlineData(
-        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
+        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start: ref/i32 during r = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
         "        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n",
         "let y: i32 = 5: Anchor y@ref, Store var c = func [var start](n: ref/i32 during r) -> ref/i32 during r")]
     public void AHolderUsedPastTheChainIsWitnessedByItsDeclaration(string source, string problem)
@@ -2911,7 +3163,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(9, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
+        Assert.Equal(10, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code))); // chained's `var y = 1` from U3c.
         Assert.Single(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.Subject.Module == 0);
     }
 

@@ -10,17 +10,20 @@
 // Output: adapter calls only (DiagnosticCollection.ReportLocation, Koto.ReportIn and Koto.ReportDerivedIn, in the store Core's store
 // decision gives the subject, StoreOf); no table of its own.
 // Invariants: PublishMirRecords publishes every merged problem through Publish, then each finding as InternalInvariant_Kd located in the
-// ControlFlow requirement (DECISIONS R5-M156, R5-M185): the rows Compilation.Problems gives, in its order. A record is a
-// code without facts, so its location is its subject (DIAGNOSTICS 4.1, DECISIONS R4-M71): the records of two nodes at one location, such as
+// ControlFlow requirement (DECISIONS R5-M156, R5-M185): the rows Compilation.Problems gives, in its order. A record without facts is a
+// code alone, so its location is its subject (DIAGNOSTICS 4.1, DECISIONS R4-M71): the records of two nodes at one location, such as
 // the siblings a for expansion synthesizes with its span, are one problem. Publish maps one merged problem (design 3.1-3.4): Located (a
-// record class, or a code of category Unsupported, Resource or Internal without Arguments) by its location, which carries no fact, any
-// other at its subject with its Ordinal as the condition; KeyOf is the key either form records, so a Cause names its problem's record; a
-// problem with Cause facts is PrerequisiteUnavailable_Kd naming its causes' keys, a MIR cause's by KeyOf, a Binding cause's (-1) Binding's;
-// a located problem with a fact, a Binding cause without Binding's causes, an Inlined fact and a kind without a row are broken contracts,
-// InternalInvariant_Kd at the subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per ProblemFactKind: a site
-// fact is a related location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations,
-// Required, Limit and Table OwnershipStorageLimit_Kd's arguments and table; the case text is Binding.CaseFact's over the members' masked
-// views, only when every member gives the same (Binding renders it).
+// record class without facts, or a code of category Unsupported, Resource or Internal without Arguments) by its location, which carries
+// no fact; any other, a record with facts included (R7-T1: a problem's facts publish whatever its class, as the collector records the
+// typed fact where it fails), at its subject with its Ordinal as the condition; KeyOf is the key either form records, so a Cause names
+// its problem's record; a problem with Cause facts is PrerequisiteUnavailable_Kd naming its causes' keys, a MIR cause's by KeyOf, a Binding
+// cause's (-1) Binding's; a located problem with a fact, a Required or Limit fact whose argument the code's catalog row has no slot for,
+// a Binding cause without Binding's causes, an Inlined fact and a kind without a row are broken contracts, InternalInvariant_Kd at the
+// subject under Ownership.Internal, as MirReport's defects. The fact table has one arm per ProblemFactKind: a site fact is a related
+// location with DIAGNOSTICS' A6 role and wording, a Relation fact Binding.OriginRelationFacts' evidence and locations, Required and Limit
+// the code's message arguments (Arguments: a Limit the last, a Required the one before it; OwnershipStorageLimit_Kd's requiredBytes and
+// limitBytes, TypeHeightLimit_Kd's limit), Table OwnershipStorageLimit_Kd's table; the case text is Binding.CaseFact's over the members'
+// masked views, only when every member gives the same (Binding renders it); a record has no body, so no case text.
 // Must not: be steered by a mode, flag or optional parameter, or publish a MIR record any other way.
 
 using Kimi.Compiler.Parsing;
@@ -42,23 +45,25 @@ public partial class Compilation
     // The store of a library subject's record (Core's store decision, StoreOf; PLAN G949 Stage 2 U2a): this compilation's root collection.
     private DiagnosticCollection LibraryStore => this.Kotonoha.DiagnosticCollection;
 
-    /// <summary>Publishes one merged problem of a program's report (R6-check H3-2, design 3.1-3.4): a located problem by its location, any
-    /// other at its subject with its Ordinal as the condition, a derived one as <c>PrerequisiteUnavailable_Kd</c> naming its causes' keys;
-    /// a broken contract as <c>InternalInvariant_Kd</c> at the subject.</summary>
+    /// <summary>Publishes one merged problem of a program's report (R6-check H3-2, design 3.1-3.4): a located problem by its location; any
+    /// other, a record with facts included (a problem's facts publish whatever its class), at its subject with its Ordinal as the
+    /// condition, a derived one as <c>PrerequisiteUnavailable_Kd</c> naming its causes' keys; a broken contract, a fact without its argument
+    /// slot among them, as <c>InternalInvariant_Kd</c> at the subject.</summary>
     /// <param name="program">The program whose report holds the problem.</param>
     /// <param name="merged">The problem's index in the report's <c>Merged</c>.</param>
     internal void Publish(Mir.MirProgram program, int merged)
     {
         var problem = program.Problems.Merged[merged];
         var facts = program.Problems.MergedFacts(merged);
-        if (Located(problem))
+        if (Located(problem, facts))
         {
             // ReportLocation takes no fact, so a located problem has none (design 3.2, N3).
             this.Locate(facts.IsEmpty ? problem.Requirement : Defect, facts.IsEmpty ? problem.Code : DiagnosticCode.InternalInvariant_Kd, problem.Subject);
             return;
         }
 
-        var body = program.Problems.All[program.Problems.Members(merged)[0]].Body; // The body whose views and rows the facts name.
+        var first = program.Problems.All[program.Problems.Members(merged)[0]];
+        var body = first.IsRecord ? Mir.MirProblem.NoBody : first.Body; // The body whose views and rows the facts name; a record has none.
         (object? required, object? limit, object?[]? evidence) = (null, null, null);
         List<(string Role, Koto At, string? Label)>? related = null;
         List<DiagnosticKey>? causes = null;
@@ -117,13 +122,19 @@ public partial class Compilation
             return;
         }
 
+        if (Arguments(problem.Code, required, limit) is not (var head, var tail))
+        {
+            this.Locate(Defect, DiagnosticCode.InternalInvariant_Kd, problem.Subject); // A fact the catalog row has no argument slot for.
+            return;
+        }
+
         var found = this.CaseFact(program, merged, out var single);
         node.ReportIn(
             store,
             problem.Requirement,
             problem.Code,
-            required,
-            limit,
+            head,
+            tail,
             Binding.CaseNote(null, found, single),
             evidence: evidence ?? Binding.CaseEvidence(problem.Code, null, found),
             related: Binding.WithCaseDeclarations(related?.ToArray(), this.caseBinders, found),
@@ -172,11 +183,25 @@ public partial class Compilation
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
-    // Whether a problem's location is its subject (design 3.2): a construction or collection record, or a code of category Unsupported,
-    // Resource or Internal without message arguments.
-    private static bool Located(in Mir.MirReport.MergedProblem problem)
-        => problem.Class is not null || (DiagnosticEntries.TryGet(problem.Code, out var entry) && entry.Arguments is null &&
+    // Whether a problem's location is its subject (design 3.2): a construction or collection record without facts (a record's facts
+    // publish at its subject whatever its class, R7-T1), or a code of category Unsupported, Resource or Internal without message arguments.
+    private static bool Located(in Mir.MirReport.MergedProblem problem, ReadOnlySpan<ProblemFact> facts)
+        => (problem.Class is not null && facts.IsEmpty) || (DiagnosticEntries.TryGet(problem.Code, out var entry) && entry.Arguments is null &&
             entry.Category is DiagnosticCategory.Unsupported or DiagnosticCategory.Resource or DiagnosticCategory.Internal);
+
+    // The fact table's Required and Limit rows (design 3.3; the Middle's P1 on R7-T1): a code's message arguments by its catalog row's
+    // slots, a Limit fact the last, a Required fact the one before it; null when a fact has no slot there (a broken contract), else the two
+    // arguments, unset where the problem carries no such fact.
+    private static (object? First, object? Second)? Arguments(DiagnosticCode code, object? required, object? limit)
+    {
+        var arity = DiagnosticEntries.TryGet(code, out var entry) ? entry.Arity : 0;
+        if ((limit is not null && arity < 1) || (required is not null && arity < 2))
+        {
+            return null;
+        }
+
+        return arity == 2 ? (required, limit) : (limit, null);
+    }
 
     // The rows of the latest Analyze (Compilation.Problems' order): every merged problem through Publish, then each validator finding as
     // InternalInvariant_Kd located in the ControlFlow requirement; none before an analysis and after invalidation.
@@ -199,7 +224,8 @@ public partial class Compilation
     }
 
     // The case text of a merged problem (design 3.3; DECISIONS BU-82): Binding.CaseFact over each member's body's binders and its views,
-    // which are bits of that body's views (MirProblem); given only when every member gives the same text, and a NoBody member gives none.
+    // which are bits of that body's views (MirProblem); given only when every member gives the same text, and a NoBody member or a record
+    // gives none.
     // The first member's named binders are left in caseBinders.
     private string? CaseFact(Mir.MirProgram program, int merged, out bool single)
     {
@@ -208,7 +234,7 @@ public partial class Compilation
         for (var i = 0; i < members.Length; i++)
         {
             var member = program.Problems.All[members[i]];
-            if (member.Body == Mir.MirProblem.NoBody)
+            if (member.Body == Mir.MirProblem.NoBody || member.IsRecord)
             {
                 return null;
             }
@@ -256,7 +282,7 @@ public partial class Compilation
         var at = this.SyntaxOf(row.Site);
         var wellFormed = row.Source == OriginRowSource.WellFormed;
         return source is null ? null
-            : this.Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, WellFormed: wellFormed), source);
+            : this.Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, FixedBy: row.FixedBy, WellFormed: wellFormed), source);
     }
 
     // A code without facts keyed by its subject's location, in the subject's collection (DIAGNOSTICS 4.1; DECISIONS R5-M65, R4-M71).
@@ -285,7 +311,7 @@ public partial class Compilation
         var problem = program.Problems.Merged[merged];
         var node = this.SyntaxOf(problem.Subject);
         var store = this.StoreOf(node);
-        return !Located(problem) ? node.KeyIn(store, problem.Requirement, (ushort)problem.Ordinal)
+        return !Located(problem, program.Problems.MergedFacts(merged)) ? node.KeyIn(store, problem.Requirement, (ushort)problem.Ordinal)
             : store?.LocationKey(problem.Requirement, node.Span, node.CodeContext.SourceDocument) ?? DiagnosticKey.Unresolved;
     }
 }

@@ -293,8 +293,9 @@ internal sealed class MirProgram
     /// <param name="code">For construction an Unsupported form, the expansion limit or a broken HIR contract (DECISIONS R4-M61); for
     /// collection a code of the checked set's records (InstanceCollector).</param>
     /// <param name="recordClass">The record's class, its body value.</param>
-    internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd, MirRecordClass recordClass = MirRecordClass.Construction)
-        => this.Problems.Add(new(code, DiagnosticRequirement.ControlFlow, site, (int)recordClass, ulong.MaxValue));
+    /// <param name="facts">Its facts: a collection record's typed fact where it fails (the collector's height limit, R7-T1), or none.</param>
+    internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd, MirRecordClass recordClass = MirRecordClass.Construction, ReadOnlySpan<ProblemFact> facts = default)
+        => this.Problems.Add(new(code, DiagnosticRequirement.ControlFlow, site, (int)recordClass, ulong.MaxValue), facts);
 
     /// <summary>Gets the rows of a record class in the order they were first recorded, the one path to them: the construction records, an
     /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2), the expansion limit's <c>ExpansionLimit_Kd</c> (Resource) and a

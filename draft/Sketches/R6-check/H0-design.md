@@ -7,7 +7,7 @@ answers and R4's review of its parts, marked "(answer X)" or "(R4 review Bn/Nn)"
 Working time (DECISIONS Q12): integration 18:23–18:36; revision 1 18:47–19:01; revision 2 19:37–19:45, R4 r2 notes 19:48–19:55 (2026-11-02).
 
 Base: dev `1d23d559d` (the parts read `1ec539c79` and `e8ba140b3`; only PLAN differs); revision 2: dev `14825e465`, R4's answers on `bdf4eb6b8`. "Plan" is the
-[R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`,
+[R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` = `src/Kimi/Compiler/`,
 `T/` = `tests/xUnitTest/Tests/`. No build, test or probe was run; the counts in §6 marked "verified" were re-grepped on the base.
 
 ## 1. Purpose and the owner's words

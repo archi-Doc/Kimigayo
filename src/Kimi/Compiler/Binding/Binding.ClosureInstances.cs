@@ -69,15 +69,16 @@ public sealed partial class Binding
         return signature;
     }
 
-    // The call signature a Closure Type's definition declares, under the Type's closure context (CallPlan.DeclaredSignature; retention
-    // reads a call in the definition's world). Under a withheld held instance (PLAN G300) it stays the definition's, but the nested
+    // The call signature a Closure Type's definition declares, under the Type's closure context as every reader of an instance reads one
+    // (TyCtxt.ReadableInstance, DECISIONS R4-M139; CallPlan.DeclaredSignature; retention reads a call in the definition's world); null
+    // where it is not readable. Under a withheld held instance (PLAN G300) it stays the definition's, but the nested
     // definitions it names are closed under that instance (CloseHeldNested), so that they are withheld with it and none is read in
     // the definition's identity outside its frame.
     internal BoundType? ClosureDefinitionSignature(BoundType type)
         => BoundClosure.Of(type) is not { } closure ? null
             : closure.Signature is not { } signature ? throw new InvalidOperationException(
                 "A Closure value's definition has no Signature (InternalInvariant): one without (a failed slot) is only its own body's receiver (BoundClosure.Of).")
-            : TyCtxt.NestedInstance(type) is { } context ? this.types.Apply(signature, context)
+            : TyCtxt.NestedInstance(type) is { } context ? this.types.ReadableInstance(signature, context)
             : TyCtxt.HeldType(type) is { } held ? this.CloseHeldNested(signature, held) : signature;
 
     // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's
@@ -261,7 +262,8 @@ public sealed partial class Binding
     // SPEC 6.1.3, 6.3.3, 3.2.1: each nested definition's Type without a context, a Closure Type or the Item of a function declared in a
     // body (one declaration or expression and instantiation; PLAN G846, G856), gets the instance of the declaration whose instance it
     // holds (TyCtxt.EnclosingDeclaration), when the inputs carry it: a function's is the instance when that is its binder, its conforming Self
-    // included (DECISIONS R5-M36), its result there the failure check; a Type's is what the one producer (TyCtxt.HeldContext; BU-60) makes
+    // included (DECISIONS R5-M36), its result's formation there the failure check (TyCtxt.Apply: substitution alone, never a storage
+    // verdict, so closing reads no storage; R7-T1); a Type's is what the one producer (TyCtxt.HeldContext; BU-60) makes
     // of its identity's image in the environment Type, an instance of it or of a declaration it encloses (EnvironmentInstance), the instance
     // closed first in the same query; a group has none (its statics are R5-M82's gap). A held context is closed again: its instance closed
     // in this query and given back through the producer (DECISIONS BU-60), so a held instance inside a held context is closed per instance.
@@ -310,7 +312,7 @@ public sealed partial class Binding
                 switch (this.types.EnclosingDeclaration(symbol))
                 {
                     case { Declaration: FunctionKoto } function when instance is not null && ReferenceEquals(function, instance.Target):
-                        if (closure is not null && this.types.Instance((closure.Signature ?? throw new InvalidOperationException("A Closure value's definition has no Signature (InternalInvariant; BoundClosure.Of).")).Components[1], instance) is not ({ }, not StorageOutcome.Limit))
+                        if (closure is not null && this.types.Apply((closure.Signature ?? throw new InvalidOperationException("A Closure value's definition has no Signature (InternalInvariant; BoundClosure.Of).")).Components[1], instance).Type is null)
                         {
                             return null;
                         }

@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // PLAN G74: every premise rule of the catalog (OriginPremiseRule) is extracted from real source: a program the rule's premise
 // proves, and the same relation where no visible contract supplies that premise.
-public class OriginPremiseCatalogTest
+public partial class OriginPremiseCatalogTest
 {
     private const string Main = "public func main() => ()\n";
 
@@ -117,11 +117,14 @@ public class OriginPremiseCatalogTest
     // (`ref/(ref/i64 during x) during z`) still gives its condition. A meet whose operand names `z` does not make a comparison's relation
     // between fixed Origins a body's: `(p and z) outlives q` needs `p outlives q` (SPEC 15.3.6, 15.6.1), also where 15.3.6 solves it,
     // as `g5`'s `a := (p and z)` whose well-formedness needs `a outlives q` (r5, the inferred form of r1; SPEC 15.2.2 absorbs no meet
-    // by a body relation). For `p outlives w`, `w = y@ref`, only the Origins stored in `y` outlive `w`: `x`'s, which a required input
-    // names through `z`, take no part, so `p outlives q` remains (x1, and x1m with a meet).
+    // by a body relation). For `p outlives w`, `w = y@ref`, the values give `p outlives q`, Unknown, while the comparison reads w's slot as
+    // its region, which may lie inside its value (the owner's O-363 (a)): only that region reading decides it, so it is the located limit
+    // until the uses of a compared Type read the region (x1, and x1m with a meet; PLAN G492-a (ii), O-400 (b)). Where both operands are
+    // `let` locals over a body local (`(x and z)`, `x = y@ref`; opc5) and `q` is fixed, the region reading is the value reading (a `let`
+    // region outlives nothing its value does not): the Borrow of `y` cannot outlive `q`, the comparison's own record (SPEC 15.6.5).
     [Theory]
-    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
-    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.Unsupported_Kd))]
     [InlineData("func g5(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives a\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g5\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during (p and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Converted + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]

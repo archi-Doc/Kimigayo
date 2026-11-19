@@ -315,17 +315,17 @@ public sealed partial class MirBorrowsTest
     // a second Reborrow the result keeps is decided beside it (keepB), as is the one Loan the result also keeps (keepS); an exclusive Borrow
     // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE), whose
     // record is at the store (SPEC 7.2.3 as clarified by O-254 Q2 A). keepN is invalid by O-254 Q1 D (the let capture's pointee layer is
-    // the Closure's own) and stays accepted until A5's rule W reads that (U3c); its record will then be at the call `c(rz@follow@raw)`,
-    // placed as keepECall's below. Today's records, a known limit (PLAN G599 (b): Φ_U is a set's, not an entry's): a decided store of rz
+    // the Closure's own), which A5's rule W reads from U3c (the store through `other`, a raw layer without an Origin the call writes, reaches
+    // storage the body does not own; SPEC 15.6.4's composition): its record is at the call `c(rz@follow@raw)`, placed as keepECall's below. Today's records, a known limit (PLAN G599 (b): Φ_U is a set's, not an entry's): a decided store of rz
     // beside `other`, which rests on the u16 write, places no record, so restBeside (invalid twice, SPEC 7.2.3 with 23.1.2: the store and
     // the result) has the result's site record alone, and restStoreOnly (invalid at the store) the limit record at the site.
     [Fact]
     public void ATemplateVerdictRestingOnAnUndecidedWriteIsTheLimit()
         => Assert.Equal(
             [
-                "keepU: z Unsupported_Kd", "keepE: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd",
-                "keepS: z DefaultArgumentBorrow_Kd", "keepX: z@follow@uniq DefaultArgumentAccess_Kd", "restBeside: z DefaultArgumentBorrow_Kd",
-                "restStoreOnly: z Unsupported_Kd",
+                "keepU: z Unsupported_Kd", "keepN: c(rz@follow@raw) DefaultArgumentBorrow_Kd", "keepE: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd", "keepS: z DefaultArgumentBorrow_Kd",
+                "keepX: z@follow@uniq DefaultArgumentAccess_Kd", "restBeside: z DefaultArgumentBorrow_Kd", "restStoreOnly: z Unsupported_Kd",
             ],
             AllProblems("""
                 func keepU(z: uniq/i32 during a, y: i32 = label w: do
@@ -427,7 +427,9 @@ public sealed partial class MirBorrowsTest
     // storage the body does not own, by a write or a call that may store it there, is invalid "with the error at that operation"; SPEC
     // 23.1.2): one record at each storing operation, and one at the Loan's site where the result's own value keeps the Loan ("Its result
     // cannot keep a new Borrow or Reborrow of a preceding argument"), both when both hold: the result alone (keptOnly), a store or a call
-    // through a parameter (storedCopy, whose result is a Copy; keepECall: sink's pointee raw/i32 admits v, 5.7 Calls), two stores
+    // through a parameter (storedCopy, whose result is a Copy read through rz, which reaches the storage the store made carry rz's Loan:
+    // its result keeps it too, 15.6's read sentence and the value-flow rule H, a record added under DECISIONS Q13 rule W; keepECall: sink's
+    // pointee raw/i32 admits v, 5.7 Calls), two stores
     // (keepETwice), a store or a call and the result (keepBoth, bothCall, keepBoth2), two Loans (twoLoans: rz stored, rw kept), the result
     // read back from the stored storage, a Tuple holding rz, or a Reborrow through it (readBack, resultTuple, reborrowChain, whose exclusive
     // Borrow is one subject: its record names the Borrow), a result that only addresses that storage (resultAddr: the store alone); an
@@ -439,6 +441,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "keptOnly: z DefaultArgumentBorrow_Kd", "storedCopy: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "storedCopy: z DefaultArgumentBorrow_Kd",
                 "keepECall: sink(p, rz@follow@raw) DefaultArgumentBorrow_Kd",
                 "keepETwice: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepETwice: *s = rz@follow@raw DefaultArgumentBorrow_Kd",
                 "keepBoth: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepBoth: z DefaultArgumentBorrow_Kd",

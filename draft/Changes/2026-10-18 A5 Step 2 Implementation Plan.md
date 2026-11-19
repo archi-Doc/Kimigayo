@@ -1,5 +1,15 @@
 # R4 A5 Step 2, A6 and R4's Exit: Implementation Plan
 
+Status (2026-11-19): **closed, 取り込み済み** ([INTEGRATED](../INTEGRATED.md), 2026-11-19), moved from `Proposals/` on the owner's
+instruction (verbatim 「PLAN G396 に移ったものとして、「取り込み済み」で draft/Changes に移してください」). Its specification work is integrated or closed as
+INTEGRATED records it: S3's clarification integrated, S2 closed (DECISIONS R4-M106), S5 integrated through Effect Atoms Widen (in
+`Changes/`). Its exit gate (§5.4) is superseded by the owner's 90% rule (DECISIONS R4-M165), and its PD21 and §3.7 by DECISIONS Q9. The
+remaining units of the two A5 plans moved to PLAN G396 (and the R7, R8 and R9 plan's §5.4, "G396's items in the owner's order
+(R4-M165)"): F7's 2c-6 and 2c-7, F8 with the U8s of the A5 plan's Appendix B, F10, A6's 2g-1 to 2g-7 with G105 and that appendix's U11,
+the 25 `Unsupported_Kd` producers without a removal stage, G103, G124, G126, G147 (2), G160's remainder, G263, X-5's notes and this
+plan's OQ8 condition; 2g-1 remains the removal condition of H3-2's interim records (PLAN). Nothing below this paragraph changed; its
+links to the A5 plan and to the R5 and R6 plan resolve in `Changes/`.
+
 Date: 2026-10-18
 
 Status: Adopted working plan. On 2026-10-19 the owner adopted it as R4's formal plan for A5 step 2, A6 and R4's exit

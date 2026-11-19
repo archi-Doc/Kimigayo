@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     // The compilation's level of the interned constraints (PLAN G949 Stage 2 U4): those interned after the library's seal; the library's
     // are LibraryLayer.Constraints, found first (InternConstraint).
-    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedRoom);
+    private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new();
 
     private readonly DeferredConstraintRows deferredConstraints;
 
@@ -221,8 +221,8 @@ public sealed partial class Binding
             // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
             // The Unknown's comparison failure joins the proof as its U fact (design-r2 Amendment 4).
             var failure = default(ComparisonFailure);
-            if (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, proposition.RequiredType!, scope.Owner, out failure)
-                : this.CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject), scope.Owner, out failure))
+            if (subject.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure ? this.DefinitionContractFits(subject, proposition.RequiredType!, scope.Owner, null, out failure)
+                : this.CallableSignatureFits(signature, proposition.RequiredType!, scope.Owner, out failure))
             {
                 return ConstraintProof.Proven;
             }
