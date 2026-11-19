@@ -642,7 +642,7 @@ post-flip rows that R6-check's H3b names class 2 or 5 come first.
   at `MirBorrows.Addresses.cs:218`, two `bool` parameters at `MirForms.cs:96`, optional ones at `MirDescriptors.cs:194` and
   `MirBuilder.Places.cs:208`; R5-M194); G157 (39) (`MirValidator.SharedPaths`' `Cases` restating Binding's
   `CaseOf`/`CaseAdmitted`: one `PairCase` owner; R5-M194); P42's MIR, A4 and A5 parts (RQ5).
-- **G396's items in the owner's order (R4-M165):** A5-F7's last units 2c-6 and 2c-7; A5-F8 and A5-F10; A6's 2g units with G105 (2g-1 also makes
+- **G396's items in the owner's order (R4-M165); those PLAN G396 lists are R7 exit conditions since 2026-11-19 (DECISIONS Q22, §10.1 item 6):** A5-F7's last units 2c-6 and 2c-7; A5-F8 and A5-F10; A6's 2g units with G105 (2g-1 also makes
   H3-2's interim records derived; 2g-5 and 2g-6 are narrowed: R4-M104, and G126's cleanups landed); the 25 `Unsupported_Kd` producers without a
   removal stage (DEC O4); X-5's remaining notes (PLAN G396 (7)); G400's A2 half (an Array emptied by
   pops); G398.
@@ -870,6 +870,10 @@ a session asks the owner and closed with the verbatim answer and where it is rec
    landed with examples and tests.
 5. Records: `r7-exit-areas.md`, the owner's review of exceptions and Transitional declarations, CODEMAP, ARCH, DIAGNOSTICS, the
    end-to-end Binding review.
+6. G396's remaining items (§5.4) resolved, item by item as PLAN G396's row lists them (DECISIONS Q22; the owner, 2026-11-19, verbatim
+   「G396 の残りの項目、「F7 の 2c-6・2c-7、F8、F10、A6 の 2g 単位、Unsupported_Kd 25個」はR7の出口条件に含めて、きちんと解決してください。」): A5-F7's 2c-6 and 2c-7, A5-F8 with the
+   Complete Polonius A5 plan's U8s, A5-F10, A6's 2g units with G105, the 25 `Unsupported_Kd` producers without a removal stage, and the row's other
+   open items; an exception only as the owner names it per task (the 90% rule is abolished).
 
 ### 10.2 R8
 
@@ -1085,3 +1089,4 @@ frozen.
 | 99 | 2026-11-19 | R7-O1's design Revision 0 (the Middle; `middle\notes\r7-o1-design.md`) and its planning question Q-O1-1, agreed by the Front (board 15:45 M, 15:45 F) | §5.1's O1 row and stream O: H11b's remainder (R4-M108's per-position list: the twin records, the fit-failure gate, the row's Site) becomes O1's phases H1-H2, the Middle implementing, the Front reviewing every Binding hunk, since H11b's three sites are O1's H1, H2 and c under O1's one rule (two units would fix one cause twice) and H11b's 11-05 design has no session; H11b-0 (B0, B1) is on dev and stays the rule O1 keeps. The Front's conditions: the restored records carry R7-E1's Problem facts with no suppression beyond AGENTS' dependency; each phase that moves records or acceptance names its moves against dev (Q13) and runs the whole suite; `H11b-design.md`'s rows that still apply become O1's (named in Revision 1). O1's row corrected by the census on dev 713fac946: `LocalRegions` stays (A5's oracle, OJ3, OJ5's Closure results, retention and SPEC 16.3.1 read it); Begin/Keep/End went in R2a U11b (680f69df5), only `originStateVersion` is left; size about −700/+300, not −2,500. O1's phases (Q12): P0, d, b1a, b1b, H1, H2, c, e, f; b, d and e start first. The owner's 11-19 hand-over already gave O1 to the Middle. Nothing frozen. |
 | 100 | 2026-11-19 | R7-C2e2 e2-3a and e2-3b-cached's landing (the Front's Q-518, W-276; DECISIONS R7-M46, R7-M47; the owner's O-427 (c)) | §5.0's C2 row, e2's entry: e2-3 becomes e2-3a (a published read's Completion, W6 the meet of its sources, the rows by the walk's Completion in `Closure(view)`, every kept table per publication; c2-2's depth asymmetry closed) and e2-3b-cached (Completion on `Evidence` and the judgments' answers through the evidence image, with e2-5a's four temporaries removed before e2-5b); e2-3b's inferred half is PLAN G1001's unit. Nothing frozen. |
 | 101 | 2026-11-19 | R7-N5 commit 0 + B4 and B5b (the Back's Q-540, Q-541; D-860, D-861) | §5.1's N5 row: after B4 (six families to pass columns, the recorder's fact store, D-840's fix) the ratchet counts 70, after B5b (`effectBoundRejections`, `callablePremiseFailures`, `TyCtxt.copies` keyed by the declaration's symbol) 67; PLAN G1077 closed by B4; G1078 (`originInferences`) stays open. Nothing frozen. |
+| 102 | 2026-11-19 | The owner's two orders in K's dialog (DECISIONS Q22; verbatim 「あと、「90% ルール」は撤廃します。」 and 「G396 の残りの項目、「F7 の 2c-6・2c-7、F8、F10、A6 の 2g 単位、Unsupported_Kd 25個」はR7の出口条件に含めて、きちんと解決してください。」) | §10.1 gains item 6: G396's remaining items (§5.4), as PLAN G396's row lists them, are resolved before R7 exits; an exception only as the owner names it per task, never by a percentage. §5.4's G396 line notes they are R7 exit conditions since 2026-11-19. Nothing frozen. |
