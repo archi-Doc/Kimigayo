@@ -4,7 +4,7 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes, a body's identity premises (the compilation's TyCtxt.Premised, read through Premised), Binding's Copy and
-// Sealed proofs and the root Type statements the operator domain composes (ArithmeticContracts.Supports, ComparisonTypes.OperatorCompares,
+// Sealed proofs and the Type statements the operator domain composes (ArithmeticContracts.Supports, TyCtxt.OperatorCompares,
 // ReferenceTypes.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
 // (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
 // operator-domain facts (Operates, the operator table's domain, which the Backend's operator columns read too), and the pairing of the
@@ -171,7 +171,7 @@ internal static partial class MirTypes
     /// MIR's operator over the root statements. + - * / % and unary - where the operator's arithmetic Contract has a built-in witness
     /// (ArithmeticContracts.Supports, SPEC 13.3.3, by ArithmeticOperations), + and - a raw pointer too (its displacement, SPEC 5.3); &amp; | ^
     /// and a shift's left operand an integer or wrapping integer Type (SPEC 13.3.1); not bool; a comparison a Type the operator table
-    /// compares (ComparisonTypes.OperatorCompares). An abstract Type's on Binding's proof of its instance, which MIR trusts by the shape:
+    /// compares (TyCtxt.OperatorCompares). An abstract Type's on Binding's proof of its instance, which MIR trusts by the shape:
     /// a PrimitiveInteger T's or Wrapping over one's every binary operator (SPEC 13.3.3, 3.5.3), Wrapping over one's negation (SPEC 3.1.1); a
     /// T's negation is a requirement call and no T is bool by proof, so neither stands there. Any other operator is a broken contract.</summary>
     /// <param name="kind">The rvalue's kind, BinaryOp or UnaryOp.</param>
@@ -190,8 +190,8 @@ internal static partial class MirTypes
             MirBinaryOp.Add or MirBinaryOp.Sub => Conforms(kind, op, type) || ReferenceTypes.IsPointer(type),
             MirBinaryOp.Mul or MirBinaryOp.Div or MirBinaryOp.Rem => Conforms(kind, op, type),
             var bitwise when IsBitwiseOrShift(bitwise) => type.HasIntegerArithmetic,
-            MirBinaryOp.Eq or MirBinaryOp.Ne => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Equatable),
-            MirBinaryOp.Lt or MirBinaryOp.Le or MirBinaryOp.Gt or MirBinaryOp.Ge => ComparisonTypes.OperatorCompares(type, KimiDeclarationId.Comparable),
+            MirBinaryOp.Eq or MirBinaryOp.Ne => TyCtxt.OperatorCompares(type, KimiDeclarationId.Equatable),
+            MirBinaryOp.Lt or MirBinaryOp.Le or MirBinaryOp.Gt or MirBinaryOp.Ge => TyCtxt.OperatorCompares(type, KimiDeclarationId.Comparable),
             _ => false,
         };
 

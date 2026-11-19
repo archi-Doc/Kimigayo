@@ -113,9 +113,9 @@ public sealed partial class Binding
         return PairBinder.CaseProduct(binders);
     }
 
-    private void ReportCaseLimit(Koto definition, DiagnosticRequirement requirement)
+    private void ReportCaseLimit(Koto definition, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
         var span = definition is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : definition.Span;
-        definition.Report(requirement, DiagnosticCode.OwnershipCaseLimit_Kd, this.CaseCount(definition), (long)PairBinder.CaseBound, span: span);
+        definition.ReportIn(store, requirement, DiagnosticCode.OwnershipCaseLimit_Kd, this.CaseCount(definition), (long)PairBinder.CaseBound, span: span);
     }
 }

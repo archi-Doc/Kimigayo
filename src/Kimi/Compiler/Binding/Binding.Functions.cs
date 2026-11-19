@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The binding of a function definition: its header (BindHeader's function part, also bound lazily from a use), its signature, then its
-// parts (defaults, base initializer, body).
+// parts (defaults, base initializer, body); and InLaterDefault, the rule that a parameter read in the default of a later parameter of its
+// function names the slot its call prepared (SPEC 7.2.3), read by the capture diagnostics and the HIR tables (HirRes.PreparedParam).
 
 using Kimi.Compiler.Parsing;
 
@@ -9,6 +10,49 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    /// <summary>Gets whether a node lies in the default of a later parameter of the function that declares a parameter, so that
+    /// the parameter names the slot its call prepared, which the default can neither move nor keep a borrow of (SPEC 7.2.3).</summary>
+    /// <param name="node">The node, such as a closure.</param>
+    /// <param name="symbol">The parameter it reads.</param>
+    /// <returns>Whether the node is in a later default of the parameter's function; never for a constructor's or destructor's receiver,
+    /// whose slot is no parameter index (Binding.ReceiverSlot).</returns>
+    internal static bool InLaterDefault(Koto node, BindingSymbol symbol) => InLaterDefault(node, symbol, out _);
+
+    /// <summary>Gets the same, with the parents walked, a scaling check's work measure.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="symbol">The parameter it reads.</param>
+    /// <param name="walked">The parents the answer read: the node's depth below the parameter's function, bounded by IMPL A.4's L.</param>
+    /// <returns>Whether the node is in a later default of the parameter's function.</returns>
+    internal static bool InLaterDefault(Koto node, BindingSymbol symbol, out int walked)
+    {
+        walked = 0;
+        if (symbol.Kind != BindingSymbolKind.Parameter || symbol.Scope.Owner is not FunctionKoto declaration ||
+            (uint)symbol.Slot >= (uint)declaration.Parameters.Count)
+        {
+            return false;
+        }
+
+        Koto child = node;
+        for (var parent = node.Parent; parent is not null; child = parent, parent = parent.Parent)
+        {
+            walked++;
+            if (ReferenceEquals(parent, declaration))
+            {
+                for (var i = symbol.Slot + 1; i < declaration.Parameters.Count; i++)
+                {
+                    if (ReferenceEquals(declaration.Parameters[i].DefaultValue, child))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     private static bool HasParameterDefaults(FunctionKoto function)
     {
         for (var i = 0; i < function.Parameters.Count; i++)

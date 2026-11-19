@@ -74,16 +74,19 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(node, invalidTarget);
             }
-            else if (node is InvocationKoto synthesized && this.CallOf(synthesized) is not null &&
-                this.synthesizedCalls?.GetValueOrDefault(synthesized) is { BindingFailure: not BindingFailure.None } consumer)
-            {
-                // SPEC 23.1.2: a synthesized call is its consumer's witness call (an iteration's entry or step, an index, a view, a range, a
-                // requirement, a write); a consumer that has already failed leaves the call resting on it.
-                this.CompleteDependent(synthesized, consumer);
-            }
             else if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call)
             {
-                this.RequireClauses(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
+                // A call's verdict at its use (VerdictUse); a synthesized call rests on its failed consumer, failed before or by this verdict.
+                var consumer = this.synthesizedCalls?.GetValueOrDefault(invocation);
+                if (consumer is not { BindingFailure: not BindingFailure.None })
+                {
+                    this.RequireClauses(this.VerdictUse(node), this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
+                }
+
+                if (consumer is { BindingFailure: not BindingFailure.None })
+                {
+                    this.CompleteDependent(node, consumer);
+                }
             }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
@@ -113,14 +116,29 @@ public sealed partial class Binding
     }
 
     // SPEC 10.1, 23.1.2 (DECISIONS: G572 U2a): a call Binding synthesizes for a consumer (an iteration's entry and step, an
-    // index, a view, a range, an operator's or a comparison's requirement, a formatting write, an object creation) is bound into `nodes`,
-    // so the Final loop judges its obligation, and with its consumer, which rests on it when that loop fails it (SettleSynthesizedCalls):
-    // no Resolved node stands over a failed call.
+    // index, a view, a range, an operator's or a comparison's requirement, a formatting write, an object creation, a Property use's
+    // accessor call) is bound into `nodes`, so the Final loop judges its obligation, recorded at its consumer as an invocation's verdict
+    // at the invocation, and a consumer rests on a call failed before that loop, by its selection (SettleSynthesizedCalls): no Resolved
+    // node stands over a failed call.
     private BoundType? BindSynthesizedCall(Koto consumer, InvocationKoto call, BindingScope scope)
+    {
+        this.AddSynthesizedCall(consumer, call);
+        return this.BindCall(call, scope, null);
+    }
+
+    // SPEC 23.1.2, 11.3 (PLAN G214): the node a call's verdict (its Type's formation, its step five) is recorded at, failed with its
+    // Type: an invocation's (or a call its own selection failed) is itself, a synthesized call's its consumer, whose witness call it is
+    // (an iteration's entry or step, an index, a view, a range, a requirement, a write, a Property use's accessor call), at its span.
+    private Koto VerdictUse(Koto node)
+        => node.BindingFailure == BindingFailure.None && node is InvocationKoto call && this.synthesizedCalls?.GetValueOrDefault(call) is { } consumer
+            ? consumer : node;
+
+    // A synthesized call joins `nodes` with its consumer; an accessor call is bound by BindPropertyCall to the accessor's execution view
+    // (SPEC 11.3: a read or write is a call of that function), the others by BindCall.
+    private void AddSynthesizedCall(Koto consumer, InvocationKoto call)
     {
         this.nodes.Add(call);
         (this.synthesizedCalls ??= new(ReferenceEqualityComparer.Instance))[call] = consumer;
-        return this.BindCall(call, scope, null);
     }
 
     private void SettleSynthesizedCalls()

@@ -70,14 +70,15 @@ public sealed partial class Binding
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
 
-    private bool ReportCallablePremiseFailure(Koto use, Kimi.Diagnostics.DiagnosticRequirement diagnostic)
+    private bool ReportCallablePremiseFailure(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, Kimi.Diagnostics.DiagnosticRequirement diagnostic)
     {
         if (!this.callablePremiseFailures.TryGetValue(use, out var failure))
         {
             return false;
         }
 
-        use.Report(
+        use.ReportIn(
+            store,
             diagnostic,
             DiagnosticCode.IncompatibleContractImplementation_Kd,
             evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {failure.Requirement.Name} " +
