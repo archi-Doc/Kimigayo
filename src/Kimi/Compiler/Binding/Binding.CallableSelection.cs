@@ -233,7 +233,7 @@ public sealed partial class Binding
             for (var i = rests ? -1 : canonical.Part; i >= 0 && (i < count || i == canonical.Part); i++)
             {
                 var (fails, waiting, type) = i == canonical.Part && canonical.Same ? (true, canonical.Waiting, canonical.Type)
-                    : this.JudgeSplitPart((call, scope, item, expected, parts, i));
+                    : this.JudgeSplitPart((call, scope, item, expected, parts, i), static (binding, c) => binding.ItemPartFails(c.call, c.scope, c.item, c.expected, c.parts, c.i));
                 (own, found) = (own || (fails && waiting is null), found || fails);
                 if (fails && i < count)
                 {
@@ -302,17 +302,15 @@ public sealed partial class Binding
         }
     }
 
-    // G812 ruling 132: whether one part of a value call's split check (an argument, or the result after them) fails in every case of
-    // the bindings it reads, by its own search, and the waiting part it fails at with the canonical case's Type where every failing
-    // run failed there (none: a misfit, or a failure that moves between its waiting parts by case: the call's own record).
-    private (bool Fails, Koto? Waiting, BoundType? Type) JudgeSplitPart((InvocationKoto Call, BindingScope Scope, BoundType Item, BoundType? Expected, int Parts, int Part) check)
+    // G812 rulings 132, 156: whether one part of a split call's check (a value call's argument or its result after them, a named call's
+    // argument) fails in every case of the bindings it reads, by its own search (`fails`, one run's judgment of the part), and the
+    // waiting part it fails at with the canonical case's Type where every failing run failed there (none: a misfit, or a failure that
+    // moves between its waiting parts by case: the call's own record).
+    private (bool Fails, Koto? Waiting, BoundType? Type) JudgeSplitPart<TState>(TState check, Func<Binding, TState, bool> fails)
     {
         this.splitFailure = null;
-        var fails = !this.RestsOnSplitCases(
-            this.unformedWrites,
-            check,
-            static (binding, check) => binding.FoldRunFailure(binding.ItemPartFails(check.Call, check.Scope, check.Item, check.Expected, check.Parts, check.Part)));
-        return fails && this.splitFailure is { Same: true } failure ? (true, failure.Waiting, failure.Type) : (fails, null, null);
+        var failed = !this.RestsOnSplitCases(this.unformedWrites, (check, fails), static (binding, s) => binding.FoldRunFailure(s.fails(binding, s.check)));
+        return failed && this.splitFailure is { Same: true } failure ? (true, failure.Waiting, failure.Type) : (failed, null, null);
     }
 
     // G812 rulings 126, 130, 132: a failing run's failure (runFailure) folded into its search's: the first run's is kept, the canonical
@@ -367,9 +365,8 @@ public sealed partial class Binding
     // failure is the run's (runFailure).
     private bool ItemPartFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected, int parts, int i)
     {
-        this.EnterSplitPart();
-        var (stamp, mark, function) = (this.splitReads, this.unformedWrites, (FunctionKoto)item.Symbol!.Declaration);
-        this.runWaiting = default;
+        this.EnterRunPart();
+        var function = (FunctionKoto)item.Symbol!.Declaration;
         bool fails;
         if (i == call.ArgumentNodes.Count)
         {
@@ -382,19 +379,54 @@ public sealed partial class Binding
         }
         else
         {
-            var declared = function.Parameters[i].Type.BoundType;
-            var parameter = this.ItemPart(declared, item, function, scope);
-            fails = parameter is not null &&
-                (this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable || this.WaitingPartFails(scope));
-            this.splitParts[parts + i] = this.splitParts[parts + i] with { Parameter = parameter, Split = this.ReadSplitSince(stamp, mark) };
-            if (fails && this.argumentMisfit.Names(declared!, out var element))
-            {
-                this.EnterSplitPart();
-                _ = this.ItemPart(element, item, function, scope);
-            }
+            fails = this.ArgumentPartFails(
+                call.ArgumentNodes[i],
+                function.Parameters[i].Type.BoundType,
+                (item, function, scope),
+                static (binding, s, type) => binding.ItemPart(type, s.item, s.function, s.scope),
+                scope,
+                call,
+                out var parameter,
+                out var split);
+            this.splitParts[parts + i] = this.splitParts[parts + i] with { Parameter = parameter, Split = split };
         }
 
-        this.runFailure = fails ? (i, this.runWaiting.Part, this.runWaiting.Type) : this.runFailure;
+        return this.EndRunPart(i, fails);
+    }
+
+    // DECISIONS D3 (G812 rulings 132, 156): a run's judgment of one part of a split call's check starts (a part of its own,
+    // EnterSplitPart, with no waiting part failed yet) and ends: a failure is the run's, with the waiting part it failed at (runFailure).
+    private void EnterRunPart()
+    {
+        this.EnterSplitPart();
+        this.runWaiting = default;
+    }
+
+    private bool EndRunPart(int part, bool fails)
+    {
+        this.runFailure = fails ? (part, this.runWaiting.Part, this.runWaiting.Type) : this.runFailure;
+        return fails;
+    }
+
+    // SPEC 10.5.1, 23.1.2 (G812 rulings 109, 111, 122, 123, 156): in a run, whether an argument fails at the parameter `form` gives its
+    // declared Type (`parameter`; none: it fails nothing), with whether that formation read a split layer (`split`): by its fit, or at
+    // a part awaiting its call that the fit met (WaitingPartFails). A failing component the fit names (argumentMisfit) is formed again on
+    // its own as the failing part, so the run blames the bindings its layers read. A value call's part forms at its Item (ItemPart), a
+    // named call's at the canonical run's candidate (FailUnformedCall).
+    private bool ArgumentPartFails<TState>(
+        Koto argument, BoundType? declared, TState state, Func<Binding, TState, BoundType, BoundType?> form, BindingScope scope, Koto use, out BoundType? parameter, out bool split)
+    {
+        var (stamp, mark) = (this.splitReads, this.unformedWrites);
+        parameter = declared is null ? null : form(this, state, declared);
+        var fails = parameter is not null &&
+            (this.FitArgument(argument, parameter, scope, use, out _) == CandidateApplicability.Inapplicable || this.WaitingPartFails(scope));
+        split = this.ReadSplitSince(stamp, mark);
+        if (fails && this.argumentMisfit.Names(declared!, out var element))
+        {
+            this.EnterSplitPart(); // A shape's failure names no member: the part forms nothing, so the run blames none (ruling 116).
+            _ = element is null ? null : form(this, state, element);
+        }
+
         return fails;
     }
 
