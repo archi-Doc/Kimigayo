@@ -22748,7 +22748,18 @@ R8-M* and R9-M* by the stage of the recording unit.
       caller census at landing instead of the type (a reading, not a guarantee).
     - **Cost:** Bind time unchanged within the measurement, warm Bind 0 B, cold first Bind -560 B to +376 B: the judgments move from
       one pooled array of at least 16 per renting trial depth to one of max(capacity, 4) per pooled frame. Scaling: no new walk.
-  - Commits 2a, 2b0, 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
+  - **Commit 2a: the Origin consumers take spans** (restructuring, behaviour unchanged; `cf6c40264`). A solve's Origin and input
+    Origin slots have one representation in every consumer, a span (`Span<BoundOrigin>`), as the substitution core already took them
+    (`SubstitutionOf`, `SubstituteStoredOrigins`, `SlotImage`, `SubstituteClauseOrigin`): `SlotSolution.Origins` and `Inputs`, and the
+    nine consumers `MatchResultOrigins`, `MatchInputOrigins`, `MatchInputOrigin`, `CallType`, `SolveCallOriginInference`,
+    `SolveOriginInference`, `SolveOriginInferenceInSession`, `JudgeCallClauses`, `FailUnboundSlots` (no other callee takes the
+    arrays). A local function cannot capture a span, so the solve's eight local functions that reach `Get`/`Set` and
+    `MatchResultOrigins`' `Match` take the two spans as parameters; a solve that rents its own arrays (a Case construction, a property
+    call, a callable-contract comparison, a value call) passes them by the implicit conversion. It prepares commit 2b's strided
+    columns (D2-1 option (i): a candidate's Origins are a slice of one `count x stride` array). **Rejected** (D2-1): one array per
+    candidate (option (ii)), which keeps the consumers' two forms and adds a column of arrays. **Cost:** cold, warm (0 B) and retained
+    Bind bytes unchanged (Calls32/512, Hello, Milestone26, OriginOverloads32/512); time is the landing window's RP8 slot.
+  - Commits 2b0, 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
 - **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
   and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
   dev 5dd6543e6, `middle\notes\g396-plan.md` and `front\notes\G147\census.md`). Under Q22, supersedes R4-M165's X-2 line ("the 25
