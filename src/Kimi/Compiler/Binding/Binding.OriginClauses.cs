@@ -91,17 +91,6 @@ public sealed partial class Binding
         this.JudgeDeclarationRows();
     }
 
-    // SPEC 15.3.2, 15.3.4, 15.6.1, 15.6.5 (DECISIONS BU-26, BU-62): the one judge of a declaration's rows, the Origin relations Binding
-    // formed with no executable body (a Field's, payload's or base's declared Type, a signature's well-formedness, a clause's unrepresentable
-    // end), which consumes each in every pass. A row each call discharges (CallBorrows) is left to the calls, and one the published
-    // premises at its use entail is its declaration's premise, not an obligation (CollectDeclarationRows). Every other row goes to R4-M118's
-    // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (each failing operand of a meet its own
-    // record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its
-    // Unbound atom rests on (UnboundCause). The rule judges from the premises at the use, a failed clause's declaration's included (its
-    // bound clauses; H11b-0 B1). It judges in its own frame (ExecutableBody.Declarations; DECISIONS BU-89), where an enclosing body's
-    // Origin a declaration names is fixed (SPEC 15.3.4); a judgment made while a header is bound keeps the forming body's classes and
-    // leaves such a relation to this judge as a row. A row whose ends are not declaration atoms (R4-M101 E2) stays, a broken contract
-    // the view throws at (DECISIONS BU-102).
     // SPEC 15.3.3, 15.6.5 (OJ1): the declaration judge's position, `longer outlives shorter` (`==` when `equality`) at `at` in the
     // declaration frame: a meet at the longer end decomposes, each failing operand its own record (SPEC 15.3.6); a premise-proven
     // relation holds; a body chain is an obligation; a Refuted or Unknown one is the Origin relation record PublishCallRelations
@@ -152,6 +141,17 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.3.2, 15.3.4, 15.6.1, 15.6.5 (DECISIONS BU-26, BU-62): the one judge of a declaration's rows, the Origin relations Binding
+    // formed with no executable body (a Field's, payload's or base's declared Type, a signature's well-formedness, a clause's unrepresentable
+    // end), which consumes each in every pass. A row each call discharges (CallBorrows) is left to the calls, and one the published
+    // premises at its use entail is its declaration's premise, not an obligation (CollectDeclarationRows). Every other row goes to R4-M118's
+    // rule: a fixed-fixed one, the rule's Fixed -> Fixed edge, is judged by the position judge (JudgeDeclarationPosition; each failing
+    // operand of a meet its own record), and one with an Unbound end is never judged itself, only the chains through it (JudgeChains), and rests on the part its
+    // Unbound atom rests on (UnboundCause). The rule judges from the premises at the use, a failed clause's declaration's included (its
+    // bound clauses; H11b-0 B1). It judges in its own frame (ExecutableBody.Declarations; DECISIONS BU-89), where an enclosing body's
+    // Origin a declaration names is fixed (SPEC 15.3.4); a judgment made while a header is bound keeps the forming body's classes and
+    // leaves such a relation to this judge as a row. A row whose ends are not declaration atoms (R4-M101 E2) stays, a broken contract
+    // the view throws at (DECISIONS BU-102).
     private void JudgeDeclarationRows()
     {
         this.callRelationScratch.Clear();
