@@ -80,6 +80,12 @@ public class PathCapabilityDiagnosticTest
     // A struct Bc with a uniq/Self method (D-827).
     private const string Bump = "struct Bc\n    public var v: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.v += 1\n";
 
+    // Through a pair layer's owner case (D-827): implicit selections of a temporary's part, whole borrows and receivers of the temporary.
+    private const string FollowWhole = Bump + "func pass<s/T>(x: s/T) -> s/T\n    s is owner or uniq\n    return x@move\nfunc mut(r: uniq/Tw) => r.v = 2\n" +
+        "func see(r: ref/Tw) -> i32 => r.v\nfunc f<s/T>(x: s/T, a: s/Tw, b: s/Tw, c: s/Tw, d: s/Tw, e: s/Tw, m: s/Bc, n: s/Bc)\n    s is owner or uniq\n" +
+        "    a@move.v = 1\n    pass(b@move).v = 1\n    _ = look(c@move.v@ref)\n    mut(d@move@follow@uniq)\n    _ = see(e@move@follow@ref)\n    m@move@follow.bump()\n" +
+        "    n@move.bump()\nfunc g() => f(1, tw(), tw(), tw(), tw(), tw(), Bc.init(), Bc.init())\n";
+
     // Enums Color and Shape (a payload of Color) and functions borrowing them or an Option<i32>, shared or exclusively.
     private const string Cases = "enum Color\n    Red\n    Blue\nenum Shape\n    Dot(Color)\n    Box(i32, Color)\n" +
         "func lookc(x: ref/Color) -> i32 => 1\nfunc looks(x: ref/Shape) -> i32 => 2\nfunc lo(x: ref/Option<i32>) -> i32 => 3\n" +
@@ -504,9 +510,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("receiver", Bump + "struct Bh\n    public var h: obj/Bc = Kimi.Intrinsics.makeObj(Bc.init())\n    public var c: Bc = Bc.init()\n    public init() => ()\nfunc bh() -> Bh => Bh.init()\nfunc f()\n    bh().c.bump()\n    bh().h.bump()\n")]
     [InlineData("referent", "func f()\n    tw()@uniq@follow = Tw.init()\n    tw()@uniq@follow.v = 1\n")]
     [InlineData("follow", "func f<s/T>(x: s/T, a: s/Tw, b: s/Tw, c: s/Tw, d: s/Tw)\n    s is owner or uniq\n    a@move@follow.v = 1\n    take(b@move@follow.v@uniq)\n    _ = look(c@move@follow.v@ref)\n    d@move.v += 1\nfunc g() => f(1, tw(), tw(), tw(), tw())\n")]
-    [InlineData("follow_whole", Bump + "func pass<s/T>(x: s/T) -> s/T\n    s is owner or uniq\n    return x@move\nfunc mut(r: uniq/Tw) => r.v = 2\nfunc see(r: ref/Tw) -> i32 => r.v\n" +
-        "func f<s/T>(x: s/T, a: s/Tw, b: s/Tw, c: s/Tw, d: s/Tw, e: s/Tw, m: s/Bc, n: s/Bc)\n    s is owner or uniq\n    a@move.v = 1\n    pass(b@move).v = 1\n    _ = look(c@move.v@ref)\n" +
-        "    mut(d@move@follow@uniq)\n    _ = see(e@move@follow@ref)\n    m@move@follow.bump()\n    n@move.bump()\nfunc g() => f(1, tw(), tw(), tw(), tw(), tw(), Bc.init(), Bc.init())\n")]
+    [InlineData("follow_whole", FollowWhole)]
     public void APartOfATemporaryIsWritable(string form, string body)
     {
         var source = Take + Made + Temps + body + "public func main() => ()\n";
