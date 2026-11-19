@@ -201,9 +201,11 @@ public sealed partial class Binding
         // SPEC 10.2.2 item 2, 10.8.1, 12.3.1 (PLAN G924): at an expected `ref/U` a returned value that is no borrow value (OwnerResult)
         // is the owner temporary of U, so the expected result is U (ExpectedTypeOf), which inverts nothing; a returned `ref/T` is
         // matched against `ref/U`. A bare slot is what its evidence bound it to, and while unbound a returned value, which U then fills.
+        // The result's declared outer Semantics decides (SPEC 10.3 step 2): a declared `s/T` is a Semantics parameter's, matched against
+        // `ref/U` by structure (`T = U`, `s = ref`) whatever binder its sources fix.
         var referent = this.ExpectedTypeOf(expected);
         var resultExpected = !ReferenceEquals(referent, expected) &&
-            OwnerResult(returnPattern.Kind == BoundTypeKind.Parameter ? solution.Type(returnPattern) ?? returnPattern : returnPattern) ? referent : expected;
+            OwnerResult(returnPattern is { Kind: BoundTypeKind.Parameter, IsPairLayer: false } ? solution.Type(returnPattern) ?? returnPattern : returnPattern) ? referent : expected;
         var owner = CallSlotOwner(function);
         bool structure;
         bool open;
