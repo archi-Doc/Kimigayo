@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class LocalRegionInferenceTest(ITestOutputHelper output)
+public partial class LocalRegionInferenceTest(ITestOutputHelper output)
 {
     // A stored function's input makes `s` contravariant.
     private const string Callback = "struct C {s}\n    public let call: (ref/i32 during s) -> i32\n    public init(call: (ref/i32 during s) -> i32) => self.call = call@move\n\n";

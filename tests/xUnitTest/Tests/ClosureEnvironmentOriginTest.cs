@@ -331,18 +331,20 @@ public class ClosureEnvironmentOriginTest
     // operand), with the borrow as the longer end and the closure's call result as the shorter, related at the Borrow and at the header.
     // The Closure keeps its Type and its calls bind (DECISIONS R4-M152, R4-M126 P8; OQ-F7-2 (a)): an indented body's record was at the
     // Closure, which failed with a `Never` result, NotCallable_Kd or UnresolvedBinding_Kd at its calls and two MIR validator findings.
-    // Each row: the published records by code and text, then Binding's (the one related at the header) at `text`. Since the MIR decides
-    // (R6-check H5; H3b T50, class 4), A5's twin of Binding's record stands beside it until R7 (H0b §5.4, R4-M108), at the returned value
-    // or at its `return`, and the Consuming row also publishes A5's MovedPlace_Kd at its `return`.
+    // Each row: the published records by code and text, then the one related at the header at `text`: A5's record of the returned
+    // value's row, the only record since R7-O1 H (Binding judges no body relation; it was Binding's beside A5's twin at the value or at
+    // its `return`). The Consuming row's MovedPlace_Kd at its `return` is gone: SPEC 7.7.2 makes each environment binding a local of the
+    // call, so moving `other` out leaves `text` initialized; the record was false, read through the opaque node (Q13, a false record
+    // removed).
     [Theory]
     [InlineData(
         "func keep(s: string, r: ref/string) -> ref/string during r => r\n" + Main + "    let a = \"x\"\n    let b = \"y\"\n    let take = func [a@move, b@move] () => keep(a@move, b@ref)\n",
-        Unsatisfied + " keep(a@move, b@ref); " + Unsatisfied + " keep(a@move, b@ref)",
+        Unsatisfied + " keep(a@move, b@ref)",
         "keep(a@move, b@ref)",
         "b@ref")]
     [InlineData(
         "func keep(s: string, r: ref/i32) -> ref/i32 during r => r\n" + Main + "    let a = \"x\"\n    let n = 7\n    let take = func [a@move, n] () => keep(a@move, n@ref)\n",
-        Unsatisfied + " keep(a@move, n@ref); " + Unsatisfied + " keep(a@move, n@ref)",
+        Unsatisfied + " keep(a@move, n@ref)",
         "keep(a@move, n@ref)",
         "n@ref")]
     [InlineData(
@@ -350,17 +352,17 @@ public class ClosureEnvironmentOriginTest
         Unsatisfied + " (s@move, n@ref); " + Unsatisfied + " (s@move, n@ref)",
         "(s@move, n@ref)",
         "n@ref")]
-    [InlineData(Main + "    let f = func (x: i32) => x@ref\n    let r = f(1)\n", Unsatisfied + " x@ref; " + Unsatisfied + " x@ref", "x@ref", "x@ref")]
-    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", Unsatisfied + " return x@ref; " + Unsatisfied + " x@ref", "x@ref", "x@ref")]
+    [InlineData(Main + "    let f = func (x: i32) => x@ref\n    let r = f(1)\n", Unsatisfied + " x@ref", "x@ref", "x@ref")]
+    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", Unsatisfied + " x@ref", "x@ref", "x@ref")]
     [InlineData(
         Inspect + Main + "    let c = func ()\n        let l: i32 = 1\n        return l@ref\n    inspect(c())\n",
-        Unsatisfied + " return l@ref; " + Unsatisfied + " l@ref",
+        Unsatisfied + " l@ref",
         "l@ref",
         "l@ref")]
     [InlineData(
         Consume + "func inspectText(value: ref/string) => ()\n" + Main + "    let text = \"a\"\n    let other = \"b\"\n" +
             "    let c = func [text@move, other@move] ()\n        consumeText(other@move)\n        return text@ref\n    inspectText(c@move())\n",
-        "MovedPlace_Kd return text@ref; " + Unsatisfied + " return text@ref; " + Unsatisfied + " text@ref",
+        Unsatisfied + " text@ref",
         "text@ref",
         "text@ref")]
     public void AResultOverCallLocalStorageIsRefuted(string source, string records, string text, string borrow)
@@ -376,34 +378,38 @@ public class ClosureEnvironmentOriginTest
         string Text(SourceSpan? span) => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;
     }
 
-    // On the MIR the same record is one (DECISIONS R4-M152): the returned value's twin row, whose Refuted relation W derives the storage
-    // end's Loan conflict from (R4-M132), and no validator finding. The MIR had the conflict beside the Closure's record (t7d, e3) or two
-    // validator findings (an indented body).
+    // On the MIR the same record is one (DECISIONS R4-M152): the returned value's row, A5's only record since R7-O1 H, and no validator
+    // finding. The returned value is no longer an opaque node, so its Loan is built and the end of the call-local storage it borrows is a
+    // Loan conflict that rule W derives from the Refuted relation (SPEC 15.6.5's comment; R4-M132): the MIR side lists it (`end`, none
+    // for a parameter's storage) and the published records stay one. The MIR had the conflict beside the Closure's record (t7d, e3) or
+    // two validator findings (an indented body).
     [Theory]
-    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", "return x@ref")]
-    [InlineData(Inspect + Main + "    let c = func ()\n        let l: i32 = 1\n        return l@ref\n    inspect(c())\n", "return l@ref")]
-    [InlineData(Inspect + Main + "    let n: i32 = 4\n    let c = func [n] () => (1 + n)@ref\n    inspect(c())\n", "(1 + n)@ref")]
-    [InlineData(Main + "    let f = func (x: i32)\n        let y = x\n        return y@ref\n", "return y@ref")]
-    public void AResultOverCallLocalStorageIsOneRecordOnTheMir(string source, string text)
+    [InlineData(Main + "    let f = func (x: i32)\n        return x@ref\n    let r = f(1)\n", "x@ref", null)]
+    [InlineData(Inspect + Main + "    let c = func ()\n        let l: i32 = 1\n        return l@ref\n    inspect(c())\n", "l@ref", "let l: i32 = 1")]
+    [InlineData(Inspect + Main + "    let n: i32 = 4\n    let c = func [n] () => (1 + n)@ref\n    inspect(c())\n", "(1 + n)@ref", "(1 + n)")]
+    [InlineData(Main + "    let f = func (x: i32)\n        let y = x\n        return y@ref\n", "y@ref", "let y = x")]
+    public void AResultOverCallLocalStorageIsOneRecordOnTheMir(string source, string text, string? end)
     {
         var c = MirBuildTest.Compile(source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        var error = Assert.Single(MirTargetSide.MirSide(c), static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error);
-        Assert.Equal((DiagnosticCode.UnsatisfiedOriginRelation_Kd, text), (error.Code, error.Node.ToString()!.Split('\n')[0].Trim()));
+        var errors = MirTargetSide.MirSide(c).Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == DiagnosticSeverity.Error)
+            .Select(static x => (x.Code, x.Node.ToString()!.Split('\n')[0].Trim())).ToArray();
+        Assert.Equal(end is null ? [(DiagnosticCode.UnsatisfiedOriginRelation_Kd, text)] : [(DiagnosticCode.UnsatisfiedOriginRelation_Kd, text), (DiagnosticCode.ComparisonLoanConflict_Kd, end)], errors);
+        Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     // DECISIONS R4-M126 P8, R4-M152: each published position is the meet of its admissible sources, so where one returned value is a
     // Borrow of an environment binding (ρ under the Shared receiver) and another a body local's, the position is ρ and only the local's
-    // Borrow is Refuted, at its returned value; the call carries the receiver's Origin. Since the MIR decides (R6-check H5; H3b T50,
-    // class 4), A5's twin of Binding's record stands at its `return` until R7 (H0b §5.4, R4-M108).
+    // Borrow is Refuted, at its returned value; the call carries the receiver's Origin. A5's record of that value's row is the one record
+    // (R7-O1 H: it was Binding's beside A5's twin at the `return`).
     [Fact]
     public void ACallLocalSourceBesideAnAdmissibleOneIsRefutedAgainstIt()
     {
         var source = Inspect + Main + "    let n: i32 = 4\n    let c = func [n] (flag: bool)\n        if flag\n            return n@ref\n        let l: i32 = 1\n" +
             "        return l@ref\n    inspect(c(true))\n";
         Assert.Equal(
-            $"{Unsatisfied} return l@ref; {Unsatisfied} l@ref",
+            $"{Unsatisfied} l@ref",
             string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
     }
 
@@ -665,8 +671,9 @@ public class ClosureEnvironmentOriginTest
     // by identity with the atom the failing check recorded before resolution: of two environment Borrows the one the failing position
     // reads (a Tuple's element, a call's result `during y`); an implicit Borrow argument, shown by its text (directly, through a local,
     // stored, beside a body-local argument); a region's later assignment, its store and a meet's operand; and none when a moved capture's
-    // Reborrow supplies ρ (G6's store beside an unrelated Borrow argument). A fit's record names the fit's whole destination. Each is
-    // its function's one record, also beside an unrelated Binding error (SPEC 23.1.2).
+    // Reborrow supplies ρ (G6's store beside an unrelated Borrow argument). A fit's record names the failing position's Type as its
+    // destination, as every A5 row does (R7-O1 H, the Middle's F-H-7 (a); Binding's pending record named the fit's whole destination).
+    // Each is its function's one record, also beside an unrelated Binding error (SPEC 23.1.2).
     [Theory]
     [InlineData(TwoEnv + "    let c = func [n, m] () -> ref/i32 during p\n        let t = (n@ref, m@ref)\n        return t.1\n    return 0\n", "t.1", "the borrow m@ref", "m@ref", "ref/i32 during p")]
     [InlineData(TwoEnv + "    let c = func [n, m] () -> ref/i32 during p => second(n@ref, m@ref)\n    return 0\n", "second(n@ref, m@ref)", "the borrow m@ref", "m@ref", "ref/i32 during p")]
@@ -675,9 +682,9 @@ public class ClosureEnvironmentOriginTest
     [InlineData(Pass + EnvBorrow + "    let c = func [n] () -> ref/i32 during p\n        let r = pass(n)\n        return r\n    return 0\n", "r\n", "the borrow n", "n", "ref/i32 during p")]
     [InlineData(Pass + EnvStore + "    var c = func [q@move, n] () -> i32\n        q@follow = pass(n)\n        return 0\n    return 0\n", "pass(n)", "the borrow n", "n", "ref/i32 during p")]
     [InlineData(Second + EnvBorrow + "    let c = func [n] () -> ref/i32 during p\n        let k: i32 = 2\n        return second(k, n)\n    return 0\n", "second(k, n)", "the borrow n", "n", "ref/i32 during p")]
-    [InlineData(EnvBorrow + "    let c = func [n] () -> Option<ref/i32 during p>\n        let o: Option<ref/i32> = .Some(n@ref)\n        return o\n    return 0\n", "o\n", "the borrow n@ref", "n@ref", "Option<ref/i32 during p>")]
-    [InlineData(EnvBorrow + "    let c = func [n] () -> (ref/i32 during p, i32)\n        let t = (n@ref, 1)\n        return t\n    return 0\n", "t\n", "the borrow n@ref", "n@ref", "(ref/i32 during p, i32)")]
-    [InlineData(OptionStoreInto, "o\n", "the borrow n@ref", "n@ref", "Option<ref/i32 during p>")]
+    [InlineData(EnvBorrow + "    let c = func [n] () -> Option<ref/i32 during p>\n        let o: Option<ref/i32> = .Some(n@ref)\n        return o\n    return 0\n", "o\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
+    [InlineData(EnvBorrow + "    let c = func [n] () -> (ref/i32 during p, i32)\n        let t = (n@ref, 1)\n        return t\n    return 0\n", "t\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
+    [InlineData(OptionStoreInto, "o\n", "the borrow n@ref", "n@ref", "ref/i32 during p")]
     public void ARecordShowsTheBorrowThatSuppliedItsEnd(string function, string at, string longer, string related, string destination)
     {
         foreach (var beside in new[] { false, true })
@@ -704,32 +711,25 @@ public class ClosureEnvironmentOriginTest
     // SPEC 23.1, 15.3.3 (DECISIONS R4-M133): a local clause over an environment Borrow names the Borrow its end resolves to through the
     // local's declaration, before the receiver (the Supplier): directly, through a moved local and at the clause's second slot; the
     // plain and Consuming twins name it too. An implicit Borrow of a Field shows by its Place, `s.f`, plain or through the environment.
-    // Each is its function's one Binding record, also beside an unrelated Binding error (SPEC 23.1.2). Since the MIR decides (R6-check H5;
-    // H3b T50, class 4), a Refuted row also has A5's twin of Binding's record until R7 (H0b §5.4, R4-M108), at `twin`'s exact text: the
-    // clause, or the `return`.
+    // Each is its function's one record, A5's since R7-O1 H (the twin A5 had beside Binding's record at the clause or the `return` is
+    // gone with Binding's), also beside an unrelated Binding error (SPEC 23.1.2).
     [Theory]
     [InlineData(ClauseOverEnv, Unproven, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
     [InlineData(ClauseOverMovedLocal, Unproven, "h0@move", "the borrow n@ref", "n@ref", null)]
     [InlineData(ClauseOverSecondEnv, Unproven, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null)]
-    [InlineData(ClauseOverPlain, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null, "origin x.s outlives p")]
-    [InlineData(ClauseOverSecondPlain, Unsatisfied, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null, "origin x.t outlives p")]
-    [InlineData(ClauseOverEnvConsuming, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null, "origin x.s outlives p")]
-    [InlineData(ImplicitFieldPlain, Unsatisfied, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p", "return pass(s.f)")]
+    [InlineData(ClauseOverPlain, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
+    [InlineData(ClauseOverSecondPlain, Unsatisfied, "H2.init(n@ref, m@ref)", "the borrow m@ref", "m@ref", null)]
+    [InlineData(ClauseOverEnvConsuming, Unsatisfied, "H.init(n@ref)", "the borrow n@ref", "n@ref", null)]
+    [InlineData(ImplicitFieldPlain, Unsatisfied, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p")]
     [InlineData(ImplicitFieldEnv, Unproven, "pass(s.f)", "the borrow s.f", "s.f", "ref/i32 during p")]
-    public void AClauseOrFieldRecordShowsTheBorrowThatSuppliedItsEnd(string function, string code, string at, string longer, string related, string? destination, string? twin = null)
+    public void AClauseOrFieldRecordShowsTheBorrowThatSuppliedItsEnd(string function, string code, string at, string longer, string related, string? destination)
     {
         foreach (var beside in new[] { false, true })
         {
             var source = function + (beside ? "func unrelated() -> i32\n    let wrong: bool = 3\n    return 0\n" : string.Empty) + "public func main() => ()\n";
             var records = DiagnosticCorpus.Check(source).Diagnostics;
-            Assert.Equal((beside ? 2 : 1) + (twin is null ? 0 : 1), records.Length);
-            var twinSpan = twin is null ? (SourceSpan?)null : MirTargetSide.At(twin).Resolve(source);
-            if (twinSpan is not null)
-            {
-                Assert.Single(records, x => x.Code == code && x.Span == twinSpan);
-            }
-
-            var error = Assert.Single(records, x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd) && x.Span != twinSpan);
+            Assert.Equal(beside ? 2 : 1, records.Length);
+            var error = Assert.Single(records, x => x.Code != nameof(DiagnosticCode.TypeMismatch_Kd));
             var verdict = code == Unproven ? "not proven" : "false";
             Assert.Equal((code, $"requires {longer} outlives p, which is {verdict}"), (error.Code, error.Label));
             Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
@@ -742,11 +742,12 @@ public class ClosureEnvironmentOriginTest
     // annotation's fit at its initializer, under a Consuming receiver too (d3, Refuted; and d1 above), and a failure that no chain refutes
     // in a failed Origin environment a dependent of that failure only when a repair of the failed clause could prove it (DECISIONS BU-69;
     // b1: `p outlives zz`'s repairs `p outlives static` and `p outlives q`, and the form with no clause, all report the Unknown at `p`).
-    // They were at the whole declaration and an independent record. Since the MIR decides (R6-check H5; H3b T50/T51, class 4: records
-    // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), d3 also has A5's MovedPlace_Kd and its twin of
-    // Binding's record (H0b §5.4, until R7) at the declaration.
+    // They were at the whole declaration and an independent record. Since R7-O1 H the pending relation is a row A5 judges, its one record
+    // at the initializer (H11b D5); d3's MovedPlace_Kd and A5's twin at the declaration are gone: SPEC 7.7.2 makes each environment
+    // binding a local of the call, so moving `t` out leaves `n` initialized, and that record was false, read through the opaque node
+    // (Q13, a false record removed).
     [Theory]
-    [InlineData(LocalAnnotatedConsuming, "MovedPlace_Kd let r: ref/i32 during p = n@ref; " + Unsatisfied + " let r: ref/i32 during p = n@ref; " + Unsatisfied + " n@ref")]
+    [InlineData(LocalAnnotatedConsuming, Unsatisfied + " n@ref")]
     [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]
     public void APendingRelationIsRecordedAsABindingTimeFit(string function, string records)
     {

@@ -143,21 +143,21 @@ public sealed partial class MirOriginsTest
     // body with its clause valid (AChainThroughADependentNodeIsJudgedBetweenItsEnds' counterpart), and a Field initializer's layer rows in a
     // declared or synthesized constructor's slice (AConstructorlessLayersRowsAreTheLocatedLimit's twins).
     [Theory]
-    [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "return local@ref")]
+    [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "local@ref")]
     [InlineData(Region, "view")]
-    [InlineData("func u(x: ref/i32, c: bool) -> ref/i32 during x\n    if c\n        return x\n    else\n        return x\n    let t = 1\n    return t@ref\n", "return t@ref")]
+    [InlineData("func u(x: ref/i32, c: bool) -> ref/i32 during x\n    if c\n        return x\n    else\n        return x\n    let t = 1\n    return t@ref\n", "t@ref")]
     [InlineData("func f(x: ref/i32, c: bool) -> ref/i32 during x\n    var r = x\n    if c\n        let local = 1\n        r = local@ref\n    return r\n", "r")]
-    [InlineData("func use(bound: ref/i32) -> i32\n    func inner() -> ref/i32 during bound\n        let t = 1\n        return t@ref\n    return 0\n", "return t@ref")]
+    [InlineData("func use(bound: ref/i32) -> i32\n    func inner() -> ref/i32 during bound\n        let t = 1\n        return t@ref\n    return 0\n", "t@ref")]
     [InlineData(Guard, "v@ref", "v@ref")]
     [InlineData(Destructors, "self.buffer@ref", "whole.buffer@ref")]
-    [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    let local: i32 = 1\n    let r = local@ref\n    let rr = r@ref\n    return rr@follow@follow@ref\n", "return rr@follow@follow@ref")]
+    [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    let local: i32 = 1\n    let r = local@ref\n    let rr = r@ref\n    return rr@follow@follow@ref\n", "rr@follow@follow@ref")]
     [InlineData(Layers, "rr@follow@follow@ref", "rr@follow@follow@ref")]
-    [InlineData("struct Cell\n    public var value: i32\n    public init(value: i32) => self.value = value\nfunc own(input: ref/i32) -> ref/i32 during input\n    let h: obj/Cell = Cell.init(value: 5)@obj\n    return h.value@ref\n", "return h.value@ref")]
+    [InlineData("struct Cell\n    public var value: i32\n    public init(value: i32) => self.value = value\nfunc own(input: ref/i32) -> ref/i32 during input\n    let h: obj/Cell = Cell.init(value: 5)@obj\n    return h.value@ref\n", "h.value@ref")]
     [InlineData(Storage + "    public var item: i32 = 0\n        get() -> i32 => Util.keepStatic(storage@ref)\n        set(value: i32) -> () => storage = value\n", "storage@ref")]
     [InlineData(ValidClause, "local@ref")]
-    [InlineData(HolderP + LocalInit + InitP, "let t: ref/i32 during a = x@ref")]
-    [InlineData("struct Leaf {a}\n" + LocalInit, "let t: ref/i32 during a = x@ref")]
-    [InlineData(HolderP + ReborrowInit + InitP, "let t: ref/i32 during a = r@follow@ref")]
+    [InlineData(HolderP + LocalInit + InitP, "x@ref")]
+    [InlineData("struct Leaf {a}\n" + LocalInit, "x@ref")]
+    [InlineData(HolderP + ReborrowInit + InitP, "r@follow@ref")]
     public void AFiniteChainIntoAFixedOriginIsRefutedAtItsLastEdge(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
@@ -360,10 +360,10 @@ public sealed partial class MirOriginsTest
             "    public var n: i32 = Util.pick(3@ref, 4@ref)\n",
         "3@ref",
         "4@ref")]
-    [InlineData(NoBase + LocalInit, "let t: ref/i32 during a = x@ref")]
+    [InlineData(NoBase + LocalInit, "x@ref")]
     [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit, "ref/(ref/i32 during b) during a")]
     [InlineData("struct Pair {a, b}\n" + PairInit, "ref/(ref/i32 during b) during a")]
-    [InlineData(HolderP + LocalInit, "let t: ref/i32 during a = x@ref")]
+    [InlineData(HolderP + LocalInit, "x@ref")]
     public void AConstructorlessLayersRowsAreTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
@@ -402,22 +402,23 @@ public sealed partial class MirOriginsTest
     }
 
     // SPEC 23.1.2 and 15.6.5 (DECISIONS R4-M118): a chain through a Dependent node holds whatever the unresolved Origin is, so it is judged
-    // between its ends at its last edge: T1's local Borrow returned `during a` (also with the clause omitted, and with a plain local), a
-    // fixed source the premises do not order, FailedClause's escape (its last edge at the failed `let h`, and at the row its value fit
-    // leaves at `h0@move` now that the fit over the resting slot holds: an added record, DECISIONS Q13, PLAN G739), and BU's forms
+    // between its ends at its last edge, the returned value (R7-O1 H: the row is formed at the value): T1's local Borrow returned `during
+    // a` (also with the clause omitted, and with a plain local), a fixed source the premises do not order, FailedClause's escape (one
+    // record at `h0@move`: the failed `let h`'s fit is recorded at its initializer since R7-O1 H's D5, the same relation as the row its
+    // value fit leaves there, PLAN G739), and BU's forms
     // through a slot no failed clause names (one local's, a Tuple's second set, an assignment's). Such a slot completes (DECISIONS BU-68): the records
     // stay, the assignment's at `p.q`.
     [Theory]
-    [InlineData(Escape + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unsatisfied", "return h.r")]
-    [InlineData(Escape + "    let h: C{x} = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
-    [InlineData(Escape + "    let h = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
-    [InlineData(Unordered + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unproven", "return h.r")]
-    [InlineData(FailedClause, "Unsatisfied", "h0@move", "let h: C{x} = h0@move")]
-    [InlineData(Pair + "    let p: P{x} = P.init(a, l@ref)\n        origin x.s outlives zz\n    return p.q\n", "Unsatisfied", "return p.q")]
+    [InlineData(Escape + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unsatisfied", "h.r")]
+    [InlineData(Escape + "    let h: C{x} = h0@move\n    return h.r\n", "Unsatisfied", "h.r")]
+    [InlineData(Escape + "    let h = h0@move\n    return h.r\n", "Unsatisfied", "h.r")]
+    [InlineData(Unordered + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unproven", "h.r")]
+    [InlineData(FailedClause, "Unsatisfied", "h0@move")]
+    [InlineData(Pair + "    let p: P{x} = P.init(a, l@ref)\n        origin x.s outlives zz\n    return p.q\n", "Unsatisfied", "p.q")]
     [InlineData(
         HeldLocal + "    let h: (C{x}, C{y}) = (C.init(a), C.init(l@ref))\n        origin x.s == zz\n    return h.1.r\n",
         "Unsatisfied",
-        "return h.1.r")]
+        "h.1.r")]
     [InlineData(
         Pair + "    var p: P{x} = P.init(a, a)\n        origin x.s outlives zz\n    p = P.init(a, l@ref)\n    return p.q\n",
         "Unsatisfied",
@@ -429,9 +430,9 @@ public sealed partial class MirOriginsTest
     // operand's edge beside a Dependent one is an independent judgment: a local's Borrow returned `during a` through `pick`'s meet with the
     // failed local's Field, directly (m7) or through an inferred local (m8), is the Refuted chain it is with the clause valid.
     [Theory]
-    [InlineData("zz", "    return q\n", "return q")]
-    [InlineData("a", "    return q\n", "return q")]
-    [InlineData("zz", "    let w = q\n    return w\n", "return w")]
+    [InlineData("zz", "    return q\n", "q")]
+    [InlineData("a", "    return q\n", "q")]
+    [InlineData("zz", "    let w = q\n    return w\n", "w")]
     public void AnOperandEdgeBesideADependentOperandIsJudged(string clause, string tail, string site)
     {
         var c = MirBuildTest.Compile(Held + "func f(a: ref/i32) -> ref/i32 during a\n    let h0 = C.init(a)\n    let h: C{x} = h0@move\n" +
