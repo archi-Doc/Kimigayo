@@ -24178,6 +24178,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Changed by decision:** `DiagnosticPrecisionTest.ALibraryUseOfAnUnsupportedDeclarationIsABrokenBuild` (S1-1) asserts the refused
     Bind and its located `InternalInvariant_Kd` records (the library's and the refusal's own, at the use) instead of the throw (no
     expectation weakened).
+  - Superseded in part by R8-M55 (R8-L1 U3, 2026-11-19): the Adopted bullet's "No compilation reads `Of` before U3" (from U3 every
+    compilation reads its target's frozen library) and the interim "Until U3, Core's `Publish` reports a MIR record through the node"
+    (U3 routes it through `StoreOf`).
 - **R8-M54 The interners' two levels (R8-L1 U4; PLAN G949 Stage 2)** (Back, 2026-11-19; Major, identity in Stage 1; U4's design
   `back\notes\l1-s2\u4-design.md` §4, 5.7 and 7b.3, its review ACCEPT WITH CONDITIONS (`review-u4.md`), the implementation review
   ACCEPT WITH NOTES (`review-u4-impl.md`), B's rulings `rulings-u4.md`; the Front's consent on C-380 (23:27); C-380 F3 (a)-(c), F4;
@@ -24200,6 +24203,59 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected.** A per-compilation copy of the frozen levels; a flag or mode choosing the level (the layer's state decides); a seal
     of its own beside the table's freeze; a growing shared level (O-s2 (c), rejected by O-381 (b)); two levels for `originSummaries`
     and TyCtxt's memos (C-380 F3 (c), F4); the level order restated in each interner (review C1: one enumerator).
+- **R8-M55 A compilation reads the frozen library (R8-L1 U3; PLAN G949 Stage 2)** (Back, 2026-11-19; Major; G949 Stage 2's plan of
+  record `back\notes\l1-s2\design.md` §7b; U3's design `back\notes\l1-s2\u3-design.md` Revisions 1-3, its reviews ACCEPT WITH
+  CONDITIONS (`review-u3.md`), the implementation review ACCEPT WITH CONDITIONS (`review-u3-impl.md`), B's rulings `rulings-u3.md`;
+  the owner's O-425 (a) (2026-11-18, K's dialog, verbatim 「O-425 a / O-426 a」); the Front's consent on C-380 and the Middle's on
+  C-381 (07:22)) SPEC 22.1, 23.1.2. Extends R8-M53 and R8-M54; supersedes in part R8-M53 (its R8-M55 line).
+  - **Adopted.** A compilation's library is fixed when its Binding is made: the library given before it (`Compilation.UseLibrary`:
+    the freeze compilation's own; a test's, frozen through the seam), else `KimiLibrary.Of(TargetTriple)`; `Prepare` after the
+    Binding is the internal-invariant form. Binding's driver decides by the library's state: a refused library runs no pass and the
+    compilation publishes its refusal; a frozen one is read, never bound again; only the freeze compilation binds its library. The
+    library's publication version is the literal `Frozen`; a compilation given a refused library does no Binding work beyond
+    publishing the refusal (its Binding-side records and the refusal's own record as `InternalInvariant_Kd`, its syntax records under
+    their own codes). MIR stays per compilation (O-381 (b); G951, R9-M9): no MIR store is frozen.
+  - **One reader of a library's detached data.** Core's `Compilation.ReadLibrary`, called once where the Binding is made over a frozen
+    or refused library, is the one reader of a library's detached data (Binding reads none): it registers the library module's syntax
+    list read-only (`DiagnosticOwner.AddLibrary`; the documents in their freeze indices' order, each record renumbered into the
+    compilation's source table by the fact's one renumbering `DiagnosticFact.WithSource`; a detached record is about one document,
+    checked when the freeze takes the list, `TakeSyntax`) and keeps the documentation failures and hover anchors for Core's composed
+    readers; the three detached properties exist only once the freeze detached the library. The module set "the source modules, then
+    the library" has one owner, `Compilation.BoundModules`.
+  - **One store decision for a report.** Every report of a Binding issue (Binding's per-record steps: `ReportIssue`, the derived
+    records and their prerequisite keys) and MIR's `Publish` go through Core's store decision `Compilation.StoreOf`, into the store it
+    names through `Koto.ReportIn(store, ...)`, which takes 13 parameters (`Koto.Report`'s 12 and the target store, `Report`
+    delegating to it; the owner's O-425 (a), the parameter exception COMPILER_ARCHITECTURE records): a record whose subject is a
+    library node goes whole, its case evidence and related declarations included, into the reading compilation's own diagnostics.
+    The other direct `Report` and `ReportDerived` callers report on program subjects only, because a library with any record is
+    refused (`FreezeLibrary`); a later caller whose subject may be a library node reports through `StoreOf`.
+  - **After the seal no compilation writes a frozen library object.** The freeze checks every base conformance path verified (none
+    `Checking` or `Unsupported`, `ImplTable.UnsettledPath`), so no reading compilation verifies one; a memo hung on a frozen object
+    takes U4's two levels (the frozen entries found first, an entry formed after the seal the compilation's), as the interners do.
+    Today `Binding.Hop` is the one such memo; a second gets one shared owner of the level choice, not a copy. A test that writes a
+    library object uses a library of its own. Two tripwires bound it (`KimiLibraryShapeTest.TheLibraryDeclaresNoOpenStruct`,
+    `TheLibraryDeclaresNoStandardPropertyWitness`), each naming its removal condition (route those writes by U4's two levels, as
+    `Hop`'s). `VerifyConformance`'s two `IsVerified = false` stores before its `IsVerified` return (the invalid path or declaration
+    context branch and the unresolved Type declaration context branch) do not run on a frozen path: their predicates read library
+    states the library pass left Resolved; a change that lets them read a reading compilation's facts (for example its foreign
+    failures) makes them a frozen-path write.
+  - **Rejected.** A mode or flag choosing the library (its state decides); a per-compilation copy of the frozen library; a test
+    editing `Of`'s library (it is shared: tests edit their own through the seam, `CompilationTestHelper.UseEditedLibrary`); the
+    record of a library body published through the frozen library's collection (shared across compilations); `WithSource` and
+    `SyntaxTransfer` as one map-form renumbering (B's U3 ruling 20).
+  - **Changed by decision** (each row names its reason in its comment; a renamed row is given as old -> new):
+    `IntrinsicCapabilityTest.CoreIdentityCanBeReadBeforePreparation` -> `PrepareAfterTheCoreIdentitiesAreReadIsRefused` (its subject,
+    a read before `Prepare` kept across it, no longer exists); `HoverCollectionTest.EmbeddedCollectionIsIndependentOfPriorModeAndKeepsBindingsLocal`
+    (both rows) and `ConcurrentLibraryLoadsShareOnlyLexicalData` -> `ConcurrentCompilationsShareTheFrozenLibrarysDocumentation` (one
+    shared, collected, detached library documentation in every mode); `CoreCatalogTest.ConcurrentCompilationsKeepSeparateLibraryState`
+    -> `ConcurrentCompilationsShareTheFrozenLibraryState` and `EmbeddedSourcesKeepFileLocationsAndShareOnlyText` ->
+    `EmbeddedSourcesKeepFileLocationsAndAreShared` (Stage 1's per-compilation library is gone);
+    `KimiLibraryShapeTest.TheCapabilityMemosEndWithTheirEpoch` runs on the freeze compilation, the one that binds its library;
+    `OriginPremiseCatalogTest.ABorrowedLocalPlaceSuppliesItsStoredOrigins` -> `ABorrowedLocalPlaceProvesItsRelationWithoutAPremise`
+    (its LocalPlace edge clause held only through the library pass sharing the compilation's metrics; its program forms no premise
+    closure). Moved to libraries of their own, each with its assertions: `KimiLibraryShapeTest`'s
+    `W1ComparesTheLibrarysViewSerialsAndConsumersByValue` and `TheSealRefusesAWriteIntoAFrozenObject`, and `BindingTest`'s
+    `AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass` and `ALocalRegionInTheLayersPartIsFoundThere`.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
