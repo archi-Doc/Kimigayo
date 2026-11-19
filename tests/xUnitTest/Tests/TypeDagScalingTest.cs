@@ -270,6 +270,38 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 8.3.2, 8.5.2 (R7-N1 c-b, F's N1c ruling 28: K3; Q20 B1): a member access's left through a projection chain
+    // `T.(C1).X.(C2).X...(CN).X`, each level's Contract supplying the next level's requirement and the last one's clause the normal form M,
+    // is evaluated under its use scope's one kept layer (BindingScope.EvaluatedPremises), so the identity classes binding 10 uses of M's
+    // Case builds are linear in N (a layer per evaluation level was quadratic: 4,260/16,100/35,540 at N = 10/20/30 for 20 uses).
+    [Fact]
+    public void AProjectionChainInALeftIsEvaluatedUnderOneLayer()
+    {
+        var work = new[] { 30, 60, 120 }.Select(Work).ToArray();
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 400, string.Join(' ', work));
+
+        static int Work(int n)
+        {
+            var source = new System.Text.StringBuilder("enum M\n    A\n    public func f(self) -> i32 => 1\n");
+            for (var i = 1; i <= n; i++)
+            {
+                source.Append($"contract C{i}\n").Append(i == n ? $"    associate X\n    Self.(C{i}).X is M\n" : $"    associate X is C{i + 1}\n");
+            }
+
+            var path = "T" + string.Concat(Enumerable.Range(1, n).Select(static i => $".(C{i}).X"));
+            source.Append("func g<T>() -> i32\n    T is C1\n");
+            for (var k = 0; k < 10; k++)
+            {
+                source.Append($"    let x{k} = {path}.A.f()\n");
+            }
+
+            source.Append("    return 0\n");
+            var c = CompilationTestHelper.Parse(source.ToString());
+            Assert.True(c.Bind().IsComplete);
+            return c.Binding.IdentityClassWork;
+        }
+    }
+
     // SPEC 8.6.2 (PLAN G602): a reversed chain of clauses through inherited conformances (L_i: S_i.(HasBase).Parent, S_i's Parent L_(i-1),
     // declared from the far end) binds with no stack failure, and the InheritedConformances query's clause readings beyond those of the
     // same chain written nominally are linear in its length.

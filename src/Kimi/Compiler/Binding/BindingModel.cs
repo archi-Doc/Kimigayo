@@ -836,6 +836,7 @@ internal sealed class BindingScope(Koto owner)
     private BindingScope? parent;
     private ConstraintEnvironment? constraints;
     private BoundConformancePath? conformancePath;
+    private BindingScope? evaluatedPremises;
 
     // A scope formed for `declaration`'s own premises (Declaration).
     internal BindingScope(Koto owner, Koto declaration)
@@ -901,6 +902,11 @@ internal sealed class BindingScope(Koto owner)
     // its Parent the function's scope; never the body's premises, which the slot's settle point decides.
     internal BindingScope? HeaderPremises { get; set; }
 
+    // A member access's left reading's layer (R7-N1 c-b, Binding.EvaluateProjection; SPEC 8.3.2): its Parent this use scope, it holds
+    // what the Contracts of the left's proved projections supply (AddContractPremises), which the former adds to this scope only once
+    // the reading is decided; kept with this scope and reset with it each pass, so a warm pass forms none.
+    internal BindingScope EvaluatedPremises => this.evaluatedPremises ??= new(this.Owner) { Parent = this, Function = this.Function };
+
     internal BoundConformancePath? ConformancePath
     {
         get => this.conformancePath;
@@ -914,6 +920,7 @@ internal sealed class BindingScope(Koto owner)
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+        this.evaluatedPremises?.Reset();
     }
 
     private void Link<T>(ref T? field, T? value)

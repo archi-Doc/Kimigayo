@@ -35,6 +35,20 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
+    // R7-N1 c-b (F's N1c ruling 28: K2): a member access's left read through a proved projection supplies its premises to its use scope's
+    // kept layer (BindingScope.EvaluatedPremises), so a warm Bind of a Case through a concrete receiver's projection (rb47v) and through a
+    // nested projection a Contract clause normalizes (dq7v) allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i32>).Item.A.f()\n")]
+    [InlineData("enum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\n    public func make() -> i32 => 7\ncontract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n")]
+    public void WarmBindOfAProjectionLeftAllocatesNothing(string source)
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void PipelineBindsExistingNodesAndRetainsCallPlans()
     {
