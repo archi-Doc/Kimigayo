@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 // Binding's obligations (DECISIONS BU-85). Responsibility: record each obligation a rule requires (AddObligation), one entry per
 // distinct obligation, and judge at the Final pass the obligations still recorded. Inputs: the obligations the Type, Origin, length
 // and call rules form while binding. Outputs: Binding.Obligations, read by the Origin judgment, and the failures published at the
-// obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one fails at its use); a Definition
+// obligations' uses. Invariants: an obligation with an Unstated end is never recorded (a Refuted one is a problem of its use, which it
+// leaves Resolved: RecordFurtherOriginRecord); a Definition
 // obligation still recorded at Final fails its use; any other obligation but an Origin relation with both ends is proven or
 // discharged by Final unless it rests on a failed part, and one that is not fails its use as InternalInvariant_Kd. Prohibitions: no
 // consumer decides an obligation's verdict from its own reading; it reads Binding's.
@@ -106,8 +107,9 @@ public sealed partial class Binding
 
     private void AddObligation(BindingObligation obligation)
     {
-        // Rulings S4, design-final §13 A2: a relation with an Unstated end forms no obligation; a Refuted one is recorded at its use,
-        // its Unstated end first.
+        // Rulings S4, design-final §13 A2: a relation with an Unstated end forms no obligation; a Refuted one is a problem of its use,
+        // its Unstated end first, that leaves the use Resolved (R7-O1 B4; SPEC 15.6.1: a failed relation adds no constraint, so the
+        // use's Loans reach MIR; 23.1.2: its other records are independent).
         if (obligation is { Longer: { } longer, Shorter: { } shorter } && UnstatedRelation(longer, shorter) is { } holds)
         {
             if (!holds || (obligation.Equality && UnstatedRelation(shorter, longer) == false))
@@ -116,14 +118,13 @@ public sealed partial class Binding
                 // The record states the producer's kind: a declared clause, a well-formedness relation or a fit (IsFitObligation).
                 var fact = holds ? new OriginRelationFact(at, shorter, this.SuppliedAtUse(shorter, at), longer, Equality: true, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed)
                     : new(at, longer, this.SuppliedAtUse(longer, at), shorter, obligation.Equality, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed);
-                this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, fact);
+                this.RecordFurtherOriginRecord(at, new(fact, null));
             }
 
             return;
         }
 
         obligation = obligation with { Body = this.formingBody }; // The body Binding formed it in (DECISIONS R4-M101 E1).
-        this.AddPendingRelation(obligation); // Judged when its Closure is classified, if it names a pending atom (R4-M126 §2.5).
         if (this.obligationSet.Add(obligation))
         {
             this.obligations.Add(obligation);

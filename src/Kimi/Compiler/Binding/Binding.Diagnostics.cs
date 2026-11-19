@@ -425,12 +425,10 @@ public sealed partial class Binding
 
     // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
     // structural part holds failed only in its Origin part, which is an Origin relation, never a Type mismatch (SPEC 15.6.1).
-    // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
-    // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
-    // inference and is a located Unsupported (SPEC 23.1.1), never a relation record.
     // The one record of a failed comparison, by the Kind of the failure its walk found (no reader walks it again): a condition of a
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
-    // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
+    // position is a row of its body that A5 judges (R7-O1: CheckTypeUse formed it, so no record here); a Shape or a structure that
+    // differs is a Type mismatch.
     // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
     private BoundType? RecordMismatch(Koto node, Koto at, MismatchSide actual, MismatchSide expected, in ComparisonFailure failure)
     {
@@ -455,9 +453,10 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
     // and the others published with it (RecordFurtherOriginRecord): each Function component's failed condition is one
-    // UnprovenOriginContract_Kd at the value (ContractFact); the plain positions are recorded once, by RecordOriginFitFailure, whose search
-    // skips the Function components the walk judged; a limit is the located Unsupported_Kd. The walk's facts are read only when their
-    // first is `failure` (another fit may have walked since); otherwise `failure` is the one fact.
+    // UnprovenOriginContract_Kd at the value (ContractFact); a limit is the located Unsupported_Kd. The plain positions are rows A5 judges
+    // (R7-O1), formed by the recording caller's use-site fit (CheckTypeUse, FitsValueAt): a failure with plain positions only reaches here
+    // on a path that bypassed it, a broken contract. The walk's facts are read only when their first is `failure` (another fit may have
+    // walked since); otherwise `failure` is the one fact.
     private BoundType? RecordComparisonFacts(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
     {
         if (failure.Kind == ComparisonFailureKind.Limit)
@@ -485,9 +484,8 @@ public sealed partial class Binding
             }
         }
 
-        // A plain position the walk met is always found by its search; one that is not is a broken contract (design-r2 §2).
-        return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && this.RecordedFailure(node) == BindingFailure.None
-            ? this.Fail(node, BindingFailure.Internal) : null;
+        // A plain position is a row the recording caller's use-site fit formed; a failure with no other fact bypassed it (design-r2 §2).
+        return positions && this.RecordedFailure(node) == BindingFailure.None ? this.Fail(node, BindingFailure.Internal) : null;
     }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.

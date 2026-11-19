@@ -511,11 +511,11 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 //   inference, a function's inherited contract), made only through `Forming` in the formation's files (ArchitectureRulesTest). An
 //   occurrence of that name forms the declaration it names: it reads no other declaration and answers no other component.
 // - Outputs: `Resolves`, `Substitution`, `Substitutions` and `SubstitutionPairs` (ResolveOrigin follows them; a function's inherited
-//   contract copies its original's); `Completed`, `Relations` and `Body`; `Failure`, `PendingCause` and `FailedClauses`; `Set`;
+//   contract copies its original's); `Completed`, `Relations` and `Body`; `Failure` and `PendingCause`; `Set`;
 //   `InferredVariance`. Each is the state as the formation left it, with no judgment.
 // - A failed clause's answers (SPEC 15.3.3, 23.1.2; H11b-0 B1): a clause that does not bind fails itself, never its owner or the
-//   declaration's other clauses. `Failure` is the first failed clause and `FailedClauses` each failed clause with the Origins it bound;
-//   neither is a premise or an obligation anywhere, and only the dependence query reads them (DependenceCause's repairs). Every other
+//   declaration's other clauses. `Failure` is the first failed clause; a failed clause's bound Origins (the formation's FailedClauses)
+//   are no premise or obligation anywhere and name only the slots it leaves Unbound (RestsOnFailedClause). Every other
 //   answer is the declaration's without the failed clauses: its bound clauses are `Relations`, its equalities make `Substitution`s,
 //   it `Resolves` and is `Completed` as one with no failed clause, and only the pending slots a failed clause names (RestsOnFailedClause)
 //   stay Unbound, each resting on `PendingCause`: the first failed clause, or the Type, alias target or payload operand that failed
@@ -546,10 +546,9 @@ public sealed partial class Binding
         // Origins reach body rows only, which A5 judges (DECISIONS R4-M118).
         private Koto? pendingFailure;
 
-        // Each clause that failed with its bound Origins, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
-        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68), and the dependence query repairs it (DECISIONS
-        // BU-69). Kept across binds.
-        private List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
+        // The bound Origins of each clause that failed, null where an operand is unavailable (FailOriginClause): it leaves Unbound only
+        // the inference variables they name (RestsOnFailedClause; DECISIONS BU-68). Kept across binds.
+        private List<(BoundOrigin? Left, BoundOrigin? Right)>? failedClauses;
 
         // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
         // allocated only for a local that has such Origins and kept across binds.
@@ -586,8 +585,6 @@ public sealed partial class Binding
 
         // The failed part its Unbound pending Origins rest on (RestPendingOn), or null.
         internal Koto? PendingCause => this.pendingFailure;
-
-        internal ReadOnlySpan<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)> FailedClauses => CollectionsMarshal.AsSpan(this.failedClauses);
 
         // One step of ResolveOrigin: the Origin an equality, a completed pending slot or an inferred bound substitutes for `origin`.
         internal BoundOrigin? Substitution(BoundOrigin origin) => this.replacements.GetValueOrDefault(origin);
@@ -626,7 +623,7 @@ public sealed partial class Binding
 
             internal ref Koto? PendingFailure => ref declaration.pendingFailure;
 
-            internal ref List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
+            internal ref List<(BoundOrigin? Left, BoundOrigin? Right)>? FailedClauses => ref declaration.failedClauses;
 
             internal ref Dictionary<BoundOrigin, OriginVariance>? Inferred => ref declaration.inferred;
 

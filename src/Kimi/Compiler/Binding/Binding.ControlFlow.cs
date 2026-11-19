@@ -326,14 +326,14 @@ public sealed partial class Binding
         }
         else
         {
-            // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one. A region on either side leaves rows, a regional target its source edges too; fixed and omitted targets keep
-            // their immediate/collecting fit.
+            // SPEC 15.6.1, 14.9: each result source fits the expected Type, its Origin positions rows of the body that A5 judges (the
+            // use-site fit; R7-O1); the first that does not fit otherwise is the explained one. A region on either side leaves rows, a
+            // regional target its source edges too.
             for (var i = 0; i < types.Count; i++)
             {
                 ComparisonFailure fit;
                 var regional = this.HasLocalRegion(common) || this.HasLocalRegion(types[i]);
-                if (!(regional ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
+                if (!(regional ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsValueAt(types[i], common, node, node, out fit)))
                 {
                     context.Conflict();
                     if (failed is null)

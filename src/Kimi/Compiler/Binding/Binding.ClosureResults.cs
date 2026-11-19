@@ -9,7 +9,8 @@
 //   Refuted at the returned value; CallResultOrigin, that call result atom, which each call substitutes by its Unbound atom (R4-M118).
 // - Inputs: the result Type with its own body's regions resolved (ResolveLocalResultOrigins), the classified receiver, the Closure's body and
 //   its result context's sources.
-// - Outputs: the published Type; the fits' records, through the binding-time fit and its recording (RecordOriginFitFailure).
+// - Outputs: the published Type; the fits' rows and records, through the binding-time fit (FitsValueAt; its Origin positions are rows
+//   A5 judges, R7-O1).
 // - Invariants: an admissible source stays, so its fit holds by the meet law; a region of the Closure's body with no source is no source;
 //   a Function Type component keeps its own per-call Origins; a source with no Origin is never fitted.
 // - Prohibitions: no record but a fit's; no judgment of a relation outside a fit; no second resolution of local regions.

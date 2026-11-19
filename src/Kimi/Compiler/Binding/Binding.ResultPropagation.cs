@@ -584,7 +584,9 @@ public sealed partial class Binding
                 // Closure or Function Item converts to a Function Type only by its erasure, whose outcome is that record's fact
                 // (ErasePart, R4-M161). A resting join's bound parts keep their records (DecideWaiting's contract, rule W: DECISIONS
                 // BU-79, G368 (1)); a Conflict join's own record stands for its sources.
-                fits = this.TryPropagate(source, type!, node);
+                // R7-O1: a part whose only misfit is Origin positions fits, its positions rows of the body that A5 judges at the join, as
+                // the join's own fit forms them (CheckTypeUse at `node`: one row per relation).
+                fits = this.TryPropagate(source, type!, node) || (!awaits && this.CheckTypeUse(context.Sources[i]!, type!, node, out fit));
                 if (!fits && !awaits && context.Outcome != JoinOutcome.Conflict)
                 {
                     if (context.Sources[i]!.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type!.Kind == BoundTypeKind.Function)
