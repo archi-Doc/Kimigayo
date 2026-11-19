@@ -65,7 +65,6 @@ public sealed partial class Binding
                     admitted &= SemanticsSet(fact);
                 }
             }
-
         }
 
         return admitted;

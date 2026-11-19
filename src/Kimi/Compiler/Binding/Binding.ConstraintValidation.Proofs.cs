@@ -398,7 +398,6 @@ public sealed partial class Binding
         return null;
     }
 
-
     // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its
     // proof scope newly read) is derived: it decides the list only when every independent obligation is Proven (DerivedVerdict), so an
     // independent Unknown or Refuted keeps its own record. One rule for every clause list (CheckConstraints, the conditions).

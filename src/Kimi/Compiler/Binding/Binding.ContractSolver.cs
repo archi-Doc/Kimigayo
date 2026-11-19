@@ -281,7 +281,6 @@ public sealed partial class Binding
         internal bool Positive { get; init; }
 
         internal bool Negative { get; init; }
-
     }
 
     // C1 §5: whether an answer rests only on what is final in the pass (Complete) or not (Provisional, the zero).
