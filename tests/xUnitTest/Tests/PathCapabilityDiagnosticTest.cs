@@ -69,6 +69,14 @@ public class PathCapabilityDiagnosticTest
     private const string Made = "struct Pt\n    public var x: i32 = 0\n    public init() => ()\nfunc mk() -> Pt => Pt.init()\n" +
         "struct Holder\n    public computed cpt: Pt\n        get() -> Pt => Pt.init()\n    public init() => ()\n";
 
+    // A struct Tw returned by tw(): a standard, a custom-get, a custom-set and a let Field, a nested Pt and a Tuple; a Copy struct Tc;
+    // a fixed array and an Array returned by calls (D-827). Read with Made and Take.
+    private const string Temps =
+        "struct Tw\n    public var v: i32 = 0\n    public var q: i32 = 0\n        get() -> i32 => storage\n    public var s: i32 = 0\n        set(value: i32) -> () => storage = value\n" +
+        "    public let k: i32 = 0\n    public var pt: Pt = Pt.init()\n    public var pr: (i32, i32) = (0, 0)\n    public init() => ()\nfunc tw() -> Tw => Tw.init()\n" +
+        "struct Tc\n    Self is Copy\n    public var v: i32 = 0\n    public init() => ()\nfunc fixed() -> [2 of i32] => [2 of 0]\n" +
+        "func array() -> Array<i32>\n    let a: Array<i32> = [1, 2]\n    return a@move\n";
+
     // Enums Color and Shape (a payload of Color) and functions borrowing them or an Option<i32>, shared or exclusively.
     private const string Cases = "enum Color\n    Red\n    Blue\nenum Shape\n    Dot(Color)\n    Box(i32, Color)\n" +
         "func lookc(x: ref/Color) -> i32 => 1\nfunc looks(x: ref/Shape) -> i32 => 2\nfunc lo(x: ref/Option<i32>) -> i32 => 3\n" +
@@ -469,6 +477,50 @@ public class PathCapabilityDiagnosticTest
         var check = DiagnosticCorpus.Check(source);
         Assert.True(check.Accepted && check.Diagnostics.Length == 0, $"{form}: {string.Join("; ", check.Diagnostics.Select(static x => x.Code))}");
         Assert.Contains(function, MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
+    }
+
+    // PLAN G1068, G203 (D-827; SPEC 3.4.1, 3.6, 11.3.1, 13.7.1, 15.1.5): a newly owned temporary is a writable root, so a part of it is
+    // written, updated and exclusively borrowed as its Property permissions allow: a call result's Field (a custom get's too, whose
+    // getter the write does not call; a custom set's, called on the temporary), nested, in parentheses, a Tuple, fixed-array or Array
+    // element, an owned handle's payload, a Copy (`c@copy.v`) and a moved value (`t@move.v`). Check accepts each program with no record
+    // and a Library build generates the function that writes.
+    [Theory]
+    [InlineData("field", "func f()\n    tw().v = 1\n    tw().q = 1\n    tw().s = 1\n")]
+    [InlineData("update", "func f()\n    tw().v += 1\n    tw().q += 1\n    tw().s += 1\n    tw().v++\n    ++tw().q\n")]
+    [InlineData("nested", "func f()\n    tw().pt.x = 1\n    tw().pr.0 = 1\n    (tw()).v = 1\n")]
+    [InlineData("elements", "func f(i: isize)\n    pair().0 = 1\n    fixed()[0] = 1\n    fixed()[i] = 1\n    array()[0] += 1\n")]
+    [InlineData("replace", "func strs() -> [1 of string] => [\"old\"]\nfunc f()\n    strs()[0] = \"new\"\n    tw().pt = Pt.init()\n")]
+    [InlineData("copy", "func f()\n    let c = Tc.init()\n    c@copy.v = 1\n    c@copy.v += 1\n")]
+    [InlineData("move", "func f(t: Tw)\n    t@move.v = 1\n    let u = Tw.init()\n    u@move.q = 1\n")]
+    [InlineData("payload", "func f() => Kimi.Intrinsics.makeObj(Tw.init()).v = 1\n")]
+    [InlineData("borrow", "func f()\n    take(tw().v@uniq)\n    take(pair().0@uniq)\n    take(tw().pt.x@uniq)\n    let c = Tc.init()\n    take(c@copy.v@uniq)\n")]
+    public void APartOfATemporaryIsWritable(string form, string body)
+    {
+        var source = Take + Made + Temps + body + "public func main() => ()\n";
+        var check = DiagnosticCorpus.Check(source);
+        Assert.True(check.Accepted && check.Diagnostics.Length == 0, $"{form}: {string.Join("; ", check.Diagnostics.Select(static x => x.Code))}");
+        Assert.Contains("f", MinimalEmissionTest.GeneratedBodies(source, OutputKind.Library, accepted: true));
+    }
+
+    // The invalid counterparts of APartOfATemporaryIsWritable keep their records: a getter temporary's part (SPEC 11.5), a let Field
+    // (11.1, 11.2), an exclusive borrow of a custom accessor's Field (11.2), a moved value read after its temporary's write (15.1.1), and
+    // an unspelled exclusive argument, the part being an owned Place outside a Receiver Expression (15.1.5's lending rule).
+    // Only the records after the preludes are compared.
+    [Theory]
+    [InlineData("getter", "func f() => Holder.init().cpt.x = 1\n", "InvalidAssignment_Kd Holder.init().cpt.x")]
+    [InlineData("getter_borrow", "func f() => take(Holder.init().cpt.x@uniq)\n", "InvalidAssignment_Kd Holder.init().cpt.x@uniq")]
+    [InlineData("let", "func f() => tw().k = 1\n", "InaccessibleBinding_Kd tw().k")]
+    [InlineData("let_borrow", "func f() => take(tw().k@uniq)\n", "InvalidAssignment_Kd tw().k@uniq")]
+    [InlineData("custom_borrow", "func f()\n    take(tw().q@uniq)\n    take(tw().s@uniq)\n", "InvalidAssignment_Kd tw().q@uniq; InvalidAssignment_Kd tw().s@uniq")]
+    [InlineData("moved", "func f() -> i32\n    var u = Tw.init()\n    u@move.v = 1\n    return u.v\n", "MovedPlace_Kd u.v")]
+    [InlineData("unspelled", "func f() => take(tw().v)\n", "ExclusiveBorrowRequired_Kd tw().v")]
+    public void APartOfATemporaryKeepsItsPermissions(string form, string body, string records)
+    {
+        var prelude = Take + Made + Temps;
+        var source = prelude + body + "public func main() => ()\n";
+        var shown = DiagnosticCorpus.Check(source).Diagnostics.Where(x => x.Span!.Value.Start >= prelude.Length)
+            .Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]).Order(StringComparer.Ordinal);
+        Assert.True(string.Join("; ", shown) == records, $"{form}: expected [{records}], found [{string.Join("; ", shown)}]");
     }
 
     [Fact]
