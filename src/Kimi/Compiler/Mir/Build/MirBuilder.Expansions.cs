@@ -129,14 +129,10 @@ internal sealed partial class MirBuilder
             // receiver's plan-row Adjust where the two differ (SPEC 11.3: shared), else by the column's (DECISIONS R4-M109).
             var given = plan.Second is null ? null : receiver;
             var operand = default(MirOperand);
-            foreach (ref readonly var argument in getter.ArgumentOperations)
+            if (given is not null)
             {
-                if (given is not null && ReferenceEquals(argument.Source, given))
-                {
-                    var adjust = HirTables.PlanOf(given).Adjust;
-                    operand = this.Operand(
-                        given, adjust == default ? HirTables.AdjustOf(given) : adjust, argument.AdaptedType ?? argument.ParameterType, input: true);
-                }
+                var adjust = HirTables.PlanOf(given).Adjust;
+                operand = this.Operand(given, adjust == default ? HirTables.AdjustOf(given) : adjust, Input(getter, given), input: true);
             }
 
             this.Call(read, getter, target, null, (given, operand));

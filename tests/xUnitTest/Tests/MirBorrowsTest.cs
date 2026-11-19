@@ -1717,11 +1717,14 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     r.n += 1
                 """));
 
-    // SPEC 13.7.2, 11.3.1 (Z11, 2d-2): an update through a setter reserves the setter's receiver where it locates it, the getter or the
-    // standard get reads through the reservation and the setter's call activates it. Shared reads coexist with it (the getter's Borrow, a
-    // user operator's operand Borrows, SPEC 13.7.2's `holder.item += delta`, a shared Borrow ended before the update); a shared Borrow of the
-    // receiver live across the write conflicts at the activation, for every receiver: a local, a parameter's referent, a Field path and an
-    // element, in a compound assignment, an increment and with a standard get; a simple assignment starts no writeback (SPEC 13.7.1).
+    // SPEC 13.7.2, 11.3.1 (Z11, 2d-2): an update through a setter reserves the setter's receiver where it locates it, the getter and the
+    // standard get read the receiver beside the reservation, and the setter's call activates it. Shared reads coexist with it (the getter's
+    // Borrow, a user operator's operand Borrows, SPEC 13.7.2's `holder.item += delta`, a shared Borrow ended before the update, a written
+    // `@uniq` receiver); a shared Borrow of the receiver live across the write conflicts at the activation, for every receiver: a local, a
+    // parameter's referent, a Field path and an element, in a compound assignment, an increment and with a standard get; a simple assignment
+    // starts no writeback (SPEC 13.7.1). A live `uniq` Loan of the receiver, or of a Field of it, across the update conflicts where the
+    // update first reads the receiver (SPEC 15.6.2), and with a standard get also at its read of the storage; a written `@uniq` receiver
+    // meets a live shared Loan where it is formed.
     [Fact]
     public void ASettersReservationProtectsItsReceiverUntilTheWrite()
         => Assert.Equal(
@@ -1729,11 +1732,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "iLocal: g.level += 1 CallActivationConflict_Kd", "iParam: g.level += 1 CallActivationConflict_Kd",
                 "iField: h.gauge.level += 1 CallActivationConflict_Kd", "iElement: gs[1].level += 1 CallActivationConflict_Kd",
                 "iPostfix: g.level++ CallActivationConflict_Kd", "iStoredSetter: g.mark += 1 CallActivationConflict_Kd",
-                "iAssign: g.level = 5 CallActivationConflict_Kd",
+                "iAssign: g.level = 5 CallActivationConflict_Kd", "iUniq: g", "iUniqStoredSetter: g", "iUniqStoredSetter: g.mark += 1",
+                "iUniqField: g", "iUniqIncrement: g", "iWrittenUniq: g@uniq",
             ],
             Problems("""
                 struct WGauge
                     var hits: i32 = 0
+                    public var count: i32 = 0
                     public var mark: i32 = 0
                         set(value: i32) -> () => storage = value
                     public computed level: i32
@@ -1816,6 +1821,36 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var g = WGauge.init()
                     let r = g@ref
                     g.level = 5
+                    inspect(r)
+                func inspectU(value: uniq/WGauge) => ()
+                func inspectI(value: uniq/i32) => ()
+                func vWrittenUniq()
+                    var g = WGauge.init()
+                    g@uniq.level += 1
+                func iUniq()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.level += 1
+                    inspectU(u)
+                func iUniqStoredSetter()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.mark += 1
+                    inspectU(u)
+                func iUniqField()
+                    var g = WGauge.init()
+                    let u = g.count@uniq
+                    g.level += 1
+                    inspectI(u)
+                func iUniqIncrement()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    ++g.level
+                    inspectU(u)
+                func iWrittenUniq()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g@uniq.level += 1
                     inspect(r)
                 """));
 
