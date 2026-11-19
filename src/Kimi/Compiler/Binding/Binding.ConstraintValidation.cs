@@ -183,6 +183,20 @@ public sealed partial class Binding
         return null;
     }
 
+    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2; F's C2 rulings 250, 252, 255): the declarations' premise failures reach their fixpoint before the
+    // bodies are bound, so no reader records against a premise whose verdict can still change. A premise fails only on a failed fact (its
+    // proof, or a projection input of its clause, answers Error); the failed set only grows (FailPremise), at most a round per premise.
+    // An unproven input fails no premise: it is its declaration's own requirement, recorded after the bodies with its uses' records
+    // (ValidateDeclarationProjectionInputs, which names it).
+    private void SettlePremiseFailures(BindingMode mode)
+    {
+        this.ValidateConstraintEnvironments(mode);
+        while (mode == BindingMode.Final && (this.FailPremiseInputs() | this.ValidateConstraintEnvironments(mode, sourcesOnly: true)))
+        {
+            this.ClearCapabilityResults();
+        }
+    }
+
     // Late witness/Effect failures invalidate declarations even when normalization already erased
     // their projections. Reuse the ordinary validation until declaration states stop changing.
     private void InvalidateProjectionCertificates(BindingMode mode)
@@ -249,32 +263,77 @@ public sealed partial class Binding
         var changed = false;
         foreach (var use in this.projectionUses)
         {
-            var declaration = ProjectionDeclarationOwner(use.Use);
-            if (declaration is null)
+            if (ProjectionDeclarationOwner(use.Use) is { } declaration)
+            {
+                var frame = this.BeginConsultation(declaration); // The proof's reads of other nodes (RequireConstraintInFrame).
+                changed |= this.RecordDeclarationInput(use, declaration, this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode, frame);
+            }
+        }
+
+        return changed;
+    }
+
+    // The fixpoint's input writer (SettlePremiseFailures, Final): only a declaration's projection input that answers Error (a failed
+    // fact) is recorded before the bodies; any other answer waits for ValidateDeclarationProjectionInputs, after them.
+    private bool FailPremiseInputs()
+    {
+        var changed = false;
+        foreach (var use in this.projectionUses)
+        {
+            if (ProjectionDeclarationOwner(use.Use) is not { } declaration)
             {
                 continue;
             }
 
-            var state = declaration.BindingState;
-            var frame = this.BeginConsultation(declaration); // The proof's reads of other nodes (RequireConstraintInFrame).
+            var frame = this.BeginConsultation(declaration);
             var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
-            this.RequireConstraintInFrame(declaration, proof, mode, frame);
-            if (proof != ConstraintProof.Proven && mode == BindingMode.Final && this.PremiseClause(use.Use, declaration) is { BoundConstraint: { } premise } &&
-                this.scopes.TryGetValue(declaration, out var premises) && premises.Constraints is { } environment)
+            if (proof != ConstraintProof.Error)
             {
-                environment.FailPremise(premise, declaration); // R7-C3 (B1'): a premise whose projection input is not proven fails itself
+                this.DropConsultation(frame);
+                continue;
             }
 
-            if (declaration.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional)
-            {
-                // The target owns conformance/Copy evidence; the block owns member applicability.
-                this.RequireConstraint(conditional, proof, mode);
-            }
-
-            changed |= state != declaration.BindingState;
+            changed |= this.RecordDeclarationInput(use, declaration, proof, BindingMode.Final, frame);
         }
 
         return changed;
+    }
+
+    // A declaration's projection input `proof` in its frame: the declaration's requirement, what it gives the declaration's environment at
+    // Final (FailInput) and, for a conditional conformance, the block's member applicability. True when a state or a premise changed.
+    private bool RecordDeclarationInput((Koto Use, BoundType Type, BindingSymbol Contract) use, Koto declaration, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame)
+    {
+        var state = declaration.BindingState;
+        this.RequireConstraintInFrame(declaration, proof, mode, frame);
+        var changed = mode == BindingMode.Final && this.FailInput(use, declaration, proof);
+        if (declaration.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional)
+        {
+            // The target owns conformance/Copy evidence; the block owns member applicability.
+            this.RequireConstraint(conditional, proof, mode);
+        }
+
+        return changed | (state != declaration.BindingState);
+    }
+
+    // R7-C3 (F's C2 rulings 252, 255; SPEC 8.2.3, 23.1.2): what a declaration's projection input that is not proven gives its environment
+    // at Final. An Error (a failed fact) fails the premise clause it lies in. An Unknown is the declaration's own requirement: it fails no
+    // premise and is named (NameUnprovenInput), so a judgment whose proof reads that input rests on the declaration's record and every
+    // other judgment is in the remainder. A Refuted input gives nothing beyond its record. True when a premise newly failed.
+    private bool FailInput((Koto Use, BoundType Type, BindingSymbol Contract) use, Koto declaration, ConstraintProof proof)
+    {
+        if (proof is ConstraintProof.Proven or ConstraintProof.Refuted || !this.scopes.TryGetValue(declaration, out var premises) ||
+            premises.Constraints is not { } environment)
+        {
+            return false;
+        }
+
+        if (proof == ConstraintProof.Unknown)
+        {
+            environment.NameUnprovenInput(use.Type, use.Contract, declaration);
+            return false;
+        }
+
+        return this.PremiseClause(use.Use, declaration) is { BoundConstraint: { } premise } && environment.FailPremise(premise, declaration);
     }
 
     // The premise clause of `declaration` a node lies in, if any (a projection use in a premise's side).

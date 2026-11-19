@@ -237,7 +237,7 @@ public class ArchitectureRulesTest
     // DECISIONS R7-C2e1: a view's state is counted where it is written, so a ConstraintEnvironment's fact sets are written only by its own
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
     [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=9")] // R7-C3 B1': FailPremise moves a failed premise out of the three sets
-    [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=4;BindingModel.cs=1")] // R7-C3 B1': FailPremise counts a change
+    [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=5;BindingModel.cs=1")] // R7-C3 B1': FailPremise counts a change; ruling 255: NameUnprovenInput too
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W6, the ContractSolver header) give
     // Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here. Every spelling of Complete is
     // counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
