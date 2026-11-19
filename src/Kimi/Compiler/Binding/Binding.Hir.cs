@@ -140,7 +140,7 @@ public sealed partial class Binding
             this.exclusive = claimed || this.ExclusiveUse(node, parent, parentOp, exclusive);
             this.Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
-                (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
+                (parts != HirOp.Syntax || (node is FunctionKoto function && binding.PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
                 // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1).
                 if (node is IndexKoto)

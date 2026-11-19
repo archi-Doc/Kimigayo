@@ -9,8 +9,8 @@
 // Decided once per definition and pass, before its parts (defaults, base initializer, bodies, initializer, accessor bodies) are bound;
 // beyond the bound the definition fails with CaseLimit, only as its first failure. Its parts are still bound, so their independent
 // records stay visible (SPEC 23.1.2), but no case of them is verified: a case adaptation in them depends on the failure, and the HIR
-// publishes no part of an unresolved definition. Its signature stays valid (KeepsSignature), so its calls are checked normally. A
-// definition without parts is never bounded; Closures, default templates and accessors share their definition's binders.
+// publishes no part whose cases are not verified (PartsVerified). Its signature stays valid (KeepsSignature), so its calls are checked
+// normally. A definition without parts is never bounded; Closures, default templates and accessors share their definition's binders.
 // Must not bound an operation or keep the case count in a table: the report recomputes it.
 
 using Kimi.Compiler.Parsing;
@@ -83,6 +83,29 @@ public sealed partial class Binding
         {
             this.Fail(definition, BindingFailure.CaseLimit);
         }
+    }
+
+    // Whether a definition's parts are verified, which the HIR publishes them on (PartsPublished). With no failure, CheckCaseBound passed
+    // them: a count outside 1..CaseBound fails the definition when it is the first failure. A failed definition keeps its first failure
+    // only, so its count is recomputed: verified with no parts or a case within the bound, never with an Unsupported or a Resource
+    // failure (SPEC 23.1.1, 8.3.3 Limits: a form the implementation does not support, or a judgment that depends on a limited analysis, is
+    // not judged). An accessor shares its Property's binders.
+    private bool PartsVerified(Koto definition)
+    {
+        var owner = definition is PropertyAccessorKoto accessor ? accessor.Parent! : definition;
+        var (own, its) = (HirTables.Failure(definition), HirTables.Failure(owner));
+        if (own == BindingFailure.None && its == BindingFailure.None)
+        {
+            return true;
+        }
+
+        if (own == BindingFailure.Unsupported || its == BindingFailure.Unsupported || this.ResourceFailed(definition) || this.ResourceFailed(owner))
+        {
+            return false;
+        }
+
+        var count = HasParts(owner) ? this.CaseCount(owner) : 1;
+        return count > 0 && count <= PairBinder.CaseBound;
     }
 
     // SPEC 8.3.4: a Semantics requirement read from a set that admits no case (a case adaptation's rows, a pair layer's follow or

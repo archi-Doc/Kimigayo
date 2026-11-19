@@ -28,22 +28,26 @@ public sealed partial class Binding
         Replaced = 8,
     }
 
-    // A definition's parts (body, defaults, initializer, accessor bodies) are published only when Binding resolved the definition: those
-    // of an unresolved one, such as a definition beyond the case bound (Binding.CaseLimits), are not verified.
-    private static bool PartsPublished(Koto definition) => definition.BindingState == BindingState.Resolved;
-
     // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3), a failure, a
     // literal the lexer could not read, which keeps its Type and lacks only its value (its published absence, CharLiteralKoto.Value), or
     // the value of an admitted misfit (AdmittedMisfit), whose fit Binding rejected: the write places a value derived from that failure.
     private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto or CharLiteralKoto { Value: null } ||
         node.BindingFailure != BindingFailure.None || (node.Parent is BinaryKoto write && ReferenceEquals(write.Right, node) && AdmittedMisfit(write));
 
+    // SPEC 23.1.2: a definition's parts (body, defaults, base initializer, initializer, accessor bodies) are published when Binding bound
+    // them, whatever the definition's own failure, so their independent records stay visible; a check in them rests only where it reads
+    // a failed input (rule W). Not published: parts no case of which is verified (Binding.CaseLimits' PartsVerified), and those of a
+    // definition whose own Type failed (a function's or accessor's result, a Property's Type: the column MIR's `_0` reads), which has no
+    // representation yet (PLAN G1073 removes this exclusion, the owner's O-436 (a)).
+    private bool PartsPublished(Koto definition) => HirTables.State(definition) != BindingState.Unvisited &&
+        HirTables.TypeOf(definition) is not null && this.PartsVerified(definition);
+
     // A published declaration whose body Binding bound builds it, a virtual body no instance applies included (checked, never generated:
     // virtual-dispatch 3, 6.3); an accessor's body is a part of its Property.
-    private static bool HasBody(Koto declaration) => PartsPublished(declaration) && declaration switch
+    private bool HasBody(Koto declaration) => this.PartsPublished(declaration) && declaration switch
     {
         FunctionKoto function => ((Koto?)function.Body ?? function.ExpressionBody) is { BindingState: not BindingState.Unvisited },
-        PropertyAccessorKoto accessor => PartsPublished(accessor.Parent!) && accessor.Body is { BindingState: not BindingState.Unvisited },
+        PropertyAccessorKoto accessor => this.PartsPublished(accessor.Parent!) && accessor.Body is { BindingState: not BindingState.Unvisited },
         _ => ((PropertyKoto)declaration).InitializerKoto is { BindingState: not BindingState.Unvisited },
     };
 
@@ -77,7 +81,7 @@ public sealed partial class Binding
     {
         if (node is FunctionKoto { IsAnonymous: false } or PropertyKoto or PropertyAccessorKoto)
         {
-            return HasBody(node) ? HirOp.Body : HirOp.Syntax;
+            return this.HasBody(node) ? HirOp.Body : HirOp.Syntax;
         }
 
         if (node is TypeKoto or AttributeKoto or OriginRelationKoto or EffectBoundKoto or
@@ -181,7 +185,7 @@ public sealed partial class Binding
 
                     for (var i = 0; i < function.Parameters.Count; i++)
                     {
-                        if (ReferenceEquals(node, function.Parameters[i].DefaultValue) && PartsPublished(function))
+                        if (ReferenceEquals(node, function.Parameters[i].DefaultValue) && binding.PartsPublished(function))
                         {
                             this.table!.Hir.Defaults!.Add(new(function, i));
                             return HirPosition.Evaluated;
