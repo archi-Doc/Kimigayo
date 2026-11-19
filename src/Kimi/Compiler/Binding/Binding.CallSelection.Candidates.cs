@@ -11,8 +11,6 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<PendingJudgment?> environmentScratch = new();
 
-    // SPEC 10.8, 15.3.6: the Type slots of the candidate being evaluated whose binding comes from an invariant position.
-    private SlotSet invariantSlots;
     private FunctionKoto? activeInferenceFunction;
 
     // DECISIONS BU-86: per slot of the candidate being evaluated, the judgment that a known call signature's result over its closure's
@@ -20,9 +18,9 @@ public sealed partial class Binding
     // Callable proof or the conversion (SPEC 8.10, 7.7.4). TryCandidateCore publishes one only for a slot no evidence binds.
     private PendingJudgment?[] environmentJudgments = [];
 
-    // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
-    // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
-    // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
+    // The environment judgments belong to one candidate; a nested call bound while it is evaluated keeps its own (its invariant marks
+    // are its own frame's, SlotFrame.IsInvariant). `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an
+    // Applicable or Waiting candidate with such slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
         SlotSolution solution,
         int[] mapping,
@@ -41,13 +39,11 @@ public sealed partial class Binding
             this.inferenceCandidateChecks++;
         }
 
-        var saved = this.invariantSlots;
         var savedInferenceFunction = this.activeInferenceFunction;
         this.activeInferenceFunction = solution.Function;
         var savedEnvironment = this.environmentJudgments;
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
-        this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
         this.environmentJudgments = this.environmentScratch.Rent(CallSlotCount(solution.Function));
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         var wholesMark = this.wholes.Count;
@@ -85,8 +81,6 @@ public sealed partial class Binding
         {
             this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
             this.CloseTrial(enclosing);
-            this.ReturnSlotSet(this.invariantSlots);
-            this.invariantSlots = saved;
             this.activeInferenceFunction = savedInferenceFunction;
             this.environmentScratch.Return(this.environmentJudgments, clearArray: true);
             this.environmentJudgments = savedEnvironment;
@@ -574,11 +568,12 @@ public sealed partial class Binding
                         }
                     }
 
-                    var applicability = this.FitArgument(call.ArgumentNodes[i], type, scope, call, out var operation);
-                    if (applicability == CandidateApplicability.Inapplicable && type.Kind == BoundTypeKind.Function)
-                    {
-                        applicability = solution.FitPerCall(call.ArgumentNodes[i], type, out operation);
-                    }
+                    // SPEC 10.7, 10.8: an argument with a per-call stand-in is decided by it (FitPerCall), a fact of the solve, never by
+                    // its fit failing first.
+                    BoundArgumentOperation operation;
+                    var applicability = solution.HasPerCallStandIn(call.ArgumentNodes[i], type)
+                        ? solution.FitPerCall(call.ArgumentNodes[i], type, out operation)
+                        : this.FitArgument(call.ArgumentNodes[i], type, scope, call, out operation);
 
                     if (operation.Source is not null)
                     {
@@ -663,6 +658,14 @@ public sealed partial class Binding
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
                 proof = ConstraintProof.Proven;
+            }
+
+            // SPEC 10.1 step 5, 7.7.4: one ordering for the step: a candidate its own Constraints or premises refute is inapplicable whatever
+            // an erased argument's limit says, so the erasures' environment (which orders its own arguments so) is read only when nothing
+            // has refuted the candidate; the located limit only where nothing does.
+            if (proof != ConstraintProof.Refuted)
+            {
+                proof = CombineProof(proof, this.ErasedArgumentsEnvironment(operations), true);
             }
 
             constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.

@@ -165,7 +165,7 @@ public class TimeLibraryTest
     public void ConvertsCounterExactlyWithoutWideArithmetic(string ticks, string frequency, string expected)
     {
         var c = CompilationTestHelper.Parse("Kimi.Time.probe()");
-        c.Library.Kotonoha.AddSource(new("TimeProbe.kimi", "public group Time\n    public func probe()\n        require counterMicroseconds(" + ticks + ", " + frequency + ") == " + expected + " else => $abort(\"Conversion\")"));
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.AddSource(new("TimeProbe.kimi", "public group Time\n    public func probe()\n        require counterMicroseconds(" + ticks + ", " + frequency + ") == " + expected + " else => $abort(\"Conversion\")")));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();

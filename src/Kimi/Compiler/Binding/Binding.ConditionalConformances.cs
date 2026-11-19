@@ -31,7 +31,7 @@ public sealed partial class Binding
             }
         }
 
-        var scope = new BindingScope(a.Declaration);
+        var scope = new BindingScope(a.Declaration, a.Type.Declaration); // SPEC 8.9.2: the pair's agreement is the Type's.
         scopes.Add((b, scope));
         return scope;
     }
@@ -346,13 +346,13 @@ public sealed partial class Binding
         }
 
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable &&
-            ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Equatable))
+            TyCtxt.OperatorTableRuns(type, KimiDeclarationId.Equatable))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
-                : ComparisonTypes.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+                : TyCtxt.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
-        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
+        if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && TyCtxt.IsComposite(type))
         {
             return contract.Declaration.BindingState == BindingState.Invalid
                 ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false, out _);
@@ -404,7 +404,7 @@ public sealed partial class Binding
 
         if (identity is null || this.impls.PathsOf(identity).Count == 0)
         {
-            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -564,8 +564,8 @@ public sealed partial class Binding
         }
 
         // The conditional conformance's own failure, as its owner decides it: a premise error keeps the context (SPEC 8.2.3), so the
-        // conditions are judged and the error is the scope's one record, not the target's again.
-        if (premises.Parent is { } conditional && this.InvalidDeclarationCause(conditional) is not null)
+        // conditions are judged and the error is the scope's one record, not the target's again: the reading check rests on it.
+        if (premises.Parent is { } conditional && this.ReadFailedDeclaration(conditional) is not null)
         {
             return ConstraintProof.Error;
         }

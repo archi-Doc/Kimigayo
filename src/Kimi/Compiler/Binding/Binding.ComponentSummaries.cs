@@ -52,7 +52,8 @@ public sealed partial class Binding
     private static BoundType? StoredTypeOf(Koto stored) => stored.BoundType ?? (stored as PropertyKoto)?.BoundSymbol?.Type;
 
     // Owned of D<A, o> (SPEC 15.2.3): Error absorbs, then Refuted, then a site (L), then Unknown. An Error rests on the stored Type that
-    // decided it, a site's Unknown on the site (ReadVerdict).
+    // decided it, a site's Unknown on the site (ReadVerdict). Each Type argument (member i), Origin argument and projection, in that
+    // numbering, is a part (CapabilityWork.Part); what the summary decides in D's formals is no part of an instance.
     private ConstraintProof SummaryCapability(CapabilityWork work, DeclarationContainerKoto container)
     {
         if (container.BoundSymbol is not { Adt: not null } symbol)
@@ -67,23 +68,36 @@ public sealed partial class Binding
         }
 
         var result = summary.ExcludesOwned ? ConstraintProof.Refuted : summary.Unresolved ? ConstraintProof.Unknown : ConstraintProof.Proven;
-        for (var i = 0; i < work.Type.Components.Count; i++)
+        var types = work.Type.Components;
+        var origins = work.Type.OriginArguments;
+        for (var i = 0; i < types.Count; i++)
         {
             // Every complete Type argument is retained, including unused and inherited slots.
-            result = CombineProof(result, this.RequestCapability(work.Type.Components[i], work.Intrinsic, work.Scope), true);
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.RequestCapability(types[i], work.Intrinsic, work.Scope);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(i, proof, this.ScopeReads.Origin, saved, types[i]);
         }
 
-        for (var i = 0; i < work.Type.OriginArguments.Count; i++)
+        for (var i = 0; i < origins.Count; i++)
         {
-            result = CombineProof(result, this.StaticOrigin(work.Type.OriginArguments[i], work.Scope), true);
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.StaticOrigin(origins[i], work.Scope);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(types.Count + i, proof, this.ScopeReads.Origin, saved, null);
         }
 
         for (var i = 0; i < summary.Projections.Count; i++)
         {
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
             var projection = this.StoredType(summary.Projections[i], work.Type);
             var proof = projection is null ? ConstraintProof.Unknown
                 : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, projection, contract: work.Intrinsic)), work.Scope);
             result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(types.Count + origins.Count + i, proof, this.ScopeReads.Origin, saved, projection);
         }
 
         if (result == ConstraintProof.Proven)

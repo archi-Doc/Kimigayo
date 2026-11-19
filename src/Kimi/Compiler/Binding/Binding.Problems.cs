@@ -63,6 +63,7 @@ public sealed partial class Binding
             BindingFailure.Cycle => DiagnosticCode.CyclicBinding_Kd,
             BindingFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
             BindingFailure.TypeHeightLimit => DiagnosticCode.TypeHeightLimit_Kd,
+            BindingFailure.PremiseClosureLimit => DiagnosticCode.PremiseClosureLimit_Kd,
             BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
             BindingFailure.InvalidLiteral => DiagnosticCode.InvalidNumericLiteral_Kd,
             BindingFailure.Access => DiagnosticCode.InaccessibleBinding_Kd,
@@ -262,16 +263,16 @@ public sealed partial class Binding
 
     // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it; false for a
     // mismatch or a located part, whose ReportIssue arms read their facts.
-    private bool ReportProblem(Koto node, int index)
+    private bool ReportProblem(Koto node, DiagnosticCollection? store, int index)
     {
         var problem = this.report.Problem(index);
         if (this.FactOf(index, ProblemFactKind.Operand) is not null)
         {
-            this.ReportOperatorOperand(node, index, problem);
+            this.ReportOperatorOperand(node, store, index, problem);
         }
         else if (this.report.Facts(index).IsEmpty)
         {
-            node.Report(problem.Requirement, problem.Code, condition: problem.Condition);
+            node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
         }
         else
         {

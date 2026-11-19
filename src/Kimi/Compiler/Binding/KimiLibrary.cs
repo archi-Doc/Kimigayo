@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
@@ -30,7 +31,7 @@ namespace Kimi.Compiler;
 //   module's syntax list (moved with the frozen library as SyntaxRecords; from U3 the reading compilation's DiagnosticOwner registers it
 //   read-only and publishes it under its own code); the refusal refers to that list, never copies it.
 // - Prohibitions: no second constructor or freeze path; no mode or flag deciding the library pass; no second check of the library's
-//   records beside FreezeLibrary's; no compilation reads Of before U3.
+//   records beside FreezeLibrary's.
 
 /// <summary>Owns the Kimi library's identities over its embedded sources, per compilation and, frozen, per process (<see cref="Of"/>).</summary>
 public sealed partial class KimiLibrary
@@ -42,6 +43,7 @@ public sealed partial class KimiLibrary
 
     internal KimiLibrary(Compilation compilation)
     {
+        this.Target = compilation.TargetTriple;
         this.Kotonoha = Kotonoha.ForKimiLibrary(compilation, "compiler://Kimi/" + Compilation.CurrentLanguageVersion);
         this.Scope = new(this.Kotonoha.RootKoto);
         this.Module = new("Kimi", BindingSymbolKind.Container, this.Kotonoha.RootKoto, this.Scope);
@@ -54,6 +56,14 @@ public sealed partial class KimiLibrary
         this.symbols = new BindingSymbol?[entries.Length];
         this.registeredSymbols = new(entries.Length + unnamed.Count); // The catalog's symbols in catalog order, then the unnamed ones.
         this.RegisterCatalog(declarations, unnamed);
+
+        // The library's table, once per library (PLAN G949 Stage 2 U3-2; Binding's constructor wrote it until U3): its families reserved at
+        // the size KimiLibrarySize states, then each registered symbol in its declaration's slot.
+        this.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
+        foreach (var symbol in this.registeredSymbols)
+        {
+            Binding.DeclaredSymbols.Add(symbol.Declaration, symbol);
+        }
 
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
@@ -179,6 +189,10 @@ public sealed partial class KimiLibrary
 
     /// <summary>Gets the library's base stores (PLAN G949, DECISIONS BU-220): what the library leaves outside its SyntaxTable.</summary>
     internal LibraryLayer Layer { get; } = new();
+
+    /// <summary>Gets the target the library was made for (PLAN G949 Stage 2 U3): its compilation's when it was parsed, the key
+    /// <see cref="Of"/> stores it under; a Binding is made only over a library of its compilation's target.</summary>
+    internal TargetTriple Target { get; }
 
     /// <summary>Gets a value indicating whether the library's layer is sealed (PLAN G949 Stage 2 U4): its table frozen by its
     /// compilation's freeze (Binding.FreezeLibrary), after which no insert reaches the layer's interner levels.</summary>
@@ -516,7 +530,7 @@ public sealed partial class KimiLibrary
         {
             if (!scopes.TryGetValue(container, out var scope))
             {
-                scope = new(container) { Parent = ScopeOf(DeclaringContainer(container)) };
+                scope = new(container, container) { Parent = ScopeOf(DeclaringContainer(container)) };
                 scopes.Add(container, scope);
             }
 

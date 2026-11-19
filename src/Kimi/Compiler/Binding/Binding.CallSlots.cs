@@ -509,14 +509,14 @@ public sealed partial class Binding
                     // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
                     // kept over covariant ones and the first invariant one over later ones, whatever the argument order, and covariant
                     // bindings meet.
-                    if (!commonOrigins || this.invariantSlots.Contains(slot))
+                    if (!commonOrigins || frame.IsInvariant(slot))
                     {
                         frame.SetType(slot, previous);
                     }
                     else if (invariant)
                     {
                         frame.SetType(slot, actual);
-                        this.invariantSlots.Add(slot);
+                        frame.SetInvariant(slot);
                     }
                     else
                     {
@@ -548,7 +548,7 @@ public sealed partial class Binding
             frame.SetType(slot, actual);
             if (relateLater && invariant)
             {
-                this.invariantSlots.Add(slot);
+                frame.SetInvariant(slot);
             }
 
             return true;

@@ -166,6 +166,7 @@ internal enum BindingFailure : byte
     Unsupported,
     CaseLimit,
     TypeHeightLimit,
+    PremiseClosureLimit,
     InvalidAssignment,
     InvalidLiteral,
     Access,
@@ -831,16 +832,42 @@ public sealed class BoundType : IEquatable<BoundType?>
 // LinkVersion, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class BindingScope(Koto owner)
 {
+    private readonly bool declares;
     private BindingScope? parent;
     private ConstraintEnvironment? constraints;
     private BoundConformancePath? conformancePath;
 
+    // A scope formed for `declaration`'s own premises (Declaration).
+    internal BindingScope(Koto owner, Koto declaration)
+        : this(owner)
+    {
+        this.Declaration = declaration;
+        this.declares = true;
+    }
+
     internal Koto Owner { get; } = owner;
+
+    // SPEC 8.2.1, 8.3.3: the declaration whose premise closure the requests made in this scope extend, the one that reaches a limit of
+    // that closure, published where the scope is formed, never found by a walk: a scope formed for a constrained declaration's own
+    // premises names it (the two-argument constructor: a named function's, an accessor's, a Container's or a conditional conformance's
+    // scope, Binding.Scopes; a function's implementation premises; the Type's for an overlap of two of its conformances, SPEC 8.9.2),
+    // and every other scope extends its Parent's closure and takes its Parent's as it is linked: a block, an `if`, `do`, `while` or
+    // `for` body, a match arm and an anonymous function (its body an ExecutableBody, SPEC F.9.1, with no generic parameters, 7.7.1)
+    // state no premises, and a conformance path's or a function requirement's premises extend the declaration's whose premises they
+    // extend (ImplTable.Register: a conditional conformance's, else the Type's). A scope never linked is a chain's root, its own.
+    internal Koto Declaration { get; private set; } = owner;
 
     internal BindingScope? Parent
     {
         get => this.parent;
-        set => this.Link(ref this.parent, value);
+        set
+        {
+            this.Link(ref this.parent, value);
+            if (!this.declares)
+            {
+                this.Declaration = value?.Declaration ?? this.Owner;
+            }
+        }
     }
 
     // The number of changes of this scope's link.
@@ -869,6 +896,10 @@ internal sealed class BindingScope(Koto owner)
 
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
+
+    // An override's header layer (R7-C2c2 c2-4a): the virtual group's common premises its inputs and result bind under (SPEC 6.4.2),
+    // its Parent the function's scope; never the body's premises, which the slot's settle point decides.
+    internal BindingScope? HeaderPremises { get; set; }
 
     internal BoundConformancePath? ConformancePath
     {

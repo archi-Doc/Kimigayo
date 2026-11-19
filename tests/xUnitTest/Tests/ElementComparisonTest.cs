@@ -76,7 +76,8 @@ public class ElementComparisonTest
         var node = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<BinaryKoto>().Single(x => x.ToString() == operand);
         Assert.True(c.Binding.TryGetAdaptation(node, out var adaptation));
         Assert.Equal(ExpectedAdaptationKind.SharedBorrow, adaptation.Kind);
-        Assert.True(ReferenceTypes.IsString(adaptation.Type));
+        Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (adaptation.Type.Kind, adaptation.Type.Semantics));
+        Assert.Same(BoundType.String, Assert.Single(adaptation.Type.Components));
         Assert.Equal(BoundType.String, node.TypeOf());
     }
 

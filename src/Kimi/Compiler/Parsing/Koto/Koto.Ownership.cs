@@ -5,12 +5,22 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>The part of a selection's arm or branch a child is (SPEC 14.7, 14.8); None for a Subject, a condition, a guard and
+/// every child of another parent.</summary>
+internal enum SelectionRole : byte
+{
+    None,
+    Pattern,
+    Body,
+}
+
 // Owns structural attachment, source provenance and syntax edits. Inputs are child slots and detached replacements;
 // outputs are parent links and edit notifications. Replacements cannot have another parent; binding owns semantic rebuilding.
 public abstract partial class Koto
 {
     private CodeContext codeContext;
     private Koto? parent;
+    private int selectionPart; // (arm << 2) | role; set with the parent link, 0 elsewhere.
 
     /// <summary>Gets the diagnostic destination associated with this node.</summary>
     public DiagnosticCollection? DiagnosticCollection => this.CodeContext?.DiagnosticCollection;
@@ -47,6 +57,7 @@ public abstract partial class Koto
             }
 
             this.parent = value;
+            this.selectionPart = 0;
         }
     }
 
@@ -55,6 +66,13 @@ public abstract partial class Koto
 
     /// <summary>Gets the dense id of this node in <see cref="SyntaxOwner"/>; 0 is none.</summary>
     public int SyntaxId { get; internal set; }
+
+    /// <summary>Gets the part of its parent selection (an <c>if</c>, a <c>match</c> or a <c>try</c>) this child is, which the
+    /// parent states where it attaches the child (<see cref="Adopt(Koto, SelectionRole, int)"/>); a replacement takes its slot's.</summary>
+    internal SelectionRole SelectionRole => (SelectionRole)(this.selectionPart & 3);
+
+    /// <summary>Gets the ordinal of the arm or branch this child is a part of, when <see cref="SelectionRole"/> is not None.</summary>
+    internal int SelectionArm => this.selectionPart >> 2;
 
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>
@@ -144,8 +162,10 @@ public abstract partial class Koto
             newKoto.TakeSource(oldKoto);
         }
 
+        var part = oldKoto.selectionPart;
         oldKoto.Parent = default;
         newKoto.Parent = this;
+        newKoto.selectionPart = part;
         (this as AttributeKoto ?? this.Parent as AttributeKoto)?.Classify(); // An attribute's Name is its operand or that operand's callee.
         this.CodeContext.Compilation.NoteSyntaxEdit(this);
         return true;
@@ -265,6 +285,16 @@ public abstract partial class Koto
                 children[i].Parent = this;
             }
         }
+    }
+
+    /// <summary>Sets this node, a selection, as the parent of an arm's or a branch's part.</summary>
+    /// <param name="child">The Pattern or the Body.</param>
+    /// <param name="role">The part.</param>
+    /// <param name="arm">The arm's or the branch's ordinal; an else Body's is the branch count.</param>
+    private protected void Adopt(Koto child, SelectionRole role, int arm)
+    {
+        child.Parent = this;
+        child.selectionPart = (arm << 2) | (int)role;
     }
 
     // A replacement takes the old slot's source metadata only after admission; its descendants keep their own documents.

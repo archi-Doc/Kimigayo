@@ -46,7 +46,10 @@ public class ProjectedConstraintCallBindingTest
     }
 
     // SPEC 8.3.2, 8.2.3: an available `P and Q` supplies both, so a projection naming i32 that is also string makes i32 and string one
-    // Type: the premise error at the declaration, never at the call (N9's class 1, PLAN G851).
+    // Type: the premise error at the declaration (N9's class 1, PLAN G851). R7-C2c2 c2-4a (design RB3): `Source.(Origin).Item` is i32
+    // in the identity table by its completed binding, so this is the direct form `T is i32 and string`, whose premise error is the
+    // table's Conflict (SPEC 8.2.3's premise errors; an erroneous class makes its declaration's context no failed one, G615/O-141 (a)):
+    // the call's own requirement `i32 is string` is refuted independently and keeps its record, as the direct form's on dev.
     [Theory]
     [InlineData("Source.(Origin).Item and string", "i32")]
     public void ContradictoryProjectionPremiseFailsAtItsDeclaration(string requirement, string argument)
@@ -55,7 +58,7 @@ public class ProjectedConstraintCallBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidConstraint);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NoApplicableCandidate);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NoApplicableCandidate);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
     }

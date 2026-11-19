@@ -133,6 +133,17 @@ public class InferenceSlotScalingTest
         Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{form} [{unit}]: work {string.Join(", ", work)}");
     }
 
+    // G379 (a)'s C3 (SPEC 10.5.1, 10.1 step 5): a chain of nested Tuple literals with an erasure at its innermost element, which step 5 reads
+    // among the element positions (tl): at depth 10, 20 and 40 the first run is inapplicable there and run<T> is selected, and the one call's
+    // selection work does not grow with the depth (each element position is fitted and read once per candidate). From depth 80 the Type's
+    // nesting passes the implementation's bounds (OwnershipDepthLimit_Kd, GenerationResourceLimit_Kd, SPEC 23.1.1), as with run<T> alone.
+    [Fact]
+    public void AnElementsErasureInANestedLiteralChainTakesSelectionWorkIndependentOfItsDepth()
+    {
+        long[] work = [.. new[] { 10, 20, 40 }.Select(depth => Work(Bound(NestedArgument("tl", depth))))];
+        Assert.True(work.Distinct().Count() == 1, $"work {string.Join(", ", work)}");
+    }
+
     [Fact]
     [Trait("Purpose", "Allocation")]
     public void WarmLargeSlotSetsReuseTheirTailStorage()
@@ -174,19 +185,25 @@ public class InferenceSlotScalingTest
 
     private static string NestedArgument(string form, int depth)
     {
-        var argument = "1";
+        var argument = form == "tl" ? "c@move" : "1";
+        var element = "(ref/i32 during q) -> i32"; // tl: the first run's Type at the literal's position.
         for (var i = 0; i < depth; i++)
         {
             argument = form switch
             {
                 "id" => $"identity({argument})",
                 "ov" => $"pick({argument})",
+                "tl" => $"({argument}, q)",
                 _ => $"identity(if c => {argument} else => 2)",
             };
+            element = $"({element}, ref/i32 during q)";
         }
 
-        return "func identity<T>(v: T) -> T => v@move\nfunc take(value: i64) -> i32 => 0\nfunc pick(v: i32) -> i32 => v\nfunc pick(v: i64) -> i64 => v\n" +
-            $"func k(c: bool) -> i32\n    return take({argument})\n()";
+        return form == "tl"
+            ? $"func run(q: ref/i32, t: {element}) -> i32 => 0\nfunc run<T>(q: ref/i32, t: T) -> i32 => 1\nfunc k(p: ref/i32, q: ref/i32) -> i32\n" +
+                $"    var a: i32 = 1\n    let r = a@ref\n    let c = func [r] (x: ref/i32 during q) -> i32 => 0\n    return run(q, {argument})\n()"
+            : "func identity<T>(v: T) -> T => v@move\nfunc take(value: i64) -> i32 => 0\nfunc pick(v: i32) -> i32 => v\nfunc pick(v: i64) -> i64 => v\n" +
+                $"func k(c: bool) -> i32\n    return take({argument})\n()";
     }
 
     private static long[] ColdBytes(string workload, int[] calls)

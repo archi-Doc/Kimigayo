@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 
 // The process's library per target (PLAN G949 Stage 2 U2a; design u2-design 2.1-2.3; DECISIONS R8-M53): KimiLibrary's
 // store (Of), its freeze (Freeze), its detachment (Detach) and the seam that makes the freeze compilation an unfrozen library is parsed
-// in (Unfrozen; B's ruling 37: the freeze's input is its compilation, so no step reaches a compilation through a library node). Read by
-// no compilation before U3.
+// in (Unfrozen; B's ruling 37: the freeze's input is its compilation, so no step reaches a compilation through a library node). From
+// PLAN G949 Stage 2 U3 every compilation not given a library reads Of when its Binding is made.
 public sealed partial class KimiLibrary
 {
     // One Lazy per target (L1's one mutable static): its value is the frozen or refused library. ExecutionAndPublication keeps one freeze
@@ -16,16 +16,27 @@ public sealed partial class KimiLibrary
     // would reproduce; a refused library is a value, cached like a frozen one.
     private static readonly ConcurrentDictionary<TargetTriple, Lazy<KimiLibrary>> Process = new();
 
-    /// <summary>Gets the frozen library's documentation failures by library document (PLAN G949 Stage 2 U2b), which a reading
-    /// compilation's hover reads from U3; empty for a library its freeze has not detached.</summary>
-    internal IReadOnlyDictionary<SourceDocument, string> DocumentationFailures { get; private set; } = new Dictionary<SourceDocument, string>();
+    // The detached data (PLAN G949 Stage 2 U3, the Front's U2b N2, form (b)): written once, by Detach, after the syntax list is taken, so a
+    // faulted Detach leaves none; a read before it is the internal-invariant form, never an empty default.
+    private (IReadOnlyDictionary<SourceDocument, string> Failures, IReadOnlyList<Compilation.HoverAnchor> Anchors, Kimi.Diagnostics.DetachedSyntax Syntax)? detached;
 
-    /// <summary>Gets the frozen library's hover anchors (PLAN G949 Stage 2 U2b), which a reading compilation's hover reads from U3.</summary>
-    internal IReadOnlyList<Compilation.HoverAnchor> HoverAnchors { get; private set; } = [];
+    /// <summary>Gets the frozen library's documentation failures by library document (PLAN G949 Stage 2 U2b), which a reading
+    /// compilation reads from U3 (<see cref="Compilation.ReadLibrary"/>); set by the freeze's detachment, read before it the
+    /// internal-invariant form.</summary>
+    internal IReadOnlyDictionary<SourceDocument, string> DocumentationFailures => this.Detached.Failures;
+
+    /// <summary>Gets the frozen library's hover anchors (PLAN G949 Stage 2 U2b), which a reading compilation reads from U3; set by the
+    /// freeze's detachment, read before it the internal-invariant form.</summary>
+    internal IReadOnlyList<Compilation.HoverAnchor> HoverAnchors => this.Detached.Anchors;
 
     /// <summary>Gets the frozen library module's syntax list as detached data (PLAN G949 Stage 2 U2b; form (R)): empty unless the freeze
-    /// refused; a reading compilation registers it read-only from U3.</summary>
-    internal Kimi.Diagnostics.DetachedSyntax SyntaxRecords { get; private set; } = Kimi.Diagnostics.DetachedSyntax.Empty;
+    /// refused; a reading compilation registers it read-only from U3. Set by the freeze's detachment, read before it the
+    /// internal-invariant form.</summary>
+    internal Kimi.Diagnostics.DetachedSyntax SyntaxRecords => this.Detached.Syntax;
+
+    private (IReadOnlyDictionary<SourceDocument, string> Failures, IReadOnlyList<Compilation.HoverAnchor> Anchors, Kimi.Diagnostics.DetachedSyntax Syntax) Detached
+        => this.detached ?? throw new InvalidOperationException(
+            "The Kimi library is not detached: its freeze compilation holds its documentation failures, hover anchors and syntax records (InternalInvariant; PLAN G949 Stage 2 U3).");
 
     /// <summary>Gets the process's library for a target (SPEC 22.1: a compiler-build constant over the language version, the embedded
     /// sources and the target), frozen once by its first reader, or refused.</summary>
@@ -36,9 +47,9 @@ public sealed partial class KimiLibrary
         => Process.GetOrAdd(target, static key => new(() => FreezeDefault(key), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
 
     /// <summary>Makes the freeze compilation of an unfrozen library: over an empty program, prepared with the target (none for
-    /// <see cref="TargetTriple.Invalid"/>) and the project, with documentation and hover collection on. Its Binding makes the library by the
-    /// one constructor, parsed in that compilation (its conditions, documentation flags, identifier table and collection); a test edits or
-    /// extends <see cref="Compilation.Library"/> before <see cref="Freeze"/>.</summary>
+    /// <see cref="TargetTriple.Invalid"/>) and the project, with documentation and hover collection on. It is given the library made by the
+    /// one constructor, parsed in that compilation (its conditions, documentation flags, identifier table and collection), before its Binding
+    /// exists (<see cref="Compilation.UseLibrary"/>); a test edits or extends <see cref="Compilation.Library"/> before <see cref="Freeze"/>.</summary>
     /// <param name="target">The target.</param>
     /// <param name="kimigayo">The compiler service the compilation takes.</param>
     /// <param name="project">The preparation: the project's Debug and compile-time settings.</param>
@@ -51,6 +62,7 @@ public sealed partial class KimiLibrary
             throw new InvalidOperationException($"The library's target `{target.Value}` does not prepare (InternalInvariant; PLAN G949 Stage 2).");
         }
 
+        compilation.UseLibrary(new KimiLibrary(compilation)); // Its Binding is given the library made in it, never Of's (s21c).
         return compilation;
     }
 
@@ -79,8 +91,9 @@ public sealed partial class KimiLibrary
     // frozen object names the freeze compilation, which is then dropped.
     private void Detach(Compilation freeze)
     {
-        (this.DocumentationFailures, this.HoverAnchors) = freeze.HoverDataOf(this.Kotonoha);
-        this.SyntaxRecords = freeze.Diagnostics.TakeSyntax(this.Kotonoha);
+        var (failures, anchors) = freeze.HoverDataOf(this.Kotonoha);
+        var syntax = freeze.Diagnostics.TakeSyntax(this.Kotonoha);
+        this.detached = (failures, anchors, syntax);
         var documentation = this.Kotonoha.DocumentationSources;
         for (var i = 0; i < documentation.Count; i++)
         {

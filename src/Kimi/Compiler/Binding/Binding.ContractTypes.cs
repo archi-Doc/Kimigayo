@@ -18,6 +18,10 @@ public sealed partial class Binding
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
 
+    // The compilation's level of the hop chains through a frozen library path (Hop; PLAN G949 Stage 2 U3, Revision 3): the chains first
+    // formed after the seal, kept for the compilation's life as an interner's compilation level, so a warm pass allocates none.
+    private readonly Dictionary<(BoundConformancePath Path, BoundType Step, ResolutionHops? Inner), ResolutionHops> frozenPathHops = new();
+
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
     /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
     /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
@@ -183,6 +187,24 @@ public sealed partial class Binding
 
             try
             {
+                // R7-C2c2 c2-4 (design (E), S3): a projection whose subject has a constructed Member is specified on it, through the one
+                // unconditional lookup the identity table's grounds read (SPEC 8.2.3 Projections). The table's Completion is met (W4): a
+                // non-Final or re-entered table leaves the projection's form Provisional, specified or not. Hops: the binding's resolution
+                // gives none, so a use keeps the subject's (a named limit for hover and diagnostics' "identical Type it used"). The
+                // Member is formed first, as the subject was (its components' images), so the instance grows only through the binding's
+                // substitution (StoredType's, IMPL A.4's checked growth site, refused at its frame), as a specification's does.
+                if (result.Kind == BoundTypeKind.AssociatedProjection)
+                {
+                    var member = this.MemberOf(result.Components[0], scope, out var table);
+                    completion = Meet(completion, table);
+                    if (!ReferenceEquals(member, result.Components[0]) && this.ContractTypeAnswer(member, scope, self) is var formed &&
+                        this.UnconditionalBinding(formed.Image, result, out var unfinished) is { } grounded)
+                    {
+                        var instance = this.ContractTypeAnswer(grounded, scope, self);
+                        return (instance.Image, inner, Meet(Meet(completion, formed.Completion), unfinished ? Completion.Provisional : instance.Completion));
+                    }
+                }
+
                 if (result.Kind == BoundTypeKind.AssociatedProjection)
                 {
                     var outcome = this.ProjectionSpecification(result, scope);
@@ -280,11 +302,14 @@ public sealed partial class Binding
     }
 
     // The interned chain of a hop resolving step through path before inner: one per path, step and inner chain, kept with the path it
-    // names (BoundConformancePath.HopChains), so a warm pass allocates none.
+    // names (BoundConformancePath.HopChains), so a warm pass allocates none. Over U4's two levels (PLAN G949 Stage 2 U3, Revision 3): a
+    // frozen path's chains are the library pass's, found first and never extended; a chain first formed after the seal is the
+    // compilation's (frozenPathHops), as an interner's insert after the seal goes to the compilation's level, so no compilation writes a
+    // frozen path.
     private ResolutionHops Hop(BoundConformancePath path, BoundType step, ResolutionHops? inner)
     {
-        var chains = path.HopChains ??= new();
-        for (var i = 0; i < chains.Count; i++)
+        var chains = path.HopChains;
+        for (var i = 0; chains is not null && i < chains.Count; i++)
         {
             if (ReferenceEquals(chains[i].Step, step) && ReferenceEquals(chains[i].Inner, inner))
             {
@@ -292,8 +317,18 @@ public sealed partial class Binding
             }
         }
 
+        if (path.Stamp == Frozen)
+        {
+            if (!this.frozenPathHops.TryGetValue((path, step, inner), out var own))
+            {
+                this.frozenPathHops.Add((path, step, inner), own = new(path, step, inner));
+            }
+
+            return own;
+        }
+
         var hop = new ResolutionHops(path, step, inner);
-        chains.Add(hop);
+        (path.HopChains ??= new()).Add(hop);
         return hop;
     }
 
