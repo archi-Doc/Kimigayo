@@ -31,13 +31,15 @@ public sealed partial class MirBorrowsTest
         func pokeT(u: uniq/(string, i32)) -> (string, i32) => ("q", 2)
         func chewT(u: (string, i32)) -> (string, i32) => u@move
         func mkT(a: ref/string, b: i32, s: string) -> (string, i32) => ("m", 1)
+        func mkK(a: ref/string, b: i32, s: string) -> Key => Key.init()
         func pickK(a: Key, b: Key) -> Key => a@move
         func pokeK(u: uniq/Key) -> Key => Key.init()
         struct Key
-            Self is Equatable
+            Self is Comparable
             public var n: i32 = 0
             public init() => ()
             public func equals(self: ref/Self, other: ref/Self) -> bool => true
+            public func compare(self: ref/Self, other: ref/Self) -> i32 => 0
         struct Counter
             var count: i32
             public init() => self.count = 0
@@ -62,8 +64,9 @@ public sealed partial class MirBorrowsTest
     // abandons the comparison, whose own Loans end before the assumed continuation, so an exclusive borrow (cmp1, cmp2r, cmpo, cmpr,
     // cmpt, cmpk, the nested cmpn) or a Move (cmpm, cmptm) of the inspected root there is valid; its reachable twin cmp1n errs. Loans
     // others need stay: a reference used later (cmp3), a call's argument (cmpc) or reservation (cmpv), a call in a tuple operator's left
-    // operand (cmpl). Nothing else abandons it: `$abort` (cmpa), an exit its operand catches, whose join only assumed paths reach (cmpw;
-    // in cmpwy that exit abandons only the comparison opened inside its target), and a join with a path that did not abandon it (cmpj).
+    // operand (cmpl) or in a Contract comparison's (cmplk). Nothing else abandons it: `$abort` (cmpa), an exit its operand catches, whose
+    // join only assumed paths reach (cmpw; in cmpwy that exit abandons only the comparison opened inside its target), and a join with a
+    // path that did not abandon it (cmpj).
     // Each row is a body of `func <name>(c: bool) -> i32` after `var x = "x"`, returning 0, and its one problem or none.
     [Theory]
     [InlineData("ad4", "    let y = \"y\"\n    var us: [1 of ref/string] = [y@ref]\n    us[take(x@move)] = x@ref\n", "x")]
@@ -122,6 +125,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("cmpc", "    _ = pair(x@ref, cost(pick((return 1), poke(x@uniq))))\n", "poke(x@uniq) CallActivationConflict_Kd")]
     [InlineData("cmpv", "    _ = poke2(x@uniq, pick((return 1), poke(x@uniq)))\n", "poke(x@uniq) CallReservationConflict_Kd")]
     [InlineData("cmpl", "    var t = (\"a\", 1)\n    _ = mkT(x@ref, (return 1), poke(x@uniq)) == t\n", "poke(x@uniq) CallActivationConflict_Kd")]
+    [InlineData("cmplk", "    var q = Key.init()\n    _ = mkK(x@ref, (return 1), poke(x@uniq)) < q\n", "poke(x@uniq) CallActivationConflict_Kd")]
     [InlineData("cmpa", "    _ = x == pick($abort(\"t\"), poke(x@uniq))\n", "poke(x@uniq) CallActivationConflict_Kd")]
     [InlineData(
         "cmpw",

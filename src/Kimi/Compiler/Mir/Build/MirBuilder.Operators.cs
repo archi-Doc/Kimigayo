@@ -61,7 +61,8 @@ internal sealed partial class MirBuilder
 
     // A built-in binary operator's operands, pushed in order; where the first is pushed. The left operand is pending while the right one is
     // evaluated, so a transfer there ends a comparison's inspection Loan, on its check edge too (SPEC 13.4, 14.10.3: a comparison's left
-    // operand is an inspection while the right one is evaluated), and secured where the right one builds code (SPEC 12.2).
+    // operand is an inspection while the right one is evaluated), and secured where the right one builds code (SPEC 12.2). A `$expect`
+    // comparison's operands (Recorded) are pushed here too, so its inspection is registered as an operator's is.
     private int Operands(BinaryKoto binary)
     {
         var start = this.arguments.Count;
