@@ -24836,6 +24836,16 @@ R8-M* and R9-M* by the stage of the recording unit.
     decisions would land without a reachable path); one range per builder (it forbids adding a module); the range in the kept
     library stamp (G950-R's two rules for kept facts); a step after the clean collector run to give unstepped bodies A1/A2 problems
     (C-378 (3) as amended; hover reads `Holds` instead).
+  - **Measured (unit M, 2026-11-19; PLAN G951 closed).** A fresh compilation builds 0-91 of the library's 319 bodies (Hello 5,
+    Milestone26 5, Milestone31 76; mean 30 over the 67 milestone, example and Benchmark programs; 0-2 over the A5 oracle's 1,764,
+    1,597 none), none by a program pass or the root build: the analyses demand 84 % and the collector 16 %; A4 needs at most one
+    missed round and the collector at most one missed run; a second version demands none, misses none and collects in one run;
+    lazy and eager records are equal on every program. N5's miss on a bodyless key is not memoized (at most 6 per program, 22 µs).
+    Pinned A/B (987ad9c7b, the dev before the switch, against 713fac946; T-315, 12 rounds, B/A'): cold Analyze Hello 0.018,
+    Milestone26 0.082, Milestone31 0.650, Interpolation 0.437; warm Analyze 0.002, 0.041, 0.248, 0.122; cold bytes 11.1-13.8 MB to
+    0.7-4.1 MB. The span also holds U2-K-b with G950-K and G949 Stage 2 U3, whose cold Analyze +7-11 % on Milestone26 and
+    Interpolation is U3's (K's W-272 row). Not attributed: Milestone31's cold Generate 1.116 (1.88 -> 2.10 ms; its whole cold
+    pipeline 42.9 -> 11.1 ms). Evidence: `artifacts/benchmarks/g951m-*`; the switch's own pinned row is K's `rp8w-W-246-e12b222ed-*`.
 - **R9-M10 The toolchain boundary's rule: a compiler exception under `Project.Build` is its result's fault (R9-B2, PLAN G345)**
   (Middle, 2026-11-18; the R7-R9 plan's §5.3 unit B2; Major; under DIAGNOSTICS rule 9, R5-M169 and R9-M6; design review ACCEPT WITH
   NOTES, the Middle's rulings on F1-F8; implementation review ACCEPT)
