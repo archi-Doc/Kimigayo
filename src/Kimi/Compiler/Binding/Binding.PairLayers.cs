@@ -161,9 +161,10 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Semantics, Components: [var below] } && IsBorrow(type.Semantics) ? below
             : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : null;
 
-    // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability (a write
-    // needs an assignable Place, such as an inline element of a writable root), uniq grants Write also through a let slot but
-    // never through a shared path, and ref grants Read only.
+    // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand's own capability (the owner case selects
+    // P itself: a write needs a whole Place that offers Write, WritablePlace; a borrow lends P as a Place or a writable temporary,
+    // LendsOwner, SPEC 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A
+    // part of an owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
     private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
         => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
 
@@ -171,12 +172,12 @@ public sealed partial class Binding
     {
         if (!exclusive)
         {
-            return (admitted & SemanticsMask.Owner) == 0 || scope is null || this.BorrowablePlace(operand, scope, false);
+            return (admitted & SemanticsMask.Owner) == 0 || scope is null || this.LendsOwner(operand, scope, false, out _);
         }
 
         return (admitted & SemanticsMask.Ref) == 0 &&
             ((admitted & SemanticsMask.Uniq) == 0 || !this.ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? this.Writable(operand) || ElementAccess.WritableRoot(this, operand) is not null : this.BorrowablePlace(operand, scope, true)));
+            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? this.WritablePlace(operand) : this.LendsOwner(operand, scope, true, out _)));
     }
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or

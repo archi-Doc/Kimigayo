@@ -399,16 +399,25 @@ public sealed partial class Binding
     private bool AcquirableByBinding(Koto receiver, ReadOnlySpan<PairCase> assignment)
         => this.LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || this.WritableOwner(receiver);
 
-    // SPEC 15.1.5, 3.4.1, 3.6: whether the owner a standard projection, a member selection or a payload selects from grants the part
-    // Write by its root's permission: a Place offering Write (Writable), an inline part of a writable root (ElementAccess.WritableRoot),
-    // or a writable temporary, in whose Temporary Place the part is a Place (WritableTemporary). A whole target or pair operand is
-    // judged as a Place (Writable), never as a temporary.
-    private bool WritableOwner(Koto owner)
-        => this.Writable(owner) || ElementAccess.WritableRoot(this, owner) is not null || this.WritableTemporary(owner);
+    // SPEC 13.7.1, 13.5.5, 15.1.5: whether a whole Place offers Write by its path and binding, the question of an assignment's whole
+    // target and of a pair layer's owner-case operand (P itself): Writable, or an inline part of a writable root
+    // (ElementAccess.WritableRoot; the Property permissions on its path are the binding's: ValidPropertyWritePath, BindReference). A
+    // bare temporary is none: whether a whole temporary may be a target is the owner's O-438, and its record stays dev's until then.
+    private bool WritablePlace(Koto place) => this.Writable(place) || ElementAccess.WritableRoot(this, place) is not null;
 
-    // SPEC 3.6, 11.5, 15.1.5: a newly owned temporary, a writable root: a Temporary Value (no Place, IsBarePlace) that is no getter
-    // result; a borrow value's referent keeps the capability its own layer gives (LayerAuthority, PathAuthority).
-    private bool WritableTemporary(Koto node) => !this.IsBarePlace(node) && !IsGetterResult(node);
+    // SPEC 15.1.5, 3.4.1, 3.6: whether the owner a standard projection, a member selection or a payload selects from grants the part
+    // Write by its root's permission: a whole Place offering Write (WritablePlace) or a writable temporary, in whose Temporary Place
+    // the part is a Place (WritableTemporary).
+    private bool WritableOwner(Koto owner) => this.WritablePlace(owner) || this.WritableTemporary(owner);
+
+    // SPEC 3.6, 11.5, 13.5.5, 15.1.5: a newly owned temporary, a writable root: a Temporary Value (no Place, IsBarePlace) that is no
+    // getter result, also as the Place a pair layer's selection designates where its weakest case keeps the operand's own path
+    // (PairAuthority: the owner case selects P itself). Its callers pass an owner whose own Type adds no layer (a borrow value's
+    // referent keeps the capability its layer gives: LayerAuthority, PathAuthority) or test a shared path first.
+    private bool WritableTemporary(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair
+            ? PairAuthority(this.PairAdmitted(pair)) is null && this.WritableTemporary(pair.Left)
+            : !this.IsBarePlace(node) && !IsGetterResult(node);
 
     // SPEC 3.4.3, 13.5.5, 15.6.2: the layer a Place's own Type adds to a path below the Place: Ref when its reference layers pass a
     // shared one, Uniq when they pass an exclusive reference or objuniq view, none for an owned Type or an owning obj handle (whose
@@ -523,9 +532,9 @@ public sealed partial class Binding
     // SPEC 3.4, 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
     // lifetime: an operand whose root, through parentheses and inline parts (both keep a Place's classification, SPEC 3.4, 4.7.1), is
     // no Place (IsBarePlace), such as a call result, a Case construction, a callable value or a getter
-    // result; a part of it is lent with it. A newly owned temporary has exclusive writable capability, lent exclusively only when
-    // spelled or as a Receiver Expression (SPEC 7.3, 15.1.5) and not through an inline part here, and a getter result only shared
-    // (SPEC 11.5).
+    // result; a part of it is lent shared with it. A writable temporary (WritableTemporary) is lent exclusively here as a whole, when
+    // spelled or as a Receiver Expression (SPEC 7.3, 15.1.5); its parts are LendsPlace's (LendsOwner), which adds their Property
+    // permissions (SPEC 11.2); a getter result is lent only shared (SPEC 11.5).
     private bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
@@ -538,7 +547,7 @@ public sealed partial class Binding
         // SPEC 15.6.2, 5.7: as for a Place, a shared layer on the path, a raw pointer's included, denies an exclusive borrow.
         var inline = unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(this, stored);
         return !this.IsBarePlace(root) &&
-            (!exclusive || (spelled && !IsGetterResult(root) && !inline && !this.ReachedThroughShared(unwrapped))) &&
+            (!exclusive || (spelled && !inline && this.WritableTemporary(root) && !this.ReachedThroughShared(unwrapped))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
 
@@ -591,7 +600,7 @@ public sealed partial class Binding
     // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field or static storage at the root
     // of the path that lends it (SPEC 15.6.2: through inline parts, elements and an owning handle's payload, an own step), if any; a
     // node, not a bool, as the structure limits leave this member one bool parameter, the mode. Below a pair layer the walk asks
-    // BorrowablePlace (PairCapability): no static's Type has one.
+    // LendsOwner (PairCapability) and drops the static root: no static's Type has one.
     private bool LendsPlace(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
     {
         staticRoot = null;

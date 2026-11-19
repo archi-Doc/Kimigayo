@@ -482,8 +482,9 @@ public class PathCapabilityDiagnosticTest
     // PLAN G1068, G203 (D-827; SPEC 3.4.1, 3.6, 11.3.1, 13.7.1, 15.1.5): a newly owned temporary is a writable root, so a part of it is
     // written, updated and exclusively borrowed as its Property permissions allow: a call result's Field (a custom get's too, whose
     // getter the write does not call; a custom set's, called on the temporary), nested, in parentheses, a Tuple, fixed-array or Array
-    // element, an owned handle's payload, a Copy (`c@copy.v`) and a moved value (`t@move.v`). Check accepts each program with no record
-    // and a Library build generates the function that writes.
+    // element, an owned handle's payload, a Copy (`c@copy.v`), a moved value (`t@move.v`), and through a pair layer's owner case,
+    // explicit or implicit (SPEC 13.5.5: P itself). Check accepts each program with no record and a Library build generates the
+    // function that writes.
     [Theory]
     [InlineData("field", "func f()\n    tw().v = 1\n    tw().q = 1\n    tw().s = 1\n")]
     [InlineData("update", "func f()\n    tw().v += 1\n    tw().q += 1\n    tw().s += 1\n    tw().v++\n    ++tw().q\n")]
@@ -494,6 +495,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("move", "func f(t: Tw)\n    t@move.v = 1\n    let u = Tw.init()\n    u@move.q = 1\n")]
     [InlineData("payload", "func f() => Kimi.Intrinsics.makeObj(Tw.init()).v = 1\n")]
     [InlineData("borrow", "func f()\n    take(tw().v@uniq)\n    take(pair().0@uniq)\n    take(tw().pt.x@uniq)\n    let c = Tc.init()\n    take(c@copy.v@uniq)\n")]
+    [InlineData("follow", "func f<s/T>(x: s/T, a: s/Tw, b: s/Tw, c: s/Tw, d: s/Tw)\n    s is owner or uniq\n    a@move@follow.v = 1\n    take(b@move@follow.v@uniq)\n    _ = look(c@move@follow.v@ref)\n    d@move.v += 1\nfunc g() => f(1, tw(), tw(), tw(), tw())\n")]
     public void APartOfATemporaryIsWritable(string form, string body)
     {
         var source = Take + Made + Temps + body + "public func main() => ()\n";
@@ -504,7 +506,8 @@ public class PathCapabilityDiagnosticTest
 
     // The invalid counterparts of APartOfATemporaryIsWritable keep their records: a getter temporary's part (SPEC 11.5), a let Field
     // (11.1, 11.2), an exclusive borrow of a custom accessor's Field (11.2), a moved value read after its temporary's write (15.1.1), and
-    // an unspelled exclusive argument, the part being an owned Place outside a Receiver Expression (15.1.5's lending rule).
+    // an unspelled exclusive argument, the part being an owned Place outside a Receiver Expression (15.1.5's lending rule); through a
+    // pair layer, an owned-Type parameter's part in the owner case (15.1.5) and a ref case (13.5.5).
     // Only the records after the preludes are compared.
     [Theory]
     [InlineData("getter", "func f() => Holder.init().cpt.x = 1\n", "InvalidAssignment_Kd Holder.init().cpt.x")]
@@ -514,6 +517,8 @@ public class PathCapabilityDiagnosticTest
     [InlineData("custom_borrow", "func f()\n    take(tw().q@uniq)\n    take(tw().s@uniq)\n", "InvalidAssignment_Kd tw().q@uniq; InvalidAssignment_Kd tw().s@uniq")]
     [InlineData("moved", "func f() -> i32\n    var u = Tw.init()\n    u@move.v = 1\n    return u.v\n", "MovedPlace_Kd u.v")]
     [InlineData("unspelled", "func f() => take(tw().v)\n", "ExclusiveBorrowRequired_Kd tw().v")]
+    [InlineData("follow_param", "func f<s/T>(x: s/T, n: s/Tw, m: s/Tw)\n    s is owner or uniq\n    n@follow.v = 1\n    take(m@follow.v@uniq)\n", "InvalidAssignment_Kd m@follow.v@uniq; InvalidAssignment_Kd n@follow.v")]
+    [InlineData("follow_shared", "func f<s/T>(x: s/T, n: s/Tw)\n    s is owner or ref\n    n@move@follow.v = 1\n", "SharedPathAccess_Kd n@move@follow.v")]
     public void APartOfATemporaryKeepsItsPermissions(string form, string body, string records)
     {
         var prelude = Take + Made + Temps;
