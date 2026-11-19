@@ -24328,7 +24328,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Hop`'s). `VerifyConformance`'s two `IsVerified = false` stores before its `IsVerified` return (the invalid path or declaration
     context branch and the unresolved Type declaration context branch) do not run on a frozen path: their predicates read library
     states the library pass left Resolved; a change that lets them read a reading compilation's facts (for example its foreign
-    failures) makes them a frozen-path write.
+    failures) makes them a frozen-path write. A frozen library holds no lazily filled field (R8-L1 U3c, PLAN G1072, 2026-11-19;
+    B's U3 ruling 48): the library pass's end completes each (`Koto.CompleteLazyFields`, `SyntaxTable.CompleteLazyFields`), each
+    by its owner (a node type with such a field overrides `Koto.CompleteLazyFields`, and a new one joins it there;
+    `SourceDocument.CompleteLazyFields` forms a document's line map), at the B1 site before the freeze counts the library's records;
+    `InvocationKoto.ArgumentLabels` forms its list on each read and stores none (no compiler reader). The census is
+    `back\notes\l1-s2\u3c\census.md`; the row `KimiLibraryShapeTest.AReaderAfterTheFreezeFillsNoLazyField`.
   - **Rejected.** A mode or flag choosing the library (its state decides); a per-compilation copy of the frozen library; a test
     editing `Of`'s library (it is shared: tests edit their own through the seam, `CompilationTestHelper.UseEditedLibrary`); the
     record of a library body published through the frozen library's collection (shared across compilations); `WithSource` and
