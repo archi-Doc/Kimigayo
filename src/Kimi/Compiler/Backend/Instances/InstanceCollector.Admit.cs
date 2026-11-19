@@ -159,7 +159,7 @@ internal sealed partial class InstanceCollector
 
         if (type.Height > HeightLimit)
         {
-            this.Limit(this.types.Erase(type), default, this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
+            this.Limit(DiagnosticCode.GenerationResourceLimit_Kd, this.types.Erase(type), default, this.Declaration(parent), site); // Not the key's Type: a comparison's may be a template's.
             return -1;
         }
 

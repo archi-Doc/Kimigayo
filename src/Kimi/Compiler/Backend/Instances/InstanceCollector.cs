@@ -111,10 +111,11 @@ internal sealed partial class InstanceCollector
     private readonly TyCtxt types;
     private readonly MirCases cases;
     private readonly Layout layout;
-    // The least use of each use over a limit per declaration (Limit), recorded at the run's end (DECISIONS R5-M171): an erased Type over
-    // a Layout limit or the type-driven height cap, or a forming site whose substitution passes IMPL A.4's height (Type null; R7-T1).
-    private readonly Dictionary<(BoundType? Type, SourceRef Site, MirDefKey Declaration), SourceRef> limits = new();
-    private readonly List<(SourceRef Subject, bool Height)> limitSubjects = new(); // RecordLimits' scratch.
+    // The least use of each use over a limit per declaration (Limit), recorded at the run's end with its code (DECISIONS R5-M171): an
+    // erased Type over a Layout limit or the type-driven height cap, or a forming site whose substitution passes IMPL A.4's height
+    // (TypeHeightLimit_Kd, Type null; R7-T1).
+    private readonly Dictionary<(DiagnosticCode Code, BoundType? Type, SourceRef Site, MirDefKey Declaration), SourceRef> limits = new();
+    private readonly List<(SourceRef Subject, DiagnosticCode Code)> limitSubjects = new(); // RecordLimits' scratch.
     private readonly HashSet<MonoKey> refused = new(); // The keys refused for growth, each reported once (DECISIONS R5-M170).
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
@@ -253,7 +254,7 @@ internal sealed partial class InstanceCollector
             case TyCtxt.Formation.Formed:
                 return true;
             case TyCtxt.Formation.HeightLimit:
-                this.Limit(null, forming, this.Declaration(item), subject);
+                this.Limit(DiagnosticCode.TypeHeightLimit_Kd, null, forming, this.Declaration(item), subject);
                 return false;
             case TyCtxt.Formation.Incomplete:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
