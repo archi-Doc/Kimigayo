@@ -1585,6 +1585,48 @@ public sealed partial class MirBorrowsTest
                 a = 2
                 return k
             """,
+        ["tupMixedBad"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func pr(self: ref/Self) -> (ref/i32 during self, i32) => (self.n@ref, 0)
+            func tupMixedBad() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                var t = s.pr()
+                if a > 0
+                    t = (s.n@ref, 0)
+                var k: i32 = 0
+                match t
+                    (let r, _) => k = r@follow
+                a = 2
+                return k
+            """,
+        ["fieldPartGet"] = """
+            struct W {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func wrap(self: ref/Self) -> W during self => W.init(r: self.n@ref, n: 0)
+            func fieldPartGet() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let q = s.wrap().r
+                let k = q@follow
+                a = 2
+                return k
+            """,
         ["refGetBad"] = """
             struct RS {s}
                 public let r: ref/i32 during s
@@ -3077,7 +3119,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("viewRefReborrowBad", "viewRefReborrowBad: var a: Array<i32> = [1, 2]")] // I by O-437 (b) as written: q, a reference the body forms through r, keeps O-364 (a) (it reaches v, which carries the uniq Loan on a)
     [InlineData("dictPayload", "")] // V: tryGet's Option payload reference; d carries no Loan, so V under O-364 (a) too
     [InlineData("optPayloadGet", "")] // V by O-437 (b) where an Option payload of a call's result is the call's reference (I under O-364 (a))
-    [InlineData("tupPartGet", "tupPartGet: a = 2")] // V by O-437 (b) if a Tuple element of a call's result is the call's reference, as optPayloadGet's Case payload is; rejected as O-364 (a): `(let r, _)` Copies the result's element `_6.0` into r, which MirBorrows.Holders' Mixing counts as no call's result (only a whole Move or Copy or a Case payload's keeps it one), so the bound starts at r's Deref but Ends reads r (the Middle's reading, D-838)
+    [InlineData("tupPartGet", "")] // V by O-437 (b): r is the call's reference as a part of its result, a Tuple element, as optPayloadGet's Case payload
+    [InlineData("tupMixedBad", "tupMixedBad: a = 2")] // I (O-364 (a)): on the path through the `if`, r is `s.n@ref`, a reference the body forms, so t holds a value no call returned
+    [InlineData("fieldPartGet", "")] // V by O-437 (b): a reference Field of the call's result, held whole in q
     [InlineData("rvDerefPlainOk", "")] // V, the control: r reaches x only, which carries nothing
     [InlineData("rvCopyUseBad", "rvCopyUseBad: kk = 2")] // I, the Copy by assignment into an initialized local: d carries w0's Loans and is read after (15.6 Holders' Copy sentence)
     [InlineData("rvPutROk", "")] // V, a Scalar argument the builder spills into a temporary before a borrow argument; d is not used after

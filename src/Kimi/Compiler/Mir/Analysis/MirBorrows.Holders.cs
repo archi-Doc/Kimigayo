@@ -227,12 +227,15 @@ internal sealed partial class MirBorrows
         return !this.mixed[local];
     }
 
-    // The locals that may hold a value that is neither a call's result nor a Case payload of one, the least such set: an argument (the
-    // caller's value), a local an Assign stores into (through no borrow or raw Deref, Through) other than whole by a Move or Copy of
-    // another local's whole value or Case payload (Whole), a local a Call returns into a part of, a Call's whole destination whose result
-    // keeps an input's own value that may carry a Loan in a Loan-free part (KeepsSourced), and a local such a Move or Copy gives the value
-    // of one of them: a call's result stays one while it is Moved or Copied whole from local to local, and a Case payload of it is bounded
-    // as it is (the owner's O-383 (b)). A pointer the body formed on such a local does not make it one of them otherwise:
+    // The locals that may hold a value that is neither a call's result nor a Case payload of one nor a reference held as a part of one,
+    // the least such set: an argument (the caller's value), a local an Assign stores into (through no borrow or raw Deref, Through) other
+    // than whole by a Move or Copy of another local's whole value, of a Case payload of it, or of a reference it holds as a part (Whole),
+    // a local a Call returns into a part of, a Call's whole destination whose result keeps an input's own value that may carry a Loan in
+    // a Loan-free part (KeepsSourced), and a local such a Move or Copy gives the value of one of them: a call's result stays one while it
+    // is Moved or Copied whole from local to local, a Case payload of it is bounded as it is (the owner's O-383 (b); a Field or element of
+    // the result that is no reference stays the holder's part, O-364 (a)), and a reference Copied out of a Field, Tuple element or Case
+    // payload of it is what the owner's O-437 (b) means by "a reference the call returns as a part of its result" (the referent bound,
+    // MirBorrows.Values' Sources). A pointer the body formed on such a local does not make it one of them otherwise:
     // a raw write is SPEC 15.6 Addresses', and a store of the body through a reference to it is not read here (a known limit: the row
     // rvCaseRefWriteBad). A call's write may store a value a Loan-free Case payload may hold and that may carry a Loan in a local
     // (Writes): the local stays a call's result, written, as is a local such a Move or Copy gives its value, and its write slot carries
@@ -516,7 +519,7 @@ internal sealed partial class MirBorrows
 
     // A whole store into a local with a write slot, the start or end of its storage included, replaces the slot (SPEC 15.6 Holders: a
     // holder completely replaced no longer carries the Loans of its old value; the review's B2): cleared, then joined with the write slot
-    // of the local whose whole value or Case payload a Move or Copy stores (Whole), if any, so the value moved carries what the writes
+    // of the local whose value, Case payload or reference part a Move or Copy stores (Whole), if any, so the value moved carries what the writes
     // stored in its source and nothing older; a call's result stored has none (MirBorrows.Flow's Assign and storage statements,
     // MirBorrows.Calls' Call). A slot grows only by the writes and Moves between two such stores.
     private void Rewrite(ulong[] state, int to, int from)
@@ -551,8 +554,9 @@ internal sealed partial class MirBorrows
         return first;
     }
 
-    // The local whose whole value, or a Case payload of whose value at any depth (through payload steps alone, MirBorrows.Values'
-    // Payload), an rvalue is by a Move or Copy (an Adapt's case-selected one), or -1.
+    // The local whose whole value, a Case payload of whose value at any depth (through payload steps alone, MirBorrows.Values' Payload),
+    // or a reference it holds as a part (through Field and payload steps alone: a Field, a Tuple element or a Case payload; no Deref or
+    // Index) an rvalue is by a Move or Copy (an Adapt's case-selected one), or -1.
     private int Whole(in MirRvalue assigned)
     {
         var rvalue = assigned.Kind == MirRvalueKind.Adapt ? cases.Adapt(assigned, out _) : assigned;
@@ -562,8 +566,8 @@ internal sealed partial class MirBorrows
             return -1;
         }
 
-        var at = from.Projection;
-        while (at != 0 && this.Payload(at))
+        var (at, reference) = (from.Projection, ReferenceTypes.IsReference(cases.TypeOf(from)));
+        while (at != 0 && (this.Payload(at) || (reference && this.body.Projections[at].Kind == MirProjectionKind.Field)))
         {
             at = this.body.Projections[at].Prefix;
         }
