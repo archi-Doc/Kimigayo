@@ -8,15 +8,15 @@ namespace Kimi.Compiler;
 // PagedColumn<T> (DECISIONS BU-220): the one store form of Binding's per-module node families (NodeColumns, HirTables.cs); a pass or
 // edit family's column is its stamped form, StampedColumn<T, TCounter> below.
 // - Responsibility: a column indexed by a dense id (a node's SyntaxId in its module) in pages of PageSize slots, carved from one arena
-//   at a page's first write; each operation once: Get, Ref, Empty, Grow, Reserve, Enumerate, MoveTo, and Renumbered and Retire for a
+//   at a page's first write; each operation once: Get, Ref, Empty, Grow, Enumerate, MoveTo, and Renumbered and Retire for a
 //   renumbering.
 // - Inputs: ids below the count Grow last gave (the module's id count, SyntaxTable.Allocate). Outputs: the rows, by value or by reference.
 // - Invariants: default(T) is an absent row, so the absent page reads default; the directory is allocated at the column's first write
 //   (a column without rows has none); a directory entry is 0 for an absent page, else the page's offset in the arena plus 1, so the first
-//   page (offset 0) is distinct from absent; a carved page never moves within the arena, which starts at its reserved size (Reserve: the
-//   library's stated size, KimiLibrarySize), grows by doubling, never past the module's dense size (every page carved), and keeps its
-//   capacity through Empty; a renumbering moves each present row into the spare arena, so a kept column's two arenas alternate and
-//   allocate again only when the module grew, and clears the retired one once its moves end (Retire), so no removed row stays reachable.
+//   page (offset 0) is distinct from absent; a carved page never moves within the arena, which starts at one page, grows by doubling,
+//   never past the module's dense size (every page carved), and keeps its capacity through Empty; a renumbering moves each present row
+//   into the spare arena, so a kept column's two arenas alternate and allocate again only when the module grew, and clears the retired
+//   one once its moves end (Retire), so no removed row stays reachable.
 // - Prohibitions: no hashing; no store decision or key rule (a family's one accessor decides both); no read or write at or past Grow's
 //   count; a reference Ref returns is used before the column's next Ref, since a carve can replace the arena.
 internal struct PagedColumn<T>
@@ -32,7 +32,6 @@ internal struct PagedColumn<T>
     private int used;
     private T[]? spare;
     private int pages;
-    private int reserve;
 
     /// <summary>Gets the slots the column's pages hold.</summary>
     internal readonly int Used => this.used;
@@ -58,7 +57,7 @@ internal struct PagedColumn<T>
         {
             if (this.arena is null || this.used == this.arena.Length)
             {
-                Array.Resize(ref this.arena, Math.Min(Math.Max(Math.Max(PageSize, this.reserve), this.used * 2), this.pages * PageSize));
+                Array.Resize(ref this.arena, Math.Min(Math.Max(PageSize, this.used * 2), this.pages * PageSize));
             }
 
             this.arena.AsSpan(this.used, PageSize).Clear();
@@ -96,10 +95,6 @@ internal struct PagedColumn<T>
         }
     }
 
-    /// <summary>Sets the arena's first allocation: a column whose size is stated (the library's, KimiLibrarySize) starts at it.</summary>
-    /// <param name="slots">The slots.</param>
-    internal void Reserve(int slots) => this.reserve = slots;
-
     /// <summary>Gets the present rows in ascending id order.</summary>
     /// <returns>The rows.</returns>
     internal readonly Enumerator Enumerate() => new(this.directory, this.arena);
@@ -127,7 +122,6 @@ internal struct PagedColumn<T>
         {
             arena = this.spare ?? (this.arena is { } current ? new T[current.Length] : []),
             spare = this.arena,
-            reserve = this.reserve,
         };
         column.Grow(count);
         return column;
@@ -289,7 +283,7 @@ internal static class KeyedRow
 // StampedColumn<T, TCounter> (DECISIONS BU-220): a pass or edit family's column, the stamped form of PagedColumn<T>.
 // - Responsibility: a column whose rows hold only while its stamp is the current value of the counter its declaration names (TCounter:
 //   Binding.PassCounter, which ResetPass advances, or Binding.EditCounter, which only Invalidate advances); each operation once: Get,
-//   Ref, Enumerate, Grow, Reserve and Renumbered, and Holds, the one comparison of the stamp with its counter, which Get, Ref and
+//   Ref, Enumerate, Grow and Renumbered, and Holds, the one comparison of the stamp with its counter, which Get, Ref and
 //   Enumerate each ask.
 // - Inputs: ids below the count Grow last gave, and the Binding whose counter the column follows. Outputs: the current rows.
 // - Invariants: a stale column reads default at every id and enumerates nothing; its first write after its counter advanced empties it,
@@ -339,10 +333,6 @@ internal struct StampedColumn<T, TCounter>
     /// <summary>Gives the column room for the ids below a count.</summary>
     /// <param name="count">The module's id count.</param>
     internal void Grow(int count) => this.rows.Grow(count);
-
-    /// <summary>Sets the arena's first allocation (the library's stated size, KimiLibrarySize).</summary>
-    /// <param name="slots">The slots.</param>
-    internal void Reserve(int slots) => this.rows.Reserve(slots);
 
     /// <summary>Gives the column a renumbering hands over: this one, unmoved and emptied (its capacity and stamp kept), grown to the
     /// renumbered module's ids.</summary>

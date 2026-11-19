@@ -609,7 +609,7 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(LlvmModuleText.FormatInteger128Runtime, text, StringComparison.Ordinal);
     }
 
-    // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes (FormattingTypes.Bound), a
+    // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes (TyCtxt.FormatBound), a
     // wrapping integer's its argument's and an isize's an i64's, and -1 exactly where the Type is unbounded (a string, a view, a Type
     // without built-in formatting): the one table, which an owning interpolation's estimate, and so Text.toString, reads (R8-W1c).
     [Fact]
@@ -618,9 +618,9 @@ public sealed partial class FunctionCodegenTest
         string[] names = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize", "f32", "f64", "char"];
         Assert.Equal(
             [4, 3, 6, 5, 11, 10, 20, 20, 40, 39, 20, 20, 17, 24, 4],
-            names.Select(static x => FormattingTypes.Bound(BoundType.Primitives[x])));
+            names.Select(static x => TyCtxt.FormatBound(BoundType.Primitives[x])));
         BoundType[] others = [BoundType.Boolean, BoundType.Unit, BoundType.String, BoundType.Range, BoundType.WrappingOf(BoundType.Primitives["u8"])];
-        Assert.Equal([5, 2, -1, -1, 3], others.Select(FormattingTypes.Bound));
+        Assert.Equal([5, 2, -1, -1, 3], others.Select(TyCtxt.FormatBound));
     }
 
     // The byte length of a site's location text (SPEC 22.5.1).
