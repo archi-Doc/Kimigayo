@@ -420,6 +420,41 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records(MirRecordClass.Construction).Select(static x => x.Subject));
     }
 
+    // SPEC 23.1.2, DECISIONS R4-M61's slot rows: a slot of no Type is the failed slot only where Binding recorded a cause at its
+    // TypeSource, so a node declaring one without it (a function's result, a parameter, also of a definition Binding rejected, a let's
+    // local, a match's or a for loop's binding) is published Error and recorded as InternalInvariant_Kd at it, never a fault; a default
+    // template is built only beside its definition's Body (a twin keeps its own).
+    [Fact]
+    public void ASlotOfNoTypeWithoutItsFailedFactIsABrokenContract()
+    {
+        var c = Compile(
+            "func result() -> i32 => 1\nfunc param(x: i32, n: i32 = 1) -> i32 => x\nfunc kept(x: i32, n: i32 = 1) -> i32 => x\n" +
+            "group G\n    protected func guarded(x: i32) -> i32 => x\nfunc local() -> i32\n    let x = 1\n    return x\n" +
+            "func pick(o: Option<i32>) -> i32\n    match o\n        .Some(let v) => return v\n        _ => return 0\n" +
+            "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n");
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var functions = nodes.OfType<FunctionKoto>().Where(static x => !x.IsAnonymous).ToDictionary(static x => x.Name);
+        var local = nodes.OfType<VariableKoto>().Single(static x => x.ToString().StartsWith("let x", StringComparison.Ordinal));
+        var match = nodes.OfType<MatchKoto>().Single();
+        var loop = nodes.OfType<ForKoto>().Single();
+        HirTables.Symbol(functions["result"])!.Type = null; // After Binding the Types go with no cause recorded; CheckBound publishes them.
+        c.Binding.ParameterSymbol(functions["param"], 0).Type = null;
+        c.Binding.ParameterSymbol(functions["guarded"], 0).Type = null; // Rejected by Binding (a protected function in a group, SPEC 9.4).
+        HirTables.Symbol(local)!.Type = null;
+        BoundMatch.Of(c.Binding, match)!.Positions.Single(static x => x.BodySymbol is not null).BodySymbol!.Type = null;
+        BoundMatch.Of(c.Binding, loop)!.Positions.Single(static x => x.BodySymbol is not null).BodySymbol!.Type = null;
+        c.Binding.CheckBound();
+        var program = c.BuildMir();
+        Koto[] broken = [functions["result"], functions["param"], functions["guarded"], local, match, loop];
+        Assert.Empty(program.Findings);
+        Assert.All(broken, static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
+        Assert.Equal(
+            broken.Select(SourceRef.Of).OrderBy(static x => x.Id),
+            program.Records(MirRecordClass.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject).OrderBy(static x => x.Id));
+        var templates = program.Bodies.ToArray().Where(static x => x.Key.Kind == MirBodyKind.DefaultTemplate).Select(static x => x.Key.Decl!.Name);
+        Assert.Equal(["kept"], templates);
+    }
+
     // SPEC 23.1.2, 13.7.2 (DECISIONS R4-M109): an input Binding rejected after selection is its consumer's derived value, an Opaque of the
     // Type the consumer takes, moved into it, with no Ref of a temp of the node's own Type; an update locates an Error receiver once (the
     // call it keeps evaluated once), and its getter and setter each take their own derived value, whose site names the located root

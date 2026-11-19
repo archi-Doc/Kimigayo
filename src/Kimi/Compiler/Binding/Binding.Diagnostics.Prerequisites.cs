@@ -78,9 +78,11 @@ public sealed partial class Binding
         => this.RecordedState(node) != BindingState.Resolved &&
             (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
 
-    // SPEC 23.1.2: the declaration part that gives a binding its Type: a parameter's written Type, an accessor parameter's annotation or
-    // Property Type, or a local's or Pattern's declaration; null for any other binding. A use or a written capture entry of a binding
-    // without a Type rests on it.
+    // SPEC 23.1.2 (PLAN G1073): the declaration part that gives a slot its Type, where Binding records that Type's failure: a
+    // parameter's written Type, an accessor parameter's annotation or Property Type; a definition's result: an accessor's executing
+    // function's written result, else its Property's Type or the Property, a function's or Closure's written result Type, else the
+    // function; a Property's (a static's or Field's), a local's or a Pattern's declaration; null for any other binding. A use or a
+    // written capture entry of a binding without a Type rests on it (ConsultTypeSource: not for a variable, a Property included).
     private static Koto? TypeSource(BindingSymbol symbol)
     {
         if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
@@ -95,8 +97,21 @@ public sealed partial class Binding
             return annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration;
         }
 
-        return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
+        if (symbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto definition })
+        {
+            return definition.Accessor?.Declaration is PropertyAccessorKoto executed
+                ? executed.ReturnType ?? Accessor(executed).Property.Declaration.TypeKoto ?? Accessor(executed).Property.Declaration
+                : definition.ReturnType ?? definition;
+        }
+
+        return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Property ? symbol.Declaration : null;
     }
+
+    // PLAN G1073, the failed-slot fact: a slot is stated when it has its Type or Binding recorded a cause at its TypeSource (its record
+    // reported or resting on a reported one), so a published slot of no Type is the failed slot. The HIR publisher's slot rows read it
+    // (HasFacts, SlotsStated); a node with a slot neither typed nor failed is Broken. One direction only: a Closure whose written result
+    // failed keeps an inferred Type until PLAN D-848.
+    private bool Stated(BindingSymbol slot) => slot.Type is not null || (TypeSource(slot) is { } source && this.HasFailureCauses(source));
 
     private bool IsUnresolvedPrerequisite(Koto node)
         => this.RecordedState(node) != BindingState.Resolved || IsRecovery(node, out _);

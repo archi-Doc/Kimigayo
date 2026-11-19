@@ -108,8 +108,9 @@ public sealed partial class Binding
 
             if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Completions: { } completions, Hir.Places: { } places } && node.SyntaxId < ops.Length)
             {
-                // An Error Binding resolved without rejecting it lacks the facts its Op guarantees (HasFacts): a broken HIR contract.
-                if (op == HirOp.Error && node.BindingState == BindingState.Resolved && !Rejected(node))
+                // An Error Binding resolved without rejecting it, or with a slot neither typed nor failed whatever its state (SlotsStated),
+                // lacks the facts its Op guarantees (HasFacts): a broken HIR contract.
+                if (op == HirOp.Error && ((node.BindingState == BindingState.Resolved && !Rejected(node)) || !binding.SlotsStated(node)))
                 {
                     node.SyntaxOwner.Hir.Broken!.Add(node);
                 }

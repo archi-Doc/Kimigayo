@@ -74,14 +74,15 @@ public sealed partial class Binding
         _ => HirOp.Syntax,
     };
 
-    // A node's evaluated Op: a declaration's Body or Syntax; Syntax for a form nothing evaluates (a Type, a name it declares, an attribute,
-    // an Origin clause or effect bound); Error for a node the lexer, the parser or Binding rejected but an admitted misfit, which places
-    // (AdmittedMisfit, SPEC 13.7.1, 23.1.2: its value is the Error); else its form's Op, published only with the facts it guarantees (HasFacts).
+    // A node's evaluated Op: a declaration's Body (with its slots stated, HasFacts, else Error) or Syntax; Syntax for a form nothing
+    // evaluates (a Type, a name it declares, an attribute, an Origin clause or effect bound); Error for a node the lexer, the parser or
+    // Binding rejected but an admitted misfit, which places (AdmittedMisfit, SPEC 13.7.1, 23.1.2: its value is the Error); else its form's
+    // Op, published only with the facts it guarantees (HasFacts).
     private HirOp OpOf(Koto node)
     {
         if (node is FunctionKoto { IsAnonymous: false } or PropertyKoto or PropertyAccessorKoto)
         {
-            return this.HasBody(node) ? HirOp.Body : HirOp.Syntax;
+            return !this.HasBody(node) ? HirOp.Syntax : this.HasFacts(node, HirOp.Body) ? HirOp.Body : HirOp.Error;
         }
 
         if (node is TypeKoto or AttributeKoto or OriginRelationKoto or EffectBoundKoto or
