@@ -1426,7 +1426,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   Nothing frozen.
 - Revision 102 (2026-11-19, plan §14; the owner's orders in K's dialog, DECISIONS Q22; the Middle's D-872 and the Front's D-874):
   the 90% rule is abolished; §10.1's new item 6 makes G396's remaining items (§5.4) R7 exit conditions; §5.1's stream Z (Z1–Z24,
-  Z14 unused; DECISIONS R7-M53) holds G396 (1), (3) and (4) and G147 (2) as R7 exit units. Nothing frozen.
+  Z14 unused; DECISIONS R7-M53) holds G396 (1), (3) and (4) and G147 (2) as R7 exit units; Z24 is settled by SPEC 4.7.1 step 3
+  and 5.4 (the owner's O-445 (A)), one test row remaining. Nothing frozen.
 - Revision 103 (2026-11-19, plan §14; the Back's R7-P2 design review ruling 10 and P2's commit 1, Q-544): §5.0's P3 row, §5.1's
   P2 row and §6 name the code's `CallEvaluation` and `EvaluatedCandidate`; P2's row records commit 1 (DECISIONS R7-M52).
   Nothing frozen.
