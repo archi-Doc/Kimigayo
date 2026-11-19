@@ -500,7 +500,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("field", "func f()\n    tw().v = 1\n    tw().q = 1\n    tw().s = 1\n")]
     [InlineData("update", "func f()\n    tw().v += 1\n    tw().q += 1\n    tw().s += 1\n    tw().v++\n    ++tw().q\n    tw().s++\n")]
     [InlineData("nested", "func f()\n    tw().pt.x = 1\n    tw().pr.0 = 1\n    (tw()).v = 1\n")]
-    [InlineData("elements", "func f(i: isize)\n    pair().0 = 1\n    fixed()[0] = 1\n    fixed()[i] = 1\n    array()[0] += 1\n    (1, 2).0 = 5\n")]
+    [InlineData("elements", "func f(i: isize)\n    pair().0 = 1\n    fixed()[0] = 1\n    fixed()[0]++\n    fixed()[i] = 1\n    array()[0] += 1\n    (1, 2).0 = 5\n")]
     [InlineData("replace", "func strs() -> [1 of string] => [\"old\"]\nfunc f()\n    strs()[0] = \"new\"\n    tw().pt = Pt.init()\n")]
     [InlineData("copy", "func f()\n    let c = Tc.init()\n    c@copy.v = 1\n    c@copy.v += 1\n")]
     [InlineData("getter_copy", "struct Gc\n    public var a: Tc = Tc.init()\n        get() -> Tc => storage\n    public init() => ()\nfunc gc() -> Gc => Gc.init()\nfunc f()\n    gc().a@copy.v = 1\n    gc().a = Tc.init()\n")]
