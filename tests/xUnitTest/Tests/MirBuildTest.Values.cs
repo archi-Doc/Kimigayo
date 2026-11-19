@@ -22,15 +22,17 @@ public sealed partial class MirBuildTest
 
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
-    // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose rejected declaration has no Type (one with a Type is
-    // its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage), and the Field initializer of a declaration whose parts the HIR does not
-    // publish (a struct with a misplaced `length` slot, the Field's own Type failed: PLAN G1071's gate), in each constructor. Building goes
-    // on after each. The unbuilt form is the tuple operator without its comparison (Unbuilt); its Opaque names the roots of its operands.
+    // Opaque without a record (SPEC 23.1.2): Binding's Error and a use of a local whose rejected declaration has no Type (one with a Type
+    // is its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage). Building goes on after each. A Field Binding failed whose own Type is
+    // valid (a struct with a misplaced `length` slot) has its initializer published (PLAN G1071's gate 1, F's C2 ruling 261 (3)), so each
+    // constructor builds it, with no Opaque, record or finding (it was an Opaque in each constructor while only a Resolved definition's
+    // parts were published). The unbuilt form is the tuple operator without its comparison (Unbuilt); its Opaque names the roots of its
+    // operands.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = CompilationTestHelper.Parse(
-            "struct Grid<length N>\n    public var cells: [N of Missing] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
+            "struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
             Unbuilt.Declarations + $"func f(a: i32, x: ref/{Unbuilt.Tuple}, y: ref/{Unbuilt.Tuple}) -> i32\n    let c = x == y\n    return a\n" +
             $"func g() -> i32 => missing\nfunc h(a: i32, c: bool, u: ref/{Unbuilt.Tuple}, v: ref/{Unbuilt.Tuple}) -> i32\n    defer\n" +
             "        let d = u == v\n    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
@@ -48,7 +50,7 @@ public sealed partial class MirBuildTest
         Assert.Equal(["u == v", "x == y"], records);
         Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u == v"));
 
-        Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
+        Assert.Equal(0, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
         Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
