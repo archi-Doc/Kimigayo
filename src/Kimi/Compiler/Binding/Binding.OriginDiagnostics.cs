@@ -445,7 +445,7 @@ public sealed partial class Binding
     // (CaseText; SPEC 23.1.2, DECISIONS BU-44).
     private bool ReportInvalidOriginSlot(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var invalid) == true)
+        if (this.invalidStaticOriginSlots.TryGetValue(node, out var invalid))
         {
             var slot = invalid.Slot;
             var found = CaseText(invalid.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(invalid.Cases.Start, invalid.Cases.Count));

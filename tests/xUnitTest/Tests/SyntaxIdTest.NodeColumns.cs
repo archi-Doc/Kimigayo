@@ -190,8 +190,8 @@ public partial class SyntaxIdTest
     // generic container's group whose struct a parameter names; QualificationFailures: a member read without its `self.`, a failure
     // family's program, which reports its failure at each Bind; R7-N5's: PerCallOrigins, a call only an argument's own per-call Origin
     // would satisfy; OriginTwins, a body-local borrow's failed local clause, A5's twin; PairFollows, a `@follow` of a pair layer;
-    // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot). Checked after each edit (N5-5's
-    // review C1):
+    // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
+    // `static` at a `uniq` slot). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -214,6 +214,7 @@ public partial class SyntaxIdTest
     [InlineData("PairFollows", "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc view<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref\n")]
     [InlineData("ImplicitPairFollows", "milestone:Milestone28")]
     [InlineData("PhantomRawOrigins", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\n    let p: raw/i32 during a\n", DiagnosticCode.InvalidOriginBinding_Kd)]
+    [InlineData("InvalidStaticOriginSlots", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\nfunc g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")\n", DiagnosticCode.InvalidOriginBinding_Kd)]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
