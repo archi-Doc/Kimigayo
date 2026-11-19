@@ -248,12 +248,13 @@ public sealed partial class Binding
 
         // The Op a node's parts are published under (DECISIONS R5-M63): a closure Binding bound in this pass, at an evaluated or a replaced
         // position, whose definition it completed keeps its parts as a Closure whatever its creation is (built, failed, or part of a
-        // replaced parent); another node's parts are its Op's.
+        // replaced parent); another node's parts are its Op's. Bound is "visited this pass": a creation whose slot failed is Unresolved
+        // with no failure of its own (PLAN G1110), and its definition, published and with its slots stated, keeps its parts as well.
         private HirOp Parts(Koto node, HirOp op, HirPosition position)
         {
-            var bound = (position & (HirPosition.Evaluated | HirPosition.Replaced)) != 0 &&
-                (node.BindingState == BindingState.Resolved || node.BindingFailure != BindingFailure.None);
-            return node is FunctionKoto { IsAnonymous: true } && bound && binding.HasFacts(node, HirOp.Closure) ? HirOp.Closure : op;
+            var bound = (position & (HirPosition.Evaluated | HirPosition.Replaced)) != 0 && node.BindingState != BindingState.Unvisited;
+            return node is FunctionKoto { IsAnonymous: true } function && bound && function.ClosureDefinition is not null && binding.SlotsStated(node)
+                ? HirOp.Closure : op;
         }
 
         // The Op at a position: a declaration's at any, another node's only where it is evaluated (Syntax elsewhere).

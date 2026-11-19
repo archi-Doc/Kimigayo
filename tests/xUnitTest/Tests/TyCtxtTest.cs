@@ -338,10 +338,10 @@ public sealed partial class TyCtxtTest
         Assert.All(closed, static x => Assert.NotNull(x.InstanceContext));
         Assert.Equal(calls.Select(c.Types.SubstOf), closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(c.Types.SubstOf(calls[0]), c.Types.SubstOf(calls[1]));
-        Assert.All(closed, x => Assert.Same(c.Binding.ClosureSignature(x), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(x)!)));
+        Assert.All(closed, x => Assert.Same(c.Binding.ClosureSignature(x), c.Types.Apply(closure.Signature!, c.Types.SubstOfClosure(x)!)));
         var identity = c.Types.SubstOfClosure(closure.EnvironmentType!)!;
         Assert.Same(c.Types.Identity(function), identity);
-        Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
+        Assert.Same(closure.Signature, c.Types.Apply(closure.Signature!, identity));
     }
 
     // SPEC 15.3.1, 15.3.6 (PLAN G457): a call's instance maps each of the callee's Type and Origin slots once, so a Type argument naming the
@@ -2041,7 +2041,7 @@ public sealed partial class TyCtxtTest
             var instance = declared is null ? null : Instance(c, declared, subst, context);
             if (!ReferenceEquals(applied, instance) ||
                 (applied is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && function.ClosureOf() is { } closure &&
-                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(applied)!))))
+                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature!, c.Types.SubstOfClosure(applied)!))))
             {
                 problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} {declared}: {applied}");
             }

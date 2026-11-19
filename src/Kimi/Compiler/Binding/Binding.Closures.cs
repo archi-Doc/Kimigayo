@@ -244,7 +244,8 @@ public sealed partial class Binding
 
         if (function.ClosureStorage is { } previous)
         {
-            previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
+            previous.Signature = null;
+            previous.Published = false; // BoundClosure.Of is this binding's definition, set once it is published.
             previous.Classified = false; // And its receiver facts this binding's, once it has classified them.
             this.LeavePendingRelations(function); // The pending relations of an earlier binding leave with it (R4-M126 §2.5 (d)).
         }
@@ -432,52 +433,73 @@ public sealed partial class Binding
     private BoundType? PublishClosure(FunctionKoto function, BoundClosure plan, BoundType? expected, bool openResult)
     {
         var symbol = this.symbols[function];
-        if (symbol.Type is null)
-        {
-            return Complete(function, null);
-        }
 
         // SPEC 15.8.2 (DECISIONS R4-M126 P8, R4-M152): an inferred result is published once the receiver is classified.
-        var publishes = function.ReturnType is null && (expected is null || openResult);
+        var publishes = symbol.Type is not null && function.ReturnType is null && (expected is null || openResult);
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
-            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type, closureBody));
+            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type!, closureBody));
         }
 
-        var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
+        // SPEC 23.1.2 (PLAN G1110, DECISIONS R5-M63 (1) as amended): a parameter or result slot that failed (the failed-slot fact) leaves the
+        // Signature null and the creation failed; the definition is still published (Published) with its final EnvironmentType, its
+        // Origin arguments from the typed header parts only (a failed part names no atom).
+        var failed = symbol.Type is null;
+        var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count + 1, plan.Storage.Count));
         try
         {
+            var typed = 0;
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                if (function.Parameters[i].Type.BoundType is not { } input)
+                if (function.Parameters[i].Type.BoundType is { } input)
                 {
-                    return Complete(function, null);
+                    buffer[typed++] = input;
                 }
-
-                buffer[i] = input;
+                else
+                {
+                    failed = true;
+                }
             }
 
-            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
+            BoundType header;
+            if (!failed)
+            {
+                var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
+                plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type!]);
+                header = plan.Signature;
+            }
+            else
+            {
+                if (symbol.Type is { } result)
+                {
+                    buffer[typed++] = result;
+                }
+
+                header = typed == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, typed));
+            }
+
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
-            plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
+            plan.EnvironmentType = this.ClosureType(symbol, function, header, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
         }
         finally
         {
             this.typeScratch.Return(buffer, clearArray: true);
         }
 
+        plan.Published = true;
+        // SPEC 23.1.2 (rule W): the result's sources and the omitted captures are judged on both paths; a returned value read from a
+        // failed slot has no Type and rests (FitResultSources skips it), any other source is fitted.
         if (publishes)
         {
-            this.FitResultSources(function, closureBody, symbol.Type); // A returned value over the call's own storage is Refuted where it returns.
+            this.FitResultSources(function, closureBody, symbol.Type!); // A returned value over the call's own storage is Refuted where it returns.
         }
 
         this.JudgeOmittedCaptures(function, plan);
-        return Complete(function, plan.EnvironmentType);
+        return Complete(function, failed ? null : plan.EnvironmentType);
     }
 }

@@ -47,11 +47,16 @@ public sealed class BoundClosure
 {
     public IReadOnlyList<BoundCapture> Captures => this.Storage;
 
-    public BoundType Signature { get; internal set; } = null!;
+    public BoundType? Signature { get; internal set; }
 
     public BoundType? EnvironmentType { get; internal set; }
 
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
+
+    // Whether this binding published the definition (Binding.PublishClosure, on both of its paths; cleared where BindClosure clears the
+    // Signature): the one gate of Of. Not Classified, which is set before JudgePendingRelations and PublishedResult, where the
+    // EnvironmentType is still the preliminary one that TyCtxt.ClosureEnvironment would read (DECISIONS R5-M63 (1) as amended).
+    internal bool Published { get; set; }
 
     // The requirement of every admitted case: Receiver without the captures' bare Reborrows by case (SPEC 7.7.3).
     internal SemanticsKind CaseFreeReceiver { get; set; } = SemanticsKind.Ref;
@@ -82,8 +87,12 @@ public sealed class BoundClosure
     internal static BoundClosure? Of(BoundType? closure)
         => closure is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } ? Of(function) : null;
 
-    // The literal route to a closure's definition (DECISIONS R5-M63 (1), R4-M152): the literal's published plan once its latest binding
-    // bound the signature, whatever the creation's outcome; null for a named function, an unbound literal and until the signature is bound.
+    // The literal route to a closure's definition (DECISIONS R5-M63 (1) as amended by PLAN G1110, R4-M152): the literal's plan once its
+    // latest binding bound the header and the body, classified the receiver and published it (Published), whatever the creation's
+    // outcome. Its Signature is null exactly where a parameter's or the result's slot failed (the failed-slot fact, Binding.Stated); such a
+    // definition reaches the Type route only as its own body's receiver (its creation is Error, so no value of its Closure Type is
+    // formed), and a reader of a Closure value's Signature that meets one is a broken contract (InternalInvariant), never a fallback.
+    // Null for a named function, an unbound literal and until the definition is published.
     internal static BoundClosure? Of(FunctionKoto literal)
-        => HirTables.PlanOf(literal).Plan is BoundClosure { Signature: not null } plan ? plan : null;
+        => HirTables.PlanOf(literal).Plan is BoundClosure { Published: true } plan ? plan : null;
 }

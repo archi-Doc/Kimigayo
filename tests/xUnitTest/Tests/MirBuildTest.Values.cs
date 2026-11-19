@@ -422,7 +422,7 @@ public sealed partial class MirBuildTest
 
     // SPEC 23.1.2, DECISIONS R4-M61's slot rows: a slot of no Type is the failed slot only where Binding recorded a cause at its
     // TypeSource, so a node declaring one without it (a function's result, a parameter, also of a definition Binding rejected, a let's
-    // local, a match's or a for loop's binding) is published Error and recorded as InternalInvariant_Kd at it, never a fault; a default
+    // local, a match's or a for loop's binding, a Closure's parameter or result) is published Error and recorded as InternalInvariant_Kd at it, never a fault; a default
     // template is built only beside its definition's Body (a twin keeps its own).
     [Fact]
     public void ASlotOfNoTypeWithoutItsFailedFactIsABrokenContract()
@@ -431,8 +431,10 @@ public sealed partial class MirBuildTest
             "func result() -> i32 => 1\nfunc param(x: i32, n: i32 = 1) -> i32 => x\nfunc kept(x: i32, n: i32 = 1) -> i32 => x\n" +
             "group G\n    protected func guarded(x: i32) -> i32 => x\nfunc local() -> i32\n    let x = 1\n    return x\n" +
             "func pick(o: Option<i32>) -> i32\n    match o\n        .Some(let v) => return v\n        _ => return 0\n" +
-            "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n");
+            "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n" +
+            "func closures() -> i32\n    let p = func [] (v: i32) -> i32 => v\n    let r = func [] () -> i32 => 1\n    return p(1) + r()\n");
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var literals = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var functions = nodes.OfType<FunctionKoto>().Where(static x => !x.IsAnonymous).ToDictionary(static x => x.Name);
         var local = nodes.OfType<VariableKoto>().Single(static x => x.ToString().StartsWith("let x", StringComparison.Ordinal));
         var match = nodes.OfType<MatchKoto>().Single();
@@ -443,9 +445,11 @@ public sealed partial class MirBuildTest
         HirTables.Symbol(local)!.Type = null;
         BoundMatch.Of(c.Binding, match)!.Positions.Single(static x => x.BodySymbol is not null).BodySymbol!.Type = null;
         BoundMatch.Of(c.Binding, loop)!.Positions.Single(static x => x.BodySymbol is not null).BodySymbol!.Type = null;
+        c.Binding.ParameterSymbol(literals[0], 0).Type = null; // A Closure's parameter and result slots (PLAN G1110).
+        HirTables.Symbol(literals[1])!.Type = null;
         c.Binding.CheckBound();
         var program = c.BuildMir();
-        Koto[] broken = [functions["result"], functions["param"], functions["guarded"], local, match, loop];
+        Koto[] broken = [functions["result"], functions["param"], functions["guarded"], local, match, loop, literals[0], literals[1]];
         Assert.Empty(program.Findings);
         Assert.All(broken, static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         Assert.Equal(

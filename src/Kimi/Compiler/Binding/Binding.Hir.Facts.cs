@@ -48,7 +48,8 @@ public sealed partial class Binding
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
     /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and
     /// its entry, step, iterator symbol and decomposition; a match its current plan; a
-    /// dictionary literal its lookup; a closure its definition; a conversion its binding (a case adaptation its plan); a Tuple or array
+    /// dictionary literal its lookup; a closure's creation its definition with a Signature (a closure's parts, which HirPublisher.Parts
+    /// publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a conversion its binding (a case adaptation its plan); a Tuple or array
     /// literal its Type and an enum Case construction its plan; a declared local and a name their symbols; and every slot a declared
     /// local, a definition's Body, a match, a try or a for loop declares stated (<see cref="SlotsStated"/>, PLAN G1073).</summary>
     /// <param name="node">An evaluated node.</param>
@@ -94,7 +95,7 @@ public sealed partial class Binding
             case HirOp.DictionaryLiteral:
                 return CallPlan.Of(this, node) is { } find && Complete(find);
             case HirOp.Closure:
-                return ((FunctionKoto)node).ClosureDefinition is not null;
+                return ((FunctionKoto)node).ClosureDefinition is { Signature: not null } && this.SlotsStated(node);
             case HirOp.Convert:
                 return ((ConversionKoto)node).ConversionBinding is not ConversionBinding.None and var binding &&
                     (binding != ConversionBinding.CaseAdaptation || HirTables.PlanOf(node).Plan is ExplicitAdaptationPlan);
@@ -165,10 +166,10 @@ public sealed partial class Binding
 
     // PLAN G1073 (SPEC 23.1.2): whether every slot a node declares is stated (Stated): a declared local's; a definition's result and
     // parameters (an accessor's executing function's, with its self and value; a static's or Field's Type); the bindings of a match's, a
-    // try's or a for loop's plan. A node with a slot neither typed nor failed lacks its facts (HirTables.Broken) whatever its state:
-    // Binding records every failed slot's cause at its TypeSource. No other node declares a slot the builder reads: a published Closure
-    // has a Signature, formed only from its typed result and parameters, and an environment of typed captures (a capture of a source
-    // whose Type failed forms no environment binding); a static's Place is built only under its declaration's Body (MirBuilder's
+    // try's or a for loop's plan; a Closure's parameters and result as a named function's (PLAN G1110). A node with a slot neither typed
+    // nor failed lacks its facts (HirTables.Broken) whatever its state: Binding records every failed slot's cause at its TypeSource. No
+    // other node declares a slot the builder reads: a Closure's environment holds typed captures only (a capture of a source whose Type
+    // failed forms no environment binding); a static's Place is built only under its declaration's Body (MirBuilder's
     // Static), whose row reads its Type; the default templates of a definition with a body only beside its Body (an Error definition
     // replaces its defaults).
     private bool SlotsStated(Koto node)
@@ -183,7 +184,7 @@ public sealed partial class Binding
                 var bound = Accessor(accessor);
                 return this.Stated(CallPlan.Accessor(this, accessor)) && (bound.SelfSymbol is not { } self || this.Stated(self)) &&
                     (bound.ValueSymbol is not { } value || this.Stated(value));
-            case FunctionKoto { IsAnonymous: false } function when HirTables.Symbol(function) is { } symbol:
+            case FunctionKoto function when HirTables.Symbol(function) is { } symbol:
                 if (!this.Stated(symbol))
                 {
                     return false;

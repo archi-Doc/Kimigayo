@@ -726,7 +726,8 @@ public sealed partial class Binding
     // or any Type at another pattern, as it is.
     private BoundType SignatureAtFunction(BoundType pattern, BoundType actual)
         => pattern.Kind != BoundTypeKind.Function ? actual
-            : this.FunctionItemSignature(actual) ?? BoundClosure.Of(actual)?.Signature ?? actual;
+            : this.FunctionItemSignature(actual) ?? (BoundClosure.Of(actual) is { } closure ? closure.Signature ?? throw new InvalidOperationException(
+                "A Closure value's definition has no Signature (InternalInvariant): one without (a failed slot) is only its own body's receiver (BoundClosure.Of).") : actual);
 
     // What an adapted Type's evidence reads of the part it comes from (SlotSolution.InferFrom): the node whose known call signature binds
     // a Function pattern (none for a position of several parts), its contribution (Contribution), and whether it only supplies relations

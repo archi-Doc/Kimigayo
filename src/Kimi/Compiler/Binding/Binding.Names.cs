@@ -136,9 +136,13 @@ public sealed partial class Binding
                     this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
                 }
             }
+            else if (this.RecordedState(variable) == BindingState.Unvisited)
+            {
+                this.BindVariable(variable, symbol.Scope); // A use binds a declaration this pass has not bound yet (BindReference).
+            }
             else
             {
-                this.BindVariable(variable, symbol.Scope);
+                this.Consulted(variable); // SPEC 23.1.2: a bound declaration without a Type is the failed slot; its use rests on it.
             }
         }
 
