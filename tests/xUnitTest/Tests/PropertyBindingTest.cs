@@ -658,6 +658,28 @@ public partial class PropertyBindingTest
     public void APlaceBuiltOnAUseOfAFailedGetterRestsOnIt(string run)
         => Assert.Equal([nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), nameof(DiagnosticCode.UnsatisfiedConstraint_Kd)], DiagnosticCorpus.Check(FailedGetter + run).Diagnostics.Select(static x => x.Code));
 
+    // A struct P, non-Copy unless the Copy twin opts in, and a W whose custom getter returns its stored Option<P>.
+    private const string NonCopyP = "struct P\n    public var x: i32 = 0\n    public var o: Option<i32> = .None\n    public init() => ()\n";
+    private const string OptionGetter = "struct W\n    public var opt: Option<P> = .None\n        get() -> Option<P> => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n";
+
+    // SPEC 23.1.2 (D-823): a bound match whose Subject is a late-rested use itself, also through a group, bound its Pattern trees and arms
+    // against the use's Type: the late rest's located limit, one Unsupported_Kd at the match beside the declaration's record (before,
+    // InternalInvariant_Kd). Twins: a Subject that is a Place built on the use and a Field of a follow Place on a failed handle getter rest
+    // with the use (the declaration's record alone), and over a Copy P the getter is valid.
+    [Theory]
+    [InlineData(NonCopyP + OptionGetter + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; Unsupported_Kd match w.opt")]
+    [InlineData(NonCopyP + OptionGetter + "    return match w.opt\n        .Some(_) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; Unsupported_Kd match w.opt")]
+    [InlineData(NonCopyP + OptionGetter + "    return match (w.opt)\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; Unsupported_Kd match (w.opt)")]
+    [InlineData(NonCopyP + "struct W\n    public var t: (P, i32) = (P.init(), 1)\n        get() -> (P, i32) => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return match w.t\n        (_, let b) => 1\n", "UnsatisfiedConstraint_Kd var t: (P, i32) = (P.init(), 1); Unsupported_Kd match w.t")]
+    [InlineData(NonCopyP + "struct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return match w.pos.o\n        .Some(let n) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init()")]
+    [InlineData(NonCopyP + "struct W\n    public var h: rc/P = P.init()@rc\n        get() -> rc/P => storage\n    public init() => ()\nfunc run(w: uniq/W) -> i32\n    return w.h@follow.x\n", "UnsatisfiedConstraint_Kd var h: rc/P = P.init()@rc")]
+    [InlineData("struct P\n    Self is Copy\n    public var x: i32 = 0\n    public init() => ()\n" + OptionGetter + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "")]
+    public void AMatchOverALateRestedUseIsALocatedLimit(string program, string records)
+    {
+        var source = "public func main() => ()\n" + program;
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]}")));
+    }
+
     // SPEC 11.8, 13.7.2, 23.1.1 (PLAN G295): a bare update of a group Property beside a custom accessor, inside its group, completes its
     // sides, then is Binding's located Unsupported_Kd at the target until P42 (before, no record and a PrerequisiteUnavailable_Kd without
     // a root). Twins bind: the standard accessors, the qualified form (the later phases' limit), a bare read and a bare write.

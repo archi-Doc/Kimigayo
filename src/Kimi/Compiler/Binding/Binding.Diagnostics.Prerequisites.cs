@@ -249,6 +249,17 @@ public sealed partial class Binding
                 Complete(place.Parent!, null);
             }
 
+            // The late rest's located limit (D-823, PLAN: one dependency relation every late rest passes through): a bound match whose
+            // Subject is the rested node itself, as its consumer takes it (Grouped), bound its Pattern trees and arm bodies against the
+            // Subject's Type, and its bindings' uses are on no parent chain, so it reports one Unsupported_Kd and HIR publishes it as an
+            // Error without its arms. A Subject that is a Place built on the node rests above, and a match still binding rests through
+            // its own binder (BindMatch).
+            var taken = Grouped(node);
+            if (taken.Parent is MatchKoto { BindingState: BindingState.Resolved } match && ReferenceEquals(match.Expression, taken))
+            {
+                this.Fail(match, BindingFailure.Unsupported, true);
+            }
+
             return null;
         }
 
