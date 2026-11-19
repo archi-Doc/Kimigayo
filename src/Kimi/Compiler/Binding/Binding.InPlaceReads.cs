@@ -15,28 +15,25 @@ namespace Kimi.Compiler;
 // - Prohibitions: nothing here reports a diagnostic, selects a candidate or changes a Type.
 public sealed partial class Binding
 {
-    // SPEC 3.4.3: a member or Tuple element selected through several reference layers is reached through one reference
-    // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
+    // SPEC 3.4.3: a member or Tuple element selected through several safe value-reference layers (ref, uniq and qualifying pair
+    // layers in any order, LayerBelow; PLAN G1122) is reached through one reference to the Type that declares it: exclusive when the
+    // receiver can be exclusively acquired through them (ExclusivelyAcquirable: no shared layer or case, a pair layer's weakest case),
+    // shared otherwise, with the Origins of 10.2. A receiver below one layer is its acquisition's (AdaptInput, TryPairReceiver). The
     // receiver keeps its own Type; the recorded reference is what ownership loads and generation addresses.
     private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
     {
-        if (actual is not
-            {
-                Kind: BoundTypeKind.Semantics,
-                Semantics: SemanticsKind.Ref or SemanticsKind.Uniq,
-                Components: [{ Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components: [_] }],
-            })
+        if (BelowLayer(BelowLayer(actual)) is null)
+        {
+            return null; // Fewer than two layers of any kind: no scope is needed.
+        }
+
+        var scope = this.ConstraintScope(left);
+        if (this.LayerBelow(actual!, scope) is not { } below || (below is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef } && this.LayerBelow(below, scope) is null))
         {
             return null;
         }
 
-        var terminal = actual;
-        var exclusive = !this.ReachedThroughShared(left);
-        while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            exclusive &= terminal.Semantics == SemanticsKind.Uniq;
-            terminal = terminal.Components[0];
-        }
+        var terminal = this.LayersTerminal(below, scope);
 
         // A stored shared object view is Copy: reading it preserves its own external Origin and header identity,
         // without borrowing its payload from the outer reference slot or granting exclusive authority.
@@ -46,12 +43,12 @@ public sealed partial class Binding
             return terminal;
         }
 
-        if ((terminal is not { Kind: BoundTypeKind.Tuple } && !AdtDef.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual, terminal, this.ConstraintScope(left), out _) is not { } shared)
+        if ((terminal is not { Kind: BoundTypeKind.Tuple } && !AdtDef.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual!, terminal, scope, out _) is not { } shared)
         {
             return null;
         }
 
-        var reference = exclusive ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin) : shared;
+        var reference = this.ExclusivelyAcquirable(left) ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin) : shared;
         this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, reference);
         return reference;
     }
