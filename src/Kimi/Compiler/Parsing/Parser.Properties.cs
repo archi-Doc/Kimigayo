@@ -8,16 +8,20 @@ namespace Kimi.Compiler;
 
 // A Property and its accessors (SPEC 11, Appendix F.7): the declaration, the inline accessor list, the accessor block, and one accessor's
 // header, parameters, result and body.
-// Input: a reader after the Property keyword, with the prefix pending. Output: a PropertyKoto with its accessors, or null after an error.
-// Invariants: after an accessor header without its get or set keyword the accessor set is unknown, so its accessor checks rest on the Error;
-// an access modifier on an accessor that takes none is the one Error, with the accessor and its Property kept as recoveries.
+// Input: a reader after the Property keyword, with the prefix pending, and the Declaration Container the Property is declared in. Output:
+// a PropertyKoto with its accessors, or null after an error.
+// Invariants: SPEC 11.1's initializer column is judged here alone: a computed Property or requirement takes none, and a static stored
+// Property (its container's members are static) requires one, whose missing form a recovery initializer stands for; after an accessor
+// header without its get or set keyword the accessor set is unknown, so its accessor checks rest on the Error; an access modifier on an
+// accessor that takes none is the one Error, with the accessor and its Property kept as recoveries.
 public static partial class Parser
 {
     /// <summary>Parses a Property declaration and its optional accessor list.</summary>
     /// <param name="reader">The token reader positioned after the declaration keyword.</param>
     /// <param name="token">The Property declaration keyword token.</param>
+    /// <param name="container">The Declaration Container the Property is declared in.</param>
     /// <returns>The parsed Property, or <see langword="null"/> after an error.</returns>
-    public static PropertyKoto? ParseProperty(ref TokenReader reader, ref Token token)
+    public static PropertyKoto? ParseProperty(ref TokenReader reader, ref Token token, DeclarationContainerKoto container)
     {
         var propertyContext = reader.TakeContext();
         if (ParseDeclarationName(ref reader) is not { } nameKoto)
@@ -48,6 +52,12 @@ public static partial class Parser
                 reader.Unexpected(SyntaxForm.ComputedInitializer, SourceSpan.FromBounds(equalsSpan.Start, initializerKoto.Span.End));
                 initializerKoto = null;
             }
+        }
+        else if (!computed && container.HasStaticMembersOnly)
+        {
+            // SPEC 11.1, 11.8: a group's or rootgroup's stored Property needs an initializer; the recovery initializer stands for the
+            // missing one, so the static's value, and without a written Type its Type, rest on this Error (SPEC 23.1.2).
+            initializerKoto = new ErrorKoto(ref reader, new SourceSpan(reader.PreviousSyntaxEnd, 0)) { Cause = reader.Expect(SyntaxForm.Initializer) };
         }
 
         if (!computed && typeKoto is null && initializerKoto is null)
