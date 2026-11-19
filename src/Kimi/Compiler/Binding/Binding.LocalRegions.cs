@@ -222,6 +222,10 @@ public sealed partial class Binding
     // wherever it is asked, not only at a use in the region's own body: the value is a fact of the region, fixed at its declaration (the
     // reading of Binding.OriginRows' AddRegionValueRows). A judgment of what the Origin itself outlives reads it (StaticOrigin's Owned
     // judgment); a use that constrains the region does not. A `var` region publishes no value and reads as itself.
+    // Scope (B's ruling 30 (1)): the value is read where the judged Origin is a value the program stores, a capture part's slot; a region
+    // a signature names stays the region (its fit and well-formedness read the region: SPEC 15.3.4, the owner's O-363 (a)). StaticOrigin
+    // receives the Origin alone, so an Owned judgment inside a nested body of a Type naming the region through that body's signature reads
+    // the value too (accepted, as dev's `static` slot; CallableOriginForwardingTest's e-owsin, an open issue).
     internal BoundOrigin LetRegionValue(BoundOrigin origin)
     {
         if (origin.Kind != OriginKind.Intersection)

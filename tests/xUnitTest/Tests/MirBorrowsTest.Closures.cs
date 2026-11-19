@@ -716,11 +716,15 @@ public sealed partial class MirBorrowsTest
     // capture included (pairStoreRead, pairCellRead: PLAN G276, WK), with the receiver's Content rows. A concrete referent with no
     // Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself). The pair rows' `v@follow = x` conflicts in the
     // uniq view (2), lost when a `var` pair local's slot became a region (PLAN G758, the owner's O-174 (a)), are back: a Closure's
-    // retention reads an enclosing local region as its solved value (PLAN G492-a (ii), N6), in all four pair rows as before G758: in the
-    // uniq view the Exclusive call stores child, a Reborrow of v's referent, into the referent of the captured exclusive reference,
-    // the caller's storage (SPEC 15.6.4, 15.8.2), so the Loan stays live past the local read and `v@follow = x` conflicts with it after
-    // the read as before it (the *Read twins), a failure independent of rule G's record at the read (23.1.2). A5's limit record at the
-    // Closure's store, PLAN G572's (DECISIONS BU-127), is reported in that view, as for the concrete twin; it is not listed here.
+    // retention reads an enclosing local region as its solved value (PLAN G492-a (ii), N6), so the Exclusive call keeps child, a Reborrow
+    // of v's referent, in f's own local holder (SPEC 15.8.2). In the *Bad rows and t3letrefBad (a `let` holder of `slot@uniq`) the holder
+    // is used after `v@follow = x`, an independent failure (23.1.2); so in t6, whose Closure writes past the local holder into the caller's
+    // storage, which the body does not own (15.6), though its holder's last use precedes it. In the *Read twins (the corpus's
+    // A3-closure-ok) and t3letref the record rests on rule G's letter, as the holder's records above do: the storage past the holder keeps
+    // the capture's Loan (SPEC 15.6.4's per-argument letter), which reaches what the holder keeps (15.6), so child's Loan stays live; PLAN
+    // G148 (2) (GXS) with E's record past a holder (its G492-a (ii) amendment) removes them together. Each of these rows is invalid in the
+    // uniq view by its own record at the Closure's store, the call's input `y` stored into the captured reference's referent, whose Type
+    // names an atom the enclosing body formed (`UnprovenOriginRelation_Kd`; SPEC 15.6.5, 15.3.4, DECISIONS BU-28); it is not listed here.
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(
@@ -730,7 +734,10 @@ public sealed partial class MirBorrowsTest
                 "pairStoreBad: slot@follow 3", "pairStoreBad: v@follow = x 2", "pairStoreBad: var slot = other@move 3",
                 "pairStoreRead: slot@follow 3", "pairStoreRead: v@follow = x 2", "pairStoreRead: var slot = other@move 3",
                 "selfPair: slot@follow 3", "selfPair: var slot = other@move 3",
-                "selfPairChild: slot@follow 3", "selfPairChild: var slot = other@move 3"],
+                "selfPairChild: slot@follow 3", "selfPairChild: var slot = other@move 3",
+                "t3letref: slot@follow 3", "t3letref: v@follow = x 2", "t3letref: var slot = other@move 3",
+                "t3letrefBad: slot@follow 3", "t3letrefBad: v@follow = x 2", "t3letrefBad: var slot = other@move 3",
+                "t6: slot@follow 3", "t6: v@follow = x 2", "t6: var slot = other 3"],
             ViewProblems("""
                 struct Cell2c3<T>
                     public var item: T
@@ -829,6 +836,41 @@ public sealed partial class MirBorrowsTest
                     var h = Keep2c3.init(slot@uniq)
                     h.set()
                     _ = slot
+                func t3letref<s/T>(value: s/T, other: s/T, x: T) -> ()
+                    s is owner or uniq
+                    T is Copy
+                    var v = value@move
+                    var slot = other@move
+                    let sref = slot@uniq
+                    var set = func [sref] (y: s/T) -> ()
+                        sref@follow = y@move
+                    let child = v
+                    set(child@move)
+                    _ = slot@follow
+                    v@follow = x
+                func t3letrefBad<s/T>(value: s/T, other: s/T, x: T) -> ()
+                    s is owner or uniq
+                    T is Copy
+                    var v = value@move
+                    var slot = other@move
+                    let sref = slot@uniq
+                    var set = func [sref] (y: s/T) -> ()
+                        sref@follow = y@move
+                    let child = v
+                    set(child@move)
+                    v@follow = x
+                    _ = slot@follow
+                func t6<s/T>(value: s/T, other: uniq/(s/T), x: T) -> ()
+                    s is owner or uniq
+                    T is Copy
+                    var v = value@move
+                    var slot = other
+                    var set = func [slot@uniq] (y: s/T) -> ()
+                        slot@follow@follow = y@move
+                    let child = v
+                    set(child@move)
+                    _ = slot@follow
+                    v@follow = x
                 """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
     // SPEC 15.6.4, 8.1.2 (PLAN G147 (8i); A5 step 2 plan 2c-4, unit 0c; DECISIONS BU-49): a by-value owner-or-uniq pair carrier has no

@@ -57,7 +57,7 @@ public partial class OriginPremiseCatalogTest
     // comparison (`Unsupported_Kd`), valid and invalid programs alike, until the region reading at the uses of the compared Type is designed
     // ((a) or (a'); the removal of ComparedRegionLimit and LeavesBodyRows' gate). The Middle's rows (C-350, 16:16): c6 and vr5nr valid
     // (O-286 (a); O-375 Q1 (a)) take the limit; vi3l, vl1l and opc5, invalid with a fixed shorter end, keep the comparison's own Language
-    // record, as on dev; vl1c and vcc1l an unproven constraint; vl1cn its constraint record alone, as on dev (B's ruling 4). us1 keeps its
+    // record, as on dev; vcc1l an unproven constraint (vl1c, the same class, accepted as on dev: D-853); vl1cn its constraint record alone, as on dev (B's ruling 4). us1 keeps its
     // Loan conflict beside the limit; us1v (`var x`) reads x's region. vi4 (MirBorrowsTest's, valid: `return y` reads y's value) takes the
     // limit too. r5nq and veqzq, r5n's and veqz's twins whose regions share one value (`let z = x`), keep their rows (valid). Revision 5's
     // rows (design-ii.md §13.18; labels f1\labels.md, rev5\labels.md): the us family (us2, us2s, us2w, us3, us4, us6, us9, us11, us12),
@@ -73,7 +73,10 @@ public partial class OriginPremiseCatalogTest
         { "vr5nr", "func h(w: ref/i64 during a, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let x = p\n    let z = x@ref\n    let f: (ref/i64 during z, ref/i64 during x) -> ref/i64 during x = h\n    return x\n", "Unsupported_Kd@7:71" },
         { "vl1l", "func outer(p: ref/i64) -> i32\n    let v: i64 = 1\n    let x = v@ref\n    let c = func (w: ref/i64) -> ref/i64 during x => $abort(\"a\")\n    let f: (ref/i64) -> ref/i64 = c\n    return 0\n", "UnprovenOriginContract_Kd@5:35" },
         { "opc5", "func g(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives b\n    return v\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", "UnprovenOriginContract_Kd@8:94" },
-        { "vl1c", "func outer(s: ref/i64 during static) -> i32\n    let x = s\n    let c = func [x] (v: ref/i64) -> ref/i64 during x => x\n    let f: (ref/i64) -> ref/i64 = c\n    return 0\n", "UnprovenConstraint_Kd@4:35" },
+        // vl1c is invalid (x's region, named in c's signature, is fixed there with no premise relating it to the per-call input: SPEC
+        // 15.3.4, 15.6.5, the owner's O-249 Q1 (a)) and accepted, as on dev: the Callable constraint over a `let` region a signature
+        // names is unchecked (B's ruling 30 (1); D-853, PLAN G1085). Pinned to dev's behaviour.
+        { "vl1c", "func outer(s: ref/i64 during static) -> i32\n    let x = s\n    let c = func [x] (v: ref/i64) -> ref/i64 during x => x\n    let f: (ref/i64) -> ref/i64 = c\n    return 0\n", string.Empty },
         { "vcc1l", "func callIt<F>(f: ref/F, y: ref/i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    return 0\nfunc use(x: ref/i32 during static) -> i32\n    let w = x\n    let c = func (n: ref/i32) -> ref/i32 during w => $abort(\"a\")\n    let local: i32 = 4\n    return callIt(c@ref, local@ref)\n", "UnprovenConstraint_Kd@8:19" },
         { "vl1cn", "func outer(p: ref/i64) -> i32\n    let x = p\n    let c = func [x] (v: ref/i64) -> ref/i64 during x => x\n    let f: (ref/i64) -> ref/i64 = c\n    return 0\n", "UnprovenConstraint_Kd@4:35" },
         { "r5nv", "func h(w: ref/i64 during a, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w\nfunc outer(p: ref/i64) -> i32\n    var x = p\n    let z = x@ref\n    let f: (ref/i64 during z, ref/i64 during x) -> ref/i64 during x = h\n    return 0\n", string.Empty },
