@@ -470,7 +470,7 @@ public sealed partial class MirOriginsTest
         var (origins, body, _) = Judged(Source, "f");
         var z = body.Locals.ToArray().Single(static x => x.Name == "z");
         var (b, c, site) = (z.Type.Origin!, z.Type.Components[0].Origin!, body.Subject(z.Source));
-        Assert.Equal((true, false), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
+        Assert.Equal((MirRelation.Holds, MirRelation.Fails), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
     }
 
     // PLAN G824 (SPEC 15.6.1, 15.6.5; MirOrigins.Fixed's contract): an Inferred Origin is Fixed under a run's views where its class's

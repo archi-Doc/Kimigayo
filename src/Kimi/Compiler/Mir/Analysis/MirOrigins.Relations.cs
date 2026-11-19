@@ -2,6 +2,24 @@
 
 namespace Kimi.Compiler.Mir;
 
+/// <summary>Whether one Origin can outlive another at a site (<see cref="MirOrigins.Outlives"/>), ordered so that a conjunction's answer is
+/// its pairs' greatest: Fails over Undecided over Rests over Holds.</summary>
+internal enum MirRelation : byte
+{
+    /// <summary>The relation adds none the body could not satisfy.</summary>
+    Holds,
+
+    /// <summary>The answer reads a recorded failure directly (a Dependent end, the class's meet law over the storage limit): no record of
+    /// its own (SPEC 23.1.2).</summary>
+    Rests,
+
+    /// <summary>Not decided: an Unclassed end or a view without a class, the call's located limit.</summary>
+    Undecided,
+
+    /// <summary>The relation adds one the body could not satisfy.</summary>
+    Fails,
+}
+
 // MirOrigins' publication for A5's call retention (SPEC 15.6.4; DECISIONS R4-M154, Revisions 2 and 4), of the body Judge last judged, read
 // after Judge and before the next body's.
 // - Responsibility: whether one Origin can outlive another at a site under the class of a view (Outlives): the pairs a call's retention
@@ -12,10 +30,12 @@ namespace Kimi.Compiler.Mir;
 // - Inputs: the class's edges (ClassEdges: its active rows by MeetNode's rule, each a relation the body's problems check, and its
 //   containment edges); the C1-F4 view's atoms (TyCtxt.OriginAtom) and the body's fixed-fixed oracle (TyCtxt.UniversalRelations, the
 //   layer's for the layer's part) under the class's borrow binders.
-// - Outputs: true where the relation, added as an edge, adds no relation the body could not satisfy for every value of its Fixed
-//   Origins: each Fixed node at or above the longer end (stopping at Fixed nodes) outlives, by the oracle, each Fixed node at or below
-//   the shorter end, and no Finite node above the longer end meets a Fixed one below the shorter end (SPEC 15.6.5); false otherwise;
-//   null where an end has no class (Unclassed or Dependent), the view no class, or the class's meet law is over the storage limit (D20).
+// - Outputs: a MirRelation: Holds where the relation, added as an edge, adds no relation the body could not satisfy for every value of
+//   its Fixed Origins: each Fixed node at or above the longer end (stopping at Fixed nodes) outlives, by the oracle, each Fixed node at or
+//   below the shorter end, and no Finite node above the longer end meets a Fixed one below the shorter end (SPEC 15.6.5); Fails otherwise;
+//   Rests where it reads a recorded failure directly (SPEC 23.1.2): an end that is a Dependent atom (Binding's record), or the class's
+//   meet law over the storage limit (D20), whose one OwnershipStorageLimit_Kd Judge recorded at the body first (JudgeClass forms the same
+//   edges and stops the classes there); Undecided where an end is Unclassed (R7-O3) or the view has no class.
 // - Invariants: a query reads one class's edges, indexed once until the next class or body; it records no problem and changes no state
 //   Judge's problems read; an oracle it opens is disposed before it returns; Fixed's equality (Pin, MirOrigins.Causes.cs) reads the same
 //   index and walk (IndexClass, Walk).
@@ -44,9 +64,8 @@ internal sealed partial class MirOrigins
     /// <param name="longer">The Origin that would outlive.</param>
     /// <param name="shorter">The Origin it would outlive.</param>
     /// <param name="site">The site the Origins are resolved at.</param>
-    /// <returns>True where the relation adds none the body could not satisfy; false where it does; null where an end or the view has no
-    /// class.</returns>
-    internal bool? Outlives(MirBody body, long view, BoundOrigin longer, BoundOrigin shorter, SourceRef site)
+    /// <returns>The relation's answer (<see cref="MirRelation"/>).</returns>
+    internal MirRelation Outlives(MirBody body, long view, BoundOrigin longer, BoundOrigin shorter, SourceRef site)
     {
         if (!ReferenceEquals(body, this.body))
         {
@@ -61,24 +80,29 @@ internal sealed partial class MirOrigins
 
         if (c == this.classCount)
         {
-            return null;
+            return MirRelation.Undecided;
         }
 
         var (from, to) = (types.OriginAtom(this.key, longer, site), types.OriginAtom(this.key, shorter, site));
         var atoms = this.slice.Atoms;
-        if (atoms[from].Kind is OriginAtomKind.Unclassed or OriginAtomKind.Dependent || atoms[to].Kind is OriginAtomKind.Unclassed or OriginAtomKind.Dependent)
+        if (atoms[from].Kind == OriginAtomKind.Dependent || atoms[to].Kind == OriginAtomKind.Dependent)
         {
-            return null;
+            return MirRelation.Rests; // Binding's record (SPEC 23.1.2).
+        }
+
+        if (atoms[from].Kind == OriginAtomKind.Unclassed || atoms[to].Kind == OriginAtomKind.Unclassed)
+        {
+            return MirRelation.Undecided;
         }
 
         if (from == to || longer.Kind == OriginKind.Static)
         {
-            return true;
+            return MirRelation.Holds;
         }
 
         if (!this.IndexClass(c))
         {
-            return null;
+            return MirRelation.Rests; // The body's one OwnershipStorageLimit_Kd, which Judge recorded (JudgeClass, D20).
         }
 
         this.Bounds(from, this.queryInStart, this.queryIn, this.queryTails, this.above);
@@ -92,12 +116,12 @@ internal sealed partial class MirOrigins
             {
                 if (upper != lower && (atoms[upper].Kind != OriginAtomKind.Fixed || !oracle.Outlives(atoms[upper].Atom)))
                 {
-                    return false;
+                    return MirRelation.Fails;
                 }
             }
         }
 
-        return true;
+        return MirRelation.Holds;
     }
 
     // The nodes a walk from a node over one direction's edges meets (Walk): into `found`, the Fixed ones and, above the longer end, the
@@ -161,7 +185,11 @@ internal sealed partial class MirOrigins
     }
 
     // A class's edges (ClassEdges, an Unclassed end's none) indexed by tail and by head, once until another class's or the next body's,
-    // their rows, edges and nodes counted in Work; false when its meet law is over the storage limit (D20).
+    // their rows, edges and nodes counted in Work; false when its meet law is over the storage limit (D20). It fails exactly when
+    // ClassEdges fails for the class (the law's words restart per law), and Judge has then recorded the body's one OwnershipStorageLimit_Kd
+    // from the same class edges (JudgeClass, MirDataflow.StorageLimit, table Origins) and stopped there, at this class or an earlier one: a
+    // Rests answer here always rests on that record. No source body reaches the limit within the test budget (MirOriginsTest.Unknown's
+    // TheArenaIsAdmittedByTheAnalysesLimit note), so this argument, not a row, states it.
     private bool IndexClass(int c)
     {
         if (this.edgesClass == c)
