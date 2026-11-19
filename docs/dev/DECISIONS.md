@@ -14993,6 +14993,13 @@ resumed by R4-M86 (2026-10-20).
     pass with records (its clause also counting the library module's syntax records) refuses the run instead of throwing: its records
     are kept as the layer's refusal while its tables stand, the layer's part is emptied, no program pass runs and nothing is frozen;
     the next Bind refuses identically.
+  - **Measured (T-316, 2026-11-19; PLAN G949 closed; R7 exit gate 3 met for G949).** Bind with its Final publication, R7's
+    start bfc2e1836 against 4f820362c (Stage 2's last unit U6); CPU 2 pinned, tiering off, blocking GC, A'/A 0.975-1.060. Bind
+    B/A cold/warm (12 rounds): Hello 0.002/0.001, Interpolation 0.056/0.052, Milestone26 0.024/0.023, Milestone31 0.116/0.111;
+    (6 rounds) `--compiler-pipeline` Scalar128 0.099/0.101, Branching128 0.133/0.140, Generic128 0.567/0.641, BindingBenchmark's
+    10 scenarios at 512 0.139-0.840/0.140-0.800. Warm Bind 0 B on every program; cold Bind bytes 0.007-0.948 and retained after
+    Bind 0.010-0.972 of the start (17 programs). Generate's rise since R7's start (warm Interpolation 4.02x) is R8 gate 4's, not
+    gate 3's. Evidence: `artifacts/benchmarks/g949g3-4f820362c-*`.
 - **BU-220 Binding's per-pass tables are paged dense columns over dense ids, with a `Frozen` base store and a program overlay; the
   dense Type id (PLAN G949, R7-N5, R7-D2 b)** (2026-11-16; Front, Binding; Major, behavior-preserving on every program whose
   SourceDocuments each lie in one module; the owner's O-376 (a) 「O-376 a」, its approval 3: N5's SyntaxId columns and D2 b's tables
