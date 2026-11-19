@@ -54,9 +54,9 @@ internal static class LayoutNeeds
     /// <summary>Gets an operator's need (SPEC 5.3): p + n and p - n on a raw pointer displace it by n times its pointee's stride, the one
     /// statement of which operator displaces; every other operator reads no layout.</summary>
     /// <param name="op">The operator.</param>
-    /// <param name="operand">Its first operand's Type.</param>
+    /// <param name="operand">Its first operand's Type; none for a derived temp of no Type (PLAN G1073), which is no raw pointer.</param>
     /// <returns>Its need.</returns>
-    internal static LayoutNeed Of(MirBinaryOp op, BoundType operand)
+    internal static LayoutNeed Of(MirBinaryOp op, BoundType? operand)
         => op is MirBinaryOp.Add or MirBinaryOp.Sub && operand is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw }
             ? LayoutNeed.Element : LayoutNeed.None;
 
