@@ -4149,6 +4149,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a `reached` flag on the walk (a mode parameter); routing by `JudgeCallPosition` (it re-adds a meet's operand rows and
     leaves a Refuted body chain unrecorded); the lists on `BoundClosure` (a field on the published definition for one list); a pass
     reset in `ResetPass`.
+  - **R-a superseded in part by R8-M56** (PLAN G492-a (ii), the owner's O-385 (a), 2026-11-19): a bound's parent is stored as its store
+    read it at the bound's use, before the receiver resolution: a body row's ends by the row's reading (`SuppliedAtUse` with the row,
+    the slot for a `Compared` row), a `let` value as published, an initializer alias as its value (`ResolveInitializerOrigins`).
+    `LocalRegionSources`, `LocalRegionBound` and `LocalRegionSourceUse` apply the receiver resolution alone (`ReceiverAtUse`), never
+    `OriginAtUse`, and `LocalRegionSourceUse` returns the parent as stored. Reason that no longer holds: "each parent read through
+    `OriginAtUse` at its bound's evidence" assumed that reading was one function of the parent and the evidence; since R8-M56 it
+    depends on the bound's row (`Compared`), which the graph does not keep. Reasons that hold: the receiver resolution stays with the
+    reader (a Closure is classified after its body's bounds are stored), and the stored parent is the atom before it, BorrowSource's
+    supplier.
 - **R4-M136 OldRule's ledger key and the MIR target side (2x-T5), refining R4-M50 and R4-M60** (2026-10-25; unit 2x-T5 under the A5
   step 2 plan's PD19 and its 2x-T5 row (R4-M74))
   - Rule: a test that asserts an old rule keeps its default-pipeline assertion under `[Trait("OldRule", …)]` with a comment naming the
@@ -5970,6 +5979,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Open: `r9` (accepted as on dev; a store needs the source over the region, and the edge gives the reverse), `g1p` (G254).
   - Narrowed by BU-127 (PLAN G572 U1): the forms BU-127 accepts leave the class; `t31`, `n21` (G572 U2), `s1`, `w4`, `s2`, `s4` (G565) stay, now pinned by `AConstraintOverAnEnclosingRegionIsARecordedLimit` (renamed from `AFixedPositionOverAnEnclosingRegionIsARecordedLimit`) and `AnErasedCaptureOverAStaticRegionIsARecordedLimit`.
   - Narrowed by BU-136 (PLAN G572 U2a): `s1`, `s4` leave the class.
+  - Superseded in part by R8-M56 (PLAN G492-a (ii), 2026-11-19): rule (3)'s retention edge to the meet of all the sources stays only for a local region with no solved value (a call's open region); a local region with BU-127's solved value equals it in retention (two premise edges). Reason that no longer holds: rule (3) was retention's only reading of a local region and predates BU-127's solved value; a one-way edge cannot prove the retention of a capture that SPEC 15.6.4 and 15.8.2 require. Refined by R8-M56 too: "the meet of all its sources" stays the A5 oracle's region reading, which decides first; a relation it fails is decided by the solved value's operands.
 - **R4-M185 A Function Item's Value call covers as a direct call (PLAN G584)** (2026-11-09; Major; design review 2 and implementation review ACCEPT, the Middle's reviewer; the Front's C-164 for the `TyCtxt` hunk; amends R4-M183) SPEC 7.2.2, 7.3.4, 7.7.4, 15.6.4.
   - R4-M183 gave a Value callee no covering, on the ground of "no declaration to read". Now `MirBorrows.Cover` reads the declaration of the Function Item the callee calls, `TyCtxt.CalledItem`, which is one `Binding.CallableCore` read. It runs the direct path under that Item's substitution, `TyCtxt.SubstOfItem`, and gives no covering where there is no substitution.
   - Why it is sound: a Function Item value's target and slot order are fixed. Distinct declarations have distinct Item Types (7.7.4), and slots are positional (7.3.4). Closures, Function-typed parameters and erased values are not Items, so they stay uncovered.
@@ -8558,6 +8568,10 @@ resumed by R4-M86 (2026-10-20).
   - Ended by R5-M192 (2026-11-05, R6-check H11a C4): the no-body reader `VerifiedRegionOutlives` is deleted with
     `FitsVerifiedTypeAt`, whose last reader, the old analysis's `RecordCallInput`, went at H10b.
   - `HasRegionIn`, named in its list of classes, is removed by BU-127.
+  - Superseded in part by R8-M56 (PLAN G492-a (ii), 2026-11-19): "a local clause over a capture's Origin is Binding's record at the
+    initializer" no longer holds for a capture of a `let` local, whose Origin is now the local's region, an enclosing region of the
+    Closure (BU-127's), whose relation is A5's row and record (at the clause). The reason that no longer holds is BU-197's "a `let`
+    binding keeps the bound value's Type", superseded by R8-M56.
 
 - **BU-29** (superseded in part by BU-59: the staging of `SourceState` and of a source check's `UnderCheck`, and the reason for
   staging `Completion`; by R7-M20: the staging of `Completion` to C3) (2026-10-23; PLAN G170 unit C2, bu30, under PlanB C and C1's
@@ -9893,6 +9907,8 @@ resumed by R4-M86 (2026-10-20).
     every form Unproven at the parameter); testing the resolved atom alone (where `BindFunction` binds the header again the name finds
     the local's region); every local's name (moves NestedNamedFinite, a valid native fixture, and d6u); testing every Origin of the
     local's Type before the name selects one (invalid names became `Unsupported_Kd`).
+  - Extended by R8-M56 (PLAN G492-a (ii), the owner's O-394 (a), 2026-11-19): the interim also covers a written Origin naming an
+    enclosing `let` local's Origin, as a `var` local's, until PLAN G230 (A).
 
 - **BU-58 A stored part's written Type at inline positions is one TyCtxt view, `TyCtxt.WrittenAt`; the raw-Origin views and the walks
   over a written Type decide each distinct part once per call** (2026-10-30; R4's part R4-M157; PLAN G307's Binding part, unit bu72)
@@ -11966,6 +11982,11 @@ resumed by R4-M86 (2026-10-20).
     (5) `RegionChain` also counts a pending atom (`HasLocalRegion`): at a clause's gate it forms a row where dev judged the relation; the
     review's `z14`, `z14i` are right on the head, no other program found.
   - Superseded in part by BU-136 (PLAN G572 U2a): "Only A5 reads it" no longer holds. `StaticOrigin` reads the solved value at Binding's Final pass, where the bounds are complete too.
+  - Superseded in part by R8-M56 (PLAN G492-a (ii), 2026-11-19): "Only A5 reads it, since the bounds are complete once every body is
+    bound" no longer holds for a `let` region in its own body: its declaration fixes its value (SPEC 15.4.4), so its body reads the
+    value through the view and Binding judges the relation. It stands for a nested body, a `var` region and a Callable comparison's
+    relation (O-363 (a)), and its rule is kept: R8-M56 reads every enclosing local region at a longer end as its solved value (a `var`
+    region the meet of its recorded bounds; the owner's O-422 (a)).
 - **BU-136 Step 5's Unknown is an obligation judged under Finality** (2026-11-09; PLAN G565, G572 U2a; Major; design review 2 ACCEPT at c5ab60289, implementation review 2 ACCEPT at e2c912e52) SPEC 10.1, 8.3.3, 15.2.3, 15.3.6.
   - Cause. Selection deferred a call whose strictly best candidate was Unknown at step 5 and failed it there (`PremisesCannotAffect`, `CallSelection.Unproven`, `FailPendingConstraint`), judging it while bodies were bound; a local region's bounds were incomplete, so `T is Owned` over a `static`-only region was a false error (G565, R4-M184's limit `s1`, `w4`, `s4`).
   - Rule.
@@ -12958,6 +12979,8 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** opening the slot alone (the reverted attempt: 11 inapplicable candidates); a pair case per comparer;
     canonicalizing `s/T during o` to `s/T` (not needed once comparisons relate slots); waiting for all of G443; lifting G572 here
     (an A5 oracle reading at the shorter end plus G572's retention row: their own unit).
+  - Narrowed by R8-M56 (PLAN G492-a (ii), 2026-11-19): G1's, G2's and RuleGs' uniq-view `v@follow = x` records are reported again (a
+    local region with a solved value equals it in retention); RuleGs' *Read rows keep theirs as records of PLAN G148 (2)'s limit.
 
 - **BU-172 A short adaptation's family has the cases its binder admits where the adaptation is written (PLAN G764)** (2026-11-11;
   Front, Binding; Major; design review 1 ACCEPT, implementation review 1 ACCEPT) SPEC 7.1, 7.5, 8.3.4, 8.8.2, 8.15.2.
@@ -14058,6 +14081,10 @@ resumed by R4-M86 (2026-10-20).
     moves from `UnsatisfiedConstraint_Kd` to `UnprovenConstraint_Kd`, equal to the var-local form (the Middle's F2).
   - Rejected: A5 judging the finite-to-finite chain (another phase; leaves the parameter forms rejected); region slots for `let`
     bindings (no observable difference).
+  - Superseded in part by R8-M56 (PLAN G492-a (ii), 2026-11-19): "A `let` binding keeps the bound value's Type" no longer holds for
+    locals, and the rejected "region slots for `let` bindings" is adopted: its reason, "no observable difference", no longer holds
+    (PLAN G492's class 1 is the difference). `IsRegionOwner`'s set is unchanged, and an immutable Pattern binding keeps its stored Type
+    (SPEC 14.8.3).
 
 - **BU-198 A callable value's Owned parts are its environment's atoms as it is formed, read from its declaration, under one numbering
   with Origin parts** (2026-11-13; PLAN G826, G811-o; F's rulings 5-9; the owner's O-245 (a)) SPEC 15.2.3, 15.3.4, 7.7.4, 7.7.2, 6.1.3,
@@ -25079,6 +25106,211 @@ R8-M* and R9-M* by the stage of the recording unit.
     program, R8-M28's rejected "capacity of a table's own"); the library's counts measured at run time; trimming the frozen columns at
     the seal (a mechanism for 49 KB per process). Supersedes R8-M28 and BU-220's reservation of a library-only column (BU-220's U6
     line); closes R8-M2's Scope RP8 exception (its U6 line).
+- **R8-M56 A local's unwritten Origin slots are its regions, `let` and `var` alike, one per stored part and place; a Callable
+  comparison constrains a `let` region only where the values agree (PLAN G492-a (ii), one unit with (iii))** (Back, 2026-11-19;
+  Binding, with A5's input; Major; Q-542; design `back\notes\g492a-ii\design-ii.md` §9-§13.18 with `rev5\decisions-delta.md`, its
+  independent design reviews (`review-rev5.md`, R1 closed) and B's rulings; the Middle's RP17 consent on the A5 hunk (C-350) and the
+  Front's consent on `Binding.Retention.cs` and the Binding hunks (C-395); the owner's O-249 Q1 (a), verbatim 「Q1〜Q4 は、すべてa」, O-253
+  (a), O-264 unit (a), O-363 (a) 「すべて推奨どおり でお願いします」, O-375 Q1 (a) and Q2 (a) 「すべて推奨どおりでお願いします」, O-384 (a) 「O-384 a」 (G492-a (ii) and
+  (iii) land together as one unit), O-385 (a) 「質問の回答は、すべて推奨通り」, O-394 (a) 「O-394 a」, O-400 (b) 「質問の回答は、すべて推奨通りでお願いします」, O-419 (a)
+  「O-419 a」, O-422 (a) 「両方推奨どおり」 and O-426 (a) 「O-425 a / O-426 a」) SPEC 7.7.2, 15.3.4, 15.3.6, 15.4.2, 15.4.4, 15.6.4, 15.6.5, 15.8.2.
+  Supersedes BU-197's `let` sentence and, in part, BU-127, BU-28, R4-M133 R-a and R4-M184 rule (3); refines R4-M184; keeps BU-127's
+  rule.
+  - **Cause.** Binding gave a `let` local's unwritten slots its initializer's Origins (`LocalBorrowType`'s and `InferLocalOrigins`'
+    mutability tests), so a nested signature naming the local named the initializer's Origin and premise rule R2 derived `p outlives q`
+    from it (a1, a3 and their family accepted: PLAN G492's class 1 by the owner's O-249 Q1 (a)). The first prototype also made a `let`
+    slot a region in its own body, which the class 1 rule does not need: R4-M133's Supplier, 15.3.6's candidate, Binding's judge and
+    its routing, selection's Callable constraint and the declaring body's comparison then read a region where dev read the slot's
+    candidate.
+  - **Rule.** `LocalBorrowType` opens every region owner's Type (`IsRegionOwner`) at its declaration and `InferLocalOrigins` gives
+    every omitted slot of an annotation the local's region. A slot's region is one per stored part and place: each projection path of a
+    reassignable binding (`IsMutableDeclaration`) is its own place, a `let` local is one place, so a stored part met on several of its
+    paths is opened once (`rewrittenParts`, `Binding.TypeMemo.cs`, whose two new users, `ResolveLocalResultOrigins` and
+    `LocalBorrowType`'s opening, run inside no other query). A `let` local's region has a value, the Origin its declaration fixes for
+    the slot (SPEC 15.3.6, 15.4.4): the initializer's Origin at that slot, or the omitted slot's candidate as `SolveLocalBounds` solves
+    it (dev's `let` rule, an earlier `let` region read as its value), published by `PublishRegionValue`. An Origin read at a use in the
+    region's own body (`SuppliedAtUse`, hence `OriginAtUse`) reads the region as its value; a nested function's signature or body, a
+    Closure's included, reads the region itself, fixed there (15.3.4, BU-28). The value is also a bound of the region in the region
+    graph (`CheckTypeUse` also records the initializer's Origin as written). A `var` region publishes no value: a use in its own body
+    reads the region, and only `RegionValue` reads its meet.
+  - **Each walk is per distinct part.** `CheckTypeUse`'s walk enters a pair of composite parts once per invariance, keyed by (actual,
+    expected, invariant); a later meeting is a `FitPart` naming the earlier part (`Same`), whose obligations the decomposition already
+    formed and whose verdict and failure it returns (`FitPart.Fails`). Every other walk over a local's Type that now meets regions is
+    per distinct part too: `ResolveLocalResultOrigins` is one query of `rewrittenParts`, as `PublishedResult` is; MIR's
+    `MirTypes.Agree` decides a pair of composite parts once per call (a pair set, the Middle's C-350 form); `CarrierOf` goes through
+    `visitedParts`.
+  - **The readers (a whitelist).** Every Binding reader of an Origin or a Type at a use reads a `let` region of the use's own body as
+    its value: `SuppliedAtUse` (after the declarations it applies; `OriginAtUse`, the proofs, the C1-F4 view and its row ends through
+    it), `OriginFitSearch.FailedOriginPart`, `JudgeCallPosition`'s row gate, the selection's evidence (`RegionValuesAt`), `RegionalAt`
+    (the site a value fit and a join choose), `AddPendingRelation`'s pending-atom test, the record adapter's Borrow search
+    (`BorrowSource`: each compared Origin at its site), `OwnedMember` (an erasure's Owned record, each part's Origin read once at the
+    converted value), the `==` operator's operand relation (`CompleteComparison`: both operand Types read at their uses,
+    `RegionValuesAt`, before the use-free relation) and `PathOrigin` (a Place's dereferenced Origin, read once at the Place). The rest
+    decision (`Rests`, under `HoldsResting`) reads a `let` region through its published value, the one failed or resting input the
+    declaration fixes for the slot (AGENTS Diagnostics). Readers that keep the written region by design: `CheckTypeUsePart`'s per-part
+    test, `SolvedStatic`, `AddRegionMeet`, `InferenceAtom`, `OpenInitializer`, `AnonymousBinder`, the other `BodyChain`/`RegionChain`
+    callers (on `OriginAtUse` ends), `BindOrigin` (it binds a written Origin to the slot it names, `SlotAtUse`; each reader reads the
+    value at its own use), the two readers of a `Compared` row (below) and, by O-363 (a), a Callable comparison's relation. Readers of
+    a stored Origin take it as held (below). A5 reads the value only through the view (`TyCtxt.OriginAtom`), no second copy.
+    Prohibition: no other reader at a use in the local's own body takes a `let` slot as written; a new reader is checked against this
+    list.
+  - **The Callable comparison's one exception (the owner's O-363 (a), O-375 Q1 (a)).** In a comparison in the local's own body a `let`
+    slot is its region, an inference variable, in the walk and in the relation alike; reads still take the value, and the comparison
+    constrains the region only where the region is named (the Type compared, and through it every use of the converted value).
+    `SlotAtUse` (`Binding.OriginProof.cs`) is an Origin at its use as written, the enclosing declarations and initializers applied
+    (`DeclaredAtUse`), then the receivers (`ReceiverAtUse`), a `let` region kept as the slot; `OriginAtUse` is
+    `ReceiverAtUse(SuppliedAtUse(...))` and `SuppliedAtUse` is `RegionValueAtUse(DeclaredAtUse(...))`, so the two differ exactly by the
+    value. `OriginAtUse(origin, use, comparison)` is `SlotAtUse` when `InComparison(comparison)`, else `OriginAtUse`: the one place the
+    exception is decided, called by `FitOrigin` (the walk), `ProvesOriginOutlives` (the conditions) and (iii)'s `LeavesBodyRows`.
+  - **A comparison's rows.** `BindingObligation.Compared` (`Binding.Origins.Model.cs`, an init-only fact of the row beside `Body`, as
+    `Clause` and `WellFormed` are, not a mode) is set by `LeavesBodyRows` alone, which reads its ends through the comparison's reading;
+    `OriginAtUse(end, obligation)` reads such a row's ends as the slot, in the C1-F4 view (`PrepareOriginRows`) and the local-region
+    graph (`RecordLocalRegionBound`). Beside each `Compared` row the view adds, for each `let` region at its ends (a meet's operands
+    one by one), the row `value outlives region` at the row's site (`AddRegionValueRows`), A5's bound for the region: the declaration's
+    own bound row reads at its use as `value outlives value` and is dropped. A unit names a `let` region's atom only through a
+    `Compared` row and its value row.
+  - **One reading per stored Origin (the owner's O-385 (a)).** An Origin's slot-or-value reading is made once, by the producer that
+    reads it at its use: a row's ends by `SuppliedAtUse` with the row (the slot for a `Compared` row, the value for every other;
+    `OriginAtUse` with the row is its receiver resolution), the comparison's walk by `OriginAtUse` with the comparison, a reader at a
+    use by the value. Whatever stores the read Origin keeps it, and every later reader takes it as held, applying at most the receiver
+    resolution: the view's atom table (MIR names an operand of a table meet by `TyCtxt.MeetOperand`, `Binding.MeetOperandIn`, interned
+    as the meet holds it; `TyCtxt.OriginAtom` stays the reading of a MIR Origin at a MIR site, R4-M113), the local-region graph (a
+    parent stored as its store read it; `LocalRegionSources`, `LocalRegionBound` and `LocalRegionSourceUse` apply `ReceiverAtUse`
+    alone), the pending list (gated and routed through the row) and a record's Supplier (`SuppliedBy` takes a supplied end's operands
+    as held). Responsibilities moved: naming a meet's operand, from A5 (`MirOrigins.MeetOperand` and the meet law's `Operands`) to the
+    view; reading a graph parent's slot or value, from the graph's readers to its stores. Reason that no longer holds: every stored
+    Origin was a fixed point of `OriginAtUse`; a `Compared` row's slot is not. Rejected: the row's reading passed into `OriginAtomIn`
+    (a flag; a shared meet node has no one row); a lookup before resolving in `OriginAtomIn` (a MIR read of x must reach its value,
+    O-375 Q1 (a)); operands interned with the meet (table order moves in every body with a meet); a `Compared` row's shorter meet
+    expanded in the view (15.3.6: not equivalent); `Compared` kept per graph parent and read by its readers (a fact read by later
+    consumers; a second copy of the decision in the graph); the written and the read parent both stored (the read parent before the
+    receiver resolution is already BorrowSource's supplier); the receiver resolution moved to the store too (a Closure is classified
+    after its body's bounds are stored; R4-M133).
+  - **O-400 (b): the comparison constrains a `let` region only where the values agree.** A Callable comparison's region reading of a
+    `let` region (O-363 (a)) leaves a `Compared` row only where the row's ends, read as their values, are proven. A failed condition
+    with a `let` region of the use's body at a shorter end, which only the region reading decides (a `let` region lies inside its
+    value, so a fixed shorter end has the value reading's verdict), is the located limit (`ComparisonFailureKind.Limit` by
+    `ComparedRegionLimit`, with one predicate, `ReadsLetValue`, for `LeavesBodyRows`' gate and the limit; `Binding.LocalRegions.cs`'
+    contract names it as the exception's limit); a condition whose shorter ends are fixed keeps its record. No fact at the comparison
+    separates the invalid us family (us2, us2s, us2w, us3, us4, us6, us9, us11, us12) from the valid us2n and r5nn: each verdict is
+    decided at the uses of the compared Type. So the us family is rejected at the comparison by the located `Unsupported_Kd` at dev's
+    `UnprovenOriginContract_Kd` site, not by that record, which O-400 (b) stated: record selection under Q13 (B's R-a), not an
+    acceptance move (rejected either way). Removal: (a), or a corrected (a'), designs the region reading at the uses of the compared
+    Type (PLAN G1100); O-363 (a)'s and O-375 Q1 (a)'s acceptances wait for it. Rejected: the Refuted/Unknown split of the values (a
+    heuristic: us2n valid and Unknown, us1 invalid and Refuted); dev's record for every failed condition (a Language error on valid
+    programs: r5n, vr5nr).
+  - **(ii)'s two facts with J2's waited solution (the owner's O-419 (a), O-422 (a)).** (a) In a nested body an enclosing local region
+    at a longer end is its BU-127 solved value. The view's row 6 carries it for every enclosing local region (`OriginAtomEntry.Value`,
+    `RegionValue`): a `let` region its value, a `var` region the meet of its recorded bounds, each as stored, receivers resolved, a
+    `let` region of its body as its value; a `var` region of its body that reaches back to it is read through its bounds, so the
+    values' `var` regions descend the body's order of definitions and the split ends. One representation, no `let`/`var` branch in the
+    judge. A5 judges a fixed source that fails (`Unknown`'s sources, `Direct`'s tail but an Equality row's) as the value's operands as
+    the view holds them (`MirOrigins.Unproven(oracle, ...)`; `OriginAtomEntry.HeldOperands` beside `HeldOperand(index)`, the one owner
+    of what an entry holds, read by `Split` and `Binding.MeetOperandIn`), each judged the same way: an operand that is itself an
+    enclosing local region, a Closure further in, reads as its value, and the recursion ends because a published value holds no region
+    of its own body, so each step moves at least one body outward; otherwise its own record or the nested-body limit. A shorter end, an
+    identity and a meet's operand edge read the region (BU-28, O-249 Q1 (a), O-261 Q1 (a)). An Equality row judged at `Direct` relates
+    its own ends: each end is the other direction's shorter end (BU-28), and the two directions are one problem (2a0-D §6.3). In
+    `Unknown` the source is an inner chain's fixed source, never an end of the in-edge's row, so a source with a solved value is split
+    there like any other (the Middle's C-350 C2 (a)). BU-127 is the rule and is kept (a local region at the longer end of a relation
+    between fixed Origins reads as its solved value). R4-M184 is refined: an enclosing region read through its sources, "the meet of
+    all its sources", stays the oracle's region reading, which decides first; a relation it fails is decided by the value's operands,
+    classed in the reading body, so an enclosing `var` region or call region the value holds is not walked past. Fact (a) rests on
+    O-400 (b)'s gate (without it the sib family is accepted). Rejected: the split in `Relate` (it loses the meet law's operand
+    exemption: cc1 and 60 Closure rows). (b) One reading of an argument's Type per call (`ArgumentTypeAt`: the evidence and the
+    selected call's operations, `FitTyped`, a failed part, the completion). Known, outside fact (b): the receiver's Type reading
+    (`Candidates.cs:333/339`, evidence and operation both as bound; the review's N4). Rejected: the reading patched at
+    `RequireInputPremises` and step 5's source (two copies of one rule).
+  - **Retention: a local region with a solved value equals it, and each region is read once** (N6; the owner's O-426 (a); the Front's
+    C-395 consent (C1-C3) for `Binding.Retention.cs`, the Middle's RP17 for `MirOrigins.Chains.cs`).
+    - Cause. R4-M184 rule (3) gave each local region one retention edge, to the meet of all its sources. Retention holds where the
+      premises entail that an input atom outlives an output atom, and that one-way edge entails nothing about what outlives the region.
+      So a Closure's result over a region R retained no capture whose Origin outlives R's solved value: an unproven absence of
+      retention, which SPEC 15.6.4 says never permits access. Since (ii) made a `let` local's slot a region, this lost Loan conflicts
+      through a capture that dev reports (f4b, f5hold, idvswap and idvuse, and G758's `v@follow = x` records), and it let dev and (ii)
+      accept the invalid class below.
+    - Rule. In `AddRegionMeet`, a local region with BU-127's solved value equals that value: two premise edges, region to value and
+      back. The value is `RegionValue`'s: a `let` region's published value, or a `var` region's meet of its recorded bounds. Its
+      regions are read the same way. A region with no value, such as a call's open region, keeps G570's edge to the meet of its
+      sources.
+    - Each region is read once. Retention keeps one visited set per retention computation (`retentionRegions`, cleared by
+      `RetentionNodes`), so each region's equality or edge is added once. A5's split of a failed source with a value keeps one visited
+      set per judgement (`MirOrigins.Unproven(oracle, ...)`: `Split`, `splitNodes`), so each value operand is judged at most once.
+      `RegionValue` computes a `var` region's value once per region-graph version (`Solution`, `SolutionVersion`) and writes no cached
+      solution into a frozen library row (PLAN G949 S1-1's contract C).
+    - Supersedes in part R4-M184 rule (3): the edge to the meet of the sources stays only for a region with no solved value. The reason
+      that no longer holds: rule (3) was retention's only reading of a local region, and it predates BU-127's solved value. A one-way
+      edge cannot prove the retention of a capture that SPEC 15.6.4 and 15.8.2 require.
+    - Newly rejected, class 1 (invalid programs that dev accepts). Each is a result over a `var` region with a captured `let` local's
+      value among the region's sources, so the result may retain the capture (SPEC 15.6.4 per argument; 15.8.2: "even when its body
+      returns the parameter"). Each now gives a `ComparisonLoanConflict_Kd` at the write of the captured local: `m3` (the body returns
+      the parameter), `m4` (the source is added after the Closure), `m5x` (two bodies deep), `m6` (a call's region in the capture),
+      `m7` (a meet with a parameter Origin), `m8` (a Closure over the Closure).
+    - Records restored, each independent (Q13): the Loan conflicts of f4b, f5hold and f5holdv, idvswap and idvuse, and G1's, G2's and
+      RuleGs' *Bad rows' `v@follow = x` (the holder is used after it; with t3letrefBad and t6, whose Closure writes past the local
+      holder into the caller's storage); these three reverse the loss that BU-171 accepted for G758 under O-174 (a). On RuleGs' *Read
+      rows (the corpus's A3-closure-ok) and t3letref, `v@follow = x` is a record of PLAN G148 (2)'s limit (rule G's letter: the storage
+      past the holder keeps the capture's Loan, which reaches what the holder keeps), beside rule G's records there on dev; these
+      programs are invalid in the uniq view by their own `UnprovenOriginRelation_Kd` at the Closure's store (BU-28; the Middle's C-350
+      label, 20:34), so no acceptance moves (B's ruling 32; PLAN G148 (2)'s amendment). O-422 (a)'s f4bv keeps its rejection, with the
+      Loan conflict as its record.
+    - Kept: G570's reading that a position naming one source of several cannot hold the region's value (R4-M184 rule (3)'s consequence)
+      still holds, since the equality adds retention only where a capture's Origin outlives the result's region: m1, m1b, m3x, m4b, m7x
+      and `AResultNamingOneSourceCannotHoldTheCapture` stay accepted.
+    - Scaling: `OriginProofScalingTest.ADiamondChainOfVarDefinitionsIsReadOnce` pins a diamond chain of 40 `var` definitions. dr goes
+      through a Closure's retention and is accepted, under a timeout; df goes through A5's split and gives one
+      `UnprovenOriginRelation_Kd`, and its `MirOrigins.Work` grows linearly (252, 492, 972 at N = 10, 20, 40). Without the visited sets
+      both read every path through the diamond, which is exponential in its depth.
+    - Rejected: one strongly-connected-components pass over a body's `var` bounds (the reviewer's N7): with the cached value each value
+      is computed once, and the pass would be a second representation of the same cycles; a flag, or a second walk.
+  - **`StaticOrigin`'s Owned judgment (B's rulings 28 (1) and 30 (1)).** It reads a `let` region, itself or a meet's operand, as its
+    published value (`LetRegionValue`): a `let` value is a fact of the region, fixed at its declaration (SPEC 15.4.4). Scope: the value
+    is read where the judged Origin is a value the program stores, a capture part's slot; a region a signature names stays the region
+    for its fit and well-formedness. G379's e-owsl and eowsla are accepted again, as on dev.
+  - **A well-formedness premise reads its Origins at the use (B's ruling 28 (2)).** A well-formedness premise skips a relation the
+    argument's own well-formedness gives (`kept`) by comparing the two Origins as the fit reads them at the use (`OriginAtUse` with the
+    visit's comparison), so a Callable comparison still reads the region (O-363 (a)); `OriginPremiseCatalogTest`'s `Closures == 0` (B's
+    U3 ruling 43) holds unchanged.
+  - **BU-56's interim (the owner's O-394 (a)).** (ii) lands with the `let` form under BU-56's interim, as the `var` form already is: a
+    nested or root function's written Origin naming an enclosing `let` local's Origin (`func pk(x: ref/u8 during r)`; y5ok, y5ok2) is
+    the located `Unsupported_Kd` at `during r`, no Language error, until PLAN G230 (A) removes the interim for both forms.
+  - **Known class-1 gaps, not moves (each accepted on dev too).** vl1c (PLAN G1085: the Callable constraint over a `let` region a
+    signature names is unchecked) and e-owsin (PLAN G1099: an Owned judgment inside a nested body of a capture whose Type names an
+    enclosing `let` region through the nested signature reads the region's value).
+  - **Supersedes.** BU-197's sentence "A `let` binding keeps the bound value's Type" for locals, and its rejected "region slots for
+    `let` bindings": its reason, "no observable difference", no longer holds (PLAN G492's class 1 is the difference); BU-197's set
+    (`IsRegionOwner`) is unchanged and an immutable Pattern binding keeps its stored Type (SPEC 14.8.3). In part BU-127's "Only A5
+    reads it, since the bounds are complete once every body is bound": a `let` region in its own body has its value fixed by its
+    declaration (15.4.4) and no later store adds a bound, so its body reads the value through the view and Binding judges the relation;
+    BU-127 stands for a nested body, a `var` region and a Callable comparison's relation (O-363 (a)). In part BU-28's "a local clause
+    over a capture's Origin is Binding's record at the initializer", for a capture of a `let` local: its Origin is now the local's
+    region, an enclosing region of the Closure (BU-127's), whose relation is A5's row and record (at the clause); the reason that no
+    longer holds is BU-197's `let` sentence, superseded here. In part R4-M133 R-a (its R8-M56 line: a graph parent is stored as its
+    store read it) and R4-M184 rule (3) (above). The receiver-containment rows rc1, rc4 and rc2's store
+    (`ClosureEnvironmentOriginTest.AReceiverContainmentTheBodyNeedsNotStaysValid`) are revised under the owner's O-261 Q1 (a); no
+    DECISIONS sentence is superseded for them.
+  - **Moves** (against dev 4f820362c, (ii) and (iii) together; Q-542). Class 1, invalid programs newly rejected: m3, m4, m5x, m6, m7,
+    m8 (`ComparisonLoanConflict_Kd` at the write) and the us family (the located limit at the comparison). Class 3, valid programs
+    newly accepted: pk7vv, cap15dvar, f4v, eqw (like its store twin eqwp) and (iii)'s 48 s10 programs (dev's
+    `UnprovenOriginContract_Kd` at the literal). O-400 (b)'s designed class, valid programs at the located limit at the comparison
+    until PLAN G1100: c6, vr5nr, r5n, r5nm, the veqz and mxy families, s6a, sibr, vi4, us2n, r5nn, pfx; kcall rejected as on dev.
+    Records: invalid programs' Language records move to the limit where only the region reading decides (the sib family, the g rows;
+    R-a); a fixed shorter end keeps dev's record (vi3l, vl1l, opc5, lfx and MirBorrowsTest's eleven `let` rows); wpc's
+    `NoApplicableOverload_Kd` moves to `UnprovenOriginRelation_Kd` at `t` and `Unsupported_Kd` at `f` (the joint records with PLAN
+    G379); eqwi stays rejected, its record naming the value's failing operand; same3w and w2w gain a second `UnprovenOriginRelation_Kd`
+    at their one site and vl1cn keeps its constraint record alone, as on dev (record selection, Q13). No valid program is newly
+    rejected beyond O-400 (b)'s class, no invalid program is newly accepted, and no `InternalInvariant_Kd` arises.
+  - **Rejected:** a region per path for every binding (a `let` DAG's Type has 2^depth nodes: A2-0); a region per part for every binding
+    (vp1 and mb23 refused: A2-1); opening a slot at a later use (15.4.4); option D, a second region for the name (two Origins per slot
+    either way; (ii) picks once per reader at its use through one decider, `RegionValueIn`, where option D picks at the declaration and
+    gives the name a second slot every consumer must choose between); a gate at the name (option G: about 21 valid programs); recording
+    the slots' bounds in `LocalBorrowType` without `CheckTypeUse` (a second obligation path); pair tables beside the walk in ValueFits
+    (A2-2's `usedParts`: a side table the walk's own parts make unnecessary); one fact per pair of parts in every walk; one clause per
+    consumer (`SuppliedBy` following region bounds, `SolveLocalBounds` reading region bounds, a routing exception, a selection
+    premise); recording a region's lower bounds for 15.3.6 only (it repairs F3 only); the `var` twins' records for every `let` local
+    (they break R4-M133, 15.3.6, SPEC 23.1.2 and AGENTS' Diagnostics); the declaration's bound row kept for every `let` region (an atom
+    and a row per `let` slot in every slice, needed only where a comparison names the region); the value row formed by `LeavesBodyRows`
+    (a second copy of the declaration's bound, recorded again in Binding's graph).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
