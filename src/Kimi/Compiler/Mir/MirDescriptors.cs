@@ -253,8 +253,10 @@ internal static class MirUses
     /// <param name="body">The body.</param>
     /// <param name="terminator">The terminator.</param>
     /// <param name="index">The successor's index from -1, below <see cref="Successors"/>.</param>
+    /// <param name="view">The view the edge is taken under, a view of the body selected, or null for none: every terminator's edges are
+    /// the same in every view.</param>
     /// <returns>The successor block.</returns>
-    internal static int Successor(MirBody body, in MirTerminator terminator, int index)
+    internal static int Successor(MirBody body, in MirTerminator terminator, int index, MirCases? view = null)
     {
         if (index < 0)
         {

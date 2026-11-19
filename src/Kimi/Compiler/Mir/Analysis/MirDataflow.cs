@@ -399,10 +399,14 @@ internal sealed class MirDataflow(MirReach reach)
         }
     }
 
-    // Whether a state flows from head h along its chain's edge i (-1 the CheckTarget) into head s, the one edge rule of both directions
-    // (R4-M158): into a P2 head along any edge, into a P1 head only along a P1 chain's runtime edge (SPEC 14.10.3: an assumed continuation
-    // continues from its Never form's state; an item with a real incoming path uses only real paths).
-    private bool Flows(int h, int i, int s) => this.phases[s] == 2 || (this.phases[h] == 1 && i >= 0);
+    // The head a state flows into from head h along its chain's edge i (-1 the CheckTarget), or -1 where none does, the one edge rule of
+    // both directions (R4-M158): the edge's successor's head, a P2 head along any edge, a P1 head only along a P1 chain's runtime edge
+    // (SPEC 14.10.3: an assumed continuation continues from its Never form's state; an item with a real incoming path uses only real paths).
+    private int Flows(int h, in MirTerminator terminator, int i)
+    {
+        var s = MirUses.Successor(this.body, terminator, i) is >= 0 and var successor ? this.head[successor] : -1;
+        return s >= 0 && (this.phases[s] == 2 || (this.phases[h] == 1 && i >= 0)) ? s : -1;
+    }
 
     // The heads reached in a phase until their states stop growing, along the edges Flows admits into the phase's heads: P1 from the entry
     // over runtime edges; P2 into P2 heads, a P1 head passing its frozen state once along its CheckTarget. The worklist takes heads in
@@ -423,8 +427,8 @@ internal sealed class MirDataflow(MirReach reach)
             this.Chain(ref flow, h);
             for (var i = -1; i < (frozen ? 0 : MirUses.Successors(terminator)); i++)
             {
-                var target = MirUses.Successor(this.body, terminator, i) is >= 0 and var successor ? this.head[successor] : -1;
-                if (target >= 0 && this.phases[target] == phase && this.Flows(h, i, target) && this.Join(ref flow, target))
+                var target = this.Flows(h, terminator, i);
+                if (target >= 0 && this.phases[target] == phase && this.Join(ref flow, target))
                 {
                     this.Queue(target);
                 }
@@ -498,9 +502,9 @@ internal sealed class MirDataflow(MirReach reach)
         var terminator = this.body.Blocks[this.tails[h]].Terminator;
         for (var i = -1; i < MirUses.Successors(terminator); i++)
         {
-            if (MirUses.Successor(this.body, terminator, i) is >= 0 and var successor && this.Flows(h, i, this.head[successor]))
+            if (this.Flows(h, terminator, i) is >= 0 and var target)
             {
-                _ = flow.Join(this.scratch.AsSpan(0, this.backward), this.arena.AsSpan(this.head[successor] * this.Row, this.backward));
+                _ = flow.Join(this.scratch.AsSpan(0, this.backward), this.arena.AsSpan(target * this.Row, this.backward));
             }
         }
 
