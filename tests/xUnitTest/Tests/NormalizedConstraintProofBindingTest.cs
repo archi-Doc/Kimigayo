@@ -70,9 +70,10 @@ public class NormalizedConstraintProofBindingTest
     // and Derived (an identity view whose table the derived identity fact of `T is K` keeps Provisional: its class keys are not final,
     // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. An entry
     // read across its serial indexes fewer (1,411); one Kept under a table that is not Final indexes 192. Every row counts (R7-C2e2-2).
+    // R7-C3 (C7, design §13.1): one outermost request per proof and the readings under the class key: 1,416 -> 736.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(1416, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(736, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
     // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
     // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that
@@ -88,17 +89,21 @@ public class NormalizedConstraintProofBindingTest
     // The pairs x1's entries index over the library's, exact (a fact of the identity view also under its class key; the table is Final,
     // so the entry is Kept): the request inside the normalization indexes the view again, so reading the Kept entry there, without
     // IndexOf's rebuild branch, indexes 68, as does an entry Kept with readings that were not kept.
+    // R7-C3 (C7, design §13.1): the written pairs are dev's; the normalized readings are filed under the class key T, not the loop's
+    // U (5 + 6 against 12 + 18): 98 -> 79.
     [Fact]
     public void ARequestInsideANormalizationIndexesItsViewAgain()
-        => Assert.Equal(98, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
+        => Assert.Equal(79, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
 
     // DECISIONS R7-C2e2-2: a closure validator's read forms its view's entry when it has a fact to pair, and the entry goes back when
     // the read ends. The agreement reads f's view (three identities of one projection through K<U>, K<V> and K<i32>, SPEC 8.9.2);
     // disjointness reads the scopes of S's two conditional conformances (`T is i32` against `T is string`, SPEC 8.9.1). The pairs their
     // entries and the requests' index over the library's: exact.
+    // R7-C3 (B2', C7, design §13.1): f's identity facts are filed once (the agreement's input proofs read CollisionScope, one request
+    // per proof), the Contract facts' readings under T (9): 89 -> 71.
     [Fact]
     public void AValidatorsReadIndexesItsViewOncePerRead()
-        => Assert.Equal(89, ClosureWork(Validated) - ClosureWork(string.Empty));
+        => Assert.Equal(71, ClosureWork(Validated) - ClosureWork(string.Empty));
 
     // R7-C2c2 c2-3b at R7-C2e2-2's merge (merge review N1): a Callable fact is a row kind's fact, so a request's entry files it under its
     // subject and its class key, and a validator's read (no classes) under its subject alone. In f's view (`U is T`, whose class key is T)

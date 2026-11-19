@@ -519,8 +519,8 @@ public partial class TypeIdentityTest
     {
         { "mate-v", Mate("T.(Q).B.(Q).A"), 2, string.Empty },
         { "mate-i", Mate("T.(Q).B.(Q).B.(Q).A"), 2, "UnprovenConstraint_Kd" },
-        { "spm-a", Spm(0, string.Empty, "    need(x)\n"), 1, "PremiseClosureLimit_Kd" },
-        { "spm-b", Spm(2, string.Empty, "    need(x)\n"), 1, "PremiseClosureLimit_Kd" },
+        { "spm-a", Spm(0, string.Empty, "    need(x)\n"), 0, "PremiseClosureLimit_Kd" }, // R7-C3 (C-c): keyed by its class from the start, no re-root
+        { "spm-b", Spm(2, string.Empty, "    need(x)\n"), 0, "PremiseClosureLimit_Kd" },
     };
 
     // PLAN G881 with G881b: a query made after the pass has counted its failures fails no node. MIR's destruction analysis asks Copy
