@@ -1627,6 +1627,96 @@ public sealed partial class MirBorrowsTest
                 a = 2
                 return k
             """,
+        ["wrapGet"] = """
+            struct W {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func wrap(self: ref/Self) -> W during self => W.init(r: self.n@ref, n: 0)
+            func wrapGet() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let w = s.wrap()
+                let k = w.r@follow
+                a = 2
+                return k
+            """,
+        ["wrapDirect"] = """
+            struct W {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func wrap(self: ref/Self) -> W during self => W.init(r: self.n@ref, n: 0)
+            func wrapDirect() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let k = s.wrap().r@follow
+                a = 2
+                return k
+            """,
+        ["wrapMixedBad"] = """
+            struct WV {s}
+                public var r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func wrap(self: ref/Self) -> WV during self => WV.init(r: self.n@ref, n: 0)
+            func wrapMixedBad() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                var w = s.wrap()
+                if a > 0
+                    w.r = s.n@ref
+                let k = w.r@follow
+                a = 2
+                return k
+            """,
+        ["wrapHopBad"] = """
+            struct W {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+                public func wrap(self: ref/Self) -> W during self => W.init(r: self.n@ref, n: 0)
+            func wrapHopBad() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let w = s.wrap()
+                let q = w.r@follow@ref
+                let k = q@follow
+                a = 2
+                return k
+            """,
         ["refGetBad"] = """
             struct RS {s}
                 public let r: ref/i32 during s
@@ -3122,6 +3212,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("tupPartGet", "")] // V by O-437 (b): r is the call's reference as a part of its result, a Tuple element, as optPayloadGet's Case payload
     [InlineData("tupMixedBad", "tupMixedBad: a = 2")] // I (O-364 (a)): on the path through the `if`, r is `s.n@ref`, a reference the body forms, so t holds a value no call returned
     [InlineData("fieldPartGet", "")] // V by O-437 (b): a reference Field of the call's result, held whole in q
+    [InlineData("wrapGet", "")] // V by O-437 (b): `w.r` is a reference the call returned as a part of its result, held whole in w and read in place
+    [InlineData("wrapDirect", "")] // V by O-437 (b): the same without a local, `s.wrap().r@follow`
+    [InlineData("wrapMixedBad", "wrapMixedBad: a = 2")] // I (O-364 (a)): on the path through the `if`, w.r is `s.n@ref`, a reference the body forms, so w holds a value no call returned
+    [InlineData("wrapHopBad", "wrapHopBad: a = 2")] // I (O-437 (b): a reference the body forms keeps O-364 (a)): q reborrows w.r
     [InlineData("rvDerefPlainOk", "")] // V, the control: r reaches x only, which carries nothing
     [InlineData("rvCopyUseBad", "rvCopyUseBad: kk = 2")] // I, the Copy by assignment into an initialized local: d carries w0's Loans and is read after (15.6 Holders' Copy sentence)
     [InlineData("rvPutROk", "")] // V, a Scalar argument the builder spills into a temporary before a borrow argument; d is not used after

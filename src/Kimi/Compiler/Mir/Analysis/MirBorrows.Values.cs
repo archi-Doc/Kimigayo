@@ -133,8 +133,9 @@ internal sealed partial class MirBorrows
     // value, a value read through a borrowed input, or reference bits written through a raw pointer (the rows rvResPartBad, xchgFieldD,
     // xchgOldD); so a value Moved or Copied out of the payload carries none, whatever the result holds through another Case; where a
     // call's write source may store in the local, it reads the local's write slot instead (Ends). The referent bound (the owner's
-    // O-437 (b)), beside it: a read through the reference such a local holds whole (a Deref of the root's own reference) carries only
-    // the Loans its referent Type can hold, so where that Type holds no Loan (Holds) it is bounded as a Loan-free payload is, a part of
+    // O-437 (b)), beside it: a read through the reference such a local holds whole or as a part (a Deref of the root's own reference, or
+    // of a reference Field, Tuple element or Case payload of it, HeldReference: `w.r@follow`, `s.wrap().r@follow`) carries only the
+    // Loans its referent Type can hold, so where that Type holds no Loan (Holds) it is bounded as a Loan-free payload is, a part of
     // the referent read below the Deref included (arView's `inner[0]`, c84's `res.v`); an element that stores a reference keeps its
     // Loan (its Type holds one). It starts only on the read's own root, before any reference is followed: a read through a reference
     // the body forms (Follows), one formed through a call's reference included (`let q = r@follow@ref`), keeps O-364 (a). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
@@ -156,9 +157,9 @@ internal sealed partial class MirBorrows
             while (at != 0 && root >= 0 && !(hopped = this.Follows(root, at, bound, ref reads)))
             {
                 var step = this.body.Projections[at];
-                var referent = first < 0 && step is { Kind: MirProjectionKind.Deref, Prefix: 0 } && ReferenceTypes.IsReference(cases.Type(this.body.Locals[root].Type));
+                var referent = first < 0 && step.Kind == MirProjectionKind.Deref && this.HeldReference(new MirPlace(root, step.Prefix));
                 bound = (this.Payload(at) || referent) && (bound || ((step.Kind == MirProjectionKind.Downcast || referent) && !this.Holds(cases.TypeOf(new MirPlace(root, at)), out _)));
-                at = step.Prefix;
+                at = referent && bound ? 0 : step.Prefix; // The held reference's Field and payload steps keep the bound to its root (Ends).
             }
 
             first = hopped && first < 0 ? (2 * root) + (bound ? 1 : 0) : first;
@@ -242,6 +243,22 @@ internal sealed partial class MirBorrows
 
         this.followedBy[key] = this.sourceWalks;
         return true;
+    }
+
+    // Whether a Place is a reference its root holds whole or as a part (the root itself, or a path of Field and payload steps from it: a
+    // Field, a Tuple element or a Case payload; no Deref or Index on the way), where the referent bound may start (Sources; the owner's
+    // O-437 (b): a reference the call returns, as a part of its result too, MirBorrows.Holders' Whole).
+    private bool HeldReference(MirPlace place)
+    {
+        for (var at = place.Projection; at != 0; at = this.body.Projections[at].Prefix)
+        {
+            if (this.body.Projections[at].Kind is not (MirProjectionKind.Field or MirProjectionKind.Downcast))
+            {
+                return false;
+            }
+        }
+
+        return ReferenceTypes.IsReference(cases.TypeOf(place));
     }
 
     // Whether a projection is a Case payload step: a Downcast, the payload Tuple of a Case, or the Field of that Tuple, a payload.
