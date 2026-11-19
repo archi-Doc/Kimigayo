@@ -1,7 +1,27 @@
 # Tatara
 
 `tatara.dll`: a C ABI (`tatara.h`) over the pinned LLVM and LLD static libraries, so Kimi can run LLVM's and LLD's work in
-process. In this stage it exports only `tatara_identity`; setup, the installation record and CI take the DLL over in unit A4.
+process. Setup, the installation record and CI take the DLL over in unit A4.
+
+## Operations
+
+`tatara_optimize` (`opt -passes=verify`, then `opt -S -passes=default<O2> -mtriple`), `tatara_emit` (`opt -passes=verify`, then
+`llc -filetype=obj` with the target's CPU, features, relocation and code model) and `tatara_link` (`lld-link`, through
+`lld::lldMain`) read and write the files the tools would, with equal bytes. `tatara_inspect` returns an object's undefined and
+defined external symbols with `llvm-nm`'s letters, and whether `.pdata` holds an entry and a `.drectve` names `DEFAULTLIB`.
+Each call returns 0 (success), 1 (failed; Tatara can run again) or 2 (failed; Tatara cannot run again in this process) and a
+result whose message carries the tools' text, released with `tatara_release`.
+
+`tatara_identity` (the build identity and the LLVM version) and `tatara_abi` (the SHA-256 of `tatara.h`) are frozen: they are
+the start check's bootstrap, and their shapes never change.
+
+## Crash recovery
+
+At load, Tatara registers the X86 target, enables `CrashRecoveryContext` and installs a fatal-error handler that records the
+reason and leaves through the recovery context: its only process-wide LLVM state. Every operation runs inside
+`CrashRecoveryContext::RunSafelyOnThread` on a thread that reserves the tools' 10,000,000 bytes of stack. After a crash, a fatal
+LLVM error or LLD's `canRunAgain` false the call returns 2, and every later call returns 2 naming the first cause. `abort()` and a
+stack overflow beyond the reserve still end the process.
 
 ## The archive
 
@@ -18,17 +38,19 @@ The build needs the extracted archive (its `bin`, `include` and `lib`), Visual S
 `vswhere -latest -prerelease`), the Windows SDK, and the DIA SDK that Visual Studio installs (`DIA SDK\lib\amd64\diaguids.lib`).
 The output directory must lie outside the repository or where Git ignores it (for example under `temp/`), never in `src/Tatara`.
 The script checks the archive's version against the catalog, compiles with the archive's `clang-cl`, links with its `lld-link`,
-loads the DLL in a child process to check its identity and version, and prints the DLL's SHA-256, the build identity, the LLVM
-version, the MSVC toolset and the Windows SDK.
+loads the DLL in a child process to check its identity, ABI and version, and prints the DLL's SHA-256, the build identity, the ABI,
+the LLVM version, the MSVC toolset and the Windows SDK.
 
-The build identity is the SHA-256 over every `.h`, `.cpp` and `.ps1` file under `src/Tatara` (rule in `build.ps1`).
+The build identity is the SHA-256 over every `.h`, `.cpp` and `.ps1` file under `src/Tatara` (the rule in `identity.ps1`, which
+`build.ps1` dot-sources). The check also compares `tatara_abi` with the SHA-256 of `tatara.h`.
 
 ## Link
 
 Tatara links as LLVM's own tools link. The LLVM libraries are globbed, and the Windows libraries and options are read from
 `LLVMSupport`'s `INTERFACE_LINK_LIBRARIES` in the archive's `lib/cmake/llvm/LLVMExports.cmake`; the reader accepts only the
-shapes it knows and fails on any other token. One departure: `diaguids.lib` comes from the discovered Visual Studio, because
-`LLVMDebugInfoPDB`'s interface names a path on LLVM's build machine.
+shapes it knows and fails on any other token. `lldCOFF.lib` and `lldCommon.lib` are added for `tatara_link`. One departure:
+`diaguids.lib` comes from the discovered Visual Studio, because `LLVMDebugInfoPDB`'s interface names a path on LLVM's build
+machine.
 
 ## Allocator
 
@@ -38,8 +60,8 @@ allocation crosses the C ABI, so the allocator stays the DLL's own.
 
 ## LibXml2
 
-Not added (the owner's decision). `LLVMWindowsManifest.lib` stays off the link line; with `lldCOFF` (unit A2) Tatara defines `llvm::windows_manifest`'s
-members as LLVM's own build without LibXml2 does (`isAvailable` false, `merge` an error). Kimi's link passes no manifest option.
+Not added (the owner's decision). `LLVMWindowsManifest.lib` stays off the link line; `WindowsManifest.cpp` defines
+`llvm::windows_manifest`'s members as LLVM's own build without LibXml2 does (`isAvailable` false, `merge` an error). Kimi's link passes no manifest option.
 
 ## Updating LLVM
 
