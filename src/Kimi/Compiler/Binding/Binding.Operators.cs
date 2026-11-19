@@ -22,6 +22,10 @@ public sealed partial class Binding
     private static bool AdmittedMisfit(Koto node) => node is BinaryKoto { Akind: KotoKind.Equals, BindingFailure: not BindingFailure.None } &&
         HirTables.PlanOf(node).Mode != 0;
 
+    // The write whose admitted misfit's value a node is (AdmittedMisfit): the value it places is derived from the write's fit failure.
+    private static BinaryKoto? MisfitWrite(Koto node)
+        => node.Parent is BinaryKoto write && ReferenceEquals(write.Right, node) && AdmittedMisfit(write) ? write : null;
+
     // The one writer of AdmittedMisfit's verdict, a row only for an admitted misfit; any other binary keeps its row.
     private static void SetAdmittedMisfit(BinaryKoto binary, bool misfit)
     {

@@ -6,7 +6,8 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
+// Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys,
+// and RestingCauses, the one cause query of a node a later phase derives a value or a check from (DECISIONS Z16).
 // Checks record the parts they read; publication follows those records without binding or proving them again.
 // Storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
@@ -70,6 +71,19 @@ public sealed partial class Binding
     /// <returns>The check keys, or <see langword="null"/>.</returns>
     internal DiagnosticKey[]? FailureCauses(Koto node) => this.HasFailureCauses(node) ? this.CauseKeys(node) : null;
 
+    /// <summary>Gets the causes a check resting on a node rests on (docs/dev/DIAGNOSTICS.md §4.3), the one cause query of the nodes the
+    /// HIR publisher's contract names (<see cref="FailureFact"/>; DECISIONS Z16), by the one rule RestingSource states.</summary>
+    /// <param name="node">The node, such as one of GuessedCompletionNodes or a failure fact.</param>
+    /// <returns>The causes, or null at a node nothing rejected and Binding recorded no cause for.</returns>
+    internal DiagnosticKey[]? RestingCauses(Koto node)
+        => !this.RestingSource(node, out var failed, out var own) ? null : failed is not null ? this.CauseKeys(failed) : [own];
+
+    /// <summary>Gets whether a check resting on a node rests on causes (<see cref="RestingCauses"/> is not null), without forming them:
+    /// the HIR publisher's contract check, which a warm publish runs without allocating.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>Whether it rests on causes.</returns>
+    internal bool HasRestingCauses(Koto node) => this.RestingSource(node, out _, out _);
+
     /// <summary>Gets whether Binding recorded a cause for a node it did not resolve: the node is a recovery, failed, or rests on an
     /// unresolved prerequisite (a dependent, SPEC 23.1.2).</summary>
     /// <param name="node">The node.</param>
@@ -104,6 +118,46 @@ public sealed partial class Binding
     {
         var taken = Grouped(node);
         return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
+    }
+
+    // The one rule of what a check resting on a node rests on (RestingCauses; docs/dev/DIAGNOSTICS.md §4.3): a supplied body's syntax
+    // Error, else the node's own Binding causes (failed: the node, whose CauseKeys they are), else the unresolved mark for an expression
+    // the guess rule counts as unresolved. A node rejected without such a cause (Binding.Rejected) rests on its own record: a failure
+    // Binding recorded at it, a recovery's syntax Error, a malformed char literal's lexical Error (CharLiteralKoto.Cause), an admitted
+    // misfit's value on its write's fit failure (failed: the write, MisfitWrite). A Place Binding resolved whose acquisition failed, its
+    // Move resting on an Error Copy proof (HirAcquire.Failed, DECISIONS BU-103), rests on the unresolved mark: Binding records that
+    // proof's failure at the Type's declaration, not at the use (DECISIONS Z16). False at a node nothing rejected and Binding recorded no
+    // cause for.
+    private bool RestingSource(Koto node, out Koto? failed, out DiagnosticKey own)
+    {
+        (failed, own) = (null, DiagnosticKey.Unresolved);
+        if (SuppliedCause(node) is { } supplied)
+        {
+            own = supplied;
+            return true;
+        }
+
+        if (this.HasFailureCauses(node) || this.RecordedFailure(node) != BindingFailure.None)
+        {
+            failed = node;
+            return true;
+        }
+
+        if (IsRecovery(node, out var recovered))
+        {
+            own = recovered;
+            return true;
+        }
+
+        if (node is CharLiteralKoto { Value: null } literal)
+        {
+            own = literal.Cause ?? DiagnosticKey.Unresolved;
+            return true;
+        }
+
+        failed = MisfitWrite(node) is { } write && this.HasFailureCauses(write) ? write : null;
+        return failed is not null || IsUnresolvedGuess(node) ||
+            (this.RecordedState(node) == BindingState.Resolved && (HirTables.AdjustOf(node).Acquire == HirAcquire.Failed || HirTables.PlanOf(node).Adjust.Acquire == HirAcquire.Failed));
     }
 
     private bool IsUnresolvedPrerequisite(Koto node)

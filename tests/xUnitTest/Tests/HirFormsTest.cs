@@ -834,9 +834,10 @@ public sealed partial class HirFormsTest
         Assert.Equal("Some", BoundEnumConstruction.Of(c.Binding, nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
     }
 
-    // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
-    // stands: inside a parent Binding rejects for its own reason (a let whose Type annotation fails, the parent replaced), or the
-    // kept operand of a failed Index, whose creation is evaluated there (a Closure, in place); a closure whose capture list failed was
+    // SPEC 23.1.2 (DECISIONS R5-M63, Z16): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
+    // stands: inside a parent Binding rejects for its own reason (a let whose Type annotation fails, which keeps its initializer, the
+    // creation, in place since Z16), or the kept operand of a failed Index, whose creation is evaluated there (a Closure, in place); a
+    // closure whose capture list failed was
     // never bound, so its body stays replaced. An inferred result over the call's own storage keeps the Closure's
     // Type and fails only the returned value (DECISIONS R4-M152): the `return` statement, or an expression body, which its own Consume
     // takes.
@@ -853,7 +854,7 @@ public sealed partial class HirFormsTest
         var closures = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var rows = closures.Select(static x => (Koto?)x.Body ?? x.ExpressionBody!)
             .Select(static x => $"{HirTables.Op(x.Parent!)} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Syntax Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
+        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Closure Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
         Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Error], statements);

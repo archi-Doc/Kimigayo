@@ -53,6 +53,25 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         }
     }
 
+    // Reaching these runs none of their contents: a function's or an accessor's body runs when called and a Scope Exit block at
+    // Scope Exit, which this does not evaluate; Type syntax and a #switch that selected no arm have nothing to run. The HIR
+    // publisher's Keeps reads it too (DECISIONS Z16).
+    internal static bool RunsNoContents(Koto node) => node switch
+    {
+        FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto => true,
+        TypeKoto or CompileTimeSwitchKoto => true,
+        _ => false,
+    };
+
+    // The forms a jump inside them can target (Binding.TransferTarget): an exit targets an iteration or a Do (a continue an
+    // iteration), a yield a selection. Function and Scope Exit targets run no contents here. The HIR publisher's Keeps reads it too.
+    internal static bool IsTransferTarget(Koto node) => node switch
+    {
+        LoopKoto or WhileKoto or ForKoto or DoKoto => true,
+        IfKoto or MatchKoto => true,
+        _ => false,
+    };
+
     /// <summary>Gets the number of node completions composed since creation, which <see cref="Clear"/> keeps: a scaling check's work
     /// measure.</summary>
     internal long Composed { get; private set; }
@@ -64,24 +83,6 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         this.cache.Clear();
         this.cursor = 0;
     }
-
-    // Reaching these runs none of their contents: a function's or an accessor's body runs when called and a Scope Exit block at
-    // Scope Exit, which this does not evaluate; Type syntax and a #switch that selected no arm have nothing to run.
-    private static bool RunsNoContents(Koto node) => node switch
-    {
-        FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto => true,
-        TypeKoto or CompileTimeSwitchKoto => true,
-        _ => false,
-    };
-
-    // The forms a jump inside them can target (Binding.TransferTarget): an exit targets an iteration or a Do (a continue an
-    // iteration), a yield a selection. Function and Scope Exit targets run no contents here.
-    private static bool IsTransferTarget(Koto node) => node switch
-    {
-        LoopKoto or WhileKoto or ForKoto or DoKoto => true,
-        IfKoto or MatchKoto => true,
-        _ => false,
-    };
 
     private HashSet<JumpKoto> Transfers(HashSet<JumpKoto>? a, HashSet<JumpKoto>? b = null, JumpKoto? jump = null)
     {

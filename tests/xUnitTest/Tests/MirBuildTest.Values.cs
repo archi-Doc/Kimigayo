@@ -22,7 +22,8 @@ public sealed partial class MirBuildTest
 
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
-    // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose rejected declaration has no Type (one with a Type is
+    // Opaque without a record (SPEC 23.1.2): Binding's Error (a rejected declaration's kept initializer its own, DECISIONS Z16), a use of a
+    // local whose rejected declaration has no Type (one with a Type is
     // its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage), and the Field initializer of a declaration Binding did not bind (a
     // struct with a misplaced `length` slot), in each constructor. Building goes on after each. The unbuilt form is the tuple operator
     // without its comparison (Unbuilt); its Opaque names the roots of its operands.
@@ -50,7 +51,7 @@ public sealed partial class MirBuildTest
 
         Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
-        Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
+        Assert.Equal(["missing", "let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts
