@@ -435,15 +435,25 @@ public sealed partial class Binding
         // What a node's use needs, which selects a user index's call (SelectionMode; SPEC 4.7.1, 8.14; DECISIONS BU-8; R7 plan Z23): the
         // stronger of its takes' claim (Claimed, read before the rows of a kept or an Error node replace them) and the one place-use rule over
         // the rows its takes wrote (UseOf), exclusive capability in every admitted case or only in those where its take Reborrows, its own
-        // Type then deciding; and the need of the use (the parent's) that reaches it as the receiver of a Field or an element, as a group's
-        // operand or as the reference, handle or pair layer a follow selects through (SPEC 13.5.5, 15.6.2: past a shared layer only reads),
-        // with that need's decider (a Field below a by-case element decides the element's selection), unless that use is of a raw Place,
-        // whose capability its path does not decide (SPEC 5.2).
+        // Type then deciding; and the need of the use (the parent's) that reaches it as the receiver of a Field or an element, a user
+        // index's where its selection is not index, as a group's operand or as the reference, handle or pair layer a follow selects through
+        // (SPEC 13.5.5, 15.6.2: past a shared layer only reads), with that need's decider (a Field below a by-case element decides the
+        // element's selection, and a by-case element the selection of the user index below it), unless that use is of a raw Place, whose
+        // capability its path does not decide (SPEC 5.2). A user index's receiver is taken by its selected calls alone, so their rows claim
+        // no more than the selection needs: by case, indexUniq's exclusive take stands only in the cases its decider makes exclusive (F's
+        // ruling 3 on R7 plan Z23).
         private UseNeed NeedOf(Koto node, Koto? parent, HirOp parentOp, PlaceUse claimed, UseNeed reaching)
         {
             var own = UseNeed.Of((PlaceUse)Math.Max((byte)claimed, (byte)Capability(this.uses.UseOf(node, parent, parentOp))), node);
-            return reaching.Use != PlaceUse.Shared && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) &&
-                !ElementAccess.IsRawRooted(binding, parent!) && ReferenceEquals(Operand(parent), node) ? own.Meet(reaching) : own;
+            var selection = parentOp == HirOp.Call && parent is IndexKoto; // A user or view index, which passes the need its selection takes.
+            if (reaching.Use == PlaceUse.Shared ||
+                !(parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto || (selection && binding.SelectionMode(parent!, reaching.Use) != 0)) ||
+                ElementAccess.IsRawRooted(binding, parent!) || !ReferenceEquals(Operand(parent), node))
+            {
+                return own;
+            }
+
+            return (selection && own.Use > reaching.Use ? reaching : own).Meet(reaching);
         }
 
         // The capability a node's use needs (NeedOf): Shared, ByCase or Exclusive, and with ByCase its decider, the Type of the Place whose
