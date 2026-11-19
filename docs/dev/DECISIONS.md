@@ -21548,6 +21548,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     warm pass allocates nothing (RP8's warm bytes; `TypeIdentityTest.AWarmRebindPastTheRoundBoundAllocatesNothing`).
   - **Known limit (the owner's O-345 (b); PLAN G1040).** The bound counts a request's extension rounds from its subject as written,
     so whether it is reached depends on the spelling (spm-a, spm-b); c2-4 makes it count the request of the subject's identity class.
+    Superseded by R7-M44 (R7-C2c2 c2-4b commit (3)): an extending request counts its identity class's closure from its root; the
+    residual is R7-M44's known limit.
 - **R7-M39 Premise sessions (PLAN G778)** (Front, 2026-11-19; R7-C8 (plan revision 69 (B)); Major, behavior-preserving on every
   program's acceptance and records; one reviewer for design, implementation and cost (`front\notes\N4O\review.md`): design ACCEPT
   WITH NOTES, implementation ACCEPT, the cost fix 9fe0e2317 after the owner's O-299 (a), the merge reviews and the delta re-check of
@@ -21705,6 +21707,49 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Not this rule's:** a member call's container-Origin instantiation (PLAN G1003, D-782) rejects the valid family use, usew, gen,
     usea, rf, gread, nbr, gcl and the Middle's c-retb-v, c-arg-v and c-owned-v at the read, as it rejects the method twin usem; V4
     writes no row for them (a row would pin a conservative Language error on a valid program).
+- **R7-M44 An extending request is its identity class's closure over the declaration's grounds** (Front, 2026-11-19; R7-C2c2
+  c2-4b commit (3), Q-528; Major, an acceptance mover; design `design-c24.md` R4.13 with R4.13a: R4.13's review ACCEPT WITH
+  CONDITIONS, F's C2 ruling 205 (its B1 in R4.13a, ruling 206), the implementation review ACCEPT (`review-c24b3.md`, ruling 214); the
+  owner's O-345 (b), O-413 (a), O-421 (c); RP17: the Middle's C-394 CONSENT WITH CONDITIONS on d50de87b3) SPEC 8.2.3, 8.3.3.
+  Supersedes R7-M38's known limit (the bound counted a request's rounds from its subject as written).
+  - **The closure.** An extending refinement request computes its identity class's closure, not its own iteration: from its root
+    (first the subject), over the declaration's grounds (written facts and the declaration's own supply of its written Contract
+    premises, `ConstraintEnvironment.Declares`) and the identity rows its own walks record from that root, never a use's supply, the
+    view's identity table or another request's rows. A round whose table keys the root lower re-roots there and starts again with
+    no rows (at most `PremiseClosureLimit` re-rootings; `IdentityRestarts`); rounds are counted from the root's first walk (at most
+    `PremiseClosureLimit`); each walking round reopens the view's entry as the request's (whatever the table's finality) and drops
+    the class-key pairs an earlier table filed (`ViewIndex.DropClassKeys`). `ExtendClosed` is the measure's one owner. So an
+    extending request's rounds and verdict are a function of (its root, Contract, the declaration's grounds) (the owner's O-345
+    (b)).
+  - **Known limit** (the owner's O-413 (a); STATUS Types and Contracts) until R7-C3: whether a request extends stays its first
+    walk's, which reads the view's table and its use supply.
+  - **Temporary:** `ConstraintEnvironment.Declares` (the `Declared` mark set at `ExpandScopeContractPremises`' end) is a split;
+    removal condition: R7-C3 removes the syntax-triggered supply, after which every derived fact is the declaration's. An override's
+    re-expansion (`PrepareVirtualOverridePremises`) runs after its header is bound, but the header binds in its own layer, whose mark
+    precedes the inputs, so no use supply reaches the declared range (the implementation review's cr.ov2-* dump).
+  - **The kind.** Every program whose extending request's count rested on a use's supply ends at the round bound with
+    `PremiseClosureLimit_Kd` at the asking use: a valid one is the known limit (spm-b, s1-d32, cr.ay-s2-32, cr.ov2-nb among them),
+    and an invalid one's own record at that call is replaced by the limit's (nm-b: `NoApplicableOverload_Kd` ->
+    `PremiseClosureLimit_Kd` at the same call, as its root nm-a on both sides).
+  - **Rejected:** a per-row derivation round (a use-supplied row has no canonical round); removing the use supply from the view's
+    table for every reader (C3's cutover); re-rooting by a restarted request (`PremiseRefines` over `RefinesFrom`: the history
+    re-enters through the view's table).
+- **R7-M45 The class graph's edges are a constructor's components and a projection's Contract arguments** (Front, 2026-11-19;
+  R7-C2c2 c2-4b step 1, commit (1), Q-528; Major, an acceptance mover; design `design-c24.md` R2.1, R4.1-R4.11: the design review's
+  Revision 4 re-check, F's C2 ruling 186, the implementation review ACCEPT WITH CONDITIONS on 93a1281b9, ruling 200; the owner's
+  O-401 (a), O-421 (c); RP17: the Middle's C-390 CONSENT WITH CONDITIONS on 93a1281b9) SPEC 8.2.3, 8.3.3.
+  - **The class graph.** The identity table's class graph has as edges a constructor's components (Arity and Component: a pair
+    layer's one component is its target) and a projection's Contract arguments (SPEC 8.3.3's expansion steps, never a projection's
+    subject); a class is Cyclic only on a cycle through a constructor edge, so a cycle of projection arguments alone (a path
+    equation) is none.
+  - **One constructor classification,** `Constructs` (no abstract Type and no pair layer admitting exactly `owner`), is read by the
+    class graph, the meets, the binding grounds and the Member scan, so a pair target or an owner-only layer is never a class's
+    Member and every descent into a Member's components is a marked cycle edge.
+  - **One class lookup,** `ClassOf`: a Type's target's node root, else, once the table is closed, the class of the node it is
+    congruent with by the table's own congruence (Signature, Congruent), kept per table; Scanned (Representative, Member, ClassKey,
+    MemberOf), Same, Failed, Refuted and ListedRoot read it.
+  - **Rejected:** any constructed member as the Member (a pair target as the 'closed' Member refused tp-1 and tp-2, valid); a second
+    congruence for Types that are no node.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
