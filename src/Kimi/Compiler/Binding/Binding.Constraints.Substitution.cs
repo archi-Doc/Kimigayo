@@ -114,7 +114,7 @@ public sealed partial class Binding
             result = CombineProof(result, outcome, true);
         }
 
-        result = DerivedVerdict(result, derived);
+        result = this.DerivedVerdict(result, derived);
         var verdict = this.EndProof(result);
         this.LeaveClause(best, result);
         return verdict;

@@ -259,11 +259,12 @@ public sealed partial class Binding
             var frame = this.BeginConsultation(declaration); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.CheckProjectionInputs(use.Type, use.Contract, this.ConstraintScope(use.Use));
             this.RequireConstraintInFrame(declaration, proof, mode, frame);
-            if (proof != ConstraintProof.Proven && mode == BindingMode.Final && PremiseClause(use.Use, declaration) is { BoundConstraint: { } premise } &&
+            if (proof != ConstraintProof.Proven && mode == BindingMode.Final && this.PremiseClause(use.Use, declaration) is { BoundConstraint: { } premise } &&
                 this.scopes.TryGetValue(declaration, out var premises) && premises.Constraints is { } environment)
             {
                 environment.FailPremise(premise, declaration); // R7-C3 (B1'): a premise whose projection input is not proven fails itself
             }
+
             if (declaration.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional)
             {
                 // The target owns conformance/Copy evidence; the block owns member applicability.
@@ -277,7 +278,7 @@ public sealed partial class Binding
     }
 
     // The premise clause of `declaration` a node lies in, if any (a projection use in a premise's side).
-    private static IsKoto? PremiseClause(Koto node, Koto declaration)
+    private IsKoto? PremiseClause(Koto node, Koto declaration)
     {
         for (var current = node; current.Parent is { } parent; current = parent)
         {

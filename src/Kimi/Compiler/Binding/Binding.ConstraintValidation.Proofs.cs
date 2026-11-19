@@ -374,7 +374,8 @@ public sealed partial class Binding
     }
 
     // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the failed premise a proposition reads, when one of its operands, as written or in its form, is a
-    // side of a failed premise of the view (FailPremise); every other proposition is judged in the valid remainder.
+    // side of a failed premise of the view (FailPremise), or identical with one in the view; every other proposition is judged in the
+    // valid remainder.
     private PremiseFailure? FailedPremiseRead(BoundConstraint written, BoundConstraint normalized, BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
@@ -395,8 +396,12 @@ public sealed partial class Binding
 
         return null;
 
-        static bool Reads(BoundConstraint proposition, BoundConstraint premise)
-            => proposition.Subject is { } subject && (ReferenceEquals(subject, premise.Subject) || ReferenceEquals(subject, premise.RequiredType));
+        // A side is read as the judge identifies it in the view (8.2.3: a fact about a Type is evidence for an identical one).
+        bool Reads(BoundConstraint proposition, BoundConstraint premise)
+            => proposition.Subject is { } subject && (Side(subject, premise.Subject) || Side(subject, premise.RequiredType));
+
+        bool Side(BoundType subject, BoundType? side)
+            => side is not null && (ReferenceEquals(subject, side) || this.IdentityProven(subject, side, scope));
     }
 
     // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its
@@ -405,7 +410,7 @@ public sealed partial class Binding
     private bool DerivedObligation(ConstraintProof outcome, ICheckCause? before)
         => outcome == ConstraintProof.Error && this.ScopeReads.Error is { Use.BindingState: BindingState.Invalid } read && !ReferenceEquals(read, before);
 
-    private static ConstraintProof DerivedVerdict(ConstraintProof independent, bool derived)
+    private ConstraintProof DerivedVerdict(ConstraintProof independent, bool derived)
         => derived && independent == ConstraintProof.Proven ? ConstraintProof.Error : independent;
 
     // SPEC 8.3.3 (Limits), 23.1.1 (DECISIONS BU-22's L): an analysis a judgment needs reached an implementation limit (`limit`, a
