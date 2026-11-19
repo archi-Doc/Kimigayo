@@ -8,7 +8,7 @@
 // erasure's) and its target under the item's representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after
 // an owner Value call's body, the operand's glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets
 // from its representative Type by its kind's row (Expand).
-// Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Compose, Implementation, Witness,
+// Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Answered, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
 // Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
 // without one or a refused edge), a Drop's glue of each part its group destroys (DropTargets) and an owner Value call's second target
@@ -16,8 +16,8 @@
 // whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, except a Drop's, one per part its group destroys in DropGlue.Destroyed's order, the order code
 // generation writes them in (PLAN G641), and the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS
-// R5-M102: a departure from package C 3.2 I8); a composed substitution's storage verdict is read at the site (Made); a kind without a row
-// is a fault;
+// R5-M102: a departure from package C 3.2 I8); a composed substitution's formation is read at the site (Formed), never its storage; a kind
+// without a row is a fault;
 // a default template's call has the template's body, read unchecked (the validator's program pass guarantees it, MirValidator.Program,
 // G191).
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
@@ -178,10 +178,9 @@ internal sealed partial class InstanceCollector
                 : this.Intrinsic(program, item, subject, row, this.In(item, subject, callee.Subst!.Types[0]!));
         }
 
-        var representative = this.Set.Items[item].Representative;
-        var (subst, storage, _) = callee.Subst is { } inner && representative is not null
-            ? this.types.Compose(inner, representative) : (callee.Subst, Binding.StorageOutcome.Prepared, null);
-        if (!this.Made(storage, subject))
+        var (subst, cause, _, _) = callee.Subst is { } inner && this.Set.Items[item].Representative is { } representative
+            ? this.types.Answered(inner, representative) : (callee.Subst, TyCtxt.Formation.Formed, Binding.StorageOutcome.Prepared, null);
+        if (!this.Formed(cause, item, body.Subject(call.Source), subject))
         {
             return -1;
         }
@@ -221,7 +220,7 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
     // substitution's Type argument in the item's instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its
     // caller's, LaysOutArguments): a reserveDispatch's reserve witness on its Writer (SPEC 22.10.1), a creation's payload
-    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not made, whose verdict the caller
+    // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not formed, whose cause the caller
     // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
     private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
     {

@@ -576,8 +576,8 @@ public class BindingTest
     // part's foreign row, which the family's reader reads; no library column is written, and CheckBound gives the node its issue. No
     // program fails one today (the census), so each row fails one through the private writer after a Final Bind, as a check of the
     // program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce): a qualification stop's QualificationRequired (B1a's
-    // `qualificationFailures`, written in Fail, where B1a's HirTables.Of refused the frozen library table) and FailExplained's
-    // per-call Origin fact (MissingOrigin).
+    // `qualificationFailures`, written by FailUnselected, the resolver's miss (R7-E2 E2-0), where B1a's HirTables.Of refused the frozen
+    // library table) and FailExplained's per-call Origin fact (MissingOrigin).
     [Fact]
     public void AFactALibraryNodesFailureCarriesIsRecordedWithIt()
     {
@@ -587,7 +587,7 @@ public class BindingTest
         var stop = Assert.Single(stops).Value;
         Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<IdentifierNameKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
         stops[(node, false)] = stop with { At = node };
-        typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, BindingFailure.MissingName, false]);
+        typeof(Binding).GetMethod("FailUnselected", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, BindingFailure.MissingName]);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Equal((node, BindingFailure.QualificationRequired), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
         Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));

@@ -104,7 +104,7 @@ public sealed partial class HirFormsTest
         Assert.Empty(Problems(c, c.Kotonoha));
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var calls = Reachable(c.Kotonoha).OfType<InvocationKoto>().Select(x => CallPlan.Of(c.Binding, x)).Where(x => ReferenceEquals(x?.Target.Declaration, f)).ToArray();
-        Assert.Equal([BoundType.I32, BoundType.Boolean], calls.Select(x => c.Types.Apply(DefaultDecl.Of(x!.DefaultArguments[0]).Parameter(1), c.Types.SubstOf(x)!)));
+        Assert.Equal([BoundType.I32, BoundType.Boolean], calls.Select(x => c.Types.Apply(DefaultDecl.Of(x!.DefaultArguments[0]).Parameter(1), c.Types.SubstOf(x)!).Type));
         var declaration = DefaultDecl.Of(calls[0]!.DefaultArguments[0]);
         Assert.Equal((f, 1, HirOp.Call), (declaration.Function, declaration.Index, HirTables.Op(declaration.Expression)));
         Assert.Same(declaration.Parameter(0), declaration.Parameter(1));
