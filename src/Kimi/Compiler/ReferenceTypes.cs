@@ -7,48 +7,8 @@ namespace Kimi.Compiler;
 /// <summary>The explicitly implemented reference representation, independent of Origin identity.</summary>
 internal static class ReferenceTypes
 {
-    internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && AdtDef.IsStruct(type.Components[0]);
-
-    internal static bool IsArray(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && type.Components[0].Kind == BoundTypeKind.FixedArray;
-
-    internal static bool IsTuple(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && type.Components[0].Kind == BoundTypeKind.Tuple;
-
-    internal static bool IsEnum(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && AdtDef.IsEnum(type.Components[0]);
-
-    // SPEC 4.5: a borrowed Array is a reference to its handle storage.
-    internal static bool IsDynamicArray(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && type.Components[0].Kind == BoundTypeKind.Array;
-
-    internal static bool IsDictionary(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && type.Components[0].Kind == BoundTypeKind.Dictionary;
-
-    // SPEC 4.8.1: a borrowed Slice is a reference to its Copy handle storage; the elements keep their own source Loan.
-    internal static bool IsSlice(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && type.Components[0].Kind == BoundTypeKind.Slice;
-
-    internal static bool IsStorage(BoundType? type) => IsStruct(type) || IsArray(type) || IsTuple(type) || IsEnum(type) || IsDynamicArray(type) || IsDictionary(type) || IsSlice(type) ||
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.String)) ||
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            type.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }) ||
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.Unit)) ||
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && (type.Components[0].HandleMode is not null || type.Components[0].IsObjectBorrow)) ||
-        // SPEC 8.5, 8.1.1: an associated projection, a pair target or a Semantics application stands for a complete Type like a
-        // parameter; each instance checks its substitution.
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && type.Components[0].Kind is BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) ||
-        // Binding verifies Origin obligations; inferred initializer aliases use the same stored reference representation.
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && (type.Components[0].IsScalar || IsPointer(type.Components[0])));
-
-    internal static bool IsBorrow(BoundType? type) => IsStorage(type) || type is { IsObjectBorrow: true };
-
     // SPEC 4.6.2: the library ResolvedRange struct, which the compiler produces for indices and a key site applies without a resolve call.
     internal static bool IsResolvedRange(BoundType? type) => type is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
-
-    // SPEC 3.4: a safe ref/T or uniq/T, whatever its referent and representation as an argument.
-    internal static bool IsReference(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
 
     // SPEC 5.1: a raw pointer is a Copy address value; null is its only literal.
     internal static bool IsPointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
@@ -97,10 +57,6 @@ internal static class ReferenceTypes
 
         return ReferenceEquals(type, BoundType.String);
     }
-
-    // A string inspected in place through one safe reference, shared or exclusive.
-    internal static bool IsStringReference(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && ReferenceEquals(type.Components[0], BoundType.String);
 
     internal static bool IndependentResult(BoundType? type)
     {

@@ -1,10 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent) and an Integer
-// constant's one encoding (Normalize, DECISIONS BU-133), and the lifetime of TyCtxt's views (ResetViews); substitutions are
-// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and
-// rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's, and R4-M118's chain judgment of one Origin graph, a
-// pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
+// Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), an Integer
+// constant's one encoding (Normalize, DECISIONS BU-133) and a safe reference's stored representation (IsStoredReference), and the
+// lifetime of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values
+// of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
+// and R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
+// TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
 // Interned identity is equality, over two levels (PLAN G949 Stage 2 U4; Binding.PassPart.Levels): the library layer's frozen level, filled
 // until the library's seal, and the compilation's, filled after it; values live with the compilation and survive warm rebinds. A
@@ -50,6 +51,19 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // for no other widthless Type: it keeps the 128-bit payload, the widest instance's, whose low N bits are each instance's.
     internal static Int128 Normalize(Int128 bits, int width) => width is > 0 and <= 64
         ? (unchecked((long)bits) << (64 - width)) >> (64 - width) : bits;
+
+    // A safe reference (BoundType.SafeReferent) whose referent has a stored reference representation: a struct, enum, fixed array, Tuple,
+    // string or Unit; a borrowed Array or Slice, a reference to its handle storage (SPEC 4.5, 4.8.1; a Slice's elements keep their own
+    // source Loan); a safe layer below; an object handle or borrow; a callable; an associated projection, a pair target or a Semantics
+    // application, which stands for a complete Type like a parameter, each instance checking its substitution (SPEC 8.5, 8.1.1); a Scalar
+    // or a raw pointer (Binding verifies Origin obligations; inferred initializer aliases use the same representation).
+    internal static bool IsStoredReference(BoundType? type) => type?.SafeReferent is { } referent &&
+        (AdtDef.IsStruct(referent) || AdtDef.IsEnum(referent) || ReferenceEquals(referent, BoundType.String) || ReferenceEquals(referent, BoundType.Unit) ||
+            referent is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } || referent.HandleMode is not null || referent.IsObjectBorrow ||
+            referent.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Closure or
+                BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or
+                BoundTypeKind.SemanticsApplication ||
+            referent.IsScalar || ReferenceTypes.IsPointer(referent));
 
     // SPEC 13.5.5, 8.15.2: the pair binder whose Semantics case decides a Type's case Type at its outer layer (its SemanticsTarget, the
     // PairBinder.Target): the original `s/T`, an application `s/U` and an adaptation family `p@s` (Binding.TryAdaptationSelector); null for

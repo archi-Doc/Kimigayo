@@ -204,14 +204,14 @@ public sealed partial class Binding
 
     private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
     {
-        while (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (actual.SafeReferent is { } referent)
         {
-            actual = actual.Components[0];
+            actual = referent;
         }
 
-        while (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (expected.SafeReferent is { } referent)
         {
-            expected = expected.Components[0];
+            expected = referent;
         }
 
         return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
@@ -607,9 +607,9 @@ public sealed partial class Binding
         }
 
         var core = index.Left.BoundType;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (core?.SafeReferent is { } referent)
         {
-            core = core.Components[0];
+            core = referent;
         }
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)

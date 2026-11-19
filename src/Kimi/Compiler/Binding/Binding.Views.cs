@@ -17,7 +17,7 @@ public sealed partial class Binding
     {
         result = null;
         var core = receiver;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var inner] })
+        while (core?.SafeReferent is { } inner)
         {
             core = inner;
         }

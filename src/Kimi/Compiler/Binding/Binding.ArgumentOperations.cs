@@ -500,7 +500,7 @@ public sealed partial class Binding
         quality = ArgumentAdaptation.Exact;
         kind = ArgumentOperationKind.Value;
         var exclusive = pattern.Semantics == SemanticsKind.ObjUniq;
-        if (receiver && ReferenceTypes.IsStorage(actual) && actual.Components[0].HandleMode is { } stored)
+        if (receiver && actual.SafeReferent?.HandleMode is { } stored)
         {
             if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || this.ReachedThroughShared(source)))
             {

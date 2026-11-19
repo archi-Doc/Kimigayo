@@ -170,10 +170,10 @@ public sealed partial class Binding
         var bound = this.BindNode(binary.Left, scope, context);
         var left = assignment ? bound : this.ReadReferent(binary.Left, bound);
         // Keep a reference binding's authority failure ahead of literal fitting and compound applicability.
-        if (assignment && left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+        if (assignment && left?.SafeReferent is { } bindingReferent &&
             (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
         {
-            var value = this.BindNode(binary.Right, scope, left.Components[0]);
+            var value = this.BindNode(binary.Right, scope, bindingReferent);
             this.Fail(binary, referenceBinding);
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
         }
@@ -181,8 +181,8 @@ public sealed partial class Binding
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
-        if (assignment && kind == KotoKind.Equals && left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            right is not null && !this.FitsType(right, left) && this.FitsType(right, left.Components[0]) &&
+        if (assignment && kind == KotoKind.Equals && left?.SafeReferent is { } valueReferent &&
+            right is not null && !this.FitsType(right, left) && this.FitsType(right, valueReferent) &&
             ReferenceBindingAssignment(binary.Left) is { } valueBinding)
         {
             return this.Fail(binary, valueBinding);
@@ -380,7 +380,7 @@ public sealed partial class Binding
     // a single ref or uniq layer is inspected as it is.
     private void StringThroughLayers(Koto operand, BoundType type)
     {
-        if (type.Components.Count == 1 && ReferenceTypes.EndsInString(type) && !ReferenceTypes.IsStringReference(type) &&
+        if (type.Components.Count == 1 && ReferenceTypes.EndsInString(type) && !ReferenceEquals(type.SafeReferent, BoundType.String) &&
             this.SharedReferenceThroughLayers(type, BoundType.String, this.ConstraintScope(operand), out _) is { } shared)
         {
             this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);

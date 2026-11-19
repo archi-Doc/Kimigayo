@@ -167,7 +167,7 @@ public sealed partial class Binding
         if (ReferenceEquals(owner, this.Library.Slice.Declaration) || ReferenceEquals(owner, this.Library.DynamicArray.Declaration) || ReferenceEquals(owner, this.Library.FixedArrayMembers) || owner is StructKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.UniqSlice })
         {
             var receiver = bound.Receiver?.BoundType;
-            var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
+            var core = receiver?.SafeReferent ?? receiver;
             var fixedLength = FixedLength(core);
             var mapping = bound.ArgumentToParameter;
             for (var i = 0; i < mapping.Length && i < call.ArgumentNodes.Count; i++)

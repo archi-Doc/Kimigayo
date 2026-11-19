@@ -176,7 +176,7 @@ public sealed partial class Binding
     {
         result = null;
         this.resolvedSlices.Remove(source);
-        var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
+        var core = receiver.SafeReferent ?? receiver;
         if (core.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
         {
             return false;

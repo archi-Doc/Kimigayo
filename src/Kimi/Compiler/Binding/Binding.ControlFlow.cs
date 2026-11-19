@@ -18,7 +18,7 @@ public sealed partial class Binding
     /// <returns>The terminal Scalar Type, or null when the chain does not end in a Scalar.</returns>
     internal static BoundType? ScalarReferent(BoundType? type)
     {
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        if (type?.SafeReferent is null)
         {
             return null;
         }
@@ -161,14 +161,14 @@ public sealed partial class Binding
         {
             var terminal = types[i];
             var first = types[0];
-            while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            while (terminal.SafeReferent is { } referent)
             {
                 differ |= first is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || first.Semantics != terminal.Semantics;
-                terminal = terminal.Components[0];
+                terminal = referent;
                 first = first is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? first.Components[0] : first;
             }
 
-            differ |= first is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+            differ |= first.SafeReferent is not null;
             if ((scalar is not null && !ReferenceEquals(scalar, terminal)) ||
                 (!terminal.IsScalar && !this.IsReadType(terminal, scope)))
             {
