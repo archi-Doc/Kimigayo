@@ -32,6 +32,12 @@ public sealed partial class Binding
         return contract.ContractSelf = symbol.Type;
     }
 
+    // SPEC 8.3.2, 8.5.2: a projection's Contract evidence, its written Contract, else the associated Type's declaring reference, else its
+    // declaring Contract; where `type is evidence` is proved (SuppliesPremises), that Contract supplies its premises for `type`
+    // (AddContractPremises). The former adds them to the use's scope; the evaluation (ResolvePath's EvaluateProjection) to its own layer.
+    private static BindingSymbol ProjectionEvidence(BindingSymbol associated, BindingSymbol? reference, BindingSymbol? qualifier)
+        => qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
+
     // SPEC 8.6.1: a specification qualified by a bound Contract reference (`Indexable<isize>.Element`) belongs to the
     // conformance of that reference or of a refinement of it, not to a sibling reference of the same declaration.
     private bool SpecifiesContract(IsKoto clause, BindingSymbol contract)
@@ -297,9 +303,9 @@ public sealed partial class Binding
             return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
         }
 
-        var evidence = qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
+        var evidence = ProjectionEvidence(associated, reference, qualifier);
         this.projectionUses.Add((syntax, type, evidence));
-        if (!this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven)
+        if (this.SuppliesPremises(type, evidence, scope))
         {
             // Expand only a referenced receiver's proved contract. This avoids eagerly generating
             // an unbounded chain for recursive associated requirements such as E is SelfContract.
@@ -321,6 +327,10 @@ public sealed partial class Binding
     // the former (BindAssociatedProjection) and the evaluation (ResolvePath's EvaluateProjection) form, before NormalizedProjection.
     private BoundType ProjectionIdentity(BoundType type, BindingSymbol associated, BindingSymbol? reference, BindingSymbol? qualifier)
         => this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [type, this.ProjectionContract(associated, reference ?? qualifier)]);
+
+    // SPEC 8.3.2: whether `type is evidence` (ProjectionEvidence) is proved in `scope`, so the Contract supplies its premises for `type`.
+    private bool SuppliesPremises(BoundType type, BindingSymbol evidence, BindingScope scope)
+        => !this.bindingConstraintTypes && this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: evidence)), scope) == ConstraintProof.Proven;
 
     // SPEC 8.5: a family with Origin parameters names a Type only once its Origin arguments are applied.
     private bool UnappliedFamily(Koto declaration, bool applyingOrigins) => !applyingOrigins && this.AssociatedParameters(declaration).Length != 0;

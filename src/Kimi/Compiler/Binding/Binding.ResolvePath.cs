@@ -30,10 +30,11 @@ namespace Kimi.Compiler;
 //   ProjectionMember step, an inaccessible member a lookup met where it selected none its HiddenMember step (R7-N1 c-b). A call's
 //   overload selection rewrites the member's Name later (BindCall).
 // - A member access's left reading (ReadLeft, SPEC 9.6) is decided here before either reading publishes. A projection path in the left
-//   is evaluated, not formed (EvaluateProjection: the associated search alone, ProjectionIdentity and NormalizedProjection, the former's
-//   own steps), its written Contract reference formed first by its former (ProjectionQualifier); BindAssociatedProjection forms the
-//   projection after the reading is decided, so every question (ReadLeft, ResultSurvey's MayBeValueQualifier) gives one answer
-//   whatever was published before it.
+//   is evaluated, not formed (EvaluateProjection: the associated search alone, ProjectionEvidence, ProjectionIdentity and
+//   NormalizedProjection, the former's own steps), its written Contract reference formed first by its former (ProjectionQualifier), and
+//   the premises a proved projection's Contract supplies (AddContractPremises, the former's one supply) added to a layer of the
+//   evaluation's own over the use's scope, never to that scope; BindAssociatedProjection forms the projection after the reading is
+//   decided, so every question (ReadLeft, ResultSurvey's MayBeValueQualifier) gives one answer whatever was published before it.
 
 // SPEC 9.2's Lookup Roles: a use's syntactic position chooses one (UseRow), the row alone decides eligibility (HasLookupRole), and
 // Qualifier alone reaches stage 4 (SPEC 9.5). Type legality rejects the rest after selection, never resuming lookup.
@@ -500,7 +501,7 @@ public sealed partial class Binding
         qualifierPath = this.EvaluateUse(member.Left, scope, 0, out var early);
         var step = this.nameSteps.Count;
         var typed = qualifierPath.End == PathEnd.Selected ||
-            (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.EvaluateProjection(projection, scope, mark, ref step) is not null);
+            (qualifierPath.End == PathEnd.Projection && UseNode(member.Left) is MemberAccessKoto projection && this.EvaluateProjection(projection, scope, mark, ref step, out _) is not null);
         var value = this.LeftValue(member.Left, scope, mark, out var valuePath, out var walkFrom, out var walkReceiver);
         if (value == LeftValueKind.Possible && typed && walkFrom is not null)
         {
@@ -705,7 +706,7 @@ public sealed partial class Binding
             }
 
             var type = qualifier is not null ? this.OwnType(qualifier)
-                : end == PathEnd.Projection && prefix is MemberAccessKoto { Right: not ParenthesizedTypeKoto } projection ? this.EvaluateProjection(projection, scope, mark, ref step) : null;
+                : end == PathEnd.Projection && prefix is MemberAccessKoto { Right: not ParenthesizedTypeKoto } projection ? this.EvaluateProjection(projection, scope, mark, ref step, out _) : null;
             if ((qualifier is not null || type is not null) && member.Right is IdentifierNameKoto right &&
                 this.TypePathMember(member, qualifier, type, right.IdentifierName, scope) is { Kind: not BindingSymbolKind.Function } start)
             {
@@ -748,9 +749,12 @@ public sealed partial class Binding
     // once the reading is decided): over the receiver's Type (its walk's selection's own Type, or a projection receiver's, evaluated), the
     // written Contract's declaration, the associated search alone (SearchAssociated, recording nothing) normalized; else a member Type of
     // a projection receiver's normal form (x08). None where that does not decide it: no or several matches, an associated family with
-    // Origin parameters, a receiver no walk selected.
-    private BoundType? EvaluateProjection(MemberAccessKoto projection, BindingScope scope, int mark, ref int step)
+    // Origin parameters, a receiver no walk selected. `environment` is what the former's scope holds there (SPEC 8.3.2): the use's scope
+    // with the premises each proved projection's Contract supplies (ProjectionEvidence, AddContractPremises), each added to a layer of
+    // the evaluation's own over the last (an inner projection's first), so the use's scope is not written before the reading is decided.
+    private BoundType? EvaluateProjection(MemberAccessKoto projection, BindingScope scope, int mark, ref int step, out BindingScope environment)
     {
+        environment = scope;
         if (TypeSpelling(projection.Right) is not { } name)
         {
             return null;
@@ -782,17 +786,28 @@ public sealed partial class Binding
         }
 
         var type = selected is not null ? (selected.Kind == BindingSymbolKind.TypeParameter ? selected.Type : this.OwnType(selected))
-            : end == PathEnd.Projection && prefix is MemberAccessKoto { Right: not ParenthesizedTypeKoto } inner ? this.EvaluateProjection(inner, scope, mark, ref step) : null;
+            : end == PathEnd.Projection && prefix is MemberAccessKoto { Right: not ParenthesizedTypeKoto } inner ? this.EvaluateProjection(inner, scope, mark, ref step, out environment) : null;
         if (type is null)
         {
             return null;
         }
 
-        var search = this.SearchAssociated(type, scope, name, contract);
+        var search = this.SearchAssociated(type, environment, name, contract);
         if (search is { Found: { } associated, Alternative: null })
         {
-            return this.UnappliedFamily(associated.Declaration, false) ? null
-                : this.NormalizedProjection(this.ProjectionIdentity(type, associated, search.Reference, contract), scope, false);
+            if (this.UnappliedFamily(associated.Declaration, false))
+            {
+                return null;
+            }
+
+            var evidence = ProjectionEvidence(associated, search.Reference, contract);
+            if (this.SuppliesPremises(type, evidence, environment))
+            {
+                environment = new(scope.Owner) { Parent = environment, Function = scope.Function };
+                this.AddContractPremises(evidence.Contract!, type, environment);
+            }
+
+            return this.NormalizedProjection(this.ProjectionIdentity(type, associated, search.Reference, contract), environment, false);
         }
 
         return end == PathEnd.Projection && contract is null && this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is { } nested ? this.OwnType(nested) : null;

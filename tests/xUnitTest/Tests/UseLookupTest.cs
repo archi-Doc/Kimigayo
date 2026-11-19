@@ -36,6 +36,22 @@ public class UseLookupTest
     private const string ProjectedP = "contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 1\nstruct S\n    Self is C<i32>\n" +
         "    associate C<i32>.Item is P\n";
 
+    private const string CaseM = "enum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\n    public func make() -> i32 => 7\n";
+
+    // A Case through a projection left, plain (rb47v) and in an `if` join (rb81v).
+    private const string CaseLeft = "contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n" +
+        "    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i32>).Item.A.f()\n";
+
+    private const string CaseLeftJoined = "contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct P\n    public init() => ()\n" +
+        "    public func make() -> i32 => 7\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nstruct R\n    Self is C<i32>\n    associate C<i32>.Item is P\n" +
+        "func g(c: bool) -> i32\n    let x = if c => S.(C<i32>).Item.A.f() else => 0\n    return x\n";
+
+    // D's own clause normalizes the nested projection `T.(C).Item.(D).X` (dq7v, dq9v): a premise `T.(C).Item is D` supplies (SPEC 8.3.2).
+    private const string NestedClause = CaseM + "contract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item is D\n";
+
+    // A third level (dq10v): `T.(C).Item.(D).X is E` comes only from D's supply for `T.(C).Item`.
+    private const string ThirdClause = CaseM + "contract E\n    associate Y\n    Self.(E).Y is M\ncontract D\n    associate X is E\ncontract C\n    associate Item is D\n";
+
     [Theory]
     // A qualifier is looked up once (SPEC 9.6): an opened group and an opened struct `X` make the receiver ambiguous, which dev's second
     // (NoContainer) lookup hid (t01); the same receiver behind one opened struct is a projection.
@@ -222,15 +238,39 @@ public class UseLookupTest
     // a Case reached through a projection reads as a value: written and short, through a parameter's premise, in an `if` join (rb81v,
     // whose receiver only the decided reading binds) and through a nested enum of the normal form. A written reference that names
     // nothing is recorded once, by its former, and the access rests on it. rb83c joins a payload Case through a projection with its short form.
+    // A premise the Contract of a projection in the left supplies (SPEC 8.3.2, ruling 26) is read by the evaluation as by the former, plain and in
+    // a join (dq7v, dq9v), at a third level (dq10v) and through the short name (dq11v); without D's clause there is no Case, recorded as
+    // its sibling `S.(C<i32>).Item.Z.f` is (dq7i).
     [Theory]
-    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i32>).Item.A.f()\n", "")]
+    [InlineData(CaseLeft, "")]
     [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g<U>() -> i32\n    U is C<i32>\n    U.(C<i32>).Item is M\n    return U.(C<i32>).Item.A.f()\n", "")]
-    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nstruct R\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(c: bool) -> i32\n    let x = if c => S.(C<i32>).Item.A.f() else => 0\n    return x\n", "")]
+    [InlineData(CaseLeftJoined, "")]
+    [InlineData(NestedClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", "")]
+    [InlineData(NestedClause + "func g<T>(c: bool) -> i32\n    T is C\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n", "")]
+    [InlineData(ThirdClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.(E).Y.A.f()\n", "")]
+    [InlineData(NestedClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.X.A.f()\n", "")]
+    [InlineData(CaseM + "contract D\n    associate X\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", "UnresolvedBinding_Kd T.(C).Item.(D).X.A.f")]
     [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public enum N\n        A\n        B(i32)\n        public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g() -> i32 => S.(C<i32>).Item.N.A.f()\n", "")]
     [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public enum N\n        A\n        B(i32)\n        public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(c: bool) -> i32\n    let x = if c => S.(C<i32>).Item.N.A.f() else => 0\n    return x\n", "")]
     [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(Missing).Item.A.f()\n", "UnresolvedBinding_Kd S.(Missing)")]
     [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nstruct R\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(c: bool) -> M\n    let m = if c => S.(C<i32>).Item.B(1) else => S.Item.A\n    return m@move\n", "")]
     public void AProjectionInTheLeftIsEvaluatedBeforeItsReading(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
+    // SPEC 9.6, 8.5.2, 14.9.2 (R7-N1 c-b, rulings 24-26): the left of a Case through a projection is bound by the decided reading alone,
+    // whatever asked first: in an `if` join, where ResultSurvey asks before the access binds, every node of the left has the lookup,
+    // selection and Type it has in the plain form (rb81v and rb47v; dq9v and dq7v; dq10v's join), the projection ends its path in its
+    // normal form M and the access selects M's Case `A`, the call's receiver.
+    [Theory]
+    [InlineData(CaseLeft, CaseLeftJoined)]
+    [InlineData(NestedClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", NestedClause + "func g<T>(c: bool) -> i32\n    T is C\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n")]
+    [InlineData(ThirdClause + "func g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.(E).Y.A.f()\n", ThirdClause + "func g<T>(c: bool) -> i32\n    T is C\n    let x = if c => T.(C).Item.(D).X.(E).Y.A.f() else => 0\n    return x\n")]
+    public void AProjectionLeftIsBoundAlikeInEitherOrder(string plain, string joined)
+    {
+        var (access, facts) = LeftFacts(plain);
+        Assert.Equal(facts, LeftFacts(joined).Facts);
+        Assert.Equal((BindingSymbolKind.EnumCase, "A"), (HirTables.Symbol(access)?.Kind, HirTables.Symbol(access)?.Name));
+        Assert.Equal((PathEnd.Projection, "M"), (HirTables.LookupOf(access.Left), HirTables.TypeOf(access.Left)?.ToString()));
+    }
 
     // SPEC 8.5.2, 8.6.1, 9.6 (R7-N1 c-b): a projection's member is formed by its one former after the left's reading: a Type function
     // of the normal form, short and written, through `::`, `Self`, a generic receiver and a premise (p01v-p05v, p08v, rb14v, rb39v), and
@@ -564,6 +604,15 @@ public class UseLookupTest
         var published = HirTables.LookupOf(qualifier);
         Assert.Equal(PathEnd.Selected, published);
         return (qualifier, published, Assert.IsType<BindingSymbol>(HirTables.Symbol(qualifier)));
+    }
+
+    // The access `….A` of a bound program and each node of it with its published lookup, selection and Type.
+    private static (MemberAccessKoto Access, List<(string Node, PathEnd Lookup, string Symbol, string? Type)> Facts) LeftFacts(string source)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.True(c.Bind().IsComplete);
+        var access = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(static x => x.Right is IdentifierNameKoto { IdentifierName: "A" });
+        return (access, [.. KotoTree.Walk(access).Select(static n => (n.ToString(), HirTables.LookupOf(n), $"{HirTables.Symbol(n)?.Kind} {HirTables.Symbol(n)?.Name}", HirTables.TypeOf(n)?.ToString()))]);
     }
 
     private static string Records(Compilation c) => string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal));
