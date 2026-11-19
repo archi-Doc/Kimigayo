@@ -340,12 +340,15 @@ public sealed class BoundOrigin
 /// <c>Clause</c> is a substituted declaration clause at its supplying argument or Type occurrence <c>Use</c> (SPEC 15.3.3, 15.6.1); one with
 /// <c>WellFormed</c> is the well-formedness of the Type occurrence <c>Use</c> (SPEC 15.6.1), a callee's result premise substituted at the
 /// call <c>Use</c>, the well-formedness of its result, or the intrinsic relation of an input's instantiated Type at that input (SPEC 15.3.7,
-/// 15.6.4 step 3); one with neither is a fit (<see cref="Binding.IsFitObligation"/>), the producer's statement every consumer reads for the
+/// 15.6.4 step 3); one with neither is a fit, the producer's statement every consumer reads for the
 /// record's source. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
 /// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
-/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Body</c> is the executable
-/// body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its identity.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0, Koto? FixedBy = null)
+/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Site</c> (H11b D5,
+/// DECISIONS R4-M113) is its record's location when that is not <c>Use</c>: a local annotation's fit at the local's initializer, a local
+/// clause at the initializer that supplies one of its ends (DIAGNOSTICS); <c>Use</c> still resolves the ends and gives the premises and the
+/// case mask. <c>Body</c> is the executable body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its
+/// identity.</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0, Koto? FixedBy = null, Koto? Site = null)
 {
     internal ExecutableBody Body { get; init; }
 }

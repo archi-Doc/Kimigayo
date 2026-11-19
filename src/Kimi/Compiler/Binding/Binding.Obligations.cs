@@ -114,8 +114,8 @@ public sealed partial class Binding
         {
             if (!holds || (obligation.Equality && UnstatedRelation(shorter, longer) == false))
             {
-                var at = RelationAt(obligation); // As ownership reports a fit's record: at the value that supplies the longer end.
-                // The record states the producer's kind: a declared clause, a well-formedness relation or a fit (IsFitObligation).
+                var at = obligation.Site ?? obligation.Use; // Where A5 reports the row's record (H11b D5).
+                // The record states the producer's kind: a declared clause, a well-formedness relation or a fit.
                 var fact = holds ? new OriginRelationFact(at, shorter, this.SuppliedAtUse(shorter, at), longer, Equality: true, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed)
                     : new(at, longer, this.SuppliedAtUse(longer, at), shorter, obligation.Equality, obligation.Type, Refuted: true, obligation.Clause, WellFormed: obligation.WellFormed);
                 this.RecordFurtherOriginRecord(at, new(fact, null));

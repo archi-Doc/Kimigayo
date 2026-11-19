@@ -244,9 +244,13 @@ public sealed partial class Binding
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
     // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination, and `condition` the Semantics
-    // case the position exists in.
+    // case the position exists in. A local annotation's fit is recorded at the local's initializer, the value that supplies the longer
+    // end (DIAGNOSTICS; H11b D5: the row's Site).
     private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, ulong condition = 0)
-        => this.FormBodyRelation(variance == OriginVariance.Contravariant
-            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual, Condition: condition)
-            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant, Condition: condition));
+    {
+        var site = use is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
+        this.FormBodyRelation(variance == OriginVariance.Contravariant
+            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual, Condition: condition, Site: site)
+            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant, Condition: condition, Site: site));
+    }
 }

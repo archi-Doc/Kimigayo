@@ -241,7 +241,7 @@ public sealed partial class Binding
             {
                 if (declaration.IsLocal)
                 {
-                    this.JudgeLocalClause(relation);
+                    this.JudgeLocalClause(declaration, relation);
                 }
                 else
                 {
@@ -296,13 +296,35 @@ public sealed partial class Binding
         }
     }
 
-    // The local part (SPEC 15.3.6, 15.6.5; R7-O1): a local's clause in a body is a relation of the body, a row A5 judges at the clause,
-    // never Binding's record. The caller found it unproven by the premises, the proof a clause takes (SPEC 15.3.3: it assumes no new
-    // facts, so it bounds no open initializer as a fit's answer does, FormBodyRelation's step 2), so the row forms directly.
-    private void JudgeLocalClause(OriginRelation relation)
+    // The local part (SPEC 15.3.6, 15.6.5; R7-O1): a local's clause in a body is a relation of the body, a row A5 judges, never Binding's
+    // record. The caller found it unproven by the premises, the proof a clause takes (SPEC 15.3.3: it assumes no new facts, so it bounds
+    // no open initializer as a fit's answer does, FormBodyRelation's step 2), so the row forms directly. Its record is at the clause, or
+    // at the initializer when that supplies one of its ends, an Origin the local's Type omits, as the value that does not fit (H11b D5).
+    private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
     {
         var use = relation.Syntax;
-        var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, this.OriginAtUse(relation.Longer, use), this.OriginAtUse(relation.Shorter, use));
+        var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
+        var site = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
+        var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, this.OriginAtUse(relation.Longer, use), this.OriginAtUse(relation.Shorter, use), Site: site);
         this.AddObligation(row with { Equality = relation.Equality, Clause = use });
+
+        // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
+        OriginVariance? InferredEnd(BoundOrigin end)
+        {
+            if (local.InferredVariance(end) is { } position)
+            {
+                return position;
+            }
+
+            for (var i = 0; i < end.Operands.Count; i++)
+            {
+                if (local.InferredVariance(end.Operands[i]) is { } operand)
+                {
+                    return operand;
+                }
+            }
+
+            return null;
+        }
     }
 }

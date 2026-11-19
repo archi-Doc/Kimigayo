@@ -154,7 +154,7 @@ public sealed partial class Binding
                 var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed : OriginRowSource.Fit;
                 var mask = this.BodyCaseMask(obligation);
                 var unit = this.OriginUnit(obligation.Body);
-                unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask, obligation.FixedBy));
+                unit.Add(new(obligation.Site ?? obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask, obligation.FixedBy));
             }
         }
 
