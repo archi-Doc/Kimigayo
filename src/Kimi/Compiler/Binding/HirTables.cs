@@ -36,7 +36,7 @@ internal struct HirTables
     internal HirAdjust[]? Adjusts;
     internal HirPlace[]? Places;
     internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
-    internal List<Koto>? Broken; // The nodes Binding resolved that the latest publish found without the facts their Op guarantees, published Error.
+    internal List<Koto>? Broken; // The nodes the latest publish found breaking a HIR contract: resolved without the facts their Op guarantees, published Error, or with a Type holding a split's mark.
     internal NodeColumns Families; // Binding's private node families, read and written only by their accessors (DECISIONS BU-220).
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>

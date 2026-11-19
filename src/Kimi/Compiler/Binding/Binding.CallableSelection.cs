@@ -31,6 +31,9 @@ public sealed partial class Binding
     // DECISIONS D3 (G812 ruling 139): the first run's selection of a named call's split check (SelectionOnSplit; null before it).
     private ProbedSelection? canonicalSelection;
 
+    // DECISIONS D3 (G812 ruling 158): the one walk that unmarks a completed split part's published Types (CompleteOnSplit), kept.
+    private OpenMarkRemover? openMarkRemover;
+
     // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
         => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
@@ -294,11 +297,31 @@ public sealed partial class Binding
         var consultation = this.SuspendConsultation();
         try
         {
-            return this.CompleteValueCallPart(part, parameter, scope) is null && this.HasFailureCauses(part);
+            var failed = this.CompleteValueCallPart(part, parameter, scope) is null && this.HasFailureCauses(part);
+            (this.openMarkRemover ??= new(this)).Visit(part);
+            return failed;
         }
         finally
         {
             this.ResumeConsultation(consultation);
+        }
+    }
+
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 158): the split call's completion is the one former of marks
+    // (OpenForm), and a mark is never a node's published Type, so after completing a part it gives each node of it whose Type holds one
+    // the canonical case's Type (Unmarked), its state unchanged: a node that took its Type from its marked position (a waiting call's
+    // inferred slot, a join, a Never Tuple element, a construction target). The binder read the marked Type it returned; the HIR
+    // publisher's Broken check guards every other writer.
+    private sealed class OpenMarkRemover(Binding binding) : KotoVisitor
+    {
+        public override void Visit(Koto node)
+        {
+            if (node.BoundType is { ContainsOpen: true } marked)
+            {
+                node.BoundType = binding.Unmarked(marked);
+            }
+
+            node.VisitChildren(this);
         }
     }
 

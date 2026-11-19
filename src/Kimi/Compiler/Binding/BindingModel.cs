@@ -74,7 +74,8 @@ public enum BoundTypeKind : byte
 
     // DECISIONS D3 (temporary, removed with D3's representation (R); the owner's O-428 (a), G812 ruling 143): the canonical case's Type
     // (its one component) at a position a split binding decides, formed only by a split call's completion (Binding.OpenForm); every
-    // check that reads it rests, as rule W's failed part does. Never a node's published Type.
+    // check that reads it rests, as rule W's failed part does. Never a node's published Type (the split call's completion unmarks what
+    // it publishes, CompleteOnSplit; the HIR publisher lists one that holds it as Broken, InternalInvariant_Kd).
     Open,
 }
 

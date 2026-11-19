@@ -373,6 +373,25 @@ public partial class PairAnnotationBindingTest
     public void ARecursivePairTargetMeetsItsBindingAsACallerType(string program, string profile)
         => Assert.Equal(profile, DiagnosticCorpus.RecordProfile(program));
 
+    // G812 ruling 156 (BoundTypeKind.Open's contract): no node publishes a Type holding a split's mark. A waiting call whose inference
+    // slot takes the mark (qP7d, valid: `mk2(.None) -> (T, T)` at `(s0/Box during a, s0/Box during a)`) and its `.None` publish the
+    // canonical case's Types (the split call's completion unmarks them, CompleteOnSplit; G812 ruling 158), and the HIR publisher lists a
+    // node holding one as Broken (InternalInvariant_Kd at MIR build). e446d93a5 published `(Open, Open)` and `Option<Open>` on them.
+    [Fact]
+    public void NoNodePublishesASplitsMark()
+    {
+        var c = Parse("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct Tag\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc mk2<T>(x: Option<T>) -> (T, T)\n    return stop()\nfunc putP<s0/W0>(m0: s0/W0, n: (s0/Box during a, s0/Box during a), k: s0/Box during c) -> i32\n    return 0\nfunc call<t0/U0>(k0: t0/U0, u0: U0) -> i32\n    t0 is owner or ref\n    U0 is Owned\n    let b0 = Box.init(1)\n    let b1 = Box.init(2)\n    let g = Tag.init(2)\n    return putP<U0>(u0@move, mk2(.None), stop())\n");
+        Assert.False(c.Bind().IsComplete);
+        HirTables.Publish(c);
+        var nodes = HirColumnsTest.Reachable(c.Kotonoha);
+        Assert.DoesNotContain(nodes, static x => x.BoundType is { ContainsOpen: true });
+        Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+        var literal = nodes.OfType<NumberLiteralKoto>().First(static x => x.BoundType is not null);
+        literal.BoundType = c.Types.Open(literal.BoundType!);
+        typeof(Binding).GetMethod("PublishPass", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(c.Binding, null);
+        Assert.Contains(literal, c.Kotonoha.Syntax.Hir.Broken!);
+    }
+
     private static Compilation Parse(string source)
         => CompilationTestHelper.ParseSuccess(source, "annotation.kimi");
 
