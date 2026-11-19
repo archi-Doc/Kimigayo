@@ -3068,6 +3068,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: verifying an unbound inference without the region (round 1, B1); choosing the region at the first incomparable pair
     (round 1, B2); resolving the variables at the body's deadline (later uses already read the local's Type); one enumeration of the
     local's Type only (misses an initializer's Origin outside it, x1).
+  - Amended by R4-M222 (PLAN G492-a (iii), 2026-11-19): the census's S3 demo is accepted
+    (`LocalRegionInferenceTest.TheS3DemosComparisonIsItsBodysRow`): its Function value's comparison needs `k.source outlives s`, a
+    region at the longer end, which is the body's row.
 - **R4-M113 MirOrigins, A5's Origin stratum (Refuted part)** (2026-10-23; unit 2a-1a, under R4-M94's package §6.1-§6.3, D13-D16, D18,
   D19)
   - Contract: per body and class of views (equal active rows, a row's case mask within the view's borrow binders `MirCases.Borrows`,
@@ -5394,6 +5397,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a join recorded from Types, but each arm is erased where it is bound (SPEC 10.2, 14.9.2), and one record at the join lost a second
     arm's (SPEC 23.1.2). The Type keying stays for its readers (`FailsFunctionConversion`, `FailOwnedConversion`,
     `ClosureConversionNote`), each reading the outcome the erasure of the same value just published.
+  - Renamed by R4-M222 (PLAN G492-a (iii), 2026-11-19): `FailsFunctionConversion` is now `ConvertFunctionValue`, which also gives a
+    converted Function value the expected Type when its fit holds.
 - **R4-M162 A nested signature's result is judged where it is written (G216 (a) U2.3s, the strict form)** (2026-11-02; superseded in
   part by R4-M163; amended by the owner's O-397 (A) (2026-11-17, PLAN G962); the owner, verbatim 「(1) 厳格案を採る」, 2026-11-02; supersedes the result half of the owner's (A) of 2026-10-26, an R3
   premise for nested signatures and a value-call result obligation; R4-M137, the input half, stays) SPEC 15.3.4, 15.6.1.
@@ -7249,6 +7254,113 @@ and migration obligations remain in force; no numeric cap changes are authorized
     reaches past it, BU-46); no E past such a holder's own step (F2: guDeepOk is invalid, O-389 (a)); "never E" at route 1
     (hidRawParamBad, hidRawParamRootBad, hidRawParamDeclBad, invalid, accepted); every route-1 holder taking the call's own pointer
     whatever its Place (`ViaCarried`: a Language error on viaCarriedPinOk, valid, which dev accepts).
+- **R4-M222 A comparison's region conjunct is its body's row (PLAN G492-a (iii), one unit with (ii))** (Middle, 2026-11-19; Binding and
+  A5's input; Major; landed with G492-a (ii), R8-M56, in Q-542 by the owner's O-384 (a); design `middle\notes\g492a-iii-design.md`
+  (Revision 3) and `g492a-iii-q2-design.md` (Revisions 1-4a.1, the Revision 4a design review ACCEPT), the n8 fix (option (b), C-400;
+  `g492a-iii-r4a-state.md`, its review `g492a-iii-n8-review.md` ACCEPT with N4 and N5), the Front's review of option (b) ACCEPT WITH
+  NOTES (C-323) and its fact `Binding.NamedInItsInputs` (C-400); the owner's O-261 Q2 (a), verbatim 「O-261 Q1 (a)、Q2 (a)、Q3 (a)」, O-264
+  Q5 (a), O-286 (a) 「O-286 は (a) でお願いします」, O-375 Q2 (a), O-391 (a) 「(a) 推奨どおり」 and O-393 (a) 「O-393 a」) SPEC 10.7, 15.3.6, 15.3.7,
+  15.6.1, 15.6.5. Supersedes in part BU-127 (its comparison sentence); amends R4-M112's census; renames `FailsFunctionConversion`,
+  which R4-M161 and BU-107 name.
+  - **Cause.** A whole-contract comparison made in a body judged every condition from premises alone (15.3.7), so a condition with a
+    local region at its longer end was Unknown: the region's value is no premise and is complete only once every body is bound
+    (BU-127). A `let` local passed because its slot was no region (G492's class 1, R8-M56); a `var` local was rejected.
+  - **Rule.** Each condition of the comparison of a fit at a value in a body (SPEC 10.7), its ends resolved at the use, is judged once,
+    by the check that owns it (the walk's leaf for a member position, a required per-call end included, the clause check, the
+    well-formedness visit; in a comparison the solve judges no bound, only that each is solved). The check proves it from the
+    comparison's premises as before; a condition they do not prove is split at its longer end into one conjunct per operand of a meet
+    (SPEC 15.3.6). A conjunct whose longer end is a local region of the body (an enclosing body's, fixed there, included) is the body's
+    row: the check forms it through `AddObligation` at the value, with the fit's destination, the condition's kind as the row's source
+    and its Semantics cases, and goes on to the other conditions. A conjunct whose longer end is no region keeps the premises alone (J1
+    for a region at the shorter end, below) and fails the condition as before; a failed condition forms no row. A5 judges each row as
+    every row: a chain through the body's own region, one oracle test at a fixed region read as its solved value. A conjunct against a
+    required per-call Origin j is the row `R outlives M`, M the meet of the body's Origins the comparison's premises put above j,
+    `static` when none (j is rigid, SPEC 15.3.7; exact for a satisfiable requirement); only a request beyond `MaxOriginPremiseDepth`
+    keeps j and A5's existing located limit, so no limit is added. J1 reads the recorded bounds of every region of the body that the
+    request or the comparison's premises name (the owner's O-264 Q5 (a) and O-286 (a), c7); R5's start is unchanged (G491).
+  - **The row sink.** The comparison forms no row itself: it publishes the region conjuncts to its query's row sink,
+    `CallableInstance.Rows` (an init property beside `Scope`, the form of a comparison's optional facts; `RelationWalk.Rows` likewise;
+    a nested and an exchanged comparison carry it). The fit at a value forms them when it holds: the erasure of a Closure value or
+    Function Item (`ErasesToFunction`) and the use-site fit (`CheckTypeUse`, which hosts a Function value's conversion at the value, a
+    literal's element and a selected call's argument); the selections (an argument's erasure trial, a reference's applicability) take
+    and drop them; every other reader (a Constraint proof, conformance, specialization, a contract match) passes no sink and reads them
+    as not proven, so it keeps the premises alone. Which of the ends leave a row is `LeavesBodyRows`' decision (below); R8-M56 adds its
+    `Compared` mark and O-400 (b)'s gate there.
+  - **A converted Function value (option (b); the Front's review, C-323).** A Function value's conversion at the value gives the value
+    node the expected Type when its fit holds (`ConvertFunctionValue`, renamed from `FailsFunctionConversion`), so every consumer fits
+    by identity and the comparison has one judge; the declaration's dropping re-fit (`RefitTypeUse`) and the two judges at the join and
+    the store are gone. Binding's representation fact: a converted Function value has the expected Type at its position, and no HIR
+    operation records the conversion (SPEC 3.8 "Subtyping inserts no operation"; 10.7, 7.7.4); an erasure keeps the node's Type and
+    publishes `ErasedFunctionType`.
+  - **A responsibility moved** from Binding to A5: the judgment of a comparison's Origin condition over a region's value. BU-127's
+    sentence "A comparison with a Function Type reads the contract alone (O-61 (a)) and is no member" is superseded for the
+    comparison's Origin relations; it stands for the conversion's Owned condition, a Constraint.
+  - **Which ends leave a row (the Middle's option (b), C-400; the n8 review's B1).** `LeavesBodyRows` keeps the comparison's own record
+    (SPEC 15.6.1, premises alone) for an end that, as written before the comparison instantiates it, is an implementation per-call
+    Origin its signature names in its inputs (`Binding.NamedInItsInputs`, G972's `OriginVisible` verdict published once per signature,
+    the Front's; false for every valid signature); the comparison's ends reach that decision as written on every exit
+    (`InstanceOutlives`, `FitOrigin`). A shorter end the view's row 9 classes as another declaration's atom (`ForeignDeclarationAtom`,
+    shared with `ClassifyAtom`) that the comparison decides by SPEC (a Function Item's universal, which it solves; an enclosing
+    comparison's required per-call Origin, which is rigid, SPEC 15.3.7) keeps the comparison's own record; an anonymous function's
+    per-call Origin there (G972's binder set, `PerCallBinder`) gives A5's located limit, since the comparison does not solve it yet:
+    when it does (PLAN G1064), it joins the case. A required per-call Origin of this comparison stays the lift's above, its fallback,
+    the slot itself, A5's located limit. The Front and the Middle read SPEC 15.3.6-15.3.7 alike (D1 (a), no owner question): such a
+    per-call Origin is solved as a Function Item's, so n8r, n8rv and a13 are valid and the located `Unsupported_Kd` is their record
+    until PLAN G1064. A signature that names its per-call Origin in its inputs has every comparison end on that Origin judged as
+    written, from premises alone, including a condition on its own input's well-formedness (a4: `func [] (x: ref/U, y: U during x)`
+    against `(ref/U, U during static)` keeps a Contract record at x's own input, which the lift would prove for a valid signature, as
+    n8w): the Front's design 2.1 choice. That record rests on the failed naming; relative to dev nothing is added or lost (dev has a
+    Contract record at the same place with another fact): record selection under Q13. The scaling row
+    `CallableRegionScalingTest.TheNamingSearchOverManyInputsScales` counts verdict reads (`OriginProofMetrics.NamingReads`, at most
+    2.25x per doubling): it pins the number of queries, not a read's cost (the review's N4).
+  - **The comparison's solve (the owner's O-375 Q2 (a), O-391 (a), O-393 (a)).** On G913 (BU-221), O-375 Q2 (a) needs no rule of
+    (iii)'s own: G913's 15.3.6 Invariant row and `SolveOriginInference`'s representative accept veqiv, vccv and rrD (the owner's
+    amended O-391 (a)). (iii) adds one record: a Function Item's comparison with a Function Type whose solve leaves a per-call Origin
+    with no bound that reached a fixed Origin when the representatives were taken fails with `ComparisonFailureKind.Limit`, not with no
+    kind (`InternalInvariant_Kd`). Two ways reach it: no bound at all (15.3.6: "If none is reached, the variable has no candidate";
+    r3M, a written meet's operands `during (a and b)`: invalid under the Middle's FB1 (ii), the limit its record by the Middle's choice
+    under Q13) and, until PLAN G960 gives every variable its value inside the fixpoint, a bound only through another variable without a
+    principal solution whose representative was taken at the same time (r4aL, valid; r4aLn). The record is per site: the located
+    `Unsupported_Kd` where the comparison's failure is recorded (a `let`, a return, a default argument: r3M, w4M3, w4X4, r4aL); at a
+    call argument applicability discards the failure and the one candidate is inapplicable (`NoApplicableOverload_Kd`: w4M4, w4L4; PLAN
+    G1101); in a Callable Constraint a plain unproven Constraint (`UnprovenConstraint_Kd`, w4M5). `Limit`'s contract gains this
+    producer. O-388 (a)'s polarity (SPEC 15.3.6) reaches `CollectOriginInference` with PLAN G960, not here (O-393 (a)). Rejected:
+    "never a meet" (Revisions 2-3: `Equalities`, `ProvesSolvedEqualities`; it contradicts G913's row on 11 valid programs, vccf); a
+    failure rebuilt after the solve (`ConflictFailure`, removed by G913); a fact recorded per row (`Unsolved`: G913's `Limits` gives
+    the same pair); the polarity in (iii) (Revision 4: on G913 it newly rejects r4G1 and r4G2, valid and accepted by dev, through
+    G960's class; O-393 (a)).
+  - **Removes:** Binding's Unknown verdict, and its `UnprovenOriginContract_Kd`, for a comparison's region conjunct its premises do not
+    prove; the solve's judgment of every bound of a comparison (a duplicate of the owning checks', no staged gate); the premises-alone
+    answer of `InstanceOutlives`' required-slot branch for a region at the longer end; the limit L1 (a row with an Unclassed per-call
+    end; the row names M instead); the located `Unsupported_Kd` a Function value's comparison inside a value fit kept (S3Demo's R4-M112
+    pin).
+  - **Moves** (the design's, against the dev of their measurement; the joint landing's moves against dev 4f820362c are R8-M56's).
+    Accepted: r5c and its `var` twin, two regions with one source, a premise proving the chain, a later store a premise covers, a
+    Function value passed to a stated parameter, a comparison in a nested body, c7 and its `var` twin (a Closure's well-formedness
+    proven through a region's recorded bound, J1), a Function value's comparison at a value, in a Tuple, as an argument and in
+    `LocalRegionInferenceTest`'s S3Demo (R4-M112's census amended), a region against a required per-call Origin whose sources outlive
+    the premises' bound (`static` for none); vasm, vjm, vstf and vgs (a converted Function value stored or joined; dev's located
+    `Unsupported_Kd` at the store or join); veqiv, vccv and rrD (O-375 Q2 (a)); vrc stays accepted as on dev. r5n (a region outliving a
+    region constrains it, 15.6.5) is valid by this rule, but R8-M56's O-400 (b) holds it and the other O-363 (a) rows at the located
+    limit until PLAN G1100. Rejected as before with a record moved from `UnprovenOriginContract_Kd` to the chain's record at the value:
+    an unrelated target, a later store, a body-local source (Refuted, Language), a meet operand's body-local source
+    (`OriginPremiseCatalogTest`'s `(x and z)` row) and a region against a required per-call Origin whose source the premises' bound
+    does not cover. Records: r3M, w4X4, r4aL and r4aLn move from `InternalInvariant_Kd` to the located `Unsupported_Kd` at the same
+    place; n8r, n8rv and a13 from dev's `UnprovenOriginContract_Kd` to A5's located limit; acr's and veqin's
+    `UnprovenOriginContract_Kd` keeps its place, its text now the result walk's equality (Q13). Unchanged: a meet with a fixed operand
+    the premises do not prove (the `Ranked` rows), a relation between fixed Origins, a region conjunct the requirement's own
+    well-formedness proves, a Constraint's comparison.
+  - **Rejected:** a deferred judgment in Binding (a second time of judgment); a row source for comparisons (a second form); the row
+    only at a fixed shorter end (a second predicate; it refuses `let x = p` / `let y = p`); premises alone (O-261 Q2 (b)); the solve as
+    the judge (its bounds are a subset of the conditions); a meet classed whole (it sends a fixed operand's relation to A5); the row
+    before the comparison's premises (A5 has none of them, so it refutes what the requirement's well-formedness proves); the solve's
+    skip as a staged gate (removing the duplicate is cheaper); a list of readers that must not answer "holds" (a blacklist); R5 reading
+    through the comparison's premises (it reverses G491's (b)). For the ends that leave a row: (R1) any implementation per-call end (it
+    rejects vclov and n8w); not instantiating it in `Instantiate` (per atom: t4's valid result occurrence); a distinct atom (BU-220's
+    identity); the condition's provenance as a mode in the walk; (b') inferring the provenance from the Types in `LeavesBodyRows`,
+    lifting a per-call end only when the longer end is an Origin its own input mentions (a consumer deciding what the owning component
+    should publish); case B for every foreign declaration atom, n8r's kind included (a Proof record on a valid form, D1 (a): AGENTS'
+    single located limit instead); a per-query syntax walk for the fact (2N^2 visits; replaced by the published verdict).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9908,7 +10020,7 @@ resumed by R4-M86 (2026-10-20).
     the local's region); every local's name (moves NestedNamedFinite, a valid native fixture, and d6u); testing every Origin of the
     local's Type before the name selects one (invalid names became `Unsupported_Kd`).
   - Extended by R8-M56 (PLAN G492-a (ii), the owner's O-394 (a), 2026-11-19): the interim also covers a written Origin naming an
-    enclosing `let` local's Origin, as a `var` local's, until PLAN G230 (A).
+    enclosing `let` local's written Type, as a `var` local's, until PLAN G230 (A).
 
 - **BU-58 A stored part's written Type at inline positions is one TyCtxt view, `TyCtxt.WrittenAt`; the raw-Origin views and the walks
   over a written Type decide each distinct part once per call** (2026-10-30; R4's part R4-M157; PLAN G307's Binding part, unit bu72)
@@ -11586,6 +11698,7 @@ resumed by R4-M86 (2026-10-20).
     on a later pass. Precedent: BU-73's Field Closure limit.
   - Rejected: a route per consumer (69a9ee98c's payload disjunct; literal elements would need another); leaving the erasure pending
     for the bodies pass (a Closure is bound once, so it is never judged again); a leaf rule for Tuples of leaves (a narrow subset).
+  - Renamed by R4-M222 (PLAN G492-a (iii), 2026-11-19): `FailsFunctionConversion` is now `ConvertFunctionValue`.
 - **BU-109 An anonymous function's body context is the one fixed before its body: `BoundClosure.InfersResult`** (2026-11-06; PLAN
   G431, unit bu173; Major) SPEC 10.5.4, 14.2.2, 14.5.2. Restores BU-101's row contract (a null target row exactly at rows 9-10).
   - Rule: `BindConcreteClosure` writes `InfersResult` before the body: no written result and no fixed expectation gave the symbol a
@@ -11985,8 +12098,11 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by R8-M56 (PLAN G492-a (ii), 2026-11-19): "Only A5 reads it, since the bounds are complete once every body is
     bound" no longer holds for a `let` region in its own body: its declaration fixes its value (SPEC 15.4.4), so its body reads the
     value through the view and Binding judges the relation. It stands for a nested body, a `var` region and a Callable comparison's
-    relation (O-363 (a)), and its rule is kept: R8-M56 reads every enclosing local region at a longer end as its solved value (a `var`
-    region the meet of its recorded bounds; the owner's O-422 (a)).
+    relation (O-363 (a); its comparison sentence is superseded by R4-M222), and its rule is kept: R8-M56 reads every enclosing local
+    region at a longer end as its solved value (a `var` region the meet of its recorded bounds; the owner's O-422 (a)).
+  - Superseded in part by R4-M222 (PLAN G492-a (iii), 2026-11-19): "A comparison with a Function Type reads the contract alone (O-61
+    (a)) and is no member" no longer holds for the comparison's Origin relations: a region conjunct its premises leave unproven is its
+    body's row, which A5 judges. It stands for the conversion's Owned condition, a Constraint.
 - **BU-136 Step 5's Unknown is an obligation judged under Finality** (2026-11-09; PLAN G565, G572 U2a; Major; design review 2 ACCEPT at c5ab60289, implementation review 2 ACCEPT at e2c912e52) SPEC 10.1, 8.3.3, 15.2.3, 15.3.6.
   - Cause. Selection deferred a call whose strictly best candidate was Unknown at step 5 and failed it there (`PremisesCannotAffect`, `CallSelection.Unproven`, `FailPendingConstraint`), judging it while bodies were bound; a local region's bounds were incomplete, so `T is Owned` over a `static`-only region was a false error (G565, R4-M184's limit `s1`, `w4`, `s4`).
   - Rule.
@@ -25161,7 +25277,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     (`DeclaredAtUse`), then the receivers (`ReceiverAtUse`), a `let` region kept as the slot; `OriginAtUse` is
     `ReceiverAtUse(SuppliedAtUse(...))` and `SuppliedAtUse` is `RegionValueAtUse(DeclaredAtUse(...))`, so the two differ exactly by the
     value. `OriginAtUse(origin, use, comparison)` is `SlotAtUse` when `InComparison(comparison)`, else `OriginAtUse`: the one place the
-    exception is decided, called by `FitOrigin` (the walk), `ProvesOriginOutlives` (the conditions) and (iii)'s `LeavesBodyRows`.
+    exception is decided, called by `FitOrigin` (the walk), `ProvesOriginOutlives` (the conditions) and `LeavesBodyRows` (R4-M222).
   - **A comparison's rows.** `BindingObligation.Compared` (`Binding.Origins.Model.cs`, an init-only fact of the row beside `Body`, as
     `Clause` and `WellFormed` are, not a mode) is set by `LeavesBodyRows` alone, which reads its ends through the comparison's reading;
     `OriginAtUse(end, obligation)` reads such a row's ends as the slot, in the C1-F4 view (`PrepareOriginRows`) and the local-region
@@ -25272,8 +25388,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     visit's comparison), so a Callable comparison still reads the region (O-363 (a)); `OriginPremiseCatalogTest`'s `Closures == 0` (B's
     U3 ruling 43) holds unchanged.
   - **BU-56's interim (the owner's O-394 (a)).** (ii) lands with the `let` form under BU-56's interim, as the `var` form already is: a
-    nested or root function's written Origin naming an enclosing `let` local's Origin (`func pk(x: ref/u8 during r)`; y5ok, y5ok2) is
-    the located `Unsupported_Kd` at `during r`, no Language error, until PLAN G230 (A) removes the interim for both forms.
+    nested or root function's written Origin naming an enclosing `let` local's written Type (`func pk(x: ref/u8 during r)` over `let r:
+    ref/u8 = anchor0`; y5ok, y5ok2) is the located `Unsupported_Kd` at `during r`, no Language error, until PLAN G230 (A) removes the
+    interim for both forms.
   - **Known class-1 gaps, not moves (each accepted on dev too).** vl1c (PLAN G1085: the Callable constraint over a `let` region a
     signature names is unchecked) and e-owsin (PLAN G1099: an Owned judgment inside a nested body of a capture whose Type names an
     enclosing `let` region through the nested signature reads the region's value).
@@ -25282,24 +25399,25 @@ R8-M* and R9-M* by the stage of the recording unit.
     (`IsRegionOwner`) is unchanged and an immutable Pattern binding keeps its stored Type (SPEC 14.8.3). In part BU-127's "Only A5
     reads it, since the bounds are complete once every body is bound": a `let` region in its own body has its value fixed by its
     declaration (15.4.4) and no later store adds a bound, so its body reads the value through the view and Binding judges the relation;
-    BU-127 stands for a nested body, a `var` region and a Callable comparison's relation (O-363 (a)). In part BU-28's "a local clause
-    over a capture's Origin is Binding's record at the initializer", for a capture of a `let` local: its Origin is now the local's
-    region, an enclosing region of the Closure (BU-127's), whose relation is A5's row and record (at the clause); the reason that no
-    longer holds is BU-197's `let` sentence, superseded here. In part R4-M133 R-a (its R8-M56 line: a graph parent is stored as its
-    store read it) and R4-M184 rule (3) (above). The receiver-containment rows rc1, rc4 and rc2's store
-    (`ClosureEnvironmentOriginTest.AReceiverContainmentTheBodyNeedsNotStaysValid`) are revised under the owner's O-261 Q1 (a); no
-    DECISIONS sentence is superseded for them.
-  - **Moves** (against dev 4f820362c, (ii) and (iii) together; Q-542). Class 1, invalid programs newly rejected: m3, m4, m5x, m6, m7,
-    m8 (`ComparisonLoanConflict_Kd` at the write) and the us family (the located limit at the comparison). Class 3, valid programs
-    newly accepted: pk7vv, cap15dvar, f4v, eqw (like its store twin eqwp) and (iii)'s 48 s10 programs (dev's
-    `UnprovenOriginContract_Kd` at the literal). O-400 (b)'s designed class, valid programs at the located limit at the comparison
-    until PLAN G1100: c6, vr5nr, r5n, r5nm, the veqz and mxy families, s6a, sibr, vi4, us2n, r5nn, pfx; kcall rejected as on dev.
-    Records: invalid programs' Language records move to the limit where only the region reading decides (the sib family, the g rows;
-    R-a); a fixed shorter end keeps dev's record (vi3l, vl1l, opc5, lfx and MirBorrowsTest's eleven `let` rows); wpc's
-    `NoApplicableOverload_Kd` moves to `UnprovenOriginRelation_Kd` at `t` and `Unsupported_Kd` at `f` (the joint records with PLAN
-    G379); eqwi stays rejected, its record naming the value's failing operand; same3w and w2w gain a second `UnprovenOriginRelation_Kd`
-    at their one site and vl1cn keeps its constraint record alone, as on dev (record selection, Q13). No valid program is newly
-    rejected beyond O-400 (b)'s class, no invalid program is newly accepted, and no `InternalInvariant_Kd` arises.
+    BU-127 stands for a nested body, a `var` region and a Callable comparison's relation (O-363 (a)); its comparison sentence is
+    superseded by R4-M222. In part BU-28's "a local clause over a capture's Origin is Binding's record at the initializer", for a
+    capture of a `let` local: its Origin is now the local's region, an enclosing region of the Closure (BU-127's), whose relation is
+    A5's row and record (at the clause); the reason that no longer holds is BU-197's `let` sentence, superseded here. In part R4-M133
+    R-a (its R8-M56 line: a graph parent is stored as its store read it) and R4-M184 rule (3) (above). The receiver-containment rows
+    rc1, rc4 and rc2's store (`ClosureEnvironmentOriginTest.AReceiverContainmentTheBodyNeedsNotStaysValid`) are revised under the
+    owner's O-261 Q1 (a); no DECISIONS sentence is superseded for them.
+  - **Moves** (against dev 4f820362c, (ii) and (iii) together; Q-542; (iii)'s rule and the design's moves are R4-M222's). Class 1,
+    invalid programs newly rejected: m3, m4, m5x, m6, m7, m8 (`ComparisonLoanConflict_Kd` at the write) and the us family (the located
+    limit at the comparison). Class 3, valid programs newly accepted: pk7vv, cap15dvar, f4v, eqw (like its store twin eqwp) and (iii)'s
+    48 s10 programs (dev's `UnprovenOriginContract_Kd` at the literal). O-400 (b)'s designed class, valid programs at the located limit
+    at the comparison until PLAN G1100: c6, vr5nr, r5n, r5nm, the veqz and mxy families, s6a, sibr, vi4, us2n, r5nn, pfx; kcall
+    rejected as on dev. Records: invalid programs' Language records move to the limit where only the region reading decides (the sib
+    family, the g rows; R-a); a fixed shorter end keeps dev's record (vi3l, vl1l, opc5, lfx and MirBorrowsTest's eleven `let` rows);
+    wpc's `NoApplicableOverload_Kd` moves to `UnprovenOriginRelation_Kd` at `t` and `Unsupported_Kd` at `f` (the joint records with
+    PLAN G379); eqwi stays rejected, its record naming the value's failing operand; same3w and w2w gain a second
+    `UnprovenOriginRelation_Kd` at their one site and vl1cn keeps its constraint record alone, as on dev (record selection, Q13). No
+    valid program is newly rejected beyond O-400 (b)'s class, no invalid program is newly accepted, and no `InternalInvariant_Kd`
+    arises.
   - **Rejected:** a region per path for every binding (a `let` DAG's Type has 2^depth nodes: A2-0); a region per part for every binding
     (vp1 and mb23 refused: A2-1); opening a slot at a later use (15.4.4); option D, a second region for the name (two Origins per slot
     either way; (ii) picks once per reader at its use through one decider, `RegionValueIn`, where option D picks at the declaration and
