@@ -63,7 +63,9 @@ public sealed partial class Binding
 
             if (this.Dereference(step, source, next) is { } reached)
             {
-                return reached with { Field = field, Stored = StoredPart(field, positions[..Math.Max(selected, 0)]) };
+                // Read once at the Place (the owner's O-385 (a)): a `let` region of its body as its value (PLAN G492-a (ii)).
+                var origin = reached.Origin is { } layer ? this.RegionValueAtUse(layer, place) : null;
+                return reached with { Origin = origin, Field = field, Stored = StoredPart(field, positions[..Math.Max(selected, 0)]) };
             }
 
             source = KotoHelper.UnwrapParentheses(next);

@@ -329,32 +329,35 @@ public partial class ClosureResultOriginTest
     // Refuted where it is a local's borrow (a17_bad, a17_static_bad, a18_bad, a20); with no Origin stated every Origin fits (a16, a18, a19,
     // a21). Through a raw layer whose Origin is the maker's input a call stores what that Origin's borrow admits, and the storage retains as
     // the borrow would (SPEC 5.7 Calls): w1's `t` keeps lr's Loan while it is used (problem-check, rows to add: the soundness row).
+    // With `a` a `let` region (PLAN G492-a (ii)) the bad rows also report the Loan conflict at the local's (a20: the outer Closure's)
+    // declaration, as their `var a` twins do: caused only by the Refuted relation (R4-M104), so SPEC 23.1.2 permits it; rule W does not
+    // derive it through a raw layer, for `var` and `let` alike (the Middle's open issue; its consent on C-350).
     [Theory]
     [InlineData("a16_raw_input", "func use() -> i32\n    var local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    let p = a()\n    return 0\n" + MainUnit, "", null)]
     [InlineData("a17_raw_input_ret", RawReturnH + RawInput + "    let a = outer(q)\n    return a()\n" + MainUnit, "", null)]
     [InlineData(
         "a17_bad",
         RawReturnH + "    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return a()",
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " a()")]
     [InlineData(
         "a17_static_bad",
         "func h() -> raw/i32 during static\n    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " return a()",
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " a()")]
     [InlineData("a18_raw_input_store", RawStore, "", null)]
     [InlineData("a18_ok", RawOut + RawInput + "    let a = outer(q)\n    out@follow = a()\n" + MainUnit, "", null)]
     [InlineData(
         "a18_bad",
         RawOut + "    let local: i32 = 1\n" + RawInput + "    let a = outer(local@ref)\n    out@follow = a()\n" + MainUnit,
-        Unsatisfied + " out@follow = a()",
-        Unsatisfied + " out@follow = a(); " + Unsatisfied + " a()")]
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " out@follow = a()",
+        Conflict + " let local: i32 = 1; " + Unsatisfied + " a()")]
     [InlineData("a19_raw_receiver", "func use() -> i32\n" + RawReceiver + "    let a = outer()\n    let p = a()\n    return 0\n" + MainUnit, "", null)]
     [InlineData(
         "a20_raw_receiver_ret_bad",
         RawReturnH + RawReceiver + "    let a = outer()\n    return a()\n" + MainUnit,
-        Unsatisfied + " return a()",
-        Unsatisfied + " return a(); " + Unsatisfied + " a()")]
+        Conflict + " let outer = func [n] () => func [n@ref] () => n@follow@raw; " + Unsatisfied + " return a()",
+        Conflict + " let outer = func [n] () => func [n@ref] () => n@follow@raw; " + Unsatisfied + " a()")]
     [InlineData("a21_raw_in_ref_store", RawInRefStore, "", null)]
     [InlineData("w1_raw_retain", RawRetain + "    usep(t)\n    local = 2\n", "", null)]
     [InlineData("w1_raw_retain_bad", RawRetain + "    local = 2\n    usep(t)\n", Conflict + " local = 2", null)]

@@ -281,14 +281,21 @@ public sealed partial class Binding
         {
             var longer = Resolve(bound.Longer, bound.LongerVariable);
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
-            if (longer is null || shorter is null || (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison, bound.Condition) &&
+            // In a comparison the solve judges no bound, only that it is solved: each bound is a member position, a clause or a
+            // well-formedness premise that the comparison's owning check judges after the solve, once (ContractFits,
+            // CompareCallableContracts). Outside a comparison (a call) the solve's check is the judge.
+            if (longer is null || shorter is null || (!InComparison(inference.Comparison) && !this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison, bound.Condition) &&
                 !this.HoldsResting(longer, shorter, bound.Condition, new ProofLeaf(this, use, inference.Comparison))))
             {
                 // An end left open holds a variable without a representative, itself or as an operand of a meet: no upper bound, and
-                // lower bounds none of which outlives the others, whose first such pair fails here.
-                inference.Failure = longer is not null && shorter is not null
+                // lower bounds none of which outlives the others, whose first such pair fails here; or no bound that reached a fixed
+                // Origin when the representatives were taken, the located limit: none at all (SPEC 15.3.6: "If none is reached, the
+                // variable has no candidate"), or one only through another variable without a principal solution, whose representative
+                // was taken at the same time (until PLAN G960 gives every variable its value inside the fixpoint).
+                var failure = longer is not null && shorter is not null
                     ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
                     : Limits(Open(longer is null ? bound.Longer : bound.Shorter), false).Conflict;
+                inference.Failure = failure.Kind == ComparisonFailureKind.None ? new(ComparisonFailureKind.Limit, null, null, false, inference.Comparison) : failure;
                 return false;
             }
         }
@@ -531,7 +538,9 @@ public sealed partial class Binding
         // The source of the bounds being added, set by their producer around its collection (ContractFits, SolveOriginInference).
         internal (byte Member, Koto? Clause, bool Equality) Source { get; set; }
 
-        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits); None when no bound failed.
+        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits), or the located limit when a
+        // variable left open had no bound that reached a fixed Origin: none at all, or one only through another variable's
+        // representative taken at the same time, until PLAN G960 (SolveOriginInference); None when no bound failed.
         internal ComparisonFailure Failure { get; set; }
 
         // Whether a bound was added with a condition, so a solve folds conditional limits (SolveOriginInference).

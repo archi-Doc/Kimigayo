@@ -54,6 +54,14 @@ internal static partial class MirTypes
         (KimiDeclarationId.Negatable, MirRvalueKind.UnaryOp, (byte)MirUnaryOp.Neg),
     ];
 
+    // The composite pairs one outermost Agree call met (PLAN G492-a (ii)): Types are DAGs, so a pair met on several paths is decided once.
+    // Sound because a disagreement ends the walk with false and an ancestor never recurs in an acyclic Type, so a pair met again agreed.
+    // Only the outermost call clears it, at its entry and its exit, so no Type stays reachable from it after the call; AgreePart and
+    // AgreeComponents never call Agree. Reused per thread (warm 0 B). Removed with R7-Y5 (MIR Types are the identical Types, PLAN G355),
+    // where Agree is the reference test again.
+    [ThreadStatic]
+    private static HashSet<(BoundType Left, BoundType Right)>? agreedParts;
+
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
     /// <returns>Whether the value is a reference.</returns>
@@ -250,6 +258,55 @@ internal static partial class MirTypes
             return true;
         }
 
+        if (!AgreeShallow(left, right))
+        {
+            return false;
+        }
+
+        if (left.Components.Count == 0)
+        {
+            return true;
+        }
+
+        var agreed = agreedParts ??= new();
+        agreed.Clear();
+        try
+        {
+            return AgreeComponents(left, right, agreed);
+        }
+        finally
+        {
+            agreed.Clear();
+        }
+    }
+
+    private static bool AgreePart(BoundType? left, BoundType? right, HashSet<(BoundType Left, BoundType Right)> agreed)
+    {
+        if (ReferenceEquals(left, right) || left is null || right is null)
+        {
+            return true;
+        }
+
+        return AgreeShallow(left, right) && (left.Components.Count == 0 || !agreed.Add((left, right)) || AgreeComponents(left, right, agreed));
+    }
+
+    private static bool AgreeComponents(BoundType left, BoundType right, HashSet<(BoundType Left, BoundType Right)> agreed)
+    {
+        for (var i = 0; i < left.Components.Count; i++)
+        {
+            if (!AgreePart(left.Components[i], right.Components[i], agreed))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Agree's tests of one pair apart from its components: two distinct Types without an Origin never agree, and the Kind, Semantics,
+    // Symbol, lengths, Closure context and arity are equal.
+    private static bool AgreeShallow(BoundType left, BoundType right)
+    {
         if ((!left.CarriesAnyOrigin && !right.CarriesAnyOrigin) || left.Kind != right.Kind || left.Semantics != right.Semantics ||
             !ReferenceEquals(left.Symbol, right.Symbol))
         {
@@ -261,21 +318,8 @@ internal static partial class MirTypes
             return false;
         }
 
-        if (!ReferenceEquals(left.InstanceContext, right.InstanceContext) || left.Components.Count != right.Components.Count ||
-            !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.Components.Count; i++)
-        {
-            if (!Agree(left.Components[i], right.Components[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return ReferenceEquals(left.InstanceContext, right.InstanceContext) && left.Components.Count == right.Components.Count &&
+            left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments);
     }
 
     // An abstract Type (a PrimitiveInteger T, SPEC 8.7.4) or Wrapping over one: its instance decides which operators it has.
