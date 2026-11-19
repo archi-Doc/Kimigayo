@@ -136,16 +136,25 @@ public sealed partial class RecursiveContractTest
 
     // DECISIONS R7-C2e2-1 at c2-2's merge (N3 of its merge review): o1's view has no identity premise, so its Tree request keeps the
     // view's entry; the Copy request extends, filing the facts again under its extended keys, so it reopens the entry as its own and
-    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact:
-    // 86, of which 20 are the views formed again after a publication's start (R7-C2e2 e2-3a's forget, ForgetKeptTables: 10 by the
-    // capability phase's first publication, 10 by the after-bodies one; 66 without the forget, as before e2-3a). An extension
-    // writing into the Kept entry leaves it Kept for the later requests, which then index 20 fewer pairs (66; 46 before e2-3a).
+    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders' after each
+    // request, exact: the Tree request forms the entry (24); the Copy request extends as its class's closure (R7-C2c2 c2-4b, DECISIONS
+    // R4.13), from its root and again from its re-rooted root under the declaration's table, each walking round reopening the entry
+    // before it files (74); the last request forms the entry again (84). Each publication's start forgets the Kept entries (R7-C2e2
+    // e2-3a, ForgetKeptTables), so a Kept entry of the view is formed again at its next read, 10 pairs each: the capability phase's
+    // first publication adds 10 to each program, the after-bodies one 10 where the last request left the entry Kept (the Tree requests;
+    // the Copy request's own entry went when it returned): 44, 84 and 104 (24, 74 and 84 without the forget). N3's observable: an
+    // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (104 -> 84; reopening by the
+    // table's finality did: a round with no rows builds a Final table).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
-        var probe = "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, o: ref/T.(Tree).Other)\n    T is AT2\n" +
-            "    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal(86, Work(Orders + probe) - Work(Orders));
+        var probe = "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, o: ref/T.(Tree).Other)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n";
+        var orders = Work(Orders);
+        var tree = Work(Orders + probe) - orders;
+        probe += "    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n";
+        var copy = Work(Orders + probe) - orders;
+        probe += "    needsTree<T.(Tree).Other>(o)\n";
+        Assert.Equal((44, 84, 104), (tree, copy, Work(Orders + probe) - orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }

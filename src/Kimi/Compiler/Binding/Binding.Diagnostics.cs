@@ -308,7 +308,7 @@ public sealed partial class Binding
             for (var i = 0; i < bound.Captures.Count; i++)
             {
                 var capture = bound.Captures[i];
-                if (capture.Environment.Name == name && capture.Source is { } source && DefaultParameters.InLaterDefault(closure, source))
+                if (capture.Environment.Name == name && capture.Source is { } source && InLaterDefault(closure, source))
                 {
                     return source;
                 }
@@ -641,7 +641,6 @@ public sealed partial class Binding
         this.report.Clear();
         this.nameSteps.Clear();
         this.qualificationStops?.Clear();
-        this.qualificationFailures?.Clear();
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();

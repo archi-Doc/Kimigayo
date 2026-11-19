@@ -89,6 +89,9 @@ public sealed partial class Binding
         this.viewRangeCalls = new(this);
         this.rangeCalls = new(this);
         this.resolvedKeys = new(this);
+        this.aliasTargets = new(this);
+        this.importedContainers = new(this);
+        this.qualificationFailures = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);

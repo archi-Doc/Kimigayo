@@ -1414,6 +1414,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   them. Nothing frozen.
 - Revision 97 (2026-11-19, plan §14; the Back's T2 and N5 designs, C-402 and C-403): T2's row counts ten units (U10
   `ArithmeticContracts`), N5's row 79 matches in 54 files. Nothing frozen.
+- Revision 98 (2026-11-19, plan §14; the Back's R7-N5 B1a and R7-T2 U1, U2): N5's count 76 after B1a, its O6 and O3
+  as PLAN G1069 and G1070; T2's U1 and U2. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

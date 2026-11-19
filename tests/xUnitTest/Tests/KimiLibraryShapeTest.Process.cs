@@ -41,8 +41,10 @@ public partial class KimiLibraryShapeTest
         Assert.Null(library.Layer.Refusal);
     }
 
-    // s21a, s21b and s21c (U3's recursion half, O-U2-5): a direct freeze adds no entry to Of's store, and the freeze compilation holds the
-    // library Unfrozen gave it, before its Freeze too (its Binding is made over it, never over Of's), so no freeze reads Of.
+    // s21a, s21b and s21c (U3's recursion half, O-U2-5): a direct freeze is not cached in Of's store, and the freeze compilation holds the
+    // library Unfrozen gave it, before its Freeze too (its Binding is made over it, never over Of's), so no freeze reads Of. The store is
+    // process-wide and other classes compile for this target in any order, so the row asserts that no entry holds the direct freeze's
+    // library and that Of's own library for the target is another object, never that the store lacks the key.
     [Fact]
     public void ADirectFreezeIsNotCachedAndHoldsItsOwnLibrary()
     {
@@ -56,7 +58,9 @@ public partial class KimiLibraryShapeTest
         Assert.Same(library, freeze.Binding.Library);
         Assert.True(library.Kotonoha.Syntax.Frozen);
         var store = (ConcurrentDictionary<TargetTriple, Lazy<KimiLibrary>>)typeof(KimiLibrary).GetField("Process", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-        Assert.False(store.ContainsKey(target));
+        Assert.DoesNotContain(store.Values, entry => entry.IsValueCreated && ReferenceEquals(entry.Value, library));
+        Assert.NotSame(library, KimiLibrary.Of(target));
+        Assert.DoesNotContain(store.Values, entry => entry.IsValueCreated && ReferenceEquals(entry.Value, library));
     }
 
     // s2a and s2b (R8-M32's Debug row, N10): Of's library equals an uncached freeze, with the default preparation for windows-x64 and

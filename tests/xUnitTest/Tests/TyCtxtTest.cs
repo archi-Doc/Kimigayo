@@ -334,7 +334,7 @@ public sealed partial class TyCtxtTest
         var function = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "identity");
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "identity").Select(static x => x.CallOf()!).ToArray();
-        var closed = calls.Select(x => c.Binding.InstantiateStorageType(closure.EnvironmentType!, x)!).ToArray();
+        var closed = calls.Select(x => c.Types.ReadableInstance(closure.EnvironmentType!, c.Types.StorageSubst(x))!).ToArray();
         Assert.All(closed, static x => Assert.NotNull(x.InstanceContext));
         Assert.Equal(calls.Select(c.Types.SubstOf), closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(c.Types.SubstOf(calls[0]), c.Types.SubstOf(calls[1]));
@@ -353,7 +353,7 @@ public sealed partial class TyCtxtTest
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var declared = nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "p").TypeKoto!.TypeOf();
         var call = nodes.OfType<InvocationKoto>().Single().CallOf()!;
-        Assert.Same(declared, c.Binding.InstantiateStorageType(call.Target.Type!, call));
+        Assert.Same(declared, c.Types.ReadableInstance(call.Target.Type!, c.Types.StorageSubst(call)));
     }
 
     // SPEC 6.1.3, 8.1.3, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
@@ -1292,7 +1292,7 @@ public sealed partial class TyCtxtTest
         var closure = g.ClosureOf()!;
         Assert.Equal((null, 0), (closure.EnvironmentType!.InstanceContext, closure.EnvironmentType.Height));
         var instances = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x?.Target.Name == "g")
-            .Select(x => c.Binding.InstantiateStorageType(closure.EnvironmentType!, x!)!).ToArray();
+            .Select(x => c.Types.ReadableInstance(closure.EnvironmentType!, c.Types.StorageSubst(x!))!).ToArray();
         Assert.All(instances, static x => Assert.True(x.Components.Count == 0 && x.Height == x.InstanceContext!.Height + 1));
         Assert.Equal([1, 3], instances.Select(static x => x.Height));
         var reads = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "reads");
@@ -2024,7 +2024,7 @@ public sealed partial class TyCtxtTest
                 var own = i < count ? implementation.Parameters[i].Type.TypeOf() : subst.Target.Type;
                 var contract = i < count ? slot.Parameters[i].Type.TypeOf() : call.Target.Type;
                 if (i != call.Target.ReceiverIndex && (own is null || contract is null ||
-                    c.Types.Apply(own, subst) is not { } applied || !ReferenceEquals(applied, c.Binding.InstantiateStorageType(contract, call))))
+                    c.Types.Apply(own, subst) is not { } applied || !ReferenceEquals(applied, c.Types.ReadableInstance(contract, c.Types.StorageSubst(call)))))
                 {
                     problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} contract {(i < count ? $"slot {i}" : "result")}");
                 }
@@ -2084,12 +2084,12 @@ public sealed partial class TyCtxtTest
     private static BoundType? Instance(Compilation c, BoundType declared, Subst subst, CallPlan context) => context switch
     {
         { Kind: CalleeKind.Requirement } when ReferenceEquals(subst.Target, context.Target) && ReferenceEquals(subst.Self, context.ConformingType) &&
-            Binds(subst, context) => c.Binding.InstantiateStorageType(declared, subst),
+            Binds(subst, context) => c.Types.ReadableInstance(declared, subst),
         { Kind: CalleeKind.Requirement } => null,
         { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation: { } body } when !ReferenceEquals(body, context.Target.Declaration)
             => ReferenceEquals(subst.Binder, body) && subst.Self is null && ReferenceEquals(subst.Declaring, context.VirtualImplementingType) &&
-                Binds(subst, context) ? c.Binding.InstantiateStorageType(declared, subst) : null,
-        _ => c.Binding.InstantiateStorageType(declared, context),
+                Binds(subst, context) ? c.Types.ReadableInstance(declared, subst) : null,
+        _ => c.Types.ReadableInstance(declared, c.Types.StorageSubst(context)),
     };
 
     // The substitution binds the call's Type and length arguments, declared Origins and input Origins.
@@ -2159,7 +2159,7 @@ public sealed partial class TyCtxtTest
             if (inner.RequirementContract is { Type: { } bound } contract && !ReferenceEquals(bound.Symbol, contract))
             {
                 Count("bound");
-                if (!ReferenceEquals(subst.Declaring, c.Binding.InstantiateStorageType(bound, outer)))
+                if (!ReferenceEquals(subst.Declaring, c.Types.ReadableInstance(bound, c.Types.StorageSubst(outer))))
                 {
                     problems.Add($"{where} bound reference");
                 }

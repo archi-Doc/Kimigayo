@@ -181,7 +181,7 @@ public sealed partial class Binding
         if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
         {
             failure = BindingFailure.QualificationRequired;
-            (this.qualificationFailures ??= new(ReferenceEqualityComparer.Instance))[node] = qualification;
+            this.qualificationFailures[node] = qualification;
             unresolved = false;
         }
 
