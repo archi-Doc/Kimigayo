@@ -83,6 +83,9 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal SourceSpan DispatchModifierSpan { get; }
 
+    // The largest signature FindParameter scans; a larger one has its ordinal index (ParameterIndices).
+    private const int ScannedParameters = 8;
+
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;
@@ -100,7 +103,7 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         // Small signatures are cheaper to scan. Larger signatures share one ordinal index.
-        if (parameters.Count <= 8)
+        if (parameters.Count <= ScannedParameters)
         {
             for (var i = 0; i < parameters.Count; i++)
             {
@@ -113,6 +116,21 @@ public sealed class FunctionKoto : DeclarationKoto
             return -1;
         }
 
+        return this.ParameterIndices(parameters).GetValueOrDefault(name, -1);
+    }
+
+    /// <inheritdoc/>
+    internal override void CompleteLazyFields()
+    {
+        if (this.parameters is { Count: > ScannedParameters } parameters)
+        {
+            _ = this.ParameterIndices(parameters);
+        }
+    }
+
+    // A larger signature's one ordinal index (FindParameter), formed on its first lookup.
+    private Dictionary<string, int> ParameterIndices(List<FunctionParameterKoto> parameters)
+    {
         if (this.parameterIndices is null)
         {
             this.parameterIndices = new(parameters.Count, StringComparer.Ordinal);
@@ -122,7 +140,7 @@ public sealed class FunctionKoto : DeclarationKoto
             }
         }
 
-        return this.parameterIndices.GetValueOrDefault(name, -1);
+        return this.parameterIndices;
     }
 
     /// <summary>Gets the return type, if specified.</summary>

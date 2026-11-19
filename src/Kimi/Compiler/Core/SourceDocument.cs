@@ -216,6 +216,10 @@ public sealed partial class SourceDocument
         }
     }
 
+    /// <summary>Builds the line start table now (PLAN G1072): the library pass's end does it for every document a library node names
+    /// (<see cref="Parsing.SyntaxTable.CompleteLazyFields"/>), so no reader writes a frozen library's document.</summary>
+    internal void CompleteLazyFields() => _ = this.GetLineStarts();
+
     /// <summary>
     /// Gets the exclusive end offset of a line, excluding its terminator.
     /// </summary>
