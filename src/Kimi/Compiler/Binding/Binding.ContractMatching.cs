@@ -623,7 +623,7 @@ public sealed partial class Binding
         }
     }
 
-    private void MatchResultOrigins(BoundType pattern, BoundType expected, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private void MatchResultOrigins(BoundType pattern, BoundType expected, Koto binder, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
     {
         if (!pattern.CarriesOrigin || !expected.CarriesOrigin)
         {
@@ -632,12 +632,12 @@ public sealed partial class Binding
 
         if (pattern.Origin is { } p && expected.Origin is { } a)
         {
-            Match(p, a);
+            Match(p, a, origins, inputs);
         }
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, expected.OriginArguments.Count); i++)
         {
-            Match(pattern.OriginArguments[i], expected.OriginArguments[i]);
+            Match(pattern.OriginArguments[i], expected.OriginArguments[i], origins, inputs);
         }
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, expected.Components.Count); i++)
@@ -645,7 +645,8 @@ public sealed partial class Binding
             this.MatchResultOrigins(pattern.Components[i], expected.Components[i], binder, origins, inputs);
         }
 
-        void Match(BoundOrigin parameter, BoundOrigin value)
+        // The spans are parameters: a local function cannot capture a span.
+        void Match(BoundOrigin parameter, BoundOrigin value, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
         {
             if (ReferenceEquals(parameter.Binder, binder) && parameter.Kind is OriginKind.Parameter or OriginKind.Input)
             {
@@ -660,7 +661,7 @@ public sealed partial class Binding
 
     // `known` is the binder of an argument's known call signature (SPEC 10.8): the Origins it quantifies, such as per-call inputs,
     // lie beyond the call and are no evidence for the callee's own Origins.
-    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs, Koto? known = null)
+    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Koto? known = null)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
         {
@@ -702,7 +703,7 @@ public sealed partial class Binding
         }
     }
 
-    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs, Koto? known = null)
+    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Koto? known = null)
     {
         if (known is not null && QuantifiedBy(actual, known))
         {
