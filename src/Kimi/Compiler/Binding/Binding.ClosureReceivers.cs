@@ -483,7 +483,7 @@ public sealed partial class Binding
             var closure = ReferenceEquals(consumer, this.function);
             if (!closure && binding.HasFailureCauses(consumer))
             {
-                return new(IsBareAcquisitionPosition(target) ? binding.ChildAdjust(target, HirAdaptation.None, UseKind.Acquisition, claimed: false) : default, default);
+                return new(IsBareAcquisitionPosition(target) ? binding.ChildAdjust(target, HirAdaptation.None, UseKind.Acquisition, claimed: PlaceUse.Shared) : default, default);
             }
 
             ref var facts = ref this.FactsOf(consumer);
@@ -498,7 +498,7 @@ public sealed partial class Binding
             {
                 facts.Marks |= walked;
                 var record = new TakeRecord(binding, this.met, exclusive);
-                binding.AdjustChildren(consumer, op, exclusive, ref record);
+                binding.AdjustChildren(consumer, op, exclusive ? PlaceUse.Exclusive : PlaceUse.Shared, ref record);
                 this.Work += record.Count;
             }
 
@@ -591,7 +591,7 @@ public sealed partial class Binding
                 if (child is not null)
                 {
                     ref var takes = ref this.Row(child, out var taken);
-                    this.Fix(ref takes, binding.ChildAdjust(child, adaptation, kind, taken && binding.Claimed(child, takes.Last, takes.Earlier)));
+                    this.Fix(ref takes, binding.ChildAdjust(child, adaptation, kind, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
                 }
             }
 
@@ -600,7 +600,7 @@ public sealed partial class Binding
                 if (child is not null)
                 {
                     ref var takes = ref this.Row(child, out var taken);
-                    this.Fix(ref takes, binding.ChildAdjust(child, operation, taken && binding.Claimed(child, takes.Last, takes.Earlier)));
+                    this.Fix(ref takes, binding.ChildAdjust(child, operation, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
                 }
             }
 
