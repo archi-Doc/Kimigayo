@@ -502,9 +502,12 @@ public sealed partial class Binding
     // A row's every end is one A5 judges in the body (the Middle's option (b), board C-400), so two ends keep the comparison's own record
     // (SPEC 15.6.1, premises alone): an end that, as written, is the compared implementation's own per-call Origin and that its signature
     // names in its inputs (NamedInItsInputs, G972's verdict: no per-call binding of SPEC 15.3.7 there; false for every valid signature),
-    // and a shorter end that is another declaration's atom (the view's row 9, ForeignDeclarationAtom), except a required per-call Origin,
-    // which the L1 lift below bounds by the body's Origins (its fallback, the slot itself, keeps A5's located limit). The ends arrive as
-    // written; the comparison instantiates them here.
+    // and a shorter end that is another declaration's atom (the view's row 9, ForeignDeclarationAtom) the comparison decides by SPEC: a
+    // Function Item's universal, which it solves, or an enclosing comparison's required per-call Origin, which is rigid (SPEC 15.3.7; a30:
+    // g's result compared under the outer required j0). An anonymous function's per-call Origin there (PerCallBinder's FunctionKoto, G972's
+    // binder set: a literal's x in a nested result comparison, n8r) is a row A5 does not judge, its located limit, since the comparison
+    // does not solve such an Origin yet (D1 (a)); when it does (PLAN D-822), that arm joins this case. A required per-call Origin of this
+    // comparison is the L1 lift's. The ends arrive as written; the comparison instantiates them here.
     private bool LeavesBodyRows(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition, Koto? clause)
     {
         if (comparison.Rows is not { } rows || (comparison.IsImplementationSlot(longer) && this.NamedInItsInputs(longer)) ||
@@ -515,7 +518,8 @@ public sealed partial class Binding
 
         longer = this.OriginAtUse(comparison.Instantiate(longer), use);
         shorter = this.OriginAtUse(comparison.Instantiate(shorter), use);
-        if (!RegionChain(longer, shorter, false, this.formingBody) || (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter)))
+        if (!RegionChain(longer, shorter, false, this.formingBody) ||
+            (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter) && PerCallBinder(shorter) is not FunctionKoto))
         {
             return false;
         }
