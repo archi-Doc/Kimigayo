@@ -196,9 +196,11 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
     // is, so A5 reports its repaired program's Loan conflicts beside it and no Unsupported_Kd at the call (fail-before: Unsupported_Kd at
-    // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict that rests on the failed
-    // part is its dependent and goes (q1: `result` holds `first` only through the failed payload, its repair's conflict). An independent
-    // conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays its record at the call, the depth limit (the
+    // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict the check finds over holder
+    // states stays, also one whose value reaches its holder only through rows that hold whatever the failed part is (Selection: `result`
+    // receives choose's result, which the contract's relation ties to pair and so to first's Loan, and the value-flow rule H makes it a
+    // holder whatever its failed payload's Type; the check reads holder states, never which input failed: AGENTS Diagnostics, a record
+    // kept under DECISIONS Q13). An independent conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays its record at the call, the depth limit (the
     // owner's 「G272: (1)」, R4-M153), beside the failed part (a Field of height 66, a growing Field) and in its repair, and so do X and T,
     // which reach T's Box^64 Field.
     [Theory]
@@ -206,17 +208,17 @@ public sealed partial class MirBorrowsTest
     [InlineData(RetentionTest.Stash, "Missing", "i32", "g: x = 3")]
     [InlineData(RetentionTest.Pick, "missing", "s", "g: x = 2")]
     [InlineData(RetentionTest.Handle, "Missing", "i32", "")]
-    [InlineData(RetentionTest.Selection + "    first.value = 5\n    inspect(result@ref)\n", "missing", "source", "", "run: first.value = 5")]
+    [InlineData(RetentionTest.Selection + "    first.value = 5\n    inspect(result@ref)\n", "missing", "source", "run: first.value = 5")]
     [InlineData(Kept, "Missing", "i32", "g: y = 3")]
     [InlineData(RetentionTest.Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Fielded, "Missing", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) OwnershipDepthLimit_Kd")]
     [InlineData(RetentionTest.Growing, "Missing", "i32", "h: f(g, null) OwnershipDepthLimit_Kd")]
     [InlineData(RetentionTest.Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "Missing", "i32", "g: fx(x, null) OwnershipDepthLimit_Kd | g: ft(t, null) OwnershipDepthLimit_Kd")]
-    public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected, string? twin = null)
+    public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected)
     {
         Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
-        Assert.Equal(twin ?? expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
+        Assert.Equal(expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
     }
 
     // SPEC 6.5.1, 23.1.2 (G242, G245's enum half; DECISIONS BU-37): an enum whose Case A Binding did not bind publishes its other Cases, so
