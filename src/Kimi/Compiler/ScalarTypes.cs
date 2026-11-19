@@ -3,25 +3,12 @@
 using System.Buffers;
 using System.Globalization;
 using Kimi.Compiler.Parsing;
-using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
 /// <summary>The scalar value-plan subset shared by ownership and emission, independent of storage layout.</summary>
 internal static class ScalarTypes
 {
-    /// <summary>The width in bits of <c>isize</c> and <c>usize</c> for every Compilation, with or without a target: the profile's
-    /// (SPEC 22, O-79 (a); IMPL 21.1.3), from <see cref="IrTarget"/>'s row for its triple. A target's own width is only the
-    /// <c>pointerWidth</c> Condition's (SPEC 19.2). Read once, by <see cref="BoundType"/>'s rows of the two Cores; every reader of
-    /// their width asks the Type (<see cref="BoundType.Width"/>).</summary>
-    internal static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
-
-    /// <summary>Gets whether a Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a wrapping integer Core; no
-    /// layer is followed. The one definition the MIR builder's recorded values and MirValidator's testRecordValue row read.</summary>
-    /// <param name="type">The Type, or null.</param>
-    /// <returns>Whether it is a Scalar.</returns>
-    internal static bool Supports(BoundType? type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) || type is { IsNumeric: true };
-
     // Canonical signed extension of the N-bit payload, also for unsigned language Types (DECISIONS BU-133). Width 0 is for an integer or
     // wrapping integer Type whose instance decides its width (a proven-PrimitiveInteger parameter or projection, Wrapping<T> over one; SPEC
     // 8.7.4), and for no other widthless Type: it keeps the 128-bit payload, the widest instance's, whose low N bits are each instance's.

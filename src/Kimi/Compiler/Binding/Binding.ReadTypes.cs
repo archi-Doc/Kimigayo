@@ -47,7 +47,7 @@ public sealed partial class Binding
     {
         if (type.Kind == BoundTypeKind.Primitive)
         {
-            return ScalarTypes.Supports(type);
+            return type.IsScalar;
         }
 
         if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed)
