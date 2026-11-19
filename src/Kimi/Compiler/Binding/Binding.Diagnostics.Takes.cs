@@ -29,7 +29,7 @@ public sealed partial class Binding
     private BoundType? FailTake(Koto node, Koto target)
         => this.FailExplained(ref this.takeLayers, node, this.AccessFailure(target, out var layers, take: true), layers);
 
-    private void ReportTake(Koto node, SemanticsMask layers, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportTake(Koto node, DiagnosticCollection? store, SemanticsMask layers, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var note = code switch
         {
@@ -38,6 +38,6 @@ public sealed partial class Binding
             DiagnosticCode.InvalidAssignment_Kd when (layers & SemanticsMask.Obj) != 0 => ObjectPayloadTakeNote,
             _ => this.OmittedResultNote(node),
         };
-        node.Report(requirement, code, note: note, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [node.ToString()] : null);
+        node.ReportIn(store, requirement, code, note: note, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [node.ToString()] : null);
     }
 }

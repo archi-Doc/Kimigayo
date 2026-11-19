@@ -33,6 +33,7 @@ public sealed partial class Binding
         private readonly List<int> head = new();
         private readonly List<int> next = new();
         private readonly List<int> signatureNext = new();
+        private readonly Dictionary<BoundType, int> congruent = new(ReferenceEqualityComparer.Instance); // ClassOf's answers for Types that are no node
         private readonly List<int> order = new(); // the class graph's strongly connected components (MarkCycles)
         private readonly List<int> low = new();
         private readonly List<int> component = new();
@@ -42,6 +43,7 @@ public sealed partial class Binding
         private BindingScope? scope;
         private bool provisional;
         private bool meetProvisional;
+        private bool closed; // Close ended: the congruence index holds the final partition (ClassOf reads it)
         private int reading; // Same's meets in progress: they ask the attribute domains, which read no identity, so nothing reopens the table
 
         internal byte Worst { get; private set; }
@@ -83,6 +85,8 @@ public sealed partial class Binding
             this.head.Clear();
             this.next.Clear();
             this.signatureNext.Clear();
+            this.congruent.Clear();
+            this.closed = false;
             this.order.Clear();
             this.low.Clear();
             this.component.Clear();
@@ -104,7 +108,7 @@ public sealed partial class Binding
         // The one finality rule (W7): a class is final unless one of its meets rests on an Origin "no" from incomplete declarations or an
         // unrentable premise environment.
         internal bool Failed(BoundType type)
-            => this.node.TryGetValue(type, out var n) && this.state[this.Find(n)] != One && !this.incompleteClass[this.Find(n)];
+            => this.ClassOf(type) is var root && root >= 0 && this.state[root] != One && !this.incompleteClass[root];
 
         // The members of a Type's class in index order, appended to `into`, where the class is final and One (Same's condition: an
         // erroneous or provisional class fixes no form); nothing for a Type outside the classes (PLAN G823's key walk reads them).
@@ -175,9 +179,8 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (this.node.TryGetValue(a, out var x) && this.node.TryGetValue(b, out var y))
+            if (this.ClassOf(a) is var rx && rx >= 0 && this.ClassOf(b) is var ry && ry >= 0)
             {
-                var (rx, ry) = (this.Find(x), this.Find(y));
                 if (rx == ry)
                 {
                     return this.state[rx] == One && !this.incompleteClass[rx];
@@ -224,8 +227,7 @@ public sealed partial class Binding
         {
             (a, b) = (this.Target(a), this.Target(b));
             (a, b) = (this.Member(a) ?? a, this.Member(b) ?? b); // R7-C2c2 c2-4 (design R1.2): Member, with parameters too
-            if (ReferenceEquals(a, b) ||
-                (this.node.TryGetValue(a, out var x) && this.node.TryGetValue(b, out var y) && this.Find(x) == this.Find(y)))
+            if (ReferenceEquals(a, b) || (this.ClassOf(a) is var x && x >= 0 && x == this.ClassOf(b)))
             {
                 return false;
             }
@@ -302,6 +304,8 @@ public sealed partial class Binding
                     this.Worst = Math.Max(this.Worst, this.state[root]);
                 }
             }
+
+            this.closed = true;
         }
 
         // A node's components (SPEC 8.2.3's Structure): a pair layer's one component is its target (TryPairLayer), so the original `s/T`
@@ -410,6 +414,67 @@ public sealed partial class Binding
             return true;
         }
 
+        // A node that is a constructor of its class (R7-C2c2 c2-4b, design R4.1): no abstract Type (IsAbstractType; the original `s/T`
+        // is a pair application) and no pair layer admitting exactly `owner` (that one is its target). The one classification the class
+        // graph's edges and cycles (Walk, MarkCycleEdges), the meets (MeetMembers), the binding grounds and the Member (Scanned) read.
+        private bool Constructs(int n) => !this.types[n].IsAbstractType && !this.transparent[n];
+
+        // A node's edges in the class graph (SPEC 8.3.3's expansion steps), EdgeCount of them: a constructor's components (the
+        // proper-part step; Arity and Component, a pair layer's one component its target) and a projection's Contract arguments (its
+        // Contract reference's components; never its subject). Only a constructor's edges mark a cycle (MarkCycleEdges): a cycle of
+        // projection arguments alone never grows a Type (R7-C2c2 c2-4b, design R2.1, RB2).
+        private int EdgeCount(int n)
+        {
+            var type = this.types[n];
+            if (this.Constructs(n))
+            {
+                return Arity(type);
+            }
+
+            return type.Kind == BoundTypeKind.AssociatedProjection && type.Components.Count > 1 ? type.Components[1].Components.Count : 0;
+        }
+
+        private BoundType Edge(int n, int i) => this.Constructs(n) ? Component(this.types[n], i) : this.types[n].Components[1].Components[i];
+
+        // The one class lookup (R7-C2c2 c2-4b, design R4.2): the class of a Type's target (SPEC 8.2.3's pair row), a node's root, else, once
+        // the table is closed, the root of the node it is congruent with (the table's own congruence: Signature and Congruent over its
+        // components' classes, the index the last Congruence round left), else -1. Answers for Types that are no node are kept per table.
+        private int ClassOf(BoundType type)
+        {
+            type = this.Target(type);
+            if (this.node.TryGetValue(type, out var n))
+            {
+                return this.Find(n);
+            }
+
+            if (!this.closed || type.Components.Count == 0 || type.Kind == BoundTypeKind.Primitive)
+            {
+                return -1;
+            }
+
+            if (this.congruent.TryGetValue(type, out var known))
+            {
+                return known < 0 ? -1 : this.Find(known);
+            }
+
+            var found = -1;
+            if (this.signatures.TryGetValue(this.Signature(type), out var first))
+            {
+                for (var m = first; m >= 0 && found < 0; m = this.signatureNext[m])
+                {
+                    found = this.Congruent(this.types[m], type) ? this.Find(m) : -1;
+                }
+            }
+
+            this.congruent[type] = found;
+            return found;
+        }
+
+        // A component's class, as Signature and Congruent compare it: a node's root (no target read: an owner-only application node is
+        // joined with its target), else ClassOf.
+        private int ComponentClass(BoundType component)
+            => this.node.TryGetValue(component, out var n) ? this.Find(n) : this.ClassOf(component);
+
         // Whether a Type holds an Origin quantified in a Function Type, in any Origin slot.
         private bool Carries(BoundType type)
         {
@@ -445,7 +510,7 @@ public sealed partial class Binding
             {
                 for (var j = this.next[i]; j >= 0; j = this.next[j])
                 {
-                    if (this.types[i].IsAbstractType || this.types[j].IsAbstractType || this.transparent[i] || this.transparent[j])
+                    if (!this.Constructs(i) || !this.Constructs(j))
                     {
                         continue;
                     }
@@ -470,9 +535,8 @@ public sealed partial class Binding
         }
 
         // The head with its components' class ids and its compared attributes by reference: equal keys are one Type (SPEC 8.2.3 replacement).
-        private int Signature(int n)
+        private int Signature(BoundType type)
         {
-            var type = this.types[n];
             var hash = HashCode.Combine(type.Kind, type.Symbol, type.Semantics, type.Length, type.LengthExpression, type.Origin, type.InstanceContext);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
@@ -481,7 +545,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                hash = HashCode.Combine(hash, this.Find(this.node[type.Components[i]]));
+                hash = HashCode.Combine(hash, this.ComponentClass(type.Components[i]));
             }
 
             return hash;
@@ -503,7 +567,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    var key = this.Signature(n);
+                    var key = this.Signature(this.types[n]);
                     if (!this.signatures.TryGetValue(key, out var first))
                     {
                         this.signatures[key] = n;
@@ -552,7 +616,7 @@ public sealed partial class Binding
 
                 for (var m = this.head[this.Find(subject)]; m >= 0; m = this.next[m])
                 {
-                    if (this.types[m].IsAbstractType)
+                    if (!this.Constructs(m))
                     {
                         continue;
                     }
@@ -619,9 +683,10 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.2.3 Cycles: a class that is a proper part of itself is Cyclic; one that is so only through pair layers that may be their
-        // target (MayBeItsTarget) is the Proof row. The class graph (a class's edges are its constructor members' components, Arity) is cut into strongly
-        // connected components by an iterative Tarjan walk, linear in nodes plus edges, with no depth bound.
+        // SPEC 8.2.3 Cycles and 8.3.3 Unbounded Types: a class on a cycle through a constructor edge is Cyclic; one that is so only through
+        // pair layers that may be their target (MayBeItsTarget) is the Proof row. The class graph (Edge: a constructor's components,
+        // Arity, and a projection's Contract arguments) is cut into strongly connected components by an iterative Tarjan walk, linear in
+        // nodes plus edges, with no depth bound.
         private void MarkCycles()
         {
             for (var n = 0; n < this.types.Count; n++)
@@ -675,15 +740,14 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var type = this.types[member];
-                if (type.IsAbstractType || this.transparent[member] || at >= Arity(type))
+                if (at >= this.EdgeCount(member))
                 {
                     this.stack[^1] = (root, this.next[member], 0);
                     continue;
                 }
 
                 this.stack[^1] = (root, member, at + 1);
-                var target = this.Find(this.node[Component(type, at)]);
+                var target = this.Find(this.node[this.Edge(member, at)]);
                 if (this.order[target] < 0)
                 {
                     this.Visit(target, ref visits);
@@ -702,7 +766,7 @@ public sealed partial class Binding
             for (var member = 0; member < this.types.Count; member++)
             {
                 var type = this.types[member];
-                if (type.IsAbstractType || this.transparent[member])
+                if (!this.Constructs(member))
                 {
                     continue;
                 }
@@ -743,7 +807,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < x.Components.Count; i++)
             {
-                if (this.Find(this.node[x.Components[i]]) != this.Find(this.node[y.Components[i]]))
+                if (this.ComponentClass(x.Components[i]) != this.ComponentClass(y.Components[i]))
                 {
                     return false;
                 }
@@ -1081,7 +1145,7 @@ public sealed partial class Binding
 
         // The root of a Type's class where Members lists it (a final One class), else -1 (Members' and ProjectionMembers' condition).
         private int ListedRoot(BoundType type)
-            => this.node.TryGetValue(this.Target(type), out var n) && this.Find(n) is var root && this.state[root] == One && !this.incompleteClass[root] ? root : -1;
+            => this.ClassOf(type) is var root && root >= 0 && this.state[root] == One && !this.incompleteClass[root] ? root : -1;
 
         // SPEC 8.2.3's pair row: with exactly `owner` admitted, `s/V` is `V` itself.
         private BoundType Target(BoundType type)

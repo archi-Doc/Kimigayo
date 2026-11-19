@@ -95,15 +95,19 @@ public class OriginPremiseCatalogTest
     }
 
     // R5, SPEC 15.6.1, 15.6.5: a borrow of a complete local Place is well-formed, so the Origins stored in the Place outlive the
-    // borrow's Origin. That Origin is body-local, hence finite, so the body proves the relation without any premise.
+    // borrow's Origin. That Origin is body-local, hence finite, so the body proves the relation without any premise: the program is
+    // accepted and forms no premise closure. Changed by decision (PLAN G949 Stage 2 U3, design §8: the library pass leaves the
+    // compilation; B's U3 ruling 43): the row was ABorrowedLocalPlaceSuppliesItsStoredOrigins, whose clause `EdgesOf(LocalPlace) != 0`
+    // held only because the library pass shared the compilation's metrics (its 19 LocalPlace edges; this program forms none). R5's edge
+    // stays pinned by the rows whose programs form it (ANestedBodyKeepsLocalPlaceForItsOwnLocals, AComparisonInTheDeclaringBodyKeepsLocalPlace).
     [Fact]
-    public void ABorrowedLocalPlaceSuppliesItsStoredOrigins()
+    public void ABorrowedLocalPlaceProvesItsRelationWithoutAPremise()
     {
         var source = "enum E<T>\n    Some(T)\n    None\nlet text = \"hello\"\nlet savedText = text@ref\nlet inner = (savedText, 42)\nlet input = inner@ref\n" +
             "let value: E<ref/(ref/string during savedText, i32) during input> = .Some(input)\nmatch value@ref\n    .Some((let saved, _)) => Console.writeLine(saved@follow)\n    .None => $abort(\"none\")\n";
         var (codes, metrics, _) = Check(source);
         Assert.Empty(codes);
-        Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
+        Assert.Equal(0, metrics.Closures);
     }
 
     // SPEC 15.2.2, 15.3.4, 15.6.1 (PLAN G491): R5 is the well-formedness obligation of the body that declares the local, never a premise
@@ -256,13 +260,14 @@ public class OriginPremiseCatalogTest
     }
 
     // SPEC 11.4, 11.5, 15.6.1 (DECISIONS BU-26): a computed Property's header is its getter's result, so a use in it has the getter's
-    // input premises (R2): a header the receiver covers is well formed (ReceiverShorthandTest's program; two slots; a Property fulfilling
-    // a requirement). A relation the receiver does not cover stays unproven at the header and at the getter's result (PLAN G214).
+    // premises: its inputs' (R2): a header the receiver covers is well formed (ReceiverShorthandTest's program; two slots; a Property
+    // fulfilling a requirement); and its result's (R3, PLAN G214): a relation the receiver does not cover is assumed at the header and at
+    // the getter's written result, and each read proves it (PropertyBindingTest).
     [Theory]
     [InlineData("struct S {source}\n    var item: ref/i32 during source\n        get() -> ref/i32 during self.source => storage\n    computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
     [InlineData("struct S {a, b}\n    var item: ref/i32 during a\n        get() -> ref/i32 during self.a => storage\n    var other: ref/i32 during b\n        get() -> ref/i32 during self.b => storage\n    computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
     [InlineData("contract C\n    property view: ref/Self\n        get() -> ref/Self\nstruct S {source}\n    Self is C\n    var item: ref/i32 during source\n        get() -> ref/i32 during self.source => storage\n    public computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
-    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", 2)]
+    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", 0)]
     public void AComputedHeaderHasItsGettersInputPremises(string body, int unproven)
     {
         Assert.Equal(Enumerable.Repeat(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), unproven), Check(body + Main).Codes);

@@ -52,7 +52,8 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
             }
         }
 
-        foreach (var module in compilation.SourceModules.Append(query.Library.Kotonoha))
+        var (sources, library) = compilation.BoundModules;
+        foreach (var module in sources.Append(library))
         {
             foreach (var source in module.SourceDocuments)
             {
