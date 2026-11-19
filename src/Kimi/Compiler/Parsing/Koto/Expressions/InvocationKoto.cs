@@ -31,9 +31,10 @@ public sealed class InvocationKoto : ApplicationKoto
     // Allocated only when at least one argument is labeled.
     private string?[]? argumentLabels;
 
-    /// <summary>Gets the argument labels in argument order. A positional argument has a null label.</summary>
+    /// <summary>Gets the argument labels in argument order. A positional argument has a null label. A call without a label forms its
+    /// list on each read and stores none (PLAN G1072: no compiler reader, and a read never writes a frozen node).</summary>
     public IReadOnlyList<string?> ArgumentLabels
-        => this.argumentLabels ??= new string?[this.ArgumentNodes.Count];
+        => this.argumentLabels ?? new string?[this.ArgumentNodes.Count];
 
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

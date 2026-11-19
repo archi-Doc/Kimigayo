@@ -1,8 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
-// of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, and R4-M118's chain
-// judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
+// of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the
+// interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's, and
+// R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
+// TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
 // Interned identity is equality, over two levels (PLAN G949 Stage 2 U4; Binding.PassPart.Levels): the library layer's frozen level, filled
 // until the library's seal, and the compilation's, filled after it; values live with the compilation and survive warm rebinds. A
@@ -25,24 +27,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     // The compilation's level of the interned Types (PLAN G949 Stage 2 U4): the Types interned after the library's seal; the library's
     // are LibraryLayer.Types, found first (Intern).
-    private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedRoom);
+    private readonly Dictionary<int, List<BoundType>> types = new();
 
     // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter), numbering on from the library's L once its layer is
     // sealed (U4), so every Type of the compilation's level has an id above L.
     private int typeCount = Math.Max(BoundType.StaticCount, library.Layer.TypeCount);
-    private int interned = library.Frozen ? library.Layer.Size.TypeKeys : 0; // The Types interned: the layer level's, then this TyCtxt's.
-    private int programEntries; // The Types of the compilation's level, which hold its room (KeyFree).
 
     /// <summary>Gets the last id this compilation gave a Type (Binding's freeze reads it as the library's L).</summary>
     internal int TypeCount => this.typeCount;
-
-    /// <summary>Gets the number of interned Types, the entries of their table. Not its keys: a key is a hash of the parts' identity
-    /// hashes, which a thread's earlier objects move, so two Types share one at random (PLAN G949's flaky TableCounts row).</summary>
-    internal int KeyCount => this.interned;
-
-    /// <summary>Gets the free slots of the compilation's level of the interned Types: its capacity less its entries, at most its free
-    /// keys.</summary>
-    internal int KeyFree => this.types.Capacity - this.programEntries;
 
     // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
     private BoundType[] pairScratch = [];
@@ -265,8 +257,6 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), instanceContext, binder);
         into.Add(created);
-        this.interned++;
-        this.programEntries += ReferenceEquals(open, this.types) ? 1 : 0;
         return created;
 
         static bool QuantifiesInput(BoundType inputs, Koto binder)
@@ -320,13 +310,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // Origin (a raw layer's stays in the formed Type alone), so a Function Type whose input it is keeps its per-call binder.
     internal BoundType Open(BoundType formed) => this.Intern(BoundTypeKind.Open, null, formed.Semantics, [formed], origin: formed.Origin);
 
-    // SPEC 22.10.5 and rule L (FormattingTypes.StackLimit): the interpolation-bound term of a direct interpolation with these value Types
-    // (a Tuple) and literal bytes, its stack region's size: the constant FormattingTypes.StackBound decides, else the term (Term), which a
+    // SPEC 22.10.5 and rule L (StackLimit): the interpolation-bound term of a direct interpolation with these value Types
+    // (a Tuple) and literal bytes, its stack region's size: the constant StackBound decides, else the term (Term), which a
     // substitution folds again (Refold). R8-W2 a2's builder forms it.
     internal BoundLength InterpolationBound(BoundType values, long literal) => this.Term(LengthOperation.InterpolationBound, values, literal);
 
     // SPEC 22.10.5 (R8-W2 c2t): the interpolation-hint term of an owning interpolation's write position with the later value Types (a
-    // Tuple) and the later literal bytes, the bytes its adapter's later writes may still reserve: the constant FormattingTypes.HintBound
+    // Tuple) and the later literal bytes, the bytes its adapter's later writes may still reserve: the constant HintBound
     // decides, else the term (Term), which a substitution folds again (Refold). R8-W2 c2b's builder forms it; until then nothing does.
     internal BoundLength InterpolationHint(BoundType values, long literal) => this.Term(LengthOperation.InterpolationHint, values, literal);
 
@@ -397,14 +387,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return bound.IsEmpty ? components : bound;
     }
 
-    // The one fold and interning of an interpolation term: the constant its operation's FormattingTypes rule gives, else the term over the
-    // erased value Types (so Erase keeps it, keyed by them). Only the two term rows carry value Types.
+    // The one fold and interning of an interpolation term: the constant its operation's formatting rule (TyCtxt.Formatting.cs) gives,
+    // else the term over the erased value Types (so Erase keeps it, keyed by them). Only the two term rows carry value Types.
     private BoundLength Term(LengthOperation operation, BoundType values, long literal)
     {
         var folded = operation switch
         {
-            LengthOperation.InterpolationBound => FormattingTypes.StackBound(values, literal),
-            LengthOperation.InterpolationHint => FormattingTypes.HintBound(values, literal),
+            LengthOperation.InterpolationBound => StackBound(values, literal),
+            LengthOperation.InterpolationHint => HintBound(values, literal),
             _ => throw new ArgumentOutOfRangeException(nameof(operation)),
         };
         return folded >= 0 ? binding.InternLength(LengthOperation.Constant, folded) : binding.InternLength(operation, literal, values: this.Erase(values));
