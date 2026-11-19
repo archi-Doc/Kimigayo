@@ -113,7 +113,14 @@ internal enum HoldFlags : byte
 /// <param name="Flags">The entry's marks.</param>
 /// <param name="Written">The Type a declaration writes there.</param>
 /// <param name="Holder">The instance holding the stored part.</param>
-internal readonly record struct Hold(BoundType? Part, HoldStep Step, HoldContent Holds, HoldFlags Flags, BoundType? Written, BoundType? Holder);
+internal readonly record struct Hold(BoundType? Part, HoldStep Step, HoldContent Holds, HoldFlags Flags, BoundType? Written, BoundType? Holder)
+{
+    /// <summary>Gets a value indicating whether a reader of what the value holds reads on through <see cref="Part"/> as a part of the value (SPEC 3.3.4,
+    /// 15.3.5): a part at its address, an own step through no raw layer (an owning handle's payload, a collection's elements) or a Type
+    /// argument. Every other entry is a layer, an erased or abstract part or a form with no row, which each reader decides; the holding
+    /// walks (MirTypes.HoldsLoans, Binding's hold walk) read this one row.</summary>
+    internal bool PassesOn => this.Step is HoldStep.Inline or HoldStep.Loan || (this.Step == HoldStep.Own && (this.Flags & HoldFlags.Raw) == 0);
+}
 
 public sealed partial class Binding
 {

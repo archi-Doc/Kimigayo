@@ -18,6 +18,12 @@ public sealed partial class Binding
     // through the input carries, never the borrow's own Loans), the input's sources joined; reused.
     private readonly List<(int Input, RetentionKind? Kind)> retentionRawSources = new();
 
+    // The Origins the raw sources' layers state (SPEC 5.7 Fits and claims; DECISIONS BU-66 as amended by C-352): per raw layer of an input
+    // in retentionRawSources that states an Origin other than `self` (OwnedOrigin), that Origin, and for one past an exclusive borrow the
+    // borrow's outer Origin, whose storage it lies in (a layer stating that Origin retains as that borrow would, its chain included); a
+    // layer stating none is no further entry, since it fits no layer stating one but by a claim. The hold walk's stated arm reads them (Binding.Retention.Rows.cs, StatedFits); reused.
+    private readonly List<(int Input, BoundOrigin Origin)> retentionRawStated = new();
+
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
     // Shared (Shared); in a Closure's environment, whose bindings' Types its body's captures wrote, not the walked signature (Captured,
     // DECISIONS BU-108: no signature cap judges a layer there).
@@ -39,6 +45,37 @@ public sealed partial class Binding
 
     // A callable Type, which stores nothing (SPEC 15.2.3): no position below it is storage a call writes (RetentionParts, the hold walk).
     private static bool IsCallable(BoundType type) => type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;
+
+    // A shared borrow or shared handle (ref, objref, rc, arc, a Slice): past it a call reaches storage for reads only (SPEC 5.2.1).
+    private static bool SharedLayer(BoundType type)
+        => type.Kind == BoundTypeKind.Slice ||
+            (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
+
+    // BU-225's one predicate at a layer (PLAN G963): whether a walk that meets `type` through no shared layer and outside a callable meets
+    // what lies past it so: past a pair layer only where its binder admits an exclusive Semantics (IsInvariantLayer, BU-3); past no
+    // callable Type, shared layer (SharedLayer) or raw layer whose step at its position (`step`) is Shared. The atom walk narrows
+    // RetentionAtom.HiddenWritable by it (RetentionWalk, RetentionParts), and a handed callable's write test descends by it
+    // (WrittenThrough: Filled's Fill.Writes, Handed, Routes), so the storage a writer reaches is decided by one rule.
+    private bool HiddenWritableBelow(BoundType type, HoldStep step)
+        => TryPairLayer(type, out _, out _) ? IsInvariantLayer(type, this, null, default)
+            : !IsCallable(type) && !SharedLayer(type) && step != HoldStep.Shared;
+
+    // BU-1's fresh value at a layer (PLAN G993, G935): a value a call stores anew brings its whole Type, so what lies past one of its entries
+    // is new too past a part held by value (ByValue), an own step (an owning handle's payload, rc and arc included: a fresh handle brings
+    // a new payload; an object's; a collection's elements) and a raw layer's pointee where FreshPast passes the layer (a fresh pointer
+    // stating no Origin, `self` or `static` may address storage the call allocates); never past a borrow, whose referent is no storage
+    // the call makes (none is valid during the borrow's Origin), a raw layer stating a borrow's Origin, a callable, or an erased or
+    // abstract part. WrittenThrough reads it for "writes a value of T"; HiddenWritableBelow is "writes what T hides".
+    private bool FreshBelow(BoundType type, in Hold entry)
+        => this.FreshPast(type, entry.Step) && (this.ByValue(type, entry) || entry.Step == HoldStep.Own || (entry.Flags & HoldFlags.Raw) != 0);
+
+    // The layer half of FreshBelow, which the atom walk reads too (RetentionWalk, RetentionParts: an occurrence below a written invariant
+    // position is writable past a layer only where a fresh value passes it, BU-1 narrowed by PLAN G993): no callable, no borrow, and no
+    // raw layer but at the steps Own (`self`), Address (no Origin) and Static (`step`, the layer's at its position): a layer stating a
+    // borrow's Origin addresses only storage that Origin covers (SPEC 5.7), which is no part of a value the call stores anew.
+    private bool FreshPast(BoundType type, HoldStep step)
+        => !IsCallable(type) && this.BorrowReferent(type, out _, out _) is null &&
+            (!ReferenceTypes.IsPointer(type) || step is HoldStep.Own or HoldStep.Address or HoldStep.Static);
 
     // A borrow of storage a value of the Type refers to, with its outer Origin and referent: a ref, uniq, objref or objuniq layer; a
     // pair layer whose binder admits only those, a borrow in each admitted case, its slot the outer Origin (SPEC 8.1.2) and exclusive when
@@ -111,6 +148,7 @@ public sealed partial class Binding
         else if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
         {
             this.retentionRawSources.Add((index, null));
+            this.RawStated(input, index);
             this.AddRetentionAtom(new(index, Kind: null, Writable: false, OwnedOrigin(input), null, null), callable: false);
             var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, null, Signature: declared, HiddenWritable: true);
             this.RetentionParts(input, content, OriginVariance.Covariant, callable: false);
@@ -138,8 +176,9 @@ public sealed partial class Binding
     // so a projection or a dependent Semantics term is its parts and joins its base. An occurrence is writable storage of its input when
     // the walk has reached an invariant position through storage the call may write (`at.Writable`: an exclusive referent, the pointee
     // of a raw layer without an Origin or with `static`, or a value the call may write, whose nominal Type may hide an exclusive layer)
-    // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer
-    // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
+    // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer a
+    // fresh value passes (FreshPast: no callable, no borrow, no raw layer stating a borrow's Origin; SPEC 15.6.4, 5.7, DECISIONS BU-1 as
+    // PLAN G993 narrows it). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
     // the step makes Shared (`at.Shared`; RawStepAt: the signature's or the binder's inputs state its Origin only by shared borrows, so a
     // pointer read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
     // pair layer whose binder admits no exclusive Semantics (an exclusive borrow layer, uniq, objuniq, or a pair layer admitting one, is
@@ -167,7 +206,11 @@ public sealed partial class Binding
             this.AddRetentionAtom(here with { Origin = slot }, callable);
             var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);
             var written = this.SignaturePast(at.Signature, type, default);
-            var below = at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer, Signature = written, HiddenWritable = at.HiddenWritable && exclusive };
+            var below = at with
+            {
+                Writable = (here.Writable && this.FreshPast(type, default)) || (at.Writable && exclusive), Layer = slot ?? at.Layer, Signature = written,
+                HiddenWritable = at.HiddenWritable && this.HiddenWritableBelow(type, default),
+            };
             this.RetentionWalk(target, below, inner, callable);
             return;
         }
@@ -200,12 +243,16 @@ public sealed partial class Binding
         var writable = at.Writable && variance == OriginVariance.Invariant;
         var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
         var inside = callable || IsCallable(type);
-        var shared = type.Kind == BoundTypeKind.Slice ||
-            (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
+        var shared = SharedLayer(type);
         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
         if (raw && !inside && !at.Shared && at.Input >= 0)
         {
             this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));
+            this.RawStated(type, at.Input);
+            if (at.Kind != RetentionKind.Value && at.Layer is { } borrow)
+            {
+                this.retentionRawStated.Add((at.Input, borrow)); // Past a borrow, in its referent: a layer stating that Origin addresses it.
+            }
         }
 
         var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : HoldStep.Address;
@@ -213,8 +260,8 @@ public sealed partial class Binding
         var through = raw ? !past && step is HoldStep.Address or HoldStep.Static : at.Writable && !shared;
         var below = at with
         {
-            Layer = layer, Writable = !inside && (through || writable), Place = past ? at.Place | RetentionPlace.Shared : at.Place,
-            HiddenWritable = at.HiddenWritable && !inside && !past,
+            Layer = layer, Writable = !inside && (through || (writable && this.FreshPast(type, step))), Place = past ? at.Place | RetentionPlace.Shared : at.Place,
+            HiddenWritable = at.HiddenWritable && !callable && !at.Shared && this.HiddenWritableBelow(type, step),
         };
         if (raw && !inside && !past && step == HoldStep.Exclusive && at.Input >= 0)
         {
@@ -225,6 +272,15 @@ public sealed partial class Binding
         {
             var component = below with { Signature = Below(at.Signature, DeclaredComponent(at.Signature, type, i)) };
             this.RetentionWalk(type.Components[i], component, ComposeVariance(variance, ComponentVariance(type, i, this)), inside);
+        }
+    }
+
+    // A raw source's layer `type` of input `index`: its stated Origin, where it states one other than `self` (retentionRawStated).
+    private void RawStated(BoundType type, int index)
+    {
+        if (OwnedOrigin(type) is { Kind: not OriginKind.Unstated } origin)
+        {
+            this.retentionRawStated.Add((index, origin));
         }
     }
 
@@ -275,9 +331,10 @@ public sealed partial class Binding
     // layer's Origin, RetentionInput), whether it is writable storage of the input (RetentionWalk), the Origin of the nearest borrow,
     // Slice or pair layer above it, which a carrier's hidden Origins outlive (SPEC 15.6.1), and where it lies (RetentionPlace); while the
     // walk carries it, the walked signature's declared Type at its position (Signature, as StorageAt's; DECISIONS BU-113; no atom keeps it),
-    // and whether the walk met it through no shared layer and outside a callable (HiddenWritable, PLAN G963: false past a shared borrow or
-    // handle, a raw layer stepping Shared or a pair layer admitting no exclusive case, and inside a callable Type; the condition on which
-    // the storage walk enters a state, StorageAt.HiddenWritable), which says for a carrier that what its instances hide is written.
+    // and whether the walk met it through no shared layer and outside a callable (HiddenWritable, PLAN G963, BU-225: narrowed at each
+    // layer by HiddenWritableBelow, false past a shared borrow or handle, a raw layer stepping Shared or a pair layer admitting no
+    // exclusive case, and inside a callable Type; the condition on which the storage walk enters a state, StorageAt.HiddenWritable), which
+    // says for a carrier that what its instances hide is written.
     private readonly record struct RetentionAtom(
         int Input, RetentionKind? Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, RetentionPlace Place = RetentionPlace.None,
         BoundType? Signature = null, bool HiddenWritable = false)

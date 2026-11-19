@@ -59,7 +59,8 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
     // SPEC 15.6.4 (H3b T30, F9): a store through the Closure's capture `holder@uniq` keeps the direct Loan naming its own target past
     // layer 1, so the MIR rejects these valid programs by the SPEC's letter at `return holder@follow`'s operand, and generation refuses
     // them; the old analysis accepted and ran them. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G148 (2), GXS
-    // adopted with its extension, restores the acceptance and moves the rows back to FixedCallStoresRetainTheActualArgument.
+    // adopted with its extension, restores the acceptance and moves the rows back to FixedCallStoresRetainTheActualArgument. Since the
+    // A5 landing the storage end of holder also conflicts, a record added on a program rejected anyway (DECISIONS Q13).
     [Theory]
     [InlineData("value")]
     [InlineData("consuming")]
@@ -68,7 +69,10 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(FixedCallStoreRun(form));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.False(c.Accepts);
-        MirTargetSide.Check(c, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("return holder@follow", "holder@follow")));
+        MirTargetSide.Check(
+            c,
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("return holder@follow", "holder@follow")),
+            (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("var holder: ref/i32 during x = x")));
         Assert.False(c.Generate(TextWriter.Null));
     }
 

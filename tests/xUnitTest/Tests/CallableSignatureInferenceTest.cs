@@ -367,6 +367,31 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal(("argument", argument), (related.Role, Text(source, related.Span)));
     }
 
+    // D-840 (R7-N5 B4): the per-call Origin fact is a fact of its pass, so a call node that an edit keeps and turns into an enum
+    // construction whose Origin is missing (a failure without a fact) is reported as a fresh compilation reports it: no per-call label
+    // and no related argument. The table had no reset, so the edited compilation's Check read the earlier pass's fact. An AST edit keeps
+    // the call's source span, so the row compares the code, the label and the related roles, not the text.
+    [Fact]
+    public void AnEditedCallKeepsNoPerCallOriginOfAnEarlierPass()
+    {
+        const string Declarations = "func pick(n: ref/i32) -> ref/i32 => n\ngroup G\n    public func A<T>(action: (ref/i32) -> T) -> i32 => 7\nenum E {a}\n    A(ref/i32 during a)\n    B\n";
+        const string Edited = Declarations + "func f() -> i32\n    let e = E.A($abort(\"x\"))\n    return 0\n";
+        var c = MinimalEmissionTest.Check(Declarations + "func f() -> i32\n    let e = G.A(pick)\n    return 0\n");
+        Assert.Contains("MissingOriginBinding_Kd | only a per-call Origin of pick would satisfy T | argument", Records(c));
+        var call = Call(c.Kotonoha.RootKoto, "G.A(pick)");
+        var donor = Call(ParseTestHelper.ParseSuccess(Edited).RootKoto, "E.A($abort(\"x\"))");
+        Assert.True(KotoHelper.Replace(call, call.Method, ParseTestHelper.Detach(donor.Method, new CodeBlockKoto(donor.CodeContext))));
+        Assert.True(KotoHelper.Replace(call, call.ArgumentNodes[0], ParseTestHelper.Detach(donor.ArgumentNodes[0], new CodeBlockKoto(donor.CodeContext))));
+        c.Check();
+        Assert.Equal(Records(MinimalEmissionTest.Check(Edited)), Records(c));
+
+        static string[] Records(Compilation compilation)
+            => [.. compilation.Diagnostics.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission).Diagnostics
+                .Select(static x => $"{x.Code} | {x.Label} | {string.Join(',', x.Related?.Select(static r => r.Role) ?? [])}")];
+
+        static InvocationKoto Call(Koto root, string text) => KotoTree.Walk(root).OfType<InvocationKoto>().Single(x => x.ToString() == text);
+    }
+
     // SPEC 10.8, 10.6: a header that omits its result supplies no evidence for T, which only the waiting body could fix; that is the
     // inference-boundary record at the call, relating the anonymous function, not a per-call Origin.
     [Fact]

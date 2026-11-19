@@ -202,7 +202,10 @@ public sealed partial class MirBorrowsTest
     // call's and the write's records (the holders' own drop-tier and borrow records are other rules'). An address names its Place as a
     // Loan does (SPEC 5.2.1 condition 1, DECISIONS R4-M154 Revision 8; PLAN G667a): t holds r.0@raw and d holds r.1@raw (Raw), so
     // otherPlaceRaw records the limit where samePlaceRaw, whose two Places share a Type, does not. Fails on dev by design: otherPlaceRaw
-    // at 40 gave no record at the call (both addresses named r).
+    // at 40 gave no record at the call (both addresses named r). The Raw forms' write conflicts at every depth (A5 value redesign U3c):
+    // t.0, a `raw/(ref/i32 during a)`, is a raw layer without an Origin in storage st writes, so st may write its own pointer there and
+    // store v through it in storage the body does not own, which is used after every point (SPEC 15.6.4's composition, example
+    // twoLayers; 5.7 Calls: also as a Tuple element); dev accepted the write.
     [Theory]
     [InlineData("first", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd")]
     [InlineData("firstBad", 40, "st((g.0@uniq, h.0@uniq), value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
@@ -218,9 +221,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("samePlaceBad", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("samePlace", 10, "")]
     [InlineData("samePlaceRef", 40, "")]
-    [InlineData("otherPlaceRaw", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd")]
-    [InlineData("otherPlaceRaw", 10, "")]
-    [InlineData("samePlaceRaw", 40, "")]
+    [InlineData("otherPlaceRaw", 40, "st(t@uniq, value@ref) OwnershipDepthLimit_Kd|value = 99 ComparisonLoanConflict_Kd")]
+    [InlineData("otherPlaceRaw", 10, "value = 99 ComparisonLoanConflict_Kd")]
+    [InlineData("samePlaceRaw", 40, "value = 99 ComparisonLoanConflict_Kd")]
     [InlineData("escaped", 40, "st(t@uniq) OwnershipDepthLimit_Kd")]
     [InlineData("escaped", 10, "")]
     [InlineData("escapedReached", 40, "")]

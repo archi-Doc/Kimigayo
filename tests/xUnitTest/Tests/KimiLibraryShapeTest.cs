@@ -580,7 +580,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Storage.StringRepr", "internal struct StringRepr\ninternal var data: raw/u8\ninternal var length: isize\ninternal var releaseKind: u8")]
     [InlineData("Storage.InlineStorage", "internal struct InlineStorage<A>\ninternal var value: A")]
     [InlineData("Storage.FixedOwnedRemainder", "internal struct FixedOwnedRemainder<E, A>\ninternal var storage: InlineStorage<A>\ninternal var position: isize = 0\ninternal var count: isize\ndrop")]
-    [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\npublic let length: isize\ninternal let loan: Loan<uniq/T during source>")]
+    [InlineData("UniqSlice", "public struct UniqSlice<T> {source}\ninternal let storage: raw/T during source\ninternal let count: isize\ninternal let loan: Loan<uniq/T during source>")]
     [InlineData("ResolvedRange", "public struct ResolvedRange\npublic let start: isize\npublic let end: isize")]
     [InlineData("FromEnd", "public struct FromEnd<T>\npublic let offset: T")]
     [InlineData("Range", "public struct Range<S, E>\npublic let start: S\npublic let end: E")]

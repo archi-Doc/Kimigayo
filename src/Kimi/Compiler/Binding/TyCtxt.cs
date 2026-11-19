@@ -332,6 +332,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         this.ResetInstances();
         this.ResetDispatch();
         this.copies.Clear();
+        this.topLevelCopies = null;
     }
 
     // Intern's guard of PairBindings: whether a Component's subtree states a raw Origin (BoundType.CarriesRawOrigin), so any other instance
