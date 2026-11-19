@@ -136,11 +136,11 @@ public sealed partial class Binding
     }
 
     // R2 (SPEC 15.6.4 step 3, 15.3.6; DECISIONS BU-99, BU-104; PLAN G1115): a candidate's solve is bounded by exactly the input premises
-    // its selected call judges (JudgeSelectedCall, JudgePositionRows): each leaf row of its arguments and the receiver, at its own sub-Type
-    // under this solve's solution, beside an Evidence position's own Type, collected once the slots are solved, so a slot's solution that
-    // replaced an argument's Origin bounds the per-call Origin of the layer above it. The first Signature row begins the solve's
-    // inference, and its callee Origins that no evidence names become premise-solved variables (DiscoverPremiseOrigins); an Evidence
-    // position that carries an Origin has begun it (InferFrom).
+    // its selected call judges (JudgeSelectedCall, JudgePositionRows): each leaf row of its arguments, at its own sub-Type under this
+    // solve's solution, beside an Evidence position's own Type, and the receiver at its pattern, collected once the slots are solved, so a
+    // slot's solution that replaced an argument's Origin bounds the per-call Origin of the layer above it. The first Signature row begins
+    // the solve's inference, and its callee Origins that no evidence names become premise-solved variables (DiscoverPremiseOrigins); an
+    // Evidence position that carries an Origin has begun it (InferFrom).
     private void CollectPositionPremises(ref SlotSolution solution)
     {
         this.RetainChildRows(ref solution);
@@ -171,12 +171,14 @@ public sealed partial class Binding
             }
         }
 
-        if (solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var index } function &&
-            this.CallReceiver(solution.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(solution.Call.Method)) is { } receiver &&
-            function.Parameters[index].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } receiverPattern)
+        if (solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var index } function && solution.OriginInference is { } inference &&
+            this.CallReceiver(solution.Generic?.Identifier ?? KotoHelper.UnwrapParentheses(solution.Call.Method)) is not null &&
+            function.Parameters[index].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } receiverPattern &&
+            this.SubstituteType(receiverPattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } receiverType)
         {
-            var type = this.SubstituteType(receiverPattern, solution.SlotOwner, solution.Types, solution.Lengths);
-            this.CollectLeafPremises(ref solution, new(-1, -1, 0, receiver, receiverPattern, type, Contribution.Evidence));
+            // A Receiver Expression is an implicit Borrow the call forms (SPEC 15.6), so the receiver has no Type of its own beside which a
+            // premise holds: it is walked at its pattern.
+            this.CollectInputPremises(receiverPattern, receiverType, null, inference, solution.Call);
         }
     }
 
