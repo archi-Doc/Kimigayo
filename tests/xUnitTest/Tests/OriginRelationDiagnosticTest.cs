@@ -168,11 +168,11 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(WrittenParameter + "    origin q outlives r\n    return f(t)\n", "")]
     [InlineData(WrittenParameter + "    return f(t)\n", "UnprovenOriginRelation_Kd t")]
     [InlineData(WrittenParameter + "    return f(t)\nfunc m() -> i32\n    let b: bool = 3\n    return 0\n", "UnprovenOriginRelation_Kd t; TypeMismatch_Kd 3")]
-    // WrittenParameterCalled on PLAN G492-a (ii) (F-R5-1, design-ii.md §13.18.8; a record move, B's ruling 25): `f`, a Closure whose
-    // signature names the `let` regions of sq and lr, is refused before selection by ErasureSignatureFits' use-free Closure arm (PLAN
-    // G379's Closure half), so the call has no applicable candidate and its Loan conflict is not reached. With G379 the joint record is
-    // the located limit at `f`; the Loan conflict needs the region reading at the uses of a compared Type (O-400 (b)'s (a)/(a'), open).
-    [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t; NoApplicableOverload_Kd k(sq, lr, lr2@ref, f)")]
+    // WrittenParameterCalled (SPEC 15.6.1, 23.1.2; PLAN G492-a (ii) with G379's Closure half, design-ii.md §13.18.8 item 4): `f`, a
+    // Closure whose signature names the `let` regions of sq and lr, is compared with k's parameter at the argument, where a failed
+    // condition has sq's region, a `let` region of the use's body, at its shorter end: the located limit at `f` (the owner's O-400 (b)),
+    // beside k's own record. The Loan conflict needs the region reading at the uses of a compared Type (O-400 (b)'s (a)/(a'), open).
+    [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t; Unsupported_Kd f")]
     public void ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall(string body, string records)
     {
         var source = body + Main;
