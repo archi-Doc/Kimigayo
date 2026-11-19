@@ -534,7 +534,7 @@ public sealed partial class Binding
                 (node is not InvocationKoto call || this.AreEffectFree(call.ArgumentNodes));
         }
 
-        return ScalarTypes.Supports(this.SuppliedType(node)) && node switch
+        return this.SuppliedType(node) is { IsScalar: true } && node switch
         {
             NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto => true,
             IdentifierNameKoto => IsStableName(node),

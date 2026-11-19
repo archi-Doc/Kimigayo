@@ -24,7 +24,7 @@ public sealed partial class Binding
         }
 
         var terminal = ComparisonReferent(type);
-        return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
+        return terminal.IsScalar ? terminal : null;
     }
 
     /// <summary>Gets the result a function's or accessor's Block body must deliver: the written result, else the bound contract; Unit
@@ -170,7 +170,7 @@ public sealed partial class Binding
 
             differ |= first is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
             if ((scalar is not null && !ReferenceEquals(scalar, terminal)) ||
-                (!(terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal)) && !this.IsReadType(terminal, scope)))
+                (!terminal.IsScalar && !this.IsReadType(terminal, scope)))
             {
                 return null;
             }

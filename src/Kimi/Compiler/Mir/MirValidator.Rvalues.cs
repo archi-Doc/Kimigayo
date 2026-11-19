@@ -64,7 +64,7 @@ internal sealed partial class MirValidator
         }
 
         // G620, G644: an Integer constant has a Type of the family MirTypes.HoldsIntegerConstant publishes and holds a value of it: (i) a
-        // Type with a width its canonical N-bit payload, sign-extended for every Type (ScalarTypes.Normalize, MirConstKind.Integer; an
+        // Type with a width its canonical N-bit payload, sign-extended for every Type (TyCtxt.Normalize, MirConstKind.Integer; an
         // unsigned value of 2^(N-1) and above is negative), isize and usize at the profile's width; (ii) char a Unicode scalar value (SPEC
         // 3.1); (iii) a raw pointer null, 0 (SPEC 5.1); (iv) a Type whose instance decides it a generic literal, 0 through 127, a value of
         // every instance (SPEC 8.7.4; Binding types a literal it fits through an identity premise at the complete Type, BU-72); else a
@@ -72,7 +72,7 @@ internal sealed partial class MirValidator
         // parameters the body definition's or an enclosing declaration's (Scoped): a closed term is an Integer (MirBuilder.LengthOperand).
         private static bool Holds(in MirConst constant, BindingSymbol? definition) => constant.Kind switch
         {
-            MirConstKind.Integer => constant.Type.Width is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
+            MirConstKind.Integer => constant.Type.Width is > 0 and var width ? TyCtxt.Normalize(constant.Bits, width) == constant.Bits
                 : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
                     ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
                     : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)),
