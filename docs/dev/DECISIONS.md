@@ -6282,6 +6282,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - What remains of `ScalarTypes` for R7-T2: `SizeWidth` (the profile's constant from `IrTarget`'s row; its one reader is `Row`),
     `Supports` (SPEC 3.1's Scalar predicate, which reads `IsNumeric`; PLAN G289 (1)'s rename), `Normalize`, `TryLiteral` and
     `TryFloatLiteral`. R5-M148's rejected (b) stands until T2 moves the predicate.
+  - Amended by R7-T2 U5: `ScalarTypes` is deleted. SPEC 3.1's Scalar is `BoundType.IsScalar` (bool, char or `IsNumeric`; PLAN
+    G289 (1)'s rename), a Type's own fact beside `IsSigned` and `Width` that Binding, the MIR builder, `MirValidator`, A5's pun Types
+    and the Backend read; `SizeWidth` is a private static of `BoundType`, read only by `Row`; `Normalize` is `TyCtxt.Normalize`
+    (BU-133's encoding, which Binding writes and `MirValidator` checks); `TryLiteral` and `TryFloatLiteral` are private statics of
+    Binding's literal fitting (`Binding.NumericConversions.cs`), read by Binding alone.
   - `BoundType` does not grow: `width` is a byte beside `numeric`, 96 data bytes and 112-byte objects before and after (measured by
     the design reviewer). It takes the last padding byte: a later one-byte field costs 8 bytes per instance and should pack the row
     then.
@@ -12223,6 +12228,8 @@ resumed by R4-M86 (2026-10-20).
     `usize`; Binding and the MIR builder read the width of either Core, like any integer Type's, as `BoundType.Width`.
     `ScalarTypes.Width` is deleted; `TryLiteral` stays the one literal-fit predicate. R5-M174's "what the phases share" is now the
     Type's `Width`.
+  - Amended by R7-T2 U5 (R4-M196's line): `SizeWidth` is `BoundType`'s private constant and `TryLiteral` Binding's
+    (`Binding.NumericConversions.cs`); the rules are unchanged.
 - **BU-131 A value name resolves through ResolveName: the role names the namespace** (2026-11-08; R7-N1b; Major; design
   review 1 ACCEPT) SPEC 9.2, 9.5, 9.5.1.
   - Rule: `ResolveName(name, scope, use, role, arity)` is the one stage walk of both namespaces; the role names the namespace
@@ -12299,6 +12306,8 @@ resumed by R4-M86 (2026-10-20).
     choice, C-177), so no widthless constant leaves 0..127. `Binding.Hir.Payload`, a second copy of the row, is deleted. The target of
     `@wrap<U>` and `@bits<U>` substitutes the identity premises like `@Type`'s (BU-72's per-site substitution, PLAN G542's position), so
     the fold's width is the published Type's.
+  - Amended by R7-T2 U5: the encoding's one function is `TyCtxt.Normalize` (was `ScalarTypes.Normalize`), the one place Binding and
+    MIR both read; the rule is unchanged.
 - **BU-134 Binding bounds a Type's height at H = 8,192 where it is formed: `TypeHeightLimit_Kd`**
   (2026-11-08; R7-C8 U-D2; Major, design `F\C8\design-ud.md` "U-D2", implementation review 1 REVISE B1-B2 and its fix round; the
   owner's O-71 (a), O-80 (b) 「b 落とします」, O-82 「O-82 b」, verbatim) IMPL A.4, 21.3.2; SPEC 8.3.3 (Limits), 23.1.1, 23.1.2.
@@ -19604,6 +19613,8 @@ structure is recorded here by the unit that first implements it.
     builder's verification already reads it, and x3b1's `MirValidator` TestRecordValue row reads the same pure predicate (one Scalar
     definition). The row documents an existing read and the producer's validator reading the same predicate. Rejected: (b) moving it into
     Binding.
+    - Amended by R7-T2 U5: the predicate is `BoundType.IsScalar`, a Type's own fact every phase reads (R4-M196's precedent); it is
+      no Binding member, so rejected (b)'s reason stands.
   - Gate (plan §5.3), at X1's dev `17cd554ab` unless stated:
     1. M1: sel fails exactly the 110 decided P42 rows, OQ7 (e) rows that leave with P42 (R5-M144, R5-M145); the pending ledger holds no
        other row (110 tests, 0 fixtures), so none is undecided; sel's `'*.ll'` at O0 and O2, the 40 harnessed milestones and the five CLI
