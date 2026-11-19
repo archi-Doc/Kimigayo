@@ -69,7 +69,7 @@ public sealed partial class Binding
 
     private void ReportBaseCallFailure(BaseReferenceKoto reference, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var cause = this.baseCallFailures![reference];
+        var cause = this.baseCallFailures[reference];
         var note = cause switch
         {
             BaseCallCause.NotCall => "base has no value; use base.name(arguments)",
