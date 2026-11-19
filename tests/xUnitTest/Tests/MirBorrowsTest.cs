@@ -593,11 +593,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // SPEC 14.9, 14.10.3 (F10): Loans flow forward over every path, joined at heads, around loops into the next iteration, and into code
-    // only the checks reach; a holder reassigned before its next use carries nothing across.
+    // only the checks reach; a holder reassigned before its next use carries nothing across. Every check applies in the assumed state: a
+    // Loan formed after a `return` conflicts there (formedAfterReturn), one whose last use precedes the write does not (afterReturnEnded);
+    // a write after a `return` with no live Loan is accepted (checkOnlyWrite, PLAN G106's check-only row) and one after `$abort` meets a
+    // live Loan (abortedWrite); an unreachable parameter's referent is checked as a local is (deadParameter, deadParameterEnded; STATUS's
+    // former R1 limit).
     [Fact]
     public void LoansFlowOverJoinsLoopsAndCheckOnlyCode()
         => Assert.Equal(
-            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2"],
+            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2", "formedAfterReturn: x = 2", "abortedWrite: x = \"new\"", "deadParameter: p@follow = 5"],
             Problems("""
                 func loopCarry(flag: bool)
                     var x = 1
@@ -627,6 +631,43 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     return 1
                     x = 2
                     inspect(r)
+                    return 2
+                func afterReturnEnded() -> i32
+                    var x = 1
+                    let r = x@ref
+                    return 1
+                    inspect(r)
+                    x = 2
+                    return 2
+                func formedAfterReturn() -> i32
+                    var x = 1
+                    return 1
+                    let r = x@ref
+                    x = 2
+                    inspect(r)
+                    return 2
+                func checkOnlyWrite()
+                    var x = "s"
+                    return
+                    x = "new"
+                    inspect(x@ref)
+                func abortedWrite()
+                    var x = "s"
+                    let r = x@ref
+                    $abort("t")
+                    x = "new"
+                    inspect(r)
+                func deadParameter(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    p@follow = 5
+                    c@follow = 2
+                    return 2
+                func deadParameterEnded(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    c@follow = 2
+                    p@follow = 5
                     return 2
                 """));
 
