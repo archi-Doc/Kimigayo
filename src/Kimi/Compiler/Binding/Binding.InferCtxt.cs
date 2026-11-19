@@ -28,8 +28,8 @@ public sealed partial class Binding
 
     private readonly record struct InferSnapshot(int Log, int Depth);
 
-    // One solve's slot frame: its Type slots, length slots and invariant marks, read through read-only views and written only through
-    // its logged operations.
+    // One solve's slot frame: its Type slots, length slots, invariant marks and pair slots' selector evidence, and the solve's node, read
+    // through read-only views and written only through its logged operations.
     private readonly struct SlotFrame
     {
         private readonly InferCtxt store;
