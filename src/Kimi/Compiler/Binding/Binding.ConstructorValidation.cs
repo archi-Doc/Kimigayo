@@ -260,7 +260,7 @@ public sealed partial class Binding
         }
     }
 
-    private void ReportCallInferenceFailure(Koto node, DiagnosticRequirement requirement, DiagnosticCode code, CallInferenceFailure fact)
+    private void ReportCallInferenceFailure(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, CallInferenceFailure fact)
     {
         var correlation = fact.Check == ConstructionCheck.AcquisitionCorrelation;
         (string Role, Koto At, string? Label)[] related = fact.Other is { } other && !ReferenceEquals(fact.Selected, other)
@@ -278,6 +278,6 @@ public sealed partial class Binding
                 ? [CallOwnSlots(fact.Selected)[fact.Slot].Identifier, DiagnosticTypeName(left), DiagnosticTypeName(right)]
                 : [CallOwnSlots(fact.Selected)[fact.Slot].Identifier]
             : [DiagnosticTypeName(fact.Construction!)];
-        node.Report(requirement, code, evidence: evidence, related: related, note: note);
+        node.ReportIn(store, requirement, code, evidence: evidence, related: related, note: note);
     }
 }

@@ -208,7 +208,7 @@ public class StorageBoundaryTest
                         let item = state.storage[0]@{{semantics}}
                         return item
             """;
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, helper);
+        CompilationTestHelper.UseEditedLibrary(c, x => x.Kotonoha.CreateCodeContext().Parse(x.Kotonoha.RootKoto, helper));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));

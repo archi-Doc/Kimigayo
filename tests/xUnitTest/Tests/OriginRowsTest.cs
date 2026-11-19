@@ -130,13 +130,14 @@ public sealed partial class OriginRowsTest
 
     // DECISIONS R4-M101 E2, E3 and BU-26: rows formed while Binding binds a declaration (an instance Field's or computed Property's declared
     // Type, a requirement's or an override's signature) are formed with no body and consumed by Binding's declaration judge, so no row whose
-    // Use lies in a declaration part remains, and none is in a slice. The second form is PLAN G214's: its header and getter result records.
+    // Use lies in a declaration part remains, and none is in a slice. The second form is PLAN G214's: its header and getter result assume
+    // the getter's result well formed (SPEC 11.4, 11.5, 15.6.1), so it is complete; the first, a Field's nested borrow, is no result.
     // BU-89 (SPEC 15.3.4): a named nested or root function's row naming an enclosing body's Origin, a fixed Origin of it, is the judge's
     // too: an input's (also in a Closure body or naming a document-local) and a nested Function Type's result its inputs entail are its
     // premises, and one they do not entail is Binding's record (dev left each row to the view's InternalInvariant_Kd finding, PLAN G409).
     [Theory]
     [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", false)]
-    [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", false)]
+    [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", true)]
     [InlineData("contract C\n    func f(x: ref/(ref/i32 during b) during a) -> i32\n", true)]
     [InlineData("open struct Base\n    public init() => ()\n    public virtual func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 0\nstruct Derived : Base\n    public init() : base() => ()\n    override func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 1\n", true)]
     [InlineData(Local + "    func put(slot: uniq/Array<ref/i32 during r>) -> i32 => 0\n    return 0\n", true)]

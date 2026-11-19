@@ -1935,7 +1935,7 @@ public sealed partial class RetentionTest
     {
         var c = Bind(string.Empty);
         var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
-            .Select(x => $"{x.Parent!.SymbolOf()!.Name}: {Show(c.Types.Retains(x.SymbolOf()!, null, null))}");
+            .Select(x => $"{x.Parent!.SymbolOf(c)!.Name}: {Show(c.Types.Retains(x.SymbolOf(c)!, null, null))}");
         Assert.Equal(
             ["ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}", "HeapBuffer: "],
             drops);
@@ -2261,7 +2261,7 @@ public sealed partial class RetentionTest
 
             if (current is FunctionKoto function)
             {
-                return function.SymbolOf();
+                return binding.Semantics.SymbolOf(function);
             }
         }
 
