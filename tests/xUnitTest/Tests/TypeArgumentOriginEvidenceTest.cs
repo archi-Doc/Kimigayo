@@ -35,12 +35,18 @@ public class TypeArgumentOriginEvidenceTest
     }
 
     // q12: the first invariant binding is kept, so only the second argument fails, as one `==` record that relates the first; it was a
-    // meet `(x and y)` reported at both arguments.
+    // meet `(x and y)` reported at both arguments. Since R7-O1 b1 the second argument's instantiated parameter Type, `uniq/(ref/i32 during
+    // x)` over q's Origin, is judged well formed at q too (SPEC 15.6.4 step 3), an independent relation (SPEC 23.1.2; the Middle's ruling of
+    // 2026-11-19): its own record beside the `==` (Q13 rule 3, an independent record added to a rejected program).
     [Fact]
     public void TheFirstInvariantBindingIsKept()
     {
         var source = "func same<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc caller(p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), x: ref/i32, y: ref/i32) -> ()\n    same(p, q)\n" + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(2, errors.Length);
+        var wellFormed = Assert.Single(errors, static x => x.Reason![0].Value != "==");
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "wellFormed"), (wellFormed.Code, Text(source, wellFormed.Span), wellFormed.Reason![3].Value));
+        var error = Assert.Single(errors, static x => x.Reason![0].Value == "==");
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "requires y == x, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal("==", error.Reason![0].Value);
         var related = Assert.Single(error.Related!);
@@ -124,13 +130,15 @@ public class TypeArgumentOriginEvidenceTest
     }
 
     // SPEC 10.8, 15.6.1: Constraints still take part in applicability with the solution: the first equality (static) satisfies Owned,
-    // and the second argument's `==` is the judged relation.
+    // and the second argument's `==` is the judged relation. Since R7-O1 b1 it is A5's row: one record for the one Equality problem
+    // (BU-28), naming the direction that fails, `x outlives static` (`static outlives x` holds), the precise cause (a Q13 record-text move,
+    // the Middle's ruling of 2026-11-19; Binding's record read `x == static`).
     [Fact]
     public void ConstraintsUseTheFirstInvariantBinding()
     {
         var source = "func pin<T>(a: uniq/T, b: uniq/T) -> i32\n    T is Owned\n    return 1\nfunc caller(s: uniq/(ref/i32 during static), p: uniq/(ref/i32 during x), x: ref/i32) -> i32 => pin(s, p)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires x == static, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires x outlives static, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal(("relation", "s"), (Assert.Single(error.Related!).Role, Text(source, error.Related![0].Span)));
     }
 

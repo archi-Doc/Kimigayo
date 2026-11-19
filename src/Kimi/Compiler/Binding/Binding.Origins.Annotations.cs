@@ -189,7 +189,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.1, 23.1.2: a written Origin expression. A parenthesis or meet whose operand did not resolve has no Origin for that
-    // reason alone and rests on the operand (CompleteDependent), which reports the cause; only a failure of its own is its record.
+    // reason alone and rests on the operand (CompleteDependent), which reports the cause; only a failure of its own is its record. It binds
+    // as the slot it names (SlotAtUse): a `let` region's value is read at each use (PLAN G492-a (ii); Binding.LocalRegions.cs's contract).
     private BoundOrigin? BindOrigin(Koto syntax, BindingScope scope)
     {
         if (IsRecovery(syntax, out _))
@@ -246,12 +247,12 @@ public sealed partial class Binding
 
         if (result is not null)
         {
-            result = this.OriginAtUse(result, syntax);
+            result = this.SlotAtUse(result, syntax);
             syntax.BindingState = BindingState.Resolved;
             syntax.BoundOrigin = result;
         }
 
-        if (result is null || !OriginVisible(result, syntax))
+        if (result is null || !this.OriginVisible(result, syntax))
         {
             _ = failedOperand is null ? this.Fail(syntax, BindingFailure.InvalidOrigin) : this.CompleteDependent(syntax, failedOperand);
         }

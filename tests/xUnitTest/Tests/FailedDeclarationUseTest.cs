@@ -256,6 +256,10 @@ public sealed class FailedDeclarationUseTest
         { "rv.genU+call", "func g<T>(t: T) -> i32\n    let y: Missing = 1\n    return 0\nfunc h() -> i32\n    return g(1)\n", "UnresolvedBinding_Kd: let y: Missing = 1" },
         { "rv.genCl+call", "func g<T>(t: T) -> i32\n    let c = func (x: Missing) -> i32 => 1\n    return 0\nfunc h() -> i32\n    return g(1)\n", "UnresolvedBinding_Kd: let c = func (x: Missing) -> i32 => 1" },
         { "c1.genHeldW", "func g<T>(t: T) -> i32\n    let y: Missing = 1\n    var x = 1\n    let r = x@uniq\n    let k = x\n    r@follow = 2\n    return k\nfunc h() -> i32\n    return g(1)\n", "ComparisonLoanConflict_Kd: let k = x | UnresolvedBinding_Kd: let y: Missing = 1" },
+        // PLAN G1073 with A5's write slots (MirBorrows.Holders' Whole): a failed result delivered after a Scope Exit (a match arm's
+        // return) beside a write through `uniq`; with gate 1's exclusion deleted its delivery reads a whole Place of no Type, no
+        // reference (MirCases.KnownTypeOf): a guard (CheckFaulted_Kd there before the dev merge's conversion).
+        { "wh.xchgArmU", "struct RS {s}\n    public let r: ref/u8 during s\n    public let n: u64\n    public init(r: ref/u8 during s, n: u64)\n        self.r = r\n        self.n = n\nfunc mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)\nfunc f() -> Missing\n    var kk: u8 = 1\n    let s = RS.init(r: kk@ref, n: 3)\n    var b: i32 = 0\n    var res: Result<uniq/i32, u64> = .Err(s.n)\n    let old = Kimi.Intrinsics.exchange(res@uniq, with: mk(b@uniq))\n    match old@move\n        .Ok(_) => return 0\n        .Err(let e)\n            let k = e\n            return 1\n", "UnresolvedBinding_Kd: func f() -> Missing" },
         { "r2.free+Tt", "func f<T, U>(t: T) -> i32\n    let u = t\n    let v = t\n    return 0\n", "TransferRequired_Kd: let u = t | TransferRequired_Kd: let v = t" },
     };
 

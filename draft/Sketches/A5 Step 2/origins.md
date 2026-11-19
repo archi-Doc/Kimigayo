@@ -1,7 +1,7 @@
 # A5-F4 Origin stratum prototype (unit 2x-P4)
 
 Status (2026-10-19): draft, run; its review comes with 2a0-D (plan §4.1). Working record, not authority: SPEC and DECISIONS decide.
-Base `origin/dev` `4ced4e4e`. Unit row: [A5 step 2 plan](../../Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md) §4.1
+Base `origin/dev` `4ced4e4e`. Unit row: [A5 step 2 plan](../../Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md) §4.1
 2x-P4; prerequisite 2a0-0 ([f4-census.md](f4-census.md)). Model: [A5OriginsPrototype.cs](A5OriginsPrototype.cs), a file of its own
 (PD3), not a round of `../A5 Step 0/A5RulesPrototype.cs`.
 

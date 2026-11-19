@@ -640,6 +640,84 @@ public partial class PropertyBindingTest
         }
     }
 
+    // Two Fields whose custom getters return a non-Copy stored value: each declaration's one UnsatisfiedConstraint_Kd (SPEC 11.1).
+    private const string FailedGetter = "struct Q\n    public var x: i32 = 0\n    public init() => ()\nstruct P\n    public var x: i32 = 0\n    public var inner: Q = Q.init()\n" +
+        "    public init() => ()\nstruct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public var arr: Array<i32> = []\n" +
+        "        get() -> Array<i32> => storage\n    public init() => ()\nfunc take(v: i32) -> i32 => v\npublic func main() => ()\n";
+
+    // SPEC 23.1.2 (D-823): a use of a getter whose declaration validation fails rests on it after its body was bound, and so does every
+    // Place built on that use, which was bound against the use's Type: the program's records are the declarations' and, each getter's
+    // body published whatever its definition's failure (PLAN G1071 gate 1, SPEC 23.1.2), its `storage` read's TransferRequired_Kd, an
+    // independent record (`storage`'s Type resolved; F's C2 ruling 286 (i), Q13). Before D-823 the
+    // Place stayed Resolved over the untyped use, and MIR met a Field rooted in an Error (InternalInvariant_Kd; a nested Place: a located
+    // Unsupported_Kd). The same inside a match Subject that is a call, an arm or a `for` body (no construct takes the Place as its
+    // Subject). Twins: the use itself, and a group, which failed nothing before.
+    [Theory]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.pos.x\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.arr[0]\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return w.pos.inner.x\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return take(w.pos.x)\n")]
+    [InlineData("func run(w: uniq/W)\n    let h = func [w] (c: bool) -> i32\n        return w.pos.x\n    let k = h(true)\n")]
+    [InlineData("func run(w: uniq/W)\n    let p = w.pos\n")]
+    [InlineData("func run(w: uniq/W) -> i32\n    return (w.pos).x\n")]
+    [InlineData("func pick(v: i32) -> Option<i32> => .Some(v)\nfunc run(w: uniq/W) -> i32\n    return match pick(w.pos.x)\n        .Some(let n) => n\n        .None => 0\n")]
+    [InlineData("func run(w: uniq/W, k: Option<i32>) -> i32\n    return match k\n        .Some(_) => w.pos.x\n        .None => 0\n")]
+    [InlineData("func run(w: uniq/W, items: ref/Array<i32>) -> i32\n    var total = 0\n    for v in items\n        total += w.pos.x\n    return total\n")]
+    public void APlaceBuiltOnAUseOfAFailedGetterRestsOnIt(string run)
+        => Assert.Equal(
+            [nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), nameof(DiagnosticCode.TransferRequired_Kd), nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), nameof(DiagnosticCode.TransferRequired_Kd)],
+            DiagnosticCorpus.Check(FailedGetter + run).Diagnostics.Select(static x => x.Code));
+
+    // A struct P, non-Copy unless the Copy twin opts in; an owned R for an unrelated local; W's custom getters returning their stored
+    // Option<P>, P, Tuple and fixed array.
+    private const string NonCopyP = "struct P\n    public var x: i32 = 0\n    public var o: Option<i32> = .None\n    public var items: Array<i32> = []\n    public init() => ()\n";
+    private const string OwnedR = "struct R\n    public var n: i32 = 0\n    public init() => ()\nfunc take(r: R) -> i32 => 0\n";
+    private const string OptionGetter = "struct W\n    public var opt: Option<P> = .None\n        get() -> Option<P> => storage\n    public init() => ()\n";
+    private const string PosGetter = "struct W\n    public var pos: P = P.init()\n        get() -> P => storage\n    public init() => ()\n";
+    private const string TupleGetter = "struct W\n    public var t: (P, Option<i32>) = (P.init(), .None)\n        get() -> (P, Option<i32>) => storage\n    public init() => ()\n";
+    private const string ArrayGetter = "struct W\n    public var fa: [2 of P] = [P.init(), P.init()]\n        get() -> [2 of P] => storage\n    public init() => ()\n";
+    private const string Run = "func run(w: uniq/W) -> i32\n";
+    private const string RunWithLocal = "func run(w: uniq/W, a: R) -> i32\n";
+
+    // SPEC 23.1.2, 15.1.6 (D-823, PLAN G1076): a late rest's walk rests nothing of a match, `try` or `for` Subject Place, the use, a group
+    // or a Place built on it: the construct's own binding owns a resting Subject, so each form keeps the records it gave before D-823,
+    // the independent records in its arms or body included (MovedPlace_Kd, TransferRequired_Kd of an unrelated owned local `a`; a
+    // binding `q` of the Subject at a result). The rows marked "open: G1076" pin that InternalInvariant_Kd, which G1076's common fix
+    // (the construct's arms and body published with failed-slot Pattern bindings) removes. Twins: a follow Place on a failed handle
+    // getter, which no construct takes as its Subject, rests with the use (the declaration's record alone), and over a Copy P the getter
+    // is valid. Every failed getter's body is published (PLAN G1071 gate 1), so each row but the valid twin has its `storage` read's
+    // TransferRequired_Kd after the declaration's record, independent (`storage`'s Type resolved; F's C2 ruling 286 (i), Q13).
+    [Theory]
+    // open: G1076 (a.mopt, q.moptnob, q.mtup)
+    [InlineData(NonCopyP + OptionGetter + Run + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .Some(let q); InternalInvariant_Kd let q; InternalInvariant_Kd .None")]
+    [InlineData(NonCopyP + OptionGetter + Run + "    return match w.opt\n        .Some(_) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W) -> i32; InternalInvariant_Kd .Some(_); InternalInvariant_Kd .None")]
+    [InlineData(NonCopyP + "struct W\n    public var t: (P, i32) = (P.init(), 1)\n        get() -> (P, i32) => storage\n    public init() => ()\n" + Run + "    return match w.t\n        (_, let b) => 1\n", "UnsatisfiedConstraint_Kd var t: (P, i32) = (P.init(), 1); TransferRequired_Kd storage; InternalInvariant_Kd let b")]
+    [InlineData(NonCopyP + OptionGetter + Run + "    return match (w.opt)\n        .Some(let q) => q.x\n        .None => 0\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + OptionGetter + Run + "    let r = match (w.opt)\n        .Some(let q) => q\n        .None => P.init()\n    return r.x\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; TransferRequired_Kd q")]
+    [InlineData(NonCopyP + TupleGetter + Run + "    return match (w.t.1)\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + ArrayGetter + Run + "    return match (w.fa[0])\n        _ => 1\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage")]
+    [InlineData(NonCopyP + PosGetter + Run + "    return match w.pos.o\n        .Some(let n) => 1\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; Unsupported_Kd w.pos.o")]
+    [InlineData(NonCopyP + PosGetter + Run + "    return match (w.pos.o)\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; Unsupported_Kd w.pos.o")]
+    [InlineData(NonCopyP + PosGetter + Run + "    return match ((w.pos.o))\n        .Some(let n) => n\n        .None => 0\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; Unsupported_Kd w.pos.o")]
+    // open: G1076 (`try` and `for` over a Place built on the use)
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try w.pos.o\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.o")]
+    [InlineData(NonCopyP + PosGetter + "func run(w: uniq/W) -> Option<i32>\n    let n = try (w.pos.o)\n    return .Some(n)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.o")]
+    [InlineData(NonCopyP + PosGetter + "func look(v: ref/i32) -> () => ()\nfunc run(w: uniq/W)\n    for v in (w.pos.items) => look(v)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; InternalInvariant_Kd w.pos.items")]
+    [InlineData(NonCopyP + OwnedR + ArrayGetter + RunWithLocal + "    var total = 0\n    for v in w.fa\n        total += take(a@move)\n    return total\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage; MovedPlace_Kd a")]
+    [InlineData(NonCopyP + OwnedR + ArrayGetter + "func run(w: uniq/W, a: R)\n    for v in w.fa\n        let b = a\n", "UnsatisfiedConstraint_Kd var fa: [2 of P] = [P.init(), P.init()]; TransferRequired_Kd storage; TransferRequired_Kd a")]
+    [InlineData(NonCopyP + OwnedR + TupleGetter + RunWithLocal + "    return match (w.t.1)\n        .Some(let n) => n\n        .None => take(a@move) + take(a@move)\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage; MovedPlace_Kd a")]
+    [InlineData(NonCopyP + OwnedR + TupleGetter + RunWithLocal + "    let r = match (w.t.1)\n        .Some(let n) => R.init()\n        .None => a\n    return r.n\n", "UnsatisfiedConstraint_Kd var t: (P, Option<i32>) = (P.init(), .None); TransferRequired_Kd storage; TransferRequired_Kd a")]
+    [InlineData(NonCopyP + OwnedR + PosGetter + RunWithLocal + "    return match w.pos.o\n        .Some(let n) => n\n        .None => take(a@move) + take(a@move)\n", "UnsatisfiedConstraint_Kd var pos: P = P.init(); TransferRequired_Kd storage; Unsupported_Kd w.pos.o; MovedPlace_Kd a")]
+    // open: G1076 (the use itself as the Subject, with an unrelated local's record in an arm)
+    [InlineData(NonCopyP + OwnedR + OptionGetter + RunWithLocal + "    let r = match w.opt\n        .Some(_) => R.init()\n        .None => a\n    return r.n\n", "UnsatisfiedConstraint_Kd var opt: Option<P> = .None; TransferRequired_Kd storage; InternalInvariant_Kd run(w: uniq/W, a: R) -> i32; InternalInvariant_Kd .Some(_); InternalInvariant_Kd .None; TransferRequired_Kd a")]
+    [InlineData(NonCopyP + "struct W\n    public var h: rc/P = P.init()@rc\n        get() -> rc/P => storage\n    public init() => ()\n" + Run + "    return w.h@follow.x\n", "UnsatisfiedConstraint_Kd var h: rc/P = P.init()@rc; TransferRequired_Kd storage")]
+    [InlineData("struct P\n    Self is Copy\n    public var x: i32 = 0\n    public init() => ()\n" + OptionGetter + Run + "    return match w.opt\n        .Some(let q) => q.x\n        .None => 0\n", "")]
+    public void AMatchTryOrForSubjectIsNotRestedByALateRest(string program, string records)
+    {
+        var source = "public func main() => ()\n" + program;
+        Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length).Split('\n')[0]}")));
+    }
+
     // SPEC 11.8, 13.7.2, 23.1.1 (PLAN G295): a bare update of a group Property beside a custom accessor, inside its group, completes its
     // sides, then is Binding's located Unsupported_Kd at the target until P42 (before, no record and a PrerequisiteUnavailable_Kd without
     // a root). Twins bind: the standard accessors, the qualified form (the later phases' limit), a bare read and a bare write.

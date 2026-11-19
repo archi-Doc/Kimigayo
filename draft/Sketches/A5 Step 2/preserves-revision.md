@@ -11,7 +11,7 @@ revises it from this sketch.
 Inputs:
 - S2; design A3 (`../A5 Step 0/design-A3.md`) §5 and §12.
 - The A5-F6 audit (`artifacts/handoff/2026-10-18-pause/r4-scratch/step2-audit/F6/audit.md`, "F6 audit") and PLAN G113.
-- The step-2 plan (`draft/Proposals/2026-10-18 A5 Step 2 Implementation Plan.md`): PD7, PD16, PD23, PD30 and rows 2x-P6, 2f-D.
+- The step-2 plan (`draft/Changes/2026-10-18 A5 Step 2 Implementation Plan.md`): PD7, PD16, PD23, PD30 and rows 2x-P6, 2f-D.
 - R4-M68, which is 1c-5's entry and not yet on dev; R4-M75 cites it: an activation meets only Loans shared in the holder
   where it finds them, with two conditions for 2f.
 - The 35 `a4-preserves` ledger sources (`a5-1b5-b1`) and the review's probes. A probe verdict is labelled "today": it is

@@ -43,7 +43,8 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(TwinFitsSwapped, "UnsatisfiedOriginRelation_Kd A5 return t", "")]
     [InlineData(TwinClauses, "UnsatisfiedOriginRelation_Kd A5 origin x.s outlives a", "UnprovenOriginRelation_Kd - origin x.s outlives b")]
     [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "UnsatisfiedOriginRelation_Kd A5 x@ref", "")]
-    [InlineData(CallPositions, "", "UnprovenOriginRelation_Kd - t")]
+    // R7-O1 b1: a call position's relation is a row A5 judges, never Binding's record (MirOriginsTest.ACallPositionsRelationIsTheStratums).
+    [InlineData(CallPositions, "", "")]
     public void OnlyTwinsOfBindingsOriginRecordsAreCompared(string source, string compared, string passed)
     {
         var c = MirBuildTest.Compile(source);

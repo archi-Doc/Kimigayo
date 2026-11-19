@@ -169,7 +169,9 @@ public class RawAddressTest
             return;
         }
 
-        Assert.Same(fields.Single(x => x.NameKoto.IdentifierName == borrow).TypeOf()!.Origin, raw);
+        // The borrow's slot is its region; the path reads it in its own body, its value (PLAN G492-a (ii); the owner's O-385 (a)).
+        var origin = fields.Single(x => x.NameKoto.IdentifierName == borrow).TypeOf()!.Origin!;
+        Assert.Same(c.Binding.RegionValueAtUse(origin, origin.Binder!), raw);
     }
 
     private static string Text(BoundType type)

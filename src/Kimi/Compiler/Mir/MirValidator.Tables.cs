@@ -168,10 +168,11 @@ internal sealed partial class MirValidator
         }
 
         // PLAN G1073 (SPEC 23.1.2, rule W): the accesses of a whole slot of no Type (Binding's failed slot, MirLocal) that judge nothing of
-        // its Type: a write and its storage's beginning or end, the Return's Move of _0, the delivery into _0 (a Result local's included,
-        // R4-M132), an Opaque site's root (MirDescriptors.IsOpaqueRoot) and a read of a temp the Unknown mask names by an rvalue that takes
-        // its Type from its operands (Propagates, the mask's rule); a read, borrow, drop or case-dependent access other than these, which a
-        // case reader would judge (MirCases.TypeOf), is not one. MirCases.KnownType names the case readers of each access admitted here.
+        // its Type: a write and its Kills (its storage's beginning or end, an EndBorrow), the Return's Move of _0, the delivery into _0 (a
+        // Result local's included, R4-M132), an Opaque site's root (MirDescriptors.IsOpaqueRoot) and a read of a temp the Unknown mask names
+        // by an rvalue that takes its Type from its operands (Propagates, the mask's rule); a read, borrow, drop or case-dependent access
+        // other than these, which a case reader would judge (MirCases.TypeOf), is not one. MirCases.KnownType names the case readers of each
+        // access admitted here.
         private readonly bool Bounded(MirPlace place, MirAccess access)
             => (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse | MirAccess.CaseDependent)) == 0 ||
                 MirDescriptors.IsOpaqueRoot(access) || (access == MirAccess.Moves && ((this.returning && place.Root == 0) || this.delivering)) ||

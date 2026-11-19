@@ -7,10 +7,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The admitted set of every pair layer followed in this pass (SPEC 13.5.5), keyed by the @follow node.
-    private readonly Dictionary<Koto, SemanticsMask> pairFollows = new(ReferenceEqualityComparer.Instance);
+    private readonly PairFollowRows pairFollows;
 
     // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.3, 7.3), with their admitted sets.
-    private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
+    private readonly ImplicitPairFollowRows implicitPairFollows;
     private int termWalks;
 
     /// <summary>Gets the steps the walks of one Type's parts took in the latest pass (PLAN G647): a layer (ref, uniq or pair) followed by
@@ -161,9 +161,11 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Semantics, Components: [var below] } && IsBorrow(type.Semantics) ? below
             : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : null;
 
-    // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability (a write
-    // needs an assignable Place, such as an inline element of a writable root), uniq grants Write also through a let slot but
-    // never through a shared path, and ref grants Read only.
+    // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand's own capability (the owner case selects
+    // P itself: a write needs a whole Place that offers Write, WritablePlace, which a writable temporary's whole Temporary Place does
+    // not offer yet, IsTemporaryPlace; a borrow lends P as a Place or a writable temporary,
+    // LendsOwner, SPEC 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A
+    // part of an owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
     private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
         => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
 
@@ -171,12 +173,12 @@ public sealed partial class Binding
     {
         if (!exclusive)
         {
-            return (admitted & SemanticsMask.Owner) == 0 || scope is null || this.BorrowablePlace(operand, scope, false);
+            return (admitted & SemanticsMask.Owner) == 0 || scope is null || this.LendsOwner(operand, scope, false, out _);
         }
 
         return (admitted & SemanticsMask.Ref) == 0 &&
             ((admitted & SemanticsMask.Uniq) == 0 || !this.ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? this.Writable(operand) || ElementAccess.WritableRoot(this, operand) is not null : this.BorrowablePlace(operand, scope, true)));
+            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? this.WritablePlace(operand) : this.LendsOwner(operand, scope, true, out _)));
     }
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
@@ -291,5 +293,33 @@ public sealed partial class Binding
         var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
         met = !shared;
         return inPlace ? null : slot;
+    }
+
+    /// <summary>The `pairFollows` family's one accessor (DECISIONS BU-220): a pass family, the admitted set of the pair layer a @follow
+    /// node follows, kept in the node's module's NodeColumns at its SyntaxId (None, the column's default, for any other node). Its members
+    /// keep the names its readers use.</summary>
+    private readonly struct PairFollowRows(Binding binding)
+    {
+        internal SemanticsMask this[Koto node]
+        {
+            set => HirTables.Of(node).Families.PairFollows.Ref(node.SyntaxId, binding) = value;
+        }
+
+        internal SemanticsMask GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.PairFollows.Get(node.SyntaxId, binding) : SemanticsMask.None;
+    }
+
+    /// <summary>The `implicitPairFollows` family's one accessor (DECISIONS BU-220): a pass family, the admitted set of a receiver's stored
+    /// pair layer that selection follows implicitly, kept in the receiver's module's NodeColumns at its SyntaxId (None, the column's
+    /// default, for any other node). Its members keep the names its readers use.</summary>
+    private readonly struct ImplicitPairFollowRows(Binding binding)
+    {
+        internal SemanticsMask this[Koto node]
+        {
+            set => HirTables.Of(node).Families.ImplicitPairFollows.Ref(node.SyntaxId, binding) = value;
+        }
+
+        internal SemanticsMask GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.ImplicitPairFollows.Get(node.SyntaxId, binding) : SemanticsMask.None;
     }
 }
