@@ -17,9 +17,9 @@ public sealed partial class Binding
     /// <returns>Whether both references identify the same complete type.</returns>
     public static bool SameType(BoundType left, BoundType right) => ReferenceEquals(left, right);
 
-    // SPEC 3.8: whether `actual` is a subtype of `expected`; `own` is the declaration whose per-call inputs `actual` names.
-    internal bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null)
-        => new RelationWalk(this, null, null, OriginPart.Judged).Fits(actual, expected, own: own);
+    // SPEC 3.8: whether `actual` is a subtype of `expected`.
+    internal bool IsSubtype(BoundType actual, BoundType expected)
+        => new RelationWalk(this, null, null, OriginPart.Judged).Fits(actual, expected);
 
     // IsSubtype with the walk's first failure, for a comparison that records its mismatch (FailMismatch).
     internal bool IsSubtype(BoundType actual, BoundType expected, out ComparisonFailure failure)
@@ -62,10 +62,10 @@ public sealed partial class Binding
     private static bool IsInvariantLayer(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
         => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type, use, comparison));
 
-    // The Callable comparison of `actual`, whose per-call inputs `own` binds (its own syntax when null), with `expected`, nested in the
-    // comparisons `enclosing` names and judged in its scope, its region conjuncts taken by `rows` (CallableInstance.Rows).
-    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing, List<BindingObligation>? rows)
-        => new(actual, own ?? actual.Binder, expected, expected.Binder, enclosing.Enclosing) { Scope = enclosing.Scope, Rows = rows };
+    // The Callable comparison of `actual`, whose per-call inputs its own syntax binds, with `expected`, nested in the comparisons
+    // `enclosing` names and judged in its scope, its region conjuncts taken by `rows` (CallableInstance.Rows).
+    private static CallableInstance Comparison(BoundType actual, BoundType expected, in CallableInstance enclosing, List<BindingObligation>? rows)
+        => new(actual, actual.Binder, expected, expected.Binder, enclosing.Enclosing) { Scope = enclosing.Scope, Rows = rows };
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
     // required per-call Origins are rigid: one outlives another only at the same position or by the own well-formedness of the
