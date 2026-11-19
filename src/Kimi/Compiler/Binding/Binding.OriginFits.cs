@@ -24,13 +24,13 @@ public sealed partial class Binding
     // The failed chains of one fit (FailedOriginRelation with `all`), which RecordOriginFitFailure publishes.
     private readonly List<OriginRelationFact> relationScratch = new();
 
+    // The pass's twin nodes (DECISIONS R4-M108, R4-M111): a fit's node with a recorded body chain and a local clause whose record is one,
+    // each added where its rows are formed.
+    private readonly OriginTwinRows originTwins;
+
     // SPEC 23.1.2 (PLAN G739): whether an Origin position of the recording fit being walked held by resting (FitOrigin), cleared at the
     // fit's entry (FitsTypeAt, CheckTypeUseCore), which forms the fit's rows from it (CheckTypeUse).
     private bool fitRested;
-
-    // The pass's twin nodes (DECISIONS R4-M108, R4-M111): a fit's node with a recorded body chain and a local clause whose record is one,
-    // each added where its rows are formed.
-    private HashSet<Koto>? originTwins;
 
     // SPEC 15.6.1, 15.6.5: how OriginFitSearch decides that a position's relation fails: unproven by the premises visible at the use
     // (Proof), or also failed by the relation judge in the search's body (Judged, a body fit).
@@ -45,7 +45,7 @@ public sealed partial class Binding
     /// <param name="node">The records' node.</param>
     /// <returns>Whether its records are twins.</returns>
     [Transitional("R7", Reason = "The test MIR side's twin filter; R7's Problem records delete it with the twins (the owner's 「Cで決定します」; DECISIONS R4-M111).")]
-    internal bool IsTwinRecord(Koto node) => this.originTwins?.Contains(node) == true;
+    internal bool IsTwinRecord(Koto node) => this.originTwins.Contains(node);
 
     // DIAGNOSTICS (Origin relations): an obligation's record is at its use, a local annotation's fit at the local's initializer, the
     // value that supplies the longer end, as a binding-time fit (RecordMismatch's `at`) and the old reporter record it.
@@ -56,7 +56,6 @@ public sealed partial class Binding
     private void ResetOriginRecords()
     {
         this.originRelations?.Clear();
-        this.originTwins?.Clear();
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M133, BU-69): the failed clause a failure that no chain in `relationScratch` refutes rests on, decided
@@ -154,7 +153,7 @@ public sealed partial class Binding
 
         if (rows)
         {
-            (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(node);
+            this.originTwins.Add(node);
         }
 
         return rows;
@@ -384,5 +383,17 @@ public sealed partial class Binding
 
             return null;
         }
+    }
+
+    /// <summary>The `originTwins` family's one accessor (DECISIONS BU-220): a pass family, whether a node's Origin relation records are
+    /// twins (R4-M108, R4-M111), a fact of the node's failed relation, stored with its failure by the recorder (RecordedFact). Its members keep the names its readers use.</summary>
+    private readonly struct OriginTwinRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<bool, PassCounter> Family(ref NodeColumns columns) => ref columns.OriginTwins;
+
+        internal void Add(Koto node) => binding.SetRecordedFact(node, Family, true);
+
+        internal bool Contains(Koto node) => binding.RecordedFact(node, Family);
     }
 }

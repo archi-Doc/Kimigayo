@@ -93,6 +93,14 @@ public sealed partial class Binding
         this.aliasTargets = new(this);
         this.importedContainers = new(this);
         this.qualificationFailures = new(this);
+        this.perCallOrigins = new(this);
+        this.originTwins = new(this);
+        this.pairFollows = new(this);
+        this.implicitPairFollows = new(this);
+        this.phantomRawOrigins = new(this);
+        this.invalidStaticOriginSlots = new(this);
+        this.callablePremiseFailures = new(this);
+        this.effectBoundRejections = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);

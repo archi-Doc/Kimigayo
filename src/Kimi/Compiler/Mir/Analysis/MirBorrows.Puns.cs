@@ -52,7 +52,9 @@ internal sealed partial class MirBorrows
 
     // A write's verdict at a Place of these facts, `write` what the Place's Type makes of it (SPEC 5.2, 5.7): none where every raw layer
     // there states an Origin other than `static` (Own, Shared or Exclusive: a pun or none, the pointer promises that Origin's storage);
-    // undecided where one has no answer (Unsupported); else the Type's.
+    // undecided where one has no answer (Unsupported), and where the layers are partly stated (PartlyStated: a pointer at a stated layer is
+    // judged by its Origin, one at an unstated layer may reach storage the body does not own, and A5 keeps one state per holder, so it
+    // cannot say which: the located Unsupported_Kd, never a Language record); else the Type's.
     private static PunWrite PunAt(PunWrite write, in PunKey facts)
     {
         if (write == PunWrite.Typed || facts.Stated)
@@ -60,7 +62,7 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
-        return facts.Unsupported ? PunWrite.Undecided : write;
+        return facts.Unsupported || facts.PartlyStated ? PunWrite.Undecided : write;
     }
 
     // The worse of two writes at one Place: a pun, else an undecided write.
@@ -111,7 +113,13 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var index = this.Key(PlaceKey.Root(input));
+        var output = this.OutputAt(position);
+        var index = this.Key(this.InputKey(call, position, input), this.Fold(output)); // The fold Keep's walk of the output reads.
+        if (output is null)
+        {
+            this.CarriedInput(state, value, index); // Route 1 where the plan has no output (MirBorrows.Reach).
+        }
+
         if (!this.Below(index))
         {
             return;
@@ -127,6 +135,20 @@ internal sealed partial class MirBorrows
             this.Children(this.Scan(Placed(held), this.punQueue[i + 1]));
             this.Children(this.Scan(Shared(held), this.punQueue[i + 1]));
         }
+    }
+
+    // The call's output through the input at `position` (the plan's Writes, as Keep reads them), null where none.
+    private OutputRetention? OutputAt(int position)
+    {
+        foreach (var written in this.planned is null ? default : this.planned.Writes)
+        {
+            if (this.slotPositions[written.Output] == position)
+            {
+                return written;
+            }
+        }
+
+        return null;
     }
 
     // SPEC 5.2 Placement, 5.6: whether the call's contract stores no value through the input at `position` (TyCtxt.NoStore by slot; a
@@ -226,7 +248,7 @@ internal sealed partial class MirBorrows
 
             for (var p = facts.PastStart; p < facts.PastStart + facts.PastCount; p++)
             {
-                var past = this.Key(this.punPastKeys[p]);
+                var past = this.Key(this.punPastKeys[p], facts.Fold);
                 if (this.punKeys[past] is { FirstCount: > 0 } or { FirstUnknown: true })
                 {
                     this.scanChildren.Add(this.loans[entry].Named);
@@ -311,7 +333,7 @@ internal sealed partial class MirBorrows
     }
 
     // What a call writing at Types an abstract part leaves unknown does at the Place entry `entry` names: a pun through a raw address
-    // where the Place surely holds a raw pointer's byte (Pointered: Positive), undecided where it only may (Open: under a length that is
+    // where the Place surely holds a raw pointer's byte (PlaceBytes: Pointer Positive), undecided where it only may (Open: under a length that is
     // no constant, or in a part the Type's structure does not state), as the Place's layers keep it; none through a safe borrow, which
     // designates its Place at its own Type.
     private PunWrite UnknownWrite(int entry)
@@ -321,16 +343,21 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
-        return PunAt(this.Pointered(place) == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided, facts);
+        return PunAt(this.PlaceBytes(place).Pointer == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided, facts);
     }
 
+    // What a call that may leave its own pointer in the Place entry `entry` names does there (SPEC 15.6.4: a pointer the call may write at
+    // a raw layer without an Origin, its own included, may address storage the body does not own; 5.7 Calls: one at a layer stating an
+    // Origin is judged by that Origin, R4-M183): a pun where the Place may hold a raw pointer, as the Place's layers keep it (PunAt).
+    private PunWrite OwnWrite(int entry) => this.Holder(entry, out var facts) is null ? PunWrite.Typed : PunAt(PunWrite.Pun, facts);
+
     // The Type of the Place entry `entry` names where a write there may pun a raw pointer, else null: a raw layer at the Place's own
-    // address (the key's facts: Binding's layers there) in a Place that holds a raw pointer's byte (Pointered; SPEC 4.1, 5.2: an array
+    // address (the key's facts: Binding's layers there) in a Place that holds a raw pointer's byte (PlaceBytes; SPEC 4.1, 5.2: an array
     // of no element holds none; a write at its address lies outside it, undefined when it runs and no compile-time error, SPEC 1.3).
     private BoundType? Holder(int entry, out PunKey facts)
     {
         facts = this.punKeys[this.EntryKey(entry)];
-        return facts.RawInline && cases.TypeOf(this.loans[entry].Place) is var place && this.Pointered(place) != Extent.None ? place : null;
+        return facts.RawInline && cases.TypeOf(this.loans[entry].Place) is var place && this.PlaceBytes(place).Pointer != Extent.None ? place : null;
     }
 
     // A displacement of a raw pointer (SPEC 5.3) by its pointee's stride.

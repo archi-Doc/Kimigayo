@@ -749,7 +749,7 @@ public sealed partial class Binding
         }
     }
 
-    // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness visit, an
+    // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness enumeration, an
     // Origin inference): its environments by anchor and excluded result premise, the storage they reuse, and whether it is open. An
     // environment lives until the session closes, never across passes, and is rebuilt when the Origin state changed; no opener's request
     // writes the other premise inputs (scopes, bound input Types, a Closure's classification). The environments are the session's own

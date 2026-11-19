@@ -8,8 +8,9 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5 on values derived from Binding's errors (SPEC 23.1.2; docs/dev/DECISIONS.md R4-M109): an input Binding rejected after
-/// selection is its consumer's derived value, which carries no Loan, so A5 reports no conflict derived from it, while the independent
-/// records beside it stay.</summary>
+/// selection (a static Place's Borrow, the located limit) is its consumer's derived value, which carries no Loan, so A5 reports no
+/// conflict derived from it, while the independent records beside it stay; since R7-O1 b1 a call position's relation rejects no input
+/// (its row is A5's).</summary>
 public sealed partial class MirBorrowsTest
 {
     // R4's m1: st's kept row stores x's borrow into c, whose Type argument gives Loan facts only (R4-M147), beside a Bad input, then y
@@ -33,12 +34,35 @@ public sealed partial class MirBorrowsTest
     // The codes PLAN G1022's write rows observe: A5's Loan conflicts and A1's MovedPlace_Kd and UninitializedPlace_Kd.
     private static DiagnosticCode[] WriteCodes => [.. LoanCodes, DiagnosticCode.MovedPlace_Kd, DiagnosticCode.UninitializedPlace_Kd];
 
-    // SPEC 23.1.2 (DECISIONS R4-M109): an argument Binding rejects after selection (an Origin relation it cannot prove) is an Opaque of the
-    // reference the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside
-    // Binding's record, also where the rejected argument keeps a call that moves twice (A1's MovedPlace_Kd stays), while the true conflict of
-    // a literal's temporary borrowed for static stays (fail-before: a conflict at each rejected argument).
+    // SPEC 23.1.2 (DECISIONS R4-M109; superseded for call positions only, ACallPositionsInputIsJudgedAsAValidOne): an argument Binding
+    // rejects after selection, here a static Place's Borrow (the located limit until P42, DECISIONS BU-25), is an Opaque of the reference
+    // the call takes, so a result kept past the statement carries no Loan on a temporary: no ComparisonLoanConflict_Kd beside Binding's
+    // record, also where the rejected argument keeps an index call that moves twice (A1's MovedPlace_Kd stays).
     [Fact]
     public void ARejectedInputFormsNoLoan()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct Tally
+                public var n: i32 = 0
+                public init() => ()
+            group State
+                public var tallies: [2 of Tally] = [Tally.init(), Tally.init()]
+            func pick(a: string, b: string) -> isize => 0
+            func kept(s: string)
+                let r = keep(State.tallies[pick(s@move, s@move)].n)
+                inspect(r)
+            """);
+        var program = AnalyzeUnsupported(c, ["State.tallies[pick(s@move, s@move)].n"]);
+        Assert.Equal(["kept: s MovedPlace_Kd"], Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
+    }
+
+    // SPEC 15.6.1, 15.6.5, 23.1.2 (R7-O1 b1, superseding DECISIONS R4-M109 for call positions): an argument whose call-position relation the
+    // premises do not prove (`c.n` and `chosen(...).n` outliving static) is no rejected input: the relation is a row the stratum judges, its
+    // record A5's, and the argument is built and judged as a valid one, so its Loans are the records a valid argument's are: none derived
+    // from borrowing through the shared `c`, A1's MovedPlace_Kd of a call that moves twice, and the true conflict of a literal's temporary
+    // borrowed for static.
+    [Fact]
+    public void ACallPositionsInputIsJudgedAsAValidOne()
     {
         var c = MirBuildTest.Compile(Prelude + """
             struct Tally
@@ -56,10 +80,11 @@ public sealed partial class MirBorrowsTest
                 let r = keepStatic(5)
                 inspect(r)
             """);
-        Assert.Equal(2, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         new Stratum(c.Types).Run(program);
+        Assert.Equal(["field", "kept"], Problems(c, program, [DiagnosticCode.UnprovenOriginRelation_Kd]).Select(static x => x.Split(':')[0]));
         Assert.Equal(["kept: s MovedPlace_Kd", "literal: 5"], Problems(c, program, [.. LoanCodes, DiagnosticCode.MovedPlace_Kd]));
     }
 
@@ -196,9 +221,11 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 23.1.2 (G240; DECISIONS BU-36): a call over storage whose part Binding did not bind keeps the rows that hold whatever the part
     // is, so A5 reports its repaired program's Loan conflicts beside it and no Unsupported_Kd at the call (fail-before: Unsupported_Kd at
-    // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict that rests on the failed
-    // part is its dependent and goes (q1: `result` holds `first` only through the failed payload, its repair's conflict). An independent
-    // conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays its record at the call, the depth limit (the
+    // keep2, stash and choose; i-field's at D.init), with no builder record or validator finding. A conflict the check finds over holder
+    // states stays, also one whose value reaches its holder only through rows that hold whatever the failed part is (Selection: `result`
+    // receives choose's result, which the contract's relation ties to pair and so to first's Loan, and the value-flow rule H makes it a
+    // holder whatever its failed payload's Type; the check reads holder states, never which input failed: AGENTS Diagnostics, a record
+    // kept under DECISIONS Q13). An independent conflict stays (m1: y written while r lives, also in its repair). A genuine limit stays its record at the call, the depth limit (the
     // owner's 「G272: (1)」, R4-M153), beside the failed part (a Field of height 66, a growing Field) and in its repair, and so do X and T,
     // which reach T's Box^64 Field.
     [Theory]
@@ -206,17 +233,17 @@ public sealed partial class MirBorrowsTest
     [InlineData(RetentionTest.Stash, "Missing", "i32", "g: x = 3")]
     [InlineData(RetentionTest.Pick, "missing", "s", "g: x = 2")]
     [InlineData(RetentionTest.Handle, "Missing", "i32", "")]
-    [InlineData(RetentionTest.Selection + "    first.value = 5\n    inspect(result@ref)\n", "missing", "source", "", "run: first.value = 5")]
+    [InlineData(RetentionTest.Selection + "    first.value = 5\n    inspect(result@ref)\n", "missing", "source", "run: first.value = 5")]
     [InlineData(Kept, "Missing", "i32", "g: y = 3")]
     [InlineData(RetentionTest.Fielded, "C{x}\n        origin x.s == zz", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Fielded, "Missing", "C{x}\n        origin x.s == s", "")]
     [InlineData(RetentionTest.Tall, "Missing", "i32", "g: f(b, null) OwnershipDepthLimit_Kd")]
     [InlineData(RetentionTest.Growing, "Missing", "i32", "h: f(g, null) OwnershipDepthLimit_Kd")]
     [InlineData(RetentionTest.Beyond + "func g(t: uniq/T, x: uniq/X)\n    fx(x, null)\n    ft(t, null)\n", "Missing", "i32", "g: fx(x, null) OwnershipDepthLimit_Kd | g: ft(t, null) OwnershipDepthLimit_Kd")]
-    public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected, string? twin = null)
+    public void ACallOverRejectedStorageKeepsItsRows(string source, string failed, string repaired, string expected)
     {
         Assert.Equal(expected, CallRecords(source.Replace("MISSING", failed, StringComparison.Ordinal), complete: false));
-        Assert.Equal(twin ?? expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
+        Assert.Equal(expected, CallRecords(source.Replace("MISSING", repaired, StringComparison.Ordinal), complete: true));
     }
 
     // SPEC 6.5.1, 23.1.2 (G242, G245's enum half; DECISIONS BU-37): an enum whose Case A Binding did not bind publishes its other Cases, so

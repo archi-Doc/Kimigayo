@@ -344,7 +344,10 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(Discarding + "    let x: uniq/i32 during a = h.link\n    _ = x\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a => h.link\n", "UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s, g: uniq/(Holder2 during a) during t) -> ()\n    g.link = h.link\n", "UnprovenOriginRelation_Kd")]
-    [InlineData("struct Holder5 {a}\n    public var link: uniq/i32 during a\n    public func store(self: uniq/Self during b, x: uniq/i32 during a) -> () => self.link = x\nfunc f(h: uniq/(Holder5 during a) during s, g: uniq/(Holder5 during a) during t) -> ()\n    g.store(h.link)\n    _ = g.store(h.link)\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
+    // R7-O1 b1 (SPEC 15.6.2, 15.6.4, 23.1.2; the Middle's ruling of 2026-11-19): the second `g.store(h.link)` reborrows `h.link` while `g`
+    // keeps the first call's exclusive Loan through `self.link = x`, an independent conflict, which the first argument's opaque node hid
+    // before (Q13 rule 3: an independent record added to a rejected program).
+    [InlineData("struct Holder5 {a}\n    public var link: uniq/i32 during a\n    public func store(self: uniq/Self during b, x: uniq/i32 during a) -> () => self.link = x\nfunc f(h: uniq/(Holder5 during a) during s, g: uniq/(Holder5 during a) during t) -> ()\n    g.store(h.link)\n    _ = g.store(h.link)\n", "ComparisonLoanConflict_Kd UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
     [InlineData("func f(p: uniq/(uniq/i32 during a, i32) during s) -> uniq/i32 during a => p.0\n", "UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a\n    return label w: do => h.link\n", "UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: ref/(Holder2 during a) during s) -> ()\n    _ = h.link\n    h.link\n", "TransferRequired_Kd TransferRequired_Kd")]

@@ -77,11 +77,14 @@ public class DynamicArrayBorrowTest
     [InlineData("func f<T>(a: uniq/Array<T>, item: T) -> isize\n    var v = a.sliceUniq()\n    a.append(item@move)\n    return v.length\npublic func main()\n    var a: Array<i32> = []\n    Console.writeLine(\"\\(f(a@uniq, 1))\")\n", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var x: i32 = 1\n    var a: Array<ref/i32> = []\n    if x > 0\n        a.append(x@ref)\n    var it = a@move.intoIterator()\n    x = 2\n    _ = it.next()\n", "ComparisonLoanConflict_Kd")]
     [InlineData("public func main()\n    var a: Array<i32> = []\n    var v = a.sliceUniq()\n    var w = v.sliceUniq()\n    Console.writeLine(\"\\(v.length)\")\n    Console.writeLine(\"\\(w.length)\")\n", "ComparisonLoanConflict_Kd")]
+    [InlineData("func g() -> isize\n    var a: Array<i32> = [1]\n    var v = a.sliceUniq()\n    let n = v.length\n    a.append(2)\n    return n + v.length\npublic func main()\n    Console.writeLine(\"\\(g())\")\n", "ComparisonLoanConflict_Kd")]
     public void AViewKeepsTheBorrowItsSignatureStates(string source, string codes)
         => Assert.Equal(codes.Split(' '), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal));
 
-    // Their valid counterparts: the view's last use precedes the conflicting access, or nothing conflicts.
+    // Their valid counterparts: the view's last use precedes the conflicting access, or nothing conflicts; a UniqSlice's length keeps no
+    // Loan (SPEC 4.7.3), so a length read before the access is no use of the view after it.
     [Theory]
+    [InlineData("func g() -> isize\n    var a: Array<i32> = [1]\n    var v = a.sliceUniq()\n    let n = v.length\n    a.append(2)\n    return n\npublic func main()\n    Console.writeLine(\"\\(g())\")\n")]
     [InlineData("struct H<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\npublic func main()\n    var a: Array<i32> = []\n    let h = H.init(a.sliceUniq())\n    Console.writeLine(\"\\(h.v.length)\")\n    a.append(1)\n")]
     [InlineData("contract Maker\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Maker\n    public init() => ()\n    public func make(self: ref/Self) -> i32\n        var a: [2 of i32] = [1, 2]\n        var s: i32 = 0\n        for x in a@uniq\n            s += x\n        for x in a@move\n            s += x\n        return s\npublic func main()\n    return\n")]
     [InlineData("contract Maker\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Maker\n    public init() => ()\n    public func make(self: ref/Self) -> i32\n        var a: Array<i32> = []\n        var v = a.sliceUniq()\n        let p = a.tryGetPairUniq(first: 0, second: 1)\n        return 0\npublic func main()\n    return\n")]

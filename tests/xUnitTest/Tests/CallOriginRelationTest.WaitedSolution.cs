@@ -192,6 +192,16 @@ public partial class CallOriginRelationTest
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g1(x: Option<T during q>, y: Option<ref/i32 during q>) -> i32\n    return 0\nfunc k() -> i32\n    let v: i32 = 5\n    let f = g1\n    return f(.None, .Some(v@ref))\n", "UnsatisfiedOriginRelation_Kd@.None, .Some(v@ref))")]
     // fr2i
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g(x: Option<T during q>, y: ref/i32 during q) -> i32\n    return 0\nfunc k(p: ref/i32) -> i32\n    let f = g\n    return f(.None, p)\n", "UnprovenOriginRelation_Kd@.None, p)")]
+    // w166 (R7-O1 b1; the Middle's ruling of 2026-11-19): fr2i's direct-call twin, one record, the call's row at `.None`; a value call
+    // follows the direct call's rule (J2, SlotSolution.OpenWaited), so `.None` is completed over the call's region and T's clause is the
+    // call's row alone (fail-before on 002d32cb0: fr2i gave a second record, Binding's UnprovenConstraint_Kd at `.None`).
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g(x: Option<T during q>, y: ref/i32 during q) -> i32\n    return 0\nfunc k(p: ref/i32) -> i32\n    return g(.None, p)\n", "UnprovenOriginRelation_Kd@.None, p)")]
+    // n4gv, n4gw (R7-O1 b1, the Front's N4): a generic callee's value call opens Origin parameters only, its Type slots fixed at the
+    // callee's reference (SPEC 10.8; SlotSolution.OpenWaited's FixedSlot). n4gv: fr2i over a generic callee, the same one record; n4gw
+    // (valid): V is `ref/i32 during static` at the reference, so the result returned for static holds, where an opened V would meet its
+    // Origin with the call's region.
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gv<V>(x: Option<T during q>, y: ref/i32 during q, v: V) -> i32\n    return 0\nfunc k(p: ref/i32) -> i32\n    let f = gv<i32>\n    return f(.None, p, 1)\n", "UnprovenOriginRelation_Kd@.None, p, 1)")]
+    [InlineData("func gw<V>(x: Option<V>, y: V, z: ref/i32 during q) -> V => y@move\nfunc k(p: ref/i32 during static, r: ref/i32) -> ref/i32 during static\n    let f = gw<ref/i32 during static>\n    return f(.None, p, r)\n", "")]
     // rf5
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g(x: Option<T during q>, y: ref/i32 during q) -> i32\n    return 0\nfunc k() -> i32\n    let v: i32 = 5\n    return g(.None, v@ref)\n", "UnsatisfiedOriginRelation_Kd@.None, v@ref)")]
     // rf6

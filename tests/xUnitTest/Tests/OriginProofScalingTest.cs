@@ -178,6 +178,20 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(MirBorrowsTest.Grows(work[..3], 2.5) && MirBorrowsTest.Grows(work[1..], 2.5), $"origins {string.Join(", ", work)}");
     }
 
+    // SPEC 15.3.7, 15.6.4 step 3 (R7-O1 d; its design review's C2): a signature part's well-formedness premises over a Type that shares
+    // its parts. n locals each pair the one before, a Tuple DAG of 2^n paths over `ref/i32 during t`; `see` takes the last by reference
+    // (its instantiated input: the selection's bounds and the selected call's obligations) and `pick` returns it again (a result that
+    // carries premises: the inference's bounds and the call's obligations). Each walk visits a distinct part once per query beside the
+    // same argument and substituted parts (DECISIONS BU-132), so its visits grow linearly in n (32, 64, 128); a walk per path meets 2^128.
+    // Binding is the walk's phase, so the row binds only: the Tuple's 2^n leaves are past every generation limit.
+    [Fact]
+    public void WellFormedPremisesVisitEachSharedPartOnce()
+    {
+        var visits = new[] { 32, 64, 128 }.Select(static n => WellFormedParts(n)).ToArray();
+        output.WriteLine($"n 32, 64, 128: well-formed parts {string.Join(", ", visits)}");
+        Assert.True(visits[1] > visits[0] && MirBorrowsTest.Grows(visits, 2), $"well-formed parts {string.Join(", ", visits)}");
+    }
+
     // P Fixed Origins a{i}, equal by the premises z{i} (SPEC 15.3.3), each with an in- and an out-edge: all joined through one covariant
     // chain of K copies (each q{i} into t0, t{K} into each o{i}.*), or, at K = 0, each through a copy of its own; before them, a local's
     // borrow stored through p's reborrowed referent (a Refuted relation, rule W's query).
@@ -296,6 +310,25 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.Empty(c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
         Assert.NotEqual(0, metrics.RegionReads);
         return metrics.RegionReads;
+    }
+
+    private static long WellFormedParts(int locals)
+    {
+        var source = new StringBuilder("func see<T>(x: ref/T) -> () => ()\nfunc pick<T>(x: ref/T) -> ref/T => x\nfunc f(t: ref/i32) -> ()\n    let a0 = (t, t)\n");
+        for (var i = 1; i < locals; i++)
+        {
+            source.Append(CultureInfo.InvariantCulture, $"    let a{i} = (a{i - 1}, a{i - 1})\n");
+        }
+
+        source.Append(CultureInfo.InvariantCulture, $"    see(a{locals - 1}@ref)\n    let r = pick(a{locals - 1}@ref)\n    return\n");
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("shared.kimi", source.Append("public func main() -> ()\n    let x = 1\n    f(x@ref)\n    return\n").ToString()));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.NotEqual(0, metrics.WellFormedParts);
+        return metrics.WellFormedParts;
     }
 
     private static OriginProofMetrics Measure(string family, int size, string? code)

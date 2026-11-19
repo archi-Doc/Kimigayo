@@ -154,7 +154,7 @@ public sealed partial class Binding
                 var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed : OriginRowSource.Fit;
                 var mask = this.BodyCaseMask(obligation);
                 var unit = this.OriginUnit(obligation.Body);
-                unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask));
+                unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask, obligation.FixedBy));
                 this.AddRegionValueRows(unit, longer, obligation, mask);
                 this.AddRegionValueRows(unit, shorter, obligation, mask);
             }
@@ -178,7 +178,7 @@ public sealed partial class Binding
             var region = parts == 1 ? end : end.Operands[i];
             if (region.Body == obligation.Body && this.Region(region) is { Value: { } value })
             {
-                unit.Add(new(obligation.Use, this.CanonicalOrigin(this.ReceiverAtUse(value, obligation.Use)), region, false, OriginRowSource.Fit, null, null, mask));
+                unit.Add(new(obligation.Use, this.CanonicalOrigin(this.ReceiverAtUse(value, obligation.Use)), region, false, OriginRowSource.Fit, null, null, mask, null));
             }
         }
     }
@@ -259,7 +259,7 @@ public sealed partial class Binding
         {
             var longer = this.InternAtom(slice, draft.Longer, draft.Site, part);
             var shorter = this.InternAtom(slice, draft.Shorter, draft.Site, part);
-            builder.Rows.Add(new(SourceRef.Of(draft.Site), longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask));
+            builder.Rows.Add(new(SourceRef.Of(draft.Site), longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask, draft.FixedBy));
         }
     }
 
@@ -317,5 +317,6 @@ public sealed partial class Binding
         OriginRowSource Source,
         Koto? Clause,
         BoundType? Destination,
-        ulong CaseMask);
+        ulong CaseMask,
+        Koto? FixedBy);
 }

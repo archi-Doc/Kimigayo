@@ -158,11 +158,23 @@ public sealed partial class MirBorrowsTest
     public void APositionNamingOneSourceHoldsNoCaptureWheneverTheBoundArrives(string source) => MirTargetSide.Check(source);
 
     // SPEC 15.6.4 (DECISIONS: G570, a named move): a local region's atom reaches its sources in any contract, a named generic call's too, so
-    // a `var` over one source is read as its `let` twin, per argument (d2's reasoning): x5 was accepted before this unit, x5l stays rejected.
+    // a `var` over one source is read as its `let` twin, per argument (d2's reasoning). PLAN G935 (the owner's O-360 (a), RG1's second
+    // half): keep's result, of its own U, holds u (s, a's Loan) and no read through t, a T, which no premise makes a U, so v carries no
+    // Loan on b and both rows are valid (relabelled from the instantiated reading); the var/let reading is pinned where it decides a row
+    // in the callee's terms by the rows that follow it in G570's unit.
     [Theory]
     [InlineData(See + "func keep<T, U>(t: ref/T, u: U) -> U\n    return u@move\nfunc t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = a@ref\n    var x = s\n    var w = b@ref\n    var h = (x, w)\n    let v = keep(h@ref, s)\n    b = 3\n    see(v)\n" + Main)]
     [InlineData(See + "func keep<T, U>(t: ref/T, u: U) -> U\n    return u@move\nfunc t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = a@ref\n    let x = s\n    let w = b@ref\n    let h = (x, w)\n    let v = keep(h@ref, s)\n    b = 3\n    see(v)\n" + Main)]
     public void AGenericCallReadsAVarOverOneSourceAsItsLetTwin(string source)
+        => MirTargetSide.Check(source);
+
+    // G570's purpose where the retention stands in the callee's terms (PLAN G935): readT's result, a borrow formed through t (SPEC
+    // 15.6.4), reaches h, which holds w, a `var` over b's shared borrow (x5r) or its `let` twin (x5lr); v is used after `b = 3`, so the
+    // write conflicts in both.
+    [Theory]
+    [InlineData("func seeT<T>(p: T) => ()\nfunc readT<T>(t: ref/T) -> ref/T during t => t\nfunc t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = a@ref\n    var x = s\n    var w = b@ref\n    var h = (x, w)\n    let v = readT(h@ref)\n    b = 3\n    seeT(v)\n" + Main)]
+    [InlineData("func seeT<T>(p: T) => ()\nfunc readT<T>(t: ref/T) -> ref/T during t => t\nfunc t()\n    var a: i32 = 1\n    var b: i32 = 2\n    let s = a@ref\n    let x = s\n    let w = b@ref\n    let h = (x, w)\n    let v = readT(h@ref)\n    b = 3\n    seeT(v)\n" + Main)]
+    public void AResultBorrowedThroughAVarOverOneSourceIsReadAsItsLetTwin(string source)
         => MirTargetSide.Check(source, (DiagnosticCode.ComparisonLoanConflict_Kd, MirTargetSide.At("b = 3", null)));
 
     // SPEC 10.1, 8.3.3, 15.2.3, 15.3.6 (DECISIONS: G572 U2a): an Unknown at step 5 is an obligation judged after every body is bound, when a
