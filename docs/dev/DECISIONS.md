@@ -1250,7 +1250,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of A3 §9 item 8 on 2026-10-17;
   G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
-  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
+  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66; its
+  Open "a custom setter's receiver is reserved only at the setter call, not from locate" and its Rejected "a writeback through
+  setters now" amended by R4-M223 (Z11)) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -7398,6 +7400,34 @@ and migration obligations remain in force; no numeric cap changes are authorized
     lifting a per-call end only when the longer end is an Origin its own input mentions (a consumer deciding what the owning component
     should publish); case B for every foreign declaration atom, n8r's kind included (a Proof record on a valid form, D1 (a): AGENTS'
     single located limit instead); a per-query syntax walk for the fact (2N^2 visits; replaced by the published verdict).
+- **R4-M223 A setter's receiver is reserved where it is located (stream Z's Z11, A5-F8's 2d-2, PLAN G396 (1))** (2026-11-20, landing
+  with Q-553; Middle, MIR build; Major, no record or acceptance moves; the Middle's independent design and code review ACCEPT WITH
+  CONDITIONS) SPEC 13.7.2, 11.3.1. Amends R4-M37's Open "a custom setter's receiver is reserved only at the setter call, not from
+  locate" and its Rejected "a writeback through setters now".
+  - Rule: an update (compound assignment, increment, decrement) through a custom, computed or required `set` locates the receiver
+    once and there reserves it as the setter takes it (`Operand` over the located Place for the setter's receiver Type, `Input`: the
+    existing `TwoPhaseUniq` in a temp `$w`); the getter (R4-M109's Adjust) and a standard get read the receiver beside the
+    reservation, shared accesses whose Loans the setter's activation meets; the setter takes `$w` as its receiver input, so its Call
+    activates it (A5's existing activation). Owner: `MirBuilder.Update` (`MirBuilder.Expansions.cs`). An Error receiver is located
+    once; the setter's reservation and the getter each take their own derived value, whose site names the located root (R4-M149). A
+    simple assignment's setter keeps its reservation at its call (SPEC 13.7.1). No vocabulary entry.
+  - The getter reads beside the reservation, not through it (the A5 Step 2 plan's 2d-2 said "the getter reads through it"; the
+    Middle accepted the departure on 11-20): it is the form `Writeback` already takes (one concept, one form: a compound update's
+    getter reads beside its reservation), and SPEC 13.7.2's getter read is one of the shared reads of the protected receiver, which a
+    two-phase reservation admits until the setter's call activates it.
+  - `Call` takes the values an expansion evaluated as (node, operand) pairs (`given`), replacing its one pair (behaviour-preserving,
+    commit b69516b1c).
+  - Moves (Q13): none in records or acceptance; the MIR golden `tests/mir/expansions.mir` (its two setter updates); generated code
+    only in the 18 setter-update fixtures (the reservation formed before the getter). Rows:
+    `MirBuildTest.ASettersReceiverIsReservedWhereItIsLocated` (fails before),
+    `MirBorrowsTest.ASettersReservationProtectsItsReceiverUntilTheWrite`.
+  - Rejected: the getter reading through the reservation (`&(*$w)`): A5 meets a Borrow through the holder as the reservation's own
+    child, which its activation does not meet, so in `UserArithmeticUpdateTest.GetterTemporaryKeepsItsDestructionDependencies`
+    (computed `item: View` whose getter returns `View during self` holding `self.raw@ref`, View with an observing `drop`;
+    `box.item += ()`: SPEC 13.7.2, a getter result's dependency conflicts with `set`) the independent record moved from the update
+    (`CallActivationConflict_Kd`) to a later node (`ComparisonLoanConflict_Kd`), a lost independent record (WORKFLOW rule 3); a
+    reborrow of `(*$w)` at the setter (a reservation formed through another's holder, R4-M54); a seventh `Call` parameter. Not
+    temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
