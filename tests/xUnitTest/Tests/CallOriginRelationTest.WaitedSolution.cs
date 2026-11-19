@@ -240,8 +240,9 @@ public partial class CallOriginRelationTest
     [InlineData("func f2(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> i32\n    origin q outlives c\n    return 0\nfunc k(p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    return f2(.None, p, ud)\n", "UnprovenOriginRelation_Kd@.None, p, ud)")]
     // as3i
     [InlineData("contract C\n    associate Item(a, b)\n        origin a outlives b\nstruct S\n    Self is C\n    associate C.Item(a, b) is i32\nfunc f3(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> S.Item(q, c)\n    origin q outlives c\n    return 42\nfunc k(p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    let r = f3(.None, p, ud)\n    return 0\n", "UnprovenOriginRelation_Kd@.None, p, ud)")]
-    // t6i
-    [InlineData("func f2(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> i32\n    origin q outlives c\n    return 0\nfunc k(w: ref/i32, p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    origin p outlives d\n    return f2(.Some(w), p, ud)\n", "UnprovenOriginRelation_Kd@w), p, ud)")]
+    // t6i: b1's record at `w`; the clause row `(p and q) outlives d` at `.Some(w)` stays whole for MeetNode (R7-O1 H's F-H-13), which adds
+    // a record of the same failure there (a dependent record on a rejected program, counted: DECISIONS Q13).
+    [InlineData("func f2(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> i32\n    origin q outlives c\n    return 0\nfunc k(w: ref/i32, p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    origin p outlives d\n    return f2(.Some(w), p, ud)\n", "UnprovenOriginRelation_Kd@.Some(w), p, ud)|UnprovenOriginRelation_Kd@w), p, ud)")]
     // t7i
     [InlineData("func f7(x: Option<ref/i32 during q>, y: ref/i32 during q, z: ref/i32 during c) -> ref/i32 during c\n    origin q outlives c\n    $abort(\"no\")\nfunc k(w: ref/i32, p: ref/i32, d: ref/i32) -> ref/i32 during (d and p)\n    return f7(.Some(w), p, d)\n", "UnprovenOriginRelation_Kd@.Some(w), p, d)|UnprovenOriginRelation_Kd@f7(.Some(w), p, d)|UnprovenOriginRelation_Kd@w), p, d)")]
     // The region keeps its recorded bounds (D1c): Owned over the result of either half, through a local and in place.

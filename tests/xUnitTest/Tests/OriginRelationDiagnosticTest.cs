@@ -67,7 +67,8 @@ public partial class OriginRelationDiagnosticTest
 
     [Theory]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
-    [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    return if c => x else => y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "if c => x else => y", "requires y outlives x, which is not proven", null)]
+    // A join's fit is recorded at the source that supplies its longer end (R7-O1 H, D5's Site for a join).
+    [InlineData("func f(x: ref/i32, y: ref/i32, c: bool) -> ref/i32 during x\n    return if c => x else => y\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "y", "requires y outlives x, which is not proven", null)]
     [InlineData(Holder + "func pick(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p\n    return p.item@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p.item@ref", "requires p.a outlives q, which is not proven", null)]
     [InlineData("func toStatic(x: ref/i32) -> ref/i32 during static\n    return x\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "x", "requires x outlives static, which is not proven", null)]
     // A local annotation's fit is A5's record at its declaration (R6-check H5, DECISIONS R5-M185; H3b T45: formerly at `b`).
@@ -351,7 +352,9 @@ public partial class OriginRelationDiagnosticTest
     // before (Q13 rule 3: an independent record added to a rejected program).
     [InlineData("struct Holder5 {a}\n    public var link: uniq/i32 during a\n    public func store(self: uniq/Self during b, x: uniq/i32 during a) -> () => self.link = x\nfunc f(h: uniq/(Holder5 during a) during s, g: uniq/(Holder5 during a) during t) -> ()\n    g.store(h.link)\n    _ = g.store(h.link)\n", "ComparisonLoanConflict_Kd UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
     [InlineData("func f(p: uniq/(uniq/i32 during a, i32) during s) -> uniq/i32 during a => p.0\n", "UnprovenOriginRelation_Kd")]
-    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a\n    return label w: do => h.link\n", "UnprovenOriginRelation_Kd")]
+    // The do's fit at its source `h.link` (D5's Site for a join; b1's record); the containment edge of the Reborrow into the do's result
+    // adds a record of the same relation there (a dependent record on a rejected program, counted: DECISIONS Q13).
+    [InlineData(Holder2 + "func f(h: uniq/(Holder2 during a) during s) -> uniq/i32 during a\n    return label w: do => h.link\n", "UnprovenOriginRelation_Kd UnprovenOriginRelation_Kd")]
     [InlineData(Holder2 + "func f(h: ref/(Holder2 during a) during s) -> ()\n    _ = h.link\n    h.link\n", "TransferRequired_Kd TransferRequired_Kd")]
     public void ADiscardedReborrowNeedsNoRelation(string body, string codes)
     {

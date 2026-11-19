@@ -364,15 +364,15 @@ public partial class LocalOriginClauseTest
     }
 
     // SPEC 23.1: a meet's body-local operand is shown by the Borrow that supplies it, found through the local the value reads or
-    // moves; it was the text of the whole function that binds the borrowed parameter's Place. A declared relation keeps the meet whole;
-    // a fit names the failing operand that decides its judgment, the Refuted Borrow before the Unknown `a` (SPEC 15.3.6, 15.6.5), and
-    // reports every failed chain (SPEC 15.6.1), so the Unknown `a` is its own record at that value. Those are Binding's records at `at`;
-    // A5's records of the same relation, one per failed chain at the clause or at `return X`, precede or follow them as their twins until
-    // R7 (R6-check H5, DECISIONS R5-M185; H0b §5.4, R4-M108; H3b T50): each `twins` record is its primary, code, label and related roles.
+    // moves; it was the text of the whole function that binds the borrowed parameter's Place. At an `outlives` position every failing
+    // operand of a meet at the longer end is its own record (DIAGNOSTICS; A5's MeetNode): the Refuted Borrow and the Unknown `a`, each at
+    // `at` (SPEC 15.3.6, 15.6.1, 15.6.5), for a fit and for a local clause through the slot's region alike (R7-O1 H: the clause is A5's
+    // row, recorded at the initializer that supplies `x.s`, D5; b1's whole-meet record was Binding's, its code kept by the Borrow's;
+    // the Middle's Phase 5 ruling). `twins` lists the records at other sites, primary, code, label and related roles (none since R7-O1 H).
     [Theory]
-    [InlineData("func f(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n        origin x.s outlives static\n    return 0\n", "h0@move", "(a and a@ref)", "origin x.s outlives static: UnprovenOriginRelation_Kd requires a outlives static, which is not proven; relation origin x.s outlives static | origin x.s outlives static: UnsatisfiedOriginRelation_Kd requires the borrow a outlives static, which is false; borrow a@ref, origin origin x.s outlives static, relation origin x.s outlives static")]
-    [InlineData("func f(a: uniq/i32) -> ref/i32 during static\n    let h0 = H.init(a@ref)\n    return h0.item\n", "h0.item", "a@ref", "")]
-    public void AMeetShowsTheBorrowOfItsBodyLocalOperand(string body, string at, string longer, string twins)
+    [InlineData("func f(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n        origin x.s outlives static\n    return 0\n", "h0@move", "a@ref", "", "outlives|a|static|declared")]
+    [InlineData("func f(a: uniq/i32) -> ref/i32 during static\n    let h0 = H.init(a@ref)\n    return h0.item\n", "h0.item", "a@ref", "", "outlives|a|static|fit|ref/i32 during static")]
+    public void AMeetShowsTheBorrowOfItsBodyLocalOperand(string body, string at, string longer, string twins, string unknownReason)
     {
         var source = Holder + body + Main;
         var all = DiagnosticCorpus.Check(source).Diagnostics;
@@ -394,7 +394,7 @@ public partial class LocalOriginClauseTest
         Assert.Equal(
             (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires a outlives static, which is not proven"),
             (unknown.Code, unknown.Span, unknown.Label));
-        Assert.Equal(["outlives", "a", "static", "fit", "ref/i32 during static"], unknown.Reason!.Select(static x => x.Value));
+        Assert.Equal(unknownReason, string.Join("|", unknown.Reason!.Select(static x => x.Value)));
     }
 
     // The accepted forms run: each returns the value behind `a`.

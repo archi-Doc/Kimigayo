@@ -271,13 +271,16 @@ public class RawStorageTest
     [InlineData("()", "let w = b.pair.0@uniq", "Unsupported_Kd: b.pair.0@uniq | UnsatisfiedOriginRelation_Kd: b.pair.0@uniq")]
     [InlineData("()", "let c = Cell.Some(fresh)", "UnsatisfiedOriginRelation_Kd: fresh")]
     [InlineData("()", "let c = Cell.Two((fresh, 1))", "UnsatisfiedOriginRelation_Kd: (fresh, 1)")]
-    [InlineData("self.inner.data = fresh", "()", "UnsatisfiedOriginRelation_Kd: self.inner.data = fresh")]
+    // The write's value fit adds a record at `fresh` (its destination read through the special receiver; counted, DECISIONS Q13).
+    [InlineData("self.inner.data = fresh", "()", "UnsatisfiedOriginRelation_Kd: self.inner.data = fresh | UnsatisfiedOriginRelation_Kd: fresh")]
     [InlineData("()", "let w = b.pair@uniq", "Unsupported_Kd: b.pair@uniq | UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "_ = Kimi.Intrinsics.exchange(b.pair@uniq, with: (fresh, 1))", "Unsupported_Kd: b.pair@uniq | UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "_ = Kimi.Intrinsics.exchange(b.pair@uniq, with: (null, 1))", "Unsupported_Kd: b.pair@uniq | UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "let w = b.arr@(uniq/[2 of raw/u8])", "Unsupported_Kd: b.arr@(uniq/[2 of raw/u8]) | UnsatisfiedOriginRelation_Kd: b.arr@(uniq/[2 of raw/u8])")]
     [InlineData("()", "var s = b.arr.sliceUniq()\n    s[0] = fresh", "Unsupported_Kd: b.arr | UnsatisfiedOriginRelation_Kd: b.arr")]
-    [InlineData("()", "for _ in b.arr@uniq => _ = 0", "UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
+    // The PQ-10 limit beside the relation (as above), and a Loan conflict at `var b` that the failed borrow's node hid (added on a
+    // rejected program, counted: DECISIONS Q13).
+    [InlineData("()", "for _ in b.arr@uniq => _ = 0", "ComparisonLoanConflict_Kd: var b = Block.init() | Unsupported_Kd: b.arr@uniq | UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     [InlineData("()", "let t = b.pair@move", "Unsupported_Kd: b.pair@move")]
     // Rule W (DECISIONS Q13, BU-79; PLAN G789): a failed part at a layer's position is no evidence of what the write puts there, so only
