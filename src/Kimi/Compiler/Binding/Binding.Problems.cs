@@ -177,19 +177,8 @@ public sealed partial class Binding
     private ProblemFact SideFact(ProblemFactKind type, ProblemFactKind form, SourceRef site, in MismatchSide side)
         => side.Type is { } bound ? new(type, site, this.report.Keep(bound)) : new(form, site, (long)side.Form | ((long)(side.Count + 1) << 8));
 
-    // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee.
-    [Transitional("R7", Reason = "Records only at a node whose slot takes the failure (its first), for snapshot 0, until E2's located batch.")]
-    private void FailUnsupportedAt(Koto node, SourceSpan part, bool unresolved = false)
-    {
-        if (this.RecordedFailure(node) != BindingFailure.None)
-        {
-            this.Fail(node, BindingFailure.Unsupported, unresolved);
-            return;
-        }
-
-        this.RecordLocated(node, part, unresolved);
-    }
-
+    // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee; its own record
+    // beside any other failure of its node (SPEC 23.1.2).
     private void RecordLocated(Koto node, SourceSpan part, bool unresolved = false)
     {
         long value = ((long)part.Start << 32) | (uint)part.Length;

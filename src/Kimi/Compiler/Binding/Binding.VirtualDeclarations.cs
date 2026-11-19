@@ -103,20 +103,23 @@ public sealed partial class Binding
         }
     }
 
-    // Shared receivers preserve completeness by their authority (SPEC 12.7.1) and proceed
-    // through ordinary ownership checking. Exclusive OCC still needs its fixed point.
+    // Shared receivers preserve completeness by their authority (SPEC 12.7.1) and proceed through ordinary ownership checking. Exclusive
+    // OCC still needs its fixed point: an objuniq receiver is the located limit at the modifier, its own record beside the declaration's
+    // other failures (SPEC 23.1.1, 23.1.2).
     private void GuardPendingVirtualDeclarations()
     {
         foreach (var function in this.virtualDeclarations)
         {
-            if (function.BindingFailure == BindingFailure.None && ReceiverShape(function.BoundSymbol!) != SemanticsKind.ObjRef)
+            if (function.BindingFailure == BindingFailure.Unsupported)
             {
-                this.FailUnsupportedAt(function, function.DispatchModifierSpan, unresolved: true);
-            }
-            else if (function.BindingFailure == BindingFailure.Unsupported)
-            {
-                // Binding a body can complete its result Type without discharging the earlier subset gate.
+                // Binding a body can complete its result Type without discharging the earlier subset gate. An override pending on a
+                // failed original (VirtualOverrides) holds a plain Unsupported, so its own limit stays unrecorded until it rests on that
+                // original without a failure of its own (PLAN's open issue; R7-E2-5 or E5).
                 this.MarkUnresolved(function);
+            }
+            else if (ReceiverShape(function.BoundSymbol!) == SemanticsKind.ObjUniq)
+            {
+                this.RecordLocated(function, function.DispatchModifierSpan, unresolved: true);
             }
         }
     }
