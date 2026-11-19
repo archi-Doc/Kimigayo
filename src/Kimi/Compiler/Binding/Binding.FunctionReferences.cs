@@ -148,7 +148,7 @@ public sealed partial class Binding
                     {
                         var contract = ComparisonFailure.Shape;
                         var structure = bound && ReferenceTypes.StorageMatches(required, actual);
-                        return structure && !this.ItemContractFits(candidateItem, actual, required, use, null, out contract) && contract.IsCondition
+                        return structure && !this.DefinitionContractFits(candidateItem, required, use, null, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
                             : this.FailMismatch(use, use, actual, required, contract);
                     }

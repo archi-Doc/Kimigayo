@@ -142,7 +142,7 @@ internal sealed partial class MirBuilder
 
         var value = this.Operand(receiver, adjust == default ? HirTables.AdjustOf(receiver) : adjust, parameter, input: true);
         var result = this.Hold(call.ReturnType, node);
-        this.Call(result, call, node, first: null, receiver, value);
+        this.Call(result, call, node, null, (receiver, value));
         return this.body.Project(compilation.Types, this.Made(result), MirProjectionKind.Deref, 0);
     }
 

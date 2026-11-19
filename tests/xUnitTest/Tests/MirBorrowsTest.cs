@@ -593,11 +593,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // SPEC 14.9, 14.10.3 (F10): Loans flow forward over every path, joined at heads, around loops into the next iteration, and into code
-    // only the checks reach; a holder reassigned before its next use carries nothing across.
+    // only the checks reach; a holder reassigned before its next use carries nothing across. Every check applies in the assumed state: a
+    // Loan formed after a `return` conflicts there (formedAfterReturn), one whose last use precedes the write does not (afterReturnEnded);
+    // a write after a `return` with no live Loan is accepted (checkOnlyWrite, PLAN G106's check-only row) and one after `$abort` meets a
+    // live Loan (abortedWrite); an unreachable parameter's referent is checked as a local is (deadParameter, deadParameterEnded; STATUS's
+    // former R1 limit).
     [Fact]
     public void LoansFlowOverJoinsLoopsAndCheckOnlyCode()
         => Assert.Equal(
-            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2"],
+            ["loopCarry: x = 3", "joined: x = 3", "afterReturn: x = 2", "formedAfterReturn: x = 2", "abortedWrite: x = \"new\"", "deadParameter: p@follow = 5"],
             Problems("""
                 func loopCarry(flag: bool)
                     var x = 1
@@ -627,6 +631,43 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     return 1
                     x = 2
                     inspect(r)
+                    return 2
+                func afterReturnEnded() -> i32
+                    var x = 1
+                    let r = x@ref
+                    return 1
+                    inspect(r)
+                    x = 2
+                    return 2
+                func formedAfterReturn() -> i32
+                    var x = 1
+                    return 1
+                    let r = x@ref
+                    x = 2
+                    inspect(r)
+                    return 2
+                func checkOnlyWrite()
+                    var x = "s"
+                    return
+                    x = "new"
+                    inspect(x@ref)
+                func abortedWrite()
+                    var x = "s"
+                    let r = x@ref
+                    $abort("t")
+                    x = "new"
+                    inspect(r)
+                func deadParameter(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    p@follow = 5
+                    c@follow = 2
+                    return 2
+                func deadParameterEnded(p: uniq/i32) -> i32
+                    return 1
+                    let c = p@follow@uniq
+                    c@follow = 2
+                    p@follow = 5
                     return 2
                 """));
 
@@ -1715,6 +1756,143 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     let r = s@uniq
                     r.r = r.n@ref
                     r.n += 1
+                """));
+
+    // SPEC 13.7.2, 11.3.1 (Z11, 2d-2): an update through a setter reserves the setter's receiver where it locates it, the getter and the
+    // standard get read the receiver beside the reservation, and the setter's call activates it. Shared reads coexist with it (the getter's
+    // Borrow, a user operator's operand Borrows, SPEC 13.7.2's `holder.item += delta`, a shared Borrow ended before the update, a written
+    // `@uniq` receiver); a shared Borrow of the receiver live across the write conflicts at the activation, for every receiver: a local, a
+    // parameter's referent, a Field path and an element, in a compound assignment, an increment and with a standard get; a simple assignment
+    // starts no writeback (SPEC 13.7.1). A live `uniq` Loan of the receiver, or of a Field of it, across the update conflicts where the
+    // update first reads the receiver (SPEC 15.6.2), and with a standard get also at its read of the storage; a written `@uniq` receiver
+    // meets a live shared Loan where it is formed.
+    [Fact]
+    public void ASettersReservationProtectsItsReceiverUntilTheWrite()
+        => Assert.Equal(
+            [
+                "iLocal: g.level += 1 CallActivationConflict_Kd", "iParam: g.level += 1 CallActivationConflict_Kd",
+                "iField: h.gauge.level += 1 CallActivationConflict_Kd", "iElement: gs[1].level += 1 CallActivationConflict_Kd",
+                "iPostfix: g.level++ CallActivationConflict_Kd", "iStoredSetter: g.mark += 1 CallActivationConflict_Kd",
+                "iAssign: g.level = 5 CallActivationConflict_Kd", "iUniq: g", "iUniqStoredSetter: g", "iUniqStoredSetter: g.mark += 1",
+                "iUniqField: g", "iUniqIncrement: g", "iWrittenUniq: g@uniq",
+            ],
+            Problems("""
+                struct WGauge
+                    var hits: i32 = 0
+                    public var count: i32 = 0
+                    public var mark: i32 = 0
+                        set(value: i32) -> () => storage = value
+                    public computed level: i32
+                        get() -> i32 => self.hits
+                        set(value: i32) -> () => self.hits = value
+                    public init() => ()
+                struct WRack
+                    public var gauge: WGauge = WGauge.init()
+                    public init() => ()
+                struct WAmount
+                    Self is Addable<WAmount>
+                    associate Addable<WAmount>.Output is WAmount
+                    public let n: i32
+                    public init(n: i32) => self.n = n
+                    public func added(self: ref/Self, right: ref/WAmount) -> WAmount => WAmount.init(self.n + right.n)
+                struct WPurse
+                    var total: i32 = 0
+                    public computed amount: WAmount
+                        get() -> WAmount => WAmount.init(self.total)
+                        set(value: WAmount) -> () => self.total = value.n
+                    public init() => ()
+                func vLocal() -> i32
+                    var g = WGauge.init()
+                    g.level += 2
+                    g.mark *= 3
+                    g.level = 5
+                    _ = ++g.level
+                    return g.level--
+                func vParam(g: uniq/WGauge)
+                    g.level += 1
+                    g.level--
+                func vField()
+                    var h = WRack.init()
+                    h.gauge.level += 1
+                func vElement(i: isize)
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    gs[1].level += 1
+                    var all: Array<WGauge> = [WGauge.init()]
+                    all[i].level += 1
+                func vOperator(delta: WAmount)
+                    var p = WPurse.init()
+                    let other = WPurse.init()
+                    p.amount += delta
+                    p.amount += other.amount
+                func vEnded(g: uniq/WGauge)
+                    let r = g@ref
+                    inspect(r)
+                    g.level += 1
+                func iLocal()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iParam(g: uniq/WGauge)
+                    let r = g@ref
+                    g.level += 1
+                    inspect(r)
+                func iField()
+                    var h = WRack.init()
+                    let r = h.gauge@ref
+                    h.gauge.level += 1
+                    inspect(r)
+                func iElement()
+                    var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]
+                    let r = gs[1]@ref
+                    gs[1].level += 1
+                    inspect(r)
+                func iPostfix() -> i32
+                    var g = WGauge.init()
+                    let r = g@ref
+                    let old = g.level++
+                    inspect(r)
+                    return old
+                func iStoredSetter()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.mark += 1
+                    inspect(r)
+                func iAssign()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g.level = 5
+                    inspect(r)
+                func inspectU(value: uniq/WGauge) => ()
+                func inspectI(value: uniq/i32) => ()
+                func vWrittenUniq()
+                    var g = WGauge.init()
+                    g@uniq.level += 1
+                func iUniq()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.level += 1
+                    inspectU(u)
+                func iUniqStoredSetter()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    g.mark += 1
+                    inspectU(u)
+                func iUniqField()
+                    var g = WGauge.init()
+                    let u = g.count@uniq
+                    g.level += 1
+                    inspectI(u)
+                func iUniqIncrement()
+                    var g = WGauge.init()
+                    let u = g@uniq
+                    ++g.level
+                    inspectU(u)
+                func iWrittenUniq()
+                    var g = WGauge.init()
+                    let r = g@ref
+                    g@uniq.level += 1
+                    inspect(r)
                 """));
 
     // SPEC 15.6.7 (A3 E1, PLAN G119; 36h, 38a–38c, 38e–38i, 107): while a reservation waits for its call, a write or destruction of its
