@@ -98,6 +98,14 @@ public sealed partial class Binding
         return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
     }
 
+    // Whether a match (a `try` included) or `for` takes `node` as its Subject (SPEC 15.1.6), as its consumer takes it (Grouped,
+    // R4-M145): CompleteDependent's walk stops short of it.
+    private static bool IsSubject(Koto node)
+    {
+        var taken = Grouped(node);
+        return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
+    }
+
     private bool IsUnresolvedPrerequisite(Koto node)
         => this.RecordedState(node) != BindingState.Resolved || IsRecovery(node, out _);
 
@@ -268,13 +276,6 @@ public sealed partial class Binding
     // path's forms).
     private bool BuiltOn(Koto parent, Koto place)
         => IsGroup(parent) || (this.NextPathStep(parent, out var next) is not (PathStep.Root or PathStep.Candidate or PathStep.Receiver) && ReferenceEquals(next, place));
-
-    // Whether a match (a `try` included) or `for` takes `node` as its Subject, as its consumer takes it (Grouped, R4-M145).
-    private static bool IsSubject(Koto node)
-    {
-        var taken = Grouped(node);
-        return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
-    }
 
     private (int Start, Koto? Node) BeginConsultation(Koto node)
     {
