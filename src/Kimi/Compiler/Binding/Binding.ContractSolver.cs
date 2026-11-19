@@ -474,9 +474,10 @@ public sealed partial class Binding
     // R7-C3 (F's C2 ruling 278; SPEC 8.3.2 "evidence for both polarities ... is contradictory evidence", 8.2.3 "never again at uses"):
     // the one rule at the judges' exits (ProveProposition, ProveConformance) for a normalized proposition and the verdict of its valid
     // facts. A Failed premise of the view speaks to the proposition it would decide: read in the view, the proposition or its negation
-    // (its polarity), or an identity premise of the same subject (identical through the classes, a constructed Type included), which
-    // would decide every proposition about it and gives none of its own. Unless the valid facts give the verdict the speaking premises
-    // give, the answer is Error resting on the declaration's record; where none speaks, the valid facts decide.
+    // (its polarity); an identity premise of the same subject (identical through the classes, a constructed Type included), which
+    // would decide every proposition about it; or an admitted-set premise on the binder of a pair layer of the subject (SPEC 8.3.4,
+    // F's C2 ruling 281: `s is obj` decides `s/A`). The last two give no verdict of their own. Unless the valid facts give the verdict
+    // the speaking premises give, the answer is Error resting on the declaration's record; where none speaks, the valid facts decide.
     // The Contract judge's exit: the proposition is interned only in a view that holds a Failed premise.
     private ConstraintProof SpokenConformance(BoundType type, BindingSymbol contract, BindingScope scope, ConstraintProof verdict)
     {
@@ -520,7 +521,7 @@ public sealed partial class Binding
                 var reading = this.Reading(fact, view, ref serial);
                 var states = this.SameProofPremise(reading, proposition);
                 var refutes = this.SameProofPremise(reading, negation ??= this.NegateConstraint(proposition));
-                if (states || refutes || (reading is { Kind: ConstraintKind.TypeIdentity } && subject is not null && ReferenceEquals(reading.Subject, subject)))
+                if (states || refutes || (subject is not null && ((reading.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(reading.Subject, subject)) || DecidesPairLayer(reading, subject))))
                 {
                     (positive, negative) = (positive | states | !refutes, negative | refutes | !states);
                     failure ??= environment.FailedPremise;
@@ -530,6 +531,25 @@ public sealed partial class Binding
 
         var spoken = positive ? (negative ? ConstraintProof.Error : ConstraintProof.Proven) : ConstraintProof.Refuted;
         return failure is not null && verdict != spoken ? this.RestOnFailure(failure) : verdict;
+
+        // An admitted-set premise (SemanticsPremise) on the binder of a pair layer of `type` or of one of its parts.
+        static bool DecidesPairLayer(BoundConstraint premise, BoundType type)
+        {
+            if (TryPairLayer(type, out var whole, out _) && SemanticsPremise(premise, whole))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (DecidesPairLayer(premise, type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     // The walk's stacks: the chain of the subject being walked, its active prefixes and its links' class mates (Enumerate).
