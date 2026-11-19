@@ -1972,6 +1972,31 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
     }
 
+    // PLAN G1073 (SPEC 23.1.2; D3): an EndBorrow ends the Loans a reference local holds. An Index over a receiver Binding rested (a use of
+    // a failed getter, D-823) lends the receiver's Opaque temp of no Type through a stand-in of no Type, which holds none and agrees with a
+    // reference: no finding (fail-before: EndBorrowLocal, InternalInvariant_Kd at the Index); the stand-in typed as no reference is one.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnEndBorrowOfALocalOfNoTypeEndsNothing(bool typed)
+    {
+        var c = MirBuildTest.Compile(
+            "struct P\n    public var x: i32 = 0\n    public var items: Array<i32> = []\n    public init() => ()\nstruct W\n" +
+            "    public var fa: [2 of P] = [P.init(), P.init()]\n        get() -> [2 of P] => storage\n    public init() => ()\n" +
+            "func run(w: uniq/W) -> i32\n    return match (w.fa[0])\n        _ => 1\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "run");
+        var ended = body.Statements.ToArray().Single(static x => x.Kind == MirStatementKind.EndBorrow).Place.Root;
+        Assert.Null(body.Locals[ended].Type);
+        if (typed)
+        {
+            Unsafe.AsRef(in body.Locals[ended]) = body.Locals[ended] with { Type = BoundType.I32 };
+        }
+
+        var rules = Validate(body, c.Types).Select(static x => x.Rule).ToArray();
+        Assert.Equal(typed, rules.Contains(MirViolation.EndBorrowLocal));
+        Assert.True(typed || rules.Length == 0, string.Join(", ", rules));
+    }
+
     // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,
     // as a raw layer or inside a Tuple, is a Local finding; the builder's locals over unstated pointers are valid.
     [Theory]

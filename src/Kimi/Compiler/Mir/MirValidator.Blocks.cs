@@ -236,7 +236,9 @@ internal sealed partial class MirValidator
                 case MirStatementKind.StorageLive or MirStatementKind.StorageDead when local.Kind is not (MirLocalKind.Var or MirLocalKind.Temp):
                     this.Report(MirViolation.StorageLocal);
                     break;
-                case MirStatementKind.EndBorrow when !MirTypes.IsReference(local.Type):
+                // An EndBorrow ends the Loans a reference local holds; a local of no Type (PLAN G1073: the stand-in of a lend of a Place
+                // of no Type, D3) holds none and its unknown Type agrees with a reference, its Kills access one Bounded admits.
+                case MirStatementKind.EndBorrow when local.Type is not null && !MirTypes.IsReference(local.Type):
                     this.Report(MirViolation.EndBorrowLocal);
                     break;
                 case MirStatementKind.Assign when !this.Rvalue(statement.Rvalue, this.IsValid(place) ? body.TypeOf(place) : null):

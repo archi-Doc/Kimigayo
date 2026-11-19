@@ -180,7 +180,7 @@ internal sealed class MirCases(TyCtxt types)
     /// pointer test of its destination; of the delivery into <c>_0</c> and of a read by an rvalue that takes its Type from its operands, the
     /// enclosed-layer test of a read operand, the pointer test of a read input and the whole-value test of a Use (A5's Whole, the write
     /// slots), and of that rvalue's first operand the raw-displacement test (A5's Keeps). No case reader reads a storage's beginning or end,
-    /// the Return's Move of <c>_0</c> or an Opaque site's root.</summary>
+    /// an EndBorrow, the Return's Move of <c>_0</c> or an Opaque site's root.</summary>
     /// <param name="type">The Type, or none.</param>
     /// <returns>The case Type, or none.</returns>
     internal BoundType? KnownType(BoundType? type) => type is null ? null : this.Type(type);
