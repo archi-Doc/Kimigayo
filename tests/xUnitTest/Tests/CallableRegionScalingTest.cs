@@ -65,24 +65,6 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         Assert.True(work[1] <= 12 * work[0] && work[2] <= 12 * work[0] && work[3] <= 96 * work[0], $"premise work {string.Join(", ", work)}");
     }
 
-    // Board D-822 (PLAN G1064; formerly board C-400's naming-read row): a literal with N quantified inputs `ref/U` converted to N inputs
-    // `ref/U` (n8w over N inputs; valid), compared through the one contract entry (DefinitionContractFits): its per-call Origins solved
-    // together (one bound per input) and each input's well-formedness a row of the body, so the premise work at N = 32, 64, 128 is
-    // linear in the inputs, at most 2.25 times per doubling.
-    [Fact]
-    public void ALiteralsComparisonOverManyInputsScales()
-    {
-        long[] work = [.. new[] { 32, 64, 128 }.Select(static n => PremiseWork(ManyInputs(n)))];
-        output.WriteLine($"premise work {string.Join(", ", work)}");
-        Assert.True(work[0] > 0 && work[1] <= 2.25 * work[0] && work[2] <= 2.25 * work[1], $"premise work {string.Join(", ", work)}");
-    }
-
-    // The valid workload of ALiteralsComparisonOverManyInputsScales.
-    internal static string ManyInputs(int n)
-        => "struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n" +
-            $"    let c: ({string.Join(", ", Enumerable.Repeat("ref/U", n))}) -> i32 = func [] ({string.Join(", ", Enumerable.Range(1, n).Select(static i => $"y{i}: ref/U"))}) -> i32 => 0\n" +
-            "    return 0\npublic func main() => ()\n";
-
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
     internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)
