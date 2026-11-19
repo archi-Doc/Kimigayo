@@ -1415,8 +1415,10 @@ public sealed partial class RetentionTest
     // walk of the part (C-386's F2): a by-value `T.Box` whose Contract argument holds a raw layer (`raw/u8`, a Plain Field), with no
     // callable, has no record (SPEC 15.6.4: a raw layer the abstract Type does not show adds no reach of its own; rule A's record on
     // aefb3194d), and with a writer of the Box handed keeps y, a raw `y` by rule 3, in the Abstract storage alone (the storage the part
-    // hides; rows belong to the storage they fill, C-352: x's own value is the callee's, so `own {}`). *y keeps h (`store 1`) by PLAN
-    // G935's rules, as without G963 (H2 by R, the owner's O-359 (a): its i32 Field fits *y's i32). The rows of A5's verdicts are MirBorrowsTest's
+    // hides; rows belong to the storage they fill, C-352: x's own value is the callee's, so `own {}`). *y keeps the Origin-free H2 (`store
+    // 1`) by R (the owner's O-359 (a): its i32 Field fits *y's i32); it keeps nothing of `h: H during o`, whose Type states an Origin: *y is
+    // an i32 position, which may retain no Origin of h (the owner's O-435 (a), SPEC 15.6.4 for results and writable storage alike; H's
+    // `raw/i32 during self` is a layer with an Origin, F's G935 ruling 79), so it carries none of h's Loans. The rows of A5's verdicts are MirBorrowsTest's
     // AWriterOfWhatAPartHidesKeepsTheArgumentThere. Fails on 0658a2b82: every row but the two without a record (no callable, H2)
     // has no record there (no position for a by-value part).
     [Theory]
@@ -1432,7 +1434,7 @@ public sealed partial class RetentionTest
     [InlineData("func f<T, E>(x: T, y: E)", "")]
     [InlineData("func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, E) -> ())", "store 0: own {}, reached {0 Value, 1 Value, 2 Value, 3 Value, 4 Value}, store 1: own {}, reached {0 Value, 1 Value, 2 Value, 3 Value, 4 Value}")]
     [InlineData("func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, E) -> ())", "store 1: own {}, reached {0 Value, 1 Value, 2 Value, 3 Value, 4 Value}")]
-    [InlineData("func f(h: H during o, y: uniq/i32 during o)", "store 0: own {}, reached {0 Value, 1 Value}, store 1: own {0 Value}, reached {}")]
+    [InlineData("func f(h: H during o, y: uniq/i32 during o)", "store 0: own {}, reached {0 Value, 1 Value}")]
     [InlineData("func f(h: H2, y: uniq/i32 during o)", "store 1: own {0 Value}, reached {}")]
     [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q)\n    T is HoldsR<raw/u8>", "")]
     [InlineData("func f<T>(x: T.Box, y: raw/u8)\n    T is HoldsR<raw/u8>", "")]
@@ -1472,6 +1474,17 @@ public sealed partial class RetentionTest
             "func f<T, E>(x: uniq/T, y: E, ku: ref/i32 during u, set: (uniq/N<T> during u, E) -> ()) -> ()\n    return\n");
         Assert.Equal("limit", Declared(c, "f"));
     }
+
+    // SPEC 15.6.4 (the owner's O-435 (a); F's G935 ruling 78; labels first in `...\front\notes\G935\r78\labels.txt`): an argument whose Type
+    // states an Origin is retained only where a position may retain one of its Origins, a raw layer without an Origin included (q's raw/u8
+    // result, rule A: kept); an Origin-free part of it is no source, so pr's i32 result keeps nothing of p; an Origin-free input keeps its
+    // CanHold-alone row (O-364 (a) (2): f's result keeps v).
+    [Theory]
+    [InlineData("func pr(p: (ref/i32 during a, i32)) -> i32 => p.1", "pr", "")]
+    [InlineData("func q(p: (ref/i32 during a, raw/u8)) -> raw/u8 => p.1", "q", "result {0 Value Chain}, untied")]
+    [InlineData("func f(v: i32) -> i32 => v", "f", "result {0 Value}")]
+    public void AnOriginFreeResultKeepsNoArgumentWhoseTypeStatesAnOrigin(string function, string name, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), name));
 
     // The same at a call: a Closure capturing the caller's T by move and passed by value, with a writer through `uniq/T` handed, keeps the
     // child in what the captured T hides; without the writer nothing.
