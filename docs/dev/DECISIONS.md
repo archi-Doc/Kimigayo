@@ -26261,23 +26261,3 @@ holds the owner's decisions 1–13). Units of the Tatara lane record their entri
     its units; seats 1+1. AGENTS (Roles), WORKFLOW (Sessions) and COMPILER_ARCHITECTURE (the sessions paragraph, the stage ledger)
     name it from the plan's adopting commit.
   - Amends R9-M6 (`src/Kimi/Build` was the Middle's) and R7-M4 (P13 was the Back's).
-- **T-M3 The Tatara component is `src/Tatara`: a C ABI over LLVM and LLD, built from the pinned archive** (Tatara, 2026-11-20; the
-  plan's unit A1a; Major; design review C-420).
-  - `src/Tatara` (`tatara.h` the ABI and contract, `tatara.cpp`, `build.ps1`) is P13's native part. It is not C#, `Kimi.csproj` does
-    not compile it, and its build is `build.ps1`: the archive's `clang-cl` and `lld-link`, the archive's configuration (static CRT,
-    no RTTI, no exceptions), every `LLVM*.lib` but `LLVMWindowsManifest` and the `LLVM-C` import library offered so that an LLVM
-    update changes no library list. One version source: the supply catalog's `llvmVersion`.
-  - **The build identity** is the SHA-256 over every `.h`, `.cpp` and `.ps1` file under `src/Tatara` (path relative to `src/Tatara`
-    with `/`, ordinal order; path, NUL, bytes). `tatara_identity` reports it with LLVM's version. P13 compares both at start (unit A2),
-    from one implementation of the rule.
-  - **LibXml2 is not added** (the owner, 2026-11-19, T's dialog, option (a), verbatim 「(a) 入れない」): `LLVMWindowsManifest.lib` stays
-    off the link line and `src/Tatara` defines its members as LLVM's own build without LibXml2 does (unit A2). Kimi's link passes no
-    manifest option. Rejected: (b) a pinned LibXml2 (a library and its build kept for a function Kimi does not use).
-  - **Temporary structure: T's private toolchain root** (a copy of the shared root plus `tatara.dll`, selected per process with
-    `--ToolchainRoot` or the process's own `KIMI_TOOLCHAIN_ROOT`, refreshed when `profile.json` changes). Every worktree reaches one
-    `toolchain` directory through a junction, so a DLL under development cannot sit there. Removal condition: unit A4, which makes the
-    DLL part of setup, of the installation record and of CI. Until then every test that loads `tatara.dll` is selected explicitly.
-  - `tatara.dll`'s hash is recorded where it is built, not adopted in the catalog: it contains the building machine's static CRT and
-    STL.
-  - Rejected: the C++ under `src/Kimi/Build` (it would join the C# project's items and `Build`'s file set) or under `src/backend`
-    (the Back's directory); a hand-raised ABI number (forgettable); the DLL in setup and CI from A1 (the shared junction).
