@@ -283,15 +283,7 @@ public sealed partial class Binding
 
             if (selection == CallSelection.Unproven)
             {
-                // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call. DECISIONS D3
-                // (G812 ruling 156; O-332 (a), O-428 (a)): below an open position, a pending premise that reads a position a split binding
-                // decides (PremiseReadsSplit) is judged only case by case, so the call rests there with no record and no Type
-                // (RestsBelowOpenPosition), and its split call keeps the split's located Unsupported_Kd.
-                if (evaluation.PremiseReadsSplit && expected is { ContainsOpen: true })
-                {
-                    return Complete(call, null);
-                }
-
+                // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
                 return evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
                     : evaluation.PendingCount == 1 && evaluation.PendingJudgment is { } judgment ? this.FailPendingJudgment(call, judgment)
