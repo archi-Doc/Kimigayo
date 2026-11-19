@@ -36,11 +36,10 @@ public sealed partial class Binding
 
     // SPEC 23.1.2: a definition's parts (body, defaults, base initializer, initializer, accessor bodies) are published when Binding bound
     // them, whatever the definition's own failure, so their independent records stay visible; a check in them rests only where it reads
-    // a failed input (rule W). Not published: parts no case of which is verified (Binding.CaseLimits' PartsVerified), and those of a
-    // definition whose own Type failed (a function's or accessor's result, a Property's Type: the column MIR's `_0` reads), which has no
-    // representation yet (PLAN G1073 removes this exclusion, the owner's O-436 (a)).
-    private bool PartsPublished(Koto definition) => HirTables.State(definition) != BindingState.Unvisited &&
-        HirTables.TypeOf(definition) is not null && this.PartsVerified(definition);
+    // a failed input (rule W). Not published: parts no case of which is verified (Binding.CaseLimits' PartsVerified). A definition whose
+    // own Type failed (a function's or accessor's result, a Property's Type) publishes them as any other: its slot of no Type is the
+    // failed slot (HasFacts' slot rows, PLAN G1073).
+    private bool PartsPublished(Koto definition) => HirTables.State(definition) != BindingState.Unvisited && this.PartsVerified(definition);
 
     // A published declaration whose body Binding bound builds it, a virtual body no instance applies included (checked, never generated:
     // virtual-dispatch 3, 6.3); an accessor's body is a part of its Property.
