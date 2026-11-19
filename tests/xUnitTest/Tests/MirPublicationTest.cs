@@ -196,6 +196,29 @@ public sealed class MirPublicationTest
         Assert.Equal([("requiredBytes", "4096"), ("limitBytes", "1024"), ("table", "Loans")], record.Reason!.Select(static x => (x.Name, x.Value)));
     }
 
+    // Design 3.3 (R7-T1; the Middle's P1): a problem's facts publish whatever its class, a Limit fact as its code's last argument and a
+    // Required fact the one before it, so a collection record's TypeHeightLimit_Kd carries its limit at its subject, as an analysis
+    // problem's does; a fact its code's catalog row has no argument slot for (a Required beside TypeHeightLimit_Kd's one argument, a Limit
+    // for MovedPlace_Kd, which takes none) is a broken contract: InternalInvariant_Kd at the subject.
+    [Theory]
+    [InlineData((int)MirRecordClass.Collection, "TypeHeightLimit_Kd", false, "TypeHeightLimit_Kd limit=8192")]
+    [InlineData(MirProblem.NoBody, "TypeHeightLimit_Kd", false, "TypeHeightLimit_Kd limit=8192")]
+    [InlineData((int)MirRecordClass.Collection, "TypeHeightLimit_Kd", true, "InternalInvariant_Kd")]
+    [InlineData(MirProblem.NoBody, "MovedPlace_Kd", false, "InternalInvariant_Kd")]
+    public void ALimitFactIsItsCodesLastArgument(int body, string code, bool required, string record)
+    {
+        var (c, program) = Program(Valid);
+        var subject = Site(c, Valid, "return total");
+        var limit = new ProblemFact(ProblemFactKind.Limit, subject, 8192);
+        program.Problems.Add(
+            new(Enum.Parse<DiagnosticCode>(code), DiagnosticRequirement.ControlFlow, subject, body, ulong.MaxValue),
+            required ? [new(ProblemFactKind.Required, subject, 1), limit] : [limit]);
+        Publish(c, program);
+        var published = Assert.Single(Records(c));
+        var reason = published.Reason?.Select(static x => $" {x.Name}={x.Value}") ?? [];
+        Assert.Equal((record, "return total"), (published.Code + string.Concat(reason), Text(Valid, published.Span)));
+    }
+
     // Design 3.3 (Q-BU-1): an Origin problem's Relation fact is Binding.OriginRelationFacts' evidence, from its C1-F4 row (a fit, with its
     // destination); a containment edge (-1) has no row: wellFormed, without a destination.
     [Fact]
