@@ -32,7 +32,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter), numbering on from the library's L once its layer is
     // sealed (U4), so every Type of the compilation's level has an id above L.
     private int typeCount = Math.Max(BoundType.StaticCount, library.Layer.TypeCount);
-    private int interned; // The Types Intern made: the table's entries.
+    private int interned = library.Frozen ? library.Layer.Size.TypeKeys : 0; // The Types interned: the layer level's, then this TyCtxt's.
     private int programEntries; // The Types of the compilation's level, which hold its room (KeyFree).
 
     /// <summary>Gets the last id this compilation gave a Type (Binding's freeze reads it as the library's L).</summary>

@@ -402,7 +402,7 @@ public sealed partial class Binding
     // SPEC 15.3.2: a storage name that no declaration of any role matches is reported once, at the name. The Reason says that own
     // slots are declared only in the header; the header,
     // or the Type name without one, is the related location. `during self` is explained by the storage rule of SPEC 11.6 instead.
-    private bool ReportUndeclaredStorageOrigin(Koto use, DiagnosticRequirement requirement, DiagnosticCode code)
+    private bool ReportUndeclaredStorageOrigin(Koto use, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (use is not IdentifierNameKoto { IdentifierName: var name } || StorageType(use) is not { } type)
         {
@@ -412,7 +412,7 @@ public sealed partial class Binding
         if (name == "self")
         {
             const string SelfNote = "A stored value cannot borrow from the value that stores it: self creates no self-borrowing storage contract (SPEC 11.6)";
-            use.Report(requirement, code, note: SelfNote, evidence: ["self is not a storage Origin"]);
+            use.ReportIn(store, requirement, code, note: SelfNote, evidence: ["self is not a storage Origin"]);
             return true;
         }
 
@@ -432,7 +432,7 @@ public sealed partial class Binding
         var related = slots is OriginNameList { HeaderSpan.Length: > 0 } written
             ? ("header", (Koto)type, written.HeaderSpan, "the Origin header")
             : ("type", type, TypeNameSpan(type), "the Type, which writes no Origin header");
-        use.Report(requirement, code, note: note, evidence: [$"{name} is not a declared Origin slot"], relatedSpans: [related]);
+        use.ReportIn(store, requirement, code, note: note, evidence: [$"{name} is not a declared Origin slot"], relatedSpans: [related]);
 
         return true;
     }
@@ -443,13 +443,14 @@ public sealed partial class Binding
     // SPEC 15.2.3: a static Origin bound to a slot that requires uniq (ValidateOriginRequirements); SPEC 5.7: a Phantom slot a raw layer
     // states (InvalidRawOrigin); each with that slot related and, for a conditional slot, the Semantics cases its check recorded
     // (CaseText; SPEC 23.1.2, DECISIONS BU-44).
-    private bool ReportInvalidOriginSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    private bool ReportInvalidOriginSlot(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (this.invalidStaticOriginSlots?.TryGetValue(node, out var invalid) == true)
         {
             var slot = invalid.Slot;
             var found = CaseText(invalid.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(invalid.Cases.Start, invalid.Cases.Count));
-            node.Report(
+            node.ReportIn(
+                store,
                 requirement,
                 code,
                 evidence: [$"static cannot supply uniq for Origin slot {slot.Name}{found}"],
@@ -463,7 +464,8 @@ public sealed partial class Binding
             var slot = phantom.Slot;
             var found = CaseText(phantom.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(phantom.Cases.Start, phantom.Cases.Count));
             var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps{found}; add a Loan Field over {slot.Name}";
-            node.Report(
+            node.ReportIn(
+                store,
                 requirement,
                 code,
                 evidence: [$"Origin slot {slot.Name} is Phantom{found}"],
@@ -477,7 +479,7 @@ public sealed partial class Binding
 
     // SPEC 15.3.2: a projection of a slot that its Type does not declare, once per projection at the slot name, relating the
     // Type's header and listing the declared slots.
-    private bool ReportAbsentSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    private bool ReportAbsentSlot(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (this.absentSlotProjections?.TryGetValue(node, out var type) != true || node is not MemberAccessKoto { Right: IdentifierNameKoto slot } ||
             type!.Symbol is not { Schema: { } schema } symbol)
@@ -495,7 +497,7 @@ public sealed partial class Binding
         (string Role, Koto In, SourceSpan Span, string? Label)[]? related = symbol.Declaration is DeclarationContainerKoto declaration
             ? [declaration.OriginNames is OriginNameList { HeaderSpan.Length: > 0 } written ? ("header", declaration, written.HeaderSpan, "the Origin header") : ("type", declaration, TypeNameSpan(declaration), "the Type, which writes no Origin header")]
             : null;
-        node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], relatedSpans: related);
+        node.ReportIn(store, requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], relatedSpans: related);
         return true;
     }
 

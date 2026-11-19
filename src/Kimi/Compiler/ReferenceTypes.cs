@@ -87,9 +87,6 @@ internal static class ReferenceTypes
         return true;
     }
 
-    internal static bool IsString(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 }
-        && ReferenceEquals(type.Components[0], BoundType.String);
-
     // SPEC 13.4: a string comparison operand is a string or safe reference layers ending in one.
     internal static bool EndsInString(BoundType? type)
     {
