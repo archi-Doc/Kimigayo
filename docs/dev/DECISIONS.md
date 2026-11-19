@@ -7006,7 +7006,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (Arrive's receiving Type too). An entry whose Place that Type does not designate at the value's Position
     (`MirBorrows.PunTypes.Designates`, the judge's typed arm, one predicate) is read punned through the Type's raw pointer raw
     Places (`PunTypes.RawPointers` over `TyCtxt.RawPlaces`, each row's key read again; an enum's payload is none and a Function
-    value has none, O-223 (B')), each row a layer of its own: the holder's state is read at the rows' guard (`MirTypes.WritesPast`,
+    value has none, O-223 (B')), each row a layer of its own, through a borrow layer only at a punnable referent, never at a safe reference's Place: the holder's state is read at the rows' guard (`MirTypes.WritesPast`,
     the holding walk entered at each row's key) beside its own root Type's, and where that guard steps over an `owner` Scalar's byte
     storage the body does not own is reached with the Reached entry of the rows' pointee where every storing row is one the walked
     Type expression writes, else `Reached.All` (a declaration's own layer, a layer stating an Origin).
