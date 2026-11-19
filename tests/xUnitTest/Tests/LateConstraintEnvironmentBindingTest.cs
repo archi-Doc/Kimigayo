@@ -143,6 +143,31 @@ public class LateConstraintEnvironmentBindingTest
         }));
     }
 
+    // R7-C3 C3-1b (F's C2 rulings 287-290; SPEC 3.1.2, 8.2.3, 8.3.1, 8.6.3, 8.7.1, 23.1.2): Marker's closed `string is Copy` is Refuted
+    // (`owner/string` is Non-Copy), so Marker is an invalid declaration; a premise naming it is its declaration's premise error, reported
+    // once there, never at uses (a call, a requirement, a conformance's otherwise-Proven verdict). A conformance's own failure keeps its
+    // record (s.c: Target is not Copy; u.k: `U is i32` is not proven from `U is E`); u.k.mv is its control with Marker valid.
+    [Theory]
+    [InlineData("p1.call", Marker + "group G\n    func take<T>()\n        T is Copy\n        ()\n    func caller<T>(value: T)\n        T is Marker\n        take<T>()\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd caller<T>(value: T)")]
+    [InlineData("p1.req", Marker + Needs, "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd need<T>() | InvalidConstraint_Kd caller<T>(value: T)")]
+    [InlineData("p1.bare", "public contract Marker\n    string is Copy\n" + Needs, "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd need<T>() | InvalidConstraint_Kd caller<T>(value: T)")]
+    [InlineData("p1.cond", "public contract C\n" + Marker + "struct W<T>\n    Self is C when T is Marker\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd Self is C when T is Marker")]
+    [InlineData("p1.struct", "public contract C\n" + Marker + "public struct Target<T>\n    T is Marker\n    Self is C\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd struct")]
+    [InlineData("s.c", "public contract C: Copy\n" + Marker + "public struct Target<T>\n    T is Marker\n    Self is C\n    public var s: string = \"\"\n", "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd struct | UnsatisfiedConstraint_Kd Self is C")]
+    [InlineData("u.k", Marker + Puts, "UnsatisfiedConstraint_Kd contract | UnsatisfiedConstraint_Kd string is Copy | InvalidConstraint_Kd struct | UnprovenConstraint_Kd Self is Put<E>")]
+    [InlineData("u.k.mv", "public contract Marker: Copy\n    string is not Copy\n" + Puts, "UnprovenConstraint_Kd Self is Put<E>")]
+    public void AnInvalidContractIsItsUsersDeclarationsPremiseErrorOnce(string id, string declarations, string records)
+    {
+        var source = declarations + "public func main() -> ()\n    return\n";
+        Assert.Equal((id, records), (id, string.Join(" | ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } at ? source.Substring(at.Start, at.Length).Split('\n')[0] : string.Empty)}"))));
+    }
+
+    private const string Marker = "public contract Marker: Copy\n    string is Copy\n";
+
+    private const string Needs = "group G\n    func need<T>()\n        T is Marker\n        ()\n    func caller<T>(value: T)\n        T is Marker\n        need<T>()\n";
+
+    private const string Puts = "contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\nstruct Box<E>\n    E is Marker\n    Self is Put<E>\n    public func put<U>(self: uniq/Self, u: U)\n        U is i32\n        return\n";
+
     private static FunctionKoto Caller(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "caller");
 

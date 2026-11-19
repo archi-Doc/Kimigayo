@@ -95,20 +95,27 @@ public sealed partial class Binding
     // Self.
     private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
-    // R7-C3 (F's C2 rulings 273, 274; SPEC 8.2.3, 23.1.2): a conformance's verification reads its Contract's premises (the Self requirements
-    // every conformer meets, its associated bounds among them), each through the one consult (AvailableConstraintFact): a failed one
-    // rests the verification on the Contract's record (ModuleBindingTest's late witness of `associate Item is Source.(Origin).Item`).
-    private bool ConsultsFailedContractPremise(Koto contract)
+    // R7-C3 (F's C2 rulings 273, 274, 289-290; SPEC 8.2.3, 8.8.2, 23.1.2): a conformance's verification reads the premises it is judged
+    // under, each through the one consult (AvailableConstraintFact), whose read of a failed one is the verification's limit: its
+    // Contract's (the Self requirements every conformer meets: ModuleBindingTest's late witness of `associate Item is Source.(Origin).Item`)
+    // and its conformance scope's, the declaration D and a conditional's own premises P, by one walk of the chain (C3-1b).
+    private PremiseFailure? ConsultsFailedPremise(BindingScope? scope)
     {
-        if (!this.scopes.TryGetValue(contract, out var scope) || scope.Constraints is not { FailedPremises.Count: > 0 } environment)
+        PremiseFailure? failed = null;
+        for (var current = scope; current is not null; current = current.Parent)
         {
-            return false;
-        }
+            if (current.Constraints is not { FailedPremises.Count: > 0 } environment)
+            {
+                continue;
+            }
 
-        var failed = false;
-        foreach (var fact in environment.Facts)
-        {
-            failed |= environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _);
+            foreach (var fact in environment.Facts)
+            {
+                if (environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _))
+                {
+                    failed ??= environment.FailedPremise;
+                }
+            }
         }
 
         return failed;
@@ -138,8 +145,9 @@ public sealed partial class Binding
         }
 
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid ||
-            this.ConsultsFailedContractPremise(conformance.Contract.Declaration) || this.InvalidDeclarationContext(conformance.Contract.Declaration) ||
-            this.InvalidDeclarationContext(conformance.Type.Declaration))
+            (this.scopes.TryGetValue(conformance.Contract.Declaration, out var contractScope) && this.ConsultsFailedPremise(contractScope) is not null) ||
+            this.InvalidDeclarationContext(conformance.Contract.Declaration) || this.InvalidDeclarationContext(conformance.Type.Declaration) ||
+            (!this.ChecksOwnSite(conformance.Use) && this.ConsultsFailedPremise(conformance.Scope.Parent) is not null))
         {
             conformance.IsVerified = false;
             if (conformance.Invalid && (this.partPrerequisites.ContainsKey(conformance.Use) || this.prerequisites.ContainsKey(conformance.Use)))
@@ -410,6 +418,16 @@ public sealed partial class Binding
             }
 
             proof = UnsupportedProof(conformance, proof);
+            // R7-C3 C3-1b (F's C2 rulings 289-290, R1; SPEC 8.2.3, 23.1.2): in the conformance's own check every check ran and its own
+            // Refuted, Error or Unknown verdict keeps its record; a verdict otherwise Proven rests on the conforming scope's Failed
+            // premise: the premise leaves it open, and the consult's read is its limit, so the proof scope ends resting on that premise's
+            // record (EndProof): unverified, no record of its own. Every other reader rested at the first branch.
+            if (proof == ConstraintProof.Proven)
+            {
+                this.BeginProof();
+                proof = this.EndProof(this.ConsultsFailedPremise(conformance.Scope.Parent) is null ? ConstraintProof.Proven : ConstraintProof.Unknown);
+            }
+
             conformance.IsVerified = proof == ConstraintProof.Proven;
             completed = true;
             return proof;

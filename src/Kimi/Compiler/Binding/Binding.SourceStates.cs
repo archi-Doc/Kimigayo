@@ -132,7 +132,9 @@ public sealed partial class Binding
                 stateChanged |= proof != ConstraintProof.Unknown;
                 limitChanged |= (cause is null) != (symbol.SourceCause is null);
                 symbol.SourceState = proof;
-                symbol.SourceCause = cause;
+                // R7-C3 C3-1b (F's C2 rulings 289-290, C3): a Refuted state is an invalid declaration, so it carries its cause too: the
+                // declaration's one PremiseFailure (made once, kept), which a reader of the source rests on (AvailableContractPremise).
+                symbol.SourceCause = proof == ConstraintProof.Refuted ? this.scopes[symbol.Declaration].Constraints?.Cause(symbol.Declaration) : cause;
                 symbol.SourceFact = this.ProofFact(proof); // Payload, outside the loop's change test.
             }
 

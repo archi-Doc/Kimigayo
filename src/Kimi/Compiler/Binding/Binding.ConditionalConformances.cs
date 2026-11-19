@@ -434,7 +434,7 @@ public sealed partial class Binding
                     definition = ConstraintProof.Error;
                 }
 
-                var condition = this.ProveConformanceConditions(path, type, scope);
+                var condition = this.PathEvidence(path, type, scope);
                 var available = definition == ConstraintProof.Proven ? condition : condition == ConstraintProof.Error ? ConstraintProof.Error : definition;
                 result = CombineProof(result, available, false);
                 if (available == ConstraintProof.Proven)
@@ -620,6 +620,13 @@ public sealed partial class Binding
             this.openObligations.Remove(key);
         }
     }
+
+    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.3.2, 23.1.2): where evidence is taken from a path (ResolveConformance and the projection
+    // specification's PathConditions), an Invalid path is a failed input resting on the path (its Use failed, derived where linked), so
+    // no binding or witness of it is read; otherwise the path's conditions. A test of whether a path can apply reads the conditions alone
+    // (ProveConformanceConditions): an Invalid path is never evidence that the conformance does not apply (8.3.2 closed world).
+    private ConstraintProof PathEvidence(BoundConformancePath path, BoundType type, BindingScope scope)
+        => path.Invalid ? this.RestOnFailure(path) : this.ProveConformanceConditions(path, type, scope);
 
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {

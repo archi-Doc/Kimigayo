@@ -901,6 +901,15 @@ public sealed partial class Binding
             completion = Meet(completion, read);
             if (state != ConstraintProof.Proven)
             {
+                // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.3.1, 23.1.2): a Refuted source is an invalid declaration, read outside its
+                // own check as a failed input: the proof's limit, on the cause SourceStates published (ReadVerdict joins none for
+                // Refuted; an Error's it joins itself). The source's own checks are the failure's sites (ChecksOwnSite).
+                if (state == ConstraintProof.Refuted && !this.ChecksOwnSite(source.Declaration))
+                {
+                    this.ScopeReads.Limit ??= ((DeclarationContainerKoto)source.Declaration).BoundSymbol!.SourceCause ??
+                        throw new InvalidOperationException($"A Refuted source `{source.Declaration}` carries no cause (InternalInvariant; R7-C3 C3-1b).");
+                }
+
                 return false;
             }
         }
