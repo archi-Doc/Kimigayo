@@ -435,6 +435,25 @@ public sealed partial class MirBuildTest
         Assert.Same(body.TypeOf(new MirPlace(1)), signature.Type);
     }
 
+    // SPEC 7.7.3, 7.3.3, 3.4.3 (PLAN D-888): a value call's callee stored behind several ref and uniq layers is acquired on the path
+    // through every layer (`p@follow@ref`, `p@follow@uniq`): the Value call's operand is one reference in the call's mode to the Callable,
+    // which code generation, the collector and the MIR analyses read below one layer (TyCtxt.Layer), with a result naming the call receiver
+    // too. Fail-before: the operand kept every layer (`ref/ref/F`), and code generation's Value call reported InternalInvariant_Kd.
+    [Theory]
+    [InlineData("    let g = func () -> i32 => 2\n    let r = g@ref\n    let rr = r@ref\n    return rr()\n", SemanticsKind.Ref)]
+    [InlineData("    var g = func () -> i32 => 2\n    let u = g@uniq\n    let ru = u@ref\n    return ru()\n", SemanticsKind.Ref)]
+    [InlineData("    let n: i32 = 7\n    let g = func [n] () => n@ref\n    let r = g@ref\n    let rr = r@ref\n    let v = rr()\n    return v\n", SemanticsKind.Ref)]
+    [InlineData("    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var u = next@uniq\n    let uu = u@uniq\n    return uu()\n", SemanticsKind.Uniq)]
+    public void AValueCalleeThroughLayersIsOneReferenceToItsCallable(string body, SemanticsKind mode)
+    {
+        var f = Body("func f() -> i32\n" + body + "public func main() => ()\n", "f");
+        var call = Assert.Single(f.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value }).Terminator;
+        var callee = f.TypeOf(call.Operand.Place)!;
+        Assert.Equal(mode, callee.Semantics);
+        Assert.Equal(HirPlaceKind.Deref, TyCtxt.Layer(callee, out var callable, out _));
+        Assert.Equal(BoundTypeKind.Closure, callable!.Kind);
+    }
+
     // SPEC 3.6, 16.2.1, 7.2.3, 14.6.2 (DECISIONS R4-M129): a temporary is destroyed before every temporary created while it was evaluated
     // (a call's result before its receiver's and arguments' temporaries, an aggregate before its operands', a Subject or iterator before its
     // expression's, a pending slot before its argument's), on the normal end and on an exit that interrupts the statement: a cleanup chain

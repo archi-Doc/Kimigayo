@@ -16,6 +16,10 @@ public class BorrowAcquisitionTest
 
     private const string Link = "struct Holder2 {a}\n    public var link: uniq/i32 during a\n";
 
+    // A `confined` witness whose body calls a Closure `g` (SPEC 8.11.4).
+    private const string Work = "contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\nstruct W\n    Self is Work\n    public init() => ()\n" +
+        "    public func run(self: ref/Self) -> i32\n        let g = func () -> i32 => 2\n";
+
     [Theory]
     [InlineData("Initializer", "var number: i32 = 1\nlet r = number@uniq\nlet first = r\nfirst@follow += 1\nlet second: uniq/i32 = r\nsecond@follow += 1\nr@follow += 1\nrequire number == 4 else => $abort(\"initializer\")")]
     [InlineData("Discard", "var number: i32 = 1\nlet r = number@uniq\n_ = r\nr@follow += 1\nlet moved = r@move\nmoved@follow += 1\nrequire number == 3 else => $abort(\"discard\")")]
@@ -219,6 +223,30 @@ public class BorrowAcquisitionTest
         Assert.Equal(records, string.Join("; ", check.Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
         Assert.Equal(records.Length == 0, check.Accepted);
     }
+
+    // SPEC 7.7.3, 7.3.3, 3.4.3, 8.10 (PLAN D-888): a value call acquires its callee like a method receiver, on the path that continues
+    // below every ref and uniq layer to the Callable (a Closure, a Function value, a function item, a Callable F): through any number
+    // of layers, also in a `confined` witness, with arguments and a result over its input; exclusively only where every layer and the path
+    // grant exclusive capability (`uniq/ref/F` and `ref/uniq/F` supply no Exclusive call). A raw pointer is no layer the path follows, so
+    // `p()` calls nothing; a handle below a reference is the located limit. Fail-before: NotCallable_Kd or Unsupported_Kd on the valid
+    // forms, `ur()` accepted (and InternalInvariant_Kd at build), `p()` accepted, `ro()` accepted (InternalInvariant_Kd at build). Each
+    // row: the published records in order; an accepted program has none.
+    [Theory]
+    [InlineData("func f() -> i32\n    let g = func () -> i32 => 2\n    let r = g@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr()\n", "")]
+    [InlineData("func f() -> i32\n    let g = func (x: ref/i32) -> ref/i32 => x\n    let r = g@ref\n    let rr = r@ref\n    let v: i32 = 5\n    let got = rr(v@ref)\n    return got\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var u = next@uniq\n    var uu = u@uniq\n    let uuu = uu@uniq\n    return uuu()\n", "")]
+    [InlineData("func f(g: (i32) -> i32) -> i32\n    let r = g@ref\n    let rr = r@ref\n    return rr(4)\n", "")]
+    [InlineData("func helper(a: i32, b: i32) -> i32 => a + b\nfunc f() -> i32\n    let h = helper\n    let r = h@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr(2, 3)\n", "")]
+    [InlineData("func f<F>(g: ref/F) -> i32\n    F is Callable<() -> i32>\n    let r = g@ref\n    let rr = r@ref\n    return rr()\n", "")]
+    [InlineData("func f<F>(g: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    var u = g\n    let uu = u@uniq\n    return uu()\n", "")]
+    [InlineData(Work + "        let r = g@ref\n        let rr = r@ref\n        return rr()\n", "")]
+    [InlineData(Work + "        let r = g@ref\n        let rr = r@ref\n        let rrr = rr@ref\n        return rrr()\n", "")]
+    [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var r = next@ref\n    let ur = r@uniq\n    return ur()\n", "InvalidAssignment_Kd ur")]
+    [InlineData("func f<F>(g: uniq/F) -> i32\n    F is Callable<uniq, () -> i32>\n    let r = g@ref\n    return r()\n", "InvalidAssignment_Kd r")]
+    [InlineData("func f() -> i32\n    var g = func () -> i32 => 2\n    let p = g@raw\n    return p()\n", "NotCallable_Kd p()")]
+    [InlineData("func f() -> i32\n    let o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let ro = o@ref\n    return ro()\n", "Unsupported_Kd ro")]
+    public void AValueCalleeIsAcquiredThroughEveryReferenceLayer(string body, string records)
+        => this.AValueCallsAcquisitionAndRelationsAreEachRecorded(body, records);
 
     // SPEC 6.5.2, 3.5, 8.15.2 (R6-check (b2)'s acceptance move): a payload Place is acquired by its bare acquisition, so `s/(uniq/i32)`, whose
     // owner case Reborrows its target, is no TransferRequired_Kd (before (b2) the owner case had no plan).

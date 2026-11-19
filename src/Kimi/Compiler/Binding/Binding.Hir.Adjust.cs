@@ -219,8 +219,8 @@ public sealed partial class Binding
 
             if (call.Kind == CalleeKind.Value && call.ReceiverOperation.Source is null)
             {
-                var reference = call.CalleeType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } callee ? callee.Semantics : SemanticsKind.Owner;
-                var mode = call.ReceiverKind == SemanticsKind.Owner || reference == call.ReceiverKind ? HirAdaptation.None : reference != SemanticsKind.Owner ? HirAdaptation.ReferenceRead
+                // An owned callee, which a reference's or a payload's acquisition does not take (Binding.ValueCalls' AcquireValueCallee).
+                var mode = call.ReceiverKind == SemanticsKind.Owner ? HirAdaptation.None
                     : call.ReceiverKind == SemanticsKind.Uniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow;
                 uses.Use(call.CalleeValue, mode);
             }
