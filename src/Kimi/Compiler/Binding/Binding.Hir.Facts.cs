@@ -95,7 +95,7 @@ public sealed partial class Binding
             case HirOp.DictionaryLiteral:
                 return CallPlan.Of(this, node) is { } find && Complete(find);
             case HirOp.Closure:
-                return ((FunctionKoto)node).ClosureDefinition is { Signature: not null } && this.SlotsStated(node);
+                return this.ClosureParts((FunctionKoto)node) && ((FunctionKoto)node).ClosureDefinition!.Signature is not null;
             case HirOp.Convert:
                 return ((ConversionKoto)node).ConversionBinding is not ConversionBinding.None and var binding &&
                     (binding != ConversionBinding.CaseAdaptation || HirTables.PlanOf(node).Plan is ExplicitAdaptationPlan);
@@ -163,6 +163,11 @@ public sealed partial class Binding
             return first > 0 || (CallPlan.Of(this, node, format.Writes.Count) is { } status && Complete(status));
         }
     }
+
+    // The facts a Closure's parts are published with (HirPublisher.Parts; DECISIONS R5-M63 (1) as amended by PLAN G1110): the definition
+    // this binding published and every slot of the literal stated, whatever the creation. The creation (HasFacts' Closure row) also needs
+    // the definition's Signature, which a failed slot leaves null.
+    private bool ClosureParts(FunctionKoto literal) => literal.ClosureDefinition is not null && this.SlotsStated(literal);
 
     // PLAN G1073 (SPEC 23.1.2): whether every slot a node declares is stated (Stated): a declared local's; a definition's result and
     // parameters (an accessor's executing function's, with its self and value; a static's or Field's Type); the bindings of a match's, a
