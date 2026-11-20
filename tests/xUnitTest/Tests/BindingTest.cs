@@ -126,6 +126,8 @@ public class BindingTest
     [InlineData("group Values\n    var a = b\n    var b = c\n    var c = a", "CyclicBinding_Kd var a = b", "var b = c|var c = a")]
     [InlineData("group Values\n    var a = b\n    var b = a\n    var c = a + 1", "CyclicBinding_Kd var a = b", "var b = a|var c = a + 1")]
     [InlineData("group Values\n    var a = b\n    var b = a\n    var c: i32 = 1", "CyclicBinding_Kd var a = b", "var b = a")]
+    [InlineData("group Values\n    let c = b + 1\n    let a = b\n    let b = a", "CyclicBinding_Kd let b = a", "let c = b + 1|let a = b")]
+    [InlineData("func useB() -> i32\n    let x = Values.b\n    return x\ngroup Values\n    public let a = b\n    public let b = a", "CyclicBinding_Kd let a = b", "let x = Values.b|public let b = a")]
     [InlineData("group Values\n    var a: i32 = b\n    var b = a", "", "")]
     [InlineData("group Values\n    var a: i32 = b\n    var b = c\n    var c = a", "", "")]
     public void APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass(string source, string records, string derived)
