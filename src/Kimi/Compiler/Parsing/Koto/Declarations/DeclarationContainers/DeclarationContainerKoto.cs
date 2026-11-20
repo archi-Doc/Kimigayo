@@ -736,7 +736,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
 
             reader.Advance();
-            var propertyKoto = Parser.ParseProperty(ref reader, ref token);
+            var propertyKoto = Parser.ParseProperty(ref reader, ref token, this);
             if (propertyKoto is not null)
             {
                 if ((this is ContractKoto) != propertyKoto.IsContractRequirement || this is EnumKoto)
