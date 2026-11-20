@@ -38,7 +38,8 @@ public sealed partial class Binding
         return true;
     }
 
-    // Fixed-width bit patterns keep the common literal path allocation-free, including 128-bit inputs.
+    // Fixed-width bit patterns keep the common literal path allocation-free, including 128-bit inputs. A direct literal (SPEC 12.3.2)
+    // reads the one literal fit, TryLiteral, whose payload's low bits are its pattern.
     private bool TryLiteralBits(Koto node, out UInt128 bits)
     {
         bits = 0;
@@ -51,18 +52,19 @@ public sealed partial class Binding
         var signed = type.IsSigned;
         var mask = UInt128.MaxValue >> (128 - width);
         var sign = (UInt128)1 << (width - 1);
+        if (KotoHelper.SignedNumber(node, out var minus) is { } number)
+        {
+            if (!number.TryGetIntegerMagnitude(out var magnitude) || !TryLiteral(type, magnitude, minus, out var payload))
+            {
+                return false;
+            }
+
+            bits = unchecked((UInt128)payload) & mask;
+            return true;
+        }
+
         switch (node)
         {
-            case NumberLiteralKoto { IsInteger: true } number:
-                return number.TryGetIntegerMagnitude(out bits) && bits <= (signed ? sign - 1 : mask);
-            case UnaryKoto { Akind: KotoKind.PrefixMinus, Operand: NumberLiteralKoto number }:
-                if (!number.TryGetIntegerMagnitude(out var magnitude) || magnitude > (signed ? sign : 0))
-                {
-                    return false;
-                }
-
-                bits = unchecked((UInt128)0 - magnitude) & mask;
-                return true;
             case UnaryKoto { Akind: KotoKind.PrefixMinus } negated:
                 if (!this.TryLiteralBits(negated.Operand, out var operand) || (signed ? operand == sign : operand != 0))
                 {
@@ -167,7 +169,7 @@ public sealed partial class Binding
         if (ReferenceEquals(owner, this.Library.Slice.Declaration) || ReferenceEquals(owner, this.Library.DynamicArray.Declaration) || ReferenceEquals(owner, this.Library.FixedArrayMembers) || owner is StructKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.UniqSlice })
         {
             var receiver = bound.Receiver?.BoundType;
-            var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
+            var core = receiver?.SafeReferent ?? receiver;
             var fixedLength = FixedLength(core);
             var mapping = bound.ArgumentToParameter;
             for (var i = 0; i < mapping.Length && i < call.ArgumentNodes.Count; i++)

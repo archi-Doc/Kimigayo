@@ -144,8 +144,11 @@ internal sealed partial class MirBuilder
             case HirOp.Interpolation:
                 this.Format(destination, node);
                 break;
-            default: // Binding's Error too, whose value is derived (Rejected).
+            case HirOp.Unset: // A resolved form no HirOp member describes (HirOp's contract, DECISIONS R4-M61).
                 this.Unsupported(node, destination);
+                break;
+            default: // Binding's Error, derived (Rejected); any other Op is no value here (a statement, a range key, a Place built above).
+                this.Invariant(node, destination);
                 break;
         }
     }
@@ -189,18 +192,22 @@ internal sealed partial class MirBuilder
 
         if (adjust.Acquire == HirAcquire.Unset)
         {
-            // Unset means that no consumer takes the node, so a value taken without its Adjust is a broken HIR contract (DECISIONS BU-103):
-            // InternalInvariant_Kd, the value a derived Opaque.
-            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
+            // Unset means that no consumer takes the node, so a value taken without its Adjust is a broken HIR contract (DECISIONS BU-103).
+            return MirOperand.Move(this.Invariant(node, expected));
+        }
+
+        if (adjust.Acquire == HirAcquire.Failed)
+        {
+            // A failed acquisition is derived from that error (SPEC 23.1.2; DECISIONS BU-103).
             return MirOperand.Move(this.Unsupported(node, derived: true, expected));
         }
 
-        if (adjust.Acquire == HirAcquire.Failed || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
-            expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
+        if (adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow && expected?.Components is not [_]) ||
+            (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            // A failed acquisition (HirAcquire.Failed) is derived from that error (SPEC 23.1.2; DECISIONS BU-103); a projected receiver's
-            // storage is its Field's (Member), and the other adaptations are not built yet.
-            return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Failed, expected));
+            // A projected receiver's storage is its Field's, read as a Place (Member), never an operand; a base borrow and an erasure take
+            // the Type their consumer gives (a call's reference parameter, a declared Function Type): a broken contract otherwise.
+            return MirOperand.Move(this.Invariant(node, expected));
         }
 
         return this.Take(node, adjust, expected, input, reserves, into);
@@ -221,7 +228,7 @@ internal sealed partial class MirBuilder
         };
         if (construction is null && elements is null)
         {
-            this.Unsupported(node, destination);
+            this.Invariant(node, destination); // HasFacts' Aggregate row: a Tuple, a fixed array, an Array without a fill, or a Case.
             return;
         }
 
@@ -274,7 +281,8 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 7.7.1, 7.7.2: creating a Closure evaluates its captures, not its body: each environment binding, in entry order, from the Place
-    // of its source binding (Bound) as its entry acquires it, the Closure value their aggregate. A source not bound here is unsupported.
+    // of its source binding (Bound) as its entry acquires it, the Closure value their aggregate. A capture's source is a binding in scope
+    // (BoundClosure.Captures), so one not bound here is a broken contract.
     // SPEC 12.2 (A3 E13 (2)): a capture before a later one whose acquisition builds code is secured where it is evaluated.
     private void Closure(MirPlace destination, FunctionKoto closure)
     {
@@ -291,7 +299,7 @@ internal sealed partial class MirBuilder
             var type = captures[i].Environment.Type;
             if (this.Bound(captures[i].Source) is not { } place)
             {
-                place = this.Unsupported(closure, type: type);
+                place = this.Invariant(closure, type);
             }
 
             var operand = this.Acquire(captures[i].Adjust, place, type, input: false, closure);
@@ -318,7 +326,7 @@ internal sealed partial class MirBuilder
             }
             else
             {
-                this.Unsupported(assignment, destination);
+                this.Invariant(assignment, destination); // Binding admits a target that is no Place only as a Property with its setter.
             }
 
             return;
@@ -399,8 +407,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Const(this.body.Const(known));
         }
 
-        this.Record(node, DiagnosticCode.InternalInvariant_Kd);
-        return MirOperand.Move(this.Unsupported(node, derived: true));
+        return MirOperand.Move(this.Invariant(node));
     }
 
     // Appends the operands evaluated onto the argument stack from start to the body's operands together, and pops them.
@@ -476,8 +483,7 @@ internal sealed partial class MirBuilder
     // derived value delivered into a failed slot, PLAN G1073): an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149).
     private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)
     {
-        var temp = this.Temp(type ?? KnownType(node), node);
-        this.opaqueTemps.Add(temp.Root);
+        var temp = this.OpaqueTemp(type ?? KnownType(node), node);
         if (derived)
         {
             this.Opaque(node, temp);
@@ -487,6 +493,23 @@ internal sealed partial class MirBuilder
             this.Unsupported(node, temp);
         }
 
+        return temp;
+    }
+
+    // A broken HIR contract's value (Invariant) in a temp of the Type its consumer expects, else of its own: an Opaque temp (Unlent).
+    private MirPlace Invariant(Koto node, BoundType? type = null)
+    {
+        var temp = this.OpaqueTemp(type ?? KnownType(node), node);
+        this.Invariant(node, temp);
+        return temp;
+    }
+
+    // A temp of the node's Type (or the one its consumer expects), or of none for a node of no Type (PLAN G1073), holding an Opaque
+    // value, which nothing lends (Unlent; DECISIONS R4-M149).
+    private MirPlace OpaqueTemp(BoundType? type, Koto node)
+    {
+        var temp = this.Temp(type, node);
+        this.opaqueTemps.Add(temp.Root);
         return temp;
     }
 }

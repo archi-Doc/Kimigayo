@@ -18,8 +18,9 @@ public partial class KimiLibraryShapeTest
 {
     // f1's exemptions (s11-design 2.2, n1-n10): a field the walk selects by its width or name that is no stamp, by its declaring Type's
     // name and its name, with the reason no reader compares it with a per-compilation counter after the freeze; and the library's
-    // stamped columns the library pass never writes, by their family's name (stamp 0 and no row: a column without a library row reads
-    // absent, as before the freeze). An entry naming no field or family fails the row.
+    // stamped columns the library pass never writes, or writes as its working state and the freeze releases (NodeColumns.Freeze's
+    // Release rows), by their family's name (stamp 0 and no row: a column without a library row reads absent, as before the freeze). An
+    // entry naming no field or family fails the row.
     private static readonly Dictionary<string, string> NotStamps = new(StringComparer.Ordinal)
     {
         ["OriginRequirementWork.Consumer"] = "n1: read only behind Pass == the requirement call, never for a frozen work",
@@ -61,6 +62,14 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.InvalidStaticOriginSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.CallablePremiseFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.EffectBoundRejections"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.InferredArrayLengths"] = "never written: the library writes no length hole",
+        ["NodeColumns.ArrayInferenceShapes"] = "never written: the library writes no fixed-array annotation with a hole",
+        ["NodeColumns.CallInferenceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.CallableSelectionFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.BaseCallFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.ObjectErasureFailures"] = "never written: the library erases no object view",
+        ["NodeColumns.ReceiverOperations"] = "released at the freeze: its library rows are read only by the HIR publisher at the library's publication, before the freeze, and TryGetReceiverOperation refuses a library node (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
@@ -442,6 +451,46 @@ public partial class KimiLibraryShapeTest
         {
             var (type, member) = (entry[..entry.IndexOf('.', StringComparison.Ordinal)], entry[(entry.IndexOf('.', StringComparison.Ordinal) + 1)..]);
             return typeof(Binding).Assembly.GetTypes().Where(x => x.Name == type).SelectMany(FreezeFields).Any(x => FieldName(x) == member);
+        }
+    }
+
+    // R7-N5 B2a-2 (B's rulings 1 and 6 on C-403, the Front's R1 and R4; DECISIONS BU-220 as amended): a working-state family has no
+    // library base. The library pass writes its rows in the freeze compilation's Binding (whose pool keeps the result contexts it
+    // rented; with either Release row skipped, NoLaterStepWritesTheLibraryLayer and TheLibraryLayerAfterARestartIsTheEmptyPrograms
+    // find the library pass's 125 receiver operations and 204 result contexts) and the freeze releases the library's ResultContexts and
+    // ReceiverOperations columns: stamp 0, no row and no arena. Counters are per Binding (R8-M53): a reading compilation's first run
+    // has the library pass's counter value, 1 (FreezeLibrary refuses a rerun), so a column the freeze left at that stamp would answer
+    // the library pass's rows (and the freeze Binding's pooled contexts) there; released, no library node's row answers, while the
+    // program's own `if` keeps its row.
+    [Fact]
+    public void TheFreezeReleasesTheLibrarysWorkingState()
+    {
+        var c = CompilationTestHelper.Parse("func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n", "Hello.kimi");
+        var kimigayo = Compilation.CreateForTest().Kimigayo;
+        var freeze = KimiLibrary.Unfrozen(c.TargetTriple, kimigayo, new Kimi.Project(kimigayo));
+        var library = KimiLibrary.Freeze(freeze);
+        c.UseLibrary(library);
+        Assert.True(c.Bind().IsComplete);
+        Assert.NotEmpty((IList)typeof(Binding).GetField("resultPool", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(freeze.Binding)!);
+        Assert.Equal(1UL, Counter(c.Binding));
+        var families = library.Kotonoha.Syntax.Hir.Families;
+        Released(families.ResultContexts);
+        Released(families.ReceiverOperations);
+        var nodes = library.Kotonoha.Syntax.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
+        Assert.Contains(nodes, static x => x is IfKoto or MatchKoto or DoKoto or LoopKoto);
+        Assert.All(nodes, x => Assert.Null(families.ResultContexts.Get(x.SyntaxId, c.Binding)));
+        Assert.All(nodes, x => Assert.Null(families.ReceiverOperations.Get(x.SyntaxId, c.Binding).Source));
+        var target = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().Single();
+        Assert.NotNull(c.Kotonoha.Syntax.Hir.Families.ResultContexts.Get(target.SyntaxId, c.Binding));
+
+        static ulong Counter(Binding binding) => (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(binding)!;
+
+        static void Released<T>(StampedColumn<T, Binding.PassCounter> column)
+        {
+            object boxed = column;
+            var rows = boxed.GetType().GetField("rows", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(boxed)!;
+            Assert.Null(rows.GetType().GetField("arena", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(rows));
+            Assert.Equal(0UL, (ulong)boxed.GetType().GetField("stamp", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(boxed)!);
         }
     }
 

@@ -53,21 +53,29 @@ internal sealed partial class MirBuilder
                     !negate || type.IsFloatingPoint || type.IsWrappingInteger),
                     node);
                 break;
-            default:
-                this.Unsupported(node, destination);
+            default: // Binding resolves a PrimitiveOp only as one of these (KindOp, HasFacts).
+                this.Invariant(node, destination);
                 break;
         }
     }
 
     // A built-in binary operator's operands, pushed in order; where the first is pushed. The left operand is pending while the right one is
-    // evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3), and secured where the right one builds code
-    // (SPEC 12.2).
+    // evaluated, so a transfer there ends a comparison's inspection Loan, on its check edge too (SPEC 13.4, 14.10.3: a comparison's left
+    // operand is an inspection while the right one is evaluated), and secured where the right one builds code (SPEC 12.2). A `$expect`
+    // comparison's operands (Recorded) are pushed here too, so its inspection is registered as an operator's is.
     private int Operands(BinaryKoto binary)
     {
         var start = this.arguments.Count;
         var left = this.Operand(binary.Left, expected: null);
         this.arguments.Add(Builds(binary.Right) ? this.Secure(left, binary.Left) : left);
+        var open = this.inspections.Count;
+        if (BinaryOp(binary.Akind) >= MirBinaryOp.Eq)
+        {
+            this.inspections.Add(start);
+        }
+
         this.arguments.Add(this.Operand(binary.Right, expected: null));
+        this.inspections.RemoveRange(open, this.inspections.Count - open);
         return start;
     }
 
@@ -92,7 +100,7 @@ internal sealed partial class MirBuilder
         var form = Binding.FormOf(member);
         if (form == BuiltinForm.None)
         {
-            this.Unsupported(member, destination);
+            this.Invariant(member, destination); // HasFacts' PrimitiveOp row: a member access is published with its BuiltinForm.
             return;
         }
 
@@ -300,7 +308,7 @@ internal sealed partial class MirBuilder
             ? this.body.Consts[right.Arg].Bits : (Int128?)null;
         return op switch
         {
-            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
+            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.IsPointer,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
                 op == MirBinaryOp.Rem || !type.IsInteger || !type.IsSigned)),
             MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < type.Width,

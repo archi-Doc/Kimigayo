@@ -55,7 +55,8 @@ public class PendingRefinementDeclarationBindingTest
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Marker\n    Source is " + (missing ? "Future" : "Origin") + "\npublic contract Child: Marker");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Container(c, "Child").StateOf());
+        // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): with `Future` unresolved, Child, which refines the failed Marker, rests (no record of its own) and stays Resolved.
+        Assert.Equal(missing ? BindingState.Resolved : BindingState.Invalid, Container(c, "Child").StateOf());
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(BindingState.Unresolved, Container(c, "Child").StateOf());
         var restored = CompilationTestHelper.Reload(c);

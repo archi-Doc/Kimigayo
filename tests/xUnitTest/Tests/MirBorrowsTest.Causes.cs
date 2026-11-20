@@ -221,7 +221,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("e3c4d30c20af", "leak: var local = values <- local@uniq")]
     [InlineData("0433a531b1ba", "leak: var v = view@move <- v[0]@follow@uniq")]
     [InlineData("38df74b325ce", "leak: var slot = p <- rr@follow@follow@uniq")]
-    [InlineData("27e4888a2ae9", "g: let m: i32 = 5 <- q")]
+    // PLAN G1115: y's layer's premise over the pair's solution bounds the call's c, so m@ref's borrow reaches the returned result and
+    // SPEC 15.6.5 names the Refuted relation at the returned value. R7-O1 H (F-H-9's class, as j-bad): Binding's twin at the call is
+    // gone, so the MIR builds m@ref's Loan and the storage end's conflict is derived from that relation; the published record stays one.
+    [InlineData("27e4888a2ae9", "g: let m: i32 = 5 <- f(m@ref, q)")]
     [InlineData("d4a09871a00b", "g: let local: i32 = 1 <- x")]
     [InlineData("write-through-store", "w: let local = 1 <- x")]
     [InlineData("content-retention", "cr: let local = 1 <- first(h@ref)")]
@@ -323,7 +326,9 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(48, causes); // R7-O1 H: j-bad's and m-write4's derived conflicts (F-H-9's class).
+        // R7-O1 H: j-bad's, m-write4's and 27e4888a2ae9's derived conflicts (F-H-9's class; 27e4888a2ae9's cause is the Refuted relation
+        // at the returned value since PLAN G1115, AConflictCausedOnlyByRefutedRelationsIsDerived).
+        Assert.Equal(48, causes);
     }
 
     // PLAN G824: pair-views-slot's one run covers both views (no view decides a check), which its masked row (the pair layer's

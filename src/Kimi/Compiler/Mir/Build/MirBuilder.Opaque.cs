@@ -5,11 +5,12 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Derived and unsupported values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, the one path of a construction record made
-// in the body being built (Record), and the Opaque value that replaces a node Binding rejected, a form no rule builds, or a default its
-// call does not instantiate (Defaults; SPEC 23.1.1, DECISIONS R4-M127), its site naming the roots the node's syntax reads, writes or
-// borrows (MirBuilder.Opaque.Roots.cs) or a default's earlier slots; the derived value of a write whose target Binding rejected follows
-// its right side, built first (DerivedWrite, PLAN G1022).
+// Derived, unsupported and broken values (plan 5.4, SPEC 23.1.2): the one located Unsupported path, the one broken-HIR-contract path
+// (Invariant: InternalInvariant_Kd at a node no published form takes there, PLAN G396 (3) Z1), the one path of a construction record
+// made in the body being built (Record), and the Opaque value that replaces a node Binding rejected, a form no rule builds, a broken
+// contract's value, or a default its call does not instantiate (Defaults; SPEC 23.1.1, DECISIONS R4-M127), its site naming the roots the
+// node's syntax reads, writes or borrows (MirBuilder.Opaque.Roots.cs), a part built already, or a default's earlier slots; the derived
+// value of a write whose target Binding rejected follows its right side, built first (DerivedWrite, PLAN G1022).
 internal sealed partial class MirBuilder
 {
     // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error (a literal the lexer could not
@@ -37,6 +38,28 @@ internal sealed partial class MirBuilder
         }
 
         this.Site(node, destination, Completes(value));
+    }
+
+    // The one broken-HIR-contract path (DECISIONS R4-M61; consumers trust validated IR): at a node the builder reaches, an arm of a closed
+    // HIR vocabulary or of a fact a published Op guarantees that no published form takes, InternalInvariant_Kd at the node, unless the lexer
+    // or Binding rejected it, whose error its value is derived from (SPEC 23.1.2); its value an Opaque in its place, its site naming the
+    // roots the node's syntax touches (SiteRoots), as a form without a building rule has.
+    private void Invariant(Koto node, MirPlace destination)
+    {
+        this.SiteRoots(node);
+        this.Invariant(node, destination, Completes(node));
+    }
+
+    // A broken contract's record and Opaque value (Invariant) at a site naming the roots its caller collected: the node's syntax's, or a
+    // part built already (SiteRoots(MirPlace?), R5-M63, R5-M84).
+    private void Invariant(Koto node, MirPlace destination, bool completes)
+    {
+        if (!Rejected(node))
+        {
+            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
+        }
+
+        this.Site(node, destination, completes);
     }
 
     // The one path of a construction record made while a body is built (MirProgram.Report): a code at a node of the body, which marks

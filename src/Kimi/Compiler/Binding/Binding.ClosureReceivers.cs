@@ -182,7 +182,7 @@ public sealed partial class Binding
                     this.Unlisted.Add(node); // No consumer takes this use: a broken contract (TakenByCase).
                 }
             }
-            else if (node.BoundSymbol is { Kind: BindingSymbolKind.Local } local && ReferenceTypes.IsPointer(local.Type))
+            else if (node.BoundSymbol is { Kind: BindingSymbolKind.Local } local && local.Type is { IsPointer: true })
             {
                 this.localUses.Add(node);
             }
@@ -190,14 +190,14 @@ public sealed partial class Binding
             // A pointer-typed local's definitions (Derive): its initializer and each assigned value. A compound displacement `q += n` keeps
             // the local's own provenance (SPEC 5.3), no definition.
             if (node is VariableKoto { InitializerKoto: { } value } variable && variable.NameKoto.BoundSymbol is { Kind: BindingSymbolKind.Local } declared &&
-                ReferenceTypes.IsPointer(declared.Type))
+                declared.Type is { IsPointer: true })
             {
                 this.definitions.Add((declared, this.RootOf(value)));
                 this.holds.TryAdd(declared, Holds.None);
             }
             else if (node is BinaryKoto { Akind: KotoKind.Equals } assignment &&
                 KotoHelper.UnwrapParentheses(assignment.Left).BoundSymbol is { Kind: BindingSymbolKind.Local } assigned &&
-                ReferenceTypes.IsPointer(assigned.Type))
+                assigned.Type is { IsPointer: true })
             {
                 this.definitions.Add((assigned, this.RootOf(assignment.Right)));
                 this.holds.TryAdd(assigned, Holds.None);
@@ -244,10 +244,10 @@ public sealed partial class Binding
                 ParenthesizedKoto group => group.Operand,
                 LabeledKoto label => label.Target,
                 _ when !ReferenceEquals(next, node) => next,
-                BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus } displacement when ReferenceTypes.IsPointer(displacement.BoundType) &&
-                    ReferenceTypes.IsPointer(displacement.Left.BoundType) => displacement.Left,
+                BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus } displacement when displacement.BoundType is { IsPointer: true } &&
+                    displacement.Left.BoundType is { IsPointer: true } => displacement.Left,
                 ConversionKoto { ConversionBinding: ConversionBinding.Pointer or ConversionBinding.Identity } conversion when
-                    ReferenceTypes.IsPointer(conversion.BoundType) && ReferenceTypes.IsPointer(conversion.Left.BoundType) => conversion.Left,
+                    conversion.BoundType is { IsPointer: true } && conversion.Left.BoundType is { IsPointer: true } => conversion.Left,
                 _ => null,
             };
         }
@@ -381,7 +381,7 @@ public sealed partial class Binding
         // Unsupported_Kd.
         private bool ContractWritesThrough(Koto place)
         {
-            if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto invocation || binding.CallOf(invocation) is not { } call ||
+            if (place.BoundType is not { IsPointer: true } || place.Parent is not InvocationKoto invocation || binding.CallOf(invocation) is not { } call ||
                 ArgumentOf(call.ArgumentOperations, place) is not { } argument)
             {
                 return false;

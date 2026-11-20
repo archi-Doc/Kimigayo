@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BindingScope Parent, BindingSymbol Left, BindingSymbol Right), BindingScope> contractOverlapScopes = new();
+    private readonly Dictionary<BindingScope, BindingScope> collisionScopes = new(ReferenceEqualityComparer.Instance); // CollisionScope's, per overlap scope
     private readonly List<(BoundConstraint A, BoundConstraint B)> associatedOverlapPairs = new();
     private Dictionary<Koto, ContractAgreementFailure>? contractAgreementFailures;
 
@@ -39,11 +40,21 @@ public sealed partial class Binding
         return scope;
     }
 
+    // R7-C3 (B2'; SPEC 8.9.1 step 1, 8.9.2): the collision conditions are the collision substitution together with all the Type's inputs,
+    // never the specifications (CollisionScope). The inputs rule the intersection out when the judge finds that view contradictory: an
+    // identity class in Conflict, or an input the view's closed world refutes (Refuted, or Error: a premise against its closed world),
+    // alike for every input kind.
     private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap)
     {
+        var collision = this.CollisionScope(original, overlap);
+        if (this.ClassesOf(collision, out _) is { Worst: IdentityClasses.Conflict })
+        {
+            return true;
+        }
+
         for (var scope = original; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } environment)
+            if (scope.Constraints is not { } environment)
             {
                 continue;
             }
@@ -54,7 +65,7 @@ public sealed partial class Binding
                 // the overlap. Only independently valid generic inputs can rule the intersection out.
                 var subject = fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject;
                 if (subject is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } && !IsContractSelf(subject) &&
-                    this.ProveConstraint(this.ContractConstraint(fact, overlap, null), overlap) == ConstraintProof.Refuted)
+                    this.ProveConstraint(this.ContractConstraint(fact, collision, null), collision) is ConstraintProof.Refuted or ConstraintProof.Error)
                 {
                     return true;
                 }
@@ -64,12 +75,49 @@ public sealed partial class Binding
         return false;
     }
 
+    // The collision conditions in a view of their own, no parent: the overlap's own identities (the collision substitution and the two
+    // references made one) and the Type's inputs, the facts RefutedOverlapInputs reads (a generic input's, never a specification).
+    private BindingScope CollisionScope(BindingScope original, BindingScope overlap)
+    {
+        if (!this.collisionScopes.TryGetValue(overlap, out var scope))
+        {
+            this.collisionScopes.Add(overlap, scope = new(overlap.Owner));
+        }
+
+        scope.Reset();
+        scope.Parent = null;
+        var environment = scope.Constraints ??= new();
+        foreach (var fact in overlap.Constraints!.DirectFacts)
+        {
+            this.AddConstraintFact(environment, fact);
+        }
+
+        for (var current = original; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { } inputs)
+            {
+                continue;
+            }
+
+            foreach (var fact in inputs.DirectFacts)
+            {
+                if ((fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject) is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } subject &&
+                    !IsContractSelf(subject))
+                {
+                    this.AddConstraintFact(environment, fact);
+                }
+            }
+        }
+
+        return scope;
+    }
+
     private void AddOverlapFacts(BindingScope target, BindingScope source)
     {
         var environment = target.Constraints ??= new();
         for (var scope = source; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } other)
+            if (scope.Constraints is not { } other)
             {
                 continue;
             }
@@ -82,14 +130,14 @@ public sealed partial class Binding
             for (var i = 0; i < other.DerivedFacts.Count; i++)
             {
                 var derived = other.DerivedFacts[i];
-                this.AddConstraintFact(environment, derived.Fact, derived.Source);
+                this.AddConstraintFact(environment, derived.Fact, derived.Source, derived.Origin);
             }
         }
     }
 
     private void ValidateAssociatedOverlapAgreement(BindingScope scope)
     {
-        if (scope.Constraints is not { Invalid: false } environment)
+        if (scope.Constraints is not { } environment)
         {
             return;
         }
@@ -139,7 +187,8 @@ public sealed partial class Binding
 
             if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
             {
-                this.FailEnvironment(environment, scope.Owner);
+                this.FailPremise(environment, a, scope.Owner); // R7-C3 gate 2: the disagreeing specifications fail (b where it is this one's)
+                this.FailPremise(environment, b, scope.Owner);
                 this.FailExplained(ref this.contractAgreementFailures, scope.Owner, BindingFailure.InvalidAssociatedType, new(left.Contract, right.Contract, a.RequiredType, b.RequiredType, x.Symbol));
             }
         }

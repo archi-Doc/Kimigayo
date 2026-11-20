@@ -10,7 +10,6 @@
 // Must not resolve syntax or introduce a parallel representation for the same body; a stored body is read, never appended to.
 
 using System.Runtime.InteropServices;
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
@@ -257,7 +256,7 @@ internal sealed class MirBody
                     return below;
                 }
 
-                return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
+                return type is { IsPointer: true, Components: [var pointee] } ? pointee : null;
             case MirProjectionKind.Index:
                 return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;
@@ -368,11 +367,12 @@ internal sealed class MirBody
     /// <param name="place">The Place.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
+    /// <param name="position">An Index's constant index (<see cref="MirProjection.Position"/>), else -1.</param>
     /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports (MirValidator.Tables):
     /// a later step in the projection table, a first step at each Place a location names, a diverging Call's destination included.</returns>
-    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg)
+    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg, int position = -1)
     {
-        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg));
+        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg), position);
         ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds ??= new(), row, out var exists);
         if (!exists)
         {

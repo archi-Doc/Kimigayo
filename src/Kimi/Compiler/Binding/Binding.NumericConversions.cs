@@ -39,8 +39,8 @@ public sealed partial class Binding
         => type.Width is 32 or 64 && !ReferenceEquals(type.Underlying, BoundType.ISize) && !ReferenceEquals(type.Underlying, BoundType.USize) ? type.Width : 0;
 
     // SPEC 3.1's ranges: whether an integer literal of a magnitude and sign fits a Type with a width, and its value as that Type's payload
-    // (TyCtxt.Normalize, DECISIONS BU-133); the one literal-fit predicate of lengths, expression literals and a truncated conversion
-    // (DECISIONS BU-130). A Type whose instance decides its width (Width 0) fits none here.
+    // (TyCtxt.Normalize, DECISIONS BU-133); the one literal-fit predicate of lengths, expression literals, a truncated conversion
+    // (DECISIONS BU-130) and a literal-only position (TryLiteralBits). A Type whose instance decides its width (Width 0) fits none here.
     private static bool TryLiteral(BoundType? type, UInt128 magnitude, bool negative, out Int128 bits)
     {
         bits = 0;
@@ -142,7 +142,7 @@ public sealed partial class Binding
     // or generic, without a check. A direct integer literal is wrapped at compile time from its exact value; it never fails.
     private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
     {
-        var target = this.BindType(argument, scope) is { } bound ? this.SubstituteIdentityPremises(bound, scope) : null; // SPEC 8.2.3, as @Type's.
+        var target = this.BindType(argument, scope) is { } bound ? this.ClassForm(bound, scope, out _) : null; // SPEC 8.2.3, as @Type's.
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
         var number = KotoHelper.SignedNumber(operand, out var negative);
         if (operation != Constants.WrapOperation)

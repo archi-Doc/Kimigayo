@@ -98,7 +98,44 @@ public class ArrayBindingTest
     [InlineData("let a = [missing, missing2]\n", "UnresolvedBinding_Kd missing; UnresolvedBinding_Kd missing2")]
     [InlineData("var k: i32 = 1\nlet a = [k, true, false]\n", "TypeMismatch_Kd true; TypeMismatch_Kd false")]
     public void AnIndependentLiteralBindsEveryElementAfterAFailedOne(string source, string records)
-        => Assert.Equal(records, string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}")));
+        => Assert.Equal(records, Records(source));
+
+    // SPEC 4.1, 4.3.1, 10.2, 12.4 (PLAN G1116): without a fixed-array or Array expectation, at a constructed Type or none, a list literal
+    // takes its own Type by the place rule, as a fill and a Dictionary literal do, and the position's fit reports the mismatch; an empty
+    // one has no element Type. An expected ref/U still reaches the literal through U. At an abstract expectation (SPEC 8.2.3: a Type
+    // parameter, a projection, a pair layer or a pair target, still abstract after the identity premises), which has no form to take the
+    // literal's from, and, empty, at a place decided later (SPEC 4.3.1 Places, 14.9.2), no implemented rule types it yet: the located
+    // limit stays, for valid and invalid programs alike (the owner's O-449 (a); PLAN G1123).
+    [Theory]
+    [InlineData("let s: Slice<i32> = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("let n: i32 = [1]\n", "TypeMismatch_Kd [1]")]
+    [InlineData("let t: (i32, i32) = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("let u: uniq/[2 of i32] = [1, 2]\n", "TypeMismatch_Kd [1, 2]")]
+    [InlineData("func h<T>()\n    let x: T = [1]\nlet done = 0\n", "Unsupported_Kd [1]")]
+    [InlineData("func r() -> i32\n    return [1]\nlet done = 0\n", "TypeMismatch_Kd [1]")]
+    [InlineData("let nested: Array<i32> = [[1]]\n", "TypeMismatch_Kd [[1]]")]
+    [InlineData("let n: i32 = []\n", "UnresolvedBinding_Kd []")]
+    [InlineData("let unknown = []\n", "UnresolvedBinding_Kd []")]
+    [InlineData("let r: ref/[2 of i32] = [1, 2]\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is ref\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is uniq\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: s/i32 = [1]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1]")]
+    // R7-C3 (F's C2 ruling 307 (1); SPEC 8.2.3, 4.1, 4.3.1): an identity premise makes T the fixed array or Array, so the expectation is
+    // not abstract and the literal takes its form: valid, newly accepted (PLAN G1123 narrowed). Their invalid twins keep a Language
+    // record (three elements at [2 of i32]; a bool element at Array<i32>), and T with no identity premise keeps the located limit.
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [1]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = []\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2, 3]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd [1, 2, 3]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [true]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd [true]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
+    [InlineData("let w = [[1], []]\n", "Unsupported_Kd []")]
+    [InlineData("let ready = true\nlet x = if ready => [1] else => []\n", "Unsupported_Kd []")]
+    [InlineData("let x = [[]]\n", "Unsupported_Kd []")]
+    public void ALiteralWithoutAnArrayExpectationTakesItsOwnType(string source, string records)
+        => Assert.Equal(records, Records(source));
 
     // Each inferred inner Array owns its own buffer, destroyed recursively with the outer Array.
     [Fact]
@@ -324,4 +361,8 @@ public class ArrayBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
     }
+
+    // Each public record's code and the source text it locates, in report order.
+    private static string Records(string source)
+        => string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty)}"));
 }

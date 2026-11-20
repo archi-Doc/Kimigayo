@@ -40,7 +40,7 @@ public sealed partial class Binding
     private static bool HasNoCCounterpart(BoundType type)
         => ReferenceEquals(type, BoundType.String) || type.HandleMode is not null ||
             type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem ||
-            (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && HasNoCCounterpart(referent));
+            (type.SafeReferent is { } referent && HasNoCCounterpart(referent));
 
     // SPEC 22.6: a fixed-width integer Core or f32/f64 by width (i8/u8 share '1'); '?' for any other Type, a wrapping integer included.
     private static char ScalarCode(BoundType type)
@@ -55,14 +55,13 @@ public sealed partial class Binding
             _ => '?',
         };
 
-    // A rejected selected attribute is the declaration's failed prerequisite, not another failed requirement.
+    // A rejected selected attribute is the declaration's failed prerequisite, not another failed requirement (RestOnPart).
     // These markers cannot resolve within this pass; removing or replacing them rebuilds the cause on the next Bind.
     private void InvalidateAttributeTarget(AttributeKoto attribute)
     {
         if (AttributeTarget(attribute) is { } target)
         {
-            target.BindingState = BindingState.Invalid;
-            this.AddPrerequisite(target, attribute);
+            this.RestOnPart(target, attribute);
         }
     }
 
@@ -76,7 +75,7 @@ public sealed partial class Binding
 
         if (target is not StructKoto || attribute.LayoutMode is null)
         {
-            this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+            this.Record(attribute, BindingFailure.InvalidLayoutAttribute, []);
             this.InvalidateAttributeTarget(attribute);
         }
         else
@@ -105,7 +104,7 @@ public sealed partial class Binding
                 attribute.Operand is not InvocationKoto { ArgumentNodes.Count: 2 } call ||
                 !IsImportName(call, 0, out var name) || !IsImportName(call, 1, out var symbol) || IsReservedExternalName(symbol))
             {
-                this.Fail(attribute, BindingFailure.InvalidLibraryImport);
+                this.Record(attribute, BindingFailure.InvalidLibraryImport, []);
                 continue;
             }
 
@@ -118,7 +117,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(WindowsProfile.Kernel32Symbols, symbol) < 0)
                 {
                     // SPEC 20.4: the reserved supply exports only the reviewed project-owned definition.
-                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
                 }
             }
             else if (name is WindowsProfile.BackendLibrary)
@@ -127,7 +126,7 @@ public sealed partial class Binding
                 if (Array.IndexOf(WindowsProfile.ProvidedSymbols, symbol) < 0)
                 {
                     // SPEC 21.4.7: the backend archive supplies only its catalog, whose names are reserved above.
-                    this.Fail(attribute, BindingFailure.UnavailableReservedImport);
+                    this.Record(attribute, BindingFailure.UnavailableReservedImport, []);
                 }
             }
             else
@@ -138,7 +137,7 @@ public sealed partial class Binding
                 var supply = configuration is not null && configuration.NativeLibraries.TryGetValue(target, out var supplies) ? supplies.GetValueOrDefault(name) : null;
                 if (requirement is null && supply is null)
                 {
-                    this.Fail(attribute, BindingFailure.MissingNativeRequirement);
+                    this.Record(attribute, BindingFailure.MissingNativeRequirement, []);
                 }
                 else
                 {
@@ -321,9 +320,9 @@ public sealed partial class Binding
     // Never, Unit as a parameter, Tuples, enums (the nonnull Option of a borrow is not laid out yet), Slices, structs and fixed arrays by
     // value, object borrows and borrows of other referents.
     private char PhysicalCode(BoundType type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ? 'p' :
+        => type.IsPointer ? 'p' :
             HasNoCCounterpart(type) ? '\0' :
-            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ?
+            type.SafeReferent is { } referent ?
                 this.CExchangeable(referent, 0) switch { true => 'p', false => '?', null => '!' } :
             ScalarCode(type);
 
@@ -385,7 +384,11 @@ public sealed partial class Binding
 
     // SPEC 6.7.1: the Attribute's own errors (its mode, fragments and storage fragment) and the published declaration facts: IsCLayout for
     // a valid C selection whose layout is available at the declaration, CLayoutUnavailable for one on an open, derived or empty struct,
-    // which Layout judges CLayout at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8: no declaration error).
+    // which Layout judges CLayout at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8: no declaration error). A split struct keeps a
+    // failure of its own beside its Field's record, since that record derives from any recovery the Field's other checks read, such as its
+    // initializer's syntax error (IsDerived's requirement-blind arms judge the node's recorded inputs, not the split check's): resting the
+    // struct on the Field (RestOnPart) would leave the split with no record (SPEC 23.1.2).
+    [Transitional("R7", Reason = "The split struct's own InvalidTypeFormation stands for its Field's record (q1a: a syntax error in the split Field's initializer), until R7-E5's per-problem inputs, when the struct rests on the Field.")]
     private void ValidateLayoutFragments()
     {
         for (var i = 0; i < this.nodes.Count; i++)
@@ -408,7 +411,7 @@ public sealed partial class Binding
 
                 if (previousFragment == attribute.FragmentOrdinal)
                 {
-                    this.Fail(attribute, BindingFailure.InvalidLayoutAttribute);
+                    this.Record(attribute, BindingFailure.InvalidLayoutAttribute, []);
                 }
 
                 if (attribute.BindingState == BindingState.Invalid)
@@ -422,7 +425,7 @@ public sealed partial class Binding
                 {
                     if (mode is not null && mode != explicitMode)
                     {
-                        this.Fail(latestSpecification!, BindingFailure.ConflictingLayout);
+                        this.Record(latestSpecification!, BindingFailure.ConflictingLayout, []);
                         this.InvalidateAttributeTarget(latestSpecification!);
                         valid = false;
                     }
@@ -442,7 +445,7 @@ public sealed partial class Binding
                 {
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
-                        this.Fail(field, BindingFailure.SplitCLayoutStorage);
+                        this.Record(field, BindingFailure.SplitCLayoutStorage, []);
                         this.Fail(container, BindingFailure.InvalidTypeFormation);
                         valid = false;
                     }

@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 
 // Binding's recorder (R7-E1; DIAGNOSTICS 4.1): a check records its failure as a problem with typed facts in BindingReport.
 // - Responsibility: Record, a check's problem; ClearFailure, how a failure leaves a node inside a pass; the one table from a failure to its
-//   code (CodeOf); the summary's walk of a node's problems beyond its slot's issue (CollectProblems); the adapter's reads of a problem's
-//   facts (ReportProblem, Mismatch, LocatedPart, FactOf).
+//   code (CodeOf); the summary's walk of a failed node's problems, each direct or derived by its own requirement (CollectProblem,
+//   CollectProblems); the adapter's reads of a problem's facts (ReportProblem, Mismatch, LocatedPart, FactOf).
 // - Inputs: a node, its failure and the facts its check read.
 // - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure; a node's further
 //   issues, each by its own code and condition. Record is a check's way in; RecordFurtherOriginRecord and a report's defect add a problem
@@ -158,9 +158,9 @@ public sealed partial class Binding
             return this.Fail(node, BindingFailure.TypeMismatch);
         }
 
-        if (this.IdentityPremiseErrorRead(node, actual.Type, expected.Type) is { } premise)
+        if (this.IdentityPremiseErrorRead(this.ConstraintScope(node), actual.Type, expected.Type) is { } premise)
         {
-            this.AddPrerequisite(node, premise); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
+            this.AddPrerequisite(node, premise.Use); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
         }
 
         var site = this.FactSite(at);
@@ -177,19 +177,8 @@ public sealed partial class Binding
     private ProblemFact SideFact(ProblemFactKind type, ProblemFactKind form, SourceRef site, in MismatchSide side)
         => side.Type is { } bound ? new(type, site, this.report.Keep(bound)) : new(form, site, (long)side.Form | ((long)(side.Count + 1) << 8));
 
-    // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee.
-    [Transitional("R7", Reason = "Records only at a node whose slot takes the failure (its first), for snapshot 0, until E2's located batch.")]
-    private void FailUnsupportedAt(Koto node, SourceSpan part, bool unresolved = false)
-    {
-        if (this.RecordedFailure(node) != BindingFailure.None)
-        {
-            this.Fail(node, BindingFailure.Unsupported, unresolved);
-            return;
-        }
-
-        this.RecordLocated(node, part, unresolved);
-    }
-
+    // SPEC 23.1.1: a form outside the subset, located at the part that shows it, such as one capture entry or a callee; its own record
+    // beside any other failure of its node (SPEC 23.1.2).
     private void RecordLocated(Koto node, SourceSpan part, bool unresolved = false)
     {
         long value = ((long)part.Start << 32) | (uint)part.Length;
@@ -205,9 +194,14 @@ public sealed partial class Binding
         return SourceRef.Of(at);
     }
 
+    // A failed node's problem, the slot's (index -1 for a slot without one) or a further one: derived when its own requirement rests on the
+    // node's recorded inputs (IsDerived, rule W), else direct (SPEC 23.1.2).
+    private void CollectProblem(Koto node, BindingFailure failure, DiagnosticCode code, int problem)
+        => (this.IsDerived(node, failure) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
+
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
-    // its own, however the slot's failure stands. An Origin record beyond the first is published with the node's first record, since
-    // Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
+    // its own, direct or derived by its own requirement (CollectProblem). An Origin record beyond the first is published with the node's first
+    // record, since Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
     private void CollectProblems(Koto node)
     {
         if (this.report.Count == 0)
@@ -221,7 +215,7 @@ public sealed partial class Binding
             if (i != slot && this.FactOf(i, ProblemFactKind.OriginRecord) is null)
             {
                 var problem = this.report.Problem(i);
-                this.issues.Add(new(node, problem.Code) { Failure = (BindingFailure)problem.Requirement.Kind, Problem = i });
+                this.CollectProblem(node, (BindingFailure)problem.Requirement.Kind, problem.Code, i);
             }
         }
     }
@@ -261,22 +255,40 @@ public sealed partial class Binding
         return null;
     }
 
-    // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it; false for a
-    // mismatch or a located part, whose ReportIssue arms read their facts.
+    // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it: a requirement's
+    // row that renders its facts and its subject's syntax, the operator row, then the fact-less row; false for a mismatch or a located part,
+    // whose ReportIssue arms read their facts.
     private bool ReportProblem(Koto node, DiagnosticCollection? store, int index)
     {
         var problem = this.report.Problem(index);
-        if (this.FactOf(index, ProblemFactKind.Operand) is not null)
+        switch ((BindingFailure)problem.Requirement.Kind)
         {
-            this.ReportOperatorOperand(node, store, index, problem);
-        }
-        else if (this.report.Facts(index).IsEmpty)
-        {
-            node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
-        }
-        else
-        {
-            return false;
+            case BindingFailure.NoInit when this.FactOf(index, ProblemFactKind.Reason) is { } reason:
+                ReportNoInit(node, store, problem, (NoInitProblem)reason.Value);
+                break;
+            case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
+                ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
+                break;
+            case BindingFailure.InvalidConstraint when this.report.Facts(index) is [] or [{ Kind: ProblemFactKind.Cause }]: // RecordConstraint's record
+                this.ReportConstraint(node, store, problem.Requirement, problem.Code, problem.Condition, this.report.Facts(index) is [var named] ? this.compilation.SyntaxOf(named.Site) : null);
+                break;
+            case BindingFailure.InvalidTypeFormation when this.FactOf(index, ProblemFactKind.Count) is not null:
+                this.ReportArity(node, store, index, problem);
+                break;
+            case BindingFailure.ProtectedPlacement:
+                ReportProtectedPlacement(node, store, problem.Requirement);
+                break;
+            case BindingFailure.AccessorReceiverShape when node is PropertyAccessorKoto { ReceiverType: { } written } accessor:
+                this.ReportAccessorReceiverShape(accessor, store, written, problem.Requirement);
+                break;
+            case var _ when this.FactOf(index, ProblemFactKind.Operand) is not null:
+                this.ReportOperatorOperand(node, store, index, problem);
+                break;
+            case var _ when this.report.Facts(index).IsEmpty:
+                node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
+                break;
+            default:
+                return false;
         }
 
         return true;

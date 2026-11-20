@@ -231,7 +231,7 @@ internal static partial class MirTypes
         internal Facts Holds(BoundType? type, BoundType? written, BoundType? holder, int mode, int depth)
         {
             if (type is null || type.Kind == BoundTypeKind.FunctionItem ||
-                (type.Semantics != SemanticsKind.Raw && !this.Enters(type, written, holder, mode, depth)))
+                (!type.IsPointer && !this.Enters(type, written, holder, mode, depth)))
             {
                 return default;
             }

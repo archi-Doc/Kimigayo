@@ -41,6 +41,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
     private readonly List<MirOperand> arguments = []; // The evaluated arguments of the calls being built, innermost last.
     private readonly List<int> leastAfter = []; // By argument of the calls being built: the least position of those evaluated after it.
+    private readonly List<int> inspections = []; // The pending position of the left operand of each comparison being built, innermost last.
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private MirBody body = null!;
     private Koto declaration = null!;
@@ -403,7 +404,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each at its written Type occurrence
         // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration.
-        for (var position = 0; !template && function is not null && position < this.Arity(function); position++)
+        for (var position = 0; !template && function is not null && position < CallPlan.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
             var parameter = CallPlan.Parameter(compilation.Binding, function, slot)!;
@@ -412,6 +413,18 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         this.current = body.AddBlock();
         this.OpenScope(block: false); // The body value's temporaries, which its end leaves (End).
+        if (function?.Declaration is FunctionKoto { Accessor.SelfSymbol: { Type: null } failed })
+        {
+            // PLAN G1073 (SPEC 23.1.2): an accessor whose written receiver's Type Binding failed executes with no self input, yet its body
+            // reads self, by name or through `storage`: the failed slot (a published self of no Type is one, HasFacts' slot rows), bound
+            // once to an Opaque temp of no Type derived from the slot's record, so each read through it is derived (rule W, Field). With
+            // no such self, a read of the implicit self without a receiver stays a broken contract (Storage).
+            var slot = this.OpaqueTemp(null, declaration);
+            this.SiteRoots((MirPlace?)null);
+            this.Site(declaration, slot, completes: true);
+            (this.locals[failed], this.receiver) = (slot.Root, slot.Root);
+        }
+
         var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
         this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.

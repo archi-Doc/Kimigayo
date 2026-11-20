@@ -224,14 +224,14 @@ public sealed partial class Binding
             }
 
             var type = this.BindType(function.Parameters[i].Type, scope);
-            if (!ReferenceTypes.StorageMatches(inputs.Components[i], type))
+            if (!TyCtxt.StorageMatches(inputs.Components[i], type))
             {
                 return false;
             }
         }
 
         return openResult || function.ReturnType is null ||
-            ReferenceTypes.StorageMatches(expected.Components[1], this.ClosureResultType(function, inputs, scope));
+            TyCtxt.StorageMatches(expected.Components[1], this.ClosureResultType(function, inputs, scope));
     }
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)

@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 //   local a Temp of local 0's Type; of no Type only Binding's failed slot: _0 and an Arg exactly where the signature's slot is, a Var or
 //   Temp by the builder's contract, each accessed only whole as Bounded allows, PLAN G1073), the MustNotComplete rows, the scopes, the
 //   Opaque sites and the projection table, each in range and
-//   each projection step admitted by the Type of the step it extends (Tables, Admits); each Place a location names (Names): in range
+//   each projection step admitted by the Type of the step it extends, a constant index only on an Index of a fixed array (Tables,
+//   Admits); each Place a location names (Names): in range
 //   (IsValid) and its first step admitted by its root's Type, each Place MirUses reports (Place) and a diverging Call's destination,
 //   which it does not (MirValidator.Calls); and a Result local read only by the whole Move that delivers it into _0 (DECISIONS R4-M132).
 // - Inputs: the body's tables; each location's Places with their access, and a diverging Call's destination without one. Outputs:
@@ -225,6 +226,7 @@ internal sealed partial class MirValidator
 
         private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
             row.Type,
-            body.ProjectedType(types, type, row.Kind, row.Arg));
+            body.ProjectedType(types, type, row.Kind, row.Arg)) &&
+            (row.Position == -1 || (row.Position >= 0 && row.Kind == MirProjectionKind.Index && type?.Kind == BoundTypeKind.FixedArray));
     }
 }

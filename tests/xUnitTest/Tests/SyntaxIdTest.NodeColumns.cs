@@ -192,7 +192,12 @@ public partial class SyntaxIdTest
     // would satisfy; PairFollows, a `@follow` of a pair layer;
     // ImplicitPairFollows, Milestone28's implicit follows; PhantomRawOrigins, a raw layer's Phantom slot; InvalidStaticOriginSlots,
     // `static` at a `uniq` slot; EffectBoundRejections, a misplaced effect item; CallablePremiseFailures, an implementation's Callable
-    // bound its requirement lacks). Checked after each edit (N5-5's review C1):
+    // bound its requirement lacks; InferredArrayLengths, a length hole's inferred length; ArrayInferenceShapes, an empty literal
+    // under a holed annotation; CallInferenceFailures, ConstructorInferenceDiagnosticTest's changed constructor selection;
+    // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
+    // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
+    // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result).
+    // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -217,6 +222,14 @@ public partial class SyntaxIdTest
     [InlineData("InvalidStaticOriginSlots", "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/T during a\nfunc g(r: uniq/i32) -> Holder<uniq/i32 during r> during static => $abort(\"u\")\n", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("EffectBoundRejections", "enum E\n    A\n    effect confined\n    B\n", DiagnosticCode.InvalidEffectBound_Kd)]
     [InlineData("CallablePremiseFailures", "contract Runner\n    func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\nstruct Worker\n    Self is Runner\n    public func run<F>(self: ref/Self, callback: ref/F) -> i32\n        F is Callable<() -> i32>\n            effect confined\n        return callback()\n", DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("ReceiverOperations", "struct S\n    public let value: i32 = 7\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => self.value\nfunc f(s: ref/S) -> i32 => s.value + s.get()\n")]
+    [InlineData("InferredArrayLengths", "let values: [_ of i64] = [1, 2, 3]\n")]
+    [InlineData("ArrayInferenceShapes", "let values: [_ of i32] = []\n")]
+    [InlineData("CallInferenceFailures", "struct C<T>\n    public init(x: ref/i32, y: ref/T) => ()\n    public init(x: ref/T, y: ref/T) => ()\nlet n: i32 = 42\nlet r = n@ref\nlet c = C.init(r@ref, n@ref)", DiagnosticCode.ConstructorSelectionChanged_Kd)]
+    [InlineData("CallableSelectionFailures", "func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i32>\n    return action(true)\n", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("BaseCallFailures", "open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    func f(self: ref/Self) -> i32 => base()\n()", DiagnosticCode.InvalidBaseCall_Kd)]
+    [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

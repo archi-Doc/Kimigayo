@@ -126,7 +126,7 @@ public sealed partial class Binding
     // that waits unbound, the Type of a part that awaits its call (Call: AwaitsCall, whatever its kind; SPEC 10.5.1; DECISIONS BU-43), or
     // several; a literal bound once, or a part its call completed, is decided.
     [Flags]
-    private enum Awaiting : byte
+    internal enum Awaiting : byte
     {
         None = 0,
         Never = 1,

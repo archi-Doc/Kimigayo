@@ -46,7 +46,7 @@ internal sealed partial class MirBuilder
             HirPlaceKind.ConstIndex => this.ConstElement((IndexKoto)node, input),
             HirPlaceKind.CallResult => this.Referent(node),
             HirPlaceKind.Value => this.Value(node, input: input),
-            _ => this.Unsupported(node),
+            _ => this.Invariant(node), // Unset is no evaluated node's (HirPlace's contract); Downcast only a Pattern position's.
         };
 
         return this.FollowLayers(place, shape.Layers);
@@ -141,8 +141,8 @@ internal sealed partial class MirBuilder
             case HirRes.Field: // A Property, or an accessor's storage of its Property.
                 var property = symbol!.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!)! : symbol;
                 return this.Storage(property, this.receiver < 0 ? null : new MirPlace(this.receiver), node);
-            default:
-                return this.Unsupported(node);
+            default: // HasFacts' Name row gives a name its symbol; a local's binding is bound before its uses, a capture's in its body.
+                return this.Invariant(node);
         }
     }
 
@@ -155,7 +155,8 @@ internal sealed partial class MirBuilder
             return this.Static(property, node);
         }
 
-        return receiver is { } place ? this.Field(this.FollowTo(place, null), property, node) : this.Unsupported(node);
+        // An instance Property's storage is read only through a receiver: `x.p`, or `storage` in its accessor, whose body has its self.
+        return receiver is { } place ? this.Field(this.FollowTo(place, null), property, node) : this.Invariant(node);
     }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
@@ -251,10 +252,12 @@ internal sealed partial class MirBuilder
     // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner); else an Opaque in an Opaque temp
     // whose site names only the receiver's root, a part built already, never the node's syntax (R5-M63, R5-M84): the located Unsupported
     // of a Place whose Type stores no such Field or has none (a Place of a Type parameter an identity premise makes a struct, SPEC 8.2.3),
-    // or the value derived from the error of a Field Binding formed no stored Type for (Stored; SPEC 23.1.2).
+    // or the value derived from the error of a Field Binding formed no stored Type for (Stored; SPEC 23.1.2) or of a receiver of no Type
+    // (a failed slot or a value derived from one, rule W, PLAN G1073: an accessor's `storage` through its failed self, Body).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
-        var owner = this.body.TypeOf(receiver) is { } type ? AdtDef.FieldOwner(compilation.Types, type, field) : null;
+        var known = this.body.TypeOf(receiver);
+        var owner = known is { } type ? AdtDef.FieldOwner(compilation.Types, type, field) : null;
         if (owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place)
         {
             return place;
@@ -263,7 +266,7 @@ internal sealed partial class MirBuilder
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
         this.SiteRoots(receiver);
-        if (owner is null)
+        if (owner is null && known is not null)
         {
             this.Unsupported(node, temp, node);
         }

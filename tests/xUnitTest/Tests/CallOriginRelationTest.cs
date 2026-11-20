@@ -76,6 +76,24 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     private const string Copying = "func put3(slot: uniq/(ref/i32 during a), v: ref/(ref/i32 during b) during c, w: ref/i32 during b = v@follow)\n" +
         "    origin b outlives a\n    slot@follow = w\n";
 
+    // PLAN G1115's callees: a slot behind a borrow layer at both inputs, and an invariant binding beside a covariant one.
+    private const string Pick = "func pick<T>(x: ref/T, y: ref/T) -> T => $abort(\"no\")\n";
+
+    private const string PickTwo = Pick + "func two(x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ";
+
+    private const string PickMethod = "struct S\n    public init() => ()\n    public func pickm<U>(self: ref/Self, x: ref/U, y: ref/U) -> U => $abort(\"no\")\n";
+
+    private const string Inv = "func inv<T>(x: uniq/T, y: ref/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n";
+
+    // PLAN G1115 (review B1): an argument whose Type stores an Origin only through an identity premise (`T is uniq/Meter during a`).
+    private const string OneOf = "func iu<S>(o: uniq/One<S>, key: ref/isize) -> uniq/S during o => $abort(\"no\")\n" +
+        "func ir<S>(o: ref/One<S>, key: ref/isize) -> ref/S during o => $abort(\"no\")\n" +
+        "struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+        "struct One<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    public init(first: T) => self.first = first@move\n" +
+        "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+        "func g(m: uniq/Meter) => m.bump()\nfunc f<T>(one: uniq/One<T>, w: ref/i32 during a) -> ";
+
     [Theory]
     [InlineData(NeedsStatic + "func caller(p: ref/i32) -> i32 => needsStatic(p)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven", null)]
     [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local", "requires the borrow local outlives static, which is false", "local")]
@@ -137,6 +155,41 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal([("p", "requires p outlives static, which is not proven"), ("q", "requires q outlives static, which is not proven")], errors.Select(x => (Text(source, x.Span), x.Label)));
     }
+
+    // SPEC 15.6.4 step 3, 15.3.6, 10.8 (PLAN G1115): an input's well-formedness over a slot's solution bounds the per-call Origin of the
+    // layer above it, so `pick(x, y)` with `T = ref/i32 during (a and b)` (the covariant meet) or an invariant binding beside a longer
+    // covariant one is valid, and an invalid twin keeps only its own failure, never a well-formedness record against the argument's own
+    // outer Origin (`b outlives x`). Every premise bounds, whatever the argument's own Type keeps: `iu(one, 0)` under `T is uniq/Meter
+    // during a` takes `a` from OwnedOrigins(One<T>) into o's per-call Origin, `(one and a)`, as its receiver twin `one.indexUniq(0)` does.
+    [Theory]
+    [InlineData(PickTwo + "i32\n    let r = pick(x, y)\n    return 0\n", "clean")]
+    [InlineData(PickTwo + "i32\n    let r = pick(y, x)\n    return 0\n", "clean")]
+    [InlineData(PickTwo + "ref/i32 during (a and b)\n    return pick(x, y)\n", "clean")]
+    [InlineData(PickTwo + "ref/i32 during a\n    return pick(x, y)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PickTwo + "ref/i32 during a\n    return pick(y, x)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func pick1<T>(x: ref/T, y: T) -> T => $abort(\"no\")\nfunc two(x: ref/(ref/i32 during a), y: ref/i32 during b) -> i32\n    let r = pick1(x, y)\n    return 0\n", "clean")]
+    [InlineData(Pick + "func two(o: Option<ref/i32 during a>, p: ref/(Option<ref/i32 during b>)) -> i32\n    let r = pick(o, p)\n    return 0\n", "clean")]
+    [InlineData(Pick + "func two(c: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = pick(if c => x else => x, y)\n    return 0\n", "clean")]
+    [InlineData(PickMethod + "func two(s: ref/S, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = s.pickm(x, y)\n    return 0\n", "clean")]
+    [InlineData(Inv + "    origin b outlives a\n    inv(x, y)\n", "clean")]
+    [InlineData(Inv + "    inv(x, y)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func inv2<T>(y: ref/T, x: uniq/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n    inv2(y, x)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func inv3<T>(x: uniq/T, z: uniq/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), z: uniq/(ref/i32 during b)) -> ()\n    inv3(x, z)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    let e = iu(one, 0)\n    return 0\n", "clean")]
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    let e = ir(one, 0)\n    return 0\n", "clean")]
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    g(iu(one, 0)@follow)\n    return 0\n", "clean")]
+    [InlineData(OneOf + "ref/T during w\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "uniq/T during w\n    T is uniq/Meter during a\n    return iu(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    // R7-C3 (F's C2 ruling 307 (2); SPEC 8.2.3, 15.6.1): Type identity decides the structure, the Origin relation the Origins. Under the
+    // identity premise the result's Type is T's, so an Origin difference stays the relation's record (`during a`: `(one and a)` needs
+    // `one outlives a`), it holds under `origin a outlives one`, and only a structure that differs is a Type mismatch. R7-O1 H: the
+    // mismatch's outer layer is a position of its own, `(one and a)` into `one`, which A5 judges at the value (SPEC 23.1.2: its own
+    // failure; a record added on a rejected program, DECISIONS Q13).
+    [InlineData(OneOf + "ref/T during a\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "ref/T during one\n    T is uniq/Meter during a\n    origin a outlives one\n    return ir(one, 0)\n", "clean")]
+    [InlineData(OneOf + "ref/i32 during one\n    T is uniq/Meter during a\n    let r = ir(one, 0)\n    return r\n", "1*TypeMismatch_Kd 1*UnprovenOriginRelation_Kd")]
+    public void AnInputsWellFormednessOverASlotsSolutionBoundsItsLayer(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload,
     // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch: A5's one record at the borrowed
@@ -641,6 +694,24 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func app4<T, F>(g: ref/F, y: T, x: Option<T>) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc use(q: ref/i32) -> i32\n    return app4(func [q] () => q, q, .Some(q))\n")]
     // rv34
     [InlineData("func app4<T, F>(g: ref/F, y: T, x: Option<T>) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use() -> i32\n    return app4(one, one(), .Some(one()))\n")]
+    // k3d (PLAN G1127 R1; D-882's cw_k3d): the evidence `q`'s inner Origin is an anonymous function parameter's omitted nested Origin,
+    // fixed in the Closure body (SPEC 15 Nested signatures), so it opens as rc3v's capture does: T = `ref/i32 during (i and region)`.
+    // k3i below is its invalid twin, the result returned `during q`.
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    let f = func [a] (q: ref/(ref/i32)) -> i32\n        let r = keep(.Some(a@ref), q)\n        return 0\n    return 0\n")]
+    // A join argument whose sources wait (PLAN G1127 R2; SPEC 10.5.1: each source is classified as it would be as that argument): its
+    // Evidence root is read through its Signature leaves, so T and c open as for one leading-dot Case. j1, j5 (a match), j8 (`a
+    // outlives b` stated: valid under either reading, it failed on the per-call c alone) and j10 (in a Closure); j7, j13 below.
+    // j1
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = keep(if flag => .Some(x) else => .None, y)\n    return 0\n")]
+    // j5
+    [InlineData("func keepr<T>(y: ref/T during c, x: Option<ref/T during c>) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = keepr(y, match flag\n        true => .Some(x)\n        false => .None\n    )\n    return 0\n")]
+    // j8
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    origin a outlives b\n    let r = keep(if flag => .Some(x) else => .None, y)\n    return 0\n")]
+    // ja2 (the Middle's RP17 C2, its label): a joined payload borrowing a local beside a local's evidence, the local written after the
+    // result's last use; the base gave BU-156's located Unsupported_Kd at the payload (T unopened, the payload misfit by Origins alone).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    let k = sink(r)\n    m = 5\n    return k\n")]
+    // j10
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let f = func [flag, x, y] () -> i32\n        let r = keep(if flag => .Some(x) else => .None, y)\n        return 0\n    return 0\n")]
     public void AWaitingArgumentAlsoBoundsTheVariableItsEvidenceBinds(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
@@ -681,6 +752,18 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func fun<T>(x: Option<T>, y: T) => ()\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let g: (ref/i32 during p) -> () = func (v) => ()\n    let h: (ref/i32 during q) -> () = func (v) => ()\n    fun(.Some(h@move), g@move)\n    return 0\n", "UnprovenOriginContract_Kd@h@move), g@move)")]
     // af2
     [InlineData("func app<T, F>(g: F, y: T) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    return app(func [a] () => a, q)\n", "UnprovenOriginRelation_Kd@a, q)")]
+    // f4i, f5i (PLAN G1127 R1's Fill, the invalid twins of ALocalInputOriginIsNeverFilledByAnotherArgument's rows): the meet returned
+    // `during b` needs `i outlives b` once, at the returned value.
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> ref/i32 during b\n        let r = pick3(q, p)\n        return r@follow\n    return 0\n", "UnprovenOriginRelation_Kd@r@follow")]
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> ref/i32 during b\n        let r = pick3(p, q)\n        return r@follow\n    return 0\n", "UnprovenOriginRelation_Kd@r@follow")]
+    // j7 (PLAN G1127 R2, j1's invalid twin): the result returned `during b` needs `a outlives b` once (the region lies between b and a);
+    // the call and the payload each record it, as for one leading-dot Case (G1115's S3: SPEC counts one, the Middle's R7-O1 area).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ref/i32 during b\n    return keep(if flag => .Some(x) else => .None, y)\n", "UnprovenOriginRelation_Kd@keep(if flag => .Som|UnprovenOriginRelation_Kd@x) else => .None, y)")]
+    // ja1 (the Middle's RP17 C2, ja2's invalid twin): `m = 5` while r, carrying the payload's Loan on m through the opened region, is
+    // used: A5's conflict at the write (the base: BU-156's located Unsupported_Kd at the payload).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    m = 5\n    return sink(r)\n", "ComparisonLoanConflict_Kd@m = 5")]
+    // j13 (R2's structure twin): a waiting source of another structure is its own Type mismatch, whatever the region.
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, y: ref/(ref/i32 during b), n: ref/(i64)) -> i32\n    let r = keep(if flag => .Some(n) else => .None, y)\n    return 0\n", "TypeMismatch_Kd@.Some(n) else => .No")]
     // rv18
     [InlineData("func keepO<T>(x: Option<T>, y: T) -> i32\n    T is Owned\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    return keepO(.Some(p), one())\n", "UnprovenOriginRelation_Kd@p), one())")]
     public void AWaitedVariableKeepsItsOtherBounds(string body, string records)
@@ -688,6 +771,21 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var source = body + Main;
         var check = DiagnosticCorpus.Check(source);
         Assert.Equal(records, string.Join("|", check.Diagnostics.Select(x => x.Code + "@" + At(source, x.Span))));
+    }
+
+    // PLAN G1127 R1's Fill (the code review's B1): an anonymous function parameter's omitted nested Origin is fixed in the Closure body
+    // (SPEC 15 Nested signatures), so another argument's Origin never fills it at an open position (FillOpenOrigins fills only a
+    // stand-in): the two covariant bindings of `pick3<T>(x: T, y: T)` meet in either order (SPEC 10.8: traversal order never chooses), as
+    // their named twin's do. f4, f5; f4i and f5i above are their invalid twins.
+    [Theory]
+    // f4
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> i32\n        let r = pick3(q, p)\n        return 0\n    return 0\n")]
+    // f5
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> i32\n        let r = pick3(p, q)\n        return 0\n    return 0\n")]
+    public void ALocalInputOriginIsNeverFilledByAnotherArgument(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
     // The source from a span's start to the end of its line, at most 20 characters.

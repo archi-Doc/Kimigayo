@@ -153,7 +153,7 @@ public sealed partial class Binding
                 if (symbol?.Declaration is not DeclarationContainerKoto || (alias.Name is not null && symbol.Declaration is not GroupKoto) ||
                     this.BindContainerQualifier(targetSyntax, symbol, scope, this.TypeContext(targetSyntax, scope)) is not { } reference)
                 {
-                    this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                    this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
                     RestPendingOn(originDeclaration, alias);
                     return null;
                 }
@@ -189,13 +189,13 @@ public sealed partial class Binding
 
             if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 } or DeclarationContainerKoto { OriginNames.Count: > 0 })
             {
-                this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
                 return null;
             }
 
             if (symbol.Declaration is DeclarationContainerKoto { HasIncompatibleBindingHeader: true })
             {
-                this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
+                this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
                 return null;
             }
 
@@ -205,7 +205,7 @@ public sealed partial class Binding
 
         if (alias.QualifiedName.Count == 0 || (alias.Name is not null && scope.Owner is not GroupKoto))
         {
-            this.Fail(alias, BindingFailure.InvalidTypeFormation, true);
+            this.Record(alias, BindingFailure.InvalidTypeFormation, [], unresolved: true);
             return null;
         }
 

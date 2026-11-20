@@ -388,7 +388,7 @@ public sealed partial class Binding
             // declaration error adds no body errors; a use that only the written shape rejects rests on it (ReceiverRestsOnAccessorShape).
             if (owner is StructKoto or ContractKoto && AccessorReceiverShapeMismatch(accessor))
             {
-                this.Fail(syntax!, BindingFailure.AccessorReceiverShape);
+                this.Record(syntax!, BindingFailure.AccessorReceiverShape, []);
                 return ConstraintProof.Error;
             }
 

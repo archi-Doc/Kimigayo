@@ -496,7 +496,7 @@ internal sealed partial class MirBorrows
     // where a holder is punned.
     private MirWrites Punned(int set, BoundType input, BoundType? referent, in MirTerminator call, int position, OutputRetention output)
     {
-        var raw = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw };
+        var raw = input is { IsPointer: true };
         var borrow = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq };
         var reading = referent is null || !(raw || borrow) ? null : cases.Type(referent);
         if (reading is null)

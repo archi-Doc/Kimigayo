@@ -118,22 +118,15 @@ public sealed partial class Binding
     }
 
     // J2 (PLAN G936): the selected candidate's openings become the region graph's records (RecordOpening), before its fits and
-    // clauses are judged; only a candidate with a Signature row opened anything (SlotSolution.OpenWaited).
+    // clauses are judged; only a candidate with a position without evidence opened anything (HasWaitingPosition, the gate
+    // SlotSolution.OpenWaited reads).
     private void RecordOpenings(Koto call, in SlotSolution solution)
     {
-        for (var i = 0; i < solution.Rows.Length; i++)
+        if (this.HasWaitingPosition(solution) && this.originInferences.TryGetValue((call, solution.Function), out var inference))
         {
-            if (solution.Rows[i].Contribution == Contribution.Signature)
+            foreach (var (region, bound) in inference.Opened)
             {
-                if (this.originInferences.TryGetValue((call, solution.Function), out var inference))
-                {
-                    foreach (var (region, bound) in inference.Opened)
-                    {
-                        this.RecordOpening(region, bound, call);
-                    }
-                }
-
-                return;
+                this.RecordOpening(region, bound, call);
             }
         }
     }
@@ -250,6 +243,13 @@ public sealed partial class Binding
         if (actual.Kind == BoundTypeKind.Function || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return; // SPEC 10.7: a Function Type is a whole contract, compared during applicability.
+        }
+
+        if (ReferenceEquals(actual, expected))
+        {
+            // An interned Type is a DAG (DECISIONS BU-19): one part relates each of its Origins to itself, which forms no row
+            // (FormBodyRelation), so a shared part is never walked again along each of its paths (PLAN G1115).
+            return;
         }
 
         this.termWalks++;

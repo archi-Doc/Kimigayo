@@ -68,13 +68,14 @@ public sealed partial class Binding
         return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
     }
 
-    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent); a candidate's trial and re-trials write only its own.
-    private SlotFrame[] RentFrames(int count, int capacity)
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent) and judged in the use's `view`; a candidate's trial
+    // and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity, BindingScope view)
     {
         var frames = this.frameScratch.Rent(count);
         for (var i = 0; i < count; i++)
         {
-            frames[i] = this.infer.Rent(Math.Max(1, capacity));
+            frames[i] = this.infer.Rent(Math.Max(1, capacity), view);
         }
 
         return frames;
@@ -209,8 +210,7 @@ public sealed partial class Binding
 
                 var function = (FunctionKoto)candidates[candidate].Symbol!.Declaration;
                 var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
-                SemanticsKind? mode = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }
-                    ? pattern.Semantics : null;
+                SemanticsKind? mode = pattern.SafeReferent is not null ? pattern.Semantics : null;
                 // SPEC 10.5: a waiting reference, like an anonymous body, never ranks the outer candidates; once their ordinary
                 // inputs and defaults select one, its fixed call signature selects the reference, even when the signatures differ.
                 if (CallableSlotType(pattern, CallSlotOwner(function)) is null || (!first && acquisition != mode))

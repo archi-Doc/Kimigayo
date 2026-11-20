@@ -227,12 +227,12 @@ public sealed partial class Binding
                 return ConstraintProof.Proven;
             }
 
-            if (!ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || HasOpenOrigin(proposition.RequiredType!))
+            if (!TyCtxt.StorageMatches(proposition.RequiredType, signature) || HasOpenOrigin(proposition.RequiredType!))
             {
                 // SPEC 8.3.2, 10.7: only a known difference from the required signature, as compatibility compares it (a Never result
                 // fits any; Origins by subtyping, 15.6.1, never a difference, so both sides with every Origin static), refutes; a
                 // stand-in decides an open region's (PerCallCallables).
-                return ReferenceTypes.StorageMatches(proposition.RequiredType, signature) ||
+                return TyCtxt.StorageMatches(proposition.RequiredType, signature) ||
                     this.IdentityRefuted(this.types.Erase(this.CompatibleSignature(signature, proposition.RequiredType!)), this.types.Erase(signature), scope, null)
                     ? ConstraintProof.Refuted : ConstraintProof.Unknown;
             }
@@ -523,6 +523,13 @@ public sealed partial class Binding
             requirement = this.CanonicalAssociatedOrigins(requirement, clause, this.AssociatedParameters(associated.Declaration));
         }
 
+        if (requirement is { Kind: ConstraintKind.Error, Subject: null } && subject is not null && !unresolvedSubject && !failedSubject)
+        {
+            // R7-C3 (F's C2 rulings 272-273): an unbound requirement keeps its bound subject, so the clause's failed fact is a premise of
+            // that subject, which every judgment of it consults (the rows, RowKinds).
+            requirement = this.InternConstraint(new(ConstraintKind.Error, subject));
+        }
+
         if (unresolvedSubject && requirement.Kind != ConstraintKind.Error)
         {
             // Validate the available requirement syntax without inventing a subject identity.
@@ -576,11 +583,10 @@ public sealed partial class Binding
         Complete(clause, BoundType.Boolean);
         if (input || requirement.Kind == ConstraintKind.Error)
         {
+            // R7-C3 gate 2: a clause that failed, or holds a recovery, adds its Error fact; the environment writer fails that premise
+            // alone (ValidateConstraintEnvironments, FailPremise), so nothing else in the environment reads it.
             var environment = scope.Constraints ??= new();
-            if (this.AddConstraintFact(environment, requirement))
-            {
-                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
-            }
+            this.AddConstraintFact(environment, requirement);
 
             if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
             {
@@ -603,17 +609,17 @@ public sealed partial class Binding
     // as the environment's failed node. The witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's premises
     // (ContractSolver) can add one too, a failed clause's Error passed through or a null substitution, and name no node, so such an
     // environment stays valid (PLAN G651's open item).
-    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null, IsKoto? origin = null)
     {
         if (fact.HasUnresolved)
         {
             return false;
         }
 
-        environment.Add(fact, source);
+        environment.Add(fact, source, origin);
         if (fact.Kind == ConstraintKind.And)
         {
-            return this.AddConstraintFact(environment, fact.Left!, source) | this.AddConstraintFact(environment, fact.Right!, source);
+            return this.AddConstraintFact(environment, fact.Left!, source, origin) | this.AddConstraintFact(environment, fact.Right!, source, origin);
         }
 
         return fact.Kind == ConstraintKind.Error;
@@ -623,11 +629,6 @@ public sealed partial class Binding
     {
         var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
         var evidence = this.Supply(normalized, this.ViewOf(scope));
-        if (evidence.Invalid is { } invalid)
-        {
-            return this.InvalidEnvironment(invalid);
-        }
-
         var positive = evidence.Positive;
         var negative = evidence.Negative;
 
@@ -639,7 +640,9 @@ public sealed partial class Binding
             ConstraintKind.Not => NegateProof(this.ProveConstraint(proposition.Left!, scope)),
             ConstraintKind.And => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), true),
             ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), false),
-            _ => !ReferenceEquals(proposition, normalized) && this.JudgeConstraintAtom(proposition, scope) == ConstraintProof.Error ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),
+            // R7-C3 (C7; J1): the written atom is checked for its operands' contexts only; the judge forms at its own intake, so judging it
+            // again would be the normalized judgment twice (two outermost requests per projection-input proof).
+            _ => !ReferenceEquals(proposition, normalized) && this.OperandContexts(proposition).Invalid ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),
         };
         if (structural != ConstraintProof.Error && normalized.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not &&
             ClauseSubject(normalized) is { } whole && SemanticsPremise(normalized, whole))
@@ -655,7 +658,8 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+        var verdict = structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+        return this.SpokenVerdict(normalized, scope, verdict); // R7-C3 (F's C2 ruling 278): the Failed premises that speak to it
     }
 
     // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
@@ -663,7 +667,7 @@ public sealed partial class Binding
     private BoundConstraint NormalizeProofConstraint(BoundConstraint constraint, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!constraint.HasAssociatedProjection && !HasParameterIdentity(scope))
+        if (!constraint.HasAssociatedProjection && !HasTypeIdentity(scope))
         {
             return constraint;
         }
@@ -686,16 +690,27 @@ public sealed partial class Binding
             return constraint;
         }
 
-        var subject = this.NormalizeProofType(constraint.Subject, scope, out completion);
+        // R7-C2c2 c2-4b (design R4.12b, J1): a proposition is identified by its normalized complete Types (SPEC 8.3.1), each in its
+        // class's form in the proposition's view (8.2.3), its Contract reference's arguments included, so request and facts meet here.
+        var subject = this.ClassForm(this.NormalizeProofType(constraint.Subject, scope, out completion), scope, out var formed);
+        completion = Meet(completion, formed);
         var required = constraint.RequiredType;
         if (required is not null)
         {
             var part = Completion.Provisional;
-            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.NormalizeProofType(required, scope, out part);
-            completion = Meet(completion, part);
+            required = constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(required, scope) : this.ClassForm(this.NormalizeProofType(required, scope, out part), scope, out formed);
+            completion = Meet(Meet(completion, part), formed);
         }
 
-        return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
+        var contract = constraint.Contract;
+        if (contract is not null && IsBoundContractReference(contract))
+        {
+            var reference = this.ClassForm(contract.Type!, scope, out formed);
+            completion = Meet(completion, formed);
+            contract = ReferenceEquals(reference, contract.Type) ? contract : this.BoundContractReference(reference);
+        }
+
+        return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) && ReferenceEquals(contract, constraint.Contract) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
     }
 
     // A proof's Type with its parameter identities substituted and its projections' images formed in the scope (proofParts' query).
@@ -718,11 +733,6 @@ public sealed partial class Binding
     {
         this.ProofPartWork++;
         completion = Completion.Complete;
-        if (type.ContainsParameter && HasParameterIdentity(scope))
-        {
-            type = this.SubstituteIdentity(type, scope, parametersOnly: true, out completion);
-        }
-
         if (type.Kind == BoundTypeKind.AssociatedProjection)
         {
             var projected = this.ContractTypeAnswer(type, scope);

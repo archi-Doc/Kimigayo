@@ -87,7 +87,7 @@ internal sealed partial class TyCtxt
     // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
     internal bool Punnable(BoundType type)
     {
-        if (type.IsScalar || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        if (type.IsScalar || type.IsAbstract || type.IsPointer)
         {
             return true;
         }

@@ -283,8 +283,8 @@ internal static class KeyedRow
 // StampedColumn<T, TCounter> (DECISIONS BU-220): a pass or edit family's column, the stamped form of PagedColumn<T>.
 // - Responsibility: a column whose rows hold only while its stamp is the current value of the counter its declaration names (TCounter:
 //   Binding.PassCounter, which ResetPass advances, or Binding.EditCounter, which only Invalidate advances); each operation once: Get,
-//   Ref, Enumerate, Grow and Renumbered, and Holds, the one comparison of the stamp with its counter, which Get, Ref and
-//   Enumerate each ask.
+//   Ref, Enumerate, Grow and Renumbered, Freeze or Release at the library's freeze (its family's one NodeColumns.Freeze row), and
+//   Holds, the one comparison of the stamp with its counter, which Get, Ref and Enumerate each ask.
 // - Inputs: ids below the count Grow last gave, and the Binding whose counter the column follows. Outputs: the current rows.
 // - Invariants: a stale column reads default at every id and enumerates nothing; its first write after its counter advanced empties it,
 //   keeping its capacity, and stamps it; a renumbering hands it over unmoved and emptied, capacity and stamp kept, so no removed node's
@@ -356,6 +356,12 @@ internal struct StampedColumn<T, TCounter>
             this.stamp = Binding.Frozen;
         }
     }
+
+    /// <summary>Releases the column at the library's freeze in place of <see cref="Freeze"/>, for a family whose rows are its pass's
+    /// working state, read only inside the pass that wrote them (DECISIONS BU-220 as R7-N5 B2a-2 amends it): its rows, arena and
+    /// stamp go, so every row reads default at every counter (stamp 0 is current only at a Binding's counter 0, before its first run,
+    /// where no row is left either), as a column the library pass never wrote.</summary>
+    internal void Release() => this = default;
 
     // The one comparison of the column's stamp with the current value of its counter (ruling 118), through the one currency rule.
     private readonly bool Holds(Binding binding, out ulong counter) => Binding.Current(this.stamp, counter = TCounter.Of(binding));
