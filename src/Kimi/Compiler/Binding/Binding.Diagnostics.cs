@@ -658,7 +658,6 @@ public sealed partial class Binding
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
         this.rejectedRows.Clear();
-        this.unboundSlots?.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
         this.duplicateDeclarations?.Clear();

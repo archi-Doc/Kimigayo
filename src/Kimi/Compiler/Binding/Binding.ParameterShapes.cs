@@ -525,7 +525,6 @@ public sealed partial class Binding
 
     private void ResetParameterShapes()
     {
-        this.shapeCallCandidates.Clear();
         this.shapeJudgments.Clear();
         this.shapeContracts.Clear();
         this.shapeDependencies.Clear();

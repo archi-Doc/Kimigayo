@@ -200,7 +200,8 @@ public partial class SyntaxIdTest
     // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest); AssociatedAmbiguities, `Gx<i64>.Item`
     // reached by two paths (AssociatedIdentityTest); InferenceFailures, an inference hole no implementation fills; CallableConstraints,
     // a callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); ClauseConstraints, a Function Item
-    // reference whose Type argument's clause is refuted (ConstraintBindingTest)).
+    // reference whose Type argument's clause is refuted (ConstraintBindingTest); B2b-1's UnboundSlots, a call whose slot nothing binds,
+    // and UniqIndexing, a Dictionary's user index).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -240,6 +241,8 @@ public partial class SyntaxIdTest
     [InlineData("InferenceFailures", "contract C\n    associate Item\n    func read<T>(value: T) -> Self.Item\nstruct S\n    Self is C\n    public func read<U>(value: U) -> U => value\n", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
     [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ClauseConstraints", "struct K<T>\n    T is Copy\n    public let t: T\nfunc id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<K<string>>\n    return 0\n", DiagnosticCode.UnsatisfiedConstraint_Kd)]
+    [InlineData("UnboundSlots", "func make<T>() -> i32 => 1\nlet x = make()\n", DiagnosticCode.UnboundTypeArgument_Kd)]
+    [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
