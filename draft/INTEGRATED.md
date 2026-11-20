@@ -1646,14 +1646,14 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   ends, its exit code and Ctrl+C. The plan gives the decision (decision 9; §5 A3's Documents), not the text: the row's wording is
   the unit's and its review's, so no plan text is frozen.
 - IMPL §20.3.2's Toolchain paragraph (2026-11-21, unit A4, Q-604; T's D-981): the second of decision 9's two stage-A IMPL
-  revisions, an explicit contract revision with an independent review. The root holds `tatara.dll`; a native build runs no LLVM
-  tool and reads no `LlvmBin`; `toolchain verify` also checks `tatara.dll`'s hash. The plan gives the decision (decision 9; §5 A4),
-  not the text, so no plan text is frozen.
+  revisions, an explicit contract revision with an independent review. The paragraph names `tatara.dll` in the toolchain root,
+  what a native build loads and checks, which `LlvmBin` is read, and what `toolchain verify` checks. The plan gives the decision
+  (decision 9; §5 A4), not the text: the paragraph's wording is the unit's and its review's, so no plan text is frozen.
 - IMPL §20.3's second Ctrl+C (2026-11-21, unit A4, Q-604; T's D-981): a third stage-A IMPL revision, beyond decision 9's two,
-  authorized by the owner's O-460 (a) (「(a) as recommended」; the plan's decision 17 from revision 4), an explicit contract
-  revision with an independent review. The cancellation bullet gains the second Ctrl+C and its exception, a publication SPEC
-  §23.2.3 protects; the `tatara` row's Ctrl+C names its three states: a line, the prompt and awaited redirected input (since A4 a
-  press there cancels the session, as any command's). The wording is the unit's and its review's, so no plan text is frozen.
+  authorized by the owner's O-460 (a) (「(a) as recommended」; the plan's decision 17), an explicit contract revision with an
+  independent review. The exit-code bullet gains the second Ctrl+C and its exception; the `tatara` row's Ctrl+C clause gains the
+  prompt and awaited redirected input beside the running line. The wording is the unit's and its review's, so no plan text is
+  frozen.
 - Revision 4 (2026-11-21, the Middle's reviews of unit A4, C-427 (design), C-428 and C-429 (implementation), and the owner's
   O-460 (a) 「(a) as recommended」; T's D-981): §2 gains decision 17 (a second Ctrl+C); §5 A4 as built: setup's input
   (`-LlvmRoot`) and writes, the record's `tatara` member with `schemaVersion` 1, `LlvmBin` accepted and unread until B6, the
