@@ -1637,3 +1637,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   every failure is the toolchain's (internal errors with stage B's unit), the `tatara_abi` start check, crash recovery on the
   tools' stack as the only process-wide state; §5 A2: three commits in one window, the comparisons `Explicit` until A4; §5 A4's
   budget names decision 14; §10's fatal-error row; §11's A1 and A2 rows answered. Nothing frozen.
+- Revision 3 (2026-11-20, the Middle's design review of unit A3, C-425, and the owner's answers O-454 (b) and O-455 (a); T's
+  D-955): §2 gains decisions 15 and 16; §5 A3: a line is a command line (the lexical rule goes), a scope per line, Ctrl+C's one
+  owner and its states (the plan's "while a child runs, it goes to the child" is revised: the program's console is hidden), the
+  session's ends; "terminal input to the child" leaves Done when (decision 15). Nothing frozen.
