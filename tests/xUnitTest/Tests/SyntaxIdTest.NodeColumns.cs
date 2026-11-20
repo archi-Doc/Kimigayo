@@ -198,7 +198,8 @@ public partial class SyntaxIdTest
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
     // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's
     // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest); AssociatedAmbiguities, `Gx<i64>.Item`
-    // reached by two paths (AssociatedIdentityTest); InferenceFailures, an inference hole no implementation fills).
+    // reached by two paths (AssociatedIdentityTest); InferenceFailures, an inference hole no implementation fills; CallableConstraints,
+    // a callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest)).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -236,6 +237,7 @@ public partial class SyntaxIdTest
     [InlineData("ArithmeticConformanceFailures", "struct Bad\n    Self is Addable<string>\n    associate Output is i32\n()", DiagnosticCode.InvalidArithmeticConformance_Kd)]
     [InlineData("AssociatedAmbiguities", "contract C<E>\n    associate Item is E\ncontract Q<U>: C<i32>, C<U>\nstruct Gx<A>\n    Self is Q<A>\nfunc probe()\n    let a: Gx<i64>.Item = 7\nlet present = 1\n", DiagnosticCode.AmbiguousBinding_Kd)]
     [InlineData("InferenceFailures", "contract C\n    associate Item\n    func read<T>(value: T) -> Self.Item\nstruct S\n    Self is C\n    public func read<U>(value: U) -> U => value\n", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
+    [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

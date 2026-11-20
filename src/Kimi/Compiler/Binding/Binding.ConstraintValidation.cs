@@ -639,7 +639,7 @@ public sealed partial class Binding
 
         var at = this.CallableArgument(use, clause) ?? use; // Located as the trial locates it (CallableOriginFailure).
         var record = new CallableConstraintFact(at, clause, fact.Subject, this.ContractFact(at, fact.Failure, use));
-        return this.FailExplained(ref this.callableConstraints, use, BindingFailure.UnprovenConstraint, record, unresolved);
+        return this.FailExplained(CallableConstraintRows.Family, use, BindingFailure.UnprovenConstraint, record, unresolved);
     }
 
     // A proof of a proposition, settled where it is no longer combined (EndProof).

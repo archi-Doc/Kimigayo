@@ -346,6 +346,7 @@ internal struct NodeColumns
     internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
     internal StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), Binding.PassCounter> AssociatedAmbiguities; // Pass: the two candidates an ambiguous associated Type use found (Binding.AssociatedTypes.cs).
     internal StampedColumn<(BoundRequirement Identity, Binding.AssociatedBinding Binding), Binding.PassCounter> InferenceFailures; // Pass: the identity and binding a conformance's inference hole failed with (Binding.AssociatedInference.cs).
+    internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
 
     internal void Resize(int length)
     {
@@ -409,6 +410,7 @@ internal struct NodeColumns
         this.ArithmeticConformanceFailures.Grow(length);
         this.AssociatedAmbiguities.Grow(length);
         this.InferenceFailures.Grow(length);
+        this.CallableConstraints.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -450,6 +452,7 @@ internal struct NodeColumns
         this.ArithmeticConformanceFailures.Freeze(binding);
         this.AssociatedAmbiguities.Freeze(binding);
         this.InferenceFailures.Freeze(binding);
+        this.CallableConstraints.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -518,6 +521,7 @@ internal struct NodeColumns
             ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
             AssociatedAmbiguities = this.AssociatedAmbiguities.Renumbered(length),
             InferenceFailures = this.InferenceFailures.Renumbered(length),
+            CallableConstraints = this.CallableConstraints.Renumbered(length),
         };
         return columns;
     }
