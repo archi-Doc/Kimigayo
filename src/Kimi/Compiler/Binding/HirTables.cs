@@ -344,6 +344,7 @@ internal struct NodeColumns
     internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
     internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
+    internal StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), Binding.PassCounter> AssociatedAmbiguities; // Pass: the two candidates an ambiguous associated Type use found (Binding.AssociatedTypes.cs).
 
     internal void Resize(int length)
     {
@@ -405,6 +406,7 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
         this.ArithmeticConformanceFailures.Grow(length);
+        this.AssociatedAmbiguities.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -444,6 +446,7 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
         this.ArithmeticConformanceFailures.Freeze(binding);
+        this.AssociatedAmbiguities.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -510,6 +513,7 @@ internal struct NodeColumns
             ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
             ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
+            AssociatedAmbiguities = this.AssociatedAmbiguities.Renumbered(length),
         };
         return columns;
     }

@@ -197,7 +197,8 @@ public partial class SyntaxIdTest
     // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
     // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's
-    // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest)).
+    // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest); AssociatedAmbiguities, `Gx<i64>.Item`
+    // reached by two paths (AssociatedIdentityTest)).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -233,6 +234,7 @@ public partial class SyntaxIdTest
     [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("ArithmeticConformanceFailures", "struct Bad\n    Self is Addable<string>\n    associate Output is i32\n()", DiagnosticCode.InvalidArithmeticConformance_Kd)]
+    [InlineData("AssociatedAmbiguities", "contract C<E>\n    associate Item is E\ncontract Q<U>: C<i32>, C<U>\nstruct Gx<A>\n    Self is Q<A>\nfunc probe()\n    let a: Gx<i64>.Item = 7\nlet present = 1\n", DiagnosticCode.AmbiguousBinding_Kd)]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
