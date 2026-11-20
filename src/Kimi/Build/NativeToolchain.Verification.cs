@@ -11,6 +11,9 @@ namespace Kimi.Build;
 
 internal static partial class NativeToolchain
 {
+    // The installation's command, which every setup remedy names: setup installs from the pinned LLVM release archive, extracted.
+    internal static readonly string SetupCommand = $"src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM {ToolchainIdentity.LlvmVersion} archive, extracted>";
+
     // Installation and explicit verification cover the entire distributed tool set.
     private static readonly string[] InstallationTools =
         ["clang", "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj", "llvm-objdump", "llvm-lib", "llvm-dlltool"];
@@ -19,7 +22,7 @@ internal static partial class NativeToolchain
     {
         if (!File.Exists(path))
         {
-            throw new FileNotFoundException($"Toolchain file not found: {path}. Run src/backend/windows-x64/setup.ps1 for the selected toolchain.", path);
+            throw new FileNotFoundException($"Toolchain file not found: {path}. Run {SetupCommand} for the selected toolchain.", path);
         }
 
         return path;
@@ -50,14 +53,16 @@ internal static partial class NativeToolchain
         {
             var installationFile = RequireInstalledFile(Path.Combine(root, "installation.json"));
             using var installation = JsonDocument.Parse(await File.ReadAllBytesAsync(installationFile, cancellationToken));
-            // The record's shape before any tool: schema 1 of this profile, with the tools' and the supporting DLLs' hashes by name.
+            // The record's shape before any tool: schema 1 of this profile, with the tools' and the supporting DLLs' hashes by name and
+            // tatara.dll's hash.
             var installed = installation.RootElement;
             var tools = Member(installed, "tools");
             var supportingDlls = Member(installed, "supportingDlls");
+            var tataraSha256 = Text(Member(Member(installed, "tatara"), "sha256"));
             if (Number(Member(installed, "schemaVersion")) != 1 || Text(Member(installed, "profile")) != WindowsProfile.Name ||
-                tools.ValueKind != JsonValueKind.Object || supportingDlls.ValueKind != JsonValueKind.Object)
+                tools.ValueKind != JsonValueKind.Object || supportingDlls.ValueKind != JsonValueKind.Object || tataraSha256 is null)
             {
-                throw new InvalidDataException("Invalid toolchain installation record. Run setup.ps1 again.");
+                throw new InvalidDataException($"Invalid toolchain installation record. Run {SetupCommand} again.");
             }
 
             foreach (var name in InstallationTools)
@@ -86,7 +91,7 @@ internal static partial class NativeToolchain
                 identity["hashMatched"] = hash == expected;
                 if (hash != expected || (name == Kernel32Imports.Generator && hash != Kernel32Imports.DlltoolSha256))
                 {
-                    throw new InvalidDataException($"Tool executable SHA-256 mismatch: {path}. Run setup.ps1 after an intentional update.");
+                    throw new InvalidDataException($"Tool executable SHA-256 mismatch: {path}. Run {SetupCommand} after an intentional update.");
                 }
             }
 
@@ -98,6 +103,19 @@ internal static partial class NativeToolchain
                 {
                     throw new InvalidDataException("Toolchain supporting DLL SHA-256 mismatch: " + dll.Name);
                 }
+            }
+
+            // tatara.dll after the tools: Tatara.Load's checks (found, loaded and bound, its ABI and LLVM version), then its hash.
+            var tatara = Tatara.Load(root);
+            var tataraHash = Hash(tatara.Path);
+            record["tatara"] = new JsonObject
+            {
+                ["path"] = Redact(tatara.Path, Directory.GetCurrentDirectory()), ["sha256"] = tataraHash, ["build"] = tatara.Build,
+                ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion,
+            };
+            if (tataraHash != tataraSha256)
+            {
+                throw new InvalidDataException($"tatara.dll SHA-256 mismatch: {tatara.Path}. Run {SetupCommand} again.");
             }
 
             var backend = RequireInstalledFile(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile));

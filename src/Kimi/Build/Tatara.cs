@@ -14,7 +14,13 @@ namespace Kimi.Build;
 /// failure (IsToolchainFailure). Inside the lock a call pins its inputs, copies the result's texts and releases the result.</summary>
 internal sealed unsafe class Tatara
 {
-    private const string Remedy = "Build it with src/Tatara/build.ps1 into the toolchain root (until unit A4, a private toolchain root).";
+    // A missing or unloadable DLL: setup for the selected toolchain. Another ABI or LLVM version: never setup on that root (it may be
+    // the shared one), but a compiler of its revision or a root of the checkout's own.
+    private static readonly string Remedy = $"Run {NativeToolchain.SetupCommand} for the selected toolchain.";
+
+    private static readonly string StartRemedy =
+        "This compiler's tatara.h or LLVM version differs from the toolchain's tatara.dll: use a compiler of the toolchain's revision, " +
+        $"or a root of this checkout's own ({NativeToolchain.SetupCommand} -ToolchainRoot <a new directory>, then --ToolchainRoot or KIMI_TOOLCHAIN_ROOT).";
 
     private static readonly Lock Gate = new();
     private static readonly Dictionary<string, Tatara> Loaded = new(StringComparer.OrdinalIgnoreCase);
@@ -108,7 +114,7 @@ internal sealed unsafe class Tatara
         {
             throw new InvalidDataException(
                 $"Tatara does not match this compiler: {path}; abi {abi ?? "(none)"}, expected {ExpectedAbi}; " +
-                $"llvmVersion {llvmVersion ?? "(none)"}, expected {ToolchainIdentity.LlvmVersion}. {Remedy}");
+                $"llvmVersion {llvmVersion ?? "(none)"}, expected {ToolchainIdentity.LlvmVersion}. {StartRemedy}");
         }
     }
 
