@@ -496,7 +496,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.Length = length;
         // DECISIONS BU-24, BU-46: the slot's role is the layer's. Holder and Unstated only in the raw role (Unstated, a kept part's mark
         // of a layer its declaration writes without `during`, Binding.WithUnstatedOrigins).
-        if (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
+        if (!this.IsPointer && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
         {
             throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }
@@ -510,7 +510,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
-        var raw = semantics == SemanticsKind.Raw && origin is not null;
+        var raw = this.IsPointer && origin is not null;
         var found = (origin is not null && !raw) || originArguments is { Length: > 0 };
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
