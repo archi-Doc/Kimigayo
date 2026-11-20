@@ -435,7 +435,8 @@ public sealed partial class MirBuildTest
     // SPEC 23.1.2, DECISIONS R4-M61's slot rows: a slot of no Type is the failed slot only where Binding recorded a cause at its
     // TypeSource, so a node declaring one without it (a function's result, a parameter, also of a definition Binding rejected, a let's
     // local, a match's or a for loop's binding, a Closure's parameter or result) is published Error and recorded as InternalInvariant_Kd at it, never a fault; a default
-    // template is built only beside its definition's Body (a twin keeps its own).
+    // template is built only beside its definition's Body (a twin keeps its own). A read of a broken slot is a broken contract too, at the
+    // read (PLAN G396 (3) Z1, F's C2 ruling 310): the use of the broken `let x`, whose local no build binds.
     [Fact]
     public void ASlotOfNoTypeWithoutItsFailedFactIsABrokenContract()
     {
@@ -451,6 +452,7 @@ public sealed partial class MirBuildTest
         var local = nodes.OfType<VariableKoto>().Single(static x => x.ToString().StartsWith("let x", StringComparison.Ordinal));
         var match = nodes.OfType<MatchKoto>().Single();
         var loop = nodes.OfType<ForKoto>().Single();
+        var read = nodes.OfType<IdentifierNameKoto>().Single(x => x.Parent is ReturnKoto && ReferenceEquals(HirTables.Symbol(x), HirTables.Symbol(local)));
         HirTables.Symbol(functions["result"])!.Type = null; // After Binding the Types go with no cause recorded; CheckBound publishes them.
         c.Binding.ParameterSymbol(functions["param"], 0).Type = null;
         c.Binding.ParameterSymbol(functions["guarded"], 0).Type = null; // Rejected by Binding (a protected function in a group, SPEC 9.4).
@@ -465,7 +467,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         Assert.All(broken, static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         Assert.Equal(
-            broken.Select(SourceRef.Of).OrderBy(static x => x.Id),
+            broken.Append(read).Select(SourceRef.Of).OrderBy(static x => x.Id),
             program.Records(MirRecordClass.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject).OrderBy(static x => x.Id));
         var templates = program.Bodies.ToArray().Where(static x => x.Key.Kind == MirBodyKind.DefaultTemplate).Select(static x => x.Key.Decl!.Name);
         Assert.Equal(["kept"], templates);
