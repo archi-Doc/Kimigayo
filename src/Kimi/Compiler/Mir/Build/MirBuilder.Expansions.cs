@@ -15,9 +15,14 @@ internal sealed partial class MirBuilder
     // The Places the expansions being built located, and the right side a derived write built (DerivedWrite), innermost last.
     private readonly List<(Koto Node, MirPlace Place)> located = [];
 
-    // The Type an accessor call takes a node as, its receiver: the argument's adapted Type, else its parameter's.
+    // The Type a call takes a node as: its receiver's or argument's adapted Type, else its parameter's.
     private static BoundType? Input(CallPlan call, Koto node)
     {
+        if (ReferenceEquals(call.Receiver, node))
+        {
+            return call.ReceiverOperation.AdaptedType ?? call.ReceiverOperation.ParameterType;
+        }
+
         foreach (ref readonly var argument in call.ArgumentOperations)
         {
             if (ReferenceEquals(argument.Source, node))
@@ -27,6 +32,15 @@ internal sealed partial class MirBuilder
         }
 
         return null;
+    }
+
+    // SPEC 11.3, 4.7.1 step 3 (DECISIONS R4-M109, R4-M145): a node that one of two calls takes as the HIR publishes that call's input: by
+    // the node's plan-row Adjust where the two calls' takes differ, else by its column's, at the Type the call takes it as (Input), a
+    // call's input. An update's getter and a selection by case's index (MirBuilder.Cases) take their receiver so.
+    private MirOperand Taken(CallPlan call, Koto node)
+    {
+        var adjust = HirTables.PlanOf(node).Adjust;
+        return this.Operand(node, adjust == default ? HirTables.AdjustOf(node) : adjust, Input(call, node), input: true);
     }
 
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
@@ -128,14 +142,7 @@ internal sealed partial class MirBuilder
             // A receiver both accessors take is taken by each as the HIR publishes: the setter by the column's Adjust, the getter by the
             // receiver's plan-row Adjust where the two differ (SPEC 11.3: shared), else by the column's (DECISIONS R4-M109).
             var given = plan.Second is null ? null : receiver;
-            var operand = default(MirOperand);
-            if (given is not null)
-            {
-                var adjust = HirTables.PlanOf(given).Adjust;
-                operand = this.Operand(given, adjust == default ? HirTables.AdjustOf(given) : adjust, Input(getter, given), input: true);
-            }
-
-            this.Call(read, getter, target, null, (given, operand));
+            this.Call(read, getter, target, null, (given, given is null ? default : this.Taken(getter, given)));
             this.Made(read);
         }
 

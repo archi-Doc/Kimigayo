@@ -57,8 +57,10 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     private readonly List<Pending> pending = []; // The problems Judge found, in order, with their class's views.
     private readonly List<ProblemFact> pendingFacts = [];
     private readonly HashSet<ExecutableBody> included = []; // Findings: the layers some constructor body's slice includes.
+    private readonly MirReach reach = new(); // In a body with a case branch, the blocks the view being classified reaches.
     private MirStep[] walk = [];
     private Ref[] refs = []; // The body's Refs with an Origin outside every Inlined scope, in body order.
+    private int[] blockOf = []; // In a body with a case branch, each statement's block.
     private int[] anchors = []; // Per table index below anchorCount: the first of those Refs whose Origin it is, or -1.
     private ulong[] rowBits = []; // Per class: its active rows, rowWords words each.
     private Edge[] contained = []; // Per class: its containment edges, from the class's start.
@@ -111,9 +113,24 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         this.slice = types.OriginRows(this.key);
         this.CollectRefs();
         this.rowWords = (this.slice.Rows.Count + 63) >> 6;
+        if (body.CaseSwitches > 0)
+        {
+            MirDataflow.Grow(ref this.blockOf, body.Statements.Length);
+            for (var b = 0; b < body.Blocks.Length; b++)
+            {
+                this.blockOf.AsSpan(body.Blocks[b].Start, body.Blocks[b].Count).Fill(b);
+            }
+        }
+
         for (var view = 0L; view < views; view++)
         {
             cases.Select(body, view);
+            if (body.CaseSwitches > 0)
+            {
+                this.reach.Clear(body.Blocks.Length);
+                this.reach.Walk(body, 0, checks: true, cases);
+            }
+
             this.Classify(view, cases.Borrows());
         }
 
@@ -256,7 +273,11 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
         var start = this.containedCount;
         for (var r = 0; r < this.refCount; r++)
         {
-            this.Contain(r);
+            // A Ref on a case branch's side the view does not take is in no instance of the view: the view's class has no edge of it.
+            if (this.body.CaseSwitches == 0 || this.reach[this.blockOf[this.refs[r].Statement]])
+            {
+                this.Contain(r);
+            }
         }
 
         var edges = this.contained.AsSpan(start, this.containedCount - start);
