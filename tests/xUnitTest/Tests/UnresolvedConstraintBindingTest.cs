@@ -18,8 +18,8 @@ public class UnresolvedConstraintBindingTest
         Assert.False(c.Bind().IsComplete);
         var reading = Container(c, "Reading");
         Assert.Equal(BindingState.Invalid, reading.StateOf());
-        Assert.False(Assert.IsType<PropertyKoto>(Assert.Single(reading.Members)).SymbolOf()!.Property!.IsVerified);
-        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(reading.ConstraintNodes.Single(x => x.Right.ToString() == "Copy").ConstraintOf()!, reading));
+        Assert.True(Assert.IsType<PropertyKoto>(Assert.Single(reading.Members)).SymbolOf()!.Property!.IsVerified); // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the Property reads no failed fact (`Self is Missing` is an obligation, not its premise)
+        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(reading.ConstraintNodes.Single(x => x.Right.ToString() == "Copy").ConstraintOf()!, reading)); // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): `Self is Copy` reads no failed fact (Reading stores an i32)
         c.Binding.ReportDiagnostics();
         var diagnostic = Assert.Single(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal("UnresolvedBinding_Kd", diagnostic.Code);

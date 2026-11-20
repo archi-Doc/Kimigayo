@@ -14,9 +14,10 @@ internal sealed partial class MirBuilder
     private static bool Completes(Koto node) => HirTables.CompletionOf(node) != HirCompletion.Diverges;
 
     // SPEC 14.10.3: a Never form, an expression of Type Never, which does not complete (its HIR Completion and Binding's Type); a node
-    // with no Completion row (a Pattern binding) is none.
+    // with no Completion row (a Pattern binding) is none, and so is a node of no Type (KnownType: an Error, whose operand may diverge, or
+    // a failed slot's derived value; SPEC 23.1.2, PLAN G1073).
     private static bool IsNeverForm(Koto node)
-        => HirTables.CompletionOf(node) == HirCompletion.Diverges && ReferenceEquals(TypeOf(node), BoundType.Never);
+        => HirTables.CompletionOf(node) == HirCompletion.Diverges && ReferenceEquals(KnownType(node), BoundType.Never);
 
     // SPEC 14.9.3, 14.10.3: a node evaluated here does not complete and its form has no terminator of its own (an Opaque value, a
     // read of a Place of Type Never; a Call or a transfer is one), so the block ends and building continues in a block only the

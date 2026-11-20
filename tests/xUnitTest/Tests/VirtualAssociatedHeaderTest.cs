@@ -99,7 +99,11 @@ public class VirtualAssociatedHeaderTest
         var c = MinimalEmissionTest.Analyze(source);
         var codes = c.Binding.Issues.Select(static x => x.Code).ToArray();
         Assert.Contains(Kimi.DiagnosticCode.InvalidConstraint_Kd, codes); // SPEC 6.4.3 (O-370): `U is Copy` is Refuted under `U is not Copy`.
-        Assert.Equal(needsCopy, codes.Contains(Kimi.DiagnosticCode.NoApplicableOverload_Kd));
+        // R7-C3 (F's C2 ruling 313, rulings 255 and 278; DECISIONS Q13): the refuted `U is Copy` is the override's failed premise, so the
+        // body's `check<U>()`, whose proof reads it, rests on the override's record and takes no evidence from it: it stays unresolved,
+        // with no record of its own (before ruling 313, and on dev: NoApplicableOverload_Kd).
+        Assert.DoesNotContain(Kimi.DiagnosticCode.NoApplicableOverload_Kd, codes);
+        Assert.Equal(needsCopy, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Any(static x => x.StateOf() == BindingState.Unresolved));
     }
 
     [Fact]
