@@ -214,17 +214,19 @@ public sealed partial class Binding
             PathStep.Receiver when Receiver(source)?.Parts == SemanticsKind.Uniq => PathGrant.Owner with { Authority = SemanticsKind.Uniq },
             _ => PathGrant.Owner,
         };
-        return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null));
+        return new(root, root.Access, step == PathStep.RawFollow, this.ReachesThroughBorrow(source), this.Writes(source, root.Access, step == PathStep.RawFollow, null));
     }
 
     // One prefix of a fold, from the prefix it selects from (owner): its grant under the case assignment (Then), its access under the
-    // empty one, whether it is a raw Place's inline part (SPEC 5.2), and whether it offers Write (Writes).
+    // empty one, whether it is a raw Place's inline part (SPEC 5.2), whether it reaches its Place through a Slice or a borrow (the
+    // selection's own receiver or its owner's: ReachesThroughBorrow's answer, carried) and whether it offers Write (Writes).
     private PathPrefix Prefix(Koto source, PathStep step, Koto next, in PathPrefix owner, ReadOnlySpan<PairCase> assignment)
     {
         var grant = this.Then(owner.Grant, step, source, next, owner, assignment);
         var access = assignment.IsEmpty ? grant.Access : this.Then(PathGrant.Owner with { Authority = owner.Access }, step, source, next, owner, []).Access;
         var raw = owner.Raw && source is BinaryKoto part && this.IsInlinePart(part);
-        return new(grant, access, raw, this.Writes(source, access, raw, owner));
+        var borrowed = ReachStep(source) is { } selection && (owner.Borrowed || this.BorrowsAt(selection));
+        return new(grant, access, raw, borrowed, this.Writes(source, access, raw, owner));
     }
 
     // One step of PathFold: what `source`'s path grants under a case assignment, from what the path of `next`, the prefix it selects
@@ -391,7 +393,7 @@ public sealed partial class Binding
             return this.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1: an update selects indexUniq.
         }
 
-        if (node is IndexKoto element && this.IsExclusiveArrayElement(element, this.Owner(owner, element.Left).Access))
+        if (node is IndexKoto element && this.IsExclusiveArrayElement(element, this.Owner(owner, element.Left)))
         {
             return true;
         }
@@ -868,8 +870,9 @@ public sealed partial class Binding
 
     // One prefix of a Place's path, folded from its root (PathFold): Grant under the query's case assignment; Access, the path's access
     // under the empty assignment (ReachedThroughShared's reading); Raw, whether the prefix is a raw Place's root or an inline part of
-    // one (SPEC 5.2); Writable, whether it offers Write (Writes).
-    private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Writable);
+    // one (SPEC 5.2); Borrowed, whether it reaches its Place through a Slice or a borrow (ReachesThroughBorrow, SPEC 4.8.2, 4.7.1);
+    // Writable, whether it offers Write (Writes).
+    private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Borrowed, bool Writable);
 
     // One prefix of a lending fold (LendFold): its path (PathFold's prefix), the query's mode, whether SPEC lends it in that mode, and
     // the static Field or static storage at the root of the path that lends it (LendsPlace).

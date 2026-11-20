@@ -12,12 +12,14 @@ namespace Kimi.Compiler;
 //   and view-range calls, resolved slices, path and referent authority, object cases and pair-layer borrows (BorrowsInEveryCase), a
 //   node's constraint scope, an operand's terminal Type (OperandTerminal) and the Binding's TyCtxt (Types.Reference,
 //   AdtDef.FindField); never a node's own compilation (DECISIONS R8-M51).
-// - Outputs: the answers; nothing here writes a fact or reports a diagnostic.
+// - Outputs: the answers; nothing here writes a fact or reports a diagnostic. One state: ReachesThroughBorrow's last answer for the
+//   pass (reachCarry), at which the next query's walk stops, so that a chain asked from its root up judges each step once.
 // - Invariants: the readers are Binding's own steps and the HIR publisher, which reads the Binding it publishes.
 // - Prohibitions: no member fetches a Binding from a node.
 public sealed partial class Binding
 {
     private long reachWalkSteps;
+    private (BinaryKoto? Node, bool Reaches, ulong Pass) reachCarry; // ReachesThroughBorrow's last query: its selection, answer and pass.
 
     /// <summary>Gets the steps ReachesThroughBorrow took (one per selection it judges), which a scaling check reads.</summary>
     internal long ReachWalkWork => this.reachWalkSteps;
@@ -42,12 +44,11 @@ public sealed partial class Binding
     // SPEC 3.4.3: the referent of an exclusive array reference offers element replacement, without requiring a mutable
     // binding for the reference itself. Shared layers on its path are checked separately by Binding.
     // An owned Array or fixed array stored below exclusive references only (`b.items[i]` with `b: uniq/Bank`) offers the same, whose
-    // path authority (receiverPath, the access its receiver's path grants: PathFold) decides it rather than the stored Type (PLAN G59).
-    private bool IsExclusiveArrayElement(IndexKoto element, SemanticsKind receiverPath) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
-        ((this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiverPath)) is { Semantics: SemanticsKind.Uniq } receiver &&
-            receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
-        (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && this.ReachesThroughBorrow(element.Left) &&
-            receiverPath == SemanticsKind.Uniq));
+    // path (receiver, the prefix it is selected from: PathFold's Access and Borrowed) decides it rather than the stored Type (PLAN G59).
+    private bool IsExclusiveArrayElement(IndexKoto element, in PathPrefix receiver) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
+        ((this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiver.Access)) is { Semantics: SemanticsKind.Uniq } access &&
+            access.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
+        (receiver.Access == SemanticsKind.Uniq && receiver.Borrowed && HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray));
 
     // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
@@ -55,21 +56,36 @@ public sealed partial class Binding
         => this.AccessType(receiverNode) is var receiver &&
             (receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || this.BorrowsInEveryCase(receiver, receiverNode));
 
-    // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
+    // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it. Binding asks
+    // it of a chain's receivers from the root up (IsSharedElement), so the walk stops at the selection the pass's last query started from
+    // and takes its answer (reachCarry): each step is judged once per chain, not once per query (the Front's B1 on D-932). A fold
+    // carries the same answer per prefix (PathPrefix.Borrowed).
     private bool ReachesThroughBorrow(Koto source)
     {
-        while (ReachStep(source) is { } selection)
+        var start = ReachStep(source);
+        var reaches = false;
+        for (var selection = start; selection is not null; selection = ReachStep(selection.Left))
         {
+            if (ReferenceEquals(selection, this.reachCarry.Node) && this.reachCarry.Pass == this.storageVersion)
+            {
+                reaches = this.reachCarry.Reaches;
+                break;
+            }
+
             this.reachWalkSteps++;
             if (this.BorrowsAt(selection))
             {
-                return true;
+                reaches = true;
+                break;
             }
-
-            source = selection.Left;
         }
 
-        return false;
+        if (start is not null)
+        {
+            this.reachCarry = (start, reaches, this.storageVersion);
+        }
+
+        return reaches;
     }
 
     // Whether a selection's receiver is a Slice or borrows in every case, so that the selection reaches its Place through it.
