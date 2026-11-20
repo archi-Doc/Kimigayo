@@ -117,8 +117,9 @@ public class InheritedStorageTest
 
     // SPEC 6.3.4, IMPL A.4 (D-932): a constructor's own Field is found at every depth below `self` (OwnedPathRoot has no bound of its
     // own: SyntaxNesting's): a Take k steps below `self` is InvalidAssignment_Kd (no Non-Copy value is moved out of them) and an
-    // exclusive borrow the located Unsupported_Kd of PLAN G166; a 64-step bound let the Take through Binding at k = 65 (class 2) and
-    // refused the borrow with a Language error (class 3). A generic struct (Layout's 64-level window).
+    // exclusive borrow the located Unsupported_Kd of PLAN G166; a 64-step bound let the Take through Binding at k = 65, refused only by
+    // MIR's MovedPlace_Kd at `init` (class 4), and refused the borrow with a Language error (class 3). A generic struct (Layout's
+    // 64-level window).
     [Theory]
     [InlineData(63, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]
     [InlineData(64, "@move", nameof(DiagnosticCode.InvalidAssignment_Kd))]

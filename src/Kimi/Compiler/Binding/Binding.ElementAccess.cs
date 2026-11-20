@@ -17,10 +17,20 @@ namespace Kimi.Compiler;
 // - Prohibitions: no member fetches a Binding from a node.
 public sealed partial class Binding
 {
+    private long reachWalkSteps;
+
+    /// <summary>Gets the steps ReachesThroughBorrow took (one per selection it judges), which a scaling check reads.</summary>
+    internal long ReachWalkWork => this.reachWalkSteps;
+
     // SPEC 15.1.3: a constant index's value, else -1: one nonnegative integer literal (any base) in optional grouping parentheses that
     // fits i32.
     private static int Literal(Koto key) => KotoHelper.UnwrapParentheses(key) is NumberLiteralKoto { IsInteger: true } number &&
         number.TryGetIntegerMagnitude(out var magnitude) && magnitude <= int.MaxValue ? (int)magnitude : -1;
+
+    // One step of ReachesThroughBorrow: a selection at no range position that is no getter result; null for any other node.
+    private static BinaryKoto? ReachStep(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
+            !IsGetterResult(selection) ? selection : null;
 
     // SPEC 4.8.2, 4.7.1: an element of a Slice or of a referenced array, including a fixed array reached through a
     // borrowed receiver; no owned root holds it.
@@ -48,10 +58,10 @@ public sealed partial class Binding
     // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
     private bool ReachesThroughBorrow(Koto source)
     {
-        while (KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto && !IsGetterResult(selection))
+        while (ReachStep(source) is { } selection)
         {
-            var receiver = this.AccessType(selection.Left);
-            if (receiver?.Kind == BoundTypeKind.Slice || this.BorrowsInEveryCase(receiver, selection.Left))
+            this.reachWalkSteps++;
+            if (this.BorrowsAt(selection))
             {
                 return true;
             }
@@ -61,6 +71,10 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // Whether a selection's receiver is a Slice or borrows in every case, so that the selection reaches its Place through it.
+    private bool BorrowsAt(BinaryKoto selection)
+        => this.AccessType(selection.Left) is var receiver && (receiver?.Kind == BoundTypeKind.Slice || this.BorrowsInEveryCase(receiver, selection.Left));
 
     private bool IsSyntax(Koto source) => source is IndexKoto index ? !this.IsUserIndex(index) && this.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto member && HirTables.Symbol(member) is { Property.IsStored: true } && AdtDef.IsStruct(HirTables.TypeOf(member.Left)));
@@ -168,6 +182,9 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(selection) is IndexKoto element && this.IsSyntax(element) && !this.IsSlicing(element) && !IsGetterResult(element) &&
             HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.FixedArray && this.StaticSelector(element) < 0;
 
+    // SPEC 3.4.3: the borrowed base an inline Tuple level is selected from (Writes' borrowed-base rule). It takes one step: its one
+    // caller reaches it only where the inline-part rule did not answer, so TryType of the node is false, and a second iteration needs
+    // it true (the Front's D-932 read).
     private Koto? BorrowedPathRoot(MemberAccessKoto field)
     {
         while (true)
