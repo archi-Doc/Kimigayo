@@ -12,9 +12,10 @@ namespace Kimi.Compiler;
 //   and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
 // - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
 //   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36): the node's own facts at BindNode's end (OwnBorrows:
-//   its written Borrow, Slice view or object view, its receiver operation, its calls' operations, its payload operations, its capture
-//   entries); where a writer binds sub-nodes that can state a fact's atom after writing it, that writer before them: a match's Subject
-//   borrow by BindMatch (before the arms), a selected call's operations by CompleteArguments (before an awaiting argument), a Closure's written
+//   its written Borrow, Slice view or object view, its calls' operations from their plans, its capture entries); a member use's receiver
+//   operation (RecordReceiverOperation) and a completed enum construction's payload operations (PayloadBorrows) by their writers; where
+//   a writer binds sub-nodes that can state a fact's atom after writing it, that writer before them: a match's Subject borrow by
+//   BindMatch (before the arms), a selected call's operations by CompleteArguments (before an awaiting argument), a Closure's written
 //   capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations column's setter
 //   (AdaptationBorrow); a match's or a user iteration's by-reference bindings by Check's acquisitions (BindingBorrows); and the claims
 //   the HIR publisher publishes (MarkClaim).
@@ -101,11 +102,12 @@ public sealed partial class Binding
             HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection or HirAdaptation.ReferenceRead;
 
     // Formation: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each read once by its writer into the
-    // running part (G147 rulings 19, 25, 36): the node's own facts (OwnBorrows, at BindNode's end), a match's Subject borrow (BindMatch),
-    // a selected call's operations (CallBorrows, by CompleteArguments) and a Closure's written capture entries (CaptureBorrows, by
-    // BindConcreteClosure), the adaptation a consumer records at a node (AdaptationBorrow, by the
-    // adaptations column's setter) and a match's or for's by-reference bindings (BindingBorrows, by Check's acquisitions). An address is
-    // none (SPEC 5.4). The census reads none of them: it reads the publication itself (ruling 28; Published*).
+    // running part (G147 rulings 19, 25, 36): the node's own facts (OwnBorrows, at BindNode's end), a member use's receiver operation
+    // (RecordReceiverOperation), a completed enum construction's payloads (PayloadBorrows), a match's Subject borrow (BindMatch), a
+    // selected call's operations (CallBorrows, by CompleteArguments), a Closure's written capture entries (CaptureBorrows, by
+    // BindConcreteClosure), the adaptation a consumer records at a node (AdaptationBorrow, by the adaptations column's setter) and a
+    // match's or for's by-reference bindings (BindingBorrows, by Check's acquisitions). An address is none (SPEC 5.4). The census reads
+    // none of them: it reads the publication itself (ruling 28; Published*).
 
     // A match's or a for loop's Pattern plan; null for any other node.
     private BoundMatch? MatchPlan(Koto node) => node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
@@ -148,25 +150,11 @@ public sealed partial class Binding
             this.RecordEntry(rows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
         }
 
-        // The receiver operation recorded at the node.
-        if (this.receiverOperations.TryGetValue(node, out var receiver))
-        {
-            this.OperationBorrow(rows, receiver);
-        }
-
-        // Each call of the node, a user index's two included (the publication's SelectionMode takes one), and an enum construction's
-        // payload operations.
+        // Each call of the node, a user index's two included (the publication's SelectionMode takes one): a synthesized call's plan is
+        // committed by its consumer, this node, which the plans' own writers cannot tell (they also bind calls no plan takes).
         for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
         {
             this.CallBorrows(rows, call.ReceiverOperation, call.ArgumentOperations);
-        }
-
-        if (this.TryGetEnumConstruction(node, out var construction))
-        {
-            foreach (ref readonly var operation in construction!.PayloadOperations)
-            {
-                this.OperationBorrow(rows, operation);
-            }
         }
 
         // A Closure's capture entries, an omitted list's included (captured by their uses in the body).
@@ -197,6 +185,15 @@ public sealed partial class Binding
         foreach (ref readonly var argument in arguments)
         {
             this.OperationBorrow(rows, argument);
+        }
+    }
+
+    // An enum construction's payload operations, formed by its binding once it completes.
+    private void PayloadBorrows(BoundEnumConstruction construction)
+    {
+        foreach (ref readonly var operation in construction.PayloadOperations)
+        {
+            this.OperationBorrow(this.borrows, operation);
         }
     }
 
