@@ -4,9 +4,11 @@ using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116, R4-M147): the holders a set refers to (those its
-// direct Loans and addresses name, and E where it carries Φ_E or no direct one), its content, the holders a call's store through it writes
-// (W, whose first step alone is Referents), and the guard, MirTypes.HoldsLoans' MirWrites of the Type a holder's state is read at; its
+// A5's reach on a state (A3 5's content and refs, E16's W, DECISIONS R4-M73, R4-M116, R4-M147): the holders a set refers to (refs: those
+// its direct Loans and addresses name, each with its mode, and E where it carries Φ_E or no direct one; one enumeration, Refs, which each
+// reader filters by the mode), the holders a write through a Place writes (refs of what its last Deref goes through, WriteTargets), its
+// content, the holders a call's store through it writes (W, whose first step alone is Referents), and the guard, MirTypes.HoldsLoans'
+// MirWrites of the Type a holder's state is read at; its
 // chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it,
 // each holder read once per closure. W is one walk over state parts: each part of a reached holder's state is read once per walk at
 // its reading, the guard of the holder's own root Type (Read; Through's reading covers Named's; MirBorrows.States' mark), each holder
@@ -44,8 +46,11 @@ internal sealed partial class MirBorrows
     private const byte ViaPun = 4;
     private const byte ViaDeep = 8;
 
-    private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
-    private readonly List<int> targetRoots = []; // The targets' root locals, -1 for E: Refs', and W's (the Type a holder's state is read at).
+    // refs(S) (Refs): each holder with its root local (-1 for E) and the mode of the Loan or address naming it, none for E where S carries
+    // Φ_E or no direct Loan.
+    private readonly List<(int Holder, int Root, MirRefKind? Mode)> refs = [];
+    private readonly List<int> targets = []; // The holders a call's store writes (W).
+    private readonly List<int> targetRoots = []; // The targets' root locals, -1 for E (the Type a holder's state is read at).
     private readonly List<int> read = []; // The sets whose content or chain the location read, reset by Plan.
     private readonly List<int> chained = []; // A closure's holders to read, each queued once, again where first reached writable (Chain).
     private readonly List<int> parts = []; // The states a closure read, each through rule W's clause, which one n-ary union joins.
@@ -87,7 +92,8 @@ internal sealed partial class MirBorrows
 
     // The root local of the holder a direct Loan names, whose Type guards it (Guard) and whose exposure a store reads (MirBorrows.Flow);
     // none (-1) for E: a static's direct Loan names E and keeps the static's key, past the locals, as its Root (MirBorrows.Holders).
-    // The one statement of it: Refs, FirstStep and Write record a target's root through it, so E takes no local's guard on any route.
+    // The one statement of it: each route records a holder's root through it (Refs, Write, Keyed, ReadPart), so E takes no local's guard
+    // on any route.
     private static int GuardRoot(in Loan loan) => loan.Named == Escaped ? -1 : loan.Root;
 
     // Whether a record retains any input.
@@ -272,13 +278,14 @@ internal sealed partial class MirBorrows
         return this.partsWritable || !this.sets.Contains(union, Writable) ? union : this.sets.Remove(union, this.writableSet);
     }
 
-    // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan; with each target's
-    // local in targetRoots (-1 for E), whose exposure a store through S reads (MirBorrows.Flow).
+    // refs(S) (A3 5), its one enumeration, into refs: each holder a direct Loan or address of S names, per entry, with its root local
+    // (GuardRoot) and the entry's mode, then E, with none, where S carries Φ_E or no direct Loan, a shared one counting. Each reader filters
+    // by the mode: a store through S writes every holder (WriteTargets; MirBorrows.Flow, whose exposure test reads the root), W's first
+    // step all but those a shared Loan names (FirstStep; SPEC 15.6.4 item 1, DECISIONS R4-M177).
     private void Refs(int set)
     {
         var (direct, escaped) = (false, false);
-        this.targets.Clear();
-        this.targetRoots.Clear();
+        this.refs.Clear();
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
         {
@@ -288,17 +295,38 @@ internal sealed partial class MirBorrows
                 direct = true;
                 if (loan.Named >= 0)
                 {
-                    this.targets.Add(loan.Named);
-                    this.targetRoots.Add(GuardRoot(loan));
+                    this.refs.Add((loan.Named, GuardRoot(loan), loan.Mode));
                 }
             }
         }
 
         if (escaped || !direct)
         {
-            this.targets.Add(Escaped);
-            this.targetRoots.Add(-1);
+            this.refs.Add((Escaped, -1, null));
         }
+    }
+
+    // The holders a write through a Place writes (A3 5's assign through k Derefs, P10), the one computation of them: over the Place's step
+    // walk (the walk buffer, Count steps), its last Deref (Last; -1 for none, a write of the root's own storage, which fills no refs), the
+    // value that Deref goes through (Pointer: PointerOf on the walk's prefix to it, Prefix), and that value's refs (Refs), each with its
+    // mode for the reader's filter.
+    private (int Count, int Last, int Pointer) WriteTargets(ulong[] state, MirPlace place)
+    {
+        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
+        for (var i = 0; i < count; i++)
+        {
+            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
+        }
+
+        if (last < 0)
+        {
+            return (count, last, 0);
+        }
+
+        var (layer, parents) = this.Prefix(state, place.Root, last);
+        var pointer = this.PointerOf(place.Root, layer, parents, last);
+        this.Refs(pointer);
+        return (count, last, pointer);
     }
 
     // The guard of a holder's own root Type, the Type the walk reads its state at (Writes, Read): what a call that writes its storage
@@ -388,28 +416,18 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // W's first step from one set (Referents).
+    // W's first step from one set (Referents): its refs (Refs) but the holders a shared Loan names, each written once (Written); the walk
+    // rests where the set does (Resting).
     private void FirstStep(int set)
     {
-        var (direct, escaped) = (false, false);
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
+        this.walkResting |= this.Resting(set);
+        this.Refs(set);
+        foreach (var (holder, root, mode) in this.refs)
         {
-            escaped |= element == Escaped;
-            this.walkResting |= element is Maybe or Undecided;
-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
+            if (mode != MirRefKind.Shared)
             {
-                direct = true;
-                if (loan is { Named: >= 0, Mode: not MirRefKind.Shared })
-                {
-                    this.Written(loan.Named, GuardRoot(loan), ViaRoot, null);
-                }
+                this.Written(holder, root, ViaRoot, null);
             }
-        }
-
-        if (escaped || !direct)
-        {
-            this.Written(Escaped, -1, ViaRoot, null);
         }
     }
 
