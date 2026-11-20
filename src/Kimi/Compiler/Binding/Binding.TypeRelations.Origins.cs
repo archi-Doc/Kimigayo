@@ -153,7 +153,7 @@ public sealed partial class Binding
     private OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter, in CallableInstance comparison)
     {
         longer = shorter = null!;
-        if (actual.Semantics == SemanticsKind.Raw && actual.Kind == BoundTypeKind.Semantics)
+        if (actual.IsPointer)
         {
             // SPEC 5.7: a raw layer's Origins relate by their regions; a missing one is Unstated, the one producer of that end (S4).
             longer = actual.RawOrigin ?? BoundOrigin.Unstated;

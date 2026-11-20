@@ -148,7 +148,7 @@ public sealed partial class Binding
 
         switch (type.Kind)
         {
-            case BoundTypeKind.Semantics when type is { Semantics: SemanticsKind.Raw, Components: [var pointee] }:
+            case BoundTypeKind.Semantics when type is { IsPointer: true, Components: [var pointee] }:
                 this.RawHoldings(type, pointee, written, holder, into);
                 return true;
             case BoundTypeKind.Semantics when type.Components is [var referent]:

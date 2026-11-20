@@ -340,7 +340,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // its declaration writes (DECISIONS BU-46; the one exception, so the mark follows the binding); any other argument is itself, its
     // components' Origins kept.
     internal BoundType PairBinding(BoundType whole)
-        => whole is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: not (null or { Kind: OriginKind.Unstated }) }
+        => whole is { IsPointer: true, RawOrigin: not (null or { Kind: OriginKind.Unstated }) }
             ? this.Pointer(whole.Components[0]) : whole;
 
     // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form

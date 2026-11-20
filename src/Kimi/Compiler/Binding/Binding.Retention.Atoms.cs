@@ -145,7 +145,7 @@ public sealed partial class Binding
                 this.RetentionWalk(referent, content, variance, callable: false);
             }
         }
-        else if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        else if (input is { IsPointer: true })
         {
             this.retentionRawSources.Add((index, null));
             this.RawStated(input, index);
@@ -244,7 +244,7 @@ public sealed partial class Binding
         var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
         var inside = callable || IsCallable(type);
         var shared = SharedLayer(type);
-        var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        var raw = type is { IsPointer: true };
         if (raw && !inside && !at.Shared && at.Input >= 0)
         {
             this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));

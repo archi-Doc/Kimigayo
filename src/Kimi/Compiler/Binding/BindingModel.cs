@@ -610,7 +610,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     public BoundLength? LengthExpression { get; }
 
     /// <summary>Gets the Origin of a borrow, handle, Slice, pair or Parameter layer; never a raw layer's (its <see cref="RawOrigin"/>).</summary>
-    public BoundOrigin? Origin => this.Semantics == SemanticsKind.Raw ? null : this.origin;
+    public BoundOrigin? Origin => this.IsPointer ? null : this.origin;
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
@@ -671,7 +671,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated; Unstated only on a kept part's layer its declaration writes
     /// without `during`, DECISIONS BU-46); null on any other layer (DECISIONS BU-24).</summary>
-    internal BoundOrigin? RawOrigin => this.Semantics == SemanticsKind.Raw ? this.origin : null;
+    internal BoundOrigin? RawOrigin => this.IsPointer ? this.origin : null;
 
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin (<see cref="Origin"/>).</summary>
     /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>

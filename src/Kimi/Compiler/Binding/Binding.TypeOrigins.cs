@@ -184,7 +184,7 @@ public sealed partial class Binding
                 this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation, default)));
             }
         }
-        else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        else if (type is { IsPointer: true })
         {
             // SPEC 5.7: a raw layer states the Origin its `during` writes (WrittenRawOrigin) or none, and forms no borrow Origin.
             if (written)
@@ -516,7 +516,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Semantics == SemanticsKind.Raw || type.Kind == BoundTypeKind.Function)
+        if (type.IsPointer || type.Kind == BoundTypeKind.Function)
         {
             return false;
         }

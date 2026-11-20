@@ -21,7 +21,7 @@ internal sealed class ExplicitAdaptationPlan
 
     internal static ConversionBinding Select(BoundType source, BoundType target, bool shorthand = false)
     {
-        if (target.Semantics == SemanticsKind.Raw && shorthand && !ReferenceEquals(source, target))
+        if (target.IsPointer && shorthand && !ReferenceEquals(source, target))
         {
             return ReferenceEquals(source, target.Components[0]) ? ConversionBinding.Address : ConversionBinding.None;
         }
