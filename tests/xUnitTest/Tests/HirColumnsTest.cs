@@ -39,6 +39,28 @@ public sealed class HirColumnsTest
         }
     }
 
+    // DECISIONS Z16 (Z15 2g-D B4): over the corpus, the diagnostic snapshot's cases and every SPEC kimi block (1,078 programs on dev
+    // aa7d43ec1, 203 of them valid), the HIR publisher's one list of broken contracts (HirTables.Broken: a failure fact without its causes, Binding.RestingCauses)
+    // is empty, so no failure fact the builder derives from lacks its causes and no InternalInvariant_Kd comes from it.
+    public static TheoryData<string> ContractCorpus
+    {
+        get
+        {
+            var data = new TheoryData<string>();
+            foreach (var name in DiagnosticSnapshotTest.CaseNames())
+            {
+                data.Add(name);
+            }
+
+            foreach (var block in DiagnosticCorpus.SpecBlocks)
+            {
+                data.Add("specblock/" + block.Name);
+            }
+
+            return data;
+        }
+    }
+
     [Theory]
     [MemberData(nameof(Corpus))]
     public void EveryNodeIsPublished(string name)
@@ -47,6 +69,20 @@ public sealed class HirColumnsTest
         HirTables.Publish(c);
         var problems = Problems(c, module);
         Assert.True(problems.Count == 0, $"{problems.Count} unpublished facts:\n{string.Join('\n', problems.Take(40))}");
+    }
+
+    // The corpus contract (ContractCorpus): every failure fact rests on its causes.
+    [Theory]
+    [MemberData(nameof(ContractCorpus))]
+    public void TheCorpusHasNoBrokenContract(string name)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var block = name.StartsWith("specblock/", StringComparison.Ordinal) ? name["specblock/".Length..] : null;
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", block is null ? DiagnosticSnapshotTest.Source(name) : DiagnosticCorpus.SpecBlocks.First(x => x.Name == block).Source));
+        c.Bind();
+        HirTables.Publish(c);
+        Assert.Empty((c.Kotonoha.Syntax.Hir.Broken ?? []).Select(static x => $"{x.Span} {x.Akind}"));
     }
 
     // DECISIONS BU-81 (R6-check H1a): a Final pass publishes between its failure producers and its counting. Publishing before the

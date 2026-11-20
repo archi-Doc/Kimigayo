@@ -10,16 +10,17 @@ namespace Benchmark;
 /// <summary>The series' own job launcher (design C7): a root process created inside a job object from its first instruction.</summary>
 internal static partial class BuildChainMeasurements
 {
-    // Starts `dotnet <arguments>` in a new job (PROC_THREAD_ATTRIBUTE_JOB_LIST, as TestProcess.Start), stdout and stderr to the log,
-    // and reads the job's accounting after the root and every process it started have exited; a non-zero exit fails with the log.
-    private static unsafe Round Measure(string dotnet, string[] arguments, string directory, string log)
+    // Starts `dotnet <arguments>` in a new job (PROC_THREAD_ATTRIBUTE_JOB_LIST, as TestProcess.Start), standard input from the file
+    // `input` (NUL, or a kimi tatara session's lines), stdout and stderr to the log, and reads the job's accounting after the root and
+    // every process it started have exited; a non-zero exit fails with the log.
+    private static unsafe Round Measure(string dotnet, string[] arguments, string directory, string log, string input)
     {
         using var job = new SafeFileHandle(CreateJobObjectW(0, null), true);
         using var output = File.OpenHandle(log, FileMode.Create, FileAccess.Write, FileShare.Read);
-        using var input = File.OpenHandle("NUL", FileMode.Open, FileAccess.Read);
+        using var lines = File.OpenHandle(input, FileMode.Open, FileAccess.Read);
         var limits = new ExtendedLimits { Flags = 0x2000 }; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         if (job.IsInvalid || !SetInformationJobObject(job.DangerousGetHandle(), 9, &limits, (uint)sizeof(ExtendedLimits)) ||
-            !SetHandleInformation(output.DangerousGetHandle(), 1, 1) || !SetHandleInformation(input.DangerousGetHandle(), 1, 1))
+            !SetHandleInformation(output.DangerousGetHandle(), 1, 1) || !SetHandleInformation(lines.DangerousGetHandle(), 1, 1))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError());
         }
@@ -35,7 +36,7 @@ internal static partial class BuildChainMeasurements
 
         try
         {
-            nint* handles = stackalloc nint[2] { input.DangerousGetHandle(), output.DangerousGetHandle() };
+            nint* handles = stackalloc nint[2] { lines.DangerousGetHandle(), output.DangerousGetHandle() };
             var jobHandle = job.DangerousGetHandle();
             if (!UpdateProcThreadAttribute(attributes, 0, 0x20002, handles, (nuint)(2 * sizeof(nint)), null, null) ||
                 !UpdateProcThreadAttribute(attributes, 0, 0x2000D, &jobHandle, (nuint)sizeof(nint), null, null))

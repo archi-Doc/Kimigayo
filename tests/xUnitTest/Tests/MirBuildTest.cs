@@ -572,7 +572,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                     cases.Select(body, view);
                     foreach (var local in body.Locals)
                     {
-                        _ = cases.Type(local.Type);
+                        _ = cases.KnownType(local.Type);
                     }
                 }
             }

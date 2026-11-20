@@ -173,12 +173,40 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
+    /// <summary>Gets the case Type (<see cref="Type"/>) of a Type that may be unknown: none for none, a local or static of no Type (a slot
+    /// Binding failed, <see cref="MirLocal"/>; PLAN G1073) and a temp of no Type derived from one, accessed only as MirValidator's Bounded
+    /// admits. The case readers of each such access take it (rule W: a Type of no Type holds, points and encloses nothing): of every local,
+    /// the holder test, the walk's guard and the raw-holding test of a body's inputs; of a whole write, a store's receiving part and the
+    /// pointer test of its destination; of the delivery into <c>_0</c> and of a read by an rvalue that takes its Type from its operands, the
+    /// enclosed-layer test of a read operand, the pointer test of a read input and the whole-value test of a Use (A5's Whole, the write
+    /// slots), and of that rvalue's first operand the raw-displacement test (A5's Keeps). No case reader reads a storage's beginning or end,
+    /// an EndBorrow, the Return's Move of <c>_0</c> or an Opaque site's root.</summary>
+    /// <param name="type">The Type, or none.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownType(BoundType? type) => type is null ? null : this.Type(type);
+
+    /// <summary>Gets the case Type (<see cref="KnownType(BoundType?)"/>) of a Place of the selected body: none for a Place of no Type.</summary>
+    /// <param name="place">A Place of the selected body.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownTypeOf(MirPlace place) => this.KnownType(this.Body.TypeOf(place));
+
+    /// <summary>Gets the case Type (<see cref="KnownType(BoundType?)"/>) of an operand of the selected body: its constant's, or its Place's
+    /// (<see cref="KnownTypeOf(MirPlace)"/>), none for a Place of no Type.</summary>
+    /// <param name="operand">An operand of the selected body.</param>
+    /// <returns>The case Type, or none.</returns>
+    internal BoundType? KnownTypeOf(in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const ? this.Type(this.Body.Consts[operand.Arg].Type) : this.KnownTypeOf(operand.Place);
+
     /// <summary>Gets the Type a Place of the selected body has under the selected view: its Type (<see cref="MirBody.TypeOf"/>), which a
-    /// validated body states for every Place (<see cref="MirValidator"/> checks each Place a location names, a diverging Call's
-    /// destination included), as a case Type (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
+    /// validated body states for every Place a location reads, borrows, drops or projects (<see cref="MirValidator"/> checks each Place a
+    /// location names, a diverging Call's destination included; a Place of no Type, a failed slot or a temp derived from one, is only
+    /// written whole, begun, ended, returned, delivered into <c>_0</c>, an Opaque site's root or read by an rvalue that takes its Type from
+    /// its operands, as MirValidator's Bounded admits, whose readers take <see cref="KnownTypeOf(MirPlace)"/>), as a case Type
+    /// (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
     /// <param name="place">A Place of the selected body.</param>
     /// <returns>The case Type.</returns>
-    internal BoundType TypeOf(MirPlace place) => this.Type(this.Body.TypeOf(place)!);
+    internal BoundType TypeOf(MirPlace place)
+        => this.Type(this.Body.TypeOf(place) ?? throw new InvalidOperationException($"A case reader read {place} of no Type (InternalInvariant)."));
 
     /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's Type as a case Type
     /// (<see cref="Type"/>) or its Place's (<see cref="TypeOf(MirPlace)"/>), the one form every case reader of an operand takes.</summary>

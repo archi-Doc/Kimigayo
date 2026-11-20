@@ -36,6 +36,10 @@ public partial class TypeIdentityTest
     [InlineData("func less<A, B, C>(b: B, c: C) -> bool\n    A is B\n    A is C\n    C is PrimitiveInteger\n    return b < c")]
     [InlineData("func less<A, B, C>(b: B, c: C) -> bool\n    A is C\n    A is B\n    B is PrimitiveInteger\n    return b < c")]
     [InlineData("func same<A, B, C>(b: Array<B>) -> Array<C>\n    A is B\n    A is C\n    return b@move")]
+    // R7-C3 (F's C2 ruling 276 (1)): a nested callee's signature names the enclosing parameters, Types of the call's view, so its
+    // parameter meets the formed argument in their class's form (Infer; MirBorrowsTest's nestOuterIdBad is the MIR twin).
+    [InlineData("func nest<T, U>(t: T)\n    T is U\n    func g(y: (U, i32)) -> ()\n        return\n    g((t@move, 1))")]
+    [InlineData("func nest<T, U, S>(wr: (uniq/S, (U, raw/u8)) -> ())\n    T is U\n    func g(set: (uniq/S, (U, raw/u8)) -> ()) -> ()\n        return\n    g(wr@move)")]
     public void PremiseMakesOneTypeInItsFunction(string source)
     {
         var c = MinimalEmissionTest.Analyze(source + "\n()");

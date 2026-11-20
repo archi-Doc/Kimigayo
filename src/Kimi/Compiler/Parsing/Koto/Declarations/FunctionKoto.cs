@@ -238,10 +238,10 @@ public sealed class FunctionKoto : DeclarationKoto
         }
     }
 
-    /// <summary>Gets the closure's definition (DECISIONS R5-M63 (1), R4-M152): its latest binding's plan once that binding bound the
-    /// inputs, the result and the environment, whatever the creation's outcome; null for a named function and until the signature is
-    /// bound. Binding's forwarding to <see cref="BoundClosure.Of(FunctionKoto)"/>, the literal route every reader outside Binding
-    /// takes (BoundClosure's contract; DECISIONS R5-M193).</summary>
+    /// <summary>Gets the closure's definition (DECISIONS R5-M63 (1) as amended, R4-M152): its latest binding's plan once that binding
+    /// published it, whatever the creation's outcome, with no Signature where a slot failed; null for a named function and until it is
+    /// published. Binding's forwarding to <see cref="BoundClosure.Of(FunctionKoto)"/>, the literal route every reader outside Binding
+    /// takes (BoundClosure's contract, its Access paragraph; DECISIONS R5-M193).</summary>
     [Transitional("R7", Reason = "Closure plan forwarding; R7 removes syntax-owned semantic access (DECISIONS R5-M9).")]
     internal BoundClosure? ClosureDefinition => BoundClosure.Of(this);
 

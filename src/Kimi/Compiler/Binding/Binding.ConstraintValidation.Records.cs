@@ -53,7 +53,16 @@ public sealed partial class Binding
         if (this.TakeClauseFact(use) is not { Limit: false } held || ClauseFailure(held, declaration) is not { } clause || clause.Proof != proof ||
             proof is not (ConstraintProof.Refuted or ConstraintProof.Unknown) || (proof == ConstraintProof.Unknown && mode != BindingMode.Final))
         {
-            this.RequireConstraint(use, proof, mode);
+            // R7-C3 (B1; SPEC 8.2.3 "never again at uses", 23.1.2): the use's requirement check reads a failed context through the reported
+            // failure's producer channel: an Error resting on another failed node (its declaration, an Invalid environment's use) makes
+            // the use's record derived.
+            var cause = proof == ConstraintProof.Error ? this.TakeFailedCause().Use : null;
+            if (cause is { BindingState: BindingState.Invalid } && !ReferenceEquals(cause, use))
+            {
+                this.AddPrerequisite(use, cause);
+            }
+
+            this.RequireConstraint(use, proof, mode, cause);
             return;
         }
 
@@ -79,6 +88,37 @@ public sealed partial class Binding
 
         this.Fail(use, BindingFailure.Internal);
         return null;
+    }
+
+    // R7-C3 (B1'; SPEC 8.2.3): a declaration's premise clauses whose fact, or an And part of it, failed (FailPremise): its premise
+    // error's related locations, the premises that linked it, which the adapter's InvalidConstraint row relates (ReportConstraint,
+    // F's C2 ruling 306). A failure path only.
+    private List<(string Role, Koto At, string? Label)>? FailedPremiseClauses(Koto declaration)
+    {
+        if (!this.scopes.TryGetValue(declaration, out var scope) || scope.Constraints is not { FailedPremises: { Count: > 0 } premises })
+        {
+            return null;
+        }
+
+        List<(string Role, Koto At, string? Label)>? related = null;
+        IReadOnlyList<Koto> clauses = declaration switch
+        {
+            FunctionKoto function => function.TypeConstraints,
+            DeclarationContainerKoto container => container.ConstraintNodes,
+            _ => [],
+        };
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            if (clauses[i] is IsKoto { BoundConstraint: { } fact } clause && Failed(fact))
+            {
+                (related ??= new()).Add(("premise", clause, "the premise that linked the error"));
+            }
+        }
+
+        return related;
+
+        bool Failed(BoundConstraint fact)
+            => premises.Contains(fact) || (fact.Kind == ConstraintKind.And && (Failed(fact.Left!) || Failed(fact.Right!)));
     }
 
     // The record of a clause fact: Refuted is UnsatisfiedConstraint_Kd, Unknown UnprovenConstraint_Kd, each naming the clause.
