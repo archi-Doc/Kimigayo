@@ -4722,6 +4722,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     walk cannot see the drop (`TyCtxt.RetainsErasedDestruction`). Each drop's Binding retention stores through the one store path a Call
     takes (`Calls.Keep`, W from the receiver), so Drops inherit R4-M160's Placed/Shared state unchanged. Memoized per case Type,
     definition and program version in a range table (warm runs allocate nothing). No vocabulary entry.
+  - Amended by R4-M226 (D-918, 2026-11-20): a kept Drop's receiver is the destroyed root's plain address only where the Place lies in
+    its root's storage; past a borrow or raw Deref, the destroyed Place's Reborrow's parents (`MirBorrows.Values.Issued`).
   - §5.6 composed: an abstract part not proven Copy composes its erased destruction (16.3.3, BU-47's `0 Content store 0`) at both sites
     A5 composes (a kept Drop: a scope end, a reassignment, a temporary's, `_ = x@move`; a published destroying call's row: `clear`,
     `truncate`, `removeAll`, `replace`, `insertOrReplace`'s key), one rule at a Drop and at a call. A handle whose payload is not proven
@@ -7517,6 +7519,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `.AnUnprovenParentChildIsDecidedByItsDeepestEnd` (the walk's scaling guard).
   - **Rejected.** Widening `ConstIndex` (codegen's unchecked offset and the Move Path consumers need in range and a known length); a
     new projection kind (a vocabulary entry for a datum); keeping A3's continuation (it accepts what 15.6.2 rejects). Not temporary.
+- **R4-M226 A destruction at `=` through a dereference composes over the destroyed Place's Reborrow (PLAN G1134, D-918; Z12b's gap
+  (a))** (2026-11-20; Middle, A5; Q-580, D-938; Major, design `middle\notes\d918-design.md`, its review ACCEPT WITH CONDITIONS, C1-C3
+  met, and its read of the final commit ACCEPT) SPEC 16.3.1, 15.6.4 (rule A, R4-M131), 15.6.3. Amends R4-M150's representation bullet.
+  - **Rule.** A Drop's receiver is the value of an exclusive Reborrow of the destroyed Place: where the Place lies in its root's
+    storage (`MirBorrows.Through` false), the root's plain address, as R4-M150 stated; past a borrow or raw Deref, the Reborrow's
+    parents (`MirBorrows.Values.Issued`), never the reference holder's address. So the drop's store keeps what reads through the
+    receiver carry, and rule A excludes the reference's Loans as the own value of the input written through, as the drop's call
+    (`r.flush()`) does. No Binding, builder, vocabulary or SPEC change.
+  - **Moves (Q13).** Valid programs newly accepted: a write through an exclusive reference (a local's, a parameter's, `tryGetUniq`'s,
+    a Dictionary index's, one a Tuple or Field holds) that destroys a value whose `drop` stores through a raw Field; the reference's
+    Loan's records go at the referent's or collection's storage end and later uses, with the located `Unsupported_Kd` that rested on
+    it there; the invalid twins keep their own record. Two H5 (e) rows of "S2's self-row family" (PLAN G416; the owner's O-9, O-14)
+    were this cause (the old value's erased destruction through a writeback reservation, `value += value` on an abstract T; through
+    `indexUniq`'s reference, `owned[key] = value@move`) and run again (fixture UserArithmeticUpdateGeneric; the allocation audit
+    DictionaryIndexGeneric); G416's other members stay.
+  - **Not covered.** `replace(r@follow@uniq, ...)`, whose record is Binding's `replace` row (PLAN G1147, D-933), and two exclusive
+    Derefs (`rr@follow@follow = v` and its call `rr@follow.flush()`: Retained's chain re-adds the input's own Loans from the
+    intermediate reference's holder, shared by calls and drops; PLAN G1151, D-935).
+  - **Rejected.** Excluding the reference's Loans from `Chain` in `Calls.Retained` (a second copy of rule A for one caller); forming an
+    address of the destroyed Place past a Deref (a non-direct entry names no holder, so it reads nothing and only adds an entry).
+  - **Cost.** One step walk per Drop past a Deref per pass; no allocation (`Issued` uses the walk buffer and the set pool).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
