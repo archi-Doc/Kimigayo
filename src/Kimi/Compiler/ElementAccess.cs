@@ -72,7 +72,8 @@ internal static class ElementAccess
         => (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? type.Components[0] : type)?.Kind
             is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
 
-    // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
+    // SPEC 15.1.3: literal-only recognition; never use folded values or named constants. A fixed-array element's Move Path: a constant
+    // index below the length of a fixed array the receiver's own Type is.
     internal static int StaticSelector(Binding binding, BinaryKoto source)
     {
         if (source is MemberAccessKoto && TryType(binding, source, out _, out var position))
@@ -81,10 +82,15 @@ internal static class ElementAccess
         }
 
         return source is IndexKoto && HirTables.TypeOf(source.Left) is { Kind: BoundTypeKind.FixedArray, Length: >= 0 } array &&
-            KotoHelper.UnwrapParentheses(source.Right) is NumberLiteralKoto { IsInteger: true } number &&
-            number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)array.Length && magnitude <= int.MaxValue
-            ? (int)magnitude : -1;
+            Literal(source.Right) is >= 0 and var element && element < array.Length ? element : -1;
     }
+
+    // SPEC 15.1.3, 15.6.2 (D-910): a constant index on a fixed-array element however the selection reaches the array (directly, below its
+    // ref, uniq or qualifying pair layers, of a length parameter), in range or not: its value, which Place comparison reads; -1 for any
+    // other key or receiver (an Array's or Slice's element has none: its access borrows the whole receiver, SPEC 4.7.1).
+    internal static int ConstantIndex(Binding binding, IndexKoto index)
+        => Literal(index.Right) is >= 0 and var element && HirTables.TypeOf(index.Left) is { } receiver &&
+            binding.OperandTerminal(index.Left, receiver).Kind == BoundTypeKind.FixedArray ? element : -1;
 
     internal static IdentifierNameKoto? WritableRoot(Binding binding, Koto source)
     {
@@ -354,4 +360,9 @@ internal static class ElementAccess
 
         return false;
     }
+
+    // SPEC 15.1.3: a constant index's value, else -1: one nonnegative integer literal (any base) in optional grouping parentheses that
+    // fits i32.
+    private static int Literal(Koto key) => KotoHelper.UnwrapParentheses(key) is NumberLiteralKoto { IsInteger: true } number &&
+        number.TryGetIntegerMagnitude(out var magnitude) && magnitude <= int.MaxValue ? (int)magnitude : -1;
 }

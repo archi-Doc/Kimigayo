@@ -1078,9 +1078,11 @@ public sealed partial class HirFormsTest
     // element's (a `let` in the ref or uniq and the owner or uniq cases, an explicit discard, a Dictionary element) or a Field's below it
     // (SPEC 3.4.3: its receiver needs exclusive capability only where the Field's take Reborrows), and whose expansion names both calls;
     // a user index below such an element, whose receiver the element's selection takes exclusively only where it selects indexUniq,
-    // selects by the same decider (`w[0][0]`; F's ruling 3), while a key's own take keeps its own (`u[0]` in r1, `r/U`). The legality
-    // stays the generic body's (SPEC 8.15): an Indexable without indexUniq selects index, the uniq case's Reborrow of the Field below it
-    // the Language error (SPEC 3.5.1); `s is ref` alone is a read in its one case.
+    // selects by the same decider (`w[0][0]`; F's ruling 3), also through a Field between the two (`v[0].items[0]`, SPEC 3.4.3), while a
+    // key's own take keeps its own (`u[0]` in r1, `r/U`), a compound assignment target's key included, whose update selects indexUniq in
+    // every case (`a[pick(v[0])] += 1`, SPEC 13.7.2, 4.7.4). The legality stays the generic body's (SPEC 8.15): an Indexable without
+    // indexUniq selects index, the uniq case's Reborrow of the Field below it the Language error (SPEC 3.5.1); `s is ref` alone is a read
+    // in its one case.
     [Theory]
     [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref or uniq\n    let x = v[0]\n    _ = x\n", "v[0] indexUniq index s/T", null)]
     [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is owner or uniq\n    T is Copy\n    let x = v[0]\n    _ = x\n", "v[0] indexUniq index s/T", null)]
@@ -1090,6 +1092,8 @@ public sealed partial class HirFormsTest
     [InlineData("func f<s/T>(w: uniq/Two<Two<s/T>>)\n    s is ref or uniq\n    let x = w[0][0]\n    _ = x\n", "w[0][0] indexUniq index s/T | w[0] indexUniq index s/T", null)]
     [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>)\n    s is ref or uniq\n    r is ref or uniq\n    let x = w[0][pick(u[0])]\n    _ = x\n", "w[0][pick(u[0])] indexUniq index s/T | w[0] indexUniq index s/T | u[0] indexUniq index r/U", null)]
     [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T>(w: uniq/Two<Two<s/T>>, u: uniq/Two<s/T>)\n    s is ref or uniq\n    let x = w[0][pick(u[0])]\n    _ = x\n", "w[0][pick(u[0])] indexUniq index s/T | w[0] indexUniq index s/T | u[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<Holder<Two<s/T>>>)\n    s is ref or uniq\n    let x = v[0].items[0]\n    _ = x\n", "v[0].items[0] indexUniq index s/T | v[0] indexUniq index s/T", null)]
+    [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T>(v: uniq/Two<s/T>, a: uniq/Two<i32>)\n    s is ref or uniq\n    a[pick(v[0])] += 1\n", "a[pick(v[0])] indexUniq - - | v[0] indexUniq index s/T", null)]
     [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref\n    let x = v[0]\n    _ = x\n", "v[0] index - -", null)]
     [InlineData("struct Peek<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var first: T\n    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\nfunc f<s/T>(v: uniq/Peek<Holder<s/T>>)\n    s is ref or uniq\n    let y = v[0].items\n    _ = y\n", "v[0] index - -", nameof(DiagnosticCode.TransferRequired_Kd))]
     public void ATakeByCaseSelectsByItsCases(string program, string expected, string? code)

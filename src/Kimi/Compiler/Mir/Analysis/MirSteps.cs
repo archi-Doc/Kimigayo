@@ -16,8 +16,9 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The class of a Place's step (A3 3): an inline step, a runtime index into inline storage, an owning handle's payload, a
-/// shared or exclusive borrow Deref (a Slice's index is a shared one, E6), or a raw pointer's referent.</summary>
+/// <summary>The class of a Place's step (A3 3): an inline step, an index into inline storage that forms no Move Path (a runtime one, or
+/// a fixed array's constant index on an Index row, D-910), an owning handle's payload, a shared or exclusive borrow Deref (a Slice's index
+/// is a shared one, E6), or a raw pointer's referent.</summary>
 internal enum MirStepClass : byte
 {
     Inline,
@@ -29,7 +30,8 @@ internal enum MirStepClass : byte
 }
 
 /// <summary>A step of a Place: its projection kind and argument (a Base of depth 1), its class and its prefix.</summary>
-/// <param name="Kind">The projection kind (a pair layer that is a Deref is one).</param>
+/// <param name="Kind">The projection kind (a pair layer that is a Deref is one; an Index at a constant index, its row's Position, is a
+/// ConstIndex one at that position, classed Index: SPEC 15.6.2 compares constant indices, and it forms no Move Path).</param>
 /// <param name="Class">The step's class.</param>
 /// <param name="Arg">The projection's argument.</param>
 /// <param name="Prefix">The projection id of the Place prefix the step applies to: 0 at the root, the whole Place for a Reborrow's added
@@ -83,8 +85,8 @@ internal sealed class MirSteps(MirCases cases)
             for (var depth = row.Kind == MirProjectionKind.Base ? row.Arg : 1; @class is { } known && depth > 0; depth--)
             {
                 MirDataflow.Grow(ref into, count + 2);
-                var kind = row.Kind == MirProjectionKind.PairLayer ? MirProjectionKind.Deref : row.Kind;
-                into[count++] = new(kind, known, row.Kind == MirProjectionKind.Base ? 1 : row.Arg, row.Prefix);
+                var kind = row.Kind == MirProjectionKind.PairLayer ? MirProjectionKind.Deref : row.Position >= 0 ? MirProjectionKind.ConstIndex : row.Kind;
+                into[count++] = new(kind, known, row.Kind == MirProjectionKind.Base ? 1 : row.Position >= 0 ? row.Position : row.Arg, row.Prefix);
             }
         }
 

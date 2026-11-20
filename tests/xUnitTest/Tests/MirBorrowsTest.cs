@@ -441,6 +441,284 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """));
 
+    // SPEC 15.6.2, 15.1.3 (D-910): paths compare step by step and stop at the first pair proven neither disjoint nor the same: an index
+    // other than a constant one (15.1.3's literal on a fixed-array element, however the array is reached) is Unproven, so no later Field
+    // or Tuple element proves them disjoint; an Array's element has no constant index. With r = ps[0].a@ref live, a write, update,
+    // increment, exclusive borrow, `replace` or `swap` of another part of an Array element conflicts (a1-a9, a13, a17, r16, r38; a18
+    // through a stored reference), and so does a fixed array's at a runtime index (a10-a12, a16, r18 with one variable); a second exclusive
+    // borrow meets the first at the selection's guard and at its own borrow (a14, a15). Equal constant indices with distinct Fields and
+    // distinct constants stay disjoint (v1, v2, v6), also through a reference (r26, r27) and of a length parameter (r28, r29, r39, r40),
+    // as do shared Loans (v3, v8, v11), a `for` item's reference (v4), Dictionary values read shared (v5), a Copy (v9), tryGetPairUniq's
+    // pair (v10, SPEC 4.8.5), distinct roots (v13) and Loans that ended (v7, v12, v14).
+    [Fact]
+    public void AnUnprovenIndexStepProvesNoLaterStepDisjoint()
+        => Assert.Equal(
+            [
+                "a1: ps[0].b += 1 PlacementActivationConflict_Kd", "a2: ps[0].b = 5", "a3: ps[1].b += 1 PlacementActivationConflict_Kd",
+                "a4: ps[0].b++ PlacementActivationConflict_Kd", "a5: ps[0].b@uniq",
+                "a6: Kimi.Intrinsics.replace(ps[0].b@uniq, with: 3) CallActivationConflict_Kd",
+                "a7: ts[0].1 += 1 PlacementActivationConflict_Kd", "a8: ps[0].b += 1 PlacementActivationConflict_Kd",
+                "a9: vs[0][1] += 1 PlacementActivationConflict_Kd", "a10: fs[j].b += 1 PlacementActivationConflict_Kd",
+                "a11: ts[j].1 += 1 PlacementActivationConflict_Kd", "a12: m[j][1] += 1 PlacementActivationConflict_Kd",
+                "a13: Kimi.Intrinsics.swap(ps[0].a@uniq, ps[0].b@uniq) CallReservationConflict_Kd", "a14: ps[0]", "a14: ps[0].b@uniq",
+                "a15: fs[j]", "a15: fs[j].b@uniq", "a16: fs[0].b += 1 PlacementActivationConflict_Kd",
+                "a17: m[0][0].b += 1 PlacementActivationConflict_Kd", "a18: hs[0].b += 1 PlacementActivationConflict_Kd",
+                "r16: ts[0].1.b += 1 PlacementActivationConflict_Kd", "r18: fs[i].b += 1 PlacementActivationConflict_Kd",
+                "r38: g[0][0].b += 1 PlacementActivationConflict_Kd",
+            ],
+            Problems("""
+                func touchI(value: uniq/i32) => ()
+                func a1()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[0].b += 1
+                    inspect(r)
+                func a2()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[0].b = 5
+                    inspect(r)
+                func a3()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[1].b += 1
+                    inspect(r)
+                func a4()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps[0].b++
+                    inspect(r)
+                func a5()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let u = ps[0].b@uniq
+                    inspect(r)
+                    touchI(u)
+                func a6()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    Kimi.Intrinsics.replace(ps[0].b@uniq, with: 3)
+                    inspect(r)
+                func a7()
+                    var ts: Array<(i32, i32)> = [(1, 2)]
+                    let r = ts[0].0@ref
+                    ts[0].1 += 1
+                    inspect(r)
+                func a8(ps: uniq/Array<Pair>)
+                    let r = ps[0].a@ref
+                    ps[0].b += 1
+                    inspect(r)
+                func a9()
+                    var vs: Array<[2 of i32]> = [[1, 2]]
+                    let r = vs[0][0]@ref
+                    vs[0][1] += 1
+                    inspect(r)
+                func a10(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    fs[j].b += 1
+                    inspect(r)
+                func a11(i: isize, j: isize)
+                    var ts: [2 of (i32, i32)] = [(1, 2), (3, 4)]
+                    let r = ts[i].0@ref
+                    ts[j].1 += 1
+                    inspect(r)
+                func a12(i: isize, j: isize)
+                    var m: [2 of [2 of i32]] = [[1, 2], [3, 4]]
+                    let r = m[i][0]@ref
+                    m[j][1] += 1
+                    inspect(r)
+                func a13()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    Kimi.Intrinsics.swap(ps[0].a@uniq, ps[0].b@uniq)
+                func a14()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let u = ps[0].a@uniq
+                    let w = ps[0].b@uniq
+                    touchI(u)
+                    touchI(w)
+                func a15(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let u = fs[i].a@uniq
+                    let w = fs[j].b@uniq
+                    touchI(u)
+                    touchI(w)
+                func a16(i: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    fs[0].b += 1
+                    inspect(r)
+                func a17()
+                    var m: Array<Array<Pair>> = [[Pair.init()]]
+                    let r = m[0][0].a@ref
+                    m[0][0].b += 1
+                    inspect(r)
+                func a18()
+                    var rs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[0].b += 1
+                    inspect(r)
+                func v1()
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[0].a@ref
+                    fs[0].b += 1
+                    fs[0].b = 3
+                    inspect(r)
+                func v2()
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[0].a@ref
+                    fs[1].a += 1
+                    fs[1].b = 3
+                    inspect(r)
+                func v3()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let s = ps[0..2]
+                    let r = s[0].a@ref
+                    let q = s[1].b@ref
+                    inspect(r)
+                    inspect(q)
+                func v4()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    for p in ps@uniq
+                        let r = p.a@ref
+                        p.b += 1
+                        inspect(r)
+                func v5()
+                    var d: Dictionary<i32, Pair> = [1: Pair.init()]
+                    let r = d[1].a@ref
+                    let q = d[1].b@ref
+                    inspect(r)
+                    inspect(q)
+                    d[1].b += 1
+                func v6()
+                    var m: [2 of [2 of i32]] = [[1, 2], [3, 4]]
+                    let r = m[0][0]@ref
+                    m[0][1] += 1
+                    m[1][0] += 1
+                    inspect(r)
+                func v7(ps: uniq/Array<Pair>)
+                    let r = ps[0].a@ref
+                    inspect(r)
+                    ps[0].b += 1
+                func v8()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let q = ps[1].b@ref
+                    inspect(r)
+                    inspect(q)
+                func v9()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let x = ps[0].a
+                    ps[0].b += 1
+                    inspect(x@ref)
+                func v10()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    match ps.tryGetPairUniq(first: 0, second: 1)
+                        .Some(let pair)
+                            let r = pair.0.a@ref
+                            pair.1.b += 1
+                            inspect(r)
+                        .None => ()
+                func v11(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    let q = fs[j].b@ref
+                    inspect(r)
+                    inspect(q)
+                func v12()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    inspect(r)
+                    ps[1].b = 4
+                    ps[0].b += 1
+                func v13(p: uniq/Array<Pair>, q: uniq/Array<Pair>)
+                    let r = p[0].a@ref
+                    q[0].b += 1
+                    inspect(r)
+                func v14(ps: uniq/Array<Pair>)
+                    for p in ps
+                        let r = p.a@ref
+                        inspect(r)
+                    ps[0].b += 1
+                func r16()
+                    var ts: Array<(Pair, Pair)> = [(Pair.init(), Pair.init())]
+                    let r = ts[0].0.a@ref
+                    ts[0].1.b += 1
+                    inspect(r)
+                func r18(i: isize, j: isize)
+                    var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                    let r = fs[i].a@ref
+                    fs[i].b += 1
+                    inspect(r)
+                func r26(fs: uniq/[2 of Pair])
+                    let r = fs[0].a@ref
+                    fs[0].b += 1
+                    inspect(r)
+                func r27(fs: uniq/[2 of Pair])
+                    let r = fs[0].a@ref
+                    fs[1].a += 1
+                    inspect(r)
+                func r28<length N>(fs: uniq/[N of Pair])
+                    let r = fs[0].a@ref
+                    fs[0].b += 1
+                    inspect(r)
+                func r29<length N>(fs: uniq/[N of Pair])
+                    let r = fs[0].a@ref
+                    fs[1].b += 1
+                    inspect(r)
+                func r38()
+                    var g: [2 of Array<Pair>] = [[Pair.init()], [Pair.init()]]
+                    let r = g[0][0].a@ref
+                    g[0][0].b += 1
+                    inspect(r)
+                func r39<length N>()
+                    var fs: [N of (i32, i32)] = [N of (1, 2)]
+                    let r = fs[0].0@ref
+                    fs[0].1 += 1
+                    inspect(r)
+                func r40<length N>()
+                    var fs: [N of (i32, i32)] = [N of (1, 2)]
+                    let r = fs[0].0@ref
+                    fs[1].1 += 1
+                    inspect(r)
+                """));
+
+    // SPEC 15.1.3, 15.6.2 (D-910): an out-of-range literal is still a constant index (it forms no Move Path, and Binding warns that its
+    // bounds check fails), so equal constants with distinct Fields (r03) and distinct constants (r04, r05: also the same Field) are
+    // disjoint; a runtime index beside one is Unproven (r05i).
+    [Fact]
+    public void AnOutOfRangeLiteralIsAConstantIndex()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func r03()
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[5].a@ref
+                fs[5].b += 1
+                inspect(r)
+            func r04()
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[0].a@ref
+                fs[5].b += 1
+                inspect(r)
+            func r05()
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[0].a@ref
+                fs[5].a += 1
+                inspect(r)
+            func r05i(i: isize)
+                var fs: [2 of Pair] = [Pair.init(), Pair.init()]
+                let r = fs[i].a@ref
+                fs[5].b += 1
+                inspect(r)
+            """);
+        Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.PositionAlwaysFails_Kd, x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.Equal(["r05i: fs[5].b += 1 PlacementActivationConflict_Kd"], Problems(c, program, LoanCodes));
+    }
+
     // SPEC 15.6, 15.6.1, 15.2.3 (PLAN G405): a Loan is live while a value that carries it may be used, and the carriers are the borrow,
     // its Copies, references derived from it and the aggregates, Closures or storage holding one of these; Origin regions and `outlives`
     // relations never keep a Loan live (15.6), so 15.6.1's Liveness puts a later use of a value whose Type names `y` only in y's Origin's

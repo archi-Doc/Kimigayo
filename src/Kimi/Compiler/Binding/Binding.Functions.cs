@@ -234,7 +234,7 @@ public sealed partial class Binding
             var receiver = function.Parameters[symbol.ReceiverIndex];
             if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.DefaultValue is not null)
             {
-                this.Fail(function, BindingFailure.InvalidTypeFormation);
+                this.Record(function, BindingFailure.InvalidTypeFormation, []);
             }
         }
 
