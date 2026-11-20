@@ -75,6 +75,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.AssociatedAmbiguities"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.InferenceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.CallableConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.ClauseConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its

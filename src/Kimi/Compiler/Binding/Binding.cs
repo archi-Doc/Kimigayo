@@ -112,6 +112,7 @@ public sealed partial class Binding
         this.associatedAmbiguities = new(this);
         this.inferenceFailures = new(this);
         this.callableConstraints = new(this);
+        this.clauseConstraints = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);

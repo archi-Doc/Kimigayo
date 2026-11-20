@@ -347,6 +347,7 @@ internal struct NodeColumns
     internal StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), Binding.PassCounter> AssociatedAmbiguities; // Pass: the two candidates an ambiguous associated Type use found (Binding.AssociatedTypes.cs).
     internal StampedColumn<(BoundRequirement Identity, Binding.AssociatedBinding Binding), Binding.PassCounter> InferenceFailures; // Pass: the identity and binding a conformance's inference hole failed with (Binding.AssociatedInference.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
+    internal StampedColumn<Binding.ReferenceConstraintFailure, Binding.PassCounter> ClauseConstraints; // Pass: a node's clause record (Binding.ConstraintValidation.Records.cs).
 
     internal void Resize(int length)
     {
@@ -411,6 +412,7 @@ internal struct NodeColumns
         this.AssociatedAmbiguities.Grow(length);
         this.InferenceFailures.Grow(length);
         this.CallableConstraints.Grow(length);
+        this.ClauseConstraints.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -453,6 +455,7 @@ internal struct NodeColumns
         this.AssociatedAmbiguities.Freeze(binding);
         this.InferenceFailures.Freeze(binding);
         this.CallableConstraints.Freeze(binding);
+        this.ClauseConstraints.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -522,6 +525,7 @@ internal struct NodeColumns
             AssociatedAmbiguities = this.AssociatedAmbiguities.Renumbered(length),
             InferenceFailures = this.InferenceFailures.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
+            ClauseConstraints = this.ClauseConstraints.Renumbered(length),
         };
         return columns;
     }
