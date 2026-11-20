@@ -5697,6 +5697,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   the root's order is the record's. Rejected: one scan per distinct parent Place (N parents on N Fields of one root are N scans,
   cubic); comparing the parents' interned Places (a Reborrow's Loan has more steps than its Place, and Index steps meet by kind, not by
   Place); inserting an index step under a wildcard key too (2^k nodes for k index steps, review B2).
+  - Superseded in part by R4-M225 (D-910, 2026-11-20): the walk's index ambiguity; an index other than a constant one stops the
+    comparison there (the paths meet), decided at each trie node by its deepest end.
 - **R4-M170 An abstract part reaches what its holder's Loans and addresses reach, writing only through exclusive routes (G264 (S);
   overrides Q1 (a) of 2026-10-25)** (2026-11-04; the owner, R4's dialog, verbatim 「G264 U1に対する根本解決を、以下の手順で行ってください。」 with the plan
   「計画書：抽象部分の到達規則（(S)）」 and its premises 「SPEC 改訂を行います」, 「Q1 (a)（2026-10-25）を上書きします。」 and 「健全性論拠が設計レビューを通ること。」 (if the review breaks it,
@@ -7490,6 +7492,31 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: (ii) keeping instantiation for a literal whose signature names a per-call Origin in its inputs, by reading C-400's
     fact (`NamedInItsInputs`): a second path keyed on G972's verdict, two rules for one contract (F's ruling 6 (1)); a second entry
     for literals with its own sink (two paths for one comparison). Not temporary.
+- **R4-M225 An index other than a constant one proves no later step disjoint (PLAN G1132, D-910; found by Z12a)** (2026-11-20; Middle,
+  A5 with Binding's constant index; Q-573, D-927; Major, design `middle\notes\z12b-gap-design.md` with Revision 1, its independent
+  review REJECT then ACCEPT WITH CONDITIONS on the re-check, all five met; the Front's read of the Binding hunks, ACCEPT) SPEC 15.6.2,
+  15.1.3. Supersedes design A3 §3's "an Index meets every index of its base" (`draft\Sketches\A5 Step 0\design-A3.md`) where the
+  comparison went on past it, and R4-M169's walk note in part.
+  - **Rule.** A5's step relation (`MirBorrows.Meets`, its one owner, which Hits and Departs share; the parents' trie states it in its
+    walk) compares two paths' steps up to the shorter length: disjoint at the first pair proven distinct (Fields, bases, Downcasts,
+    distinct constant indices), else they meet: every pair the same step, or a pair holding an index other than a constant one,
+    Unproven, where the comparison stops.
+  - **Constant index.** SPEC 15.1.3's literal on a fixed-array element however the array is reached (directly, through references or
+    qualifying pair layers, of a length parameter), in range or not. Binding publishes it (`ElementAccess.ConstantIndex`, the plan
+    row's Folded; it shares `ElementAccess.Literal` with `StaticSelector`, which differ only by contract); the builder copies it to the
+    Index row (`MirProjection.Position`, a datum, validated, printed by the MIR dump as `p[_3 = 5]`; no vocabulary entry); `MirSteps`
+    gives it a ConstIndex step classed Index. `ConstIndex` itself stays 15.1.3's in-range direct Move Path (codegen's unchecked
+    offset, MirMoveData, MirDrops). An Array's or Slice's element has none.
+  - **Not covered.** SPEC 4.7.1's whole-Array borrow for a Loan past an Array element's borrow Deref (`hs[0]@follow.a@ref` live,
+    `hs[1] = ...` accepted): PLAN G1139 (D-920).
+  - **Moves (Q13).** Invalid programs newly rejected: a write, update, increment, exclusive borrow, `replace` or `swap` of one part of
+    an Array element, or of a fixed-array element at an index other than a constant one, while a Loan of another part is live. Valid
+    programs newly accepted: an out-of-range constant beside another constant, constants through a reference. On already-rejected
+    programs `ComparisonLoanConflict_Kd` +2 (dependents). MIR goldens show the new Position; no generated code moves.
+  - **Rows.** `MirBorrowsTest.AnUnprovenIndexStepProvesNoLaterStepDisjoint`, `.AnOutOfRangeLiteralIsAConstantIndex`,
+    `.AnUnprovenParentChildIsDecidedByItsDeepestEnd` (the walk's scaling guard).
+  - **Rejected.** Widening `ConstIndex` (codegen's unchecked offset and the Move Path consumers need in range and a known length); a
+    new projection kind (a vocabulary entry for a datum); keeping A3's continuation (it accepts what 15.6.2 rejects). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
