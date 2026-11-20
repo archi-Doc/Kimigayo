@@ -108,6 +108,7 @@ public sealed partial class Binding
         this.baseCallFailures = new(this);
         this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
+        this.arithmeticConformanceFailures = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);

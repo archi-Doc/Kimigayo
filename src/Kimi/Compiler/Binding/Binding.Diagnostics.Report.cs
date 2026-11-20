@@ -104,7 +104,7 @@ public sealed partial class Binding
                 (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
             issue.Node.ReportIn(store, requirement, issue.Code, span: span);
         }
-        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
+        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures.TryGetValue(issue.Node, out var arithmetic))
         {
             ReportArithmeticConformance(issue.Node, requirement, issue.Code, arithmetic);
         }
