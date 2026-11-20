@@ -5,6 +5,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 using namespace llvm;
 
@@ -18,12 +19,12 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
             return 1;
         }
 
-        // As opt: -mtriple overrides the module's triple; the target machine has no CPU or features; a module without a data layout
-        // takes the target's.
+        // As opt: -mtriple overrides the module's triple; the target machine has no CPU or features and opt's default
+        // --codegen-opt-level=0 (CodeGenOptLevel::None); a module without a data layout takes the target's.
         Triple triple(Triple::normalize(tatara::view(target->triple)));
         module->setTargetTriple(triple);
         std::unique_ptr<TargetMachine> machine = tatara::createMachine(
-            triple, "", "", TargetOptions(), std::nullopt, std::nullopt, CodeGenOptLevel::Default, "opt", message);
+            triple, "", "", TargetOptions(), std::nullopt, std::nullopt, CodeGenOptLevel::None, "opt", message);
         if (!machine) {
             return 1;
         }
@@ -32,8 +33,9 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
             module->setDataLayout(machine->createDataLayout());
         }
 
+        // As opt: a ToolOutputFile, kept only on success.
         std::error_code error;
-        raw_fd_ostream text(tatara::view(optimizedIr), error, sys::fs::OF_TextWithCRLF);
+        ToolOutputFile text(tatara::view(optimizedIr), error, sys::fs::OF_TextWithCRLF);
         if (error) {
             message << "opt: " << tatara::view(optimizedIr) << ": " << error.message() << "\n";
             return 1;
@@ -57,14 +59,19 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
         ModulePassManager passes = builder.buildPerModuleDefaultPipeline(OptimizationLevel::O2);
         passes.addPass(VerifierPass());
         passes.run(*module, modules);
-        module->print(text, nullptr);
-        text.close();
-        if (text.has_error()) {
-            message << "opt: " << tatara::view(optimizedIr) << ": " << text.error().message() << "\n";
-            text.clear_error();
+        module->print(text.os(), nullptr);
+        text.os().close();
+        if (text.os().has_error()) {
+            message << "opt: " << tatara::view(optimizedIr) << ": " << text.os().error().message() << "\n";
+            text.os().clear_error();
             return 1;
         }
 
-        return context.getDiagHandlerPtr()->HasErrors ? 1 : 0;
+        if (context.getDiagHandlerPtr()->HasErrors) {
+            return 1;
+        }
+
+        text.keep();
+        return 0;
     });
 }

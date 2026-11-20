@@ -54,12 +54,8 @@ char sectionLetter(const COFFObjectFile& file, const SymbolRef& symbol, StringRe
         return 't';
     }
 
-    if ((characteristics & COFF::IMAGE_SCN_MEM_READ) && !(characteristics & COFF::IMAGE_SCN_MEM_WRITE)) {
-        return 'r';
-    }
-
     if (characteristics & COFF::IMAGE_SCN_CNT_INITIALIZED_DATA) {
-        return 'd';
+        return (characteristics & COFF::IMAGE_SCN_MEM_WRITE) ? 'd' : 'r';
     }
 
     if (characteristics & COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA) {

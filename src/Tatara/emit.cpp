@@ -6,6 +6,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/ToolOutputFile.h"
 
 using namespace llvm;
 
@@ -108,8 +109,9 @@ int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, Tatar
             setFunctionAttributes(function, cpu, features);
         }
 
+        // As llc: a ToolOutputFile, kept only on success, so a failure after the file is opened leaves no object.
         std::error_code error;
-        raw_fd_ostream object(tatara::view(obj), error, sys::fs::OF_None);
+        ToolOutputFile object(tatara::view(obj), error, sys::fs::OF_None);
         if (error) {
             message << "llc: error: " << tatara::view(obj) << ": " << error.message() << "\n";
             return 1;
@@ -117,19 +119,24 @@ int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, Tatar
 
         legacy::PassManager passes;
         passes.add(new TargetLibraryInfoWrapperPass(TargetLibraryInfoImpl(triple)));
-        if (machine->addPassesToEmitFile(passes, object, nullptr, CodeGenFileType::ObjectFile, false)) {
+        if (machine->addPassesToEmitFile(passes, object.os(), nullptr, CodeGenFileType::ObjectFile, false)) {
             message << "llc: error: target does not support generation of this file type\n";
             return 1;
         }
 
         passes.run(*module);
-        object.close();
-        if (object.has_error()) {
-            message << "llc: error: " << tatara::view(obj) << ": " << object.error().message() << "\n";
-            object.clear_error();
+        object.os().close();
+        if (object.os().has_error()) {
+            message << "llc: error: " << tatara::view(obj) << ": " << object.os().error().message() << "\n";
+            object.os().clear_error();
             return 1;
         }
 
-        return context.getDiagHandlerPtr()->HasErrors ? 1 : 0;
+        if (context.getDiagHandlerPtr()->HasErrors) {
+            return 1;
+        }
+
+        object.keep();
+        return 0;
     });
 }

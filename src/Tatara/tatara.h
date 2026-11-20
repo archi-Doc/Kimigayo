@@ -6,12 +6,14 @@
 // Outputs: tatara.dll, exporting the functions declared here and nothing else; the files each operation writes.
 // Invariants: built and linked as LLVM's own tools are (static release CRT, no RTTI, no exceptions, the archive's link interface);
 //   the DLL's static CRT allocates with LLVM's integrated rpmalloc and no allocation crosses the ABI. tatara_identity's and
-//   tatara_abi's strings are static; a result's texts are owned by the result until tatara_release. The process-wide LLVM state is
-//   set once at load and is the only one: the X86 target's registration, CrashRecoveryContext::Enable() and a fatal-error handler
-//   that records the reason and leaves through the recovery context. Every operation runs inside
-//   CrashRecoveryContext::RunSafelyOnThread on a thread reserving the tools' 10,000,000 bytes of stack, with its own LLVMContext;
-//   nothing (no target machine) is kept between calls. After a return of 2 every later call returns 2 with the first cause.
-//   What still ends the process: abort() (LLVM's bad-allocation path, for example) and a stack overflow beyond the reserve.
+//   tatara_abi's strings are static; a result's texts are owned by the result until tatara_release. Tatara's process-wide LLVM
+//   state is set once at load: the X86 target's registration, CrashRecoveryContext::Enable() and a fatal-error handler that records
+//   the reason and leaves through the recovery context. Every operation runs inside CrashRecoveryContext::RunSafelyOnThread on a
+//   thread reserving the tools' 10,000,000 bytes of stack, with its own LLVMContext; no target machine is kept between calls. Kept
+//   besides: LLD's parallel executor, created by the first link and kept for the process (each link sets its strategy from its
+//   arguments); its worker threads take the host's default stack and run outside the call's recovery context. After a return of 2
+//   every later call returns 2 with the first cause. What still ends the process: abort() (LLVM's bad-allocation path, for
+//   example), a stack overflow beyond the reserve, and a fatal error or crash on LLD's worker threads.
 // Prohibitions: no C++ type, exception or allocation crosses this ABI; no process is started; no cl::opt is set; no path or version
 //   is hard-coded in the build (build.ps1 reads the version from the supply catalog and finds Visual Studio with vswhere).
 //   Callers serialize calls.

@@ -130,6 +130,14 @@ if ($LASTEXITCODE -ne 0 -or $loaded.Count -ne 3) { throw "Loading $dll failed: $
 if ($loaded[0] -cne $identity) { throw "Build identity mismatch: dll=$($loaded[0]); expected=$identity" }
 if ($loaded[1] -cne $expectedVersion) { throw "LLVM version mismatch: dll=$($loaded[1]); expected=$expectedVersion" }
 if ($loaded[2] -cne $abi) { throw "ABI mismatch: dll=$($loaded[2]); expected=$abi (the SHA-256 of tatara.h)" }
+# The export list is the header's functions (a definition whose signature differs from its extern "C" declaration is another
+# overload, and its export would vanish), read by the archive's llvm-readobj.
+$declared = @([regex]::Matches((Get-Content -LiteralPath (Join-Path $PSScriptRoot 'tatara.h') -Raw), '__declspec\(dllexport\)[^;(]*\b(tatara_\w+)\(') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive)
+$listing = & (Join-Path $LlvmRoot 'bin/llvm-readobj.exe') --coff-exports $dll | Out-String
+if ($LASTEXITCODE -ne 0) { throw "llvm-readobj --coff-exports failed with exit code ${LASTEXITCODE}: $dll" }
+$exported = @([regex]::Matches($listing, '(?m)^\s*Name: (\S+)\s*$') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive)
+if (($declared -join ' ') -cne ($exported -join ' ')) { throw "Export list mismatch: dll=$($exported -join ', '); tatara.h=$($declared -join ', ')" }
 
 # 7. Report: the DLL's bytes depend on the archive, the toolset and the SDK.
 [ordered]@{

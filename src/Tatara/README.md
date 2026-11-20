@@ -18,10 +18,12 @@ the start check's bootstrap, and their shapes never change.
 ## Crash recovery
 
 At load, Tatara registers the X86 target, enables `CrashRecoveryContext` and installs a fatal-error handler that records the
-reason and leaves through the recovery context: its only process-wide LLVM state. Every operation runs inside
-`CrashRecoveryContext::RunSafelyOnThread` on a thread that reserves the tools' 10,000,000 bytes of stack. After a crash, a fatal
-LLVM error or LLD's `canRunAgain` false the call returns 2, and every later call returns 2 naming the first cause. `abort()` and a
-stack overflow beyond the reserve still end the process.
+reason and leaves through the recovery context: its own process-wide LLVM state. Every operation runs inside
+`CrashRecoveryContext::RunSafelyOnThread` on a thread that reserves the tools' 10,000,000 bytes of stack. The other state kept
+across calls is LLD's parallel executor, created by the first link: its worker threads take the host's default stack and run
+outside the call's recovery context and reserve. After a crash, a fatal LLVM error or LLD's `canRunAgain` false the call returns
+2, and every later call returns 2 naming the first cause. `abort()`, a stack overflow beyond the reserve, and a fatal error or
+crash on LLD's worker threads still end the process.
 
 ## The archive
 
@@ -42,7 +44,8 @@ loads the DLL in a child process to check its identity, ABI and version, and pri
 the LLVM version, the MSVC toolset and the Windows SDK.
 
 The build identity is the SHA-256 over every `.h`, `.cpp` and `.ps1` file under `src/Tatara` (the rule in `identity.ps1`, which
-`build.ps1` dot-sources). The check also compares `tatara_abi` with the SHA-256 of `tatara.h`.
+`build.ps1` dot-sources). The check also compares `tatara_abi` with the SHA-256 of `tatara.h`, and the DLL's export list with the
+functions `tatara.h` declares.
 
 ## Link
 
