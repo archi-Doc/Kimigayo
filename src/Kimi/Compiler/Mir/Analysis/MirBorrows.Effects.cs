@@ -225,7 +225,7 @@ internal sealed partial class MirBorrows
             }
             else
             {
-                rests |= effects.Initializes(symbol);
+                rests |= effects.Slot(symbol) is >= 0 and var slot && Bit(this.effectRow, slot); // The view's copy (Effects).
             }
         }
 

@@ -56,7 +56,7 @@ internal sealed partial class MirEffects
     /// <returns>Whether the round was clean and added its problems.</returns>
     internal bool Run(MirProgram program, MirReport report, int rootModules)
     {
-        (this.program, this.report, this.missed) = (program, report, false);
+        (this.program, this.report, this.missed, this.excludes) = (program, report, false, false);
         report.Begin(MirProblem.NoBody);
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
         var count = this.NodeCount;
@@ -67,14 +67,15 @@ internal sealed partial class MirEffects
         MirDataflow.Grow(ref this.queued, (count + 63) >> 6);
         MirDataflow.Grow(ref this.readers, count);
         MirDataflow.Grow(ref this.dependentHeads, count);
-        var (words, initWords) = (((2 * this.fieldIds.Count) + 63) >> 6, (this.initIds.Count + 63) >> 6);
-        var row = words + initWords + ((this.fixedIds.Count + 63) >> 6);
+        var (words, slots, classWords) = (((2 * this.fieldIds.Count) + 63) >> 6, (this.fixedIds.Count + 63) >> 6, this.initIds.Count > 0 ? 1 : 0);
+        var row = words + slots + classWords;
         MirDataflow.Grow(ref this.keys, count * row);
-        MirDataflow.Grow(ref this.keyScratch, row + 1); // The memo's row and classes (Spread).
-        MirDataflow.Grow(ref this.expanded, initWords);
-        MirDataflow.Grow(ref this.excluding, initWords);
+        MirDataflow.Grow(ref this.keyScratch, row);
+        MirDataflow.Grow(ref this.excluding, (this.initIds.Count + 63) >> 6);
+        MirDataflow.Grow(ref this.reached, count);
+        MirDataflow.Grow(ref this.reaching, count);
         this.keys.AsSpan(0, count * row).Clear();
-        (this.keyWords, this.initWords, this.rowWords) = (0, 0, 0); // No key or entry is composed before Spread solves them.
+        (this.keyWords, this.slotWords, this.classWords, this.rowWords) = (0, 0, 0, 0); // No key or entry is composed before Spread solves them.
         this.classes.AsSpan(0, count).Clear();
         this.atomCounts.AsSpan(0, count).Clear();
         this.readers.AsSpan(0, count).Fill(-1);
@@ -103,7 +104,7 @@ internal sealed partial class MirEffects
             }
         }
 
-        (this.keyWords, this.initWords, this.rowWords) = (words, initWords, row);
+        (this.keyWords, this.slotWords, this.classWords, this.rowWords) = (words, slots, classWords, row);
         if (this.rowWords > 0)
         {
             this.Spread(count);
@@ -167,7 +168,8 @@ internal sealed partial class MirEffects
 
     // A node's or a site's local inputs, a store's items [item, itemEnd), edges [edge, edgeEnd) and initialization entries [init,
     // initEnd), into the current evaluation: an entry's initializer is demanded as an edge's callee is (Compose: the round misses where
-    // A2's table does not hold one without a finding) and, once Spread has solved the rows, its bit joins the row (Expand composes it).
+    // A2's table does not hold one without a finding) and, once Spread has solved the rows, composed unless the query excludes it; a
+    // static with several slots' entry is its slot bit (its edge composes the initializer).
     private void Inputs(Locals store, int item, int itemEnd, int edge, int edgeEnd, int init, int initEnd)
     {
         var items = store.Items;
@@ -183,31 +185,30 @@ internal sealed partial class MirEffects
             this.Compose(edges[e].Body, edges[e].Views, edges[e].Subst);
         }
 
-        var inits = store.Inits;
-        for (var i = init; i < initEnd; i++)
+        foreach (var entry in store.Inits[init..initEnd])
         {
-            if (inits[i] < 0)
+            if (entry < 0)
             {
                 if (this.rowWords > 0)
                 {
-                    this.keyScratch[this.keyWords + this.initWords + (~inits[i] >> 6)] |= 1UL << ~inits[i]; // Its edge composes it.
+                    this.keyScratch[this.keyWords + (~entry >> 6)] |= 1UL << ~entry;
                 }
 
                 continue;
             }
 
-            var initializer = this.initBodies[inits[i]];
-            this.missed |= !this.program.Body(initializer).HasFinding && !this.program.Drops.Holds(initializer);
-            if (this.rowWords > 0)
+            var initializer = this.program.Body(this.initBodies[entry]);
+            this.missed |= !initializer.HasFinding && !this.program.Drops.Holds(initializer.Ordinal);
+            if (this.rowWords > 0 && !this.Excluded(entry))
             {
-                this.keyScratch[this.keyWords + (inits[i] >> 6)] |= 1UL << inits[i];
+                this.Compose(initializer.Ordinal, this.Views(initializer, null), null);
             }
         }
     }
 
     // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
     // (P5); read nodes record the reader. A body A2's table does not hold has no node yet: the round misses (PLAN G951). After Run a reader
-    // composes a node's memo, its initializations composed (Spread), where no initialization it excludes lies in it.
+    // composes a node's row and classes with its initializations (Spread), a query that excludes some what the node reaches (Reach).
     private void Compose(int body, ulong views, Subst? subst)
     {
         if (views != 0 && !this.program.Drops.Holds(body))
@@ -227,17 +228,16 @@ internal sealed partial class MirEffects
                 this.dependentHeads[node] = this.dependentCount++;
             }
 
-            if (this.initWords > 0 && this.Memo(node))
+            if (this.excludes)
             {
-                var full = this.fullRows.AsSpan(node * (this.rowWords + 1), this.rowWords + 1);
-                this.found |= (byte)full[this.rowWords];
-                _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.rowWords), full[..this.rowWords]);
-                _ = MirDataflow.Union(this.expanded.AsSpan(0, this.initWords), full.Slice(this.keyWords, this.initWords)); // Composed.
+                this.found |= this.classes[node];
+                this.Reach(node);
             }
             else
             {
-                this.found |= this.classes[node];
-                _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.rowWords), this.keys.AsSpan(node * this.rowWords, this.rowWords));
+                this.found |= this.Classes(node);
+                var words = this.rowWords - this.classWords;
+                _ = MirDataflow.Union(this.keyScratch.AsSpan(0, words), this.keys.AsSpan(node * this.rowWords, words));
             }
 
             for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
@@ -467,8 +467,7 @@ internal sealed partial class MirEffects
                     this.Process(callable, Drop);
                 }
 
-                this.Expand(); // SPEC 15.6.4: its first-access initializations are its effects.
-                this.Verdict(row, this.Found, ulong.MaxValue);
+                this.Verdict(row, this.Found, ulong.MaxValue); // SPEC 15.6.4: its first-access initializations among them (Compose).
             }
             else if (row.Definition is not { } target)
             {
@@ -501,8 +500,7 @@ internal sealed partial class MirEffects
                 this.Compose(body.Ordinal, view, null);
             }
 
-            this.Expand(); // SPEC 15.6.4: its first-access initializations are its effects.
-            this.Verdict(row, this.Found, view);
+            this.Verdict(row, this.Found, view); // SPEC 15.6.4: its first-access initializations among them (Compose).
         }
     }
 

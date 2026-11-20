@@ -41,7 +41,7 @@
 // segment it holds and on that segment (MirProgram.LibrarySegment), so any other program or a segment built again takes the library step.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
-// (MirEffects.Views), also as a static's initializer a site's row composes (MirEffects.Expand), so its keys decide no effect conflict.
+// (MirEffects.Views), also as a static's initializer a site's row composes (MirEffects.Spread, Reach), so its keys decide no effect conflict.
 
 namespace Kimi.Compiler.Mir;
 
