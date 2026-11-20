@@ -334,10 +334,6 @@ public sealed partial class Binding
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
-        {
-            this.ReportEffectBound(effect, store, requirement);
-        }
         else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, store, requirement))
         {
             // Declaration evidence is retained by the common binder, independent of the adapter.

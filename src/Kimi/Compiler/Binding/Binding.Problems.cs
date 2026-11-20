@@ -287,6 +287,9 @@ public sealed partial class Binding
             case BindingFailure.ParameterShapeMismatch when this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportParameterShapes(node, store, index, problem);
                 break;
+            case BindingFailure.InvalidEffectBound when node is EffectBoundKoto effect && this.FactOf(index, ProblemFactKind.Reason) is not null:
+                this.ReportEffectRejection(effect, store, index, problem);
+                break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;
