@@ -16084,6 +16084,24 @@ resumed by R4-M86 (2026-10-20).
     Adjust (a consumer deciding what its owner publishes; misses a decider below the index); the decider as a Koto (MIR reads no
     syntax); a by-case receiver adaptation in HIR (a vocabulary entry where R4-M145's two rows hold both); the decider in `Second` (the
     identity premise's slot).
+- **BU-234 The failed-slot fact: a slot whose Type failed is its symbol's missing Type with a cause at its TypeSource** (Front,
+  2026-11-21; PLAN G1073, D-834's Binding half, Q-578, a joint unit with R7-M64; Major; design `...\front\notes\C2\c2\
+  design-d834-binding.md` Revision 1; F's C2 rulings 249, 260, 262; the owner's O-436 (a)) SPEC 23.1.2, 9.2, 7.2, 10.5, 11.1, 14.7,
+  15.6.2. Supersedes gate 1's slot exclusion (`PartsPublished` testing `HirTables.TypeOf(definition)`).
+  - A slot's Type is its symbol's `Type`. `TypeSource` gives the part that gives every slot its Type: parameters, locals, Pattern
+    bindings, Properties, statics, Fields, and a definition's result (its written result Type or itself; an accessor's written
+    result, its Property's Type or the Property). A slot is stated (`Binding.Stated`) when it has its Type or Binding recorded a cause
+    at its TypeSource.
+  - `HasFacts` checks it (`SlotsStated`) for a published `let`, Match/Try and `for` (R4-M61) and a definition's Body; `OpOf`
+    publishes a declaration's Body only with its slots stated, else Error. The publisher's Broken test lists an Error with an
+    unstated slot whatever its state, so `MirBuilder.Build` records `InternalInvariant_Kd` there.
+  - A definition whose own Type failed publishes its parts (rule W, R7-M63): gate 1's exclusion goes. A named function without a body
+    has no default templates: it is a requirement (SPEC 8.4.2) or an import (22.6).
+  - MIR reads `symbol.Type` as it is: null is the failed slot (R7-M64), one direction only. A result slot is the symbol's, never the
+    definition node's Type column. A Closure whose written result failed keeps an inferred Type (PLAN G1081).
+  - Records (Q13): bodies under a failed slot regain their independent records (a W among them); no acceptance move.
+  - Rejected: a builder-side check (R4-M42's form, superseded by R4-M61); a flag written by each slot writer; the node's Type column;
+    a `BoundType.Error` sentinel; a second source member beside TypeSource.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -23442,6 +23460,26 @@ R8-M* and R9-M* by the stage of the recording unit.
     ruling 272); a whole-environment flag or a fourth view state; a mode on the consult; an arm per premise structure emulating its key
     (FailedPremiseRead's arms, where ruling 271's holes fell); a projection's path read as a fourth Failed fact
     (`ProjectionOutcome.Failed`, ruling 296; withdrawn: the capture's dependent record is G1169's memo cause).
+- **R7-M64 A failed slot is a MIR local of no Type** (Middle, 2026-11-21; PLAN G1073, D-834's MIR half, Q-578, a joint unit with
+  BU-234; Major; design `...\2026-11-16-pause\middle\notes\d834-mir-design.md` Revision 1; the Middle's ruling 291b) SPEC 23.1.2,
+  9.2, 10.5.4, 8.15.3.
+  - Cause: a slot whose Type Binding failed had no MIR representation; MIR filled it with `?? BoundType.Unit` (19 sites), so a
+    delivery into a failed result tripped the validator's Type rule and gate 1 kept such bodies unpublished.
+  - Rule: `MirLocal.Type` and `MirStatic.Type` are `BoundType?`, none exactly where Binding's slot Type is (the failed-slot fact,
+    BU-234) and for a temp holding a value of no Type derived from one; a result slot (`_0`) is the definition's symbol's; no Type is
+    formed from none. MirValidator checks `_0` and the Args against the signature (of no Type exactly where its slot is,
+    `SlotFailed`) and bounds where a whole slot of no Type is accessed (`Bounded`: a write, its storage, the Return, the delivery into
+    `_0`, an Opaque root, a read of an Unknown temp by an rvalue that takes its Type from its operands). A read of such a slot is
+    `HirAcquire.Failed` (BU-103); a delivery into it is built and its fit unjudged.
+  - A4, A5 and the instance collector find nothing to judge in a slot of no Type (rule W): `MirCases.KnownType`/`KnownTypeOf` serve
+    the readers of a node of no Type (`MirBorrows.Keeps`, the builder's verification, `IsNeverForm`, a match Subject), `MirCases.TypeOf`
+    stays non-null; a local of no Type holds nothing (`MirBorrows.Holders`' Flowing adds no holder edge for it, ruling 291b); the
+    collector's instance path gives no instance; codegen never meets one. `MirBuilder.TypeOf(Koto)` throws on a node of no Type;
+    `KnownType(Koto)` reads a derived value's.
+  - Records (Q13): the failed-slot family regains its independent W; no record lost; no acceptance move. Goldens: a temp of no Type
+    prints `?`.
+  - Rejected: a placeholder Type with a marker role; per-delivery resting rows; a `BoundType.Error` sentinel; `MirCases.Type`/`TypeOf`
+    nullable for every case reader (a 46-reader family in A4 and A5); builder-side checks at each borrow site.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
