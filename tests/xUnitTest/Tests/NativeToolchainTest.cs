@@ -60,7 +60,7 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Executable, "previous executable");
         File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
         File.AppendAllText(paths.Ir, "; changed");
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, NativeToolchain.ExternalToolExecutor.Create, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("IR/manifest SHA-256", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -99,7 +99,7 @@ public sealed class NativeToolchainTest : IDisposable
         }
 
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, NativeToolchain.ExternalToolExecutor.Create, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains(failure, error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -214,7 +214,7 @@ public sealed class NativeToolchainTest : IDisposable
         project.ProjectFile.OutputKind = OutputKind.Library;
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, NativeToolchain.ExternalToolExecutor.Create, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("Application", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
