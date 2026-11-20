@@ -308,7 +308,7 @@ internal sealed partial class MirBuilder
             ? this.body.Consts[right.Arg].Bits : (Int128?)null;
         return op switch
         {
-            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
+            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.IsPointer,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
                 op == MirBinaryOp.Rem || !type.IsInteger || !type.IsSigned)),
             MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < type.Width,

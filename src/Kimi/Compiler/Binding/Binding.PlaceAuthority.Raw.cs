@@ -105,7 +105,7 @@ public sealed partial class Binding
         BoundType? innermost = null;
         for (; BelowLayer(type) is { } below; type = below)
         {
-            innermost = type!.Semantics == SemanticsKind.Raw || IsBorrow(type.Semantics) || TryPairLayer(type, out _, out _) ? type : innermost;
+            innermost = type!.IsPointer || IsBorrow(type.Semantics) || TryPairLayer(type, out _, out _) ? type : innermost;
         }
 
         return innermost;
@@ -118,13 +118,13 @@ public sealed partial class Binding
         => prefix.Kind == BoundTypeKind.Slice ? new(true, prefix.Origin)
             : prefix is { Symbol.LibraryDeclaration: KimiDeclarationId.UniqSlice, OriginArguments: [var slice] } ? new(true, slice)
             : TryPairLayer(prefix, out _, out _) ||
-                (prefix.Kind == BoundTypeKind.Semantics && (prefix.Semantics == SemanticsKind.Raw || IsBorrow(prefix.Semantics))) ? this.Reached(prefix) : null;
+                prefix.IsPointer || (prefix.Kind == BoundTypeKind.Semantics && IsBorrow(prefix.Semantics)) ? this.Reached(prefix) : null;
 
     // The layer a path dereferences: a raw pointer's Origin, a borrow's outer Origin, or a pair layer's slot; Dereferences is null for a
     // pair layer admitting a non-borrow case or a layer that is no borrow (U2).
     private RawPath Reached(BoundType layer)
     {
-        if (layer.Semantics == SemanticsKind.Raw && layer.Kind == BoundTypeKind.Semantics)
+        if (layer.IsPointer)
         {
             return new(true, layer.RawOrigin);
         }
