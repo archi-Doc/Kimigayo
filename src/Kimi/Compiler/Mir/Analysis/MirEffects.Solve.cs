@@ -27,8 +27,11 @@ internal sealed partial class MirEffects
     private int[] queue = [];
     private ulong[] queued = [];
     private int[] readers = []; // The last node that read each node, so consecutive reads record one dependency,
-    private int[] dependentHeads = []; // and each node's readers, a list in dependents.
+    private int[] dependentHeads = []; // and each node's readers, a list in dependents (whom the worklist re-evaluates);
     private (int Node, int Next)[] dependents = [];
+    private int[] readHeads = []; // the same reads forward, each node's successors in the read graph (what it runs, MirEffects.Keys):
+    private (int Node, int Init, int Next)[] reads = []; // a node it read (Init -1) or, appended by Spread, a view of an entry's initializer
+    private int readCount; // (Init the entry's number; Node -1 for an initializer with a validator finding, which has no node: Derived).
     private MirProgram program = null!;
     private MirReport report = null!; // The round's report, which holds its obligations' problems until the round ends.
     private BindingSymbol? definition; // The definition whose premises resolve atoms: the evaluated node's, or an obligation's.
@@ -58,7 +61,7 @@ internal sealed partial class MirEffects
     {
         (this.program, this.report, this.missed, this.excludes) = (program, report, false, false);
         report.Begin(MirProblem.NoBody);
-        (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
+        (this.atomCount, this.dependentCount, this.readCount, this.Evaluations) = (0, 0, 0, 0);
         var count = this.NodeCount;
         MirDataflow.Grow(ref this.classes, count);
         MirDataflow.Grow(ref this.atomStarts, count);
@@ -67,6 +70,7 @@ internal sealed partial class MirEffects
         MirDataflow.Grow(ref this.queued, (count + 63) >> 6);
         MirDataflow.Grow(ref this.readers, count);
         MirDataflow.Grow(ref this.dependentHeads, count);
+        MirDataflow.Grow(ref this.readHeads, count);
         var (words, slots, classWords) = (((2 * this.fieldIds.Count) + 63) >> 6, (this.fixedIds.Count + 63) >> 6, this.initIds.Count > 0 ? 1 : 0);
         var row = words + slots + classWords;
         MirDataflow.Grow(ref this.keys, count * row);
@@ -80,6 +84,7 @@ internal sealed partial class MirEffects
         this.atomCounts.AsSpan(0, count).Clear();
         this.readers.AsSpan(0, count).Fill(-1);
         this.dependentHeads.AsSpan(0, count).Fill(-1);
+        this.readHeads.AsSpan(0, count).Fill(-1);
         this.queued.AsSpan(0, (count + 63) >> 6).Fill(ulong.MaxValue);
         for (var node = 0; node < count; node++)
         {
@@ -207,8 +212,9 @@ internal sealed partial class MirEffects
     }
 
     // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
-    // (P5); read nodes record the reader. A body A2's table does not hold has no node yet: the round misses (PLAN G951). After Run a reader
-    // composes a node's row and classes with its initializations (Spread), a query that excludes some what the node reaches (Reach).
+    // (P5); a read node records its reader once, in both directions: the worklist's dependents and the read graph (Read). A body A2's table
+    // does not hold has no node yet: the round misses (PLAN G951). After Run a reader composes a node's row and classes with its
+    // initializations (Spread), a query that excludes some what the node reaches (Reach).
     private void Compose(int body, ulong views, Subst? subst)
     {
         if (views != 0 && !this.program.Drops.Holds(body))
@@ -226,6 +232,7 @@ internal sealed partial class MirEffects
                 MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
                 this.dependents[this.dependentCount] = (this.reader, this.dependentHeads[node]);
                 this.dependentHeads[node] = this.dependentCount++;
+                this.Read(this.reader, node, -1);
             }
 
             if (this.excludes)

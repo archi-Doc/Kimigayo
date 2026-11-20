@@ -10,10 +10,12 @@ namespace Kimi.Compiler.Mir;
 // atom, is an initialization entry (AddInit), no edge: the fixed point composes no initializer of an entry, so a node's classes are its own.
 // A static with several slots keeps its ensure's edge into the initializer, whose atoms each call's substitution resolves, until P42's
 // per-access key (R4-M103) gives the entry the key's Type arguments; its slot bit tells only that the site may run that initialization.
-// After the fixed point Spread joins, once per Run, each node's row: its local accesses (AddKey, as Local walks the view) and slot bits,
-// and its classes where entries exist, with those of every body view it composes and of every entry's initializer it ensures. A reader
-// composes those rows (Compose); a query that excludes initializations (A5's second, MirBorrows.Effects) composes instead, from the local
-// facts, what each node reaches through its calls and the entries not excluded (Reach). Keys answers a site of one view with its key and
+// What a node runs is stated once, as its successors in the read graph: every body view the fixed point read for it (Compose records the
+// read, MirEffects.Solve) and each view of its entries' initializers (Spread appends them, an entry's one statement). After the fixed
+// point Spread joins, once per Run, each node's own facts (Seed: its local accesses (AddKey, as Local walks the view), slot bits, and
+// its classes where entries exist) with the rows of every node it reaches. A reader composes those rows (Compose); a query that excludes
+// initializations (A5's second, MirBorrows.Effects) composes instead, from the local facts, what each node reaches through its calls and
+// the entries not excluded (Reach). Keys answers a site of one view with its key and
 // slot row and classes; Summary gives a body view's row and classes; Items its classes and its atoms (what holds a published operation's
 // body within its row, SPEC 4.9.6); Field numbers a Field's bits, Initialization a static's entry and Slot a static's slot bit.
 // Invariant: an entry's initializer node keeps no atom (a definition that does not instantiate names only closed Types); a broken one is
@@ -36,9 +38,9 @@ internal sealed partial class MirEffects
     private int classWords;
     private int rowWords;
     private int[] visits = []; // Spread's components: each node's visit number (int.MaxValue once finished),
-    private int[] lows = []; // its lowest open visit it reaches, then its component's end in members,
-    private int[] members = [];
-    private (int Node, int Edge)[] frames = []; // and the walk's path, each node with its next dependency.
+    private int[] lows = []; // its lowest open visit it reaches,
+    private int[] members = []; // the open nodes,
+    private (int Node, int Edge)[] frames = []; // and the walk's path, each node with its next read.
 
     /// <summary>Gets the key row of a Call or a Drop of a body view, from the summaries of the last <see cref="Run"/>: its terminator's
     /// inputs, as <see cref="Local"/> records them, evaluated against them in the view, with every first-access initialization they may run
@@ -236,11 +238,10 @@ internal sealed partial class MirEffects
         }
     }
 
-    // P5's keys and the slot bits after the fixed point (R4-M38), which neither classes nor atoms read: a node's local keys and slot bits,
-    // and its classes where entries exist, joined with those of every node it read, as its dependencies record them (read sets only grow),
-    // and of every view of each entry's initializer (an edge from it to the node, prepended to its dependencies; one with a validator finding
-    // adds Derived, R5-M183, as Views does), once per strongly connected component of that graph (Tarjan's, iterative), the components
-    // whose nodes others read first, so Θ((nodes + dependencies + entries) × rowWords). It checks that an entry's initializer keeps no atom.
+    // P5's keys and the slot bits after the fixed point (R4-M38), which neither classes nor atoms read: each node's own facts (Seed) joined
+    // with the rows of every node its read graph reaches (read sets only grow, so the last reads are all of them), once per strongly
+    // connected component of that graph (Tarjan's, iterative), a component after every component it reads, so Θ((nodes + reads + entry
+    // edges) × rowWords). First each node's entries join the graph (Initializer).
     private void Spread(int count)
     {
         MirDataflow.Grow(ref this.visits, count);
@@ -251,68 +252,61 @@ internal sealed partial class MirEffects
         var row = this.rowWords;
         for (var node = 0; node < count; node++)
         {
+            this.Seed(node, this.keys.AsSpan(node * row, row));
             var store = this.Of(node);
-            var (from, to) = (this.Start(store, node), store[node]);
-            foreach (var key in store.Keys[from.Keys..to.Keys])
+            foreach (var init in store.Inits[this.Start(store, node).Inits..store[node].Inits])
             {
-                this.keys[(node * row) + (key >> 6)] |= 1UL << key;
-            }
-
-            if (this.classWords > 0)
-            {
-                this.keys[(node * row) + row - 1] = this.classes[node];
-            }
-
-            foreach (var init in store.Inits[from.Inits..to.Inits])
-            {
-                if (init < 0)
+                if (init >= 0)
                 {
-                    this.keys[(node * row) + this.keyWords + (~init >> 6)] |= 1UL << ~init;
-                }
-                else
-                {
-                    this.Initializer(node, this.program.Body(this.initBodies[init]));
+                    this.Initializer(node, init);
                 }
             }
         }
 
-        // members holds the open nodes from its start and the finished components from its end, the last finished first.
-        var (visited, open, finished) = (0, 0, count);
+        var (visited, open) = (0, 0);
         for (var root = 0; root < count; root++)
         {
             if (this.visits[root] < 0)
             {
-                this.Walk(root, ref visited, ref open, ref finished);
-            }
-        }
-
-        // A component after every component it reads: its rows, then each reader's.
-        for (var start = 0; start < count; start = this.lows[this.members[start]])
-        {
-            var union = this.keyScratch.AsSpan(0, row);
-            union.Clear();
-            for (var i = start; i < this.lows[this.members[start]]; i++)
-            {
-                _ = MirDataflow.Union(union, this.keys.AsSpan(this.members[i] * row, row));
-            }
-
-            for (var i = start; i < this.lows[this.members[start]]; i++)
-            {
-                union.CopyTo(this.keys.AsSpan(this.members[i] * row, row));
-                for (var d = this.dependentHeads[this.members[i]]; d >= 0; d = this.dependents[d].Next)
-                {
-                    _ = MirDataflow.Union(this.keys.AsSpan(this.dependents[d].Node * row, row), union);
-                }
+                this.Walk(root, ref visited, ref open);
             }
         }
     }
 
-    // An entry's initialization in Spread's graph: an edge from each view of its initializer to the node that ensures it.
-    private void Initializer(int node, MirBody initializer)
+    // A node's own facts in a row of rowWords words (Spread's seed): its local keys, its slot bits and, where the row has a class word, its
+    // classes as the fixed point solved them, which hold every node it read's.
+    private void Seed(int node, Span<ulong> row)
     {
+        var store = this.Of(node);
+        var (from, to) = (this.Start(store, node), store[node]);
+        foreach (var key in store.Keys[from.Keys..to.Keys])
+        {
+            row[key >> 6] |= 1UL << key;
+        }
+
+        foreach (var init in store.Inits[from.Inits..to.Inits])
+        {
+            if (init < 0)
+            {
+                row[this.keyWords + (~init >> 6)] |= 1UL << ~init;
+            }
+        }
+
+        if (this.classWords > 0)
+        {
+            row[^1] |= this.classes[node];
+        }
+    }
+
+    // An entry's initialization in the read graph, its one statement: an edge from the node that ensures it to each view of its initializer,
+    // tagged with the entry's number; for an initializer with a validator finding, which has no node (step 2 skips it), one edge to none,
+    // Derived (R5-M183, as Views).
+    private void Initializer(int node, int init)
+    {
+        var initializer = this.program.Body(this.initBodies[init]);
         if (initializer.HasFinding)
         {
-            this.keys[(node * this.rowWords) + this.rowWords - 1] |= Derived; // R5-M183, as Views.
+            this.Read(node, -1, init);
             return;
         }
 
@@ -324,48 +318,56 @@ internal sealed partial class MirEffects
                 throw new InvalidOperationException($"The initializer of {initializer.Key.Decl!.Name} keeps an atom (InternalInvariant).");
             }
 
-            MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
-            this.dependents[this.dependentCount] = (node, this.dependentHeads[source]);
-            this.dependentHeads[source] = this.dependentCount++;
+            this.Read(node, source, init);
         }
     }
 
-    // The depth-first walk of Spread from an unvisited root along the dependencies (each node to its readers), finishing each component
-    // once every component it reaches is finished.
-    private void Walk(int root, ref int visited, ref int open, ref int finished)
+    // A successor of a node in the read graph (MirEffects.Solve's reads): a node it read (init -1), or a view of an entry's initializer.
+    private void Read(int node, int successor, int init)
+    {
+        MirDataflow.Grow(ref this.reads, this.readCount + 1);
+        this.reads[this.readCount] = (successor, init, this.readHeads[node]);
+        this.readHeads[node] = this.readCount++;
+    }
+
+    // The depth-first walk of Spread from an unvisited root along the read graph, finishing each component once every component it reads
+    // is finished.
+    private void Walk(int root, ref int visited, ref int open)
     {
         var depth = 0;
         for (var next = root; next >= 0;)
         {
             this.visits[next] = this.lows[next] = visited++;
             this.members[open++] = next;
-            this.frames[depth++] = (next, this.dependentHeads[next]);
+            this.frames[depth++] = (next, this.readHeads[next]);
             next = -1;
             while (depth > 0 && next < 0)
             {
                 ref var frame = ref this.frames[depth - 1];
                 if (frame.Edge < 0)
                 {
-                    this.Finish(frame.Node, --depth, ref open, ref finished);
+                    this.Finish(frame.Node, --depth, ref open);
                     continue;
                 }
 
-                var dependent = this.dependents[frame.Edge].Node;
-                frame.Edge = this.dependents[frame.Edge].Next;
-                if (this.visits[dependent] < 0)
+                var read = this.reads[frame.Edge].Node;
+                frame.Edge = this.reads[frame.Edge].Next;
+                if (read >= 0 && this.visits[read] < 0)
                 {
-                    next = dependent;
+                    next = read;
                 }
-                else if (this.visits[dependent] != int.MaxValue)
+                else if (read >= 0 && this.visits[read] != int.MaxValue)
                 {
-                    this.lows[frame.Node] = Math.Min(this.lows[frame.Node], this.visits[dependent]); // Open: on this path's component.
+                    this.lows[frame.Node] = Math.Min(this.lows[frame.Node], this.visits[read]); // Open: on this path's component.
                 }
             }
         }
     }
 
-    // A node whose readers are all walked: its parent's low lowered to its own and, at its component's root, the component finished.
-    private void Finish(int node, int depth, ref int open, ref int finished)
+    // A node whose reads are all walked: its parent's low lowered to its own and, at its component's root, the component's row, the union of
+    // its members' seeds and of the row of each node they read (a finished component's, or a member's seed), Derived for an edge to none,
+    // written to every member.
+    private void Finish(int node, int depth, ref int open)
     {
         if (depth > 0)
         {
@@ -378,15 +380,33 @@ internal sealed partial class MirEffects
             return;
         }
 
-        var end = finished;
+        var (row, end) = (this.rowWords, open);
+        var union = this.keyScratch.AsSpan(0, row);
+        union.Clear();
         int member;
         do
         {
             member = this.members[--open];
-            this.visits[member] = int.MaxValue;
-            this.lows[member] = end;
-            this.members[--finished] = member;
+            _ = MirDataflow.Union(union, this.keys.AsSpan(member * row, row));
+            for (var r = this.readHeads[member]; r >= 0; r = this.reads[r].Next)
+            {
+                var read = this.reads[r].Node;
+                if (read >= 0)
+                {
+                    _ = MirDataflow.Union(union, this.keys.AsSpan(read * row, row));
+                }
+                else
+                {
+                    union[^1] |= Derived;
+                }
+            }
         }
         while (member != node);
+
+        foreach (var finished in this.members.AsSpan(open, end - open))
+        {
+            union.CopyTo(this.keys.AsSpan(finished * row, row));
+            this.visits[finished] = int.MaxValue;
+        }
     }
 }
