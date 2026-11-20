@@ -96,6 +96,30 @@ public class DynamicArrayElementTest
         Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use} {inline}: work {string.Join(", ", work)}");
     }
 
+    // D-941 (SPEC 15.1.5, 3.4.3, 15.6.2; the Front's C2): the nested Array rows' invalid twins at depth. Through a `let` root a write and
+    // an exclusive borrow are refused (InvalidAssignment_Kd: a let root grants no Write and no exclusive borrow); through `p:
+    // ref/Array^k` they reach a shared layer (SharedPathAccess_Kd). One record each at k = 30, 60 and 120, in path steps linear in k.
+    [Theory]
+    [InlineData("write", "let", "InvalidAssignment_Kd")]
+    [InlineData("uniq", "let", "InvalidAssignment_Kd")]
+    [InlineData("write", "ref", "SharedPathAccess_Kd")]
+    [InlineData("uniq", "ref", "SharedPathAccess_Kd")]
+    public void ANestedArrayElementsInvalidTwinIsRefusedOnce(string use, string root, string code)
+    {
+        long[] work = [.. new[] { 30, 60, 120 }.Select(k => Refused(NestedElement(use, root, k), code).Binding.PathFoldWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use} {root}: work {string.Join(", ", work)}");
+    }
+
+    // D-941 (SPEC 3.4.3, 15.6.2; the Front's C4): a shared borrow of a k-deep Tuple chain below a `let` root (`let u = x.0..0@ref`), a
+    // query that writes nothing: its fold decides every prefix's writability too (each through WritableRoot's syntax walk to the let
+    // root, no fold), in path steps linear in k.
+    [Fact]
+    public void ASharedBorrowOfALetTupleChainTakesWorkLinearInItsDepth()
+    {
+        long[] work = [.. new[] { 30, 60, 120 }.Select(k => Bound(TupleChain(k)).Binding.PathFoldWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"work {string.Join(", ", work)}");
+    }
+
     // G1146 (D-932): a 64-deep Array element, one step past the former 64-step path walk, is written and borrowed exclusively.
     [Theory]
     [InlineData("write", "v")]
@@ -104,6 +128,18 @@ public class DynamicArrayElementTest
     [InlineData("uniq", "(*p)")]
     public void ASixtyFourDeepArrayElementIsWrittenAndBorrowed(string use, string root) => Bound(NestedElement(use, root, 64));
 
+    // G1146 (D-941; the Middle's RP17 on C-402): a 64-deep owned Array local, whose write Binding now finishes, meets A5's depth bound:
+    // one OwnershipDepthLimit_Kd located at the local (DECISIONS R4-M153), never a Binding record; before D-941 Binding never finished.
+    [Fact]
+    public void ASixtyFourDeepOwnedArrayLocalMeetsTheOwnershipDepthLimit()
+    {
+        var c = MinimalEmissionTest.Analyze(NestedElement("write", "v", 64));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var problems = MinimalEmissionTest.Problems(c);
+        Assert.StartsWith("OwnershipDepthLimit_Kd var v: Array<", problems);
+        Assert.DoesNotContain(" | ", problems);
+    }
+
     private static Compilation Bound(string source)
     {
         var c = CompilationTestHelper.Parse(source);
@@ -111,14 +147,40 @@ public class DynamicArrayElementTest
         return c;
     }
 
-    // `v[0]..[0] = 9` or `let u = v[0]..[0]@uniq` over a k-deep Array of i32, v a local holding a literal or p a raw pointer.
+    // Binding refuses the program with exactly one record, of `code`.
+    private static Compilation Refused(string source, string code)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(code, string.Join(" | ", c.Binding.Issues.Select(static x => x.Code.ToString())));
+        return c;
+    }
+
+    // `v[0]..[0] = 9` or `let u = v[0]..[0]@uniq` over a k-deep Array of i32: v a `var` local (root "v") or a `let` local ("let")
+    // holding a literal, p a raw pointer ("(*p)") or a shared reference ("ref").
     private static string NestedElement(string use, string root, int k)
     {
         var type = string.Concat(Enumerable.Repeat("Array<", k)) + "i32" + new string('>', k);
-        var place = root + string.Concat(Enumerable.Repeat("[0]", k));
+        var place = root switch { "v" or "let" => "v", "ref" => "p", _ => root } + string.Concat(Enumerable.Repeat("[0]", k));
         var statement = use == "write" ? place + " = 9" : "let u = " + place + "@uniq";
-        return root == "v" ? $"public func main()\n    var v: {type} = {new string('[', k)}7{new string(']', k)}\n    {statement}\n"
-            : $"func put(p: raw/{type})\n    unsafe\n        {statement}\npublic func main() => ()\n";
+        return root switch
+        {
+            "v" or "let" => $"public func main()\n    {(root == "v" ? "var" : "let")} v: {type} = {new string('[', k)}7{new string(']', k)}\n    {statement}\n",
+            "ref" => $"func put(p: ref/{type})\n    {statement}\npublic func main() => ()\n",
+            _ => $"func put(p: raw/{type})\n    unsafe\n        {statement}\npublic func main() => ()\n",
+        };
+    }
+
+    // `let u = x.0..0@ref` (k selections) over `let x: U_k`, U_1 = (i32, i32) and U_j = (U_(j-1), i32), holding a literal.
+    private static string TupleChain(int k)
+    {
+        var (type, literal) = ("(i32, i32)", "(1, 2)");
+        for (var j = 2; j <= k; j++)
+        {
+            (type, literal) = ($"({type}, i32)", $"({literal}, 3)");
+        }
+
+        return $"public func main()\n    let x: {type} = {literal}\n    let u = x{string.Concat(Enumerable.Repeat(".0", k))}@ref\n";
     }
 
     // `r.0..0` (k selections) written or borrowed exclusively, r: uniq/T_k with T_1 = (i32, i32) and T_j = (uniq/T_(j-1) during a, i32).
