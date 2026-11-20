@@ -648,7 +648,6 @@ public sealed partial class Binding
         var kind = (EffectRejection)this.FactOf(index, ProblemFactKind.Reason)!.Value.Value;
         var selector = effect.Selector?.ToString();
         var name = (target as FunctionKoto)?.Name ?? effect.Name?.ToString();
-        var named = (contract as DeclarationContainerKoto)?.Name;
         var spelling = Constants.ConfinedKeyword;
         var (cause, note) = kind switch
         {
@@ -659,12 +658,12 @@ public sealed partial class Binding
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
             EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions"),
             EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector"),
-            EffectRejection.NotReference => ($"{selector} is not a reference to {named}", $"This does not form a reference to {named}: every generic Contract or Container on its path is named with its Type arguments (SPEC 8.5.1, 9.7.1)"),
+            EffectRejection.NotReference => ($"{selector} is not a reference to {Named()}", $"This does not form a reference to {Named()}: every generic Contract or Container on its path is named with its Type arguments (SPEC 8.5.1, 9.7.1)"),
             EffectRejection.OwnContract => ($"{selector} is this Contract", "A Contract bounds its own requirement with an effect clause in that requirement's Constraint region"),
-            EffectRejection.NotAncestor => ($"{selector} is not an ancestor of {named}", "An effect specification bounds a requirement that the Contract inherits"),
-            EffectRejection.AmbiguousAncestor => ($"{selector} names {found} ancestors", $"The Contract refines {found} references of {named}"),
-            EffectRejection.NoRequirement => ($"{named} has no function requirement {name}", null),
-            EffectRejection.OverloadedRequirement => ($"{name} names {found} function requirements of {named}", "An effect specification bounds exactly one function requirement"),
+            EffectRejection.NotAncestor => ($"{selector} is not an ancestor of {Named()}", "An effect specification bounds a requirement that the Contract inherits"),
+            EffectRejection.AmbiguousAncestor => ($"{selector} names {found} ancestors", $"The Contract refines {found} references of {Named()}"),
+            EffectRejection.NoRequirement => ($"{Named()} has no function requirement {name}", null),
+            EffectRejection.OverloadedRequirement => ($"{name} names {found} function requirements of {Named()}", "An effect specification bounds exactly one function requirement"),
             EffectRejection.Duplicate => target switch
             {
                 IsKoto => ($"the Callable Constraint already declares {spelling}", $"A Callable Constraint declares {spelling} at most once"),
@@ -695,10 +694,13 @@ public sealed partial class Binding
 
         if (contract is not null)
         {
-            related[r] = ("contract", contract, $"the Contract {named}");
+            related[r] = ("contract", contract, $"the Contract {Named()}");
         }
 
         effect.ReportIn(store, problem.Requirement, problem.Code, note: note, evidence: [cause], related: related.Length == 0 ? null : related, condition: problem.Condition);
+
+        // The kinds that name a Contract hold its declaration (RecordEffectRejection's role 2): a missing one is a broken contract.
+        string Named() => (contract as DeclarationContainerKoto)?.Name ?? throw new InvalidOperationException("An effect rejection that names a Contract holds no Contract (InternalInvariant).");
 
         static string EffectOwner(EffectBoundKoto effect)
             => effect.Parent switch
