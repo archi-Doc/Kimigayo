@@ -278,6 +278,12 @@ public sealed partial class Binding
             case BindingFailure.InvalidTypeFormation when this.FactOf(index, ProblemFactKind.Count) is not null:
                 this.ReportArity(node, store, index, problem);
                 break;
+            case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Related) is { } first:
+                ReportDuplicate(node, store, problem, this.compilation.SyntaxOf(first.Site));
+                break;
+            case BindingFailure.Duplicate when this.FactOf(index, ProblemFactKind.Cause) is { } later:
+                node.ReportDerivedIn(store, problem.Requirement, [this.compilation.SyntaxOf(later.Site).KeyIn(this.compilation.StoreOf(this.compilation.SyntaxOf(later.Site)), problem.Requirement)], problem.Condition);
+                break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
                 break;

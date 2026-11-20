@@ -8,11 +8,10 @@ namespace Kimi.Compiler;
 
 // The publication of Binding's diagnostics (ReportDiagnostics), after the final analysis.
 // - Responsibility: each direct issue reported with the facts its check recorded (ReportProblem or ReportIssue; at most one explanation
-//   table answers for a node's first failure), each derived issue with its prerequisite keys, the duplicate declaration groups, the
-//   non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
+//   table answers for a node's first failure), each derived issue with its prerequisite keys, the non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
 // - Inputs: the latest pass's issues, derived issues and explanation tables; a refused library's refusal (LibraryLayer.Refusal), which
 //   Core publishes. Outputs: the Binding partition's records. The library's freeze reports a refused library pass's records through
-//   the same per-record steps (ReportFailures, ReportDuplicateDeclarations, ReportNonFailingRecords) while its tables stand.
+//   the same per-record steps (ReportFailures, ReportNonFailingRecords) while its tables stand.
 // - Invariants: invoked after final analysis, not between Mods; each call replaces the partition's records. R7-E5 deletes ReportIssue's chain.
 // - Prohibitions: no failure is decided and no node's binding state is written here.
 public sealed partial class Binding
@@ -30,7 +29,6 @@ public sealed partial class Binding
 
         if (this.Result.Mode == BindingMode.Final)
         {
-            this.ReportDuplicateDeclarations();
             this.ReportNonFailingRecords();
 
             // SPEC 23.2.2: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
@@ -496,13 +494,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < issues.Count; i++)
         {
-            var issue = issues[i];
-            if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
-            {
-                continue; // Pairwise declaration failures are normalized as one group (ReportDuplicateDeclarations).
-            }
-
-            this.ReportIssue(issue);
+            this.ReportIssue(issues[i]);
         }
 
         for (var i = 0; i < derivedIssues.Count; i++)

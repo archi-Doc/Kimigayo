@@ -36,6 +36,23 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(result, c.Diagnostics.Finalize(rejected: true));
     }
 
+    // SPEC 6.1, 9.1, 23.1.2 (R7-E2 E2-3b): a group joined by two pairwise checks (Signatures' and the scope's) is recorded once, after the
+    // last: each later declaration's record (the first derived), as dev; a repeated loop binding is its own record (DiagnosticPrecisionTest).
+    [Fact]
+    public void AGroupJoinedByTwoChecksIsRecordedOnce()
+        => Assert.Equal(
+            "1*DeclarationOrderWarning_Kd 2*DuplicateBinding_Kd",
+            DiagnosticCorpus.RecordProfile("group G\n    func f() => ()\n    func f() => ()\n    let f: i32 = 1\npublic func main() => ()\n", "Application"));
+
+    // SPEC 6.1, 9.1, 23.1.2 (R7-E2 E2-3b, the Front's d4): the repeated Name is judged from the two declarations alone, so the later's
+    // initializer's syntax error, which its own binding consulted, does not derive it (IsDerived's JudgedByDeclaredNames row): both are
+    // reported, as dev's group walk did; the twin with another name reports the syntax error alone.
+    [Theory]
+    [InlineData("x", "1*DuplicateBinding_Kd 1*ExpectedSyntax_Kd")]
+    [InlineData("y", "1*ExpectedSyntax_Kd")]
+    public void ARepeatedNameIsReportedBesideItsInitializersSyntaxError(string name, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("group G\n    let x: i32 = 1\n    let " + name + ": i32 = (1 +)\npublic func main() => ()\n", "Application"));
+
     [Fact]
     public void TheFirstDeclarationFollowsConsumedSourceOrder()
     {

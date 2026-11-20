@@ -107,6 +107,16 @@ public sealed partial class Binding
         return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
     }
 
+    // DIAGNOSTICS 4.3 (a problem is derived only from what its check read): a requirement whose check compares only what declarations
+    // declare (their names, normalized signatures, conformance targets or specialization arguments), never what the node's own binding
+    // consulted, so a recovery or limit in the node's frame does not derive it. Census (E2-3b), Duplicate alone, at every site: FailDuplicate's
+    // six pairwise sites (Scopes, Aliases, Contracts.Registration twice, Signatures, Specializations; RecordDuplicateGroups records them),
+    // a Semantics parameter's name (Indexing), a nested container's name over an inherited member (MemberLookup), `Kimi` and a module's
+    // conflicting names (Modules), a capture list's repeat (CaptureDiagnostics) and an Origin set's or annotation's repeat
+    // (OriginDeclarations, Origins.Annotations, AssociatedOrigins).
+    [Transitional("R7", Reason = "The row stands for per-problem inputs (d4: a repeated let beside its initializer's syntax error), until R7-E5 states what each problem's check read.")]
+    private static bool JudgedByDeclaredNames(BindingFailure failure) => failure == BindingFailure.Duplicate;
+
     private bool IsUnresolvedPrerequisite(Koto node)
         => this.RecordedState(node) != BindingState.Resolved || IsRecovery(node, out _);
 
@@ -377,7 +387,7 @@ public sealed partial class Binding
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
     // requirement judged: the caller passes the problem's (CollectIssue: the node's recorded failure).
     private bool IsDerived(Koto node, BindingFailure failure)
-        => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
+        => IsRecovery(node, out _) || (!JudgedByDeclaredNames(failure) && this.RestsOnRecoveryOrLimit(node)) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
