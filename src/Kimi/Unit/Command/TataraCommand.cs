@@ -19,8 +19,7 @@ namespace Kimi.Command;
 // per path and its refusal, Kimigayo, the current directory and the runtime; the session owns Ctrl+C while it runs (Program.CancelKey)
 // and restores it at its end (a press while the redirected reader waits for input does nothing: such a session ends at its input's
 // end, at exit or at the window's close; at a terminal only exit and the window's close end it). Prohibitions: no build rule of its own; the loop catches nothing (CommandExecution classifies a
-// command's failures); a refusal is read from Tatara, never from a message's text. Temporary (Tatara A3 to A4): the session sets
-// Kimigayo.NativeExecutor to Tatara's factory; unit A4 makes Tatara's executor the build's.
+// command's failures); a refusal is read from Tatara, never from a message's text.
 [SimpleCommand("tatara")]
 public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitContext, IServiceScopeFactory scopes) : ISimpleCommand
 {
@@ -62,7 +61,6 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
     /// <returns>The session's exit code.</returns>
     internal async Task<int> Run(Stream? input, CancellationToken cancellationToken)
     {
-        kimigayo.NativeExecutor = NativeToolchain.TataraExecutor.Create;
         var previous = Program.CancelKey;
         Program.CancelKey = this.CancelKey;
         using var registration = cancellationToken.Register(() => Volatile.Read(ref this.pending)?.Source.Cancel());

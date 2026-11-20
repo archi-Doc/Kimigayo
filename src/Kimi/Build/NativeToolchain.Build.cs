@@ -14,35 +14,20 @@ internal static partial class NativeToolchain
     // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
-    // A project's native build by the executor the factory makes. The factory argument is temporary (Tatara A3 to A4): unit A4 removes it
-    // when Tatara's executor becomes the build's.
-    internal static async Task Build(
-        Project project,
-        ArtifactPaths paths,
-        Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor,
-        Action<DiagnosticSeverity, string> report,
-        CancellationToken cancellationToken)
+    // A project's native build. A build reads no LlvmBin: the command line's names the tools toolchain verify checks, and a project's is
+    // accepted and not read (Tatara design A4 §2.1; removed in B6).
+    internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
         ValidateManifest(document.RootElement);
-        var configuredBin = project.KimiOptions.LlvmBin ?? project.ProjectFile.LlvmBin;
-        var projectBin = project.KimiOptions.LlvmBin is null && project.Directory.Length != 0; // A project's own setting is relative to the project.
-        var bin = configuredBin is null ? null : ResolvePath(configuredBin, projectBin ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
-        var optimization = project.ProjectFile.Optimization;
-        var build = new NativeBuild(project, paths, document.RootElement, project.Directory, optimization, createExecutor, report, cancellationToken);
-        await build.Run(project.KimiOptions.ToolchainRoot, bin);
+        var build = new NativeBuild(project, paths, document.RootElement, project.Directory, project.ProjectFile.Optimization, report, cancellationToken);
+        await build.Run(project.KimiOptions.ToolchainRoot);
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
-    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. The factory argument is
-    // temporary (Tatara A3 to A4), as Build's.
-    internal static async Task BuildManifest(
-        string path,
-        string? toolchainRoot,
-        string? llvmBin,
-        Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor,
-        Action<DiagnosticSeverity, string> report,
-        CancellationToken cancellationToken)
+    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. Its toolchain.llvmBin is
+    // accepted and not read, as a project's LlvmBin.
+    internal static async Task BuildManifest(string path, string? toolchainRoot, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(path)!;
@@ -54,9 +39,7 @@ internal static partial class NativeToolchain
         var ir = ResolvePath(LinkManifest.Text(manifest, "irFile"), directory);
         var optimization = LinkManifest.Text(manifest, "optimization");
         var paths = new ArtifactPaths(ir, path, record, Path.Combine(directory, Path.GetFileNameWithoutExtension(ir) + "." + optimization));
-        var configured = llvmBin is null && manifest.TryGetProperty("toolchain", out var toolchain) ? LinkManifest.Text(toolchain, "toolchain.llvmBin") : null;
-        var bin = llvmBin is not null ? ResolvePath(llvmBin, Directory.GetCurrentDirectory()) : configured is null ? null : ResolvePath(configured, directory);
-        await new NativeBuild(null, paths, manifest, directory, optimization, createExecutor, report, cancellationToken).Run(toolchainRoot, bin);
+        await new NativeBuild(null, paths, manifest, directory, optimization, report, cancellationToken).Run(toolchainRoot);
     }
 
     // The manifest a native build takes: the fixed head as this compiler writes it (LinkManifest), then an Application's output at O0 or
@@ -140,12 +123,14 @@ internal static partial class NativeToolchain
     [GeneratedRegex(@"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$")]
     private static partial Regex ModulePathPattern();
 
-    /// <summary>One native build of a checked IR/manifest pair: its inputs, its record and its tools. The constructor takes the build's
-    /// fixed inputs: the project whose supplies it checks (none for a standalone manifest), the pair, the root its records redact, the
-    /// optimization, the executor's factory and the host's report and cancellation. <see cref="Run"/> takes the toolchain selection, which
-    /// it resolves after the pair's check, and runs the steps once, in order: the pair's identity, the executor (made where the tools are
-    /// resolved, filling the record's tools), the libraries, the object, its inspection, the link and the report; the steps fill the record and <see cref="Run"/> writes each of its states, the success last, so a step that
-    /// fails, the report included, throws and leaves the record at the last incomplete state written (IMPL 20.3.2).</summary>
+    /// <summary>One native build of a checked IR/manifest pair: its inputs, its record and its LLVM and LLD work, which Tatara's calls do in
+    /// process (no tool is launched). The constructor takes the build's fixed inputs: the project whose supplies it checks (none for a
+    /// standalone manifest), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
+    /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> takes the toolchain root's selection, which it
+    /// resolves after the pair's check, and runs the steps once, in order: the pair's identity, Tatara (the root's tatara.dll, loaded and
+    /// checked, identified in the record's tools), the libraries, the object, its inspection, the link and the report; the steps fill the
+    /// record and <see cref="Run"/> writes each of its states, the success last, so a step that fails, the report included, throws and
+    /// leaves the record at the last incomplete state written (IMPL 20.3.2).</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -154,9 +139,7 @@ internal static partial class NativeToolchain
         private readonly string directory; // The root that published records and files redact.
         private readonly string outputDirectory;
         private readonly string optimization;
-        private readonly Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor;
-        private readonly Action<DiagnosticSeverity, string> report;
-        private readonly CancellationToken cancellationToken;
+        private readonly TataraContext context; // The host's report and cancellation, with the target values.
         private readonly JsonObject record = CreateBuildRecord();
 
         internal NativeBuild(
@@ -165,7 +148,6 @@ internal static partial class NativeToolchain
             JsonElement manifest,
             string directory,
             string optimization,
-            Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor,
             Action<DiagnosticSeverity, string> report,
             CancellationToken cancellationToken)
         {
@@ -175,39 +157,30 @@ internal static partial class NativeToolchain
             this.directory = directory;
             this.outputDirectory = Path.GetDirectoryName(paths.Manifest)!;
             this.optimization = optimization;
-            this.createExecutor = createExecutor;
-            this.report = report;
-            this.cancellationToken = cancellationToken;
+            this.context = new TataraContext(
+                report, cancellationToken, WindowsProfile.Target, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel);
         }
 
-        internal async Task Run(string? configuredRoot, string? configuredBin)
+        internal async Task Run(string? configuredRoot)
         {
             var irHash = this.CheckPair();
             var toolchainRoot = ToolchainResolver.ResolveRoot(configuredRoot);
-            var identities = new JsonObject();
-            this.record["tools"] = identities;
+            var tools = new JsonObject();
+            this.record["tools"] = tools;
             this.record["irSha256"] = irHash;
             this.record["optimization"] = this.optimization;
             WriteRecord(this.paths.Record, this.record);
-            var context = new NativeExecutorContext(
-                toolchainRoot,
-                configuredBin ?? toolchainRoot,
-                this.outputDirectory,
-                this.directory,
-                this.report,
-                this.cancellationToken,
-                WindowsProfile.Target,
-                WindowsProfile.Cpu,
-                WindowsProfile.Features,
-                WindowsProfile.RelocationModel,
-                WindowsProfile.CodeModel);
-            var executor = this.createExecutor(context, identities);
+            var tatara = Tatara.Load(toolchainRoot);
+            tools.Add("tatara", new JsonObject
+            {
+                ["path"] = Redact(tatara.Path, this.directory), ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion,
+            });
             var libraries = this.ResolveLibraries(toolchainRoot);
             WriteRecord(this.paths.Record, this.record);
-            var obj = await this.Compile(executor);
-            var undefined = await this.Inspect(executor, obj);
-            await this.Link(executor, obj, libraries, undefined);
-            this.report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
+            var obj = await this.Compile(tatara);
+            var undefined = this.Inspect(tatara, obj);
+            this.Link(tatara, obj, libraries, undefined);
+            this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
             WriteRecord(this.paths.Record, this.record);
         }
 
@@ -336,29 +309,29 @@ internal static partial class NativeToolchain
         }
 
         // The object: the IR verified, for O2 optimized, its module paths redacted and verified again, then compiled.
-        private async Task<string> Compile(NativeExecutor executor)
+        private async Task<string> Compile(Tatara tatara)
         {
             var selectedIr = this.paths.Ir;
             if (this.optimization == "O2")
             {
                 selectedIr = this.paths.Stem + ".ll";
-                await executor.Optimize(this.paths.Ir, selectedIr);
-                var ir = await File.ReadAllTextAsync(selectedIr, this.cancellationToken);
+                tatara.Optimize(this.context, this.paths.Ir, selectedIr);
+                var ir = await File.ReadAllTextAsync(selectedIr, this.context.CancellationToken);
                 ir = ModulePathPattern().Replace(ir, m => Redact(m.Value, this.directory));
-                await File.WriteAllTextAsync(selectedIr, ir, Utf8, this.cancellationToken);
+                await File.WriteAllTextAsync(selectedIr, ir, Utf8, this.context.CancellationToken);
             }
 
             var obj = this.paths.Stem + ".obj";
-            await executor.Emit(selectedIr, obj, this.optimization);
+            tatara.Emit(this.context, selectedIr, obj, this.optimization[1] - '0');
             return obj;
         }
 
         // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
         // declares (the manifest's) in the same form; one _fltused definition, unwind information and no default library. Returns the
         // record's form of the undefined symbols: llvm-nm's posix lines, in which an undefined symbol's value and size are 0.
-        private async Task<string> Inspect(NativeExecutor executor, string obj)
+        private string Inspect(Tatara tatara, string obj)
         {
-            var facts = await executor.Inspect(obj);
+            var facts = tatara.Inspect(this.context, obj);
             Dictionary<string, bool>? declared = null;
             var lines = new string[facts.Undefined.Count];
             for (var i = 0; i < lines.Length; i++)
@@ -390,7 +363,7 @@ internal static partial class NativeToolchain
 
         // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked
         // state, which Run publishes last.
-        private async Task Link(NativeExecutor executor, string obj, List<string> libraries, string undefined)
+        private void Link(Tatara tatara, string obj, List<string> libraries, string undefined)
         {
             var temporary = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
             try
@@ -403,8 +376,8 @@ internal static partial class NativeToolchain
                 link[^3] = "/nodefaultlib";
                 link[^2] = "/Brepro";
                 link[^1] = "/out:" + temporary;
-                await executor.Link(link);
-                this.cancellationToken.ThrowIfCancellationRequested();
+                tatara.Link(this.context, link);
+                this.context.CancellationToken.ThrowIfCancellationRequested();
                 Replace(temporary, this.paths.Executable);
                 this.record["status"] = "linked";
                 this.record["executable"] = Path.GetFileName(this.paths.Executable);

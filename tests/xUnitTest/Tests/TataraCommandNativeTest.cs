@@ -3,6 +3,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Kimi;
+using Kimi.Build;
 using Kimi.Command;
 using Kimi.Compiler;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,13 +11,14 @@ using Xunit;
 
 namespace XunitTest;
 
-// kimi tatara's native rows (Tatara design A3 §3). Explicit until unit A4: they need a private toolchain root holding tatara.dll, named
-// by KIMI_TOOLCHAIN_ROOT in the test process's own environment (tests/scripts/run-tatara-corpus.ps1 prepares it). Single-shot runs each
-// line in a unit of its own on the external tools; the session runs every line in one unit on Tatara. The fatal row leaves Tatara
-// refusing every later call for the rest of its process, so it runs in a test process of its own.
+// kimi tatara's native rows (Tatara design A3 §3), on the resolved toolchain root's tatara.dll; each skips off Windows, and on Windows
+// a missing tatara.dll fails it. Single-shot runs each line in a unit of its own; the session runs every line in one unit. The fatal
+// row leaves Tatara refusing every later call for the rest of its process, so it runs in a child test process of its own (Fatal).
 [Collection<ConsoleIsolationCollection>]
 public sealed class TataraCommandNativeTest : IDisposable
 {
+    private const string Windows = "kimi tatara's native builds run on Windows.";
+
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-session-" + Guid.NewGuid().ToString("N"));
 
     public TataraCommandNativeTest() => Directory.CreateDirectory(this.directory);
@@ -24,11 +26,12 @@ public sealed class TataraCommandNativeTest : IDisposable
     public void Dispose() => Directory.Delete(this.directory, true);
 
     // In one process: build A, run B, run B --no-build, an edit that makes A fail, its fix and the rebuild. Each line's exit code and
-    // products equal single-shot's on the external tools (the files equal, the records equal but for tools, the text equal with the
-    // folder replaced), and the session's records name Tatara in tools.
-    [Fact(Explicit = true)]
+    // products equal single-shot's (the files equal, the records equal but for tools, the text equal with the folder replaced), and the
+    // session's records name Tatara in tools.
+    [Fact]
     public async Task EachLineEqualsSingleShot()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         string[] lines = ["build A/A.kimiproj", "run B/B.kimiproj", "run B/B.kimiproj --no-build", "build A/A.kimiproj", "build A/A.kimiproj"];
         var single = Path.Combine(this.directory, "single");
         var session = Path.Combine(this.directory, "session");
@@ -66,9 +69,10 @@ public sealed class TataraCommandNativeTest : IDisposable
     }
 
     // A press during a line cancels it (130, a failed line) and the next line builds.
-    [Fact(Explicit = true)]
+    [Fact]
     public async Task ALineAfterACancelledLineSucceeds()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         Write(this.directory);
         var pressed = 0;
         var (code, text) = await Session(this.directory, [("build A/A.kimiproj", null), ("build A/A.kimiproj", null)], () =>
@@ -83,6 +87,15 @@ public sealed class TataraCommandNativeTest : IDisposable
         Assert.Contains("Exit code: 130", text, StringComparison.Ordinal);
         Assert.Equal(1, TataraCommandTest.Count(text, "Built: "));
         Assert.NotNull(JsonNode.Parse(File.ReadAllText(Path.Combine(this.directory, "A", "bin", WindowsProfile.Target, "A.link.build.json")))!["tools"]!["tatara"]);
+    }
+
+    // The fatal row in a child test process of its own, its folder this row's (Fatal); the child resolves this process's root, as
+    // FreshProcess passes it no KIMI_ variable of its own.
+    [Fact]
+    public async Task AFatalErrorEndsTheSessionOfItsProcess()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        await FreshProcess.RunExplicit(typeof(Fatal), nameof(Fatal.AFatalErrorEndsTheSession), (Fatal.Folder, this.directory), ("KIMI_TOOLCHAIN_ROOT", ToolchainResolver.ResolveRoot(null)));
     }
 
     private static void Write(string root)
@@ -151,14 +164,17 @@ public sealed class TataraCommandNativeTest : IDisposable
             return name + " " + record.ToJsonString().Replace(root.Replace("\\", "\\\\", StringComparison.Ordinal), "<W>", StringComparison.Ordinal);
         }));
 
-    // The fatal row, alone in its own test process (run-tatara-corpus.ps1 runs it by its method): a line whose link hits LLD's fatal()
-    // (a malformed static library) ends the session with 1 and its one sentence; the next line does not run.
+    // The fatal row, run by AFatalErrorEndsTheSessionOfItsProcess in a child test process of its own: a line whose link hits LLD's
+    // fatal() (a malformed static library) ends the session with 1 and its one sentence; the next line does not run. Its folder is its
+    // parent's (named by Folder, removed by the parent).
     public sealed class Fatal
     {
+        internal const string Folder = "KIMI_TATARA_SESSION_FATAL_FOLDER";
+
         [Fact(Explicit = true)]
         public async Task AFatalErrorEndsTheSession()
         {
-            var directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-session-fatal-" + Guid.NewGuid().ToString("N"));
+            var directory = Environment.GetEnvironmentVariable(Folder)!;
             Write(directory);
             var folder = Path.Combine(directory, "F");
             Directory.CreateDirectory(Path.Combine(folder, "native"));
@@ -170,7 +186,6 @@ public sealed class TataraCommandNativeTest : IDisposable
             Assert.Contains("Tatara cannot run again in this process (", text, StringComparison.Ordinal);
             Assert.Contains("truncated or malformed archive", text, StringComparison.Ordinal);
             Assert.DoesNotContain("Project: A", text, StringComparison.Ordinal);
-            Directory.Delete(directory, true);
         }
     }
 

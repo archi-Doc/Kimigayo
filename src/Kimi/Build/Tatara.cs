@@ -11,7 +11,9 @@ namespace Kimi.Build;
 /// its load (its ABI is the SHA-256 of the tatara.h embedded in this assembly, its LLVM version the catalog's), its calls serialized
 /// by one lock. A missing file, a load or bind failure and a mismatch are each an InvalidDataException naming the path, the values and
 /// the remedy; a call's return of 1 or 2 is an IOException naming the operation with Tatara's message; both are the toolchain's
-/// failure (IsToolchainFailure). Inside the lock a call pins its inputs, copies the result's texts and releases the result.</summary>
+/// failure (IsToolchainFailure). NativeBuild is its caller (and toolchain verify its loader). A call checks its token before the lock and
+/// again inside it, so a call that waited for the lock does not start after cancellation; inside the lock it pins its inputs, copies the
+/// result's texts and releases the result.</summary>
 internal sealed unsafe class Tatara
 {
     // A missing or unloadable DLL: setup for the selected toolchain. Another ABI or LLVM version: never setup on that root (it may be
@@ -118,16 +120,19 @@ internal sealed unsafe class Tatara
         }
     }
 
-    internal void Optimize(NativeExecutorContext context, string ir, string optimizedIr)
+    // Verifies ir, optimizes it at default<O2> and writes the text to optimizedIr as opt -S does.
+    internal void Optimize(TataraContext context, string ir, string optimizedIr)
         => this.Call("optimize", context, [.. Target(context), ir, optimizedIr], (texts, result) => this.optimize(texts, texts[5], texts[6], result));
 
-    internal void Emit(NativeExecutorContext context, string ir, string obj, int optimizationLevel)
+    // Verifies ir, then writes the object as llc -O0 or -O2 does (the level's digit).
+    internal void Emit(TataraContext context, string ir, string obj, int optimizationLevel)
         => this.Call("emit", context, [.. Target(context), ir, obj], (texts, result) => this.emit(texts, texts[5], texts[6], optimizationLevel, result));
 
-    internal ObjectFacts Inspect(NativeExecutorContext context, string obj)
+    internal ObjectFacts Inspect(TataraContext context, string obj)
         => this.Call("inspect", context, [obj], (texts, result) => this.inspect(texts[0], result));
 
-    internal void Link(NativeExecutorContext context, IReadOnlyList<string> arguments)
+    // Links with the linker's arguments, as NativeBuild builds them.
+    internal void Link(TataraContext context, IReadOnlyList<string> arguments)
         => this.Call("link", context, [.. arguments], (texts, result) => this.link(texts, (nuint)arguments.Count, result));
 
     private static string HashHeader()
@@ -137,7 +142,7 @@ internal sealed unsafe class Tatara
     }
 
     // TataraTarget's five values, in its order.
-    private static string[] Target(NativeExecutorContext context)
+    private static string[] Target(TataraContext context)
         => [context.Triple, context.Cpu, context.Features, context.RelocationModel, context.CodeModel];
 
     // Inspect's symbol text: one "<llvm-nm's letter> <name>\n" per symbol.
@@ -154,7 +159,7 @@ internal sealed unsafe class Tatara
 
     // One call: its inputs encoded into one buffer and pinned, the result's texts copied and the result released, all inside the lock.
     // A return of 1 or 2 throws with Tatara's message; a message on success is a Warning, as a tool's standard error is.
-    private ObjectFacts Call(string operation, NativeExecutorContext context, string[] values, Invocation invocation)
+    private ObjectFacts Call(string operation, TataraContext context, string[] values, Invocation invocation)
     {
         context.CancellationToken.ThrowIfCancellationRequested();
         var lengths = new int[values.Length];
@@ -169,6 +174,7 @@ internal sealed unsafe class Tatara
         bool hasUnwind, hasDefaultLibrary;
         lock (Gate)
         {
+            context.CancellationToken.ThrowIfCancellationRequested();
             nint result = 0;
             try
             {
@@ -231,3 +237,21 @@ internal sealed unsafe class Tatara
         internal string Read() => this.length == 0 ? string.Empty : Encoding.UTF8.GetString((byte*)this.bytes, (int)this.length);
     }
 }
+
+/// <summary>What Tatara's calls take, and nothing else: the host's report (a call's message on success, as a Warning) and cancellation
+/// (checked before and inside the lock), and the target values of TataraTarget, in its order (WindowsProfile's).</summary>
+internal sealed record TataraContext(
+    Action<DiagnosticSeverity, string> Report,
+    CancellationToken CancellationToken,
+    string Triple,
+    string Cpu,
+    string Features,
+    string RelocationModel,
+    string CodeModel);
+
+/// <summary>A symbol of an object: its name and llvm-nm's letter for its kind (U, T, D, B, R, ...).</summary>
+internal readonly record struct ObjectSymbol(string Name, char Kind);
+
+/// <summary>What <see cref="Tatara.Inspect"/> reads from an object; NativeBuild judges them and writes the record's form.
+/// <c>HasUnwind</c>: the object has unwind entries; <c>HasDefaultLibrary</c>: it names a default library.</summary>
+internal readonly record struct ObjectFacts(IReadOnlyList<ObjectSymbol> Undefined, IReadOnlyList<ObjectSymbol> DefinedExternal, bool HasUnwind, bool HasDefaultLibrary);

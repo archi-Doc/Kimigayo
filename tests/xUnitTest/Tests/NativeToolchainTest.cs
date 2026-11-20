@@ -40,17 +40,6 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(staged)!, "*.tmp"));
     }
 
-    // llvm-nm's posix lines name a symbol exactly, also one with a space or a tab (SPEC 22.6: any nonempty symbol without NUL), as
-    // `declare i32 @"a b"()` lists; a line without the kind, value and size is refused.
-    [Fact]
-    public void PosixSymbolsReadTheNameBeforeTheLastThreeFields()
-    {
-        Assert.Equal(
-            [new ObjectSymbol("a b", 'U'), new ObjectSymbol("t\tab", 'U'), new ObjectSymbol("?value@@YAHXZ", 'T')],
-            NativeToolchain.PosixSymbols("a b U 0 0\nt\tab U 0 0\r\n?value@@YAHXZ T 0 0\n"));
-        Assert.Throws<InvalidDataException>(() => NativeToolchain.PosixSymbols("a b\n"));
-    }
-
     [Fact]
     public async Task ManifestFailureInvalidatesPreviousSuccessBeforeLoadingTools()
     {
@@ -60,7 +49,7 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Executable, "previous executable");
         File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
         File.AppendAllText(paths.Ir, "; changed");
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, NativeToolchain.ExternalToolExecutor.Create, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("IR/manifest SHA-256", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -68,9 +57,9 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // R9-B1 part 2 (form J, PLAN G983's manifest share): a manifest field that is missing, of another JSON kind or, for an Int32 row,
-    // another number fails at its read with InvalidDataException naming the field, before any tool and with the record left
+    // another number fails at its read with InvalidDataException naming the field, before Tatara is loaded and with the record left
     // incomplete; a fixed field with another value is not this compiler's. Each row edits one field of an emitted Application's
-    // manifest (a JSON value, or null to remove it). The libraries are read after the tools are found, so their rows need a toolchain.
+    // manifest (a JSON value, or null to remove it). The libraries are read after Tatara is loaded, so their rows need a toolchain.
     [Theory]
     [InlineData("schemaVersion", "3.5", "'schemaVersion' is not this compiler's")]
     [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
@@ -99,7 +88,7 @@ public sealed class NativeToolchainTest : IDisposable
         }
 
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, NativeToolchain.ExternalToolExecutor.Create, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains(failure, error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -146,11 +135,13 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(Directory.Exists(Path.Combine(this.directory, "windows_x64")));
     }
 
+    // A root without tatara.dll: emit does not need it, and the build fails before any step, leaving the previous executable and no
+    // successful record.
     [Fact]
-    public async Task EmitDoesNotRequireLlvmButBuildDoesAndInvalidatesPreviousSuccess()
+    public async Task EmitDoesNotRequireTataraButBuildDoesAndInvalidatesPreviousSuccess()
     {
         var project = this.Create();
-        project.ProjectFile.LlvmBin = "missing LLVM directory";
+        project.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "toolchain");
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
         Assert.True(File.Exists(paths.Ir));
@@ -214,7 +205,7 @@ public sealed class NativeToolchainTest : IDisposable
         project.ProjectFile.OutputKind = OutputKind.Library;
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, NativeToolchain.ExternalToolExecutor.Create, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("Application", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -386,14 +377,15 @@ public sealed class NativeToolchainTest : IDisposable
     //   toolchain failure).
     // - CheckFaulted_Kd, the build's own result (Build's outer catch): "toolchain's message", the host's console throwing at the line that
     //   renders a toolchain failure, outside the toolchain's call (it escaped the build).
-    // - The toolchain's message and no code: a missing tool, a tool that does not start, a configuration value the artifact paths read.
+    // - The toolchain's message and no code: a root without tatara.dll (the remedy names setup with -LlvmRoot), a tatara.dll that does not
+    //   load (not a DLL, so the host maps nothing), a configuration value the artifact paths read.
     // No production seam: the console is the host's, and the project file's values are the caller's.
     [Theory]
     [InlineData("project checks", null, null)]
     [InlineData("report", "Generated LLVM inputs", null)]
-    [InlineData("toolchain's message", "Toolchain file not found", null)]
-    [InlineData("toolchain", null, "Toolchain file not found")]
-    [InlineData("tool start", null, "not a valid")]
+    [InlineData("toolchain's message", "Tatara not found", null)]
+    [InlineData("toolchain", null, "tatara.dll. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM")]
+    [InlineData("tatara load", null, "Tatara cannot be loaded")]
     [InlineData("configuration", null, "Optimization must be O0 or O2.")]
     public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
     {
@@ -402,7 +394,8 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
         var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = failingLine };
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
-        project.ProjectFile.LlvmBin = "missing LLVM directory";
+        var root = Path.Combine(this.directory, "toolchain");
+        project.KimiOptions.ToolchainRoot = root;
         if (origin == "project checks")
         {
             project.ProjectFile.Targets = null!;
@@ -411,20 +404,10 @@ public sealed class NativeToolchainTest : IDisposable
         {
             project.ProjectFile.Optimization = "O3";
         }
-        else if (origin == "tool start")
+        else if (origin == "tatara load")
         {
-            // Every file the native build resolves exists, and opt.exe is not an executable.
-            var root = Path.Combine(this.directory, "toolchain");
-            Directory.CreateDirectory(Path.Combine(root, "windows_x64"));
-            File.WriteAllText(Path.Combine(root, "windows_x64", "kernel32.lib"), "not a library");
-            File.WriteAllText(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile), "not an archive");
-            foreach (var tool in new[] { "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj" })
-            {
-                File.WriteAllText(Path.Combine(root, tool + ".exe"), "not an executable");
-            }
-
-            project.KimiOptions.ToolchainRoot = root;
-            project.ProjectFile.LlvmBin = null;
+            Directory.CreateDirectory(root);
+            File.WriteAllText(Path.Combine(root, "tatara.dll"), "not a DLL");
         }
 
         Assert.False(await project.Build(TestContext.Current.CancellationToken), console.Text);

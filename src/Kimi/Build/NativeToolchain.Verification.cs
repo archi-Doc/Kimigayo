@@ -74,7 +74,7 @@ internal static partial class NativeToolchain
                 identities.Add(name, identity);
                 if (name is not ("llvm-lib" or "llvm-dlltool"))
                 {
-                    var banner = await ExecuteTool(path, ["--version"], root, report, cancellationToken, showErrors: false);
+                    var banner = await ToolProcess.Execute(path, ["--version"], root, report, cancellationToken, showErrors: false);
                     var actual = ParseVersion(banner);
                     identity["actualVersion"] = actual;
                     identity["expectedVersion"] = ToolchainIdentity.LlvmVersion;
@@ -161,9 +161,61 @@ internal static partial class NativeToolchain
             throw new InvalidDataException("Installed kernel32 definition SHA-256 mismatch.");
         }
 
-        var importedDll = await ExecuteTool(Path.Combine(bin, "llvm-dlltool.exe"), ["-I", kernel], root, report, cancellationToken);
-        var inspection = await ExecuteTool(Path.Combine(bin, "llvm-readobj.exe"), ["--file-headers", kernel], root, report, cancellationToken);
+        var importedDll = await ToolProcess.Execute(Path.Combine(bin, "llvm-dlltool.exe"), ["-I", kernel], root, report, cancellationToken);
+        var inspection = await ToolProcess.Execute(Path.Combine(bin, "llvm-readobj.exe"), ["--file-headers", kernel], root, report, cancellationToken);
         Kernel32Imports.ValidateLibrary(importedDll, inspection);
         record["kernel32"] = JsonNode.Parse(entry.GetRawText());
+    }
+}
+
+/// <summary>An LLVM tool's one run for toolchain verify, the only reader: file-scoped, so no other file (a native build's above all)
+/// can launch a tool. Its standard output (with its standard error when <c>showErrors</c> is false), a Warning for its standard error
+/// otherwise; a nonzero exit or a run past five minutes is an IOException, the toolchain's failure.</summary>
+file static class ToolProcess
+{
+    internal static async Task<string> Execute(
+        string tool, string[] args, string directory, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken, bool showErrors = true)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var start = new ProcessStartInfo(tool)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = directory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in args)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+        using var process = Process.Start(start) ?? throw new IOException("Cannot start tool: " + tool);
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await NativeToolchain.Wait(process, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException("Tool timed out: " + tool);
+        }
+
+        var output = await stdout;
+        var errors = await stderr;
+        if (process.ExitCode != 0)
+        {
+            throw new IOException($"Tool failed: {tool}; exit={process.ExitCode}\n{output}{errors}");
+        }
+
+        if (showErrors && !string.IsNullOrWhiteSpace(errors))
+        {
+            report(DiagnosticSeverity.Warning, errors.Trim());
+        }
+
+        return showErrors ? output : output + errors;
     }
 }
