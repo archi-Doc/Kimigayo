@@ -7512,8 +7512,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     distinct constant indices), else they meet: every pair the same step, or a pair holding an index other than a constant one,
     Unproven, where the comparison stops.
   - **Constant index.** SPEC 15.1.3's literal on a fixed-array element however the array is reached (directly, through references or
-    qualifying pair layers, of a length parameter), in range or not. Binding publishes it (`ElementAccess.ConstantIndex`, the plan
-    row's Folded; it shares `ElementAccess.Literal` with `StaticSelector`, which differ only by contract); the builder copies it to the
+    qualifying pair layers, of a length parameter), in range or not. Binding publishes it (`Binding.ConstantIndex`, the plan
+    row's Folded; it shares `Binding.Literal` with `StaticSelector`, which differ only by contract); the builder copies it to the
     Index row (`MirProjection.Position`, a datum, validated, printed by the MIR dump as `p[_3 = 5]`; no vocabulary entry); `MirSteps`
     gives it a ConstIndex step classed Index. `ConstIndex` itself stays 15.1.3's in-range direct Move Path (codegen's unchecked
     offset, MirMoveData, MirDrops). An Array's or Slice's element has none.
@@ -21719,6 +21719,7 @@ structure is recorded here by the unit that first implements it.
     callers (`IsValueContext` recurses, so its 20 callers would repeat its semantic arm, and argument mapping's rule would get two
     owners); ElementAccess moved into Binding now (its reads would wait for R7, against R5-M9's split); waiting for H11 (nothing in
     H14 reads or deletes what H11 changes).
+  - Amended by R7-T2 U9: ElementAccess is Binding's (`Binding.ElementAccess.cs`); its zero-reference row went with its file.
 - **R5-M194 R6-check exits at H15; its items moved to R7** (2026-11-06, R5; the owner, verbatim 「一括承認します。」 on H15's
   postponements and retags; gate H0c §8, `draft/Sketches/R6-check/H0c-deletions.md`; record
   `artifacts/benchmarks/2026-11-06-r6-check-exit/`) SPEC 23.1.2.
@@ -26037,6 +26038,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     `ReportOriginRelation` would exceed six parameters); deleting `PairBinder.Collect` (Mir/Build would read `Binding.PairBinders`
     as a fifth Binding view); O1 as a second commit (both parts are behavior-preserving; a second commit needs its own
     behavior-preserving comparison).
+  - Amended by R7-T2 U9: `ElementAccess` is Binding's own concern, `Binding.ElementAccess.cs` (private instance members, the Binding
+    parameter now `this`; `IsSequence` a private static in `Binding.Elements.cs`), since its contract made it Binding-only ("no caller
+    outside Binding") and the reasons are gone: BU-166 and R4-M194 name Binding's members (R4-M194's `IsRawPlace` is Binding's since
+    U8), and of the two `ArchitectureRulesTest` rows the semantic-slot row went with the file and the walk count names the new file.
+    `ElementAccess.cs` is deleted; the inline-part step is one member, `IsInlinePart`. Older entries' `ElementAccess.*` names read as
+    Binding's members.
 - **R8-M52 The intrinsic table is closed at 27 (R8-I1)** (Back, 2026-11-17; R8-I1; Major; plan §5.2's I1 row; RQ9, RQ16, RP18;
   behaviour unchanged apart from the tightened limit).
   - **Counts (RQ9).** `IntrinsicId` 27 with `None` (unchanged since R8-W2 c2b, R8-M44); `IntrinsicRows` one row per member but `None`,
