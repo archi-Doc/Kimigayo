@@ -9,8 +9,8 @@
 // Final pass as Binding records: requirement Binding with BindingFailure.None and the row as condition, so a lint never shares
 // a check key with Binding's own warnings (condition 0). A row that reads Binding's result at a node Binding failed, or rests
 // on syntax a recovery guessed, records nothing when its code is a warning and is derived from those causes when it is an Error.
-// GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), and RestingCauses, the
-// causes a check resting on one of them rests on.
+// GuessedCompletionNodes, the guess rule's nodes for the MIR builder's require rows (DECISIONS R5-M186), whose causes are
+// RestingCauses' (Binding.Diagnostics.Prerequisites).
 // LintErrorRecords lists the Error records, derived ones included, as a lasting fact whose readers are tests only (DECISIONS R5-M189).
 // Invariants: never fails a node; at one node the discard rows keep only the first (SPEC 17.5's priority); a warm rebind
 // allocates nothing (duplicates are resolved by sorting at report time, never by a Koto-keyed set).
@@ -145,13 +145,6 @@ public sealed partial class Binding
 
         return [.. causes];
     }
-
-    /// <summary>Gets the causes a check resting on a node rests on (docs/dev/DIAGNOSTICS.md §4.3): a supplied body's syntax Error,
-    /// else the node's Binding causes, else the unresolved mark for an expression the guess rule counts as unresolved.</summary>
-    /// <param name="node">The node, such as one of GuessedCompletionNodes.</param>
-    /// <returns>The causes, or null at a node outside the guess rule with no Binding causes.</returns>
-    internal DiagnosticKey[]? RestingCauses(Koto node)
-        => SuppliedCause(node) is { } supplied ? [supplied] : this.FailureCauses(node) ?? (IsUnresolvedGuess(node) ? [DiagnosticKey.Unresolved] : null);
 
     // A single-item body: the item of a body introduced by =>, a require failure body or a match arm's body.
     private static bool IsBodyItem(Koto node) => node.Parent switch
@@ -361,7 +354,7 @@ public sealed partial class Binding
         return order != 0 ? order : (y.Root?.SyntaxId ?? 0).CompareTo(x.Root?.SyntaxId ?? 0);
     }
 
-    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (ElementAccess.IsRawRoot), pointer
+    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (IsRawRoot), pointer
     // arithmetic, noinit, or one of the node's calls whose selected target is an unsafe function (the requirement is checked after
     // selection); null while Binding has not resolved an expression, whose need is then unknown.
     private bool? RequiresUnsafe(Koto node)
@@ -371,8 +364,8 @@ public sealed partial class Binding
             return node is ExpressionKoto or NoInitKoto ? null : false;
         }
 
-        if (node is NoInitKoto || ElementAccess.IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
-            ReferenceTypes.IsPointer(arithmetic.Left.BoundType)))
+        if (node is NoInitKoto || IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
+            arithmetic.Left.BoundType is { IsPointer: true }))
         {
             return true;
         }

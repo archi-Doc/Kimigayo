@@ -132,7 +132,9 @@ public sealed partial class Binding
                 stateChanged |= proof != ConstraintProof.Unknown;
                 limitChanged |= (cause is null) != (symbol.SourceCause is null);
                 symbol.SourceState = proof;
-                symbol.SourceCause = cause;
+                // R7-C3 C3-1b (F's C2 rulings 289-290, C3): a Refuted state is an invalid declaration, so it carries its cause too: the
+                // declaration's one PremiseFailure (made once, kept), which a reader of the source rests on (AvailableContractPremise).
+                symbol.SourceCause = proof == ConstraintProof.Refuted ? this.RefutedCause(symbol) : cause;
                 symbol.SourceFact = this.ProofFact(proof); // Payload, outside the loop's change test.
             }
 
@@ -141,6 +143,14 @@ public sealed partial class Binding
 
         this.EndProof(ConstraintProof.Proven);
     }
+
+    // The cause a Refuted state carries (BU-57, the producer's invariant): the declaration's one PremiseFailure. A Contract is a premise
+    // source (AvailableContractPremise reads it), and its scope always has an environment (its Self premises), so a Refuted Contract
+    // without one is a broken contract; another declaration's Refuted state is read only as a verdict (VerifyConformance's
+    // `declarationProof`), so it may carry none.
+    private ICheckCause? RefutedCause(BindingSymbol symbol)
+        => this.scopes[symbol.Declaration].Constraints?.Cause(symbol.Declaration) ??
+            (symbol.Declaration is ContractKoto ? throw new InvalidOperationException($"A Refuted Contract `{symbol.Declaration}` has no cause to publish (InternalInvariant; R7-C3 C3-1b).") : null);
 
     // A read of a declaration's published state (a bound Contract reference reads its declaration's): inside a proof scope it joins that
     // scope directly, which is what a scope of its own would hand on (EndProof); outside every scope it settles in its own, as the check it

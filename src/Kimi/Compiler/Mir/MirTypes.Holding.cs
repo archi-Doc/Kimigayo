@@ -231,7 +231,7 @@ internal static partial class MirTypes
         internal Facts Holds(BoundType? type, BoundType? written, BoundType? holder, int mode, int depth)
         {
             if (type is null || type.Kind == BoundTypeKind.FunctionItem ||
-                (type.Semantics != SemanticsKind.Raw && !this.Enters(type, written, holder, mode, depth)))
+                (!type.IsPointer && !this.Enters(type, written, holder, mode, depth)))
             {
                 return default;
             }
@@ -277,7 +277,6 @@ internal static partial class MirTypes
         private Facts Entry(in Hold entry, BoundType layer, BoundType? written, BoundType? holder, int mode, int depth) => entry.PassesOn ? this.Passed(entry, mode, depth) : entry.Step switch
         {
             HoldStep.Abstract => mode == Own ? new(true, MirOutcome.None, named: true) : Met(mode),
-            HoldStep.Unsupported => new((mode & ~LoanOnly) == Own, (mode & LoanOnly) == 0 ? MirOutcome.Limit : MirOutcome.None),
             <= HoldStep.Exclusive or HoldStep.Erased // The five steps a raw layer takes (HoldStep's first) and an erased environment.
                 => Met(mode).Join(mode == Own ? this.Past(entry, layer, written, holder, depth) : default),
             _ => throw new InvalidOperationException($"HoldStep {entry.Step} has no row (InternalInvariant)."),

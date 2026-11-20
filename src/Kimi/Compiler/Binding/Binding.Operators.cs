@@ -13,7 +13,7 @@ public sealed partial class Binding
     // SPEC 13.3.1: a primitive without arithmetic (bool, Unit, char, string) or safe reference layers ending in string.
     // Never fitting needs a valid counterpart Type; it is not numeric capability. Pointer displacement follows SPEC 5.3.
     private static bool NonNumericOperand(BoundType type)
-        => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
+        => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceEquals(ComparisonReferent(type), BoundType.String);
 
     // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): whether a plain write Binding rejected after BindBinary's one destination check admitted its
     // destination (CheckDestination, then the Holder admission), the write's plan row's Mode, written at each binding of the write: its
@@ -21,6 +21,10 @@ public sealed partial class Binding
     // from that failure. A write refused there, or whose target Binding did not type, is not one.
     private static bool AdmittedMisfit(Koto node) => node is BinaryKoto { Akind: KotoKind.Equals, BindingFailure: not BindingFailure.None } &&
         HirTables.PlanOf(node).Mode != 0;
+
+    // The write whose admitted misfit's value a node is (AdmittedMisfit): the value it places is derived from the write's fit failure.
+    private static BinaryKoto? MisfitWrite(Koto node)
+        => node.Parent is BinaryKoto write && ReferenceEquals(write.Right, node) && AdmittedMisfit(write) ? write : null;
 
     // The one writer of AdmittedMisfit's verdict, a row only for an admitted misfit; any other binary keeps its row.
     private static void SetAdmittedMisfit(BinaryKoto binary, bool misfit)
@@ -130,7 +134,7 @@ public sealed partial class Binding
                 return update.Failure == BindingFailure.None ? Complete(unary, operand) : this.FailOperator(unary, unary, update);
             case KotoKind.Dereference:
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
-                return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return operand.IsPointer ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
             default:
                 return this.Fail(unary, BindingFailure.Internal);
         }
@@ -170,10 +174,10 @@ public sealed partial class Binding
         var bound = this.BindNode(binary.Left, scope, context);
         var left = assignment ? bound : this.ReadReferent(binary.Left, bound);
         // Keep a reference binding's authority failure ahead of literal fitting and compound applicability.
-        if (assignment && left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+        if (assignment && left?.SafeReferent is { } bindingReferent &&
             (kind != KotoKind.Equals || IsUnfittedLiteral(binary.Right)) && ReferenceBindingAssignment(binary.Left) is { } referenceBinding)
         {
-            var value = this.BindNode(binary.Right, scope, left.Components[0]);
+            var value = this.BindNode(binary.Right, scope, bindingReferent);
             this.Fail(binary, referenceBinding);
             return kind == KotoKind.Equals ? null : this.FailRoute(binary, binary.Left, left, value, scope);
         }
@@ -181,8 +185,8 @@ public sealed partial class Binding
         var decision = this.OperatorApplicabilityOf(binary, left, null, scope);
         var counterpart = ReferenceEquals(decision.ExpectedOperand, binary.Right) ? decision.Counterpart : null;
         var right = this.BindExpected(binary.Right, scope, counterpart, assignment ? binary.Left : null);
-        if (assignment && kind == KotoKind.Equals && left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            right is not null && !this.FitsType(right, left) && this.FitsType(right, left.Components[0]) &&
+        if (assignment && kind == KotoKind.Equals && left?.SafeReferent is { } valueReferent &&
+            right is not null && !this.FitsType(right, left) && this.FitsType(right, valueReferent) &&
             ReferenceBindingAssignment(binary.Left) is { } valueBinding)
         {
             return this.Fail(binary, valueBinding);
@@ -264,7 +268,7 @@ public sealed partial class Binding
         }
 
         var write = operation is BinaryKoto { Akind: KotoKind.Equals };
-        if (!write && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } &&
+        if (!write && type is { SafeReferent: not null } &&
             ReferenceBindingAssignment(target) is { } referenceBinding)
         {
             this.Fail(operation, referenceBinding);
@@ -337,7 +341,7 @@ public sealed partial class Binding
                 : Complete(binary, BoundType.Boolean);
         }
 
-        if (ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus)
+        if (left.IsPointer && operation is KotoKind.Plus or KotoKind.Minus)
         {
             return ReferenceEquals(right, BoundType.ISize) || ReferenceEquals(right, BoundType.Never)
                 ? Complete(binary, result) : this.FailMismatch(binary, binary.Right, right, BoundType.ISize, ComparisonFailure.Shape);
@@ -380,7 +384,7 @@ public sealed partial class Binding
     // a single ref or uniq layer is inspected as it is.
     private void StringThroughLayers(Koto operand, BoundType type)
     {
-        if (type.Components.Count == 1 && ReferenceTypes.EndsInString(type) && !ReferenceTypes.IsStringReference(type) &&
+        if (type.Components.Count == 1 && ReferenceEquals(ComparisonReferent(type), BoundType.String) && !ReferenceEquals(type.SafeReferent, BoundType.String) &&
             this.SharedReferenceThroughLayers(type, BoundType.String, this.ConstraintScope(operand), out _) is { } shared)
         {
             this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);

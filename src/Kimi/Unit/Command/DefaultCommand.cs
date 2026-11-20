@@ -13,7 +13,7 @@ public class DefaultCommand(Kimigayo kimigayo) : ISimpleCommand
         {
             if (args.Length != 0)
             {
-                throw new CommandInputException($"Unknown command '{args[0]}'. Use restore, check, build, run, test, emit, toolchain verify, or lsp.");
+                throw new CommandInputException($"Unknown command '{args[0]}'. Use restore, check, build, run, test, emit, toolchain verify, tatara, or lsp.");
             }
 
             Console.WriteLine($"Kimi ({Compiler.CompilerRelease.Version}) by archi-Doc");

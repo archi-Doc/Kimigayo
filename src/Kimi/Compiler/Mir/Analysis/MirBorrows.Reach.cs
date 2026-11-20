@@ -303,11 +303,11 @@ internal sealed partial class MirBorrows
 
     // The guard of a holder's own root Type, the Type the walk reads its state at (Writes, Read): what a call that writes its storage
     // may write past it (Holds); none for E and a static, which a call writes as storage the body does not own.
-    private MirWrites Guard(int root) => root < 0 ? MirWrites.None : this.Guard(cases.Type(this.body.Locals[root].Type));
+    private MirWrites Guard(int root) => root < 0 ? MirWrites.None : this.Guard(cases.KnownType(this.body.Locals[root].Type));
 
     // The guard of the Type a holder's state is read at, its root Type or the first step's reading Type (Punned): what a call that
-    // writes through a value of it may write past it (Holds).
-    private MirWrites Guard(BoundType type)
+    // writes through a value of it may write past it (Holds); none for no Type.
+    private MirWrites Guard(BoundType? type)
     {
         _ = this.Holds(type, out var writes);
         return writes;
@@ -316,9 +316,16 @@ internal sealed partial class MirBorrows
     // Whether a case Type may hold a Loan, with what a call may write past a value of it (MirTypes.HoldsLoans, one walk per distinct case
     // Type and program version), memoized: the answer is a function of the interned Type and of what Binding publishes it holds
     // (TyCtxt.Holdings), which a version fixes, so the memo is cleared when the program's version changes (DECISIONS R4-M140). The
-    // holder test and the walk's guard ask it of a local's Type, the storing rule's landing fact of a Place's (MirBorrows.Storing).
-    private bool Holds(BoundType type, out MirWrites writes)
+    // holder test and the walk's guard ask it of a local's Type, the storing rule's landing fact of a Place's (MirBorrows.Storing). A local
+    // of no Type (a slot Binding failed, PLAN G1073) holds nothing and a call writes nothing past it: rule W finds nothing to judge there.
+    private bool Holds(BoundType? type, out MirWrites writes)
     {
+        if (type is null)
+        {
+            writes = MirWrites.None;
+            return false;
+        }
+
         this.HoldingVersion();
         ref var known = ref CollectionsMarshal.GetValueRefOrAddDefault(this.holding, type, out var exists);
         if (!exists)
@@ -489,7 +496,7 @@ internal sealed partial class MirBorrows
     // where a holder is punned.
     private MirWrites Punned(int set, BoundType input, BoundType? referent, in MirTerminator call, int position, OutputRetention output)
     {
-        var raw = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw };
+        var raw = input is { IsPointer: true };
         var borrow = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq };
         var reading = referent is null || !(raw || borrow) ? null : cases.Type(referent);
         if (reading is null)
@@ -741,9 +748,10 @@ internal sealed partial class MirBorrows
 
     // (b2): whether the declared step from a holder steps by the record: its root Type's guard does not step, but the walk output's entry
     // for the storage past one of its root Type's layers, the entry Binding names it by, retains an input (NamedRetains at the root Type's
-    // key).
+    // key). A holder's root is typed: a local of no Type holds nothing (Holding) and is never exposed, MirValidator's Bounded admitting no
+    // borrow of it (PLAN G1073).
     private bool RecordSteps(int root, OutputRetention output)
-        => root >= 0 && this.NamedRetains(this.punKeys[this.Key(PlaceKey.Root(cases.Type(this.body.Locals[root].Type)), 0)], output);
+        => root >= 0 && this.NamedRetains(this.punKeys[this.Key(PlaceKey.Root(cases.Type(this.body.Locals[root].Type!)), 0)], output);
 
     // (b2): whether the walk's output retains an input in the storage past a layer of the key (its entry; a missing entry read as All, N3).
     private bool Retains(in PunKey facts, OutputRetention output)

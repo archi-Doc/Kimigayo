@@ -61,7 +61,7 @@ internal sealed partial class MirValidator
             {
                 ref readonly var step = ref projections[id];
                 var type = body.TypeOf(place with { Projection = step.Prefix }); // The Type of the Place the step applies to.
-                if (step.Kind == MirProjectionKind.Deref && (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ||
+                if (step.Kind == MirProjectionKind.Deref && (type is { IsPointer: true } ||
                     (step.Prefix == 0 && place.Root >= 0 && body.Locals[place.Root].Role == MirLocalRole.PreparedInput)))
                 {
                     return false;

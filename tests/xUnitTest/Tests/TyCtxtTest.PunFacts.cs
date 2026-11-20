@@ -332,12 +332,12 @@ public sealed partial class TyCtxtTest
                 {
                     if (local.Name is { } named)
                     {
-                        locals.TryAdd((name, named), local.Type);
+                        locals.TryAdd((name, named), local.Type!);
                     }
 
                     if (name == "cl" && local.Name is "k" or "m")
                     {
-                        parameters.TryAdd(local.Name, local.Type);
+                        parameters.TryAdd(local.Name, local.Type!);
                     }
                 }
             }

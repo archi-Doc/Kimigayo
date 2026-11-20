@@ -79,6 +79,9 @@ if ($Fixtures) {
 $results = @()
 $runs = @(, @('XunitTest.TataraExecutorTest', '-class', 'XunitTest.TataraExecutorTest'))
 foreach ($fatal in 'FatalErrorRefusesEveryLaterCall', 'LinkerFatalRefusesEveryLaterCall') { $runs += , @("Fatal.$fatal", '-method', "XunitTest.TataraExecutorTest+Fatal.$fatal") }
+# kimi tatara's native rows (Tatara design A3 §3), then its fatal row in its own process.
+$runs += , @('XunitTest.TataraCommandNativeTest', '-class', 'XunitTest.TataraCommandNativeTest')
+$runs += , @('TataraCommandNativeTest.Fatal.AFatalErrorEndsTheSession', '-method', 'XunitTest.TataraCommandNativeTest+Fatal.AFatalErrorEndsTheSession')
 foreach ($run in $runs) {
     $xml = Join-Path $Output "$($run[0]).xml"
     $log = & dotnet $tests $run[1] $run[2] -explicit only -xml $xml 2>&1 | Out-String

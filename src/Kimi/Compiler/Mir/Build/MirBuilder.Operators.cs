@@ -254,7 +254,7 @@ internal sealed partial class MirBuilder
                 { Acquire: HirAcquire.Reborrow, Adaptation: HirAdaptation.None } && TypeOf(conversion.Left).Components is [var payload]
                 ? compilation.Types.Reference(type.Semantics, payload, type.Origin) : null;
             var operand = this.Operand(conversion.Left, borrowed);
-            var source = this.TypeOf(operand) ?? type;
+            var source = this.TypeOf(operand) ?? type; // An unknown operand (derived, PLAN G1073) as the conversion's own: it agrees with any.
             var kind = binding switch
             {
                 ConversionBinding.Wrap => MirCastKind.Wrap,
@@ -308,7 +308,7 @@ internal sealed partial class MirBuilder
             ? this.body.Consts[right.Arg].Bits : (Int128?)null;
         return op switch
         {
-            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
+            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.IsPointer,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
                 op == MirBinaryOp.Rem || !type.IsInteger || !type.IsSigned)),
             MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < type.Width,

@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
-using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Backend;
 
@@ -73,7 +72,7 @@ internal sealed partial class FunctionCodegen
             return Scalar.Floating;
         }
 
-        return type.Semantics == SemanticsKind.Raw ? Scalar.Pointer : Scalar.None;
+        return type.IsPointer ? Scalar.Pointer : Scalar.None;
     }
 
     // A Range's tests in the source Type (SPEC 13.5.4), spelled into text (2 * SpellingLength characters): each side where the source holds

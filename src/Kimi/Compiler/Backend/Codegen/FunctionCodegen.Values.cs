@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
-using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -88,7 +87,7 @@ internal sealed partial class FunctionCodegen
         }
 
         var type = this.collector.TypeOf(this.item, constant.Type)!;
-        if (constant.Kind == MirConstKind.Integer && type.Semantics == SemanticsKind.Raw)
+        if (constant.Kind == MirConstKind.Integer && type.IsPointer)
         {
             value = new('n', 0); // SPEC 5.1: null, the one raw pointer constant.
             return true;
@@ -120,7 +119,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // The representation of a Type of the body in the item's instance (I7): Laid of its instance Type.
-    private ValueLowering? Representation(BoundType type) => this.Laid(this.collector.TypeOf(this.item, type));
+    private ValueLowering? Representation(BoundType? type) => this.Laid(this.collector.TypeOf(this.item, type));
 
     // The layout a form needs past the item's by-value set (LayoutNeeds; DECISIONS R5-M149), the one path code generation reads such a Type
     // by: the Type the form's row names (LayoutNeeds.TypeOf: a projection step's, a raw pointer displacement's, a call's

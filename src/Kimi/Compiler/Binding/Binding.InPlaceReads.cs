@@ -8,8 +8,8 @@ namespace Kimi.Compiler;
 // (ReceiverThroughLayers, ReceiverElement, SharedElement, SharedElementView; ElementRead through the layers an element stores) and for a
 // compared operand (CompareInPlace).
 // - Inputs: the bound syntax, the selected index calls, a Place's path authority (Binding.PlaceAuthority) and Origin (Binding.PlaceOrigins).
-// - Outputs: the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which ElementAccess.AccessType and IsSynthesizedAccess
-//   publish to Binding and the HIR publisher.
+// - Outputs: the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which AccessType and IsSynthesizedAccess
+//   (Binding.ElementAccess) publish to Binding's Place classification and the HIR publisher.
 // - Invariants: a node keeps its own Type, and a recorded read only states how the node is read in place: one shared reference to the
 //   Type declaring the member, never a layer.
 // - Prohibitions: nothing here reports a diagnostic, selects a candidate or changes a Type.
@@ -20,22 +20,17 @@ public sealed partial class Binding
     // receiver keeps its own Type; the recorded reference is what ownership loads and generation addresses.
     private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
     {
-        if (actual is not
-            {
-                Kind: BoundTypeKind.Semantics,
-                Semantics: SemanticsKind.Ref or SemanticsKind.Uniq,
-                Components: [{ Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components: [_] }],
-            })
+        if (actual?.SafeReferent is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components: [_] })
         {
             return null;
         }
 
         var terminal = actual;
         var exclusive = !this.ReachedThroughShared(left);
-        while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (terminal.SafeReferent is { } referent)
         {
             exclusive &= terminal.Semantics == SemanticsKind.Uniq;
-            terminal = terminal.Components[0];
+            terminal = referent;
         }
 
         // A stored shared object view is Copy: reading it preserves its own external Origin and header identity,
@@ -61,7 +56,7 @@ public sealed partial class Binding
     // element keeps its stored Type; the read is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
-        if (ElementAccess.IsUserIndex(this, left) && element is not null)
+        if (this.IsUserIndex(left) && element is not null)
         {
             var origin = this.PlaceOrigin(left);
             var read = this.ElementRead(left, element, origin) ?? this.types.Reference(SemanticsKind.Ref, element, origin);
@@ -73,7 +68,7 @@ public sealed partial class Binding
         // through the stored view.
         // A Non-Copy element published by a user index (SPEC 4.7.1) is likewise read through one shared borrow of its Place.
         if (KotoHelper.UnwrapParentheses(left) is IndexKoto index &&
-            (ElementAccess.IsSharedElement(this, index) || ElementAccess.IsUserIndex(this, index) ||
+            (this.IsSharedElement(index) || this.IsUserIndex(index) ||
                 (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
         {
             this.SharedElement(left, element);
@@ -85,7 +80,7 @@ public sealed partial class Binding
     // receiver on its path that is such a selection is borrowed the same way.
     private void CompareInPlace(Koto operand)
     {
-        if (ElementAccess.IsUserIndex(this, operand) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
+        if (this.IsUserIndex(operand) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
             this.SharedBorrowSemantics(published, operand) is { } placeSemantics)
         {
             // SPEC 4.7.1, 13.4: a Non-Copy element of receiver[key] on a user Type is compared in place through the reference
@@ -97,14 +92,14 @@ public sealed partial class Binding
         }
 
         if (KotoHelper.UnwrapParentheses(operand) is not BinaryKoto selection || selection is not (IndexKoto { Right: not RangeKoto } or MemberAccessKoto) ||
-            IsGetterResult(selection) || ElementAccess.OwnedPathRoot(this, selection) is not null)
+            IsGetterResult(selection) || this.OwnedPathRoot(selection) is not null)
         {
             return;
         }
 
         // PLAN G59: an owned fixed-array element at a runtime index is compared in place like an element of a borrowed receiver.
         this.CompareInPlace(selection.Left);
-        if (ElementAccess.IsBorrowedReceiver(this, selection.Left) || ElementAccess.IsRuntimeFixedElement(this, selection))
+        if (this.IsBorrowedReceiver(selection.Left) || this.IsRuntimeFixedElement(selection))
         {
             this.SharedElement(operand, selection.BoundType);
         }
@@ -114,7 +109,7 @@ public sealed partial class Binding
     // the element slot in place, whatever the element's Copy capability, so the view retains the backing source.
     private void SharedElementView(Koto receiver)
     {
-        if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(this, element))
+        if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && this.IsSharedElement(element))
         {
             this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element)));
         }
@@ -135,7 +130,7 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 10.2: the in-place read of an element storing safe reference layers, below which a member is selected: one shared
     // reference to the declaring struct or Tuple, the element's selection reference (with the selection's Origin) continued through
-    // those layers; null for any other element. It is the selection's representation, never a layer (ElementAccess.IsSynthesizedAccess).
+    // those layers; null for any other element. It is the selection's representation, never a layer (IsSynthesizedAccess).
     private BoundType? ElementRead(Koto at, BoundType element, BoundOrigin selection)
         => ComparisonReferent(element) is var terminal && !ReferenceEquals(terminal, element) &&
             (terminal.Kind == BoundTypeKind.Tuple || AdtDef.IsStruct(terminal))
