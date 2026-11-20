@@ -62,6 +62,12 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.InvalidStaticOriginSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.CallablePremiseFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.EffectBoundRejections"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.InferredArrayLengths"] = "never written: the library writes no length hole",
+        ["NodeColumns.ArrayInferenceShapes"] = "never written: the library writes no fixed-array annotation with a hole",
+        ["NodeColumns.CallInferenceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.CallableSelectionFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.BaseCallFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
+        ["NodeColumns.ObjectErasureFailures"] = "never written: the library erases no object view",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its

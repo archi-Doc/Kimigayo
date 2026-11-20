@@ -39,7 +39,6 @@ public sealed partial class Binding
     private void ResetPass(BindingMode mode)
     {
         this.inferredConstructionTargets.Clear();
-        this.callInferenceFailures?.Clear();
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyReads?.Clear();
@@ -51,7 +50,6 @@ public sealed partial class Binding
         this.foreignFailures.Clear();
         this.sitelessHeightRefusal = false;
         this.lints.Clear();
-        this.callableSelectionFailures.Clear();
         this.callableSelectionParties.Clear();
         this.importDeclarations.Clear();
         this.libraryImports.Clear();
@@ -68,8 +66,6 @@ public sealed partial class Binding
         this.ResetSpecializations();
         this.ResetVirtualDeclarations();
         this.receiverOperations.Clear();
-        this.inferredArrayLengths.Clear();
-        this.arrayInferenceShapes.Clear();
         this.arrayInferenceFailures?.Clear();
         this.ResetSyntheticCalls();
         foreach (var construction in this.enumConstructions.Values.In(this.pass))
