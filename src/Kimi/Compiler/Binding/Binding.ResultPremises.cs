@@ -166,12 +166,13 @@ public sealed partial class Binding
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
     // the solve without them judges no bound either (SolveOriginInference). The callee is the inference's binder, a function.
-    private bool SolveCallOriginInference(OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType, bool select = false)
+    private bool SolveCallOriginInference(
+        OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues, BoundType? declaringType, bool select = false)
     {
         var function = (FunctionKoto)inference.Binder;
         if (!CarriesResultPremises(function))
         {
-            return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
+            return this.SolveOriginInference(inference, origins, inputs, slotValues, declaringType, select);
         }
 
         var type = function.BoundSymbol!.Type!;
@@ -186,7 +187,7 @@ public sealed partial class Binding
 
         if (inference.Bounds.Count != count)
         {
-            if (this.SolveOriginInference(inference, origins, inputs, declaringType))
+            if (this.SolveOriginInference(inference, origins, inputs, slotValues, declaringType))
             {
                 return true;
             }
@@ -195,7 +196,7 @@ public sealed partial class Binding
             inference.Variables.RemoveRange(variables, inference.Variables.Count - variables); // The result-only Origins they discovered.
         }
 
-        return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
+        return this.SolveOriginInference(inference, origins, inputs, slotValues, declaringType, select);
     }
 
     // The bounds the result premises of `function` added to a call's inference, removed again.
@@ -603,8 +604,8 @@ public sealed partial class Binding
         }
 
         _ = function is not null
-            ? this.SolveCallOriginInference(inference, origins, inputs, null, select: true)
-            : this.SolveOriginInference(inference, origins, inputs, select: true);
+            ? this.SolveCallOriginInference(inference, origins, inputs, [], null, select: true)
+            : this.SolveOriginInference(inference, origins, inputs, [], select: true);
         if (function is not null)
         {
             this.RecordOpenings(waited.Call, waited);

@@ -564,26 +564,14 @@ public sealed partial class Binding
         }
     }
 
-    private BoundOrigin NewSlotVariable(Koto call, OriginInference inference)
-    {
-        var index = inference.SlotVariableCount++;
-        if (index >= inference.SlotValues.Length)
-        {
-            var values = inference.SlotValues;
-            Array.Resize(ref values, Math.Max(8, values.Length * 2));
-            inference.SlotValues = values;
-        }
-
-        inference.SlotValues[index] = null;
-        return this.SlotVariable(call, index);
-    }
+    private BoundOrigin NewSlotVariable(Koto call, OriginInference inference) => this.SlotVariable(call, inference.SlotVariableCount++);
 
     // The skeleton with each of the call's slot variables replaced by its value; one without a value stays the call's region (15.3.6).
-    private BoundType SubstituteSlotVariables(BoundType type, OriginInference inference)
+    private BoundType SubstituteSlotVariables(BoundType type, OriginInference inference, ReadOnlySpan<BoundOrigin> slotValues)
     {
         try
         {
-            return this.SlotValuesOf(type, inference);
+            return this.SlotValuesOf(type, inference, slotValues);
         }
         finally
         {
@@ -591,7 +579,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType SlotValuesOf(BoundType type, OriginInference inference)
+    private BoundType SlotValuesOf(BoundType type, OriginInference inference, ReadOnlySpan<BoundOrigin> slotValues)
     {
         if (!type.CarriesOrigin)
         {
@@ -603,7 +591,7 @@ public sealed partial class Binding
             return done;
         }
 
-        var origin = type.Origin is { } outer ? Value(outer, inference) : null;
+        var origin = type.Origin is { } outer ? this.SlotValue(outer, inference, slotValues) : null;
         var origins = this.originScratch.Rent(type.OriginArguments.Count);
         var components = this.RentTypes(type.Components.Count);
         try
@@ -611,13 +599,13 @@ public sealed partial class Binding
             var changed = !ReferenceEquals(origin, type.Origin);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                origins[i] = Value(type.OriginArguments[i], inference);
+                origins[i] = this.SlotValue(type.OriginArguments[i], inference, slotValues);
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.SlotValuesOf(type.Components[i], inference);
+                components[i] = this.SlotValuesOf(type.Components[i], inference, slotValues);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
@@ -630,9 +618,57 @@ public sealed partial class Binding
             this.typeScratch.Return(components, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
+    }
 
-        static BoundOrigin Value(BoundOrigin origin, OriginInference inference)
-            => IsSlotVariable(origin) && ReferenceEquals(origin.Binder, inference.Use) && SlotVariableIndex(origin) < inference.SlotVariableCount &&
-                inference.SlotValues[SlotVariableIndex(origin)] is { } value ? value : origin;
+    // An Origin with each of the solve's slot variables in it replaced by its value, itself or an operand of a meet; one without a value
+    // stays the call's region (15.3.6).
+    private BoundOrigin SlotValue(BoundOrigin origin, OriginInference inference, ReadOnlySpan<BoundOrigin> slotValues)
+    {
+        if (inference.SolvesSlotVariable(origin))
+        {
+            return slotValues[SlotVariableIndex(origin, slotValues)] ?? origin;
+        }
+
+        var meet = BoundOrigin.Static;
+        var changed = false;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            var operand = this.SlotValue(origin.Operands[i], inference, slotValues);
+            changed |= !ReferenceEquals(operand, origin.Operands[i]);
+            meet = this.Meet(meet, operand);
+        }
+
+        return changed ? meet : origin;
+    }
+
+    // G1128 R1.3 (e) 3: after the call's solve its slot variables leave the inference with their values: each end of a bound or a
+    // premise that names one names its value (SlotValue), and they leave the solve's variables, so the inference's later solves (the
+    // candidate's after its late pass, the selected call's) see none and take no span. A bound's flags stay: a value resolves to itself.
+    private void SettleSlotVariables(OriginInference inference, ReadOnlySpan<BoundOrigin> slotValues)
+    {
+        for (var i = 0; i < inference.Bounds.Count; i++)
+        {
+            var bound = inference.Bounds[i];
+            (bound.Longer, bound.Shorter) = (this.SlotValue(bound.Longer, inference, slotValues), this.SlotValue(bound.Shorter, inference, slotValues));
+            inference.Bounds[i] = bound;
+        }
+
+        for (var i = 0; i < inference.WellFormed.Count; i++)
+        {
+            var (longer, shorter) = inference.WellFormed[i];
+            inference.WellFormed[i] = (this.SlotValue(longer, inference, slotValues), this.SlotValue(shorter, inference, slotValues));
+        }
+
+        var kept = 0;
+        for (var i = 0; i < inference.Variables.Count; i++)
+        {
+            if (!inference.SolvesSlotVariable(inference.Variables[i].Origin))
+            {
+                inference.Variables[kept++] = inference.Variables[i];
+            }
+        }
+
+        inference.Variables.RemoveRange(kept, inference.Variables.Count - kept);
+        inference.SlotVariableCount = 0;
     }
 }

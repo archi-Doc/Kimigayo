@@ -77,8 +77,8 @@ public sealed partial class Binding
 
             // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
             if (!(implementation.Binder is FunctionKoto
-                ? this.SolveCallOriginInference(inference, origins, inputs, declaringType)
-                : this.SolveOriginInference(inference, origins, inputs, declaringType)))
+                ? this.SolveCallOriginInference(inference, origins, inputs, [], declaringType)
+                : this.SolveOriginInference(inference, origins, inputs, [], declaringType)))
             {
                 return ConstraintProof.Refuted;
             }

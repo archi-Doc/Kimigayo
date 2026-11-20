@@ -170,6 +170,12 @@ public sealed partial class Binding
 
     private static int SlotVariableIndex(BoundOrigin origin) => SlotVariableKey - origin.Slot;
 
+    // G1128 R1.3 (e) 1: a slot variable's index in its solve's span, whose width is the count measured at the slot step; an index past
+    // it is a broken contract (Release check).
+    private static int SlotVariableIndex(BoundOrigin origin, ReadOnlySpan<BoundOrigin> slotValues)
+        => SlotVariableIndex(origin) is var index && (uint)index < (uint)slotValues.Length ? index
+            : throw new InvalidOperationException("A slot variable is read only within its solve's span of SlotVariableCount values (InternalInvariant).");
+
     // DECISIONS BU-104 (twelfth amendment), SPEC 15.6.1: whether a declared Origin relation is a row of a call: an end is a call's
     // region, or a meet holding one. "Every relation of the call over [its region] is a body row: Binding neither judges nor drops
     // it", so the formation walk leaves it (CheckTypeOriginRelations) to the row the call's step 3 forms for the Type the call

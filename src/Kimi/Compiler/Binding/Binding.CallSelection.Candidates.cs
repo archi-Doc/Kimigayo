@@ -460,7 +460,7 @@ public sealed partial class Binding
             // Fitted literals can add Origin evidence after the first contextual pass.
             // Publish only the final substituted parameter Types, never preliminary binders.
             if (solution.OriginInference is not null &&
-                !this.SolveCallOriginInference(solution.OriginInference, origins, inputs, declaringType, select: true))
+                !this.SolveCallOriginInference(solution.OriginInference, origins, inputs, [], declaringType, select: true))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -643,12 +643,24 @@ public sealed partial class Binding
             }
 
             solution.OpenWaited(); // J2: the Origin parameters' half, after every premise of the solve, before the solve.
-            var applicable = solution.OriginInference is not { } solved ||
-                this.SolveCallOriginInference(solved, solution.Origins, solution.Inputs, solution.DeclaringType, select: true);
-            // G1128: the solve's values replace the slot variables; the root rows read them, then J2 opens the waited slots over them.
-            if (solution.RestoreSlotValues())
+            // G1128 R1.3 (e) 2: the slot variables' values, a span of the width measured at the slot step, for this solve only (the
+            // common path rents nothing).
+            var slotCount = solution.OriginInference?.SlotVariableCount ?? 0;
+            var slotValues = this.originScratch.Rent(slotCount);
+            bool applicable;
+            try
             {
-                solution.Contribute(mapping);
+                applicable = solution.OriginInference is not { } solved ||
+                    this.SolveCallOriginInference(solved, solution.Origins, solution.Inputs, slotValues.AsSpan(0, slotCount), solution.DeclaringType, select: true);
+                // G1128: the solve's values replace the slot variables; the root rows read them, then J2 opens the waited slots over them.
+                if (solution.RestoreSlotValues(slotValues.AsSpan(0, slotCount)))
+                {
+                    solution.Contribute(mapping);
+                }
+            }
+            finally
+            {
+                this.originScratch.Return(slotValues, clearArray: true);
             }
 
             solution.OpenWaitedSlots(); // J2: the Type slots' half, before the operations' Types.

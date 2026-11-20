@@ -277,9 +277,9 @@ public sealed partial class Binding
             }
         }
 
-        // G1128 (R1.3 (e)): after the call's solve, each skeleton takes its variables' values (SubstituteSlotVariables); false when no slot
-        // held a variable.
-        internal bool RestoreSlotValues()
+        // G1128 (R1.3 (e) 3): after the call's solve, each skeleton takes its variables' values (SubstituteSlotVariables) and the
+        // inference keeps them in place of its variables (SettleSlotVariables); false when no slot held a variable.
+        internal bool RestoreSlotValues(ReadOnlySpan<BoundOrigin> slotValues)
         {
             if (this.OriginInference is not { SlotVariableCount: > 0 } inference)
             {
@@ -289,13 +289,14 @@ public sealed partial class Binding
             var restored = false;
             for (var g = 0; g < Math.Min(CallSlotCount(this.Binder), this.Types.Length); g++)
             {
-                if (this.Types[g] is { } skeleton && this.Binding.SubstituteSlotVariables(skeleton, inference) is var solved && !ReferenceEquals(solved, skeleton))
+                if (this.Types[g] is { } skeleton && this.Binding.SubstituteSlotVariables(skeleton, inference, slotValues) is var solved && !ReferenceEquals(solved, skeleton))
                 {
                     this.Frame.SetType(g, solved);
                     restored = true;
                 }
             }
 
+            this.Binding.SettleSlotVariables(inference, slotValues);
             return restored;
         }
 
