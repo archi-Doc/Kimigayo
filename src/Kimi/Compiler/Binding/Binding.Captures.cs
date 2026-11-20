@@ -123,7 +123,7 @@ public sealed partial class Binding
         {
             if (entry is { } written)
             {
-                this.FailUnsupportedAt(function, written.Span);
+                this.RecordLocated(function, written.Span);
             }
             else
             {

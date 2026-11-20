@@ -24,7 +24,7 @@ public sealed partial class Binding
     private void IndexInvalidTestAttribute(AttributeKoto attribute)
     {
         this.ClearFailure(attribute);
-        this.Fail(attribute, BindingFailure.InvalidTestDefinition);
+        this.Record(attribute, BindingFailure.InvalidTestDefinition, []);
         this.nodes.Add(attribute);
     }
 
@@ -43,7 +43,7 @@ public sealed partial class Binding
             valid &= transfers.Valid;
         }
 
-        return valid ? Complete(node, BoundType.Unit) : this.Fail(node, BindingFailure.InvalidTestDefinition);
+        return valid ? Complete(node, BoundType.Unit) : this.Record(node, BindingFailure.InvalidTestDefinition, []);
     }
 
     // A message's transfers stay inside the message; a nested function's are its own. Root is the message during the walk only, so

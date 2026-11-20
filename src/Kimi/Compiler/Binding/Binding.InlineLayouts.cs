@@ -83,7 +83,7 @@ public sealed partial class Binding
             if (this.Summary(container, default, null, this.scopes[container]).Cyclic)
             {
                 container.BoundSymbol!.Adt!.InlineCycle = true;
-                this.Fail(container, BindingFailure.InvalidInlineLayout);
+                this.Record(container, BindingFailure.InvalidInlineLayout, []);
             }
         }
 
@@ -104,7 +104,7 @@ public sealed partial class Binding
     // clause (Use), written after that clause's own checks (ValidateBaseDeclarations), so their independent records keep its one slot
     // (DIAGNOSTICS rule 4); a clause that failed by itself keeps it, the heir's binding being read from that clause's instance (rule W).
     // The judge decided the node (Cyclic); only the write waits, until the judge writes inherited paths' records with the declared ones.
-    [Transitional("R7", Reason = "Writes after the base clause's own checks while a node keeps one failure (PLAN G262), until Fail's drop goes (R7-E5).")]
+    [Transitional("R7", Reason = "Writes after the base clause's own checks while a node keeps one failure (PLAN G262), until it records with the clause as its named cause (R7-E2: E2-3's form, after D-834).")]
     private void ReportInheritedInlineCycles()
     {
         for (var i = 0; i < this.inlineSummaries.Count; i++)
@@ -240,8 +240,17 @@ public sealed partial class Binding
 
     // A projection at a by-value position, resolved in the walking node's scope (SPEC 8.6.1): a binding adds the edge to its node and
     // walks that node's summary under the Subject; a builtin output is walked; a pending projection is a summary part (AddInlinePart).
+    // R7-C3 (F's C2 ruling 304, the Middle's RP17 B1; SPEC 6.2, 8.2.3): a projection the node's scope identifies with another Type by a
+    // premise is that Type, read through the one identity judge (ClassForm, the walk's reading of identical Types), so `struct S2<V>`
+    // with `V.(Has2).Out is S2<V>` storing `V.(Has2).Out` reaches S2 again.
     private void VisitInlineProjection(InlineSummary summary, BoundType part, uint query)
     {
+        if (this.ClassForm(part, summary.Scope, out _) is { Kind: not BoundTypeKind.AssociatedProjection } identified)
+        {
+            this.VisitInlinePart(summary, identified, query);
+            return;
+        }
+
         var outcome = this.ProjectionSpecification(part, summary.Scope);
         if (outcome.Type is not { } specified)
         {

@@ -235,10 +235,11 @@ internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int1
 }
 
 /// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,
-/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects
-/// (null when its base does not admit it).
+/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index), the Type it selects
+/// (null when its base does not admit it) and, for an Index of a fixed array, its key's constant index (SPEC 15.1.3, in range or not, as
+/// Binding publishes it; the constant Place comparison reads, SPEC 15.6.2), else -1.
 /// Chains are independent of their roots, so equal prefixes share ids.</summary>
-internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type);
+internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type, int Position);
 
 internal readonly record struct MirSwitchCase(long Value, int Target);
 

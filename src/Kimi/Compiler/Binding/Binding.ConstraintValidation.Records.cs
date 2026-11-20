@@ -91,7 +91,8 @@ public sealed partial class Binding
     }
 
     // R7-C3 (B1'; SPEC 8.2.3): a declaration's premise clauses whose fact, or an And part of it, failed (FailPremise): its premise
-    // error's related locations, the premises that linked it. A failure path only.
+    // error's related locations, the premises that linked it, which the adapter's InvalidConstraint row relates (ReportConstraint,
+    // F's C2 ruling 306). A failure path only.
     private List<(string Role, Koto At, string? Label)>? FailedPremiseClauses(Koto declaration)
     {
         if (!this.scopes.TryGetValue(declaration, out var scope) || scope.Constraints is not { FailedPremises: { Count: > 0 } premises })

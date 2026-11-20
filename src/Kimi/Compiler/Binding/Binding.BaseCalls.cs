@@ -7,10 +7,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, BaseCallCause>? baseCallFailures;
+    private readonly BaseCallFailureRows baseCallFailures;
 
     // SPEC 6.4.4's use rules, in check order; the adapter explains each (DECISIONS BU-111).
-    private enum BaseCallCause : byte
+    internal enum BaseCallCause : byte
     {
         NotCall,
         NoReceiver,
@@ -25,7 +25,7 @@ public sealed partial class Binding
         reference.BasePath = null;
         if (reference.Parent is not MemberAccessKoto { Right: IdentifierNameKoto } member || !ReferenceEquals(member.Left, reference) || !IsCallee(member))
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NotCall);
+            return this.FailExplained(BaseCallFailureRows.Family, reference, BindingFailure.BaseCall, (true, BaseCallCause.NotCall));
         }
 
         // SPEC 6.4.4: lexical self is the receiver of the function whose body holds the reference, an instance accessor's included (DECISIONS
@@ -33,23 +33,23 @@ public sealed partial class Binding
         if (this.types.EnclosingDeclaration(scope) is not
             { ReceiverIndex: >= 0, Declaration: FunctionKoto lexical, Scope.Owner: StructKoto { BoundSymbol: { } type } structure })
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoReceiver);
+            return this.FailExplained(BaseCallFailureRows.Family, reference, BindingFailure.BaseCall, (true, BaseCallCause.NoReceiver));
         }
 
         if (structure.BaseClause is not { } clause)
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoBase);
+            return this.FailExplained(BaseCallFailureRows.Family, reference, BindingFailure.BaseCall, (true, BaseCallCause.NoBase));
         }
 
         if (!(lexical.Body is { } body && IsWithin(reference, body)) && !(lexical.ExpressionBody is { } expression && IsWithin(reference, expression)))
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.OutsideBody);
+            return this.FailExplained(BaseCallFailureRows.Family, reference, BindingFailure.BaseCall, (true, BaseCallCause.OutsideBody));
         }
 
         var receiver = this.BaseReceiver(scope.Function, lexical);
         if (receiver is null)
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NoSelfCapture);
+            return this.FailExplained(BaseCallFailureRows.Family, reference, BindingFailure.BaseCall, (true, BaseCallCause.NoSelfCapture));
         }
 
         if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.types, this.SelfType(type)) is not { } baseType)
@@ -121,7 +121,7 @@ public sealed partial class Binding
         {
             if (selected.Kind != BindingSymbolKind.Function || selected.ReceiverIndex < 0)
             {
-                this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, BaseCallCause.NotInstanceFunction);
+                this.FailExplained(BaseCallFailureRows.Family, reference, BindingFailure.BaseCall, (true, BaseCallCause.NotInstanceFunction));
                 return null;
             }
 
@@ -129,5 +129,17 @@ public sealed partial class Binding
         }
 
         return selected;
+    }
+
+    /// <summary>The `baseCallFailures` family's one accessor (DECISIONS BU-220): a pass family, the cause a direct base call fails for
+    /// (SPEC 6.4.4), stored with its failure by the recorder (RecordedFact) and written by FailExplained (its first cause is 0, so the row
+    /// carries its presence). Its members keep the names its readers use.</summary>
+    private readonly struct BaseCallFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(bool Failed, BaseCallCause Cause), PassCounter> Family(ref NodeColumns columns) => ref columns.BaseCallFailures;
+
+        internal BaseCallCause this[Koto reference]
+            => binding.RecordedFact(reference, Family) is { Failed: true } row ? row.Cause : throw new KeyNotFoundException($"`{reference}` has no base call failure in this pass.");
     }
 }
