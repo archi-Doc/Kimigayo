@@ -27,10 +27,13 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
         Assert.Null(property.Type);
         Assert.False(property.IsVerified);
         Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(static x => x.IdentifierName == "storage"), static x => Assert.Null(x.TypeOf()));
-        this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
+
+        // A group's stored Property without an initializer is its own record as well (SPEC 11.8, 23.1.2).
+        string[] records = owner == "group" && initializer.Length == 0 ? ["UnresolvedBinding_Kd", "MissingSyntax_Kd", "TypeMismatch_Kd"] : ["UnresolvedBinding_Kd", "TypeMismatch_Kd"];
+        this.AssertRecords(c, records);
         Assert.False(c.Generate(TextWriter.Null));
         Assert.False(c.Bind().IsComplete);
-        this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
+        this.AssertRecords(c, records);
     }
 
     [Theory]

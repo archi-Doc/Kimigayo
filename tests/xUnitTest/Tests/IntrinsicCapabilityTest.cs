@@ -281,19 +281,19 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void EnumPayloadsParticipateInStaticStorageValidation()
     {
-        var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Value(T)\ngroup Globals\n    var value: E<ref/i32 during static>");
+        var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Value(T)\ngroup Globals\n    var value: E<ref/i32 during static> = make()\n    func make() -> E<ref/i32 during static> => $abort(\"unused\")");
         Assert.False(c.Bind().IsComplete);
         // Owned is a language capability; retained static-borrow initialization remains an implementation boundary.
         c.Binding.ReportDiagnostics();
         var record = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("Unsupported_Kd", record.Code);
-        Assert.Equal("var value: E<ref/i32 during static>", record.Text);
+        Assert.Equal("var value: E<ref/i32 during static> = make()", record.Text);
     }
 
     [Fact]
     public void OwnedDoesNotPermitStoredStaticBorrowsInGlobalStorage()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct View {source}\n    let value: ref/i32 during source\nfunc inspect(x: View)\n    origin x.source == static\n    ()\ngroup Globals\n    var value: View{v}\n        origin v.source == static");
+        var c = CompilationTestHelper.ParseSuccess("struct View {source}\n    let value: ref/i32 during source\nfunc inspect(x: View)\n    origin x.source == static\n    ()\ngroup Globals\n    var value: View{v} = make()\n        origin v.source == static\n    func make() -> View during static => $abort(\"unused\")");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
