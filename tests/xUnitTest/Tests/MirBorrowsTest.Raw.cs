@@ -1064,14 +1064,21 @@ public sealed partial class MirBorrowsTest
     // raw layer addresses w (y's Loan) in storage the body does not own, where it may be used after every point, so `y@follow = 5` errs
     // whether the layer is a Tuple element (tupleBad), a Field (fieldBad), a Case payload (payloadBad), a nested Field (nestedBad), a
     // generic struct's own Field (genericBad) or a Field of its Type argument (argumentBad); each null twin is valid (fail-before: dev
-    // accepted fieldBad, payloadBad and nestedBad, whose raw layers were no raw source).
+    // accepted fieldBad, payloadBad and nestedBad, whose raw layers were no raw source). Past an rc or arc payload, a shared layer (SPEC
+    // 15.6), a raw layer is no raw source in a Field as in a Tuple element (rc/arc Field and Tuple twins, a Type argument held past an rc:
+    // each errs through the handle's own retention, on both sides of D-933's C1). The same rule where the storage is the body's own and
+    // read after the write (the Middle's RP17 on Q-586, N1u and X4): Raw.initialize into a local cell (localCellBad) and `replace` placing
+    // the value in its target (replacedFieldBad, SPEC 15.7.3: the placed value's Loans are kept) err at `y@follow = 5`; their twins
+    // without a read after it (localCellOk, replacedFieldOk) are valid (fail-before: dev 8784c091b accepted localCellBad and
+    // replacedFieldBad).
     [Fact]
     public void AFieldOrPayloadRawLayerIsARawSource()
         => Assert.Equal(
             [
                 "tupleBad: y@follow = 5", "fieldBad: y@follow = 5", "payloadBad: y@follow = 5", "nestedBad: y@follow = 5", "genericBad: y@follow = 5",
                 "argumentBad: y@follow = 5", "rcFieldBad: y@follow = 5", "rcTupleBad: y@follow = 5", "arcFieldBad: y@follow = 5",
-                "arcTupleBad: y@follow = 5", "argRcFieldBad: y@follow = 5", "argRcTupleBad: y@follow = 5",
+                "arcTupleBad: y@follow = 5", "argRcFieldBad: y@follow = 5", "argRcTupleBad: y@follow = 5", "localCellBad: y@follow = 5",
+                "replacedFieldBad: y@follow = 5",
             ],
             Problems("""
                 struct Fq
@@ -1197,6 +1204,32 @@ public sealed partial class MirBorrowsTest
                     let w = y@follow@ref
                     let s: raw/(Gr<raw/u8>, i32) = Raw.allocate(1)
                     unsafe => Raw.initialize(s, (Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: w@raw@raw/u8))), 1))
+                    y@follow = 5
+                func usep<T>(p: raw/T) => ()
+                func localCellBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    var cell = Inq.init(q: null)
+                    unsafe => Raw.initialize(cell@raw, Inq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                    inspect(cell@ref)
+                func localCellOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    var cell = Inq.init(q: null)
+                    unsafe => Raw.initialize(cell@raw, Inq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                func replacedFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    var x = Inq.init(q: null)
+                    let r = x@uniq
+                    Kimi.Intrinsics.replace(r@follow@uniq, with: Inq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                    usep(x.q)
+                func replacedFieldOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    var x = Inq.init(q: null)
+                    let r = x@uniq
+                    Kimi.Intrinsics.replace(r@follow@uniq, with: Inq.init(q: w@raw@raw/u8))
+                    usep(x.q)
                     y@follow = 5
                 """));
 
