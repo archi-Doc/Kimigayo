@@ -23534,6 +23534,49 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves (Q13).** Text only on `InvalidNoInit_Kd`, `InvalidVirtualDeclaration_Kd` (its rule as a Reason and the Label) and
     `InvalidTypeFormation_Kd`'s arity (its counts as Reasons in `kimi.check/2`); `ProtectedPlacement_Kd` at a declaration failed
     earlier is its own record again; no acceptance move.
+  - **E2-3b (Q-587; B's E2 rulings 12, 15, 16).** The last family-1 explanation stores (SPEC 4.3.1, 7.4, 6.1, 8.11.1) become
+    typed facts, and `ProblemFactKind` appends a fourth Binding kind, `Key`.
+    - **Array annotations.** `ArrayAnnotationInference` records `Reason` (`ArrayInferenceProblem`), `Related` and, for a conflict,
+      its sides: `Actual`/`Expected` mean "a kept side, a Type or a length" (`BindingReport` keeps both in one list); a side that is
+      no kept value stays a `MismatchForm` (`FixedArray`).
+    - **Parameter shapes and `Key`.** `ParameterShapeMismatch` records one problem per conflicting parameter: one composite `Reason`
+      (its mode, the other mode and the matching key, a byte each), `Related` role 0 the conflicting parameter or use (the record's
+      own location) and roles 1-3 each overlapping earlier parameter by its ground (external name, bound position, unbound position;
+      the adapter reads name and position from the party's syntax), and `Key`: the conflicting parameter, its Value the kept Type at
+      which its matching key overlaps an earlier parameter's (`Value(T)`, `Object(T)`, either family over `T`), present when the key
+      has a Type. One meaning, Binding's only (a MIR record carrying it is a broken contract). The key is neither side of a mismatch,
+      so it is no `Expected`; this supersedes B's E2 ruling 7 Q3's "no fourth kind".
+    - **Conditions.** A further problem's condition is `BindingReport.Condition`'s one rule: an equal problem's condition, else the
+      problem's own (its check's ordinal) or the next after its subject's last recorded one (a refining Contract's conflicts from 0;
+      an Origin record beyond its node's first at 1, since that first, held in the slot outside the report, may be set after it).
+    - **Duplicates.** The pairwise checks fail both declarations and join their group; `RecordDuplicateGroups`, at the end of
+      `BindDeclarations` after `PrepareSpecializations` (the pass's last pairwise check), records each later declaration with
+      `Related` its group's first, and the first with `Cause` its earliest later (derived from that record). `IsDerived` gains one
+      row, `JudgedByDeclaredNames`: a requirement whose check compares only what declarations declare (Duplicate, at every site) is
+      derived neither by the node's own recovery nor by a recovery or limit it rests on. A name a form bound without its meaning
+      declares (a recovered or unsupported form's child that declares its own symbol, such as a recovered loop's binding) rests on
+      the form; a `for` loop's binding names are pass nodes (visited at Index).
+    - **Effect items.** An effect item's rejection is its problem (`RecordEffectRejection`: `Reason` the `EffectRejection`;
+      `Related` the bounded declaration, an earlier bound and the Contract the cause names; `Count`), and a misplaced item's
+      selector's own rejection is its second problem (conditions 0 and 1): the c6 move named under Temporary above is done.
+    - **Access parts.** A clause, base clause or enum case whose projection access fails records its own problem (`Record`); its
+      owner keeps its own failure beside it (no `RestOnPart` at an owner with a failure of its own).
+    - **Temporary** (both `[Transitional("R7")]`, removed by R7-E5's per-problem inputs; PLAN G1141): `JudgedByDeclaredNames`; the
+      access owners' own failures (`ValidateConstraintProjectionAccess`): resting an owner on its part would derive the owner's
+      other failure through `IsDerived`'s requirement-blind arms.
+    - **Deleted.** `arrayInferenceFailures`; `parameterShapeConflicts` and its two stores; `ReportDuplicateDeclarations` and
+      `ReportFailures`' skip; `ReportEffectBound` and the selector-keyed rejection row; the `ReportIssue` arms of
+      ArrayAnnotationInference, ParameterShapeMismatch and InvalidEffectBound.
+    - **Rejected.** A fourth kind for a length (one kept-side list); three `Reason` facts for one problem (one composite row);
+      `Expected` with a second meaning for the key; the adapter deriving the key from the parameter's Type (a check re-run at
+      publication); dropping pair records after the fact; `RestOnPart` for a group's first (a slot rewrite after the fact) and for
+      an access owner (it derives the owner's other failure); reading the slot for an Origin record's condition (the further chains
+      are recorded before the slot's first, `RecordOriginChains`); a `ForKoto` clause in the recovery arm; a later declaration that
+      is itself a parser recovery deriving its Duplicate (it would drop a record dev publishes, and the Signature comparison reads
+      none of the recovery's guess).
+    - **Moves (Q13).** On rejected programs only: `ParameterShapeMismatch_Kd` one record per conflicting parameter (+1) without its
+      conservative Note; `InvalidEffectBound_Kd` gains the related location `contract` in five kinds; no lost independent record, no
+      acceptance move.
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
