@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<CallableCandidate> callableCandidateScratch = new();
-    private readonly Dictionary<Koto, (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other)> callableSelectionFailures = new(ReferenceEqualityComparer.Instance);
+    private readonly CallableSelectionFailureRows callableSelectionFailures;
     private readonly List<CallableCandidate> callableSelectionParties = [];
 
     // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
@@ -245,6 +245,24 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    /// <summary>The `callableSelectionFailures` family's one accessor (DECISIONS BU-220): a pass family, a failed Callable value call's
+    /// candidates (a range of callableSelectionParties) and its parameter-shape position, stored with its failure by the recorder
+    /// (RecordedFact; a row may be all zero but for its presence). Its members keep the names its readers use.</summary>
+    private readonly struct CallableSelectionFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other), PassCounter> Family(ref NodeColumns columns)
+            => ref columns.CallableSelectionFailures;
+
+        internal (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other) this[Koto call]
+        {
+            set => binding.SetRecordedFact(call, Family, (true, value.Start, value.Count, value.Position, value.Mode, value.Other));
+        }
+
+        internal bool TryGetValue(Koto call, out (bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other) failure)
+            => (failure = binding.RecordedFact(call, Family)).Failed;
     }
 
     private readonly record struct CallableCandidate(BoundType Signature, SemanticsKind Receiver, BoundConstraint Fact, Koto Context);

@@ -183,7 +183,7 @@ public sealed partial class Binding
     // SPEC 23.1: an omitted Origin is related at its Type occurrence. Closed annotation atoms and open local-input atoms name
     // such occurrences; open call/evidence atoms do not. A local region is shown by the local's name.
     private static Koto? OmittedAt(BoundOrigin origin)
-        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence } && !IsRegionOwner(occurrence) && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
+        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence } && !IsRegionOwner(occurrence) && !origin.IsOpenStandIn ? occurrence : null);
 
     // SPEC 23.1: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
     private static Koto? OmittedInput(BoundOrigin origin)
@@ -197,14 +197,14 @@ public sealed partial class Binding
 
     private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
     {
-        while (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (actual.SafeReferent is { } referent)
         {
-            actual = actual.Components[0];
+            actual = referent;
         }
 
-        while (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (expected.SafeReferent is { } referent)
         {
-            expected = expected.Components[0];
+            expected = referent;
         }
 
         return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
@@ -216,7 +216,7 @@ public sealed partial class Binding
         => depth < 32 && KotoHelper.UnwrapParentheses(node) is BinaryKoto { Akind: KotoKind.Plus } join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
 
     private static bool IsStringOperand(Koto node, int depth)
-        => ReferenceTypes.EndsInString(KotoHelper.UnwrapParentheses(node).BoundType) || IsStringJoin(node, depth);
+        => ReferenceEquals(ComparisonReferent(KotoHelper.UnwrapParentheses(node).BoundType), BoundType.String) || IsStringJoin(node, depth);
 
     // SPEC 15.6.1, 23.1: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
@@ -428,7 +428,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
+        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && TyCtxt.StorageMatches(expectedType, actualType);
         if (storage && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
@@ -592,9 +592,9 @@ public sealed partial class Binding
         }
 
         var core = index.Left.BoundType;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (core?.SafeReferent is { } referent)
         {
-            core = core.Components[0];
+            core = referent;
         }
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
@@ -642,7 +642,6 @@ public sealed partial class Binding
         this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
-        this.objectErasureFailures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();

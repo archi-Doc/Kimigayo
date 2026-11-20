@@ -39,8 +39,8 @@ public sealed partial class Binding
         => type.Width is 32 or 64 && !ReferenceEquals(type.Underlying, BoundType.ISize) && !ReferenceEquals(type.Underlying, BoundType.USize) ? type.Width : 0;
 
     // SPEC 3.1's ranges: whether an integer literal of a magnitude and sign fits a Type with a width, and its value as that Type's payload
-    // (TyCtxt.Normalize, DECISIONS BU-133); the one literal-fit predicate of lengths, expression literals and a truncated conversion
-    // (DECISIONS BU-130). A Type whose instance decides its width (Width 0) fits none here.
+    // (TyCtxt.Normalize, DECISIONS BU-133); the one literal-fit predicate of lengths, expression literals, a truncated conversion
+    // (DECISIONS BU-130) and a literal-only position (TryLiteralBits). A Type whose instance decides its width (Width 0) fits none here.
     private static bool TryLiteral(BoundType? type, UInt128 magnitude, bool negative, out Int128 bits)
     {
         bits = 0;
