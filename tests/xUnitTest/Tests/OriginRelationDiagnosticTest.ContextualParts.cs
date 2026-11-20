@@ -164,14 +164,15 @@ public partial class OriginRelationDiagnosticTest
     // valid and stay ClosureEnvironmentOriginTest's rows (not repeated). Their twins store a Closure local's Borrow toward the enclosing `q`
     // through the same shapes: a Refuted relation. A Case whose expected Type the parameter fixes (r03_n, r04_n, r06_n) is judged by its own
     // fit, at the payload; only a position the call opens records at the argument (r05_n's `.None`; D-1's scope, decided 2026-10-29).
-    // r03_n's, r04_n's and r06_n's payload record has the MIR's twin at the same span until R7 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
-    // r05_n also has A5's Loan conflict at `let short = 2`: `*s` may retain `short`'s Loan through the aggregate argument, which is neither
-    // the borrow nor a Copy, so the record is independent by SPEC 15.6.5 rule W's letter (family F-b, class 4; R4's verdict, R6-check H5).
+    // Each payload record is A5's one (R7-O1 H; the MIR's twin at the same span, H0b §5.4, R4-M108, went with Binding's record). Each
+    // also has A5's Loan conflict at `short`'s declaration: `*s` may retain `short`'s Loan through the aggregate argument, which is neither
+    // the borrow nor a Copy, so the record is shown by SPEC 15.6.5 rule W's letter (family F-b, class 4; R4's verdict, R6-check H5; r03_n,
+    // r04_n and r06_n since R7-O1 H built their payloads, F-H1-1's aggregate class).
     [Theory]
-    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
-    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@uniq; UnsatisfiedOriginRelation_Kd short@uniq", null)]
+    [InlineData("r03_n", CaseStore + ClosureStore + "        g(.Some(short@ref), o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("r04_n", "func g4(x: Option<uniq/i32 during q>, s: uniq/(Option<uniq/i32 during q>)) -> ()\n    s@follow = x@move\nfunc use(p: uniq/(Option<uniq/i32 during q>)) -> i32\n    let f = func [] (o: uniq/(Option<uniq/i32 during q>)) -> ()\n        var short = 2\n        g4(.Some(short@uniq), o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd var short = 2; UnsatisfiedOriginRelation_Kd short@uniq", null)]
     [InlineData("r05_n", "func put7(slot: uniq/(ref/i32 during a), v: ref/i32 during b, w: (ref/i32 during b, Option<ref/(ref/i32 during b) during a>))\n    slot@follow = v\nfunc use(p: uniq/(ref/i32 during q)) -> i32\n    let f = func [] (s: uniq/(ref/i32 during q)) -> ()\n        let short = 2\n        put7(s, short@ref, (short@ref, .None))\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd (short@ref, .None)", null)]
-    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("r06_n", "func put8(x: [2 of Option<ref/i32 during q>], s: uniq/(Option<ref/i32 during q>)) => ()\n" + ClosureStore + "        put8([.Some(short@ref), .None], o)\n    f(p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     public void AContextualPartInsideAClosureIsJudged(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);
 
@@ -194,7 +195,8 @@ public partial class OriginRelationDiagnosticTest
     // the argument; when an annotation settles the construction (cs1_ty), the annotation proves its contextual payload at its written Type,
     // as in ea1 (R4-M164 U1d; the payload's record waits for R7). cr5's Case takes a Type its parameter fixes, so the relation is the Case's own fit, recorded at the payload as cr6's
     // assignment and dev do; D-1 covers only relations the call judges at a position it opens (decided 2026-10-29). cp1 is cs1 (not repeated).
-    // cr5's and cr6's payload record has the MIR's twin at the same span until R7 (H0b §5.4, DECISIONS R4-M108; R6-check H5).
+    // cr5's and cr6's payload record is A5's one (R7-O1 H; the MIR's twin at the same span, H0b §5.4, R4-M108, went with Binding's), beside
+    // A5's Loan conflict at `let short = 2` that the stored payload derives (F-H1-1's aggregate class, SPEC 15.6.5 rule W).
     [Theory]
     [InlineData("cv1", PayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "", null)]
     [InlineData("cv1_n", WeakPayloadHead + NestedInner + "    return inner(Option.Some(v), q)\n", "UnprovenOriginRelation_Kd Option.Some(v)", null)]
@@ -205,9 +207,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("cs1", NestedHead + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "UnprovenOriginRelation_Kd Option.Some(Option.None)", null)]
     [InlineData("cs1_ok", NestedHead + WithPremise + InnerNested + "    return inner(Option.Some(Option.None), q)\n", "", null)]
     [InlineData("cs1_ty", NestedHead + "    let t: Option<Option<ref/(ref/i32 during q) during r>> = Option.Some(Option.None)\n" + InnerNested + "    return inner(t, q)\n", "UnprovenOriginRelation_Kd ref/(ref/i32 during q) during r", null)]
-    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("cr5", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    g(.Some(short@ref), p)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr5_ok", CaseStore + "func bad(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    g(.Some(v), p)\n    return 0\n", "", null)]
-    [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd short@ref; UnsatisfiedOriginRelation_Kd short@ref", null)]
+    [InlineData("cr6", "func bad(p: uniq/(Option<ref/i32 during q>)) -> i32\n    let short = 2\n    p@follow = .Some(short@ref)\n    return 0\n", "ComparisonLoanConflict_Kd let short = 2; UnsatisfiedOriginRelation_Kd short@ref", null)]
     [InlineData("cr6_ok", "func good(p: uniq/(Option<ref/i32 during q>), v: ref/i32 during q) -> i32\n    p@follow = .Some(v)\n    return 0\n", "", null)]
     public void AnArgumentsCaseIsJudgedAtTheArgument(string form, string body, string records, string? payload)
         => AssertRecordsRelating(form, body, records, payload);

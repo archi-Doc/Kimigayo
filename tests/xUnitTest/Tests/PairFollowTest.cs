@@ -497,7 +497,7 @@ public class PairFollowTest
     {
         foreach (var c in new[] { MinimalEmissionTest.Analyze(Box + pair), MinimalEmissionTest.Analyze(Box + concrete) })
         {
-            Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], c.Binding.Issues.Select(x => x.Code));
+            Assert.Empty(c.Binding.Issues); // R7-O1 H: Binding judges no body relation; the record is A5's (the MIR side below).
             Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], MirTargetSide.MirSide(c).Select(static x => x.Code));
         }
     }

@@ -146,7 +146,8 @@ public class BorrowAcquisitionTest
     // SPEC 23.1.2, 15.6.1 (PLAN G262): a payload's acquisition and its fit are independent, so a bare Place without a plan (`x@follow`
     // through `ref` in the uniq case, a stored `uniq/i32` through `ref`, an owned `q` at `uniq/i32`) whose Origin also misfits has both
     // records, each twin one of them; a misfit only in Origins is the relation at the payload, a structural one the construction's mismatch
-    // with no acquisition record. A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: Binding's errors.
+    // with no acquisition record. A value call's are AValueCallsAcquisitionAndRelationsAreEachRecorded's. Each row: the published Errors
+    // (R7-O1 H: the relation is A5's record, Binding's twin gone).
     [Theory]
     [InlineData("x: ref/(s/T during a) during b", "s is ref or uniq", "let o: Option<s/T> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
     [InlineData("x: ref/(uniq/i32 during a) during b, y: ref/i32 during c", "s is ref", "let o: Option<uniq/i32 during c> = .Some(x@follow)\n    _ = o@move", "TransferRequired_Kd x@follow; UnprovenOriginRelation_Kd x@follow")]
@@ -160,10 +161,9 @@ public class BorrowAcquisitionTest
     [InlineData("x: uniq/(uniq/T during a) during b", "s is ref", "let o = Option<uniq/T during a>.Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     public void APayloadsAcquisitionAndFitAreEachRecorded(string parameters, string constraints, string use, string errors)
     {
-        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\n";
-        var c = CompilationTestHelper.ParseSuccess(source);
-        c.Bind();
-        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+        var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(errors, string.Join("; ", CompilationTestHelper.PublishedErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
     }
 
     // SPEC 10.1 step 5, 23.1.2 (PLAN G453): a construction of an Origin-carrying structure is a named call, so a bare Place without its

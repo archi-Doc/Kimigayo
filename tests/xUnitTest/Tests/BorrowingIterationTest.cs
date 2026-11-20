@@ -147,7 +147,7 @@ public class BorrowingIterationTest
     public void EnumPayloadShorteningNeedsProof(string relation, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("func f(value: ref/i32 during a, other: ref/i32 during b) -> Option<ref/i32 during b>\n    " + relation + "\n    return .Some(value)");
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(valid == (c.Binding.Result.IsComplete && c.Analysis.IsVerified), MinimalEmissionTest.Describe(c)); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 
     // A source's Loan conflict at `local = second@move`, whose related `loan` starts with `loan`, and S2's (e)-family conflicts at the

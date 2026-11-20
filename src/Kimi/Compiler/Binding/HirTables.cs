@@ -328,7 +328,6 @@ internal struct NodeColumns
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
     internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
-    internal StampedColumn<bool, Binding.PassCounter> OriginTwins; // Pass: whether a node's Origin relation records are twins (Binding.OriginFits.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
@@ -388,7 +387,6 @@ internal struct NodeColumns
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
         this.PerCallOrigins.Grow(length);
-        this.OriginTwins.Grow(length);
         this.PairFollows.Grow(length);
         this.ImplicitPairFollows.Grow(length);
         this.PhantomRawOrigins.Grow(length);
@@ -426,7 +424,6 @@ internal struct NodeColumns
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
         this.PerCallOrigins.Freeze(binding);
-        this.OriginTwins.Freeze(binding);
         this.PairFollows.Freeze(binding);
         this.ImplicitPairFollows.Freeze(binding);
         this.PhantomRawOrigins.Freeze(binding);
@@ -491,7 +488,6 @@ internal struct NodeColumns
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
             PerCallOrigins = this.PerCallOrigins.Renumbered(length),
-            OriginTwins = this.OriginTwins.Renumbered(length),
             PairFollows = this.PairFollows.Renumbered(length),
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
             PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
