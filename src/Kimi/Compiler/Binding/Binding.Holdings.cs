@@ -22,7 +22,7 @@ namespace Kimi.Compiler;
 // `owner` struct, enum, UniqSlice or Contract, except a group's Type, which only an environment is: a group qualifier's
 // (BindContainerQualifier), a construction qualifier naming a group through a member access (ConstructionTargetType) and a nested
 // declaration's under a group parent (SelfType). None is a value's, a stored part's, a declared signature's or a body view's Type: no Type
-// position admits a group, whose symbol is a Container (Binding.ContainerKind, SPEC 9.2) that BindNamedType rejects, and a written
+// position admits a group, whose symbol is a Container (Indexing; SPEC 9.2) that BindNamedType rejects, and a written
 // argument list on a group meets BindConstructedType's arity check (SPEC 6.1: no own parameters).
 // Must not: decide a fit, a row, a Loan or a write fact; read a call's argument, a solved Origin, the premise closure or a signature's
 // scope (an output fold steps every raw layer by RawStepAt, the cap of a contract's walk, DECISIONS BU-113);

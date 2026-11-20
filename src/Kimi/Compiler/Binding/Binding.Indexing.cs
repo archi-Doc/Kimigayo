@@ -10,8 +10,7 @@ namespace Kimi.Compiler;
 // or Result (Binding.Patterns.cs).
 // - Responsibility: per node, its semantic fields reset (the HIR row, plan activity, conversion and clause bindings; an effect item's
 //   selector and Name, which are not indexed, have their HIR rows reset by RowReset), its scopes
-//   created and its symbols declared (containers, of the kind ContainerKind gives, the one rule KimiLibrary.Register also reads;
-//   functions, parameters, locals, generic and length parameters, enum cases,
+//   created and its symbols declared (containers, functions, parameters, locals, generic and length parameters, enum cases,
 //   pattern bindings and guard candidates); a test function the build does not include is resolved without indexing its signature
 //   or body, and TestSyntaxVisitor records only its Layout and misplaced Test attributes; a valid one is still declared, so its
 //   declaration is judged in every build (SPEC 6.7.2, 18.6), and access keeps it from every product candidate set.
@@ -27,11 +26,6 @@ public sealed partial class Binding
     private readonly IndexVisitor indexer;
     private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
     private TestSyntaxVisitor? testSyntaxVisitor;
-
-    // SPEC 9.2: the kind of a declaration container's symbol, the one rule Indexing and the library's registration read: a group is a
-    // Container (a Qualifier and a Declaration Container only), every other container a Type.
-    internal static BindingSymbolKind ContainerKind(DeclarationContainerKoto container)
-        => container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;
 
     // The indexer resets every semantic field of the pass's modules before any header or expression is evaluated: its source trees and
     // their module references, then, when it binds the library, the library's.
@@ -413,7 +407,7 @@ public sealed partial class Binding
                 case DeclarationContainerKoto container:
                     if (!container.IsRoot)
                     {
-                        var kind = ContainerKind(container);
+                        var kind = container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;
                         var symbol = binding.Declare(node, container.Name, kind, node, this.Scope);
                         if (kind == BindingSymbolKind.Type)
                         {

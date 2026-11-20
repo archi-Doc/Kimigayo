@@ -512,7 +512,7 @@ public sealed partial class KimiLibrary
         {
             var function = declaration as FunctionKoto;
             var name = function?.Name ?? ((DeclarationContainerKoto)declaration).Name;
-            var symbol = new BindingSymbol(name, function is null ? Binding.ContainerKind((DeclarationContainerKoto)declaration) : BindingSymbolKind.Function, declaration, ScopeOf(DeclaringContainer(declaration)))
+            var symbol = new BindingSymbol(name, function is null ? BindingSymbolKind.Type : BindingSymbolKind.Function, declaration, ScopeOf(DeclaringContainer(declaration)))
             {
                 Intrinsic = intrinsic,
                 LibraryDeclaration = id,
