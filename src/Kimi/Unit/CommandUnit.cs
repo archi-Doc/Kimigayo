@@ -92,33 +92,43 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             await this.Context.SendPrepareAsync();
             await this.Context.SendStartAsync();
 
+            await this.Execute(param.Args, this.Context.ServiceProvider, this.Context.ExecutionRoot.CancellationToken);
+
+            await this.Context.SendStopAsync();
+            await this.Context.SendTerminateAsync();
+        }
+
+        /// <summary>Parses a command line (the text after <c>kimi </c>) and executes its command.</summary>
+        /// <param name="commandLine">The command line.</param>
+        /// <param name="serviceProvider">The provider the command is resolved from.</param>
+        /// <param name="cancellationToken">The command's cancellation.</param>
+        /// <returns>A task that completes when the command has run.</returns>
+        internal async Task Execute(string commandLine, IServiceProvider serviceProvider, CancellationToken cancellationToken)
+        {
             var parserOptions = SimpleParserOptions.Standard with
             {
-                ServiceProvider = this.Context.ServiceProvider,
+                ServiceProvider = serviceProvider,
                 RequireCommandName = false,
                 RejectUnknownOptionNames = false,
                 SuppressConsoleOutput = Program.SuppressConsoleOutput,
             };
 
             // Main
-            var arguments = SimpleParserHelper.SplitArguments(param.Args, default);
+            var arguments = SimpleParserHelper.SplitArguments(commandLine, default);
             if (arguments.Length != 0 && arguments[0] == "test")
             {
-                await this.Context.ServiceProvider.GetRequiredService<TestCommand>().Execute(arguments[1..], this.Context.ExecutionRoot.CancellationToken);
+                await serviceProvider.GetRequiredService<TestCommand>().Execute(arguments[1..], cancellationToken);
             }
             else
             {
                 var parser = this.Context.CreateSimpleParser(parserOptions);
-                if (!parser.Parse(KimiOptions.ExpandFlags(param.Args)))
+                if (!parser.Parse(KimiOptions.ExpandFlags(commandLine)))
                 {
                     Environment.ExitCode = 1;
                 }
 
-                await parser.Execute(this.Context.ExecutionRoot.CancellationToken);
+                await parser.Execute(cancellationToken);
             }
-
-            await this.Context.SendStopAsync();
-            await this.Context.SendTerminateAsync();
         }
     }
 
