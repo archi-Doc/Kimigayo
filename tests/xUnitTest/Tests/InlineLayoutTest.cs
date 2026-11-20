@@ -54,6 +54,22 @@ public class InlineLayoutTest
         Assert.Equal(cyclic.Split(','), published);
     }
 
+    // R7-E2 E2-1 (SPEC 6.2, 6.7.1, 23.1.2): a C-layout struct split over two fragments that also stores itself by value fails two
+    // independent requirements, the split Field's and its own inline cycle, and both are reported, the cycle beside the struct's
+    // InvalidTypeFormation_Kd that stands for the split (ValidateLayoutFragments' Transitional), also where a syntax error in the split
+    // Field's initializer derives that Field's record; with the split fixed the cycle alone stays, and with the cycle fixed the split alone
+    // (LayoutAttributeBindingTest.ASplitCLayoutStructIsReportedBesideItsFieldsSyntaxError, r1).
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n    var next: P\nstruct P\n    var b: i32 = 0\n", "InvalidInlineLayout_Kd|InvalidTypeFormation_Kd|SplitCLayoutStorage_Kd")]
+    [InlineData("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\nstruct P\n    var b: i32 = 1 +\n    var next: P\n", "InvalidInlineLayout_Kd|InvalidTypeFormation_Kd|MissingSyntax_Kd")]
+    [InlineData("struct P\n    var a: i32 = 0\n    var next: P\n", "InvalidInlineLayout_Kd")]
+    public void ASplitStructsInlineCycleIsItsOwnRecord(string source, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(records.Split('|'), CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
+    }
+
     // PLAN G310 (DECISIONS BU-65): one verdict in every declaration order (all orders up to four declarations, else each rotation of the
     // declarations and of their reverse): the declarations on a cycle of the inline edges and no other.
     [Theory]

@@ -150,6 +150,20 @@ public class TypeArityBindingTest
         }
     }
 
+    // SPEC 9.7.1 (R7-E2 E2-3a): an arity record states the declared and written counts (its problem's Count facts, the catalog's
+    // declared and written Evidence) with the declaration as its related location; another formation record states neither (all or none).
+    [Theory]
+    [InlineData("struct Box<T>\nfunc f(x: Box<i32, u8>) => ()", "1 2")]
+    [InlineData("struct Box<T, U>\nfunc f(x: Box<i32>) => ()", "2 1")]
+    [InlineData("struct Outer<T>\n    public struct Inner\nfunc f(x: Outer.Inner) => ()", "1 0")]
+    [InlineData("func f<X>(b: X<i32>) => ()", "")]
+    public void AnArityRecordStatesItsCounts(string source, string counts)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source + "\npublic func main() => ()\n").Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidTypeFormation_Kd));
+        Assert.Equal(counts, string.Join(' ', record.Reason?.Select(static x => x.Value) ?? []));
+        Assert.Equal(counts.Length != 0, record.Related?.Any(static x => x.Role == "declaration") == true);
+    }
+
     [Fact]
     public void ReplacingAnArityRebuildsFragmentLookupWithoutLosingItsSibling()
     {

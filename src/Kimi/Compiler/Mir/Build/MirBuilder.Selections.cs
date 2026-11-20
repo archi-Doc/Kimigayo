@@ -19,7 +19,8 @@ internal sealed partial class MirBuilder
     // selection reads by value is secured there where the index builds code (Handle), and storage is lent there by a guard, a shared
     // borrow ended once the index is evaluated, before the element's own access is formed. The guard is the receiver's check at the
     // selection (DECISIONS R4-M56), and the position local is located there, so A1 reports an access through the Index under the same
-    // subject: one problem unless the receiver changed in between.
+    // subject: one problem unless the receiver changed in between. A fixed-array element's constant index, which Binding publishes on the
+    // index's plan row (Folded; SPEC 15.1.3, 15.6.2), is its Index row's Position.
     private MirPlace Element(IndexKoto index, bool input)
     {
         var sequence = this.Place(index.Left, input);
@@ -56,7 +57,7 @@ internal sealed partial class MirBuilder
             this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, lent, this.Info(index)));
         }
 
-        return this.body.Project(compilation.Types, sequence, MirProjectionKind.Index, position.Root);
+        return this.body.Project(compilation.Types, sequence, MirProjectionKind.Index, position.Root, HirTables.PlanOf(index).Folded is { } constant ? (int)constant : -1);
     }
 
     // A part of a selection on an identity premise's Type (Identical): an index, a boundary (a ^x applied directly, Op Range, as Boundary

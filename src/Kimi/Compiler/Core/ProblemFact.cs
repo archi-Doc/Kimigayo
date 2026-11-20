@@ -2,8 +2,9 @@
 
 // Owns the fact vocabulary of a problem (A6; DECISIONS R4-M3a, R4-M57, R4-M69, R4-M92, R4-M97, R4-M132; R7-E1): what a fact is and the
 // record of one. It lives in Core, over no phase's structure, so that a phase which may not reference Mir can use it.
-// Input: the kind, site and value a recording rule gives. The MIR analyses' recording rules write Anchor through Cause, and Cause stays
-// theirs; Binding's recorder writes the kinds after Cause, appended, and a MIR record carrying one is a broken contract.
+// Input: the kind, site and value a recording rule gives. The MIR analyses' recording rules write Anchor through Cause; Binding's
+// recorder writes Cause with Value -1 (a never-shown cause a check names, R7-E2 E2-3) and the kinds after Cause, appended, and a MIR
+// record carrying one of those is a broken contract.
 // Output: ProblemFact values, which MirReport keeps per problem and Core's publisher (`Compilation.Publication`) reads, beside the test MIR
 // side (`MirTargetSide.MirSide`), which reads the problems they belong to, and which BindingReport keeps for Binding's adapter.
 // Invariants: a fact is a site the problem relates and, for a kind that names one, its typed value, never a message (R4-M132): an Inlined
@@ -21,8 +22,11 @@
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
 // start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept Types,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
-// the subject and as its Value an index in the kept Origin records; a kind that names no value has -1; a problem has at most one fact of
-// each kind but its witness's and its causes, which come last.
+// the subject and as its Value an index in the kept Origin records, a Related fact a location the problem relates and as its Value the
+// role's ordinal in its code's adapter row, a Count fact the subject and as its Value a count the requirement states, in the row's order,
+// and a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names (R7-E2); a kind that names
+// no value has -1; a problem has at most one fact of each kind but its witness's, its causes, which come last, and its Related and Count
+// facts, in their row's order.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
 
 #pragma warning disable SA1402 // The fact vocabulary and its record belong together.
@@ -35,7 +39,7 @@ namespace Kimi.Compiler;
 /// (R4-M97), the declaration of the static Field a Call's or Drop's effects met, by what decided it (R4-M92), an Origin problem's last
 /// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), a problem this one is caused only by (rule W,
 /// R4-M132), or, for Binding, the syntax that shows a mismatch with one of its two sides, the subject with its located part, a failed operator's
-/// operand, judged Type or proposition, or a further Origin record (R7-E1).</summary>
+/// operand, judged Type or proposition, a further Origin record (R7-E1), a related location, a stated count or a closed reason (R7-E2).</summary>
 internal enum ProblemFactKind : byte
 {
     Anchor,
@@ -51,7 +55,7 @@ internal enum ProblemFactKind : byte
     Required, // A storage limit's body: the bytes its arena needs (Value), OwnershipStorageLimit_Kd's requiredBytes (MirDataflow.StorageLimit).
     Limit, // A storage limit's body: the analyses' byte limit (Value), its limitBytes; a height record's subject: IMPL A.4's height (R7-T1).
     Table, // A storage limit's body: the arena (Value, a MirStorageTable), its table.
-    Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value); facts' tail.
+    Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value, -1 Binding's); facts' tail.
     Actual, // Binding: the syntax that shows a mismatch, the Type found (Value, an index in BindingReport's kept Types; SPEC 23.3).
     Expected, // Binding: the syntax that shows a mismatch, the Type required (Value, the same).
     Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).
@@ -61,12 +65,15 @@ internal enum ProblemFactKind : byte
     Terminal, // Binding: the same syntax, the Type the operator judged (Value, the same).
     Constraint, // Binding: the same syntax, the proposition a failed operator needs (Value, an index in the kept propositions).
     OriginRecord, // Binding: the subject, one of its Origin records beyond the first (Value, an index in the kept Origin records; SPEC 15.6.1).
+    Related, // Binding: a location the problem relates, such as a declaration it names (Value, the role's ordinal in its code's row; SPEC 23.3).
+    Count, // Binding: the subject, a count its requirement states, such as an arity (Value, the count; in its code's row order).
+    Reason, // Binding: the subject, a row of the closed enumeration its requirement names (Value; its text is Binding's adapter's).
 }
 
 /// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>
 /// <param name="Kind">What the site is.</param>
 /// <param name="Site">The syntax.</param>
 /// <param name="Value">A Relation fact's row index in the body's C1-F4 view, -1 for a containment edge; a storage limit's bytes, byte limit or
-/// arena; a Cause's problem index (in Merged's facts, its merged problem's); a kept value's index; a form's row and count; a located part; -1
-/// for a kind that names no value.</param>
+/// arena; a Cause's problem index (in Merged's facts, its merged problem's); a kept value's index; a form's row and count; a located part; a
+/// related location's role ordinal; a stated count; a reason's row; -1 for a kind that names no value.</param>
 internal readonly record struct ProblemFact(ProblemFactKind Kind, SourceRef Site, long Value = -1);

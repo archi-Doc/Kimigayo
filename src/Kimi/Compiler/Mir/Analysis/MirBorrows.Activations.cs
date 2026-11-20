@@ -19,6 +19,7 @@ internal sealed partial class MirBorrows
     private readonly Dictionary<(int Node, MirProjectionKind Kind, int Arg), int> throughChildren = []; // The parents' trie: a node's child by step key.
     private readonly Dictionary<int, int> throughRoots = []; // By root key: the trie node the root's parents' steps lie under.
     private bool[] throughEnds = []; // By trie node: whether a parent's steps end there.
+    private int[] throughDeepest = []; // By trie node: the most steps of a parent through it, so the depth of its subtree's deepest end.
     private int[] throughFirst = []; // By trie node: its first child (None: none), the list an Index step of a Loan walks.
     private int[] throughNext = []; // By trie node: its next sibling (None: none).
     private MirProjectionKind[] throughKinds = []; // By trie node: the kind of the step it is reached by (a root node's unused).
@@ -159,6 +160,7 @@ internal sealed partial class MirBorrows
         foreach (var step in steps)
         {
             node = this.Child(node, StepKey(step));
+            this.throughDeepest[node] = Math.Max(this.throughDeepest[node], steps.Length);
         }
 
         this.throughEnds[node] = true;
@@ -181,10 +183,11 @@ internal sealed partial class MirBorrows
     {
         var node = this.throughCount++;
         MirDataflow.Grow(ref this.throughEnds, this.throughCount);
+        MirDataflow.Grow(ref this.throughDeepest, this.throughCount);
         MirDataflow.Grow(ref this.throughFirst, this.throughCount);
         MirDataflow.Grow(ref this.throughNext, this.throughCount);
         MirDataflow.Grow(ref this.throughKinds, this.throughCount);
-        (this.throughEnds[node], this.throughFirst[node], this.throughNext[node], this.throughKinds[node]) = (false, None, None, kind);
+        (this.throughEnds[node], this.throughDeepest[node], this.throughFirst[node], this.throughNext[node], this.throughKinds[node]) = (false, 0, None, None, kind);
         return node;
     }
 
@@ -204,8 +207,11 @@ internal sealed partial class MirBorrows
     }
 
     // Whether a parent in a trie node's subtree hits a Loan's steps from a depth: an end past the last borrow Deref, or the node reached at
-    // the steps' end. Meets at the walk: an Index step of the Loan walks every index child of the node (each a parent step it meets, so a
-    // node is visited at most once per Loan), a ConstIndex step the parents' Index key and its own, another step its key alone.
+    // the steps' end. Meets at the walk, the trie form of MirBorrows.Checks' Meets (the stop is stated in both): an Index step of the Loan
+    // beside an index child of the node, and a ConstIndex step beside the parents' Index key, are Unproven (SPEC 15.6.2), so every parent
+    // through that child meets the Loan's later steps and one hits when the child's deepest end lies past that Deref (throughDeepest, the
+    // end test without the later keys); a ConstIndex step beside its own constant and another step by its key walk on. A node is visited
+    // at most once per Loan.
     private bool Below(int node, ReadOnlySpan<MirStep> steps, int depth, int deref)
     {
         this.Work++;
@@ -219,7 +225,8 @@ internal sealed partial class MirBorrows
         {
             for (var each = this.throughFirst[node]; each != None; each = this.throughNext[each])
             {
-                if (this.throughKinds[each] is MirProjectionKind.Index or MirProjectionKind.ConstIndex && this.Below(each, steps, depth + 1, deref))
+                this.Work++;
+                if (this.throughKinds[each] is MirProjectionKind.Index or MirProjectionKind.ConstIndex && this.throughDeepest[each] > deref)
                 {
                     return true;
                 }
@@ -230,7 +237,7 @@ internal sealed partial class MirBorrows
 
         var key = StepKey(step);
         return (step.Kind == MirProjectionKind.ConstIndex && this.throughChildren.TryGetValue((node, MirProjectionKind.Index, 0), out var index) &&
-            this.Below(index, steps, depth + 1, deref)) ||
+            this.throughDeepest[index] > deref) ||
             (this.throughChildren.TryGetValue((node, key.Kind, key.Arg), out var child) && this.Below(child, steps, depth + 1, deref));
     }
 

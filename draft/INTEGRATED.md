@@ -1631,3 +1631,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   check is `build.ps1`'s own load, not a managed test. §5 A4 gains a bullet for setup, the record and CI, and judges its budget on
   A1's series run at A4 as an interleaved paired A/B. §6's last rule: `src/Tatara`'s README states the settings a source build must
   reproduce; none is exercised while the prebuilt archive fits. No decision of the owner changes. Nothing frozen.
+- Revision 2 (2026-11-20, the Middle's design review of unit A2, C-423, and the owner's budget answer O-452 「(b) と (m2)」; T's
+  D-928): §2 gains decision 14 (A4's budget); §3 item 4: A2's first commit stops writing `.inspection.txt` on the old path too;
+  §4: the executor's four calls (optimize, emit, inspect, link) and the nine-export `tatara.h` sketch; Tatara's rules: in stage A
+  every failure is the toolchain's (internal errors with stage B's unit), the `tatara_abi` start check, crash recovery on the
+  tools' stack as the only process-wide state; §5 A2: three commits in one window, the comparisons `Explicit` until A4; §5 A4's
+  budget names decision 14; §10's fatal-error row; §11's A1 and A2 rows answered. Nothing frozen.

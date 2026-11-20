@@ -36,11 +36,13 @@ public class ReferenceDiagnosticTest
 
     private const string RunTail = "let n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 3 else => $abort(\"run\")";
 
+    // SPEC 9.7.1 (R7-E2 E2-3a, D3): the record states the declared and written counts as its Reason (the arity problem's Count facts) and
+    // the declaration as its related location; no Note.
     [Theory]
-    [InlineData(Box + "let s = Box.size", "Box", "only the construction target itself can infer its own slots")]
-    [InlineData(Box + "let b: Box = Box<i32>.init(4)", "Box", "declares 1 Type parameter, and 0 Type arguments are written")]
-    [InlineData(Box + "let b: Box<i32, bool> = Box<i32>.init(4)", "Box<i32, bool>", "declares 1 Type parameter, and 2 Type arguments are written")]
-    public void AContainerWithoutItsTypeArgumentsCannotFormAType(string source, string text, string note)
+    [InlineData(Box + "let s = Box.size", "Box", 1, 0)]
+    [InlineData(Box + "let b: Box = Box<i32>.init(4)", "Box", 1, 0)]
+    [InlineData(Box + "let b: Box<i32, bool> = Box<i32>.init(4)", "Box<i32, bool>", 1, 2)]
+    public void AContainerWithoutItsTypeArgumentsCannotFormAType(string source, string text, int declared, int written)
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -49,15 +51,16 @@ public class ReferenceDiagnosticTest
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(DiagnosticCode.InvalidTypeFormation_Kd), error.Code);
         Assert.Equal(text, error.Text);
-        Assert.Contains(note, error.Note, StringComparison.Ordinal);
+        Assert.Null(error.Note);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
         Assert.Equal("declaration", Assert.Single(record.Related!).Role);
+        Assert.Equal(new DiagnosticValue[] { new("declared", DiagnosticValueKind.Number, $"{declared}"), new("written", DiagnosticValueKind.Number, $"{written}") }, record.Reason!);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains(note, console.Text, StringComparison.Ordinal);
+        Assert.Contains(nameof(DiagnosticCode.InvalidTypeFormation_Kd), console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var capability in new[] { false, true })
         {
