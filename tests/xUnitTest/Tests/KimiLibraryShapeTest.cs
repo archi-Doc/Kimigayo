@@ -189,7 +189,7 @@ public partial class KimiLibraryShapeTest
         Assert.NotNull(symbol);
         var declaration = symbol.Declaration;
         Assert.Equal(id.ToString(), LangName(declaration));
-        Assert.Equal(declaration is FunctionKoto function ? (function.Name, BindingSymbolKind.Function) : (((DeclarationContainerKoto)declaration).Name, BindingSymbolKind.Type), (symbol.Name, symbol.Kind));
+        Assert.Equal(declaration is FunctionKoto function ? (function.Name, BindingSymbolKind.Function) : (((DeclarationContainerKoto)declaration).Name, declaration is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type), (symbol.Name, symbol.Kind));
         Assert.Same(Container(declaration), Assert.IsAssignableFrom<DeclarationContainerKoto>(symbol.Scope.Owner));
         if (entry.Intrinsic != IntrinsicKind.None)
         {
