@@ -13365,6 +13365,8 @@ resumed by R4-M86 (2026-10-20).
     proof scope's owner as the site; a whitelist of proof-entry callers; a fact-to-clause map; a second field beside the bool.
   - After the run (PLAN G651 U2): one substitution-query outcome; the collector and MIR construction record it at their site, code
     generation treats it as a broken contract, Hover writes none.
+  - Superseded in part by R7-M63 (R7-C3 C3-1): the environment's whole invalidity (`Fail`, `Failed`, `InvalidEnvironment`) is
+    deleted, since a proof reads the failed fact's own Failed state through the one consult; the frames and the height rule stand.
 
 - **BU-168 A node-form pair layer's bare acquisition is one per-case plan; an omitted list reads "Copies in every case" (PLAN G748,
   G755's family part)** (2026-11-11; Front, Binding; Major; design reviews 1-2 REVISE, 3 ACCEPT, implementation review 1 REVISE, 2
@@ -22149,6 +22151,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     PremiseList +360 KB), warm bytes 0.
   - Rejected: withholding premises by rank, abstractness or dev's order (r3-r5, an open family); a mode parameter
     (`parametersOnly`); a depth cut on cycles; a table-wide correspondence of quantified Origins (a query mutated a memoized table).
+  - Amended by R7-M63 (R7-C3 C3-1): "The environment stays valid" now holds for every failure: a failed premise is the premise's
+    own Failed state, read through the one consult. The interim "Until R7-C2c2" bullet is done: `ClassForm` replaces dev's member
+    substitution and ContractTypeCore's first-premise choice.
 - **R7-M25 `Enumerate`'s subjects are keyed by identity class** (Front, 2026-11-13; R7-C2c2 c2-1, the plan's §5.0 C2 part c2; Major
   with design reviews 1-2, an implementation review ACCEPT WITH NOTES and the C-308 fix's review ACCEPT; RP17: the Middle's C-308
   consent, round 2; supersedes in part BU-199) SPEC 8.2.3, 8.3.2.
@@ -23388,6 +23393,55 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves (Q13).** Text only on `InvalidNoInit_Kd`, `InvalidVirtualDeclaration_Kd` (its rule as a Reason and the Label) and
     `InvalidTypeFormation_Kd`'s arity (its counts as Reasons in `kimi.check/2`); `ProtectedPlacement_Kd` at a declaration failed
     earlier is its own record again; no acceptance move.
+- **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
+  R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
+  `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
+  23.1.2. Amends R7-M24; supersedes in part BU-161.
+  - The rule: a fact is Failed when its own judgment failed (Error or Refuted, its record at its own site). A read of it outside its
+    own site is a failed read: no evidence, and the proof's limit (`ScopeReads.Limit`), so an answer the valid facts leave open rests
+    on that record (`EndProof`) and one they prove or refute holds or keeps its own record. A premise naming an invalid declaration is
+    that declaration's premise error, reported once there; its uses rest.
+  - One consult: `AvailableConstraintFact` is the environment's one premise read, which every premise structure passes at the proof;
+    `AvailableContractPremise` reads a Contract source's published state as the limit; `DerivedFailure` makes a premise derived from
+    a Failed premise Failed (its origin clause's state, no copy). `ChecksOwnSite(site)` is the one test of whether the open
+    consultation is a fact's own check; it replaces three copies (UnprovenInputRead's frame rule, IdentityPremiseErrorRead, the source
+    read).
+  - One Failed state per fact the consult reads, each kept by its producer (no new mark, no fourth view state; the view-state count
+    stays 3):
+    - a scope's premise: `ConstraintEnvironment.FailedPremises`, written by `FailPremise` from the premise's own judgment, an override's
+      premise its applicability refutes included (`InheritVirtualConstraints`, ruling 313);
+    - a declaration's closed clauses: its `SourceState` Invalid or Refuted with the published cause (`SourceCause`; `RefutedCause`,
+      asserted at `PublishSourceStates`);
+    - a conformance path: `BoundConformancePath.Invalid`, read where evidence is taken (`PathEvidence`, for `ResolveConformance` and the
+      projection specification's `PathConditions`; an inherited path reads its `DeclaredPath`'s, SPEC 8.6.2). A test of whether a path
+      can apply reads its conditions alone: an Invalid path is no evidence and never rules the conformance out (8.3.2's closed world).
+  - In a conformance's own check every check runs; its own Refuted, Error or Unknown verdict keeps its record, and only a verdict
+    otherwise Proven rests (unverified, no record). A conformance over a Failed premise is unverified and keeps its record (Q13).
+  - The identity judge (R7-M24's classes) gives every Type of a class one form in a view, `ClassForm` (its contract in
+    `Binding.TypeIdentity.Keys.cs`: read only at the intakes of the judgments over identical Types, never in a producer another view
+    reads). It replaces R7-M24's interim member substitution (`SubstituteIdentity`, `IdentityPremise`) and ContractTypeCore's
+    first-premise choice. Readers that formed a Type on their own read it: the inline layout walk (a stored projection, ruling 304) and
+    `RecordMismatch`, which reads the pair its relation walk compared (`RelationWalk.Intake` forms the root pair once and publishes it
+    with its parts; rulings 307 (2), 315). A Type of an erroneous class is a failed input (`ReadIdentityPremiseError`). The classes take
+    no failed identity premise (option (B)): a fit over one keeps its record as a counted dependent (Q13).
+  - A premise error's related premises are the adapter's one `InvalidConstraint_Kd` row's (`FailedPremiseClauses`, the published
+    Failed state; ruling 306).
+  - Rule W at both gates (PLAN G1071): gate 1 publishes the parts Binding bound and verified whatever the definition's own failure
+    (`PartsPublished`; its failed-slot exclusion is BU-234's); gate 2 is this rule: a Failed premise no longer makes every proof of its
+    scope Error, so a body's Copy reads that do not read it are judged and built.
+  - Deleted: `ConstraintEnvironment.Fail`/`Failed`/`Invalid`, `FailEnvironment`, `InvalidEnvironment` and every reader,
+    `SubstituteIdentity`, `IdentityPremise`, `HasParameterIdentity`, `ProjectionClassFailed`, `FailedPremiseRead`, `OwnCheck`,
+    `ReadsNoPremise`, `PremiseError`.
+  - Moves: valid programs newly accepted where SPEC 8.2.3 makes the Types one (a projection named through `T is K`; a conformance step
+    found only through an identity premise, STATUS Types and Contracts; a literal at an expectation an identity premise makes
+    concrete; a call of a Function value whose input names a premise-identified Type); invalid programs newly rejected (a contradictory
+    premise chain, a struct storing itself through its identity premise at the chain's root, SPEC 6.2); no valid program newly
+    rejected; the rest is record selection on invalid programs (Q13), each changed row naming its ruling.
+  - Open: PLAN G1169 (a failed fact's reading recomputed by its readers), G1170 (a path's verification keeps a later Failed fact).
+  - Rejected: marking failed identity premises in the classes (option (A): the class table's input and every reader change; F's
+    ruling 272); a whole-environment flag or a fourth view state; a mode on the consult; an arm per premise structure emulating its key
+    (FailedPremiseRead's arms, where ruling 271's holes fell); a projection's path read as a fourth Failed fact
+    (`ProjectionOutcome.Failed`, ruling 296; withdrawn: the capture's dependent record is G1169's memo cause).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
