@@ -445,6 +445,18 @@ public sealed partial class Binding
     {
         var symbol = this.symbols[function];
 
+        // DECISIONS D3 (G812 rulings 134, 158, 172): the body read an open input's parameter as resting (BindClosureHeader); once it is
+        // bound, the parameter's slot takes the header's Type, the canonical case's, as the split's completion gives a marked node its
+        // Type with its state unchanged: its uses still rest, nothing is judged again, and the Signature below is formed from typed
+        // slots (PLAN G1073, G1110).
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (open.Input(i) && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
+            {
+                this.ParameterSymbol(function, i).Type = inferred.BoundType;
+            }
+        }
+
         // SPEC 15.8.2 (DECISIONS R4-M126 P8, R4-M152): an inferred result is published once the receiver is classified.
         var publishes = symbol.Type is not null && function.ReturnType is null && (expected is null || open.Result);
         var closureBody = new ExecutableBody(symbol);
