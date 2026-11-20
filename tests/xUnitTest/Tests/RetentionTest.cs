@@ -427,7 +427,9 @@ public sealed partial class RetentionTest
             "    put(h@uniq, null, x@ref)\n    x = 3\n    let k = h@ref\n";
         Assert.Equal("ComparisonLoanConflict_Kd x = 3", MirBorrowsTest.Records(CappedRaw + Init + Form + "public func main() => ()\n"));
         var result = Bind(CappedRaw + "func f(h: uniq/HS, v: raw/u8, w: ref/i32) -> HS => $abort(\"x\")\n");
-        Assert.StartsWith("result {0 Value, 1 Value Chain, 2 Content}", Declared(result, "f"), StringComparison.Ordinal);
+        // D-933: h's referent's raw Field b is a raw source by its chain (SPEC 15.6.4 "a Field"), which the result's b, stating the same s,
+        // keeps (BU-66's stated fit; before `0 Value`).
+        Assert.StartsWith("result {0 Value Chain, 1 Value Chain, 2 Content}", Declared(result, "f"), StringComparison.Ordinal);
     }
 
     // SPEC 15.3.5, 15.2.3, 15.6.4 (G416 D'): a Field-less generic stores no T, its Type argument a dependency that implies no Loan, so a
