@@ -77,6 +77,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
+    private readonly MirReach reach = new(); // The blocks a body with a case branch reaches under the view (Local).
     private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while the segment holds.
     private readonly Locals programLocals = new(); // The program segment's, cleared per program version.
     private Locals writing = null!; // The segment Local records into, which a begin call names.
@@ -132,7 +133,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body) in the
     /// segment begun (<see cref="BeginLibrary"/>, <see cref="BeginProgram"/>): its effects and static accesses, its calls with a body as
     /// edges into the callee views their substitution selects, and the parts its Drops destroy (by A2's verdicts) and the Callable inputs
-    /// it calls through as inputs of its summary; a body's views are recorded in order.</summary>
+    /// it calls through as inputs of its summary; a body's views are recorded in order. In a body with a case branch only the blocks
+    /// the view reaches are read (MirReach under the view): the other side's calls run in no instance of the view.</summary>
     /// <param name="program">The program.</param>
     /// <param name="body">The body, whose view is selected.</param>
     /// <param name="view">The selected view.</param>
@@ -141,8 +143,19 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         var node = this.writing.Open(body.Ordinal, view);
         this.found = 0;
         var uses = new Uses(this, body);
+        if (body.CaseSwitches > 0)
+        {
+            this.reach.Clear(body.Blocks.Length);
+            this.reach.Walk(body, 0, checks: true, cases);
+        }
+
         for (var block = 0; block < body.Blocks.Length; block++)
         {
+            if (body.CaseSwitches > 0 && !this.reach[block])
+            {
+                continue;
+            }
+
             for (var index = 0; index <= body.Blocks[block].Count; index++)
             {
                 MirUses.ForEach(cases, new(block, index), ref uses);

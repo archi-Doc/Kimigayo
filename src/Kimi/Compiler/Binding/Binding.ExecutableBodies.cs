@@ -44,8 +44,10 @@ public sealed partial class Binding
 {
     private ExecutableBody formingBody;
 
-    // SPEC 11.8: whether a Property is static storage, a group's (TypeContext's storage test).
-    internal static bool IsStatic(BindingSymbol? property) => property is { Kind: BindingSymbolKind.Property, Scope.Owner: GroupKoto };
+    // SPEC 11.1, 11.8: whether a Property is static storage, a Property of a container whose members are static (the container's
+    // published HasStaticMembersOnly, which Parsing reads for the static initializer; TypeContext's storage test).
+    internal static bool IsStatic(BindingSymbol? property)
+        => property is { Kind: BindingSymbolKind.Property, Scope.Owner: DeclarationContainerKoto { HasStaticMembersOnly: true } };
 
     // A Closure's evaluating body (SPEC 15.3.4), recorded on its plan when it is bound; no body for any other.
     private static ExecutableBody EvaluatingBody(ExecutableBody body)

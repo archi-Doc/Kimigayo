@@ -1034,7 +1034,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
             "        return .Ok(())\npublic func main() => ()\n");
         var program = c.BuildMir();
-        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var cases = new MirCases(c.Types);
+        var flow = new MirDataflow(new MirReach(), cases);
         var (outside, inside) = (new MirReport(), new MirReport());
         Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, outside, 0);
         Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, inside, c.SourceModules.Length);
@@ -1055,7 +1056,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
             "        return .Ok(())\npublic func main() => ()\n");
         var program = c.BuildMir();
-        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var cases = new MirCases(c.Types);
+        var flow = new MirDataflow(new MirReach(), cases);
         var effects = new MirEffects(c.Types, cases, flow);
         Assert.Equal([Failed], Record(lastFirst: true));
         program.Version++;
@@ -1179,7 +1181,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 var program = c.BuildMir();
                 Assert.Equal([Failed], Problems(c, program));
                 var (cases, report) = (new MirCases(c.Types), new MirReport());
-                var flow = new MirDataflow(new MirReach());
+                var flow = new MirDataflow(new MirReach(), cases);
                 var effects = new MirEffects(c.Types, cases, flow);
                 analyses[i] = (effects, flow, cases, program, report);
                 return () => Analyze(effects, flow, cases, program, report, All);

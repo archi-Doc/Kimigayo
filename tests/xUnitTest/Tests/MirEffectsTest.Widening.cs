@@ -121,7 +121,8 @@ public sealed partial class MirEffectsTest
                 "public func main() => ()\n");
             var program = c.BuildMir();
             Assert.Empty(Problems(c, program));
-            var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+            var cases = new MirCases(c.Types);
+            var flow = new MirDataflow(new MirReach(), cases);
             var effects = new MirEffects(c.Types, cases, flow);
             Analyze(effects, flow, cases, program, new MirReport(), All);
             evaluations[i] = effects.Evaluations;

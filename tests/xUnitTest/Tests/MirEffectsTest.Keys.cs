@@ -154,7 +154,7 @@ public sealed partial class MirEffectsTest
     {
         var program = MirBuildTest.LibraryRange(c); // The library's bodies too (PLAN G951 U2-T).
         var (cases, report) = (new MirCases(c.Types), new MirReport());
-        var flow = new MirDataflow(new MirReach());
+        var flow = new MirDataflow(new MirReach(), cases);
         var effects = new MirEffects(c.Types, cases, flow);
         Analyze(effects, flow, cases, program, report, All);
         return (effects, flow, program);
