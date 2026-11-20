@@ -178,9 +178,9 @@ public sealed partial class Binding
 
         if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
         {
-            foreach (var capture in closure.Captures)
+            for (var i = 0; i < closure.Captures.Count; i++)
             {
-                if (capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
+                if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
                 {
                     this.PublishedBorrow(capture.Environment.Type);
                 }
