@@ -193,7 +193,7 @@ public sealed partial class Binding
     // refusal (LibraryLayer.Refusal; a syntax record stays its module's list's, which the refusal only notes: form (R)), false
     // returned and nothing stamped; its query states are complete (LibraryQueryFault); and every conformance path it made current is
     // verified, none at its limit (ImplTable.UnsettledPath) and no verification open (the obligation table, ObligationDepth; PLAN G949
-    // Stage 2 U3: no reading compilation verifies a frozen path). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns
+    // Stage 2 U3: no reading compilation verifies a frozen path); and the Failed state's census is 0 (F's C2 ruling 318). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns
     // Frozen, so it reads current in every later pass, but a working-state family's column, which its NodeColumns.Freeze row releases
     // instead (its rows and stamp gone, as a column the library pass never wrote; DECISIONS BU-220 as R7-N5 B2a-2 amends it), so no
     // counter value of the freeze survives either way; a stamp of an earlier run stays stale and reads absent, as the library pass left
@@ -234,6 +234,13 @@ public sealed partial class Binding
         if (this.Library.Layer.Impls.UnsettledPath() is { } unsettled)
         {
             throw new InvalidOperationException($"The library pass left the conformance path `{unsettled.Type.Name} is {unsettled.Contract.Name}` unverified (InternalInvariant; PLAN G949 Stage 2 U3).");
+        }
+
+        if (this.premiseFailures != 0)
+        {
+            // Every failed premise and named input has its record, so a library pass with one was refused above; the frozen library's
+            // environments hold none, which the census's soundness rests on (ConstraintEnvironment.FailedPremises).
+            throw new InvalidOperationException("The library pass left a failed premise or a named unproven input without a record (InternalInvariant; F's C2 ruling 318, the Failed state's census).");
         }
 
         this.Library.Layer.Refusal = null;
