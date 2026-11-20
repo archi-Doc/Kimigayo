@@ -110,11 +110,15 @@ public sealed partial class Binding
     // for any other Type or an outer Origin naming no Projection or Anchor atom.
     private void RecordBorrow(Dictionary<BoundOrigin, BorrowList> rows, BoundType? type)
     {
-        if (type is null || this.BorrowReferent(type, out var outer, out var exclusive) is not { } referent || outer is null)
+        if (type is not null && this.BorrowReferent(type, out var outer, out var exclusive) is { } referent && outer is not null)
         {
-            return;
+            this.RecordEntry(rows, outer, referent, exclusive);
         }
+    }
 
+    // One Borrow by its outer Origin, referent and mode: each Projection or Anchor atom it names (a meet's operands).
+    private void RecordEntry(Dictionary<BoundOrigin, BorrowList> rows, BoundOrigin outer, BoundType referent, bool exclusive)
+    {
         if (outer.Kind != OriginKind.Intersection)
         {
             this.JoinBorrow(rows, outer, referent, exclusive);
@@ -172,8 +176,15 @@ public sealed partial class Binding
         this.publishedFailure |= node.BindingState is BindingState.Unresolved or BindingState.Invalid;
         if (op == HirOp.Borrow || (node is IndexKoto && ElementAccess.IsSlicing(this, node)))
         {
-            // An address (`@raw`) borrows its operand as its target's Type records (Conversions.Raw), its own Type being the pointer.
-            this.PublishedBorrow(node is ConversionKoto { ConversionBinding: ConversionBinding.Address } address ? address.Right.BoundType : node.BoundType);
+            this.PublishedBorrow(node.BoundType); // An address's Type is a pointer: no Borrow (SPEC 5.4: it leaves no Loan).
+        }
+
+        // SPEC 13.6.1 (DECISIONS BU-27's HIR contract): an object upcast to a view of an operand of another Semantics borrows the operand's
+        // payload in the view's mode, under the view's Origin (the Borrow MirBuilder.Operators.Convert forms; Hir.Adjust's ViewBorrow).
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true, Origin: { } origin } view } upcast &&
+            upcast.Left.BoundType is { Components: [var payload, ..] } operand && operand.Semantics != view.Semantics)
+        {
+            this.RecordEntry(this.publishedBorrows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
         }
 
         if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
@@ -205,6 +216,17 @@ public sealed partial class Binding
         if (this.adaptations.TryGetValue(child, out var recorded) && recorded.Kind != ExpectedAdaptationKind.ReferentRead)
         {
             this.PublishedBorrow(recorded.Type);
+        }
+    }
+
+    // A call Binding selected that the publication does not take (a user index's other indexer call, SelectionMode): its operations, as
+    // the formation side records every selected call's (RecordSelectedBorrows).
+    private void PublishedCall(CallPlan call)
+    {
+        this.PublishedOperation(call.ReceiverOperation);
+        foreach (ref readonly var argument in call.ArgumentOperations)
+        {
+            this.PublishedOperation(argument);
         }
     }
 

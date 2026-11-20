@@ -51,7 +51,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var reference = exclusive ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin) : shared;
+        var reference = exclusive ? this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin)) : shared;
         this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, reference);
         return reference;
     }

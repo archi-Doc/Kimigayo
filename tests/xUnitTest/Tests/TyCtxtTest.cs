@@ -235,8 +235,9 @@ public sealed partial class TyCtxtTest
     private static readonly (int At, int Part)[] ConditionalRows = [(3, 1), (4, 1), (5, 2), (6, 2), (7, 2), (8, 2), (9, 1), (10, 1), (11, 1), (12, 1), (13, 2), (14, 2)];
 
     // ABodyAtomListsTheBorrowsFormedWithIt's rows (binder's first line, atom kind and slot: referent and mode): originpub design R2.9's
-    // expectation, written before the run, with what the run showed beside it: the address `values@raw` lists its operand's internal
-    // shared borrow (`[2 of i32]`), and m's binding borrow lies under the Subject Place's atom (the match).
+    // expectation, from SPEC before the run. The address `values@raw` adds none: it "checks like an immediately ending @ref ... and
+    // leaves no Loan" (SPEC 5.4), no borrow value whose Origin a Type could state. m's binding borrow lies under the Subject Place's atom
+    // (the match), where Binding names it.
     private static readonly string[] ExpectedRow1 =
     [
         "(*p)@uniq Anchor 0: i32 X",
@@ -246,7 +247,7 @@ public sealed partial class TyCtxtTest
         "var b = (0, x@ref) Projection 0: i32 X",
         "var h = 4 Projection 0: i32 S",
         "var o: Option<i32> = .Some(3) Projection 0: Option<i32> S",
-        "var values: [2 of i32] = [1, 2] Projection 0: i32 S, [2 of i32] S",
+        "var values: [2 of i32] = [1, 2] Projection 0: i32 S",
         "var w: ref/i32 = x@ref Projection 0: ref/i32 X",
         "var x = 1 Projection 0: i32 S",
     ];

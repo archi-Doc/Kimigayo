@@ -230,6 +230,7 @@ public sealed partial class Binding
             uses.Call(i);
             if (ReferenceEquals(call, unselected))
             {
+                this.PublishedCall(call); // Its Borrows were formed with the call's selection (Binding.RawOrigins.Borrows).
                 continue;
             }
 

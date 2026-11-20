@@ -90,7 +90,7 @@ public sealed partial class Binding
     }
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
-        => this.FormBorrow(this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []));
+        => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);
 
     /// <summary>
     /// SPEC 10.2: safe value-reference layers ending in <paramref name="referent"/> yield one shared reference to it, the layers
@@ -114,7 +114,7 @@ public sealed partial class Binding
             {
                 var walk = default(ContainmentWalk);
                 this.MeetLayers(actual, layers, ref walk); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
-                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: this.WalkOrigin(walk));
+                return this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: this.WalkOrigin(walk)));
             }
         }
 
@@ -346,7 +346,7 @@ public sealed partial class Binding
         if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
             ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _))
         {
-            adapted = this.PreparedBorrowType(source, pattern);
+            adapted = this.FormBorrow(this.PreparedBorrowType(source, pattern));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
             return true;
