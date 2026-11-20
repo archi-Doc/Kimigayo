@@ -256,6 +256,10 @@ public class ArchitectureRulesTest
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
     [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")] // R7-C3 (F's C2 rulings 272-273): a failed premise stays in the sets (its state)
     [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")] // R7-C3: FailPremise's change replaces Fail(Koto)'s (rulings 272-273)
+    // R7-C3 cost (F's C2 ruling 318, C1): only the census's writers write the Failed state. ConstraintEnvironment.FailPremise is called
+    // by Binding.FailPremise only, and NameUnprovenInput by FailInput only (Binding.premiseFailures). A direct call anywhere else would
+    // leave the census at 0, and the per-proof readers would answer "nothing failed".
+    [InlineData("Writers of the Failed state", "src/Kimi/Compiler", @"(?<!\bthis)\.(?:FailPremise|NameUnprovenInput)\(", "Binding/Binding.ConstraintValidation.cs=1;Binding/Binding.Diagnostics.Prerequisites.cs=1")]
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W8 and an outermost walk, the
     // ContractSolver header) give Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
     // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.

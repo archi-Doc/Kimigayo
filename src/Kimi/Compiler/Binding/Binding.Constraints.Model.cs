@@ -141,7 +141,8 @@ internal sealed class ConstraintEnvironment
     // count where ResetPass resets the pass's environments, so the per-proof readers answer "nothing failed" at once on 0. Sound
     // because no environment a pass reads holds this state without a write counted in that pass: the pass's environments are reset
     // with the count, a mid-pass Reset only leaves it high, and the frozen library's hold none (each failure has its record, and
-    // FreezeLibrary refuses a library with records). A new writer of this state counts it there.
+    // FreezeLibrary refuses a library with records). A new writer of this state counts it there: ArchitectureRulesTest's row "Writers
+    // of the Failed state" pins the two callers (F's C2 ruling 318).
     internal List<BoundConstraint>? FailedPremises { get; private set; } // allocated at the first failed premise
 
     // R7-C3 (F's C2 ruling 255): the declaration's own unproven projection inputs (NameUnprovenInput): no premise fails, and a proof that
