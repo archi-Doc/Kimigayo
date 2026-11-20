@@ -69,6 +69,23 @@ public sealed partial class Binding
         // SPEC 10.8, 15.3.6 (J2, G1128 R1.3 (f)): whether every binding of the slot in this solve is at a covariant position.
         internal bool BindsCovariantly(int slot) => this.store.BindsCovariantly(this.id, slot);
 
+        // G1128 R1.3 (e), F's ruling 38: whether the slot holds two distinct bindings, so that slot variables would add something. The
+        // bindings are formed in the solve's view (Infer's head, R7-C3), where identical Types are one object (ClassForm's invariant
+        // (2)), so reference identity is the identity judge's verdict.
+        internal bool BindsDistinctTypes(int slot)
+        {
+            var head = this.Bindings(slot);
+            for (var node = head?.Next; node is not null; node = node.Next)
+            {
+                if (!ReferenceEquals(node.Type, head!.Type))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // DECISIONS BU-86: the slot's environment judgment in this solve: a known call signature's result over its closure's hidden
         // environment receiver gave it no evidence (Infer); read by the candidate's trial (EnvironmentJudgment).
         internal PendingJudgment? EnvironmentJudgment(int slot) => this.store.EnvironmentJudgment(this.id, slot);

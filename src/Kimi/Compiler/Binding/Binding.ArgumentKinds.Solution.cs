@@ -221,18 +221,19 @@ public sealed partial class Binding
             }
         }
 
-        // G1128 (SPEC 10.8 as revised, 15.3.5, 15.3.6; design R1.3 (a), (e)): after the evidence pass, each slot not fixed that more than one
-        // binding or a non-covariant one bound (B's rent condition, 11-21 04:12) takes its skeleton (SlotSkeleton), whose slot variables
-        // each binding bounds at its composed polarity through CollectOriginInference, the one composition, and whose well-formedness bounds
-        // them as a solution's; the call's one solve gives their values (RestoreSlotValues). A slot with one covariant binding keeps it: its
-        // variables would have that binding's Origins as their one upper bounds (R1.3 (e)'s shortcut). Past MaxSlotVariables the call is
-        // the located limit, never a shared key.
+        // G1128 (SPEC 10.8 as revised, 15.3.5, 15.3.6; design R1.3 (a), (e)): after the evidence pass, each slot not fixed with more than
+        // one distinct binding (B's rent condition of 11-21 04:12 as F's ruling 38 narrows it; SlotFrame.BindsDistinctTypes) takes its
+        // skeleton (SlotSkeleton), whose slot variables each binding bounds at its composed polarity through CollectOriginInference, the
+        // one composition, and whose well-formedness bounds them as a solution's; the call's one solve gives their values
+        // (RestoreSlotValues). A slot whose bindings are one Type keeps it at any polarity: every variable's bounds would be that binding's
+        // Origins, so the solve would give that binding (R1.3 (e)'s shortcut theorem). Past MaxSlotVariables the call is the located
+        // limit, never a shared key.
         internal void OpenSlotVariables()
         {
             var binding = this.Binding;
             for (var g = 0; g < Math.Min(CallSlotCount(this.Binder), this.Types.Length); g++)
             {
-                if (this.FixedSlot(g) || this.Frame.Bindings(g) is not { } head || (head.Next is null && head.Polarity == 1) ||
+                if (this.FixedSlot(g) || !this.Frame.BindsDistinctTypes(g) || this.Frame.Bindings(g) is not { } head ||
                     this.Types[g] is not { CarriesOrigin: true } first)
                 {
                     continue;

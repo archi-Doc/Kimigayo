@@ -22,8 +22,9 @@ public sealed partial class Binding
         => (candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
             (candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && !ContainerBound(candidate, declaringType));
 
-    // G1128 R1.3 (h): the first slot of a reference whose bindings from S would take slot variables, or -1: two distinct bindings (Infer
-    // records a later one at a reference only where it differs in its Origins) whose met Type holds only Origins fixed at the reference,
+    // G1128 R1.3 (h): the first slot of a reference whose bindings from S would take slot variables, or -1: two distinct bindings (the
+    // call's rent condition, SlotFrame.BindsDistinctTypes; Infer records a later one at a reference only where it differs in its
+    // Origins) whose met Type holds only Origins fixed at the reference,
     // no input Origin of S (InputOrigins, SPEC 10.6, whose rule judges the rest). A reference has no late solve (SPEC 10.5.3 applies 10.8,
     // but S's result bounds the other end: the gap of the design's R1.6), so such a slot is the located Unsupported_Kd at the reference
     // (PLAN). One binding, or bindings of one Type, at any polarity give that binding (R1.3 (e)'s shortcut theorem), as dev binds it.
@@ -34,7 +35,7 @@ public sealed partial class Binding
         {
             var perCall = 0UL;
             var foreign = false;
-            if (frame.Bindings(i) is { Next: not null })
+            if (frame.BindsDistinctTypes(i))
             {
                 InputOrigins(frame.Types[i]!, required.Components[0], required.Binder, use, false, ref perCall, ref foreign);
                 if (perCall == 0 && !foreign)
