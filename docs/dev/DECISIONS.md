@@ -15506,6 +15506,16 @@ resumed by R4-M86 (2026-10-20).
     Middle's consent re-check: PLAN G966, G967 and the G710 and G870 additions.
   - Amended by R7-M51 (R7-O1 b1): a value call opens its waited Origin parameters too, as the direct call does
     (`SlotSolution.OpenWaited`, one member with the named call).
+  - Amended by PLAN G1127 (Q-576, D-902, 2026-11-20; the Front's, F's G147 ruling 9). R1: D1's "Kept as the evidence binds them: an
+    open region" reads "an open stand-in" (`BoundOrigin.IsOpenStandIn`: a call's region or an argument's per-call stand-in, which
+    later evidence or the body's solve fills). An anonymous function parameter's omitted nested Origin (`IsLocalInput`) is opened like
+    a named Origin: it is fixed in its enclosing body (SPEC 15 Nested signatures), so "the body's solve decides it" does not hold for
+    it (k3d, D-882's cw_k3d). Beside D2, `FillOpenOrigins`' `Fill` fills only a stand-in, so another argument's Origin never replaces a
+    local input at an open position, and two covariant bindings meet (SPEC 10.8; f4, f5). One predicate, read by
+    `OpensAsSlotRegion`, `Fill` and the display of an omitted Origin (`OmittedAt`); `HasOpenOrigin` and `Fill`'s `supplied.Open` keep
+    meaning any open Origin. R2: J2's two gates (`SlotSolution.OpenWaited`, `RecordOpenings`) read the rows `CollectPositionNames`
+    reads (`HasWaitingPosition`: a Signature root without child rows or a Signature leaf row, BU-104 R4), so a join argument whose
+    sources wait opens T and its waited Origin parameters as one leading-dot Case does (SPEC 10.5.1).
 - **BU-224 The expected Type reaches every part of an argument, and a value at `ref/U` is one temporary borrowed once: principles A
   and B of argument flow (PLAN G924 AF-1, AF-2)** (2026-11-18; Front, Binding; Major, an acceptance mover (Q-477); the owner's
   direction of 2026-11-15 answering O-331, verbatim 「提案の方針（原則A：期待型を引数の式に下ろす、原則B：ref/U に渡す値の式は引数の位置で一時値にして1回借用する）でOKです。提案書を作成し、設計、実装を進めて下さい。SPECもそれに合わせて、修正して下さい。」, and its
