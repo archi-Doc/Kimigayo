@@ -120,6 +120,18 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
+    /// <summary>Gets the decider of a published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23):
+    /// its plan row's Mode 2, which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases
+    /// where a standing take Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a
+    /// Field's or Tuple element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's
+    /// case Type is an exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's
+    /// ExpansionPlan names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145).
+    /// Null for a selection that is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) and for any other node; no
+    /// reader reads Mode 2 or the decider otherwise.</summary>
+    /// <param name="index">The index expression.</param>
+    /// <returns>The decider, or null.</returns>
+    internal static BoundType? IndexCaseDecider(Koto index) => index is IndexKoto && PlanOf(index) is { Mode: 2, Plan: BoundType decider } ? decider : null;
+
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
     /// operand is a Transfer whose Take OffersTake allowed through its raw branch (ElementAccess.IsRawPlace; Binding.DestroysInPlace),
     /// the discard's plan row Flag.</summary>
@@ -606,8 +618,9 @@ internal struct PlanRow
     private ulong foldedHigh;
     private ulong foldedLow;
 
-    /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a ConstIndex position or a Tuple element's
-    /// position.</summary>
+    /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a fixed-array element's constant index (SPEC
+    /// 15.1.3, on a ConstIndex or an Index Place, however the array is reached, in range or not: ElementAccess.ConstantIndex) or a Tuple
+    /// element's position.</summary>
     internal Int128? Folded
     {
         readonly get => this.folded ? new Int128(this.foldedHigh, this.foldedLow) : null;

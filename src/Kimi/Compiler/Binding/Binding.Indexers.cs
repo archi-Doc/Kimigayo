@@ -52,7 +52,7 @@ public sealed partial class Binding
     // SPEC 4.7.1: the element a selected index or indexUniq call lends, the referent of the reference its plan returns; the index
     // expression designates it, whatever the call node itself is typed.
     private BoundType? LentElement(InvocationKoto? call)
-        => call is not null && this.CallOf(call)?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
+        => call is not null ? this.CallOf(call)?.ReturnType?.SafeReferent : null;
 
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
     {

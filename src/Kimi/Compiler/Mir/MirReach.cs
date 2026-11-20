@@ -1,9 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the one reachability walk over a MIR body's blocks (plan 5.6.3; DECISIONS R4-M20).
-// Input: a body and the blocks walks start from. Output: the blocks reached along runtime edges (MirUses.Successor) and, when asked,
-// CheckTarget edges, and the order the depth-first walks finish them (a post-order); reached blocks accumulate until Clear, so each block
-// is visited once however many walks reach it.
+// Input: a body, the blocks walks start from and, when a walk is under one, the selected view. Output: the blocks reached along runtime
+// edges (MirUses.Successor, the edges the view takes) and, when asked, CheckTarget edges, and the order the depth-first walks finish them
+// (a post-order); reached blocks accumulate until Clear, so each block is visited once however many walks reach it.
 // Must not decide what reaching a block means or allocate once its arrays hold the widest body.
 
 namespace Kimi.Compiler.Mir;
@@ -45,7 +45,9 @@ internal sealed class MirReach
     /// <param name="body">The body, whose successors are in range.</param>
     /// <param name="block">The block the walk starts from.</param>
     /// <param name="checks">Whether CheckTarget edges are followed too.</param>
-    internal void Walk(MirBody body, int block, bool checks)
+    /// <param name="view">The view the walk is under, a view of the body selected (code generation's and the collector's item view);
+    /// null for none, every edge.</param>
+    internal void Walk(MirBody body, int block, bool checks, MirCases? view = null)
     {
         if (this.reached[block])
         {
@@ -61,7 +63,7 @@ internal sealed class MirReach
             {
                 this.order[this.finished++] = this.stack[--depth];
             }
-            else if (MirUses.Successor(body, terminator, this.edges[depth - 1]++) is >= 0 and var next && !this.reached[next])
+            else if (MirUses.Successor(body, terminator, this.edges[depth - 1]++, view) is >= 0 and var next && !this.reached[next])
             {
                 (this.stack[depth], this.edges[depth], this.reached[next]) = (next, first, true);
                 depth++;

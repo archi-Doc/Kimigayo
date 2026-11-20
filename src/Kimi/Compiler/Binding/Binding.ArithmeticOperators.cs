@@ -93,7 +93,7 @@ public sealed partial class Binding
             rightCore is not null && (UserArithmeticProvider(rightCore) || this.HasArithmeticPremise(rightCore, ArithmeticContract(operation, true), scope));
         if (!ordinary && !reverse)
         {
-            if (leftCore is not null && rightCore is not null && UserArithmeticProvider(rightCore) && !ReferenceTypes.EndsInString(leftCore) && !ReferenceTypes.IsPointer(leftCore))
+            if (leftCore is not null && rightCore is not null && UserArithmeticProvider(rightCore) && !ReferenceEquals(ComparisonReferent(leftCore), BoundType.String) && !leftCore.IsPointer)
             {
                 var rejected = binary.ArithmeticStorage ??= new();
                 rejected.Candidates.Clear();

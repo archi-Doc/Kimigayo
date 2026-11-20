@@ -274,7 +274,7 @@ public sealed partial class Binding
                 index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
                 next = index.Left;
                 return PathStep.SliceElement;
-            case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType):
+            case IndexKoto index when index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary }:
                 next = index.Left;
                 return PathStep.BorrowedElement;
             case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Array && !ElementAccess.IsSlicing(this, element):
@@ -356,13 +356,13 @@ public sealed partial class Binding
             return this.WritableOwner(inline.Left);
         }
 
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(this, nested.Left)) &&
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && ElementAccess.AccessType(this, nested.Left)?.SafeReferent is not { Kind: BoundTypeKind.Tuple } &&
             ElementAccess.BorrowedPathRoot(this, nested) is { } root)
         {
             return ElementAccess.AccessType(this, root, true)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
         }
 
-        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.AccessType(this, tupleElement.Left)))
+        if (node is MemberAccessKoto tupleElement && ElementAccess.AccessType(this, tupleElement.Left)?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
             return ElementAccess.AccessType(this, tupleElement.Left, true)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(this, tupleElement, out _, out _);
         }
@@ -533,8 +533,7 @@ public sealed partial class Binding
             // SPEC 4.7.1: a user index publishes a Place, whatever its key; a range selection of a sequence is a value (SPEC 4.8.2).
             IndexKoto index => ElementAccess.IsUserIndex(this, index) || (!ElementAccess.IsSlicing(this, index) &&
                 (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
-                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) ||
-                ReferenceTypes.IsDictionary(index.Left.BoundType))),
+                index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary })),
             _ => false,
         };
     }
@@ -661,12 +660,12 @@ public sealed partial class Binding
             return !exclusive;
         }
 
-        if (source is IndexKoto index && (ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType)))
+        if (source is IndexKoto index && index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary })
         {
             return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
         }
 
-        if (source is MemberAccessKoto element && ReferenceTypes.IsTuple(element.Left.BoundType))
+        if (source is MemberAccessKoto element && element.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
             return ElementAccess.TryBorrowedTupleElement(this, element, out _, out _) &&
                 (!exclusive || element.Left.BoundType!.Semantics == SemanticsKind.Uniq);

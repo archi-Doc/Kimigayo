@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 //   InvalidRawOrigin read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
 //   (CallRetention.Limit), never a silent stop; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
 //   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
-//   layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)); the borrows keeping a declared slot (Keepers, D15);
+//   layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)), which with ReadHolder reads one decision, whether a
+//   constructor's or drop's receiver holds the layer (ReceiverHolds); the borrows keeping a declared slot (Keepers, D15);
 //   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): AdtDef's view of an instance's stored Types (Instance,
 //   design-final §15; its kept parts keep them, DECISIONS BU-41); the old analysis's view at its Type intake (the D5 exception, the
 //   owner's Q-O3, DECISIONS BU-24) went with that analysis at R6-check H10b.
@@ -69,8 +70,8 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Semantics == SemanticsKind.Raw && a.Kind == BoundTypeKind.Semantics
-            ? b is not { Semantics: SemanticsKind.Raw, Kind: BoundTypeKind.Semantics }
+        if (a.IsPointer
+            ? !b.IsPointer
             : !a.SameExceptOrigins(b) || !ReferenceEquals(a.Origin, b.Origin) || !a.OriginArguments.SequenceEqual(b.OriginArguments))
         {
             return false;
@@ -116,7 +117,7 @@ public sealed partial class Binding
             }
 
             var parts = components.AsSpan(0, type.Components.Count);
-            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
+            return type.IsPointer
                 ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
         }
         finally
