@@ -6,14 +6,27 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<FunctionKoto, int> shapeCallCandidates = new(ReferenceEqualityComparer.Instance);
-
     // SPEC 10.8, 10.3: whether CollectTypes enters a pattern node against a Type, an argument's or the expected result's: the same head
     // and arity; neither projections nor adaptations are inverted. SameArgumentEvidence's Reached follows the same rule.
     private static bool CollectionEnters(BoundType pattern, BoundType actual)
         => pattern.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) &&
             pattern.Kind == actual.Kind && pattern.Symbol == actual.Symbol && pattern.Semantics == actual.Semantics &&
             pattern.Components.Count == actual.Components.Count;
+
+    // The position of a call's accessible candidate declared by `function` (the last, as a map written in order kept), -1 for none: a
+    // shape contract's left function among the call's own candidates.
+    private static int CandidateOf(ReadOnlySpan<EvaluatedCandidate> candidates, FunctionKoto function)
+    {
+        for (var i = candidates.Length - 1; i >= 0; i--)
+        {
+            if (candidates[i].Accessible && ReferenceEquals(candidates[i].Symbol!.Declaration, function))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     private bool SameShapeBinding(BoundType a, BoundType b)
         => ReferenceEquals(a, b) || (this.IsSubtype(a, b) && this.IsSubtype(b, a));
@@ -277,7 +290,6 @@ public sealed partial class Binding
     private bool CheckCallShapeContracts(InvocationKoto call, ReadOnlySpan<BoundType?> explicitTypes, ReadOnlySpan<BoundLength?> explicitLengths, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
     {
         var needed = false;
-        this.shapeCallCandidates.Clear();
         for (var i = 0; i < candidates.Length; i++)
         {
             if (!candidates[i].Accessible)
@@ -285,14 +297,11 @@ public sealed partial class Binding
                 continue;
             }
 
-            var function = (FunctionKoto)candidates[i].Symbol!.Declaration;
-            this.shapeCallCandidates[function] = i;
-            needed |= this.shapeContractHeads.ContainsKey(function);
+            needed |= this.shapeContractHeads.ContainsKey((FunctionKoto)candidates[i].Symbol!.Declaration);
         }
 
         if (!needed || candidates.Length < 2)
         {
-            this.shapeCallCandidates.Clear(); // The call's scratch is empty at its end (PLAN G949 S1-e's rule), as below.
             return true;
         }
 
@@ -461,7 +470,7 @@ public sealed partial class Binding
                 {
                     var contract = this.shapeContracts[at];
                     at = contract.Next;
-                    if (!this.shapeCallCandidates.TryGetValue(contract.Pair.Left, out var left))
+                    if (CandidateOf(candidates, contract.Pair.Left) is not (>= 0 and var left))
                     {
                         continue;
                     }
@@ -503,7 +512,6 @@ public sealed partial class Binding
         finally
         {
             this.acquisitionFailure = savedAcquisition;
-            this.shapeCallCandidates.Clear();
             this.flagScratch.Return(fixedSlots);
             this.infer.Return(bindings);
             this.indexScratch.Return(modes);
