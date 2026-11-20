@@ -57,6 +57,9 @@ internal sealed unsafe class Tatara
 
     internal string? Abi { get; }
 
+    // The first cause of a call's return of 2 (tatara.h: the instance refuses every later call), or null while none returned 2.
+    internal string? Refusal { get; private set; }
+
     // <root>/tatara.dll, loaded and checked once per path.
     internal static Tatara Load(string root)
     {
@@ -86,6 +89,15 @@ internal sealed unsafe class Tatara
             CheckStart(path, tatara.Abi, tatara.LlvmVersion);
             Loaded.Add(path, tatara);
             return tatara;
+        }
+    }
+
+    // The first refusal among the loaded instances (a session ends on it, Tatara design A3 §2.4), or null.
+    internal static string? FirstRefusal()
+    {
+        lock (Gate)
+        {
+            return Loaded.Values.Select(static x => x.Refusal).FirstOrDefault(static x => x is not null);
         }
     }
 
@@ -170,6 +182,10 @@ internal sealed unsafe class Tatara
                 defined = this.text(result, 2).Read();
                 hasUnwind = this.flag(result, 0) == 1;
                 hasDefaultLibrary = this.flag(result, 1) == 1;
+                if (code == 2)
+                {
+                    this.Refusal ??= message;
+                }
             }
             finally
             {

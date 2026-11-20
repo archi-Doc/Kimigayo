@@ -140,7 +140,7 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Analyze("func apply(f: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 => f(x)\n", OutputKind.Library);
         var (program, _, module, _) = WrittenModule(c);
-        var function = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "apply").Locals[1].Type;
+        var function = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "apply").Locals[1].Type!;
         Assert.NotSame(c.Types.Erase(function), function);
         Assert.Same(module.Erased(c.Types.Erase(function)), module.Erased(function));
     }

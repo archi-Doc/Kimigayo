@@ -32,11 +32,6 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        if (this.scopes[declaration].Constraints is { Invalid: true } invalid)
-        {
-            return this.InvalidEnvironment(invalid);
-        }
-
         if (this.ReadFailedDeclaration(declaration) is not null || this.ReadFailedDeclaration(member.Declaration) is not null)
         {
             return ConstraintProof.Error;
@@ -75,7 +70,7 @@ public sealed partial class Binding
         if (!valid)
         {
             this.Fail(syntax, BindingFailure.InvalidConstraint);
-            this.FailEnvironment(this.scopes[syntax].Constraints ??= new(), syntax);
+            this.FailFacts(this.scopes[syntax], syntax); // R7-C3: the invalid block's premises fail with its judgment
         }
     }
 

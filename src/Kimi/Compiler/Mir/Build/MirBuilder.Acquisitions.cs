@@ -56,7 +56,7 @@ internal sealed partial class MirBuilder
     private MirOperand Acquired(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
         var adaptation = adjust.Adaptation;
-        var type = this.body.TypeOf(place) ?? BoundType.Unit;
+        var type = this.body.TypeOf(place);
         var target = expected?.Components is [var referent] ? referent : null;
         switch (adaptation)
         {
@@ -97,9 +97,7 @@ internal sealed partial class MirBuilder
                 break;
         }
 
-        var reference = expected ?? compilation.Types.Reference(
-            adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref,
-            this.body.TypeOf(place) ?? BoundType.Unit);
+        var reference = expected ?? this.Reference(adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref, place);
         return this.Temporary(reference, this.Ref(place, reference, input), node, into);
     }
 
@@ -108,9 +106,9 @@ internal sealed partial class MirBuilder
     // Type) and a same-mode reference to the stored referent, which it names as the body's premises make it (SPEC 8.2.3: MirTypes.Agrees);
     // as Acquired types every other borrow by `expected`. Any other expected Type is a broken contract: InternalInvariant_Kd, the value a
     // derived Opaque of the stored Type in an Opaque temp, whose site names only the Place's root, built already (R5-M63, R5-M84).
-    private MirOperand Reborrowed(MirPlace place, BoundType stored, BoundType? expected, bool input, Koto node, MirPlace? into)
+    private MirOperand Reborrowed(MirPlace place, BoundType? stored, BoundType? expected, bool input, Koto node, MirPlace? into)
     {
-        if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
+        if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored?.Semantics ||
             stored.Components is not [var referent] || !MirTypes.Agrees(compilation.Types, this.body, named, referent))
         {
             var temp = this.OpaqueTemp(stored, node);
@@ -125,7 +123,7 @@ internal sealed partial class MirBuilder
     // SPEC 8.14, 15.1.5: the rvalue a Place's acquisition by its pair layer's case forms where its Type decides the case: a PairAcquire
     // marked with the Reborrow its exclusive case makes (A3 E13 (4)) where the Type keeps a binder of the body, else a Reborrow of a Type
     // that is exclusive; none where the acquisition Copies the Place. Acquire and a default's copy (Inline) take it.
-    private MirRvalue? ByCase(MirPlace place, BoundType type, bool input)
+    private MirRvalue? ByCase(MirPlace place, BoundType? type, bool input)
     {
         if (MirCases.Binder(this.body, type) is var binder and >= 0)
         {
@@ -138,20 +136,20 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.5.6, 5.4: a reference of a Type to a Place, the one rule of every borrow: of the Place it lends (Lent), in its Type's mode
     // (MirTypes.RefKind; an exclusive reservation, a call's input or an update's destination, is two-phase); none of an Opaque temp.
-    private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
+    private MirRvalue Ref(MirPlace place, BoundType? reference, bool input)
         => this.Unlent(place, reference) ?? MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
 
     // SPEC 23.1.2, 3.6 (DECISIONS R4-M149): an Opaque temp is no storage, so an rvalue of a Type that would lend a Place in one (a Ref, a
     // pair-case acquisition, a case adaptation, a view's Storage) is its consumer's derived value instead: an Opaque located at the temp's node whose site
     // names only the temp, built already; null for a Place in other storage.
-    private MirRvalue? Unlent(MirPlace place, BoundType type) => this.opaqueTemps.Contains(place.Root)
+    private MirRvalue? Unlent(MirPlace place, BoundType? type) => this.opaqueTemps.Contains(place.Root)
         ? MirRvalue.Opaque(type, this.body.AddOpaque(this.body.Locals[place.Root].Source.Syntax, [place.Root])) : null;
 
     // SPEC 13.5.6, 6.2.2: the Place a reference of a Type to a Place lends: the Place's layer whose Type is the reference's referent (an
     // object borrow's payload, a reborrow's referent) or its base that is (a base view), as the body's premises make it (MirTypes.Agrees).
-    private MirPlace Lent(MirPlace place, BoundType reference)
+    private MirPlace Lent(MirPlace place, BoundType? reference)
     {
-        var referent = reference.Components is [var target] ? target : null;
+        var referent = reference?.Components is [var target] ? target : null;
         var depth = 0;
         place = referent is null ? place : this.FollowTo(place, referent);
         for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agrees(compilation.Types, this.body, referent, layer);
@@ -164,7 +162,7 @@ internal sealed partial class MirBuilder
     }
 
     // An rvalue in a new temp of its Type, or in the place given where that has its Type, moved.
-    private MirOperand Temporary(BoundType type, in MirRvalue rvalue, Koto node, MirPlace? into = null)
+    private MirOperand Temporary(BoundType? type, in MirRvalue rvalue, Koto node, MirPlace? into = null)
     {
         var temp = this.Temp(type, node, into);
         this.Set(temp, rvalue, node);
@@ -175,9 +173,14 @@ internal sealed partial class MirBuilder
     // synthesized call's input, so an exclusive one is two-phase (SPEC 15.6.7).
     private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
     {
-        var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
+        var view = this.Reference(semantics, place);
         var temp = this.Temp(view, node);
         this.Set(temp, this.Ref(place, view, input: true), node);
         return MirOperand.Move(temp);
     }
+
+    // SPEC 13.5.6: the reference a Semantics kind forms to a Place's Type; none to a Place of no Type (a failed slot, which no location
+    // borrows, or a projection not admitted: MirValidator reports either, PLAN G1073), so no Type is formed from an unknown one.
+    private BoundType? Reference(SemanticsKind semantics, MirPlace place)
+        => this.body.TypeOf(place) is { } referent ? compilation.Types.Reference(semantics, referent) : null;
 }

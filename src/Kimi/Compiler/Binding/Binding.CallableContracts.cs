@@ -92,7 +92,7 @@ public sealed partial class Binding
 
                 var required = demanded[j++];
                 var actual = Translate(implementation.Input(i)!);
-                if (actual is null || !this.IsSubtypeAt(required, actual, requirement.Binder, comparison) ||
+                if (actual is null || !this.IsSubtypeAt(this.ClassForm(required, scope, out _), this.ClassForm(actual, scope, out _), requirement.Binder, comparison) ||
                     !this.ProvesInputPremises(actual, required, requirement.Binder, comparison))
                 {
                     return ConstraintProof.Refuted;
@@ -116,7 +116,11 @@ public sealed partial class Binding
                 return ConstraintProof.Unknown;
             }
 
-            var fits = this.IsSubtypeAt(result, CompatibleResult(result, expected), requirement.Binder, comparison);
+            // R7-C3 (C-f4; design §3, J3; SPEC 8.2.3, 8.6.3): each relation of the whole-contract comparison reads its pair in the comparison's
+            // one view, the requirement's premises at this conformance (`scope`), each side in its form there; the slots' correspondence
+            // above and the Origin inference read the Types as given.
+            var (formedResult, formedExpected) = (this.ClassForm(result, scope, out _), this.ClassForm(expected, scope, out _));
+            var fits = this.IsSubtypeAt(formedResult, CompatibleResult(formedResult, formedExpected), requirement.Binder, comparison);
             return fits ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
         finally

@@ -249,7 +249,7 @@ public sealed partial class Binding
         var owner = this.ObjectCases(core, scope, out var view) != SemanticsMask.None ? view : core;
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
-            signature = this.ContractType(itemSignature, scope);
+            signature = this.CallableContractType(itemSignature, scope); // in the call's view, as a Callable premise's signature (ruling 268)
             receiver = SemanticsKind.Ref;
             return true;
         }
