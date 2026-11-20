@@ -12606,6 +12606,8 @@ resumed by R4-M86 (2026-10-20).
     run after the write point, and the order decides which record that node keeps: `ValidateConformances`' agreement (an Error is
     dependent; a Refuted or Unknown reaches only `PathStorage[0]`, an explicit path when one exists), `ValidateBoundConformanceAgreement`
     (`a.Use`), and `PublishNeededLimits` (none computed on the 57 traced programs). The owner's O-96 (a) chose this order.
+    Amended by R7-M61 (R7-E2 E2-1, 2026-11-20): the deferred write goes when its record names the base clause as its cause (E2-3's
+    form, after D-834), not at R7-E5 (a).
   - Moves: i1, i1u, i5, i6 and i7, invalid by SPEC 6.2 under O-70 (a), are rejected; i1x and x3v keep their `GenerationResourceLimit_Kd`
     beside the Language record (PLAN G631's remaining part).
   - Rejected: the heir's declaration as the site (a failed declaration is its base clause's checks' context; m2 and t08 lost their records
@@ -23169,6 +23171,34 @@ R8-M* and R9-M* by the stage of the recording unit.
     r's Loan, `inspect(r)`) and v15's record at `y` goes (`x`'s stays). None in the suite's other expectations or the snapshot corpus.
   - **Rows.** `MirBorrowsTest.ALoanStaysLiveIntoANeverFormsContinuation`'s cmp rows (X-5 N2's pair: cmp1 valid, cmp3 invalid) and
     `AnAbandonedComparisonEndsOnlyItsOwnLoans`.
+- **R7-M61 Family 1's problems record through `Record`; each problem is direct or derived by its own requirement** (Back,
+  2026-11-20; R7-E2 E2-1, Q-560, D-908; Major unit of a Major design, R7 plan §5.1 E2; design `back\notes\r7-e2\e2-design.md` §2 with
+  B's E2 rulings 1-6 and 13, the delta `e2-1-delta.md` with the Front's design review on C-405, ACCEPT WITH CONDITIONS; the Front's
+  implementation review, REVISE B1, then ACCEPT on its re-check) SPEC 23.1.2.
+  - **Rule.** A family-1 check records its failure as a problem (`Record(node, failure, facts, condition)`), never through `Fail`
+    alone; `Fail` is the slot's writer and decides nothing (E2-0: the qualification stop is the resolver's miss, `FailUnselected`). A
+    node's later independent failure is its own record (SPEC 23.1.2). Every problem, the slot's and each further one, is a
+    `BindingIssue` of the direct or the derived list by `IsDerived(node, failure)` over the inputs recorded at the node (rule W; the
+    frames, `AddPrerequisite`), and a derived problem publishes under its own requirement and condition.
+  - **Resting on a part.** An owner whose check read a failed part and fails only because of it is Invalid resting on that part with
+    no failure of its own (`RestOnPart`, the one helper), where the part's own record publishes: an attribute's target on its
+    rejected attribute (`InvalidateAttributeTarget`).
+  - **Temporary.** A C-layout struct split over two fragments keeps its own `InvalidTypeFormation` beside the split Field's record
+    (`Binding.ValidateLayoutFragments`, `[Transitional("R7")]` until R7-E5): the Field's record derives from any recovery its other
+    checks read (q1a: a syntax error in its initializer), so resting the struct on it would lose the split (B's E2 ruling 13 (a)).
+    BU-141's deferred write (`ReportInheritedInlineCycles`) now goes when that record names the base clause as its cause (E2-3's
+    form, after D-834), not at R7-E5 (a).
+  - **Rejected.** Publishing a derived node's further problems as direct issues (today's hole); skipping them at publication (a
+    suppression after the fact); an `IsDerived` row for `InvalidTypeFormation` (it would derive an owner whose first part prerequisite
+    is another check's), or one for `SplitCLayoutStorage` (a per-form clause); the split's subject the struct (a second record move
+    for one cause, still resting on R7-E5 for the Field).
+  - **Open (the Front's E1; PLAN G1141).** `IsDerived`'s requirement-blind arms (`IsRecovery`, `RestsOnRecoveryOrLimit`) read the
+    node's recorded inputs, which may be another check's, for a further problem as for the slot; q1a is that case (the split Field's
+    slot derived through its initializer's recovery). R7-E5's per-problem inputs remove it, after which the split struct rests on its
+    Field.
+  - **Moves (Q13).** Independent records on rejected programs only: `InvalidInlineLayout_Kd` at a split C-layout struct that is also
+    an inline cycle, `InvalidTypeFormation_Kd` at a constructor whose parameter `self` also duplicates its receiver, and
+    `ConflictingLayout_Kd` at a `#Layout` that also repeats its fragment's Layout; nothing lost against dev, no acceptance move.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
