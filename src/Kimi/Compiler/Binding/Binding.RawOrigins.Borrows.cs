@@ -241,27 +241,32 @@ public sealed partial class Binding
             return;
         }
 
-        var layer = this.Library.Layer.Part.Borrows;
-        if (ReferenceEquals(rows, this.borrows) && !ReferenceEquals(rows, layer) && layer.TryGetValue(atom, out var frozen))
+        if (!rows.TryGetValue(atom, out var row))
         {
-            // A library body's node bound again by another pass (a default argument at a call): an identical re-record writes nothing;
-            // any other is a write to the layer's part (contract C).
-            if (frozen.Mode(referent) is not { } mode || (exclusive && !mode))
+            // The atom's first write in these rows; a library atom never gets a row in another pass's part. A library body's node bound
+            // again by another pass (a default argument at a call) re-records identically and writes nothing; any other is a write to the
+            // layer's part (contract C).
+            var layer = this.Library.Layer.Part.Borrows;
+            if (ReferenceEquals(rows, this.borrows) && !ReferenceEquals(rows, layer) && layer.TryGetValue(atom, out var frozen))
             {
-                throw new InvalidOperationException($"A pass wrote the borrows of the library atom {Describe(atom)} (InternalInvariant; contract C).");
+                if (frozen.Mode(referent) is not { } mode || (exclusive && !mode))
+                {
+                    throw new InvalidOperationException($"A pass wrote the borrows of the library atom {Describe(atom)} (InternalInvariant; contract C).");
+                }
+
+                return;
             }
 
-            return;
+            rows.Add(atom, row = new());
         }
 
-        if (this.BorrowRow(rows, atom).Join(referent, exclusive) && ReferenceEquals(rows, this.borrows))
+        if (row.Join(referent, exclusive) && ReferenceEquals(rows, this.borrows))
         {
             this.borrowVersion++;
         }
     }
 
-    // A write's row (the parts' one find, else a new row in `rows`); a row of the layer's part written by another pass is a broken
-    // contract (contract C).
+    // A mark's row in `rows` (its find, else a new row).
     private BorrowList BorrowRow(Dictionary<BoundOrigin, BorrowList> rows, BoundOrigin atom)
     {
         if (!rows.TryGetValue(atom, out var row))
