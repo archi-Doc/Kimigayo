@@ -305,27 +305,29 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 rulings 158, 165): the walk over a split call's completed part, the one
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 rulings 158, 165, 172): the walk over a split call's completed part, the one
     // place the split completes. The completion is the one former of marks (OpenForm), and a mark is never a node's published Type, so
     // it gives each node of the part whose Type holds one the canonical case's Type (Unmarked), its state unchanged: a node that took its
     // Type from its marked position (a waiting call's inferred slot, a join, a Never Tuple element, a construction target). The binder
-    // read the marked Type it returned; the HIR publisher's Broken check guards every other writer. A node the split leaves open (not
-    // resolved, and no record of its own or below it is reported: FailureReported), such as a join's waiting arm, an open-typed closure
-    // parameter's use or any argument still pending, rests on the call (CompleteDependent), whose located record (or the record it rests
-    // on) becomes its cause; inner nodes first, so an enclosing one meets them resting.
+    // read the marked Type it returned; the HIR publisher's Broken check guards every other writer. A node the split leaves open rests
+    // on the call (CompleteDependent), whose located record (or the record it rests on) becomes its cause, unless a record of its own or
+    // below it is reported (FailureReported): one not resolved, such as a join's waiting arm, an open-typed closure parameter's use or
+    // any argument still pending, and, whatever its state, one left at an open position (its Type held a mark: it was never completed
+    // in a case, so the canonical case's Type is no fact of it); inner nodes first, so an enclosing one meets them resting.
     private sealed class OpenMarkRemover(Binding binding) : KotoVisitor
     {
         private InvocationKoto? call;
 
         public override void Visit(Koto node)
         {
-            if (node.BoundType is { ContainsOpen: true } marked)
+            var open = node.BoundType is { ContainsOpen: true };
+            if (open)
             {
-                node.BoundType = binding.Unmarked(marked);
+                node.BoundType = binding.Unmarked(node.BoundType!);
             }
 
             node.VisitChildren(this);
-            if (node.BindingState == BindingState.Unresolved && !binding.FailureReported(node))
+            if ((open || node.BindingState == BindingState.Unresolved) && !binding.FailureReported(node))
             {
                 binding.CompleteDependent(node, this.call!);
             }
