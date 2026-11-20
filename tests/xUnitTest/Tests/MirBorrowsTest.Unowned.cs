@@ -114,8 +114,8 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6 Holders, 15.6.4 (D-914's design review S1, rows pq01 and pq02, both invalid): a `for` over `rr@follow`, rr borrowing q
     // and q holding a parameter's reference, lets `next` store rr's Loan of q in the storage p refers to, which the body does not own
     // and whose value may be used after every point; so q's storage end conflicts with that Loan (both rows), and so does the later write
-    // through q (pq01, at the write and at its Place). A write through a Place past two Derefs reaches that storage (MirBorrows.Reach's
-    // WriteTargets); the records are dev's.
+    // through q (pq01, at the write and at its Place). The Loan of q reaches that storage through `next`'s call store: Keep's W walk over
+    // the parents of the iterator's value (MirBorrows.Values' Prefix); the records are dev's.
     [Fact]
     public void ALoanStoredPastTwoDerefsInUnownedStorageStaysLive()
         => Assert.Equal(

@@ -8,22 +8,24 @@ namespace Kimi.Compiler.Mir;
 // its direct Loans and addresses name, each with its mode, and E where it carries Φ_E or no direct one; one enumeration, Refs, which each
 // reader filters by the mode), the holders a write through a Place writes (refs of what its last Deref goes through, WriteTargets), its
 // content, the holders a call's store through it writes (W, whose first step alone is Referents), and the guard, MirTypes.HoldsLoans'
-// MirWrites of the Type a holder's state is read at; its
-// chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it,
-// each holder read once per closure. W is one walk over state parts: each part of a reached holder's state is read once per walk at
-// its reading, the guard of the holder's own root Type (Read; Through's reading covers Named's; MirBorrows.States' mark), each holder
-// taking the Reached entry of the Type of the Place the reaching Loan names (DECISIONS R4-M154, Revision 8), except where the walk reads
-// a holder at a reading key (Keyed, ReadAt, ReadPart; SPEC 15.6 Holders: every element with every layer of the key the holder was reached
-// at): there each element is typed, punned or read nothing at each layer, and a holder it writes takes the record of that layer's
-// storage and is read on at the key past it, at that Type's guard; a call input's key is the called function's parameter key (InputKey),
-// so a layer its own Type parameters' bindings hide adds no reach; a holder that may afterwards hold the call's own pointer at such a
-// layer reaches storage the body does not own, with the record of that layer's pointee (OwnPointer; SPEC 15.6.4's composition), and a
-// key with a part that is no layer the walked Type expression writes keeps the declared step (PunKey.Declared; SPEC 5.7 Calls). At the
-// first step the reading path's Type is the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does
-// not designate (MirBorrows.PunTypes' Designates) is read punned (SPEC 5.2), its state read as well at the guard of that Type's raw pointer raw
-// Places, each a layer read at its own key (Reading; never the whole Type's guard: a part that is no raw Place is not read), and
-// storage the body does not own is reached, with those layers' record, where that guard steps over an `owner` Scalar's byte or a byte
-// that a punned write may not change, a reference's or a handle's (Punned; MirBorrows.PunTypes' PlaceBytes).
+// MirWrites of the Type a holder's state is read at; its chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain row's
+// measure), the least fixed point of a read from it, each holder read once per closure. W is one walk over state parts: each part of a
+// reached holder's state is read once per walk at its reading, the guard of the holder's own root Type (Read; Through's reading covers
+// Named's; W's own mark by walk, MirBorrows.States' walkedBy, which no read moves), each holder taking the Reached entry of the Type of the
+// Place the reaching Loan names (DECISIONS R4-M154, Revision 8), except where the walk reads a holder at a reading key (Keyed, ReadAt,
+// ReadPart; SPEC 15.6 Holders: every element with every layer of the key the holder was reached at): there each element is typed, punned or
+// read nothing at each layer, and a holder it writes takes the record of that layer's storage and is read on at the key past it, at that
+// Type's guard; a call input's key is the called function's parameter key (InputKey), so a layer its own Type parameters' bindings hide
+// adds no reach; a holder that may afterwards hold the call's own pointer at such a layer reaches storage the body does not own, with the
+// record of that layer's pointee (OwnPointer; SPEC 15.6.4's composition), and a key with a part that is no layer the walked Type expression
+// writes keeps the declared step (PunKey.Declared; SPEC 5.7 Calls). The key table keeps every layer's row for all its readers; only W's
+// per-row reads (ReadAt's ReadPart, OwnPointer) skip a Members layer's own row (a raw layer stating an Origin other than `self` and
+// `static`: punPastMembers; SPEC 5.2.1: these rules apply only to a layer that states no Origin). At the first step the reading path's Type
+// is the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate (MirBorrows.PunTypes'
+// Designates) is read punned (SPEC 5.2), its state read as well at the guard of that Type's raw pointer raw Places, each a layer read at
+// its own key (Reading; never the whole Type's guard: a part that is no raw Place is not read), and storage the body does not own is
+// reached, with those layers' record, where that guard steps over an `owner` Scalar's byte or a byte that a punned write may not change, a
+// reference's or a handle's (Punned; MirBorrows.PunTypes' PlaceBytes).
 // No element carries a Type.
 // A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
 // reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
@@ -178,7 +180,7 @@ internal sealed partial class MirBorrows
             var holder = this.chained[i];
             var writable = this.writableBy[holder] == this.closures;
             this.Queue(Placed(state[holder]), writable);
-            if (this.Steps(Shared(state[holder]), writable ? 1 : 0))
+            if (Steps(ref this.steppedBy, Shared(state[holder]), this.stepping + (writable ? 1 : 0)))
             {
                 this.Queue(Shared(state[holder]), writable);
             }
@@ -263,7 +265,7 @@ internal sealed partial class MirBorrows
     private void Parts(ulong held, bool whole, bool writable)
     {
         this.parts.Add(whole ? Placed(held) : this.Indirect(Placed(held)));
-        if (this.Steps(Shared(held), whole ? 0 : 1))
+        if (Steps(ref this.steppedBy, Shared(held), this.stepping + (whole ? 0 : 1)))
         {
             this.parts.Add(whole ? Shared(held) : this.Indirect(Shared(held)));
         }
@@ -309,7 +311,8 @@ internal sealed partial class MirBorrows
     // The holders a write through a Place writes (A3 5's assign through k Derefs, P10), the one computation of them: over the Place's step
     // walk (the walk buffer, Count steps), its last Deref (Last; -1 for none, a write of the root's own storage, which fills no refs), the
     // value that Deref goes through (Pointer: PointerOf on the walk's prefix to it, Prefix), and that value's refs (Refs), each with its
-    // mode for the reader's filter.
+    // mode for the reader's filter. Callable inside a W walk: its reads mark only the reads' mark (MirBorrows.States' steppedBy), and refs
+    // and the walk buffer are its outputs, which its caller reads before the next Refs or walk.
     private (int Count, int Last, int Pointer) WriteTargets(ulong[] state, MirPlace place)
     {
         var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
@@ -461,7 +464,6 @@ internal sealed partial class MirBorrows
         var punned = this.Punned(set, input, referent, call, position, output);
         this.Keyed(set, input, referent, call, position, output);
         var (limited, deeps) = (false, false);
-        this.Step(); // Written is idempotent, so a state part read again at its reading writes nothing more.
         for (int i = 0, n = 0; i < this.targets.Count; i++)
         {
             var (guard, pun) = (this.Guard(this.targetRoots[i]), this.PunGuard(this.targets[i], punned));
@@ -745,8 +747,12 @@ internal sealed partial class MirBorrows
 
         for (var j = 0; j < facts.FirstCount; j++)
         {
-            this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
-            this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
+            // A Members layer's own row is no layer W reads here (the header).
+            if (!this.punPastMembers[facts.PastStart + j])
+            {
+                this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
+                this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
+            }
         }
 
         if (guard == MirWrites.Through && this.walkComposes)
@@ -974,7 +980,8 @@ internal sealed partial class MirBorrows
         {
             var pointee = this.punViewTypes[facts.FirstStart + j];
             var past = this.punPastKeys[facts.PastStart + j];
-            if (this.punPastRaw[facts.PastStart + j] && (this.KeptEntry(past, output) is not null || this.Holds(pointee, out _)))
+            if (this.punPastRaw[facts.PastStart + j] && !this.punPastMembers[facts.PastStart + j] &&
+                (this.KeptEntry(past, output) is not null || this.Holds(pointee, out _)))
             {
                 this.Written(Escaped, -1, ViaPast, this.EntryName(past, output));
             }
@@ -991,12 +998,13 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A node of the walk: a part of a reached holder's state, read at its reading, the holder's guard, once per walk (MirBorrows.States'
-    // mark by set and level): what a Named read writes, a Through read of the same part writes too (Φ_W is always beside Φ_E), so a part
-    // read at Through is not read again at Named, whichever holders' part it is.
+    // A node of the walk: a part of a reached holder's state, read at its reading, the holder's guard, once per walk (W's own mark by set
+    // and walk level, MirBorrows.States' walkedBy, which a read inside the walk does not move): what a Named read writes, a Through read
+    // of the same part writes too (Φ_W is always beside Φ_E), so a part read at Through is not read again at Named, whichever holders'
+    // part it is; Written is idempotent, so a part read again writes nothing more.
     private void Read(int part, MirWrites guard)
     {
-        if (this.Steps(part, guard == MirWrites.Through ? 1 : 0))
+        if (Steps(ref this.walkedBy, part, (2L * this.walks) + (guard == MirWrites.Through ? 1 : 0)))
         {
             this.Write(part, ViaPast, guard);
         }
