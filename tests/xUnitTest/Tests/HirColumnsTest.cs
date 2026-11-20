@@ -372,7 +372,8 @@ public sealed class HirColumnsTest
                     }
                 }
 
-                if (call.Kind != CalleeKind.Value && call.Receiver is { } receiver)
+                // A value call's receiver operation takes its Source: a reference callee's acquisition or a payload's (PLAN D-888).
+                if ((call.Kind == CalleeKind.Value ? call.ReceiverOperation.Source : call.Receiver) is { } receiver)
                 {
                     ExpectOperation(receiver, call.ReceiverOperation);
                 }
