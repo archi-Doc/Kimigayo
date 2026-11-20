@@ -721,14 +721,16 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // SPEC 4.7.1, 15.6.2, 15.6.3 (D-920): an Array's element is the referent of its `index` or `indexUniq` call, which borrows the whole
     // Array, so a Borrow through it carries that call's receiver Loan of the Array, past the element's Deref too. With r =
-    // hs[0]@follow.a@ref live (hs: Array<uniq/Pair>), a write, `replace` or destruction of any element or of the Array conflicts (e01-e05),
-    // through a local reference (e10), a parameter (w01), inside a fixed array (e11) or an Array (e12, w20), and of a fixed array's element
-    // inside an Array (w09); with q = hs[0]@follow@uniq live, a read or write of the Array that selects no element conflicts too (w15, w16),
-    // and a write of another element meets q at the selection's guard and at the write (e07, e08, as a14 and a15 above). A fixed array's
-    // element stays a built-in projection (v01-v05, w10: not reached past its Deref, the Move Path's destruction ends the Loan); valid stay
-    // shared beside shared (v07-v09, w04, w08, w19), a reservation's shared reads (w12, w13), a Deref above the Array (v10, w17), distinct
-    // Fields before the element (v12, w18), Slices (v13), index calls (UniqSlice, Dictionary: v14, v15, w05, w07) and Loans that ended
-    // (v06, v16, w02, w11); the other controls keep their records (e06, e09, e13-e17, w03, w06, w14, w21).
+    // hs[0]@follow.a@ref live (hs: Array<uniq/Pair>), a write, `replace` or destruction of any element or of the Array conflicts (e01-e05,
+    // the storage end x03), through a local reference (e10), a parameter (w01), inside a fixed array (e11) or an Array (e12, w20), and of
+    // a fixed array's element inside an Array (w09); with q = hs[0]@follow@uniq live, an access of the Array that selects no element
+    // conflicts too (w15, w16, x07), and a write of another element meets q at the selection's guard and at the write (e07, e08, as a14
+    // and a15 above). A destroying `replace` of the Array writes it, so a Loan through its element is met there, not by err(destroy): a
+    // shared one at the activation (x01), an exclusive one at the reservation's formation (x02). A fixed array's element stays a built-in
+    // projection (v01-v05, w10, x03v: not reached past its Deref, the Move Path's destruction ends the Loan); valid stay shared beside
+    // shared (v07-v09, w08, w19), a reservation's shared reads (w12, w13), a Deref above the Array (v10, w17), distinct Fields before the
+    // element (v12, w18), Slices (v13), index calls (UniqSlice, Dictionary: v14, v15, w05, w07) and Loans that ended (v06, v16, w02,
+    // w11); the other controls keep their records (e06, e09, e13-e17, w03, w06, w14, w21).
     [Fact]
     public void AnArrayElementLoanIsMetAtItsReceiver()
         => Assert.Equal(
@@ -736,11 +738,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "e01: hs[1] = rs[2]@uniq", "e02: hs[0] = rs[2]@uniq",
                 "e03: Kimi.Intrinsics.replace(hs[1]@uniq, with: rs[2]@uniq) CallActivationConflict_Kd", "e04: hs = [rs[2]@uniq]",
                 "e05: Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq]) CallActivationConflict_Kd", "e06: hs[1]@follow.b = 5", "e07: hs[1]",
-                "e07: hs[1] = rs[2]@uniq", "e08: hs[1]", "e08: hs[1] = rs[2]@uniq", "e09: ts[1].1 += 1 PlacementActivationConflict_Kd", "e10: hs[1] = rs[2]@uniq", "e11: g[0][1] = rs[4]@uniq",
-                "e12: m[1] = [rs[2]@uniq]", "e13: u[1] CallActivationConflict_Kd", "e14: u = qs.sliceUniq()", "e15: d[2] CallActivationConflict_Kd",
-                "e16: ps[1].b = 3", "e17: ps = [Pair.init()]", "w01: hs[1] = x@move", "w03: hs[1] = rs[2]@uniq", "w06: d[1] CallActivationConflict_Kd",
-                "w09: vs[0][1] = rs[2]@uniq", "w14: cs[0].setR(cs[1].b@ref) CallActivationConflict_Kd", "w15: hs.length", "w16: hs = [rs[2]@uniq]",
-                "w20: m[0][0] = rs[2]@uniq", "w21: hs@ref",
+                "e07: hs[1] = rs[2]@uniq", "e08: hs[1]", "e08: hs[1] = rs[2]@uniq", "e09: ts[1].1 += 1 PlacementActivationConflict_Kd",
+                "e10: hs[1] = rs[2]@uniq", "e11: g[0][1] = rs[4]@uniq", "e12: m[1] = [rs[2]@uniq]", "e13: u[1] CallActivationConflict_Kd",
+                "e14: u = qs.sliceUniq()", "e15: d[2] CallActivationConflict_Kd", "e16: ps[1].b = 3", "e17: ps = [Pair.init()]",
+                "w01: hs[1] = x@move", "w03: hs[1] = rs[2]@uniq", "w06: d[1] CallActivationConflict_Kd", "w09: vs[0][1] = rs[2]@uniq",
+                "w14: cs[0].setR(cs[1].b@ref) CallActivationConflict_Kd", "w15: hs.length", "w16: hs = [rs[2]@uniq]", "w20: m[0][0] = rs[2]@uniq",
+                "w21: hs@ref", "x01: Kimi.Intrinsics.replace(arr@uniq, with: [DropR.init(r: y@uniq)]) CallActivationConflict_Kd", "x02: arr@uniq",
+                "x03: var hs: Array<uniq/Pair> = [rs[0]@uniq]", "x07: hs@uniq",
             ],
             Problems("""
                 func touchP(value: uniq/Pair) => ()
@@ -755,6 +759,11 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     public func setA(self: uniq/Self, v: i32) => self.a = v
                     public func setR(self: uniq/Self, v: ref/i32) => ()
                     public func setN(self: uniq/Self, v: isize) => ()
+                struct DropR {a}
+                    public var r: uniq/i32 during a
+                    public init(r: uniq/i32 during a) => self.r = r
+                    drop
+                        self.r@follow = 0
                 func e01()
                     var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
                     var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
@@ -976,13 +985,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     let r = s[0]@follow.a@ref
                     hs[1] = rs[2]@uniq
                     inspect(r)
-                func w04()
-                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
-                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
-                    let r = hs[0]@follow.a@ref
-                    let q = hs[1]@follow.b@ref
-                    inspect(r)
-                    inspect(q)
                 func w05()
                     var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
                     var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
@@ -1083,6 +1085,42 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
                     let q = hs[0]@follow@uniq
                     inspect(hs@ref)
+                    touchP(q)
+                func x01()
+                    var x = 1
+                    var y = 2
+                    var arr: Array<DropR> = [DropR.init(r: x@uniq)]
+                    let c = arr[0].r@follow@ref
+                    Kimi.Intrinsics.replace(arr@uniq, with: [DropR.init(r: y@uniq)])
+                    inspect(c)
+                func x02()
+                    var x = 1
+                    var y = 2
+                    var arr: Array<DropR> = [DropR.init(r: x@uniq)]
+                    let q = arr[0].r@follow@uniq
+                    Kimi.Intrinsics.replace(arr@uniq, with: [DropR.init(r: y@uniq)])
+                    inspect(q@follow)
+                func x03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var other = 2
+                    var v = other@ref
+                    label b: do
+                        var hs: Array<uniq/Pair> = [rs[0]@uniq]
+                        v = hs[0]@follow.a@ref
+                    inspect(v)
+                func x03v()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var other = 2
+                    var v = other@ref
+                    label b: do
+                        var hs: [1 of uniq/Pair] = [rs[0]@uniq]
+                        v = hs[0]@follow.a@ref
+                    inspect(v)
+                func x07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq])
                     touchP(q)
                 """));
 

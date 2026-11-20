@@ -17,7 +17,7 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>The class of a Place's step (A3 3): an inline step, an index into inline storage that forms no Move Path (a runtime one, or
-/// a fixed array's constant index on an Index row, D-910), an Array's element (IndexCall), an owning handle's payload, a shared or
+/// a fixed array's constant index on an Index row, D-910), an Array's element (ArrayElement), an owning handle's payload, a shared or
 /// exclusive borrow Deref (a Slice's index is a shared one, E6), or a raw pointer's referent.</summary>
 internal enum MirStepClass : byte
 {
@@ -25,9 +25,9 @@ internal enum MirStepClass : byte
     Index,
 
     // An Array's element: the referent of its `index` or `indexUniq` call, which borrows the whole Array (SPEC 4.7.1, D-920; the
-    // statement TyCtxt.RawPart makes for raw Places, PLAN G672). Every reader but MirBorrows' conflicts relation (Loan.Compared) reads it
-    // as Index.
-    IndexCall,
+    // statement TyCtxt.RawPart makes for raw Places, PLAN G672). Every reader but MirBorrows' conflicts relation (Loan.ReceiverSteps)
+    // reads it as Index.
+    ArrayElement,
     Own,
     Shared,
     Uniq,
@@ -124,11 +124,11 @@ internal sealed class MirSteps(MirCases cases)
     };
 
     // An Index step's class by its sequence's Type (SPEC 4.7.1's table): a view's Deref (a Slice's index is a shared one, E6), an Array's
-    // index call's referent (IndexCall), else a fixed array's built-in projection, an Index into inline storage.
+    // element, its index call's referent (ArrayElement), else a fixed array's built-in projection, an Index into inline storage.
     private MirStepClass Index(MirPlace sequence) => cases.TypeOf(sequence) switch
     {
         var type when MirTypes.View(type) is { } view => Deref(view),
-        { Kind: BoundTypeKind.Array } => MirStepClass.IndexCall,
+        { Kind: BoundTypeKind.Array } => MirStepClass.ArrayElement,
         _ => MirStepClass.Index,
     };
 }

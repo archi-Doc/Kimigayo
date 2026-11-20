@@ -196,7 +196,7 @@ internal sealed partial class MirBorrows
             Holder = -1,
             Named = direct ? place.Root : -1,
             Direct = direct,
-            Compared = count,
+            ReceiverSteps = count,
             OwnStep = key >= 0,
             Location = location,
         };
