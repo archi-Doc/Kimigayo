@@ -10,7 +10,6 @@
 // Must not resolve syntax or introduce a parallel representation for the same body; a stored body is read, never appended to.
 
 using System.Runtime.InteropServices;
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
@@ -253,7 +252,7 @@ internal sealed class MirBody
                     return below;
                 }
 
-                return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
+                return type is { IsPointer: true, Components: [var pointee] } ? pointee : null;
             case MirProjectionKind.Index:
                 return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;
