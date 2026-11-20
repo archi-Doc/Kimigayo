@@ -186,7 +186,7 @@ internal static partial class MirDump
                 }),
             body,
             place with { Projection = row.Prefix });
-        return Step(text, row.Kind, row.Arg);
+        return row.Position >= 0 ? text.Append("[_").Append(row.Arg).Append(" = ").Append(row.Position).Append(']') : Step(text, row.Kind, row.Arg);
     }
 
     // A projection after its prefix; a Deref, Downcast or PairLayer closes the parenthesis its Place opened.

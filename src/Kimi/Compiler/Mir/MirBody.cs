@@ -359,11 +359,12 @@ internal sealed class MirBody
     /// <param name="place">The Place.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
+    /// <param name="position">An Index's constant index (<see cref="MirProjection.Position"/>), else -1.</param>
     /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports (MirValidator.Tables):
     /// a later step in the projection table, a first step at each Place a location names, a diverging Call's destination included.</returns>
-    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg)
+    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg, int position = -1)
     {
-        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg));
+        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg), position);
         ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds ??= new(), row, out var exists);
         if (!exists)
         {
