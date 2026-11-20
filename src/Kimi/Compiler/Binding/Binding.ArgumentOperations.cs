@@ -135,17 +135,6 @@ public sealed partial class Binding
     // for an exclusive borrow, whether the Place is an object handle (@objuniq) (SPEC 23.1.3).
     private AcquisitionFailure? acquisitionFailure;
 
-    // A receiver operation a member use's own binding records (an accessor's or a stored part's receiver, a Property update's located
-    // receiver), with its borrow fact formed by this writer (Binding.RawOrigins.Borrows); a call's receiver operation is its plan's.
-    private void RecordReceiverOperation(Koto node, in BoundArgumentOperation operation)
-    {
-        this.receiverOperations[node] = operation;
-        if (this.FormsBorrows)
-        {
-            this.OperationBorrow(this.borrows, operation);
-        }
-    }
-
     private bool RequireAcquisition(Koto source, BoundType actual, BoundType expected, BindingFailure failure, bool @object, bool fixedExpectation, bool deferAcquisition)
     {
         if (fixedExpectation || (!deferAcquisition && !this.FitsStructuralPartAt(actual, expected, source)))

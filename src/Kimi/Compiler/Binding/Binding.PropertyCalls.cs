@@ -151,7 +151,7 @@ public sealed partial class Binding
             return null;
         }
 
-        this.RecordReceiverOperation(node, new(node.Left, owner, adapted, kind, quality, ParameterIndex: 0));
+        this.receiverOperations[node] = new(node.Left, owner, adapted, kind, quality, ParameterIndex: 0);
         if (!this.propertyUpdateStorage.TryGetValue(node, out var storage))
         {
             // The stored field is reached through the receiver the update locates once; it takes that borrow's Type.

@@ -363,11 +363,6 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (this.FormsBorrows)
-            {
-                this.PayloadBorrows(plan); // The completed construction's borrow facts, formed by this writer (Binding.RawOrigins.Borrows).
-            }
-
             if (call is not null)
             {
                 call.CallStorage = null;
