@@ -17,9 +17,9 @@ internal sealed partial class TyCtxt
     // Per callee, signature or erased destruction's receiver, Type instantiation and the premise scope or binder the computation reads;
     // kept across passes with no edit, whose contracts are the same, and discarded with the source analysis at an edit (Binding.Invalidate).
     // A contract reads its local regions' bounds (Binding.AddRegionMeet) and the Origin-atom borrows (Binding.RawOrigins.Borrows), so its
-    // key holds Binding.RetentionState: the region graph's and the borrows' versions while the pass's bodies bind, Complete once they are
-    // bound, so a read while a body binds (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS: G570, as
-    // the publication amends it).
+    // key holds Binding.RetentionState: the region graph's and the borrows' versions until the pass's borrow writers have run, Complete
+    // afterwards, so a read while a body binds (Binding.ReceiverIndependence) is kept apart from the whole-body one A5 reads (DECISIONS:
+    // G570, as the publication amends it).
     private readonly Dictionary<(object Callee, Subst? Types, object? Scope, int State), CallRetention> retentions = new();
 
     // The Callable bounds of the computation's premises, instantiated as its inputs; reused.

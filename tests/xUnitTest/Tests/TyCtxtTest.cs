@@ -236,8 +236,8 @@ public sealed partial class TyCtxtTest
 
     // ABodyAtomListsTheBorrowsFormedWithIt's rows (binder's first line, atom kind and slot: referent and mode): originpub design R2.9's
     // expectation, from SPEC before the run. The address `values@raw` adds none: it "checks like an immediately ending @ref ... and
-    // leaves no Loan" (SPEC 5.4), no borrow value whose Origin a Type could state. m's binding borrow lies under the Subject Place's atom
-    // (the match), where Binding names it.
+    // leaves no Loan" (SPEC 5.4), no borrow value whose Origin a Type could state. m, reached with shared access, is ref/i32 (SPEC 15.1.6)
+    // under P[o], the Subject Place's atom, formed where Check decides the binding's acquisition (G147 ruling 19).
     private static readonly string[] ExpectedRow1 =
     [
         "(*p)@uniq Anchor 0: i32 X",
@@ -246,7 +246,7 @@ public sealed partial class TyCtxtTest
         "let view = values[0..2] Projection 0: Slice<i32> S",
         "var b = (0, x@ref) Projection 0: i32 X",
         "var h = 4 Projection 0: i32 S",
-        "var o: Option<i32> = .Some(3) Projection 0: Option<i32> S",
+        "var o: Option<i32> = .Some(3) Projection 0: Option<i32> S, i32 S",
         "var values: [2 of i32] = [1, 2] Projection 0: i32 S",
         "var w: ref/i32 = x@ref Projection 0: ref/i32 X",
         "var x = 1 Projection 0: i32 S",

@@ -6,18 +6,20 @@ namespace Kimi.Compiler;
 
 // The Origin-atom borrows (SPEC 5.7 Origins: "the outer Origin of a borrow value (an input's or, in a body, a local's) [belongs] to that
 // borrow"; 15.6.5: a finite Origin local to a body, a Borrow's; contract of Binding.RawOrigins.cs; originpub design Revision 3, G147
-// ruling 18; DECISIONS draft of PLAN G148 (1), Z6).
+// rulings 18 and 19; DECISIONS draft of PLAN G148 (1), Z6).
 // - Responsibility: for each Projection or Anchor atom, the Borrows Binding commits with it as their outer Origin (each such operand of a
 //   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in commit order;
 //   and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
 // - Inputs: the borrow facts Binding commits for a node, read by the one enumeration NodeBorrows (its written Borrow, Slice view or object
 //   view, its recorded adaptation, its receiver operation, its calls' operations, its payload operations, its Subject and by-reference
-//   bindings, its capture entries), when Binding finishes binding the node (BindNode) and when it records an adaptation at it, outside
-//   candidate trials and collected fits (FitConjunct's rule); and the claims the HIR publisher publishes (MarkClaim).
+//   bindings, its capture entries), at each writer of those facts, outside candidate trials and collected fits (FitConjunct's rule):
+//   BindNode's end for the facts the node's own binding writes, an adaptation's record at the node, and Check's acquisitions of a
+//   match's or a user iteration's bindings (AcquireBinding's callers); and the claims the HIR publisher publishes (MarkClaim).
 // - Outputs: Borrows(atom, members, out claimed), read by the borrows' readers through OriginMembers, and RetentionState, the key field of
-//   TyCtxt's retention memo: the region and borrow versions while the pass's bodies bind, Complete once they are bound.
+//   TyCtxt's retention memo: the region and borrow versions until the pass's last borrow writer (Check) has run, Complete afterwards.
 // - Invariants: an atom's forming Borrow is committed, so formed, before any Type stating the atom can be read (a typed path, a Field
-//   read or a substitution states the atom only from a Type that carries it); the rows only grow within a pass, each new entry or changed
+//   read or a substitution states the atom only from a Type that carries it), except a Pattern binding's Borrow, whose acquisition
+//   Check decides after the bodies bind: while they bind, its atom's row lacks it; the rows only grow within a pass, each new entry or changed
 //   mode moving borrowVersion (a mark does not: no versioned reader reads marks); a library body's rows are the layer's part, written only
 //   by the library pass, an identical re-record by another pass writing nothing; at the publication the census (CheckBorrows) reads the
 //   same enumeration over every published node: misses always, extras and modes exactly where the publication met no failed node, a
@@ -28,7 +30,7 @@ namespace Kimi.Compiler;
 //   second list of borrow facts; RegionVersion is not moved; no reader but OriginMembers, the validator and tests.
 public sealed partial class Binding
 {
-    // RetentionState's value once the pass's bodies are bound: outside every sum of the two versions within a run.
+    // RetentionState's value once the pass's borrow writers have run: outside every sum of the two versions within a run.
     internal const int RetentionComplete = int.MaxValue;
 
     // The publication side of CheckBorrows (the published borrow positions), reused.
@@ -41,13 +43,14 @@ public sealed partial class Binding
     private Dictionary<BoundOrigin, BorrowList> borrows;
     private int borrowVersion;
 
-    // Whether the running pass's bodies are bound (RunPass after BindBodies; StartPass clears it): true between Binds.
-    private bool bodiesBound;
+    // Whether the running pass's borrow writers have all run (RunPass after Check, whose acquisitions are the last; StartPass clears
+    // it): true between Binds.
+    private bool borrowsComplete;
 
-    // The key field of TyCtxt's retention memo (DECISIONS G570, as the publication amends it): while the pass's bodies bind, the region
+    // The key field of TyCtxt's retention memo (DECISIONS G570, as the publication amends it): until the rows are complete, the region
     // graph's and the borrows' versions, which only rise within a run, so distinct states have distinct sums; Complete afterwards, which
     // no mid-binding answer has.
-    internal int RetentionState => this.bodiesBound ? RetentionComplete : this.regionVersion + this.borrowVersion;
+    internal int RetentionState => this.borrowsComplete ? RetentionComplete : this.regionVersion + this.borrowVersion;
 
     // The program part's rows as tests read them (TyCtxtTest), every pass's rows being their own part's.
     internal IEnumerable<KeyValuePair<BoundOrigin, BorrowList>> ProgramBorrows => this.programPart.Borrows;
@@ -86,8 +89,9 @@ public sealed partial class Binding
         => operation.Kind == ArgumentOperationKind.Reborrow || HirAdjust.Of(operation) is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow or
             HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection or HirAdaptation.ReferenceRead;
 
-    // Revision 3's formation: a node's committed borrow facts into the running part, outside candidate trials and collected fits (their
-    // facts are the selected candidate's, read when its node is bound), at the two commits: BindNode's end and an adaptation's record.
+    // Revision 3's formation (ruling 19): a node's committed borrow facts into the running part, outside candidate trials and collected
+    // fits (their facts are the selected candidate's, read when its node is bound), at each writer: BindNode's end, an adaptation's
+    // record and Check's binding acquisitions. Idempotent: a re-formed entry joins.
     private void FormNodeBorrows(Koto node)
     {
         if (this.candidateTrials == 0 && !this.collectingFits)

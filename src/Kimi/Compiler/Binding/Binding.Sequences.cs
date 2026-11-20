@@ -319,6 +319,8 @@ public sealed partial class Binding
                     this.AcquireBinding(plan, p);
                 }
             }
+
+            this.FormNodeBorrows(this.userIterations[i].Loop); // The item bindings' acquisitions (Binding.RawOrigins.Borrows).
         }
     }
 
