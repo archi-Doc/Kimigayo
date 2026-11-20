@@ -256,7 +256,7 @@ internal sealed partial class MirBuilder
         if (initializer is not null && HirTables.Op(variable) == HirOp.Error)
         {
             this.locals.Remove(symbol); // The name its site's syntax declares is bound to no earlier build's local (a defer body, at each exit).
-            this.Opaque(variable, new(local));
+            this.Opaque(variable, new MirPlace(local));
         }
         else if (initializer is not null)
         {

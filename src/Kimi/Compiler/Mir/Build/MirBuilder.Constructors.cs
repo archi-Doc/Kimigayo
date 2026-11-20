@@ -19,20 +19,21 @@ internal sealed partial class MirBuilder
 
         for (var i = 0; i < AdtDef.Count(self); i++)
         {
-            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field && this.Stored(new(0), self, 0, i) is { } place)
+            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } && this.Stored(new(0), self, 0, i) is { } place)
             {
-                this.Initialize(place, initializer, HirTables.Op(field) != HirOp.Body);
+                this.Initialize(place, initializer);
             }
         }
     }
 
     // A step of a constructor as a statement of its own (SPEC 6.3.3): the base call into the base subobject, or a Field's initializer,
-    // as its Adjust takes it, into the Field; that of a Field declaration Binding did not bind (no Body) is derived from its error.
-    private void Initialize(MirPlace place, Koto node, bool rejected = false)
+    // as its Adjust takes it, into the Field; that of a Field declaration Binding did not bind is derived from its error (DECISIONS Z16:
+    // the failure fact at the step's declaration, not published Body; the constructor being built is).
+    private void Initialize(MirPlace place, Koto node)
     {
         this.statementStart = true;
         var temporaries = this.OpenScope(block: false);
-        if (rejected)
+        if (HirTables.Op(node.Parent!) != HirOp.Body)
         {
             this.Opaque(node, place);
         }

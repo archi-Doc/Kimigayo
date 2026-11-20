@@ -183,12 +183,12 @@ internal sealed partial class MirBuilder
 
     // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
     // slot in the body's statics, which names its initializer's body; a static whose declaration Binding rejected has none, and its use is
-    // derived from that error.
+    // derived from that error (DECISIONS Z16: the failure fact at the declaration, not published Body).
     private MirPlace Static(BindingSymbol symbol, Koto node)
     {
         if (HirTables.Op(symbol.Declaration!) != HirOp.Body)
         {
-            return this.Unsupported(node, derived: true);
+            return this.Opaque(node);
         }
 
         var place = this.StaticRoot(symbol);
