@@ -576,7 +576,11 @@ public sealed partial class Binding
                 }
             }
 
-            this.FormNodeBorrows(plan.Syntax); // The bindings' acquisitions are the match's borrow facts (Binding.RawOrigins.Borrows).
+            if (this.FormsBorrows)
+            {
+                this.BindingBorrows(plan, this.borrows); // The bindings' acquisitions are borrow facts (Binding.RawOrigins.Borrows).
+            }
+
             if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
             {
                 this.Fail(plan.Syntax, BindingFailure.NonExhaustiveMatch);

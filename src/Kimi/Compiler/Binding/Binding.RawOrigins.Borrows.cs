@@ -56,6 +56,10 @@ public sealed partial class Binding
     // The program part's rows as tests read them (TyCtxtTest), every pass's rows being their own part's.
     internal IEnumerable<KeyValuePair<BoundOrigin, BorrowList>> ProgramBorrows => this.programPart.Borrows;
 
+    // Whether a commit forms its borrow facts now: outside candidate trials and collected fits (their facts are the selected candidate's,
+    // formed when its node is bound).
+    private bool FormsBorrows => this.candidateTrials == 0 && !this.collectingFits;
+
     // SPEC 5.7 Fits and claims: a claim, `E@(raw/U during o)` in an unsafe context, a pointer conversion whose written target states an
     // Origin; that Origin, null for any other node. The one classification of a claim (the publication's marks read it).
     internal static BoundOrigin? ClaimedOrigin(Koto node)
@@ -90,20 +94,48 @@ public sealed partial class Binding
         => operation.Kind == ArgumentOperationKind.Reborrow || HirAdjust.Of(operation) is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow or
             HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection or HirAdaptation.ReferenceRead;
 
-    // Revision 3's formation (ruling 19): a node's committed borrow facts into the running part, outside candidate trials and collected
-    // fits (their facts are the selected candidate's, read when its node is bound), at each writer: BindNode's end, an adaptation's
-    // record and Check's binding acquisitions. Idempotent: a re-formed entry joins.
-    private void FormNodeBorrows(Koto node)
+    // The one enumeration of the borrow facts Binding commits for `node` (the facts HIR publishes, BU-27's HIR contract), into `rows`, in
+    // three parts by their writer (G147 rulings 19, 25): the node's own facts (OwnBorrows, formed at BindNode's end), the adaptation a
+    // consumer records at it (AdaptationBorrow, formed by the adaptations column's setter) and a match's or for's by-reference bindings
+    // (BindingBorrows, formed by Check's acquisitions). Formation reads each part once, at its commit; the census (PublishedNode) reads
+    // the three. An address is none (SPEC 5.4).
+    private void NodeBorrows(Koto node, Dictionary<BoundOrigin, BorrowList> rows)
     {
-        if (this.candidateTrials == 0 && !this.collectingFits)
+        this.OwnBorrows(node, rows);
+        if (this.adaptations.TryGetValue(node, out var recorded))
         {
-            this.NodeBorrows(node, this.borrows);
+            this.AdaptationBorrow(recorded, rows);
+        }
+
+        this.BindingBorrows(this.MatchPlan(node), rows);
+    }
+
+    // A match's or a for loop's Pattern plan; null for any other node.
+    private BoundMatch? MatchPlan(Koto node) => node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
+
+    // The adaptation recorded at a node, any but a referent read.
+    private void AdaptationBorrow(in BoundAdaptation recorded, Dictionary<BoundOrigin, BorrowList> rows)
+    {
+        if (recorded.Kind != ExpectedAdaptationKind.ReferentRead)
+        {
+            this.RecordBorrow(rows, recorded.Type);
         }
     }
 
-    // The one enumeration of the borrow facts Binding commits for `node` (the facts HIR publishes, BU-27's HIR contract), into `rows`:
-    // formation (FormNodeBorrows) and the census (PublishedNode) read it alike. An address is none (SPEC 5.4).
-    private void NodeBorrows(Koto node, Dictionary<BoundOrigin, BorrowList> rows)
+    // A match's or for's by-reference bindings, as Check's acquisitions decide them.
+    private void BindingBorrows(BoundMatch? plan, Dictionary<BoundOrigin, BorrowList> rows)
+    {
+        for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
+        {
+            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, Acquisition: PatternAcquisition.Borrow, BodySymbol.Type: { } bound })
+            {
+                this.RecordBorrow(rows, bound);
+            }
+        }
+    }
+
+    // The facts the node's own binding commits.
+    private void OwnBorrows(Koto node, Dictionary<BoundOrigin, BorrowList> rows)
     {
         // A written Borrow (`@ref`, `@uniq`, `@objref`, `@objuniq`, a raw Place's) and a Slice view (a slicing index): the node's own Type.
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } || (node is IndexKoto && ElementAccess.IsSlicing(this, node)))
@@ -119,12 +151,7 @@ public sealed partial class Binding
             this.RecordEntry(rows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
         }
 
-        // The adaptation recorded at the node (any but a referent read) and its receiver operation.
-        if (this.adaptations.TryGetValue(node, out var recorded) && recorded.Kind != ExpectedAdaptationKind.ReferentRead)
-        {
-            this.RecordBorrow(rows, recorded.Type);
-        }
-
+        // The receiver operation recorded at the node.
         if (this.receiverOperations.TryGetValue(node, out var receiver))
         {
             this.OperationBorrow(rows, receiver);
@@ -149,16 +176,8 @@ public sealed partial class Binding
             }
         }
 
-        // A match's Subject borrow, and a match's or for's by-reference bindings.
-        var plan = node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
-        this.RecordBorrow(rows, plan?.SubjectBorrow);
-        for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
-        {
-            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, Acquisition: PatternAcquisition.Borrow, BodySymbol.Type: { } bound })
-            {
-                this.RecordBorrow(rows, bound);
-            }
-        }
+        // A match's Subject borrow.
+        this.RecordBorrow(rows, this.MatchPlan(node)?.SubjectBorrow);
 
         // A Closure's capture entries that borrow or Reborrow (their Adjust).
         if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })

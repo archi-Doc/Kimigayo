@@ -320,7 +320,10 @@ public sealed partial class Binding
                 }
             }
 
-            this.FormNodeBorrows(this.userIterations[i].Loop); // The item bindings' acquisitions (Binding.RawOrigins.Borrows).
+            if (this.FormsBorrows)
+            {
+                this.BindingBorrows(plan, this.borrows); // The item bindings' acquisitions (Binding.RawOrigins.Borrows).
+            }
         }
     }
 

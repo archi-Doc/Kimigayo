@@ -226,7 +226,11 @@ public sealed partial class Binding
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
         var parent = this.BeginConsultation(node);
         var type = this.HeightChecked(node, this.BindAndAdaptNode(node, scope, expected));
-        this.FormNodeBorrows(node); // The node's committed borrow facts (Binding.RawOrigins.Borrows).
+        if (this.FormsBorrows)
+        {
+            this.OwnBorrows(node, this.borrows); // The node's own borrow facts (Binding.RawOrigins.Borrows).
+        }
+
         this.EndConsultation(node, parent);
         this.Consulted(node);
         return type;

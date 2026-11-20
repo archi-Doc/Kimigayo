@@ -570,7 +570,10 @@ public sealed partial class Binding
             set
             {
                 HirTables.Of(node).Families.Adaptations.Ref(node.SyntaxId, binding) = value;
-                binding.FormNodeBorrows(node); // An adaptation is a borrow fact of its node (Binding.RawOrigins.Borrows).
+                if (binding.FormsBorrows)
+                {
+                    binding.AdaptationBorrow(value, binding.borrows); // An adaptation is a borrow fact of its node (Binding.RawOrigins.Borrows).
+                }
             }
         }
 
