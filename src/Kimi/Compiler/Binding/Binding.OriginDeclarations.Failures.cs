@@ -43,8 +43,8 @@ public sealed partial class Binding
 
     // The part an Unbound atom rests on: its declaration's PendingFailure (paths a and c), else its binder, the slot whose own omission
     // failed (OmittedOrigin, path b). The declaration is the atom's binder's owner (PendingOrigin made it there).
-    // Null when nothing failed (a per-call image, PerCallImages; a pending atom of a declaration still in State 1): such an atom rests
-    // on nothing and its relation is independent.
+    // Null when nothing failed (a pending atom of a declaration still in State 1): such an atom rests on nothing and its relation is
+    // independent. A call makes no Unbound image (R7-O1 H: P9 publishes a Closure's call result atom as it is).
     private Koto? UnboundCause(BoundOrigin atom)
         => atom.Binder is not { } binder ? null :
             OriginOwner(binder) is { } owner && this.originDeclarations.TryGetValue(owner, out var declaration) &&

@@ -98,13 +98,12 @@ public partial class ClosureResultOriginTest
     // returned Closure literal that P8 fails, a maker's expression body at any nesting, keeps its definition: its record is at the literal,
     // as the block form's `return` places it, and the returned value stays callable, with no derived NotCallable_Kd or UnresolvedBinding_Kd
     // (review 2's B1: v2, a08, f03 = G273's p8_param_bad, f04, f07; each with its block-form twin). A reader reaching a closure through its
-    // Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome. The call's result rests on that record (P9's
-    // image of the call result atom is an Unbound end), so Binding's record is the program's one; dev adds F1's located Unsupported_Kd at
-    // the call. Question: does G280 (or G206 (6)) give an Unbound end its cause, so that the call records nothing? The record is A5's one,
-    // at the literal in either form (R7-O1 H; its twin at the literal or the block form's `return`, H5, R4-M108, went with Binding's).
-    // R7-O1 H (the Middle's ruling on Phase 9's class 3): P8's relation is A5's record, so Binding is complete and P9 publishes the
-    // Closure's call result atom, not an Unbound one; a direct call of the returned value relates it in the calling body, where it is
-    // another body's root (the view's row 9): A5's located limit at the call `outer(3)()` (a record added on a rejected program, Q13).
+    // Type reads its definition (BoundClosure.Of), whatever its literal's creation outcome. The record is A5's one, at the literal in either
+    // form (R7-O1 H; its twin at the literal or the block form's `return`, H5, R4-M108, went with Binding's). P8's relation is A5's
+    // record, so Binding is complete and P9 publishes the Closure's call result atom as it is (the Middle's ruling on Phase 9's class 3;
+    // P9's Unbound image went): a value read in place or called after its `let` names no row with it, and a direct call of the returned
+    // value relates it in the calling body, where it is another body's root (the view's row 9): A5's located limit at the call
+    // `outer(3)()` (a record added on a rejected program, Q13).
     [Theory]
     [InlineData("let outer = func (x: i32) => func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x")]
     [InlineData("let outer = func (x: i32)\n    return func [x@ref] () => x\nlet a = outer(3)\nlet r = a()", "func [x@ref] () => x")]
@@ -176,6 +175,18 @@ public partial class ClosureResultOriginTest
         var effects = MirTargetSide.MirSide(c).Where(static x => x.Requirement?.Partition != DiagnosticPartition.Binding && x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd);
         Assert.Equal(effect is null ? [] : [effect], effects.Select(x => source.Substring(x.Node.Span.Start, x.Node.Span.Length)));
     }
+
+    // SPEC 5.2.2, 15.8.2 (R7-O1 H; the Front's review C1): a raw Place's Borrow `(*q)@ref` captured by a returned literal is valid (its
+    // Origin is fitted to its destination and may be static), but P8's BodyLocalIn leaves an Anchor out (the Front's open issue), so the
+    // published result names the Closure's call result atom, which the use `applyG(a@ref)` relates in the calling body: A5's located
+    // limit at `a@ref` (the view's row 9). Fail-before: the joint head f7857dce1 and 19947817b throw BU-102's broken view contract
+    // (CheckFaulted_Kd, an InternalInvariant on a valid program). Removal: when P8 keeps the raw Place's Borrow, the program is accepted.
+    [Fact]
+    public void ARawPlaceBorrowInAReturnedEnvironmentIsTheLocatedLimitAtItsUse()
+        => Assert.Equal(
+            "Unsupported_Kd a@ref",
+            Records(Generic + "func use(p: raw/i32)\n    let outer = func (q: raw/i32)\n        unsafe\n            let r = (*q)@ref\n" +
+                "            return func [r] () -> i32 => r@follow\n    let a = outer(p)\n    let r = applyG(a@ref)\npublic func main() => ()\n"));
 
     // SPEC 7.7.3, 23.1.2 (DECISIONS R4-M152): the receiver classification reads a nested Closure's definition, so a nested literal whose
     // erasure fails (its creation failed) still makes its maker Exclusive through its `n@uniq` capture: `c()` through a `let` is
