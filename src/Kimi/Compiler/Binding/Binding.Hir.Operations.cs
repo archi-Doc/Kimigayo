@@ -150,24 +150,15 @@ public sealed partial class Binding
 
     private sealed partial class HirPublisher
     {
-        // SPEC 12, 13.4, 13.7, 14 (StructuralCompletion composes the same paths): whether a form evaluates a child as a value, where it is
-        // evaluated, on every path through it: not a part it selects, repeats or runs elsewhere, which are a selection's bodies
-        // (SelectionRole.Body), a later branch's condition, a guard, a while's or a for's body, a failure body, a test's message, the right
-        // operand of `and` or `or`, the contents of a form that runs none of them where it is evaluated (StructuralCompletion.RunsNoContents:
-        // a defer body, a #switch's arms), and a block's items, statements its block builds (a rejected block is one the parser supplied);
-        // nor a write's, an update's or an increment's target, which the write locates once after securing its value (SPEC 13.7.1, 13.7.2),
-        // not a value: a derived write's target is the MIR builder's (DECISIONS G1022's DerivedWrite; G147 ruling 5).
-        private static bool Unconditional(Koto parent, Koto child) => child.SelectionRole == SelectionRole.None && !StructuralCompletion.RunsNoContents(parent) && parent switch
+        // SPEC 12, 13.7, 14: whether a form evaluates a child as a value, where it is evaluated, on every path through it: the paths are
+        // structural completion's (StructuralCompletion.OnEveryPath, the one table of them); and of those parts, not a block's items,
+        // statements its block builds (a rejected block is one the parser supplied), nor a write's, an update's or an increment's target,
+        // which the write locates once after securing its value (SPEC 13.7.1, 13.7.2), not a value: a derived write's target is the MIR
+        // builder's (DECISIONS G1022's DerivedWrite; G147 ruling 5).
+        private static bool Unconditional(Koto parent, Koto child) => StructuralCompletion.OnEveryPath(parent, child) && parent switch
         {
             BinaryKoto { Akind: >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals } write => ReferenceEquals(child, write.Right),
             UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } => false,
-            IfKoto conditional => ReferenceEquals(child, conditional.Branches[0].Condition),
-            MatchKoto match => ReferenceEquals(child, match.Expression),
-            WhileKoto loop => ReferenceEquals(child, loop.Condition),
-            ForKoto loop => ReferenceEquals(child, loop.Iterable),
-            RequireKoto require => ReferenceEquals(child, require.Condition),
-            TestVerificationKoto verification => ReferenceEquals(child, verification.Condition),
-            BinaryKoto { Akind: KotoKind.And or KotoKind.Or } logical => ReferenceEquals(child, logical.Left),
             CodeBlockKoto => false,
             _ => true,
         };

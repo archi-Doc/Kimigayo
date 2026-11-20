@@ -63,6 +63,24 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         _ => false,
     };
 
+    // SPEC 12, 13.4, 14: whether a form's evaluation, where it is evaluated, reaches a part on every path through it, the one table of
+    // the paths Compose composes: not a part a form selects or repeats (a selection's bodies, SelectionRole.Body, and Patterns; an if's
+    // later conditions; a match's guards; a while's and a for's body; a require's failure body; a test's message; `and`'s and `or`'s right
+    // operand), nor any part of a form that runs none of its contents there (RunsNoContents); every other form reaches each of its parts,
+    // Compose's sequence (Evaluate, Sequence). A form Compose gives a new path adds its row here. The HIR publisher's Keeps reads it
+    // (DECISIONS Z16).
+    internal static bool OnEveryPath(Koto form, Koto part) => part.SelectionRole == SelectionRole.None && !RunsNoContents(form) && form switch
+    {
+        IfKoto conditional => ReferenceEquals(part, conditional.Branches[0].Condition),
+        MatchKoto match => ReferenceEquals(part, match.Expression),
+        WhileKoto loop => ReferenceEquals(part, loop.Condition),
+        ForKoto loop => ReferenceEquals(part, loop.Iterable),
+        RequireKoto require => ReferenceEquals(part, require.Condition),
+        TestVerificationKoto verification => ReferenceEquals(part, verification.Condition),
+        BinaryKoto { Akind: KotoKind.And or KotoKind.Or } logical => ReferenceEquals(part, logical.Left),
+        _ => true,
+    };
+
     // The forms a jump inside them can target (Binding.TransferTarget): an exit targets an iteration or a Do (a continue an
     // iteration), a yield a selection. Function and Scope Exit targets run no contents here. The HIR publisher's Keeps reads it too.
     internal static bool IsTransferTarget(Koto node) => node switch
@@ -143,7 +161,8 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         return result;
     }
 
-    // A form's completion from its parts' completions in evaluation order; any other node evaluates its children (Evaluate).
+    // A form's completion from its parts' completions in evaluation order; any other node evaluates its children (Evaluate). The parts
+    // each case reaches on every path are OnEveryPath's rows; a case that changes them changes its row.
     private Completion Compose(Koto node)
     {
         Completion result;

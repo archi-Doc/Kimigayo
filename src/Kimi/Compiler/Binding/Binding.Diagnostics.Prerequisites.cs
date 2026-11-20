@@ -126,8 +126,9 @@ public sealed partial class Binding
     // Binding recorded at it, a recovery's syntax Error, a malformed char literal's lexical Error (CharLiteralKoto.Cause), an admitted
     // misfit's value on its write's fit failure (failed: the write, MisfitWrite). A Place Binding resolved whose acquisition failed, its
     // Move resting on an Error Copy proof (HirAcquire.Failed, DECISIONS BU-103), rests on the unresolved mark: Binding records that
-    // proof's failure at the Type's declaration, not at the use (DECISIONS Z16). False at a node nothing rejected and Binding recorded no
-    // cause for.
+    // proof's failure at the Type's declaration, not at the use (DECISIONS Z16). The row reads a resolved node's Failed, which of
+    // BU-103's three kinds only the Error Copy proof gives (no Type leaves a node unresolved; a failed Pattern Type check rests on its
+    // Pattern's record); a fourth kind revisits it. False at a node nothing rejected and Binding recorded no cause for.
     private bool RestingSource(Koto node, out Koto? failed, out DiagnosticKey own)
     {
         (failed, own) = (null, DiagnosticKey.Unresolved);

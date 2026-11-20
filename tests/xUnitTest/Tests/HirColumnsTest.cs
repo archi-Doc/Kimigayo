@@ -39,8 +39,8 @@ public sealed class HirColumnsTest
         }
     }
 
-    // DECISIONS Z16 (Z15 2g-D B4): over the corpus, the diagnostic snapshot's cases and every SPEC kimi block (1,067 programs, 202 of them
-    // valid), the HIR publisher's one list of broken contracts (HirTables.Broken: a failure fact without its causes, Binding.RestingCauses)
+    // DECISIONS Z16 (Z15 2g-D B4): over the corpus, the diagnostic snapshot's cases and every SPEC kimi block (1,078 programs on dev
+    // aa7d43ec1, 203 of them valid), the HIR publisher's one list of broken contracts (HirTables.Broken: a failure fact without its causes, Binding.RestingCauses)
     // is empty, so no failure fact the builder derives from lacks its causes and no InternalInvariant_Kd comes from it.
     public static TheoryData<string> ContractCorpus
     {
