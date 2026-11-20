@@ -41,7 +41,7 @@ internal sealed partial class TyCtxt
     // every position, so the Type itself answers.
     internal static bool HasOriginPosition(BoundType type)
     {
-        if (HasOwnOrigin(type) || type.Semantics == SemanticsKind.Raw || type.OriginArguments.Count != 0)
+        if (HasOwnOrigin(type) || type.IsPointer || type.OriginArguments.Count != 0)
         {
             return true;
         }

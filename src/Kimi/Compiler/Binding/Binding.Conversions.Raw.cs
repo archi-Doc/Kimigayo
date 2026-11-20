@@ -12,7 +12,7 @@ public sealed partial class Binding
     // SPEC 5.4: the expected Type of a pointer cast's input: an integer literal is first fitted to usize, and null@raw/U is Typed Null
     // Formation, a null of the target Type (SPEC 5.1); none for any other input or target.
     private static BoundType? PointerInput(BoundType? target, bool literal, Koto operand)
-        => !ReferenceTypes.IsPointer(target) ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
+        => target is not { IsPointer: true } ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
 
     // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and converts the
     // borrowed address, which keeps no Loan. The operation's borrow is recorded on the operator. SPEC 5.7 (Typed paths): the pointer
@@ -59,11 +59,11 @@ public sealed partial class Binding
     // claim, which records no relation, inside one.
     private BoundType? CompletePointerConversion(ConversionKoto conversion, BoundType source, BoundType target)
     {
-        if ((ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
-            (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)))
+        if ((source.IsPointer && (target.IsPointer || ReferenceEquals(target, BoundType.USize))) ||
+            (ReferenceEquals(source, BoundType.USize) && target.IsPointer))
         {
             conversion.ConversionBinding = ConversionBinding.Pointer;
-            if (target.RawOrigin is null && source.RawOrigin is { } kept && ReferenceTypes.IsPointer(target))
+            if (target.RawOrigin is null && source.RawOrigin is { } kept && target.IsPointer)
             {
                 return Complete(conversion, this.types.Pointer(target.Components[0], kept));
             }

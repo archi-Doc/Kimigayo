@@ -14,8 +14,8 @@ public sealed partial class Binding
         result = actual;
         var objects = this.ObjectCases(actual, scope, out var view); // Every case an object form of `view` (a pair layer's included).
         if (objects == SemanticsMask.None ||
-            pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-            !ReferenceEquals(view, pattern.Components[0]))
+            pattern.SafeReferent is not { } referent ||
+            !ReferenceEquals(view, referent))
         {
             return false;
         }

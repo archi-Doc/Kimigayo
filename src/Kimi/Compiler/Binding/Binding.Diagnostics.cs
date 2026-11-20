@@ -197,14 +197,14 @@ public sealed partial class Binding
 
     private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
     {
-        while (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (actual.SafeReferent is { } referent)
         {
-            actual = actual.Components[0];
+            actual = referent;
         }
 
-        while (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (expected.SafeReferent is { } referent)
         {
-            expected = expected.Components[0];
+            expected = referent;
         }
 
         return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
@@ -216,7 +216,7 @@ public sealed partial class Binding
         => depth < 32 && KotoHelper.UnwrapParentheses(node) is BinaryKoto { Akind: KotoKind.Plus } join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
 
     private static bool IsStringOperand(Koto node, int depth)
-        => ReferenceTypes.EndsInString(KotoHelper.UnwrapParentheses(node).BoundType) || IsStringJoin(node, depth);
+        => ReferenceEquals(ComparisonReferent(KotoHelper.UnwrapParentheses(node).BoundType), BoundType.String) || IsStringJoin(node, depth);
 
     // SPEC 15.6.1, 23.1: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
@@ -432,7 +432,7 @@ public sealed partial class Binding
         // the use (J3's intake), so identity decides the structure and an Origin difference is the Origin relation's record.
         var formedActual = actual.Type is { } actualType ? this.ClassForm(actualType, node) : null;
         var formedExpected = expected.Type is { } expectedType ? this.ClassForm(expectedType, node) : null;
-        if (ReferenceTypes.StorageMatches(formedExpected, formedActual) && failure.Kind != ComparisonFailureKind.Shape)
+        if (TyCtxt.StorageMatches(formedExpected, formedActual) && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
                 : this.RecordComparisonFacts(node, at, formedActual!, formedExpected!, failure);
@@ -595,9 +595,9 @@ public sealed partial class Binding
         }
 
         var core = index.Left.BoundType;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (core?.SafeReferent is { } referent)
         {
-            core = core.Components[0];
+            core = referent;
         }
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)

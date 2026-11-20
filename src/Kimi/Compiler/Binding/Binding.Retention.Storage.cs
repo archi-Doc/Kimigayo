@@ -408,7 +408,7 @@ public sealed partial class Binding
         this.retentionHeld.RemoveRange(declared.Start, declared.End - declared.Start);
         for (var i = run.Start; at.Storage == NoStorage && i < run.End; i++)
         {
-            if (this.retentionHeld[i] is { Part: { } stored, Holder: { } owner } part && ReferenceEquals(owner, type) && ReferenceTypes.IsPointer(part.Written))
+            if (this.retentionHeld[i] is { Part: { } stored, Holder: { } owner } part && ReferenceEquals(owner, type) && part.Written is { IsPointer: true })
             {
                 var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured, Signature = null };
                 this.SelfContent(environment, stored, part.Written, owner, below);
@@ -527,7 +527,7 @@ public sealed partial class Binding
     private (int Start, int End) Reads(BoundType type)
     {
         var start = this.retentionReads.Count;
-        var stated = type.Semantics == SemanticsKind.Raw && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) };
+        var stated = type.IsPointer && OwnedOrigin(type) is { Kind: not (OriginKind.Static or OriginKind.Unstated) };
         var members = this.rawMembers.Count;
         this.retentionLimit |= stated && !this.RawMembers(OwnedOrigin(type)!, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
         for (var i = members; i < this.rawMembers.Count; i++)

@@ -130,8 +130,8 @@ internal sealed partial class MirValidator
             MirCastKind.Floating => source.IsFloatingPoint && target.IsFloatingPoint,
             MirCastKind.Numeric or MirCastKind.Bits => source.IsFloatingPoint
                 ? MirTypes.IsArithmeticInteger(target) : MirTypes.IsArithmeticInteger(source) && target.IsFloatingPoint,
-            MirCastKind.Pointer => source.Semantics == SemanticsKind.Raw && (target.Semantics == SemanticsKind.Raw || ReferenceEquals(target, BoundType.USize)),
-            MirCastKind.IntToPointer => MirTypes.IsArithmeticInteger(source) && target.Semantics == SemanticsKind.Raw,
+            MirCastKind.Pointer => source.IsPointer && (target.IsPointer || ReferenceEquals(target, BoundType.USize)),
+            MirCastKind.IntToPointer => MirTypes.IsArithmeticInteger(source) && target.IsPointer,
             MirCastKind.Upcast => source.Semantics == target.Semantics && (source.HandleMode is not null || source.IsObjectBorrow),
             MirCastKind.Erasure => source.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && target.Kind == BoundTypeKind.Function,
             _ => false,
@@ -215,14 +215,14 @@ internal sealed partial class MirValidator
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
                     >= MirBinaryOp.Eq => MirTypes.Agree(this.PremisedTerminal(first), this.PremisedTerminal(second)),
-                    MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
+                    MirBinaryOp.Add or MirBinaryOp.Sub when first is { IsPointer: true } => second is null || ReferenceEquals(second, BoundType.ISize),
                     _ => MirTypes.Agrees(types, body, first, second),
                 }),
                 MirRvalueKind.Discriminant or MirRvalueKind.Len => (BoundType.ISize, true),
                 // O-92 (a): exactly the built-in range-selection receivers, never through a reference; a raw pointer to their element.
                 MirRvalueKind.Storage => (rvalue.Type, place is null ||
                     (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
-                    rvalue.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var element] } &&
+                    rvalue.Type is { IsPointer: true, Components: [var element] } &&
                     MirTypes.Agrees(types, body, element, place.Components[0]) && this.Keyed(operands, first))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
@@ -231,7 +231,7 @@ internal sealed partial class MirValidator
                     (MirRefKind)rvalue.Op switch
                     {
                         MirRefKind.Shared => reference.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef,
-                        MirRefKind.Raw => reference.Semantics == SemanticsKind.Raw,
+                        MirRefKind.Raw => reference.IsPointer,
                         _ => MirTypes.IsExclusive(reference),
                     })),
                 _ => (rvalue.Type, true),
