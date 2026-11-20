@@ -23199,6 +23199,12 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves (Q13).** Independent records on rejected programs only: `InvalidInlineLayout_Kd` at a split C-layout struct that is also
     an inline cycle, `InvalidTypeFormation_Kd` at a constructor whose parameter `self` also duplicates its receiver, and
     `ConflictingLayout_Kd` at a `#Layout` that also repeats its fragment's Layout; nothing lost against dev, no acceptance move.
+  - **E2-2 (Q-566).** A located `Unsupported_Kd` is its own record beside its node's other failures; `FailUnsupportedAt` and its
+    Transitional go, and `GuardPendingVirtualDeclarations`' copy of the guard narrows to a node already holding `Unsupported` (the
+    pending-subset rule). That narrowed branch still drops the limit at an override pending on a failed original (it holds a plain
+    `Unsupported`; lost before and after E2-2) until the pending override rests on its original without a failure of its own (PLAN
+    G1131: E2-5's override family or R7-E5), after which the branch goes; the limit derived by a node's recorded inputs (a rejected
+    `#LibraryImport`, a consulted unresolved part) waits for R7-E5's per-problem inputs (PLAN G1141).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
