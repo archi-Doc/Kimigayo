@@ -229,9 +229,10 @@ public class BorrowAcquisitionTest
     // handle's View Target: through any number of layers, also in a `confined` witness, with arguments and a result over its input;
     // exclusively only where every layer and the path grant exclusive capability (`uniq/ref/F` and `ref/uniq/F` supply no Exclusive
     // call). A Shared call reads an `obj` or `rc` payload through the layers; an Exclusive one through them is the located limit. A raw
-    // pointer is no layer the path follows, so `p()` calls nothing. Fail-before (dev 7979e3a56): NotCallable_Kd or Unsupported_Kd on the
-    // valid forms, `ur()` and `p()` accepted (InternalInvariant_Kd at build); on 11974eb35, Unsupported_Kd at `ro`, `uo` and `ur`. Each
-    // row: the published records in order; an accepted program has none.
+    // pointer is no layer the path follows, so `p()` calls nothing. A result naming the call receiver through the layers keeps the Loan
+    // of the Callable (SPEC 15.8.2, 15.6.3), so moving it while the result is used is a conflict. Fail-before (dev 7979e3a56):
+    // NotCallable_Kd or Unsupported_Kd on the valid forms, `ur()` and `p()` accepted (InternalInvariant_Kd at build), that Move accepted;
+    // on 11974eb35, Unsupported_Kd at `ro`, `uo` and `ur`. Each row: the published records in order; an accepted program has none.
     [Theory]
     [InlineData("func f() -> i32\n    let g = func () -> i32 => 2\n    let r = g@ref\n    let rr = r@ref\n    let rrr = rr@ref\n    return rrr()\n", "")]
     [InlineData("func f() -> i32\n    let g = func (x: ref/i32) -> ref/i32 => x\n    let r = g@ref\n    let rr = r@ref\n    let v: i32 = 5\n    let got = rr(v@ref)\n    return got\n", "")]
@@ -249,6 +250,7 @@ public class BorrowAcquisitionTest
     [InlineData("func f() -> i32\n    var o = Kimi.Intrinsics.makeObj(func () -> i32 => 2)\n    let uo = o@uniq\n    return uo()\n", "")]
     [InlineData("func f() -> i32\n    var r = Kimi.Intrinsics.makeRc(func () -> i32 => 2)\n    let ur = r@uniq\n    return ur()\n", "")]
     [InlineData("func f() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n    var o = Kimi.Intrinsics.makeObj(next@move)\n    let uo = o@uniq\n    return uo()\n", "Unsupported_Kd uo")]
+    [InlineData("func f() -> i32\n    let n: i32 = 7\n    let g = func [n] () => n@ref\n    let r = g@ref\n    let rr = r@ref\n    let v = rr()\n    let moved = g@move\n    return v\n", "ComparisonLoanConflict_Kd g")]
     public void AValueCalleeIsAcquiredThroughEveryReferenceLayer(string body, string records)
         => this.AValueCallsAcquisitionAndRelationsAreEachRecorded(body, records);
 
