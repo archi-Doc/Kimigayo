@@ -343,6 +343,7 @@ internal struct NodeColumns
     internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
     internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
+    internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, the running pass's working state, released at the freeze (Binding.ElementAccess.cs).
 
     internal void Resize(int length)
     {
@@ -403,6 +404,7 @@ internal struct NodeColumns
         this.BaseCallFailures.Grow(length);
         this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
+        this.ReachedThroughBorrow.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -441,6 +443,7 @@ internal struct NodeColumns
         this.BaseCallFailures.Freeze(binding);
         this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
+        this.ReachedThroughBorrow.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -506,6 +509,7 @@ internal struct NodeColumns
             BaseCallFailures = this.BaseCallFailures.Renumbered(length),
             ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
+            ReachedThroughBorrow = this.ReachedThroughBorrow.Renumbered(length),
         };
         return columns;
     }

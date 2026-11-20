@@ -70,6 +70,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.BaseCallFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.ObjectErasureFailures"] = "never written: the library erases no object view",
         ["NodeColumns.ReceiverOperations"] = "released at the freeze: its library rows are read only by the HIR publisher at the library's publication, before the freeze, and TryGetReceiverOperation refuses a library node (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.ReachedThroughBorrow"] = "released at the freeze: a selection's ReachesThroughBorrow answer, the library pass's working state, read only by that pass's queries (D-932)",
         ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
     };
 
@@ -477,6 +478,7 @@ public partial class KimiLibraryShapeTest
         var families = library.Kotonoha.Syntax.Hir.Families;
         Released(families.ResultContexts);
         Released(families.ReceiverOperations);
+        Released(families.ReachedThroughBorrow);
         var nodes = library.Kotonoha.Syntax.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
         Assert.Contains(nodes, static x => x is IfKoto or MatchKoto or DoKoto or LoopKoto);
         Assert.All(nodes, x => Assert.Null(families.ResultContexts.Get(x.SyntaxId, c.Binding)));

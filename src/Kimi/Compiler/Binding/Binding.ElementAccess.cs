@@ -12,14 +12,18 @@ namespace Kimi.Compiler;
 //   and view-range calls, resolved slices, path and referent authority, object cases and pair-layer borrows (BorrowsInEveryCase), a
 //   node's constraint scope, an operand's terminal Type (OperandTerminal) and the Binding's TyCtxt (Types.Reference,
 //   AdtDef.FindField); never a node's own compilation (DECISIONS R8-M51).
-// - Outputs: the answers; nothing here writes a fact or reports a diagnostic. One state: ReachesThroughBorrow's last answer for the
-//   pass (reachCarry), at which the next query's walk stops, so that a chain asked from its root up judges each step once.
-// - Invariants: the readers are Binding's own steps and the HIR publisher, which reads the Binding it publishes.
+// - Outputs: the answers, and one fact of the running pass: ReachesThroughBorrow's answer for a selection (the reachedThroughBorrow
+//   family), written at its first query from its receiver's row and its own step, so that every later query reads it in O(1).
+// - Invariants: the readers are Binding's own steps and the HIR publisher, which reads the Binding it publishes. A selection's answer
+//   reads only what its own binding and its receivers' bindings wrote: every adaptation writer writes the node being bound or its
+//   operand or receiver while that parent is bound, and a query at a selection runs while the selection's parent's parent is bound, so
+//   everything below it is final; the writers that run later (CompareInPlace, SharedElementView, Comparisons) write into chains that
+//   no later walk enters from above (a walk crosses no comparison and no range selection), so a stored answer stays the walk's.
 // - Prohibitions: no member fetches a Binding from a node.
 public sealed partial class Binding
 {
+    private readonly ReachedThroughBorrowRows reachedThroughBorrow;
     private long reachWalkSteps;
-    private (BinaryKoto? Node, bool Reaches, ulong Pass) reachCarry; // ReachesThroughBorrow's last query: its selection, answer and pass.
 
     /// <summary>Gets the steps ReachesThroughBorrow took (one per selection it judges), which a scaling check reads.</summary>
     internal long ReachWalkWork => this.reachWalkSteps;
@@ -56,35 +60,25 @@ public sealed partial class Binding
         => this.AccessType(receiverNode) is var receiver &&
             (receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || this.BorrowsInEveryCase(receiver, receiverNode));
 
-    // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it. Binding asks
-    // it of a chain's receivers from the root up (IsSharedElement), so the walk stops at the selection the pass's last query started from
-    // and takes its answer (reachCarry): each step is judged once per chain, not once per query (the Front's B1 on D-932). A fold
-    // carries the same answer per prefix (PathPrefix.Borrowed).
+    // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it: its own step
+    // (BorrowsAt) or its receiver's answer. The answer is a fact of the selection, stored with it for the pass (reachedThroughBorrow) at
+    // its first query, so each selection is judged once per pass however the queries interleave (the Front's B1 and B1b on D-932). A
+    // fold carries the same answer per prefix (PathPrefix.Borrowed).
     private bool ReachesThroughBorrow(Koto source)
     {
-        var start = ReachStep(source);
-        var reaches = false;
-        for (var selection = start; selection is not null; selection = ReachStep(selection.Left))
+        if (ReachStep(source) is not { } selection)
         {
-            if (ReferenceEquals(selection, this.reachCarry.Node) && this.reachCarry.Pass == this.storageVersion)
-            {
-                reaches = this.reachCarry.Reaches;
-                break;
-            }
-
-            this.reachWalkSteps++;
-            if (this.BorrowsAt(selection))
-            {
-                reaches = true;
-                break;
-            }
+            return false;
         }
 
-        if (start is not null)
+        if (this.reachedThroughBorrow[selection] is { } known)
         {
-            this.reachCarry = (start, reaches, this.storageVersion);
+            return known;
         }
 
+        this.reachWalkSteps++;
+        var reaches = this.BorrowsAt(selection) || this.ReachesThroughBorrow(selection.Left);
+        this.reachedThroughBorrow[selection] = reaches;
         return reaches;
     }
 
@@ -311,5 +305,18 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    /// <summary>The `reachedThroughBorrow` family's one accessor (DECISIONS BU-220): a working-state family, ReachesThroughBorrow's
+    /// answer for a selection in the running pass, kept in its node's module's NodeColumns at its SyntaxId (null: not yet asked in this
+    /// pass). Only the running pass's queries read it, never a library row after the library pass, so the freeze releases them
+    /// (NodeColumns.Freeze).</summary>
+    private readonly struct ReachedThroughBorrowRows(Binding binding)
+    {
+        internal bool? this[Koto selection]
+        {
+            get => selection.SyntaxOwner is { } table ? table.Hir.Families.ReachedThroughBorrow.Get(selection.SyntaxId, binding) : null;
+            set => HirTables.Of(selection).Families.ReachedThroughBorrow.Ref(selection.SyntaxId, binding) = value;
+        }
     }
 }

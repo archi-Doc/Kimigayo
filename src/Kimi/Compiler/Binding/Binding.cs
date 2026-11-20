@@ -101,6 +101,7 @@ public sealed partial class Binding
         this.callablePremiseFailures = new(this);
         this.effectBoundRejections = new(this);
         this.receiverOperations = new(this);
+        this.reachedThroughBorrow = new(this);
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
         this.callInferenceFailures = new(this);
