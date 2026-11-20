@@ -228,8 +228,10 @@ internal sealed partial class MirBorrows
 
     // The inputs a record's pairs make Value at the call (DECISIONS R4-M154, Revisions 2 and 10), a bit per input: those with a conjunction
     // whose every pair is proven under the view's Origin class (MirOrigins.Outlives at the call's site, Holds). A conjunction with a pair
-    // whose Origins the class does not class and none refuted, or of an input past the mask's 64, leaves its input undecided: a limit at
-    // the call where its Value would store a Loan or an address. Memoized per record, body, view and site for the program version:
+    // the class leaves Undecided and none refuted, or of an input past the mask's 64, leaves its input undecided: a limit at the call where
+    // its Value would store a Loan or an address; one resting on a recorded failure (MirRelation.Rests) is neither proven nor undecided,
+    // so it stores as an undecided one does and the call records nothing of its own. Memoized per record, body, view and site for the
+    // program version:
     // Outlives resolves the pair's Origins at the site (OriginAtUse), so two calls sharing a record are judged apart.
     private ulong Solved(ulong[] state, in MirTerminator call, StorageRetention record, bool checks)
     {
@@ -253,13 +255,9 @@ internal sealed partial class MirBorrows
                 }
 
                 var bit = 1UL << Math.Min(input, 63);
-                var holds = input >= 63 ? null : this.Holds(pairs[start..end], site);
-                (entry.Proven, entry.Undecided) = holds switch
-                {
-                    true => (entry.Proven | bit, entry.Undecided),
-                    null => (entry.Proven, entry.Undecided | bit),
-                    false => entry,
-                };
+                var holds = input >= 63 ? MirRelation.Undecided : this.Holds(pairs[start..end], site);
+                entry.Proven |= holds == MirRelation.Holds ? bit : 0;
+                entry.Undecided |= holds == MirRelation.Undecided ? bit : 0; // A resting or failing input is neither (no record of its own).
                 start = end;
             }
         }
@@ -274,20 +272,14 @@ internal sealed partial class MirBorrows
         return entry.Proven;
     }
 
-    // Whether one conjunction of a record's pairs holds at the call's site (MirOrigins.Outlives): false where one pair does not, null where
-    // none fails and one is undecided, true where each holds.
-    private bool? Holds(ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)> conjunction, SourceRef site)
+    // Whether one conjunction of a record's pairs holds at the call's site (MirOrigins.Outlives): its pairs' greatest answer (Fails over
+    // Undecided over Rests over Holds).
+    private MirRelation Holds(ReadOnlySpan<(int Input, BoundOrigin Longer, BoundOrigin Shorter, bool Joined)> conjunction, SourceRef site)
     {
-        bool? holds = true;
+        var holds = MirRelation.Holds;
         foreach (var (_, longer, shorter, _) in conjunction)
         {
-            var pair = origins.Outlives(this.body, this.view, longer, shorter, site);
-            holds = (holds, pair) switch
-            {
-                (false, _) or (_, false) => false,
-                (null, _) or (_, null) => null,
-                _ => true,
-            };
+            holds = (MirRelation)Math.Max((byte)holds, (byte)origins.Outlives(this.body, this.view, longer, shorter, site));
         }
 
         return holds;

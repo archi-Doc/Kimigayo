@@ -28,7 +28,11 @@ internal sealed partial class MirBuilder
         }
         else
         {
+            // SPEC 13.4.1, 14.10.3: the Contract call's receiver, its left operand, is its first pending slot, cleared until the operand is
+            // evaluated into it (a call there pends after the slots): an inspection while the right operand is evaluated.
+            this.inspections.Add(this.arguments.Count);
             this.Call(result, call, node, first: null);
+            this.inspections.RemoveAt(this.inspections.Count - 1);
         }
 
         if (relation != MirBinaryOp.Eq)
@@ -129,7 +133,9 @@ internal sealed partial class MirBuilder
         var start = this.arguments.Count;
         var view = this.Operand(left.Source!, left.AdaptedType ?? left.ParameterType);
         this.arguments.Add(Builds(right.Source!) ? this.Secure(view, left.Source!) : view);
+        this.inspections.Add(start); // SPEC 13.4, 14.10.3: an inspection while the right operand is evaluated.
         view = this.Operand(right.Source!, right.AdaptedType ?? right.ParameterType);
+        this.inspections.RemoveAt(this.inspections.Count - 1);
         this.arguments[start] = this.Inspected(this.FollowTo(this.arguments[start].Place, self), node);
         this.arguments.Add(this.Inspected(this.FollowTo(view.Place, self), node));
         var requirement = contract.Contract!.OwnRequirement()!; // Equatable's equals, Comparable's compare.

@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns call retention (SPEC 15.6.4; design A3 4.3, C1+C8): which outputs of a call may retain which arguments, as A5's Loan flow reads it.
-// Input: a callee with its call Subst, or a Value callee operand's Type (CallPlan.CalleeType, which MIR's operand reproduces) with the
+// Input: a callee with its call Subst, or a Value callee operand's Type (the callee's acquisition, CallPlan.ReceiverOperation's AdaptedType
+// where Binding publishes one, else CallPlan.CalleeType; read below its acquisition layers, Binding.CallableCore) with the
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41), or a destroyed part whose `drop` is unknown; the calling
 // definition (null: top-level statements).
 // A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
