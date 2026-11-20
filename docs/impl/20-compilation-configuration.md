@@ -80,6 +80,7 @@ group Log
 | `emit <input>` | Checks and publishes the `.ll` and `.link.json` pair; runs no LLVM tool. |
 | `build <input>` | Checks current product sources and publishes artifacts by OutputKind (§20.3.2). With `--Manifest <file>`, builds an emitted Application pair without loading sources; Library manifests are rejected. Generation settings come from the manifest, and source, target, Debug and lock options are errors. |
 | `run <input>` | Builds as `build` does, then runs the Application; a failed build launches nothing. With `--no-build`, runs the existing executable if the latest build record succeeded, names the resolved input and matches the executable's hash. `run <file.exe>` runs that file directly. |
+| `tatara` | Reads lines from standard input and runs each as `kimi build ...` or `kimi run ...` in one process; `exit` or end of input ends it. A line's failure does not end the session; the session returns 0 when every line succeeded and 1 otherwise. A fatal error of the native build ends the session. |
 | `test <input>` | Runs tests ([§20.6](#206-test-execution)). |
 | `pack`, `publish`, `store verify` | Package operations ([§20.5](#205-packages-and-locks)). |
 | `toolchain verify` | Checks the toolchain without loading a project ([§20.3.2](#2032-builds-and-artifacts)). |
