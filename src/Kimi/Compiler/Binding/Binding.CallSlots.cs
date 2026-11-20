@@ -15,9 +15,9 @@ namespace Kimi.Compiler;
 //   pattern under those bindings (FixedPattern); a constructor's constructed Type (ConstructionType); the structural matching of a
 //   pattern over the owner's slots against an actual Type, binding each slot it reaches (Infer), and an s/U whose s is bound, matched as
 //   the Type it forms (FormedApplication).
-// - Inputs: the callee's declaration and declaring Type; the call's explicit Types and lengths; a pattern, the actual Type at its position
-//   and one solution's slot and length arrays (a candidate's SlotSolution, a Case construction's, a function reference's or a Callable
-//   proof's), with the evidence flags.
+// - Inputs: the callee's declaration and declaring Type; the call's explicit Types and lengths; a pattern, the actual Type at its position,
+//   the solve's binder (SolveBinder: its declaration and slot owner) and one solution's slot and length arrays (a candidate's
+//   SlotSolution, a Case construction's, a function reference's or a Callable proof's), with the evidence flags.
 // - Outputs: the bindings in those arrays (null while unbound) and whether the actual matches the pattern structurally; a FixedSlots
 //   (owner, each slot's fixed binding, lengths, whether every own slot is fixed); a FixedPattern for AdaptInput.
 // - Invariants: a slot's earlier binding is kept unless the flags say how two bindings meet (SPEC 10.8): an invariant binding over
@@ -187,8 +187,9 @@ public sealed partial class Binding
     // input, lies beyond the call and never solves an Origin in a slot: it becomes an open region that other evidence fills.
     // With `relateLater`, the actual is a value's Type whose Origin relations to the solution are judged after selection (SPEC 15.6.1),
     // so Origin evidence never fails a structurally equal slot binding; `invariant` marks a position below an exclusive layer or an
-    // invariant schema slot.
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
+    // invariant schema slot. `binder` is the solve's binder (SolveBinder): its Declaration's Constraints decide a read Type, and its
+    // SlotOwner's slots are the ones bound.
+    private bool Infer(BoundType pattern, BoundType actual, SolveBinder binder, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
     {
         // R7-C3 (design §3, J4 at the head; D-779): the evidence in its class's form in the solve's view (SlotFrame.View), once per
         // step (the table keeps each form), so every branch below, a decomposition and a first binding included, reads formed evidence.
@@ -202,7 +203,7 @@ public sealed partial class Binding
         }
 
         if (pattern.Kind == BoundTypeKind.TargetProjection && pattern.Symbol is { } projected &&
-            ContainerSlot(function, projected) is >= 0 and var projectionSlot)
+            ContainerSlot(binder.SlotOwner, projected) is >= 0 and var projectionSlot)
         {
             // The target alone does not determine a pair's Semantics; final candidate fitting checks a still-open projection. Once another
             // input, an explicit argument or the result fixes the whole Type, its direct target is the target's binding: evidence agrees
@@ -213,7 +214,7 @@ public sealed partial class Binding
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
-            ContainerSlot(function, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
+            ContainerSlot(binder.SlotOwner, selector) is var selectorSlot && selectorSlot >= 0 && selectorSlot < arguments.Length)
         {
             if (arguments[selectorSlot] is not { } whole)
             {
@@ -222,21 +223,21 @@ public sealed partial class Binding
 
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+                return this.Infer(pattern.Components[0], actual, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
+                this.Infer(pattern.Components[0], actual.Components[0], binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
         }
 
         // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+            return this.Infer(pattern.Components[0], actual.Underlying, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
         }
 
-        if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
+        if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(binder.SlotOwner, pattern.Symbol!) is var slot && slot >= 0)
         {
             if ((uint)slot >= (uint)arguments.Length)
             {
@@ -253,7 +254,7 @@ public sealed partial class Binding
             // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
             // argument is then value-read.
             if (!structural && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-                ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, this.activeInferenceFunction is { } inference && ReferenceEquals(CallSlotOwner(inference), function) ? inference : function))
+                ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, binder.Declaration))
             {
                 actual = referent;
             }
@@ -262,18 +263,17 @@ public sealed partial class Binding
             {
                 // SPEC 8.10, 7.7.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
                 // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
-                if (this.activeInferenceFunction is { } trial && ContainerSlot(CallSlotOwner(trial), pattern.Symbol!) is >= 0 and var own &&
-                    own < this.environmentJudgments.Length)
+                if (frame.EnvironmentJudgment(slot) is null)
                 {
-                    this.environmentJudgments[own] ??= new(PendingJudgmentKind.EnvironmentResult, evidence.Value.Source, pattern.Symbol);
+                    frame.SetEnvironmentJudgment(slot, new(PendingJudgmentKind.EnvironmentResult, evidence.Value.Source, pattern.Symbol));
                 }
 
                 return true;
             }
 
-            if (evidence is { Binder: { } binder } known)
+            if (evidence is { Binder: { } signatureBinder } known)
             {
-                actual = this.OpenKnownOrigins(actual, binder, known.Source);
+                actual = this.OpenKnownOrigins(actual, signatureBinder, known.Source);
             }
 
             if (arguments[slot] is { } previous)
@@ -359,7 +359,7 @@ public sealed partial class Binding
         // An interned leaf that passes these tests differs from the pattern in its Origin alone, which is evidence or a later relation
         // where Origins are not compared here: a pair layer's outer slot is such an Origin (SPEC 8.1.2, 15.3.6; PLAN G758).
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
-            !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, frame) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
+            !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, binder.SlotOwner, frame) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
             (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0 && (ReferenceEquals(pattern.Origin, actual.Origin) || !ReferenceEquals(pattern.InstanceContext, actual.InstanceContext))))
         {
             return false;
@@ -369,7 +369,7 @@ public sealed partial class Binding
         {
             var required = pattern.LengthArguments[i];
             var supplied = actual.LengthArguments[i];
-            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || !lengths || !this.InferLength(required, supplied, function, frame)))
+            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || !lengths || !this.InferLength(required, supplied, binder.SlotOwner, frame)))
             {
                 return false;
             }
@@ -390,7 +390,7 @@ public sealed partial class Binding
             if (!this.Infer(
                 pattern.Components[i],
                 actual.Components[i],
-                function,
+                binder,
                 frame,
                 inferOrigins,
                 lengths,
@@ -439,5 +439,28 @@ public sealed partial class Binding
                 : binding.SubstituteType(pattern, fixedSlots.Owner!, fixedSlots.Types, fixedSlots.Lengths) ?? pattern);
 
         internal static FixedPattern Open(BoundType pattern) => new(pattern);
+    }
+
+    // SPEC 10.2.2, 10.8, 10.8.1: the binder of one solve, which the unifier (Infer) is given: a candidate's function (a constructor
+    // included), an enum constructing a Case, a referenced function. Its Declaration's Constraints decide a read Type
+    // (InfersReadReferent); its slots are SlotOwner's (CallSlotOwner: the structure for a constructor), formed once per solve. Made only
+    // from a function or an enum, so a slot owner (a structure) is never passed where the binder is meant.
+    private readonly struct SolveBinder
+    {
+        internal SolveBinder(FunctionKoto function)
+            : this((Koto)function)
+        {
+        }
+
+        internal SolveBinder(EnumKoto declaration)
+            : this((Koto)declaration)
+        {
+        }
+
+        private SolveBinder(Koto binder) => (this.Declaration, this.SlotOwner) = (binder, CallSlotOwner(binder));
+
+        internal Koto Declaration { get; }
+
+        internal Koto SlotOwner { get; }
     }
 }

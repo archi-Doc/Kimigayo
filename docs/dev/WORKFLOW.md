@@ -9,14 +9,15 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 | --- | --- | --- |
 | **Front** | P1–P5s: Syntax and Binding | Language rules, Types and Contracts, Binding diagnostics, SemanticQuery (Hover, LSP) |
 | **Middle** | P6–P10: MIR build, analyses and acceptance | Ownership and borrowing, effects, drop, MIR diagnostics, `MirValidator` |
-| **Back** | P11–P13: Backend and runtime | Layout and ABI, code generation, O2 performance, the object runtime, the Kimi library's generated code |
+| **Back** | P11–P12: Backend and runtime | Layout and ABI, code generation, O2 performance, the object runtime, the Kimi library's generated code |
+| **Tatara** | P13: Build (`src/Kimi/Build`) and Tatara (`src/Tatara`, the native part) | The build chain (in-process LLVM / LLD), `kimi tatara`, link material; reviewed by the Middle |
 | **Coordinator** | Cross-cutting | Landing on dev (windows), PLAN and DECISIONS numbering, project documents, verification scripts and the benchmark infrastructure |
 
 - Other areas: the Kimi library source (`src/Kimi/Library`) is the Back's; the diagnostics adapter (`src/Kimi/Diagnostics`) and the
   VS Code extension (`src/kimi-ext`) the Front's; `Compiler/Documentation` and the `tests/mir` goldens the Middle's. `Core`,
   `SolutionAndProject` and `Unit` are edited by any session under a board hold and reviewed by the Middle. A `src/Benchmark` series
   follows the component it measures, its infrastructure the Coordinator's.
-- **Planning session.** The Front, Middle and Back each plan their area's units: classification, design, delegation, splitting and
+- **Planning session.** The Front, Middle, Back and Tatara each plan their area's units: classification, design, delegation, splitting and
   owner reports. A unit across areas is planned by the session owning the component where the cause lies; the others consent to and
   review their hunks; a disagreement goes to the owner. The Coordinator decides no design and plans only its own script and
   benchmark-infrastructure units.
@@ -235,7 +236,7 @@ A window merges queued units onto dev, verifies them once and lands them togethe
 - **Moves.** A unit moves acceptance when a program it changes goes from rejected to accepted or back; it moves records when only
   the records of programs that stay rejected change.
 - **Size.** At most five units that move records or acceptance, and at most one unit that moves acceptance per area (Front, Middle,
-  Back), or two when they share no file and each names its expected moves (DECISIONS Q18). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
+  Back, Tatara), or two when they share no file and each names its expected moves (DECISIONS Q18). Documentation-only, test-only and behavior-preserving units fill the window up to eight units.
 - **Files.** Units of one window share no file except PLAN's table end, separate DECISIONS entries and separate named constants or rows of a ratchet or pin
   test (`ArchitectureRulesTest`, `KimiLibraryShapeTest`) that `git merge-tree` merges cleanly (DECISIONS Q20), and any other file
   whose units merge cleanly with no two units' hunks overlapping or within 3 lines (DECISIONS Q21). An overlap waits for the

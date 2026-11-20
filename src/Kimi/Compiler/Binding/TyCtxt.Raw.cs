@@ -79,15 +79,15 @@ internal sealed partial class TyCtxt
     // its source); false for every other callee and slot: a function with a body, a foreign import, a missing row. Static; allocates nothing.
     internal static bool NoStore(BindingSymbol? callee, int input) => KimiLibraryCatalog.NoStore(callee, input);
 
-    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (ScalarTypes'
-    // one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
+    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (BoundType.IsScalar,
+    // the one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
     // part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them; PLAN G792), so it is punnable. Any other Type is
     // not. Readers: A5's pun rule (MirBorrows.PunTypes, whose own fact is how much of a Scalar a punnable Type holds). A function of the
     // interned Type, each composite one decided once (`punnable`, kept like the interning: a Type's answer never changes); a walk that
     // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
     internal bool Punnable(BoundType type)
     {
-        if (ScalarTypes.Supports(type) || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        if (type.IsScalar || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
         {
             return true;
         }
@@ -196,7 +196,8 @@ internal sealed partial class TyCtxt
     // step (review N12). Named limit (review N13): a path rooted at a constructor's or `drop`'s receiver starts as PlaceKey.Root (no
     // dereference), where PathOrigin gives the receiver's Origin, so past a `self` layer of the receiver the answer is Address, never a
     // dropped Φ; where a valid program reaches it A5 gives a located Unsupported_Kd. Removal: a ReceiverRoot(type, receiver) key, the
-    // Origin PathOrigin's Receiver step gives, when a reader keys such a Place. The key holds Types only (PlaceKey.Through, a layer Type as
+    // Origin PathOrigin's Receiver step gives, when a reader keys such a Place, read for a `during self` layer only where the receiver
+    // holds it (Binding.ReceiverHolds, PLAN G1119), as ReadHolder reads it. The key holds Types only (PlaceKey.Through, a layer Type as
     // every MIR Type is), so MIR reads no Origin from it but through the readers the raw Origin role ratchet covers (review N14). False at
     // Binding's Limit. Total over what Binding accepts, a function of the key, allocating nothing warm. Must not decide a covering or a pun
     // (A5's), read a call's arguments or solved Origins, or test a Type's Kind or Semantics to restrict a form.

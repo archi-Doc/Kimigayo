@@ -348,6 +348,10 @@ public sealed class BoundOrigin
 public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0, Koto? FixedBy = null)
 {
     internal ExecutableBody Body { get; init; }
+
+    // A Callable comparison's row (Binding.LeavesBodyRows, PLAN G492-a (ii)): its ends are read as the comparison reads them, a `let`
+    // region of the use's body as the region (Binding.OriginAtUse with an obligation; the owner's O-363 (a)).
+    internal bool Compared { get; init; }
 }
 
 internal enum TypePosition : byte
@@ -374,7 +378,9 @@ internal sealed class ComparisonPremises(BoundType required, ComparisonPremises?
 // comparisons Outer names. The Origins that the implementation binds per call are instantiated at the required inputs in the same
 // positions; the required per-call Origins are rigid symbols of the comparison, related only through the required signatures' own
 // well-formedness, and every other Origin is compared as written. A comparison without an implementation signature (ContractFits
-// solves the implementation's Origins itself) only carries the premises.
+// solves the implementation's Origins itself) only carries the premises. Rows is the comparison's row sink (DECISIONS <G492-a (iii)>,
+// SPEC 15.6.1 under the owner's O-261 Q2 (a)): the reader that built the query takes the region conjuncts its premises leave unproven
+// (Binding.LeavesBodyRows) and forms or drops them; null: no reader, so such a conjunct is not proven. A nested comparison inherits it.
 internal readonly struct CallableInstance
 {
     private readonly BoundType? actual;
@@ -403,13 +409,16 @@ internal readonly struct CallableInstance
     // premises; null: the scope of the use it is made at (Binding.RelationScope).
     internal BindingScope? Scope { get; init; }
 
+    // The row sink of the reader that built the query (see the type's contract); a nested comparison and an exchanged one carry it.
+    internal List<BindingObligation>? Rows { get; init; }
+
     // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.
     // A signature that carries no Origin has no well-formedness, so it adds no node.
     internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
 
     // The comparison with its sides exchanged, nested in the same comparisons and judged in the same scope: the second half of an
     // invariant position's two-way relation (SPEC 3.8, 15.3.5; RelationWalk.Fits).
-    internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope };
+    internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope, Rows = this.Rows };
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)

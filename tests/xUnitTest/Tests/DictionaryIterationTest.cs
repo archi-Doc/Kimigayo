@@ -216,8 +216,9 @@ public class DictionaryIterationTest
     // IMPL 21.3.2 (R8-K1a, R8-K1b-2; design review 2 item 2): `alignmentOf<T>` places `T` two levels deeper, `(u8, [0 of T])`. `clear`,
     // `reserve` and `shrinkToFit` read the Handle by path since R8-K1b-2 (no `(raw/Dictionary<K, V>, isize)` result one level above it), so
     // Binding's storage-nesting bound (StorageHeightLimit) cuts at the Dictionary's own nesting: each accepts the last depth, where
-    // `alignmentOf<V>` reaches Layout.MaximumHeight exactly (a margin of zero), and one deeper gives A5's OwnershipDepthLimit_Kd and the
-    // bound's Unsupported_Kd, for a Tuple, an Option, a fixed-array and a struct nest (one declared struct per level, S0 holding the i32).
+    // `alignmentOf<V>` reaches Layout.MaximumHeight exactly (a margin of zero), and one deeper gives A5's OwnershipDepthLimit_Kd and
+    // Layout's GenerationResourceLimit_Kd past MaximumHeight (R7-T1: the collector reads no storage verdict; before, the bound's
+    // Unsupported_Kd), for a Tuple, an Option, a fixed-array and a struct nest (one declared struct per level, S0 holding the i32).
     // A change of either bound or of alignmentOf's two levels moves these rows.
     [Theory]
     [InlineData("(u8, {0})", 62, "d.clear()")]
@@ -236,7 +237,7 @@ public class DictionaryIterationTest
     {
         Assert.Empty(DiagnosticCorpus.Check(Program(last)).Diagnostics);
         Assert.Equal(
-            ["OwnershipDepthLimit_Kd", "Unsupported_Kd"],
+            ["GenerationResourceLimit_Kd", "OwnershipDepthLimit_Kd"],
             DiagnosticCorpus.Check(Program(last + 1)).Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal));
 
         string Program(int depth)

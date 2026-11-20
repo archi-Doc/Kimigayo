@@ -1,7 +1,7 @@
 # R5 Step 0 Audit (S1)
 
 Purpose: one row per item that R5/R6 must give a new owner: its old site, its new owner and the unit of
-[the plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md) §4 that closes it (OQ1). A record, not a decision.
+[the plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md) §4 that closes it (OQ1). A record, not a decision.
 
 Base: `origin/dev` = `041ced79`; every `path:line` is at the base. Paths: `C/` = `src/Kimi/Compiler/`; a bare file name is in `C/Emission/`;
 `BL.` = `BodyLowering.`, `WL.` = `WindowsLowering.`; `Bd/` = `C/Binding/`, `M/` = `C/Mir/`, `A/` = `C/Analysis/`; `B/` = the new Backend.

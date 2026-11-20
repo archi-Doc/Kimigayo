@@ -18,7 +18,7 @@ Revision 0 is `claude/r6-g8-design` `b4d5b9abf`.
 | G8d | a collector row | `InstanceCollectorTest.TwoClosuresOfOneInstanceAreItsTwoItems` over `GenericClosureIdentityTest.TwoClosures` (now shared) | implementer |
 | As implemented | §6.1 | a1 Emission −3,746, tests −230, Backend −3, docs +22, this file; b1 Backend −388, docs +9; c1 Analysis −97, docs +7; d1 tests +51, docs +4. M4: Emission `.cs` 5,078 → 1,332 (8 files), Backend 14,756 → 14,365 | `git diff --numstat` |
 
-"Plan" is the [R5 and R6 Implementation Plan](../../Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
+"Plan" is the [R5 and R6 Implementation Plan](../../Changes/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md). Paths: `C/` =
 `src/Kimi/Compiler/`, `E/` = `C/Emission/`, `B/` = `C/Backend/`, `T/` = `tests/xUnitTest/Tests/`. Line numbers are at `9613a512e`. No
 build, test or probe was run. Reach comes from word-boundary greps over `src` (with `src/Benchmark` and `src/Playground`) and `tests`,
 and three scratch scans: (1) every identifier the deleted files use that is declared outside them and occurs nowhere else; (2) every

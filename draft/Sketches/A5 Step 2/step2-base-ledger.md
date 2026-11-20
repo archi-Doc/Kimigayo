@@ -1,7 +1,7 @@
 # Ledger re-baseline at the step-2 base (unit 2x-T2)
 
 Date: 2026-10-19. Base: `origin/dev` `6e969f94` (1c-9 merged at `0e96cf19`, G148 at `1db0da9f`). Unit row: plan §4.1 2x-T2
-([A5 step 2 plan](../../Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md)), §5.1 (owners of open rows); input
+([A5 step 2 plan](../../Changes/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md)), §5.1 (owners of open rows); input
 census: the 2026-10-18 ledger audit (`artifacts/handoff/2026-10-18-pause/r4-scratch/step2-audit/LEDGER/audit.md`, base
 `806110fc`). Evidence only: no SPEC, compiler, test, library or `classification.tsv` change. "(H)" marks an inference not
 checked by running code.

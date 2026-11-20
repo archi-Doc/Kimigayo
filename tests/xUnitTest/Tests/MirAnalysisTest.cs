@@ -176,8 +176,8 @@ public sealed class MirAnalysisTest
     // PLAN G951's round rule (MirReport's Rounds; the Back's review C3 and N1): while a round is open, a problem of another body value (a
     // construction record of a body a lookup builds during the round) is added at once and stays when the round is dropped; the round's own
     // problems are held, so a dropped round adds none and a committed one adds each once, merged, after the problems added during it; a
-    // held problem with facts is a recording rule's defect, held as the round's; a round opened in an open round, or ended with none open,
-    // is a broken contract. Fail-before (a report reverted to the round's start): the construction record is lost.
+    // held problem keeps its facts (R7-T1: the collector's height record carries its limit); a round opened in an open round, or ended
+    // with none open, is a broken contract. Fail-before (a report reverted to the round's start): the construction record is lost.
     [Fact]
     public void ARoundHoldsOnlyItsOwnProblems()
     {
@@ -202,8 +202,8 @@ public sealed class MirAnalysisTest
         report.Begin(MirProblem.NoBody);
         Assert.Equal(-1, report.Add(Conflict with { Body = MirProblem.NoBody }, [new(ProblemFactKind.Anchor, site)]));
         report.Commit();
-        var defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-        Assert.Equal(new MirProblem(DiagnosticCode.InternalInvariant_Kd, defect, Conflict.Subject, MirProblem.NoBody, Conflict.Views), report.All[2]);
+        Assert.Equal(Conflict with { Body = MirProblem.NoBody }, report.All[2]);
+        Assert.Equal([new ProblemFact(ProblemFactKind.Anchor, site)], report.Facts(2).ToArray());
     }
 
     // PLAN G950: rows kept from an index (MirReport.Keep) and replayed after other problems (Replay) equal their first adding at that step,
@@ -901,26 +901,27 @@ public sealed class MirAnalysisTest
 
     // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2), row H3-C through Compilation (U2's N8; the design review of U2-K-b's N5):
     // Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of the body (MirDropTable.Holds): a body its version
-    // built and no step stepped has no A1 or A2 facts, so it is not judged without a problem; once a version steps it, it is. swap erased at
-    // 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected by the implementation's storage bound (PLAN G128: one located
-    // Unsupported_Kd where the collector refuses the instance after its lookup built swap's body), so nothing steps swap: the premise
-    // (built at its library ordinal, not held) is asserted before the judgment is read; the edit into swap at u8 (valid) steps it.
-    // Transitional with G950KeptPathTest's row K1-K: it holds until R7 removes the bound. Replaces the seam that injected an explicit
-    // program by reflection. Fail-before: the judgment read the body's existence, findings, records and problems only, so the unstepped
-    // body read as judged.
+    // built and no step stepped has no A1 or A2 facts, so it is not judged without a problem; once a version steps it, it is. A chain of
+    // 19 distinct functions whose last makes an Array<Box^91<T>> at T = Box^8100<i32> is valid (SPEC 8.13.3) and rejected where the
+    // library's Array.initCapacity forms its local uniq/Array<...> past IMPL A.4's height (TypeHeightLimit_Kd at the requesting call,
+    // where the collector refuses the instance after its lookup built the body; the local's glue past the type-driven cap,
+    // GenerationResourceLimit_Kd), so nothing steps initCapacity: the premise (built at its library ordinal, not held) is asserted before
+    // the judgment is read; the edit into an Array<u8> with a capacity (valid) steps it. G950KeptPathTest's row K1-K reads the same
+    // program (before R7-T1 both read swap at 70 nested arrays, the storage-nesting gap; B's ruling 14). Replaces the seam that injected
+    // an explicit program by reflection. Fail-before: the judgment read the body's existence, findings, records and problems only, so the
+    // unstepped body read as judged.
     [Fact]
     public void ABodyBuiltButNotSteppedIsNotJudged()
     {
-        const string swap = "let action: (uniq/{0}, uniq/{0}) -> () = ::Kimi.Intrinsics.swap\n";
-        var c = MirBuildTest.Compile(string.Format(swap, string.Concat(Enumerable.Repeat("[1 of ", 70)) + "u8" + new string(']', 70)));
+        var c = MirBuildTest.Compile(InstanceCollectorTest.DeepSource("capacity91"));
         _ = c.Analyze();
-        Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
+        Assert.Equal([DiagnosticCode.GenerationResourceLimit_Kd, DiagnosticCode.TypeHeightLimit_Kd], c.Problems.Select(static x => x.Code).Order());
         var (program, eager) = (c.BuildMir(), new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1));
-        var body = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+        var body = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary && x.Key.Decl?.Name == "initCapacity");
         Assert.Equal((eager[body.Key]!.Ordinal, false), (body.Ordinal, program.Drops.Holds(body.Ordinal)));
         var declaration = body.Key.Decl!;
         Assert.False(c.JudgedWithoutProblem(declaration));
-        Edit(c, string.Format(swap, "u8"));
+        Edit(c, "let a = Array<u8>.init(capacity: 1)\n");
         _ = c.Analyze();
         Assert.Empty(c.Problems);
         Assert.True(c.JudgedWithoutProblem(declaration));

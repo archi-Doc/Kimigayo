@@ -316,7 +316,7 @@ public sealed partial class Binding
                 var conflict = false;
                 var type = binding.PlaceType(place, binding.positionParts.Count, exact, late, ref conflict);
                 binding.ClosePosition(place);
-                bound = !conflict && (type is null || binding.Infer(slot, type, this.SlotOwner, this.Frame, lengths: true));
+                bound = !conflict && (type is null || binding.Infer(slot, type, this.Solve, this.Frame, lengths: true));
             }
 
             wholes.RemoveRange(mark, wholes.Count - mark);

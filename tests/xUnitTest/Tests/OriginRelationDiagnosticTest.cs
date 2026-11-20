@@ -168,7 +168,11 @@ public partial class OriginRelationDiagnosticTest
     [InlineData(WrittenParameter + "    origin q outlives r\n    return f(t)\n", "")]
     [InlineData(WrittenParameter + "    return f(t)\n", "UnprovenOriginRelation_Kd t")]
     [InlineData(WrittenParameter + "    return f(t)\nfunc m() -> i32\n    let b: bool = 3\n    return 0\n", "UnprovenOriginRelation_Kd t; TypeMismatch_Kd 3")]
-    [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t; ComparisonLoanConflict_Kd let short = 2")]
+    // WrittenParameterCalled (SPEC 15.6.1, 23.1.2; PLAN G492-a (ii) with G379's Closure half, design-ii.md §13.18.8 item 4): `f`, a
+    // Closure whose signature names the `let` regions of sq and lr, is compared with k's parameter at the argument, where a failed
+    // condition has sq's region, a `let` region of the use's body, at its shorter end: the located limit at `f` (the owner's O-400 (b)),
+    // beside k's own record. The Loan conflict needs the region reading at the uses of a compared Type (O-400 (b)'s (a)/(a'), open).
+    [InlineData(WrittenParameterCalled, "UnprovenOriginRelation_Kd t; Unsupported_Kd f")]
     public void ANestedSignaturesInputIsWellFormedByPremiseAndAtEachCall(string body, string records)
     {
         var source = body + Main;
@@ -454,11 +458,13 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
-    // SPEC 7.7.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input.
+    // SPEC 7.7.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input. The
+    // capture's slot is written `during x` (PLAN G492-a (ii)): unwritten it is the `let` local's own region and `start = n` is Unknown
+    // beside this record (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's SwapOmitted rows).
     [Fact]
     public void AnAnonymousInputIsBoundByItsWrittenOrigin()
     {
-        var source = "func use(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var inner = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
+        var source = "func use(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 during x = x\n    var inner = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
             "        let old = start\n        start = n\n        return old\n    var outer = func [var inner] (a: ref/i32) -> i32\n        let got = inner(a)\n" +
             "        return got@follow\n    return inner(x)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

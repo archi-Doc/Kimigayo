@@ -4,7 +4,7 @@ Date: 2026-10-18. Status: draft design (S3, second independent design). Base: `o
 that base. "(H)" marks a claim not checked by running code. Independence: written without reading any other design or deep
 dive of this chapter; `audit.md` (S1) did not exist on `origin/dev` or `origin/claude/r5-s1` when this was written.
 
-Conventions follow the plan (`draft/Proposals/2026-10-17 R5 and R6 Implementation Plan.md`, "the plan"): `C/` =
+Conventions follow the plan (`draft/Changes/2026-10-17 R5 and R6 Implementation Plan.md`, "the plan"): `C/` =
 `src/Kimi/Compiler/`, `B/` = `src/Kimi/Compiler/Backend/`, PLAN10, A5P, DEC, ARCH. "Hold" follows plan §3.5 and the owner's
 OQ8 (DEC R5-M7 once merged).
 

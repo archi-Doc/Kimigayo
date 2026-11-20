@@ -9,8 +9,9 @@
 // - Inputs: complete Types: a judgment's subject, an erasure's callable; a nested definition's chain of enclosing declarations
 //   (TyCtxt.EnclosingDeclaration) and its held instance as its readers see it (TyCtxt.NestedInstance).
 // - Outputs: the parts in one numbering with their members; interned environment Tuples; InheritedArguments' null where the instance
-//   is withheld (PLAN G300, the owner's O-262 (a)) or an image does not complete, which each reader answers with BU-22's located limit:
-//   at the withheld definition (StructuralCapability; ErasureSubject through it), at the stored Type (the component summaries' walk).
+//   is withheld (PLAN G300, the owner's O-262 (a)) or an image is not readable (TyCtxt.ReadableInstance, DECISIONS R4-M139), which each
+//   reader answers with BU-22's located limit: at the withheld definition (StructuralCapability; ErasureSubject through it), at the
+//   stored Type (the component summaries' walk).
 // - Invariants: the erasure and the Owned proof read one numbering (DECISIONS BU-73: a Closure's capture index); an environment Tuple
 //   is the only Tuple with Origin arguments, a capability subject and never a value's Type.
 // - Prohibitions: no judgment here (StructuralCapability, ErasureSubject and the component summaries' walk judge the parts); no second
@@ -47,8 +48,8 @@ public sealed partial class Binding
     // Containers' slots and its Origin slots (a function has no Origin parameter list, SPEC 15.3), each read through the Type's held
     // instance as its readers see it (TyCtxt.NestedInstance): the slot itself in that declaration's identity (no context), else its image.
     // Unit for any other Type, whose bound arguments are its whole dependence; null where the instance is withheld (an Origin position
-    // of the held instance or of the holding Container's identity, PLAN G300) or an image does not complete, which the reader answers
-    // with BU-22's limit.
+    // of the held instance or of the holding Container's identity, PLAN G300) or an image is not readable (TyCtxt.ReadableInstance: it
+    // does not form or its storage is a Limit; DECISIONS R4-M139), which the reader answers with BU-22's limit.
     private BoundType? InheritedArguments(BoundType type)
     {
         if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || type.Symbol is not { } definition ||
@@ -97,7 +98,7 @@ public sealed partial class Binding
                 if (declaration.Declaration is DeclarationContainerKoto)
                 {
                     // The Container's identity under the instance: its arguments are its slots' images.
-                    if ((instance is null ? this.SelfType(declaration) : this.types.Apply(this.SelfType(declaration), instance)) is not { } self)
+                    if ((instance is null ? this.SelfType(declaration) : this.types.ReadableInstance(this.SelfType(declaration), instance)) is not { } self)
                     {
                         return null;
                     }
@@ -119,7 +120,7 @@ public sealed partial class Binding
                 {
                     if (schema.GenericSlots[i] is { Kind: not GenericSlotKind.Length, Symbol.WholeType: { } whole })
                     {
-                        if ((instance is null ? whole : this.types.Apply(whole, instance)) is not { } image)
+                        if ((instance is null ? whole : this.types.ReadableInstance(whole, instance)) is not { } image)
                         {
                             return null;
                         }
