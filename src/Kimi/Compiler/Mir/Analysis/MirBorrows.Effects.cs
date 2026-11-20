@@ -4,11 +4,11 @@ using System.Numerics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's effect rule (SPEC 15.6.4, 15.6.7, 16.3.3, 16.4 with 16.3.1, 22.4.3; DECISIONS R4-M92): a Call's or a Drop's effects on static
+// A5's effect rule (SPEC 15.6.4, 15.6.7, 16.3.3, 16.4 with 16.3.1, 22.4.3; DECISIONS R4-M92, Z7): a Call's or a Drop's effects on static
 // storage, by A4's key row and classes (MirEffects.Keys), against the live Loans on the view's mutable static roots.
 // Input: the location's one gather, its effect access listed by MirBorrows.Accesses (a Call's set the last operand's, every operand's
 // value with no holder left out; a Drop's its value's), the reservations the location activates, the view's effect roots and A4's Field
-// numbers (MirBorrows.Loans), and A4's summaries of the static initializers (MirEffects.Summary).
+// and initialization numbers (MirBorrows.Loans, MirEffects.Initialization).
 // Output, per view of the run (each record with the views whose keys give it, R4-M11), through MirBorrows.Reports:
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
 //   root (shallow, SPEC 15.6.2); its first conflict at the location its body owns (D11), coded by Code (row 1: a reservation the call does
@@ -19,11 +19,15 @@ namespace Kimi.Compiler.Mir;
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
 //   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Limit or
 //   Deep without them, that answer's limit record;
-// - the initialization proof: a conflict every effect that would decide it may be the first-access initialization of a static a live
-//   Loan proves initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property);
-//   otherwise the first effect outside the proof decides the Language problem (Unproved); a proof that consults an initializer with a
-//   validator finding rests on it (R5-M183): Met's conflict or limit there and Destroying make no record, Met's A4 limit stays.
-// Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns.
+// - the initialization proof (SPEC 15.6.4: a live Loan anchored to a Field proves that Field initialized; R4-M89 OQ-F5-6 (a)): Q, the
+//   statics a candidate of the effect set is on, is what the literal reading proves and the clarified readings may not (liveness is a
+//   may-property: e10f), so no conflict rests on it. A conflict of the row (every initialization composed) is decided by the row with
+//   Q's initializations left out (MirEffects.Keys' excluded): a conflict there is the Language problem, its fact that row's (the first
+//   effect outside the proof decides, R4-M92's R2-B1); none there, or a static of Q with several slots whose initialization the site may
+//   run (an edge A4 cannot leave out until P42's key, R4-M103), is the located Unsupported_Kd. An initializer with a validator finding is
+//   A4's Derived (R5-M183): its keys never decide.
+// Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns; a
+// row is read from A5's copy, never from A4's scratch after another query.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Limit, rank outcomes, or read keys
 // outside a Call or a Drop. A static a Loan or a Drop roots has its initializer: the validator checks that its body ensures it and that
 // each staticEnsure's static has one (G191).
@@ -31,7 +35,11 @@ internal sealed partial class MirBorrows
 {
     private int[] activated = []; // By Loan: the effect rule's run whose location activates it (W6).
     private int effecting; // The effect rule's runs, the stamp of activated, never reset.
-    private ulong[] effectRow = []; // The effect rule's copy of A4's key row of the view it records.
+    private ulong[] effectRow = []; // The effect rule's copy of A4's key row of the view it records,
+    private ulong[] unprovenRow = []; // the row with Q's initializations left out (Unproven), its classes,
+    private byte unprovenClasses;
+    private ulong[] proving = []; // and Q's initialization bits, the excluded row of its query.
+    private byte unprovenState; // Unproven's answer in the view: 0 not queried, 1 no Q, 2 the row, 3 the row resting on a key.
 
     // A bit of a key row: 2f a read and 2f + 1 a write of the Field A4 numbers f.
     private static bool Bit(ReadOnlySpan<ulong> row, int bit) => (row[bit >> 6] & (1UL << bit)) != 0;
@@ -84,12 +92,11 @@ internal sealed partial class MirBorrows
         for (var mask = all; mask != 0; mask &= mask - 1)
         {
             this.views = mask & ~(mask - 1);
-            // A copy: the proof's summaries reuse A4's scratch (MirEffects.Summary).
             var keys = effects.Keys(this.body, BitOperations.TrailingZeroCount(mask), at.Block, default, out var classes);
             MirDataflow.Grow(ref this.effectRow, keys.Length);
             keys.CopyTo(this.effectRow);
             var row = this.effectRow.AsSpan(0, keys.Length);
-            this.Work += row.Length;
+            (this.Work, this.unprovenState) = (this.Work + row.Length, 0);
             foreach (var root in this.effectRoots)
             {
                 this.Met(at, taking, root, row, classes);
@@ -117,14 +124,13 @@ internal sealed partial class MirBorrows
         var decided = Decided(row, classes, field);
         this.Work += 2;
         var scope = this.Source(at).Scope;
-        // The proof's record; none where the proof rests on an initializer with a finding (R5-M183), and the A4 limit below stays.
-        if (decided is not null && this.Conflict(root, [], EffectRow(decided), taking, scope, -1) != None &&
-            this.Unproved(at, taking, row, classes, field) is (var fact, false))
+        if (decided is not null && this.Conflict(root, [], EffectRow(decided), taking, scope, -1) != None)
         {
+            var fact = this.Unproved(at, taking, field, decided.Value);
             var c = fact is { } unproved ? this.Conflict(root, [], EffectRow(unproved), taking, scope, -1) : None;
             if (fact is not { } kind || c == None)
             {
-                this.Limit(this.Subject(at), MirOutcome.Limit); // Every effect that would decide it lies in a proved initializer.
+                this.Limit(this.Subject(at), MirOutcome.Limit); // The conflict rests on Q (the proof's readings, or a key).
             }
             else
             {
@@ -157,44 +163,45 @@ internal sealed partial class MirBorrows
     {
         var field = this.fields[destroyed];
         this.Work += 2;
-        if (Decided(row, classes, field) is null)
+        if (Decided(row, classes, field) is not { } decided)
         {
             this.Limit(this.Subject(at), MirEffects.Outcome(classes)); // No key and no Unknown: A4's Limit or Deep, if any.
         }
-        else if (this.Covered(this.Source(at).Scope, -1, -1) || this.Unproved(at, taking, row, classes, field) is not (var fact, false))
+        else if (this.Covered(this.Source(at).Scope, -1, -1))
         {
-            return; // Its template's, or a proof resting on an initializer with a finding (R5-M183).
+            return; // Its template's.
         }
-        else if (fact is not { } kind)
-        {
-            this.Limit(this.Subject(at), MirOutcome.Limit); // Every effect that would decide it lies in a proved initializer.
-        }
-        else
+        else if (this.Unproved(at, taking, field, decided) is { } kind)
         {
             this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, this.Effect(kind, this.Key(~destroyed)));
         }
+        else
+        {
+            this.Limit(this.Subject(at), MirOutcome.Limit); // The conflict rests on Q (the proof's readings, or a key).
+        }
     }
 
-    // The initialization proof (SPEC 15.6.4: a live Loan anchored to a Field proves that Field initialized, so its first access runs no
-    // initializer; 22.4.3): whether an effect that would decide a conflict on a Field, a write or read key or Unknown, lies in the summary
-    // of the initializer of a static d with a candidate in the effect set (MirEffects.Summary), where the location may first-access d: d is
-    // immutable (its accesses carry no key), the location's row has a key of d, or the location is d's staticEnsure
-    // (MirProgram.StaticInit), which carries no key of its own static (R4-M38). Liveness is a may-property, so the Loan proves nothing on a
-    // path it is absent from (e10f): a conflict every effect that would decide it is so proved is the located Unsupported_Kd, never a
-    // Language problem (PD12 (ii) as written); a key both a proved initializer and the site itself may produce counts as proved, since keys
-    // do not record their source (P5). Null where no initializer without a validator finding proves it and one the proof consults has a
-    // finding, which no consumer reads (R5-M183): the answer rests on that finding.
-    private bool? Proved(MirLocation at, int taking, ReadOnlySpan<ulong> row, ProblemFactKind fact, int field)
+    // What decides a conflict of the full row on the Field A4 numbers f once Q's initializations are left out: the full row's effect where
+    // Q is empty, that row's where Q leaves one (the first effect outside the proof, R4-M92's R2-B1), null where the conflict rests on Q.
+    private ProblemFactKind? Unproved(MirLocation at, int taking, int field, ProblemFactKind decided) => this.Unproven(at, taking) switch
     {
-        var terminator = this.body.Blocks[at.Block].Terminator;
-        MirBody? ensured = null;
-        if (terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } })
+        1 => decided,
+        2 => Decided(this.unprovenRow, this.unprovenClasses, field),
+        _ => null,
+    };
+
+    // Q's row in the view, queried once where a conflict needs it (unprovenState): 1 where the effect set holds no candidate on a static,
+    // 2 with the row of the location whose initializations of the statics with a candidate are left out (unprovenRow, unprovenClasses),
+    // 3 where such a static has several slots and the view's row may run its initialization, which A4 cannot leave out. Reads A4's
+    // scratch before its own query, so the view's row is still the one Effects copied.
+    private byte Unproven(MirLocation at, int taking)
+    {
+        if (this.unprovenState != 0)
         {
-            ensured = this.program.StaticInit(this.body, this.body.Operands[terminator.Start]);
+            return this.unprovenState;
         }
 
-        var bit = fact == ProblemFactKind.EffectWrite ? (2 * field) + 1 : 2 * field;
-        bool? proved = false;
+        var (words, rests, any) = (0, false, false);
         this.Work += this.body.Statics.Length;
         for (var d = 0; d < this.body.Statics.Length; d++)
         {
@@ -203,54 +210,35 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            var initializer = this.program.StaticInit(this.body, d)!;
-            var own = 2 * this.fields[d];
-            if (this.body.Statics[d].Mutable && !Bit(row, own) && !Bit(row, own + 1) && !ReferenceEquals(initializer, ensured))
+            any = true;
+            var symbol = this.body.Statics[d].Symbol;
+            if (effects.Initialization(symbol) is >= 0 and var id)
             {
-                continue; // The location does not first-access d.
-            }
-
-            if (initializer.HasFinding)
-            {
-                proved = null; // Its summary is never read (R5-M183).
-                continue;
-            }
-
-            for (var view = 0L; view < MirCases.Count(initializer); view++)
-            {
-                var summary = effects.Summary(initializer, view, out var classes);
-                if (fact == ProblemFactKind.EffectUnknown ? (classes & MirEffects.Unknown) != 0 : Bit(summary, bit))
+                if ((id >> 6) + 1 > words)
                 {
-                    return true;
+                    MirDataflow.Grow(ref this.proving, (id >> 6) + 1);
+                    this.proving.AsSpan(words, (id >> 6) + 1 - words).Clear();
+                    words = (id >> 6) + 1;
                 }
+
+                this.proving[id >> 6] |= 1UL << id;
+            }
+            else
+            {
+                rests |= effects.Initializes(symbol);
             }
         }
 
-        return proved;
-    }
-
-    // What decides an effect on the Field A4 numbers f once the initialization proof applies: the first of a write key, Unknown and a read
-    // key that no initializer the proof covers may produce (Proved); null where none is left. Rests where a proof consulted an initializer
-    // with a validator finding (R5-M183), Fact then meaningless: the initializers a proof consults do not depend on the kind, so its proofs
-    // are all true or null, or all true or false, and the first not proved decides both.
-    private (ProblemFactKind? Fact, bool Rests) Unproved(MirLocation at, int taking, ReadOnlySpan<ulong> row, byte classes, int field)
-    {
-        if (Bit(row, (2 * field) + 1) && this.Proved(at, taking, row, ProblemFactKind.EffectWrite, field) is not true and var write)
+        if (!any)
         {
-            return (ProblemFactKind.EffectWrite, write is null);
+            return this.unprovenState = 1;
         }
 
-        if ((classes & MirEffects.Unknown) != 0 && this.Proved(at, taking, row, ProblemFactKind.EffectUnknown, field) is not true and var unknown)
-        {
-            return (ProblemFactKind.EffectUnknown, unknown is null);
-        }
-
-        if (Bit(row, 2 * field) && this.Proved(at, taking, row, ProblemFactKind.EffectRead, field) is not true and var read)
-        {
-            return (ProblemFactKind.EffectRead, read is null);
-        }
-
-        return (null, false);
+        var keys = effects.Keys(this.body, BitOperations.TrailingZeroCount(this.views), at.Block, this.proving.AsSpan(0, words), out this.unprovenClasses);
+        MirDataflow.Grow(ref this.unprovenRow, keys.Length);
+        keys.CopyTo(this.unprovenRow);
+        this.Work += keys.Length;
+        return this.unprovenState = rests ? (byte)3 : (byte)2;
     }
 
     // Whether the effect set holds a candidate on a root, in any mode.

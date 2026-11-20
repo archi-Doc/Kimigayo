@@ -68,11 +68,12 @@ internal sealed partial class MirEffects
         MirDataflow.Grow(ref this.readers, count);
         MirDataflow.Grow(ref this.dependentHeads, count);
         var (words, initWords) = (((2 * this.fieldIds.Count) + 63) >> 6, (this.initIds.Count + 63) >> 6);
-        MirDataflow.Grow(ref this.keys, count * (words + initWords));
-        MirDataflow.Grow(ref this.keyScratch, words + initWords);
+        var row = words + initWords + ((this.fixedIds.Count + 63) >> 6);
+        MirDataflow.Grow(ref this.keys, count * row);
+        MirDataflow.Grow(ref this.keyScratch, row);
         MirDataflow.Grow(ref this.expanded, initWords);
-        this.keys.AsSpan(0, count * (words + initWords)).Clear();
-        (this.keyWords, this.rowWords) = (0, 0); // No key or entry is composed before Spread solves them.
+        this.keys.AsSpan(0, count * row).Clear();
+        (this.keyWords, this.initWords, this.rowWords) = (0, 0, 0); // No key or entry is composed before Spread solves them.
         this.classes.AsSpan(0, count).Clear();
         this.atomCounts.AsSpan(0, count).Clear();
         this.readers.AsSpan(0, count).Fill(-1);
@@ -101,7 +102,7 @@ internal sealed partial class MirEffects
             }
         }
 
-        (this.keyWords, this.rowWords) = (words, words + initWords);
+        (this.keyWords, this.initWords, this.rowWords) = (words, initWords, row);
         if (this.rowWords > 0)
         {
             this.Spread(count);
@@ -184,6 +185,16 @@ internal sealed partial class MirEffects
         var inits = store.Inits;
         for (var i = init; i < initEnd; i++)
         {
+            if (inits[i] < 0)
+            {
+                if (this.rowWords > 0)
+                {
+                    this.keyScratch[this.keyWords + this.initWords + (~inits[i] >> 6)] |= 1UL << ~inits[i]; // Its edge composes it.
+                }
+
+                continue;
+            }
+
             var initializer = this.initBodies[inits[i]];
             this.missed |= !this.program.Body(initializer).HasFinding && !this.program.Drops.Holds(initializer);
             if (this.rowWords > 0)

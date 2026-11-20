@@ -100,6 +100,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.programLocals.Clear(0);
         this.fieldIds.Clear();
         this.initIds.Clear();
+        this.fixedIds.Clear();
         this.writing = this.libraryLocals;
     }
 
@@ -124,6 +125,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         foreach (var field in this.programLocals.Initialized)
         {
             this.initIds.Remove(field);
+            this.fixedIds.Remove(field);
         }
 
         this.programLocals.Clear(this.libraryLocals.End);

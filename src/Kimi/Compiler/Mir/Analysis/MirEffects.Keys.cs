@@ -9,24 +9,28 @@ namespace Kimi.Compiler.Mir;
 // Field is one key, so keys are Fields, never substituted. A node's row is its local accesses (AddKey, as Local walks the view) and its
 // local initialization entries (AddInit: a staticEnsure of a static with one slot, TyCtxt.Instantiates false, whose initializer holds
 // no atom) joined with those of every body view it composes (Spread, after Run's fixed point): key bits, then one initialization bit per
-// such static (rowWords - keyWords words after the key words). An initialization entry is no edge: the fixed point composes no initializer of an entry,
-// and a reader composes it (Expand) unless it excludes the static. A static with several slots keeps its ensure's edge into the
-// initializer, whose atoms each call's substitution resolves, until P42's per-access key (R4-M103) gives the entry the key's Type
-// arguments. Keys answers a site of one view with its key row and classes from the summaries and keys of the last Run, the initializations
-// it excludes left out; Summary gives a body view's row and classes with its initializations composed (a static initializer's, for A5's
-// initialization proof); Items its solved classes, its initializations composed, and its atoms (what holds a published operation's body
-// within its row, SPEC 4.9.6); Field numbers a Field's bits and Initialization a static's initialization bit.
+// such static (initWords words), then one bit per static with several slots whose initialization it may run (fixedWords words). An
+// initialization entry is no edge: the fixed point composes no initializer of an entry, and a reader composes it (Expand) unless it
+// excludes the static. A static with several slots keeps its ensure's edge into the initializer, whose atoms each call's substitution
+// resolves, until P42's per-access key (R4-M103) gives the entry the key's Type arguments; its bit is information only (Initializes),
+// which Expand never reads, since the edge already composed the initializer. Keys answers a site of one view with its key row and
+// classes from the summaries and keys of the last Run, the initializations it excludes left out; Items gives a body view's solved
+// classes, its initializations composed, and its atoms (what holds a published operation's body within its row, SPEC 4.9.6); Field
+// numbers a Field's bits, Initialization a static's initialization bit, and Initializes tells whether the last query's site may run the
+// initialization of a static with several slots.
 // Invariant: an entry's initializer node keeps no atom (a definition that does not instantiate names only closed Types); a broken one is
 // InternalInvariant.
 internal sealed partial class MirEffects
 {
     private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number (P5).
     private readonly Dictionary<BindingSymbol, int> initIds = new(ReferenceEqualityComparer.Instance); // Each entry static's initialization number.
+    private readonly Dictionary<BindingSymbol, int> fixedIds = new(ReferenceEqualityComparer.Instance); // Each static with several slots' number.
     private int[] initBodies = []; // By initialization number: the ordinal of the static's initializer.
     private ulong[] keys = []; // Each node's row, rowWords words: keyWords of key bits (P5: of Fields, never substituted), then its
     private ulong[] keyScratch = []; // initialization bits, after Spread, and those of the current query.
     private ulong[] expanded = []; // Expand's initializations composed in the current query.
     private int keyWords;
+    private int initWords;
     private int rowWords;
     private int[] visits = []; // Spread's components: each node's visit number (int.MaxValue once finished),
     private int[] lows = []; // its lowest open visit it reaches, then its component's end in members,
@@ -62,25 +66,6 @@ internal sealed partial class MirEffects
         return this.keyScratch.AsSpan(0, this.keyWords);
     }
 
-    /// <summary>Gets the summary of a body view from the last <see cref="Run"/>: the key row of what the body may run (its local keys
-    /// joined with every body it composes, its initializations composed) and its classes. An atom the summary keeps is
-    /// <see cref="Unknown"/> here, since a site that composes the body may resolve it so (R4-M92).</summary>
-    /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
-    /// <param name="view">The view.</param>
-    /// <param name="classes">The summary's classes among <see cref="Unknown"/>, <see cref="Limit"/>, <see cref="Deep"/> and <see cref="Derived"/>.</param>
-    /// <returns>The row, valid until the next query or <see cref="Run"/>.</returns>
-    internal ReadOnlySpan<ulong> Summary(MirBody body, long view, out byte classes)
-    {
-        var node = this.Base(body.Ordinal) + (int)view;
-        classes = (byte)(this.Expanded(node) & (Unknown | Limit | Derived | Deep));
-        if (this.atomCounts[node] > 0)
-        {
-            classes |= Unknown;
-        }
-
-        return this.keyScratch.AsSpan(0, this.keyWords);
-    }
-
     /// <summary>Gets the solved summary of a body view from the last <see cref="Run"/> as A4 keeps it: its classes, an environment
     /// effect's and its initializations' included, and its atoms over the definition's abstract Types (SPEC 15.6.4: its
     /// parameter-dependent effects).</summary>
@@ -107,6 +92,13 @@ internal sealed partial class MirEffects
     /// <returns>The bit; -1 for a static no body of the version ensures or one with several slots, whose initialization is an edge.</returns>
     internal int Initialization(BindingSymbol field) => this.initIds.TryGetValue(field, out var id) ? id : -1;
 
+    /// <summary>Gets whether the site of the last <see cref="Keys"/> query may run the first-access initialization of a static with several
+    /// slots, which its row composes through an edge and no excluded row leaves out (until P42's per-access key, R4-M103).</summary>
+    /// <param name="field">The static.</param>
+    /// <returns>Whether it may; false for a static with one slot or one no body of the version ensures.</returns>
+    internal bool Initializes(BindingSymbol field)
+        => this.fixedIds.TryGetValue(field, out var id) && (this.keyScratch[this.keyWords + this.initWords + (id >> 6)] & (1UL << id)) != 0;
+
     // A local access to a mutable static Field: its key, numbered by Field once per program version.
     private void AddKey(BindingSymbol field, bool write)
     {
@@ -127,7 +119,14 @@ internal sealed partial class MirEffects
         var field = initializer.Key.Decl!;
         if (types.Instantiates(field))
         {
+            if (!this.fixedIds.TryGetValue(field, out var slots))
+            {
+                this.fixedIds[field] = slots = this.fixedIds.Count;
+                this.writing.Initialized.Add(field);
+            }
+
             this.AddEdge(initializer, null);
+            this.writing.AddInit(~slots); // Information only (Initializes).
             return;
         }
 
@@ -147,7 +146,7 @@ internal sealed partial class MirEffects
     // initializer keeps no atom (the invariant above).
     private void Expand(ReadOnlySpan<ulong> excluded)
     {
-        var words = this.rowWords - this.keyWords;
+        var words = this.initWords;
         var done = this.expanded.AsSpan(0, words);
         done.Clear();
         for (var grew = words > 0; grew;)
@@ -209,7 +208,8 @@ internal sealed partial class MirEffects
             var inits = store.Inits;
             for (var k = this.Start(store, node).Inits; k < store[node].Inits; k++)
             {
-                this.keys[(node * this.rowWords) + this.keyWords + (inits[k] >> 6)] |= 1UL << inits[k];
+                var bit = inits[k] >= 0 ? (64 * this.keyWords) + inits[k] : (64 * (this.keyWords + this.initWords)) + ~inits[k];
+                this.keys[(node * this.rowWords) + (bit >> 6)] |= 1UL << bit;
             }
         }
 
