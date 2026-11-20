@@ -211,13 +211,6 @@ public sealed partial class Binding
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
     }
 
-    // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
-    private static bool IsStringJoin(Koto node, int depth)
-        => depth < 32 && KotoHelper.UnwrapParentheses(node) is BinaryKoto { Akind: KotoKind.Plus } join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
-
-    private static bool IsStringOperand(Koto node, int depth)
-        => ReferenceEquals(ComparisonReferent(KotoHelper.UnwrapParentheses(node).BoundType), BoundType.String) || IsStringJoin(node, depth);
-
     // SPEC 15.6.1, 23.1: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.

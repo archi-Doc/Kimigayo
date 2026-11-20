@@ -307,7 +307,7 @@ public sealed partial class Binding
 
         static VariableKoto? RootLocal(Koto value)
         {
-            for (var depth = 0; depth < 64; depth++)
+            while (true)
             {
                 switch (value)
                 {
@@ -323,8 +323,6 @@ public sealed partial class Binding
                         return null;
                 }
             }
-
-            return null;
         }
     }
 

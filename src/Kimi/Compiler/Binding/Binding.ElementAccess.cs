@@ -48,8 +48,7 @@ public sealed partial class Binding
     // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
     private bool ReachesThroughBorrow(Koto source)
     {
-        for (var depth = 0; depth < 64 && KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto &&
-            !IsGetterResult(selection); depth++)
+        while (KotoHelper.UnwrapParentheses(source) is BinaryKoto selection && selection is IndexKoto { Right: not RangeKoto } or MemberAccessKoto && !IsGetterResult(selection))
         {
             var receiver = this.AccessType(selection.Left);
             if (receiver?.Kind == BoundTypeKind.Slice || this.BorrowsInEveryCase(receiver, selection.Left))
@@ -171,7 +170,7 @@ public sealed partial class Binding
 
     private Koto? BorrowedPathRoot(MemberAccessKoto field)
     {
-        for (var depth = 0; depth < 64; depth++)
+        while (true)
         {
             if (IsGetterResult(field))
             {
@@ -198,15 +197,13 @@ public sealed partial class Binding
 
             field = parent;
         }
-
-        return null;
     }
 
     // SPEC 15.6: a direct inline field/Tuple/static-array path whose root is an owned local
     // or parameter Name. Returns that Name, or null for other forms.
     private IdentifierNameKoto? OwnedPathRoot(BinaryKoto field)
     {
-        for (var depth = 0; depth < 64; depth++)
+        while (true)
         {
             if (IsGetterResult(field) || !this.IsSyntax(field) || this.StaticSelector(field) < 0)
             {
@@ -227,8 +224,6 @@ public sealed partial class Binding
 
             field = parent;
         }
-
-        return null;
     }
 
     private bool TryBorrowedTupleElement(BinaryKoto source, out BoundType? element, out int position)

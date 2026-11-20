@@ -56,7 +56,7 @@ public sealed partial class Binding
             return AcquisitionJudgment.Refuted;
         }
 
-        for (var depth = 0; depth < 64; depth++)
+        while (true)
         {
             switch (place)
             {
@@ -78,8 +78,6 @@ public sealed partial class Binding
                     return AcquisitionJudgment.Required;
             }
         }
-
-        return AcquisitionJudgment.Required;
     }
 
     // SPEC 3.4.3: whether selection through the Type's reference layers passes a shared layer.
