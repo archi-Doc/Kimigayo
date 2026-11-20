@@ -14,8 +14,8 @@ namespace Kimi.Compiler;
 //   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36): the node's own facts at BindNode's end (OwnBorrows:
 //   its written Borrow, Slice view or object view, its receiver operation, its calls' operations, its payload operations, its capture
 //   entries); where a writer binds sub-nodes that can state a fact's atom after writing it, that writer before them: a match's Subject
-//   borrow by BindMatch (before the arms), a selected call's operations by CompleteArguments (before an awaiting argument), a Closure's written
-//   capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations column's setter
+//   borrow by BindMatch (before the arms), a source call's selected operations by CompleteArguments (before an awaiting argument), a
+//   Closure's written capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations column's setter
 //   (AdaptationBorrow); a match's or a user iteration's by-reference bindings by Check's acquisitions (BindingBorrows); and the claims
 //   the HIR publisher publishes (MarkClaim).
 // - Outputs: Borrows(atom, members, out claimed), read by the borrows' readers through OriginMembers, and RetentionState, the key field of
@@ -189,8 +189,9 @@ public sealed partial class Binding
         }
     }
 
-    // A call's receiver and argument operations: formed once its selection is complete, before an awaiting argument binds
-    // (CompleteArguments: the argument's header can state these Borrows' atoms), and at the call's node from its plan.
+    // A call's receiver and argument operations: a source call's formed once its selection is complete, before an awaiting argument
+    // binds (CompleteArguments: the argument's header can state these Borrows' atoms), and every call's at its node from its plan (a
+    // synthesized call's at its consumer's, which commits or replaces the plan).
     private void CallBorrows(Dictionary<BoundOrigin, BorrowList> rows, in BoundArgumentOperation receiver, ReadOnlySpan<BoundArgumentOperation> arguments)
     {
         this.OperationBorrow(rows, receiver);
