@@ -11,21 +11,25 @@ namespace Kimi.Compiler;
 //   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in commit order;
 //   and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
 // - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
-//   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36): the node's own facts at BindNode's end (OwnBorrows:
-//   its written Borrow, Slice view or object view, its receiver operation, its calls' operations, its payload operations, its capture
-//   entries); where a writer binds sub-nodes that can state a fact's atom after writing it, that writer before them: a match's Subject
-//   borrow by BindMatch (before the arms), a source call's selected operations by CompleteArguments (before an awaiting argument), a
-//   Closure's written capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations column's setter
-//   (AdaptationBorrow); a match's or a user iteration's by-reference bindings by Check's acquisitions (BindingBorrows); and the claims
-//   the HIR publisher publishes (MarkClaim).
+//   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36, 37): the node's own facts at BindNode's end
+//   (OwnBorrows: its written Borrow, Slice view or object view, its receiver operation, its calls' operations, its capture entries);
+//   where a writer binds sub-nodes that can state a fact's atom after writing it, that writer before them: a match's Subject borrow by
+//   BindMatch (before the arms), a match's or a user iteration's by-reference bindings where their Patterns bind
+//   (AcquireReferenceBindings, before the guards and bodies), a source call's selected operations by CompleteArguments (before an
+//   awaiting argument), an enum construction's payload operations by CompletePayloads (each at its write, before the payloads after
+//   it), a Closure's written capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations
+//   column's setter (AdaptationBorrow); and the claims the HIR publisher publishes (MarkClaim).
 // - Outputs: Borrows(atom, members, out claimed), read by the borrows' readers through OriginMembers, and RetentionState, the key field of
-//   TyCtxt's retention memo: the region and borrow versions until the pass's last borrow writer (Check) has run, Complete afterwards.
+//   TyCtxt's retention memo: the region and borrow versions until the pass's Check has run, Complete afterwards.
 // - Invariants: an atom's forming Borrow is formed before any Type stating the atom can be read (a typed path, a Field read or a
-//   substitution states the atom only from a Type that carries it), except a by-reference Pattern binding's Borrow: BindPattern's access
-//   mode decides it, but its Acquisition is written in Check, after the bodies bind (AcquireBinding), so while they bind its atom's row
-//   lacks it (a bare Place Subject's Borrow, whose referent holds the binding's (SPEC 15.1.6), is formed); and a call's operations
-//   while its waiting Closure parts bind (CompleteWaiting, before the selection completes; a failed part fails the call, SPEC 10.8, so
-//   they are never formed); the rows only grow within a
+//   substitution states the atom only from a Type that carries it), except where the fact is not written yet while a part that states
+//   its atom binds: a call's operations while its waiting Closure parts bind (CompleteWaiting, before the selection completes): the
+//   part's inferred return Type is never outer evidence (SPEC 10.5.4), so such a call fails and its operations are never formed (ap3,
+//   ap4, invalid); and a payload's operation while an awaiting payload before it binds (CompletePayloads completes the payloads in
+//   source order: pl4, invalid). A reader there finds no row; every program that reaches it is invalid (the erasure whose retention
+//   reads it fails Owned, SPEC 7.7.4), and what Z6's reader answers there is Z6's (Q13). The rows may hold more than HIR publishes:
+//   a recorded adaptation whose operation the publisher's Adjust replaces (ChildAdjust) stays formed, and the census does not see it
+//   (both its sides read the recorded column there). The rows only grow within a
 //   pass, each new entry or changed mode moving borrowVersion (a mark does not: no versioned reader reads marks); a library body's rows
 //   are the layer's part, written only by the library pass, an identical re-record by another pass writing nothing; at the publication
 //   the census (CheckBorrows) compares the rows with the borrows the HIR publisher itself writes (Published*, G147 ruling 28): misses
@@ -50,8 +54,8 @@ public sealed partial class Binding
     private Dictionary<BoundOrigin, BorrowList> borrows;
     private int borrowVersion;
 
-    // Whether the running pass's borrow writers have all run (RunPass after Check, whose acquisitions are the last; StartPass clears
-    // it): true between Binds.
+    // Whether the running pass's borrow writers have all run (RunPass after Check, after which none runs; StartPass clears it): true
+    // between Binds.
     private bool borrowsComplete;
 
     // The key field of TyCtxt's retention memo (DECISIONS G570, as the publication amends it): until the rows are complete, the region
@@ -101,11 +105,12 @@ public sealed partial class Binding
             HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection or HirAdaptation.ReferenceRead;
 
     // Formation: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each read once by its writer into the
-    // running part (G147 rulings 19, 25, 36): the node's own facts (OwnBorrows, at BindNode's end), a match's Subject borrow (BindMatch),
-    // a selected call's operations (CallBorrows, by CompleteArguments) and a Closure's written capture entries (CaptureBorrows, by
-    // BindConcreteClosure), the adaptation a consumer records at a node (AdaptationBorrow, by the
-    // adaptations column's setter) and a match's or for's by-reference bindings (BindingBorrows, by Check's acquisitions). An address is
-    // none (SPEC 5.4). The census reads none of them: it reads the publication itself (ruling 28; Published*).
+    // running part (G147 rulings 19, 25, 36, 37): the node's own facts (OwnBorrows, at BindNode's end), a match's Subject borrow
+    // (BindMatch), a match's or for's by-reference bindings (BindingBorrows, by AcquireReferenceBindings), a selected call's operations
+    // (CallBorrows, by CompleteArguments), a payload's operation (OperationBorrow, by CompletePayloads), a Closure's written capture
+    // entries (CaptureBorrows, by BindConcreteClosure) and the adaptation a consumer records at a node (AdaptationBorrow, by the
+    // adaptations column's setter). An address is none (SPEC 5.4). The census reads none of them: it reads the publication itself
+    // (ruling 28; Published*).
 
     // A match's or a for loop's Pattern plan; null for any other node.
     private BoundMatch? MatchPlan(Koto node) => node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
@@ -119,7 +124,7 @@ public sealed partial class Binding
         }
     }
 
-    // A match's or for's by-reference bindings, as Check's acquisitions decide them.
+    // A match's or for's by-reference bindings, acquired as their plan's Patterns bind (AcquireReferenceBindings).
     private void BindingBorrows(BoundMatch? plan, Dictionary<BoundOrigin, BorrowList> rows)
     {
         for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
@@ -154,19 +159,10 @@ public sealed partial class Binding
             this.OperationBorrow(rows, receiver);
         }
 
-        // Each call of the node, a user index's two included (the publication's SelectionMode takes one), and an enum construction's
-        // payload operations.
+        // Each call of the node, a user index's two included (the publication's SelectionMode takes one).
         for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
         {
             this.CallBorrows(rows, call.ReceiverOperation, call.ArgumentOperations);
-        }
-
-        if (this.TryGetEnumConstruction(node, out var construction))
-        {
-            foreach (ref readonly var operation in construction!.PayloadOperations)
-            {
-                this.OperationBorrow(rows, operation);
-            }
         }
 
         // A Closure's capture entries, an omitted list's included (captured by their uses in the body).

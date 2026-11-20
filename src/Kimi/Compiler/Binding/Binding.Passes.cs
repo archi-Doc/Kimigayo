@@ -268,7 +268,7 @@ public sealed partial class Binding
         this.BindBodies();
         this.ValidateBoundDeclarations(mode);
         this.Check(mode);
-        this.borrowsComplete = true; // RetentionState's complete value from here: Check's acquisitions are the last borrow writer (Binding.RawOrigins.Borrows.cs).
+        this.borrowsComplete = true; // RetentionState's complete value from here: no borrow writer runs after Check (Binding.RawOrigins.Borrows.cs).
         if (pass.Library is not null)
         {
             // The library module's place in the pass's set, never which pass runs (RB1): the facts a later pass would otherwise form

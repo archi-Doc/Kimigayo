@@ -57,8 +57,11 @@ public class ErasureOwnedDiagnosticTest
     // located limit. The atom: a `let` borrow's P[w] (s2ln); a bare Place Subject's P[o] under a Pattern binding (pm2mn, pm2rn: the
     // Subject's Borrow formed by BindMatch before the arms bind); an argument's and a receiver's implicit Borrow under a Closure literal
     // argument's header (ap1, rc1: formed by the selection before the literal binds); a capture entry's slot Borrow (cp1: formed once
-    // the entries are, before the body binds). Each row has no Borrow for its atom while it binds if the formation comes later, so a
-    // reader of the rows (Z6) fails it first. Labels: originpub rvc\labels.txt s2ln, pm2mn, pm2rn, c1c5\labels.txt ap1, rc1, cp1 (I).
+    // the entries are, before the body binds); a payload's implicit Borrow under a later Closure literal payload's header (pl3: formed by
+    // CompletePayloads at its write); a Binding past a qualifying pair layer of an owned Subject or item, which depends on the Subject
+    // Place itself (pv3, pv4: formed where the Patterns bind, before the bodies). Each row has no Borrow for its atom while it binds if
+    // the formation comes later, so a reader of the rows (Z6) fails it first. Labels: originpub rvc\labels.txt s2ln, pm2mn, pm2rn,
+    // c1c5\labels.txt ap1, rc1, cp1, d1d3\labels.txt pl3, pv3, pv4 (I).
     [Theory]
     [InlineData("    var x = 1\n    var w = (0, x@ref)\n    let r = w.0@uniq\n    var h = Wrap.init(r@follow@raw@raw/u8)\n    let outer = func [h@move] ()\n        let inner = func [h@move] () => ()\n        g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
     [InlineData("    var o: Option<i32> = .Some(3)\n    match o\n        .Some(let m)\n            var h = Wrap.init(m@follow@raw@raw/u8)\n            let outer = func [h@move] ()\n                let inner = func [h@move] () => ()\n                g(inner@move)\n        _ => ()\n", "UnprovenConstraint_Kd inner@move")]
@@ -66,6 +69,9 @@ public class ErasureOwnedDiagnosticTest
     [InlineData("    var v = 1\n    apply(v, func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\n", "UnprovenConstraint_Kd inner@move")]
     [InlineData("    var b = Box.init(1)\n    b.each(func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\n", "UnprovenConstraint_Kd inner@move")]
     [InlineData("    var h = 1\n    let outer = func [h@ref] ()\n        var k = Wrap.init(h@follow@raw@raw/u8)\n        let inner = func [k@move] () => ()\n        g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var v = 1\n    let e = Pair.Both(v, func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\nenum Pair {a}\n    Both(ref/i32 during a, (ref/i32 during a) -> ())\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    return\nfunc q<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _)\n            var h = Wrap.init(x@follow@raw@raw/u8)\n            let outer = func [h@move] ()\n                let inner = func [h@move] () => ()\n                g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    return\nfunc q<s/T>(arr: Array<(s/T, i32)>)\n    s is owner or uniq\n    for (x, _) in arr@move\n        var h = Wrap.init(x@follow@raw@raw/u8)\n        let outer = func [h@move] ()\n            let inner = func [h@move] () => ()\n            g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
     public void ANamedClosureOverAnEnclosingBodyAtomKeepsItsConstraintRecord(string body, string expected)
     {
         var source = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nstruct Box\n    var n: i32\n" +

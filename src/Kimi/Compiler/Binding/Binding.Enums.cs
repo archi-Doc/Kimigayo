@@ -632,8 +632,14 @@ public sealed partial class Binding
                 return false;
             }
 
-            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i);
+            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i, AdaptedType: adaptedType);
             adapted[i] = adaptedType;
+            if (this.FormsBorrows)
+            {
+                // Its writer forms its Borrow, before the payloads after it bind: an awaiting one's header can state its atom
+                // (Binding.RawOrigins.Borrows).
+                this.OperationBorrow(this.borrows, operations[i]);
+            }
         }
 
         return true;
