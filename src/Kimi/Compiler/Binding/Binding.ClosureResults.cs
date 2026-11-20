@@ -4,10 +4,10 @@
 // - Responsibility: PublishedResult, the inferred result once the Closure is classified: each Origin position the meet of its admissible
 //   sources, its receiver resolved (`env_i -> ρ` under a borrowed receiver, `ρ -> static` under `owner/Self`, ResolveReceiver), a
 //   body-local source left out (BodyLocalIn: a local, a parameter's own storage, a temporary, an environment binding the call consumes),
-//   the Closure's call result atom where a source was left out and none remains, an Unbound operand (one resting on a Binding failure,
-//   R4-M118) itself, and static where the position has no source; FitResultSources, each returned value fitted to it in the Closure's
-//   body, so a left-out source is Refuted at the returned value, A5's record (R7-O1); CallResultOrigin, that call result atom, which each
-//   call publishes as it is (Binding.ValueCalls' P9).
+//   the Closure's call result atom where a source was left out and none remains or one rests on a failure (an Unbound one), and static
+//   where the position has no source; FitResultSources, each returned value fitted to it in the Closure's body, so a left-out source is
+//   Refuted at the returned value, A5's record (R7-O1); CallResultOrigin, that call result atom, which each call publishes as it is
+//   (Binding.ValueCalls' P9).
 // - Inputs: the result Type with its own body's regions resolved (ResolveLocalResultOrigins), the classified receiver, the Closure's body and
 //   its result context's sources.
 // - Outputs: the published Type; the fits' rows and records, through the binding-time fit (FitsValueAt; its Origin positions are rows
@@ -83,7 +83,7 @@ public sealed partial class Binding
     }
 
     // One published position (R4-M126 P8): the meet of the admissible operands; the call result atom when one was left out and none
-    // remains; an Unbound operand, which rests on a Binding failure, itself; static when there is no source.
+    // remains, or when one rests on a failure; static when there is no source.
     private BoundOrigin PublishedOrigin(FunctionKoto function, SemanticsKind receiver, ExecutableBody body, BoundOrigin origin)
     {
         origin = this.ResolveReceiver(origin, function, receiver);
@@ -101,7 +101,7 @@ public sealed partial class Binding
             var operand = origin.Kind == OriginKind.Intersection ? origin.Operands[i] : origin;
             if (operand.Kind == OriginKind.Unbound)
             {
-                return operand; // SPEC 23.1.2: a dependent of the Binding failure it rests on (R4-M118), at every call too.
+                return this.CallResultOrigin(function); // SPEC 23.1.2: a dependent of the failure it rests on.
             }
 
             if (RegionIn(operand, body))
