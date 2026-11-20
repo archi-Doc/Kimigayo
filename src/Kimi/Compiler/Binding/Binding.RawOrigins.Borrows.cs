@@ -10,22 +10,28 @@ namespace Kimi.Compiler;
 // - Responsibility: for each Projection or Anchor atom, the Borrows Binding commits with it as their outer Origin (each such operand of a
 //   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in commit order;
 //   and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
-// - Inputs: the borrow facts Binding commits for a node, read by the one enumeration NodeBorrows (its written Borrow, Slice view or object
-//   view, its recorded adaptation, its receiver operation, its calls' operations, its payload operations, its Subject and by-reference
-//   bindings, its capture entries), at each writer of those facts, outside candidate trials and collected fits (FitConjunct's rule):
-//   BindNode's end for the facts the node's own binding writes, an adaptation's record at the node, and Check's acquisitions of a
-//   match's or a user iteration's bindings (AcquireBinding's callers); and the claims the HIR publisher publishes (MarkClaim).
+// - Inputs: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each formed once by its writer, outside
+//   candidate trials and collected fits (FitConjunct's rule; G147 rulings 19, 25, 36): the node's own facts at BindNode's end (OwnBorrows:
+//   its written Borrow, Slice view or object view, its receiver operation, its calls' operations, its payload operations, its capture
+//   entries); where a writer binds sub-nodes that can state a fact's atom after writing it, that writer before them: a match's Subject
+//   borrow by BindMatch (before the arms), a selected call's operations by CompleteArguments (before an awaiting argument), a Closure's written
+//   capture entries by BindConcreteClosure (before its body); a recorded adaptation by the adaptations column's setter
+//   (AdaptationBorrow); a match's or a user iteration's by-reference bindings by Check's acquisitions (BindingBorrows); and the claims
+//   the HIR publisher publishes (MarkClaim).
 // - Outputs: Borrows(atom, members, out claimed), read by the borrows' readers through OriginMembers, and RetentionState, the key field of
 //   TyCtxt's retention memo: the region and borrow versions until the pass's last borrow writer (Check) has run, Complete afterwards.
-// - Invariants: an atom's forming Borrow is committed, so formed, before any Type stating the atom can be read (a typed path, a Field
-//   read or a substitution states the atom only from a Type that carries it), except a Pattern binding's Borrow, whose acquisition
-//   Check decides after the bodies bind: while they bind, its atom's row lacks it; the rows only grow within a pass, each new entry or changed
-//   mode moving borrowVersion (a mark does not: no versioned reader reads marks); a library body's rows are the layer's part, written only
-//   by the library pass, an identical re-record by another pass writing nothing; at the publication the census (CheckBorrows) reads the
-//   same enumeration over every published node: misses always, extras and modes exactly where the publication met no failed node, a
-//   difference the internal-invariant form.
-// - Rule (SPEC 5.4): an address `P@raw` is no Borrow ("checks like an immediately ending @ref ... and leaves no Loan"): NodeBorrows reads
-//   no borrow fact of it.
+// - Invariants: an atom's forming Borrow is formed before any Type stating the atom can be read (a typed path, a Field read or a
+//   substitution states the atom only from a Type that carries it), except a by-reference Pattern binding's Borrow: BindPattern's access
+//   mode decides it, but its Acquisition is written in Check, after the bodies bind (AcquireBinding), so while they bind its atom's row
+//   lacks it (a bare Place Subject's Borrow, whose referent holds the binding's (SPEC 15.1.6), is formed); and a call's operations
+//   while its waiting Closure parts bind (CompleteWaiting, before the selection completes; a failed part fails the call, SPEC 10.8, so
+//   they are never formed); the rows only grow within a
+//   pass, each new entry or changed mode moving borrowVersion (a mark does not: no versioned reader reads marks); a library body's rows
+//   are the layer's part, written only by the library pass, an identical re-record by another pass writing nothing; at the publication
+//   the census (CheckBorrows) compares the rows with the borrows the HIR publisher itself writes (Published*, G147 ruling 28): misses
+//   always, extras and modes exactly where the publication met no failed node, a difference the internal-invariant form.
+// - Rule (SPEC 5.4): an address `P@raw` is no Borrow ("checks like an immediately ending @ref ... and leaves no Loan"): no writer forms
+//   a borrow fact of it.
 // - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
 //   second list of borrow facts; RegionVersion is not moved; no reader but OriginMembers, the validator and tests.
 public sealed partial class Binding
@@ -94,11 +100,12 @@ public sealed partial class Binding
         => operation.Kind == ArgumentOperationKind.Reborrow || HirAdjust.Of(operation) is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow or
             HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection or HirAdaptation.ReferenceRead;
 
-    // Formation: the one enumeration of the borrow facts Binding commits for a node (the facts HIR publishes, BU-27's HIR contract), in
-    // three parts by their writer (G147 rulings 19, 25), each read once at its commit into the running part: the node's own facts
-    // (OwnBorrows, at BindNode's end), the adaptation a consumer records at it (AdaptationBorrow, by the adaptations column's setter) and a
-    // match's or for's by-reference bindings (BindingBorrows, by Check's acquisitions). An address is none (SPEC 5.4). The census reads
-    // none of them: it reads the publication itself (ruling 28; Published*).
+    // Formation: the borrow facts Binding commits (the facts HIR publishes, BU-27's HIR contract), each read once by its writer into the
+    // running part (G147 rulings 19, 25, 36): the node's own facts (OwnBorrows, at BindNode's end), a match's Subject borrow (BindMatch),
+    // a selected call's operations (CallBorrows, by CompleteArguments) and a Closure's written capture entries (CaptureBorrows, by
+    // BindConcreteClosure), the adaptation a consumer records at a node (AdaptationBorrow, by the
+    // adaptations column's setter) and a match's or for's by-reference bindings (BindingBorrows, by Check's acquisitions). An address is
+    // none (SPEC 5.4). The census reads none of them: it reads the publication itself (ruling 28; Published*).
 
     // A match's or a for loop's Pattern plan; null for any other node.
     private BoundMatch? MatchPlan(Koto node) => node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
@@ -151,11 +158,7 @@ public sealed partial class Binding
         // payload operations.
         for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
         {
-            this.OperationBorrow(rows, call.ReceiverOperation);
-            foreach (ref readonly var argument in call.ArgumentOperations)
-            {
-                this.OperationBorrow(rows, argument);
-            }
+            this.CallBorrows(rows, call.ReceiverOperation, call.ArgumentOperations);
         }
 
         if (this.TryGetEnumConstruction(node, out var construction))
@@ -166,19 +169,34 @@ public sealed partial class Binding
             }
         }
 
-        // A match's Subject borrow.
-        this.RecordBorrow(rows, this.MatchPlan(node)?.SubjectBorrow);
-
-        // A Closure's capture entries that borrow or Reborrow (their Adjust).
+        // A Closure's capture entries, an omitted list's included (captured by their uses in the body).
         if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
         {
-            for (var i = 0; i < closure.Captures.Count; i++)
+            this.CaptureBorrows(closure, rows);
+        }
+    }
+
+    // A Closure's capture entries that borrow or Reborrow (their Adjust): formed by BindConcreteClosure once its written entries are formed,
+    // before its body binds (the body states their atoms), and at the Closure's node.
+    private void CaptureBorrows(BoundClosure closure, Dictionary<BoundOrigin, BorrowList> rows)
+    {
+        for (var i = 0; i < closure.Captures.Count; i++)
+        {
+            if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
             {
-                if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
-                {
-                    this.RecordBorrow(rows, capture.Environment.Type);
-                }
+                this.RecordBorrow(rows, capture.Environment.Type);
             }
+        }
+    }
+
+    // A call's receiver and argument operations: formed once its selection is complete, before an awaiting argument binds
+    // (CompleteArguments: the argument's header can state these Borrows' atoms), and at the call's node from its plan.
+    private void CallBorrows(Dictionary<BoundOrigin, BorrowList> rows, in BoundArgumentOperation receiver, ReadOnlySpan<BoundArgumentOperation> arguments)
+    {
+        this.OperationBorrow(rows, receiver);
+        foreach (ref readonly var argument in arguments)
+        {
+            this.OperationBorrow(rows, argument);
         }
     }
 

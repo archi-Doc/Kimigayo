@@ -34,21 +34,44 @@ public class ErasureOwnedDiagnosticTest
 
     private const string Two = "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0; UnsatisfiedConstraint_Kd func [r] () -> i32 => 1";
 
-    // SPEC 7.7.4, 15.2.3 (PLAN G148 (1), the Origin-atom borrows read mid-binding): a Closure erased while its body binds reads its
-    // contract's raw layers by the Borrows formed so far. A capture over a body atom is not Owned: Refuted where the atom is the body's own
-    // (o1, a conversion; o2, an argument), Unknown in a nested body where it is the enclosing body's (s2, s2r), whose argument keeps its
-    // Unproven record rather than the located limit. Labels: originpub labels.txt o1, labels-r1.txt o2, labels-s.txt s2 and s2r (I).
+    // SPEC 7.7.4, 15.2.3 (dev's records, pinned for PLAN G148 (1)): a capture over a body atom is not Owned, and the erasure's Owned part
+    // decides before independence is read: Refuted where the atom is the body's own (o1, a conversion; o2, an argument), Unknown in a
+    // nested body where it is the enclosing body's (s2, s2r: a Closure literal awaits its call (10.5.1) and is judged at its value after
+    // selection). Labels: originpub labels.txt o1, labels-r1.txt o2, labels-s.txt s2 and s2r (I).
     [Theory]
     [InlineData("    let f: () -> () = func [h@move] () => ()\n    f()\n", "UnsatisfiedConstraint_Kd func [h@move] () => ()")]
     [InlineData("    takes(func [h@move] () => ())\n", "UnsatisfiedConstraint_Kd func [h@move] () => ()")]
     [InlineData("    let outer = func [h@move] () => g(func [h@move] () => ())\n", "UnprovenConstraint_Kd func [h@move] () => ()")]
     [InlineData("    let outer = func [h@move] () => g(func [h@ref] () => ())\n", "UnprovenConstraint_Kd func [h@ref] () => ()")]
-    public void AnErasureReadsTheBorrowsFormedSoFar(string tail, string expected)
+    public void TheOwnedPartDecidesAnErasureOverABodyAtom(string tail, string expected)
     {
         var source = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nfunc takes(f: () -> ()) => ()\n" +
             "func g(f: () -> ()) => ()\n" + Main + "    var x = 1\n    var w = (0, x@ref)\n    var r = w.0@uniq\n    var h = Wrap.init(r@follow@raw@raw/u8)\n" + tail;
         var output = DiagnosticCorpus.Check(source);
         Assert.Equal(expected, string.Join("; ", output.Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")));
+    }
+
+    // SPEC 7.7.4, 15.2.3 (PLAN G148 (1), the Origin-atom borrows read while a body binds; G147 rulings 11, 36): a named Closure erased at
+    // a call's applicability in a nested body, whose environment's raw layer states an enclosing body's Borrow atom (Owned Unknown there),
+    // is judged by ReceiverIndependence while the bodies bind, through that atom's Borrows so far, and keeps its Unproven record, not the
+    // located limit. The atom: a `let` borrow's P[w] (s2ln); a bare Place Subject's P[o] under a Pattern binding (pm2mn, pm2rn: the
+    // Subject's Borrow formed by BindMatch before the arms bind); an argument's and a receiver's implicit Borrow under a Closure literal
+    // argument's header (ap1, rc1: formed by the selection before the literal binds); a capture entry's slot Borrow (cp1: formed once
+    // the entries are, before the body binds). Each row has no Borrow for its atom while it binds if the formation comes later, so a
+    // reader of the rows (Z6) fails it first. Labels: originpub rvc\labels.txt s2ln, pm2mn, pm2rn, c1c5\labels.txt ap1, rc1, cp1 (I).
+    [Theory]
+    [InlineData("    var x = 1\n    var w = (0, x@ref)\n    let r = w.0@uniq\n    var h = Wrap.init(r@follow@raw@raw/u8)\n    let outer = func [h@move] ()\n        let inner = func [h@move] () => ()\n        g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var o: Option<i32> = .Some(3)\n    match o\n        .Some(let m)\n            var h = Wrap.init(m@follow@raw@raw/u8)\n            let outer = func [h@move] ()\n                let inner = func [h@move] () => ()\n                g(inner@move)\n        _ => ()\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var o: Option<i32> = .Some(3)\n    match o\n        .Some(let m)\n            var h = Wrap.init(m@follow@raw@raw/u8)\n            let outer = func [h@move] ()\n                let inner = func [h@ref] () => ()\n                g(inner)\n        _ => ()\n", "UnprovenConstraint_Kd inner")]
+    [InlineData("    var v = 1\n    apply(v, func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var b = Box.init(1)\n    b.each(func (r)\n        var h = Wrap.init(r@follow@raw@raw/u8)\n        let inner = func [h@move] () => ()\n        g(inner@move)\n    )\n", "UnprovenConstraint_Kd inner@move")]
+    [InlineData("    var h = 1\n    let outer = func [h@ref] ()\n        var k = Wrap.init(h@follow@raw@raw/u8)\n        let inner = func [k@move] () => ()\n        g(inner@move)\n", "UnprovenConstraint_Kd inner@move")]
+    public void ANamedClosureOverAnEnclosingBodyAtomKeepsItsConstraintRecord(string body, string expected)
+    {
+        var source = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nstruct Box\n    var n: i32\n" +
+            "    public init(n: i32) => self.n = n\n    public func each(self: ref/Self, f: (ref/i32 during self) -> ()) => ()\nfunc g(f: () -> ()) => ()\n" +
+            "func apply(x: ref/i32, f: (ref/i32 during x) -> ()) => ()\n" + Main + body;
+        Assert.Equal(expected, string.Join("; ", Records(source)));
     }
 
     // A let annotation, a default, a call argument, a Case payload (PLAN G381: was the construction's TypeMismatch_Kd), a captured

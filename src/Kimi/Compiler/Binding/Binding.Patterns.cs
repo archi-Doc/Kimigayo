@@ -160,6 +160,10 @@ public sealed partial class Binding
             subject = this.AcquireSubject(match.Expression, subject, out var borrow, out var mode);
             plan.SubjectBorrow = borrow;
             plan.Mode = mode;
+            if (this.FormsBorrows)
+            {
+                this.RecordBorrow(this.borrows, borrow); // Its writer forms it, before the arms bind (Binding.RawOrigins.Borrows).
+            }
         }
 
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);

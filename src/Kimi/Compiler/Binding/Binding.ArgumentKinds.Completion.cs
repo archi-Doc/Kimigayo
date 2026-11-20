@@ -88,6 +88,13 @@ public sealed partial class Binding
             var argument = call.ArgumentNodes[i];
             if (this.PropagateBound(argument, operations[i].ParameterType) is null)
             {
+                if (this.FormsBorrows)
+                {
+                    // Selection wrote the call's operations (the receiver's last), and this argument's header may state their Borrows'
+                    // atoms: formed before it binds (Binding.RawOrigins.Borrows).
+                    this.CallBorrows(this.borrows, operations[call.ArgumentNodes.Count], operations[..call.ArgumentNodes.Count]);
+                }
+
                 // The argument is an expression of the caller's context, not of the selected requirement.
                 var selectedContract = this.activeRequirementContract;
                 this.activeRequirementContract = null;
