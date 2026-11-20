@@ -284,9 +284,10 @@ public sealed partial class Binding
 
     // DECISIONS D3 (rule W): a resting part of a split call completed at `parameter` by the unsplit completion (CompleteValueCallPart),
     // read by no check of that call but its failure (SPEC 23.1.2: the call rests on a failed part, CompleteDependent; as
-    // CompleteUnselected, no frame is open): whether it failed, by its own verdict (G812 ruling 151): a record of its own or a direct
-    // input that failed or rests (HasFailureCauses). A part that rests where a split binding decides its position (RestsAtOpenPosition)
-    // or below it (RestsBelowOpenPosition: no such input) is the split's own limit and fails nothing.
+    // CompleteUnselected, no frame is open): whether it failed, by its own verdict (G812 ruling 151): its own record, or the record it
+    // rests on, is reported (FailureReported, the one dependence test; G812 ruling 164). An input pending with no record (a join's arm
+    // waiting for the call's solve) is no failure cause. A part that rests where a split binding decides its position
+    // (RestsAtOpenPosition) or below it (RestsBelowOpenPosition) is the split's own limit and fails nothing.
     private bool CompleteOnSplit(Koto part, BoundType parameter, BindingScope scope)
     {
         if (RestsAtOpenPosition(part, parameter))
@@ -297,7 +298,7 @@ public sealed partial class Binding
         var consultation = this.SuspendConsultation();
         try
         {
-            var failed = this.CompleteValueCallPart(part, parameter, scope) is null && this.HasFailureCauses(part);
+            var failed = this.CompleteValueCallPart(part, parameter, scope) is null && this.FailureReported(part);
             (this.openMarkRemover ??= new(this)).Visit(part);
             return failed;
         }

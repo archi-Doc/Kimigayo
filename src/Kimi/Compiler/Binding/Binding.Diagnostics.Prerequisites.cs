@@ -29,6 +29,7 @@ public sealed partial class Binding
     private readonly List<DiagnosticKey> prerequisiteKeys = [];
     private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<Koto> prerequisitePending = new();
+    private readonly Stack<Koto> derivationInputs = new();
     private int consultationStart = -1;
     private Koto? consultationNode;
 
@@ -369,8 +370,10 @@ public sealed partial class Binding
 
     // A recovery node derives from its syntax error, and so does every failure of a check that consulted a recovery node,
     // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3).
-    // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;
-    // a failure explained by the Origin rule, or any other definite failure, is direct.
+    // A failure that reports missing information is derived when the check consulted a prerequisite that stayed unresolved and whose
+    // own record, or the record it rests on, is reported (RestsOnReported; AGENTS Diagnostics, G812 rulings 163-164): a pending
+    // prerequisite with no record (a part that rests on what is not decided yet) derives nothing. A failure explained by the Origin
+    // rule, or any other definite failure, is direct.
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
     // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
@@ -378,7 +381,7 @@ public sealed partial class Binding
     private bool IsDerived(Koto node, BindingFailure failure)
         => IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
-            this.HasUnresolvedPrerequisite(node)) ||
+            this.RestsOnReported(node)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
             (this.RecordedState(part) == BindingState.Invalid || this.HasFailureCauses(part))) ||
             (failure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
@@ -498,9 +501,11 @@ public sealed partial class Binding
         return result;
     }
 
-    // SPEC 23.1.2, 10.5.1 (PLAN G924, ruling 115 B2): whether a failure is reported: a recovery, its own record, or a record its
-    // prerequisites reach, directly or through failures resting on them (the records PrerequisiteKeys names); one that reaches only
-    // parts without a record rests on what is not decided yet. EndAwait reads it; nothing is allocated.
+    // SPEC 23.1.2, 10.5.1 (AGENTS Diagnostics; PLAN G924, ruling 115 B2; G812 rulings 163-164): whether an input's own record, or the
+    // record it rests on, is reported: a recovery, its own record, or a record its prerequisites reach, directly or through failures
+    // resting on them (the records PrerequisiteKeys names); one that reaches only parts without a record rests on what is not decided
+    // yet. The one test of dependence on an input: EndAwait and a split call's completion (CompleteOnSplit) read it of a part, and a
+    // record's derivation (RestsOnReported) of each of its inputs; nothing is allocated.
     private bool FailureReported(Koto node)
     {
         if (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None)
@@ -516,6 +521,23 @@ public sealed partial class Binding
         }
 
         keys.Clear();
+        return reported;
+    }
+
+    // Whether a record at `node` rests on an input whose own record, or the record it rests on, is reported (FailureReported, read for
+    // each unresolved input PushPrerequisites names): IsDerived's test of a missing-information record.
+    private bool RestsOnReported(Koto node)
+    {
+        var inputs = this.derivationInputs;
+        this.PushPrerequisites(node, inputs);
+        var reported = false;
+        while (inputs.TryPop(out var input))
+        {
+            this.prerequisiteVisited.Add(node); // A walk back to the record itself reaches no input of it.
+            reported = reported || this.FailureReported(input);
+            this.prerequisiteVisited.Remove(node);
+        }
+
         return reported;
     }
 
