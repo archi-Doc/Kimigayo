@@ -40,6 +40,17 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(staged)!, "*.tmp"));
     }
 
+    // llvm-nm's posix lines name a symbol exactly, also one with a space or a tab (SPEC 22.6: any nonempty symbol without NUL), as
+    // `declare i32 @"a b"()` lists; a line without the kind, value and size is refused.
+    [Fact]
+    public void PosixSymbolsReadTheNameBeforeTheLastThreeFields()
+    {
+        Assert.Equal(
+            [new ObjectSymbol("a b", 'U'), new ObjectSymbol("t\tab", 'U'), new ObjectSymbol("?value@@YAHXZ", 'T')],
+            NativeToolchain.PosixSymbols("a b U 0 0\nt\tab U 0 0\r\n?value@@YAHXZ T 0 0\n"));
+        Assert.Throws<InvalidDataException>(() => NativeToolchain.PosixSymbols("a b\n"));
+    }
+
     [Fact]
     public async Task ManifestFailureInvalidatesPreviousSuccessBeforeLoadingTools()
     {

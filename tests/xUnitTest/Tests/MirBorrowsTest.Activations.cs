@@ -81,6 +81,33 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(2, Problems(c, program, LoanCodes).Length);
     }
 
+    // V16 (D-910's review N4): N calls whose argument Reborrows through a reference carrying N unique parents under one runtime Index child
+    // of z, against N shared candidates on z whose borrow Deref lies deeper than every parent (each also met at its formation, SPEC
+    // 15.6.2): a candidate's Unproven child is decided by the child's deepest end, not by walking its N parents, so the work stays within
+    // the dense bound the calls' gathers take (a walk of the parents per candidate and call would be cubic).
+    [Fact]
+    public void AnUnprovenParentChildIsDecidedByItsDeepestEnd()
+    {
+        const string Shape = "struct Big {a}\n«N:    public var g{0}: i32 = 0\n»    public var r: uniq/i32 during a\n" +
+            "    public init(r: uniq/i32 during a) => self.r = r\nfunc shape(flag: bool, i: isize, j: isize)\n    var x = 0\n    var y = 0\n" +
+            "    var z: [2 of Big] = [Big.init(r: x@uniq), Big.init(r: y@uniq)]\n«N:    let s{0} = z[j].r@follow@ref\n»    var p = z[i].g0@uniq\n" +
+            "«N:    if flag\n        p = z[i].g{0}@uniq\n»«N:    setM(p@follow@uniq)\n»«N:    inspect(s{0})\n»";
+        long[] work = [.. new[] { 32, 64, 128 }.Select(n => WorkOf(Prelude + Expand(Shape, n, 0)))];
+        output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+
+        static long WorkOf(string source)
+        {
+            var c = MirBuildTest.Compile(source);
+            Assert.Empty(c.Binding.Issues);
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var stratum = new Stratum(c.Types);
+            stratum.Run(program);
+            return stratum.Borrows.Work;
+        }
+    }
+
     // V16 (R4-M169's review B2): one activation whose parent's Place indexes a fixed array nested d deep inserts each step once, so the work
     // is linear in d (8 / 16 / 32), whatever the index steps' ambiguity.
     [Fact]
