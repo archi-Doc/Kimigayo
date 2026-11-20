@@ -16102,6 +16102,39 @@ resumed by R4-M86 (2026-10-20).
   - Records (Q13): bodies under a failed slot regain their independent records (a W among them); no acceptance move.
   - Rejected: a builder-side check (R4-M42's form, superseded by R4-M61); a flag written by each slot writer; the node's Type column;
     a `BoundType.Error` sentinel; a second source member beside TypeSource.
+- **BU-235 A Closure whose parameter or result slot failed publishes its definition** (Front, 2026-11-21; PLAN G1110, D-865, Q-579;
+  Major; design `...\front\notes\C2\c2\design-d865.md` with its Revision 1; F's C2 rulings 277, 279, 280, 285) SPEC 23.1.2, 10.5.
+  Amends R5-M63 (1); extends BU-234's failed-slot fact to a Closure's slots; supersedes D-834's sentence "a published Closure needs no
+  slot row".
+  - Cause: a Closure's body is bound and its receiver classified on every path, but `PublishClosure` returned before the Signature
+    when a slot failed, so `BoundClosure.Of` stayed null, the body was never published and its independent records were lost (a W, a
+    captured value's `TransferRequired_Kd`, an inferred result's refuted source, a nested receiver's `InvalidAssignment_Kd`).
+  - R5-M63 (1) as amended: `BoundClosure.Of(literal)` is the definition once the literal's latest binding bound its header and body,
+    classified its receiver and published it, whatever the creation's outcome. `Published` is set by PublishClosure on both paths and
+    cleared where BindClosure clears the Signature. It is not `Classified`, which is set before JudgePendingRelations and
+    PublishedResult, while the EnvironmentType is still the preliminary one `TyCtxt.ClosureEnvironment` would read.
+  - `Signature` is null exactly where a parameter's or the result's slot failed (`Binding.Stated`). The failed path forms the final
+    EnvironmentType from the captures, with Origin arguments from the typed header parts only, and runs the result fit and the
+    omitted captures by rule W: a returned value read from a failed slot has no Type and rests. The creation stays failed: its value is
+    Error, with no record.
+  - `HirOp.Closure` has two fact sets with one owner (`Binding.Hir.Facts`): the parts (`ClosureParts`: the published definition and
+    every slot of the literal stated) and the creation (HasFacts' Closure row: the parts' facts and a Signature). `HirPublisher.Parts`
+    publishes the parts for a literal visited this pass; `SlotsStated` covers a Closure's parameters and result once its definition
+    is published. A literal whose header its expected Type refuted publishes no slot.
+  - Invariant (BoundClosure's contract): a definition without a Signature reaches the Type route only as its own body's receiver. The
+    readers of a Closure value's Signature (ArgumentKinds.Evidence's `SignatureAtFunction`, the Callable proof in Constraints,
+    ClosureInstances' `ClosureDefinitionSignature` and its instance check) throw if they meet one: a broken contract ending the check
+    faulted (BU-102's form), never a fallback.
+  - A use rests on a bound declaration of no Type (`Binding.Names`, `Binding.Captures`): a use of a local or capture source whose Type
+    is null binds its declaration only when this pass has not bound it (`RecordedState == Unvisited`); a bound one without a Type is
+    the failed slot, which the use consults. Before, every use of a failed declaration bound it again: re-binding a Closure
+    initializer cleared its Storage, and an omitted capture list could not re-form it.
+  - Records (Q13): a Closure body under a failed slot keeps its independent records; no acceptance move.
+  - Open: a Closure whose written result failed keeps an inferred Type (PLAN G1081); a literal argument whose written parameter Type
+    is unresolved against a fixed Function Type takes FailClosureHeader and binds no body (unverified).
+  - Rejected: `Classified` as the gate (the preliminary environment); re-forming an omitted list's captures in a second binding (the
+    second binding was redundant for every failed declaration); a located `InternalInvariant_Kd` at the Type-route readers (no node at
+    hand; BU-102's throw is the existing form there).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -17613,6 +17646,9 @@ structure is recorded here by the unit that first implements it.
   - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
   - R4-M88 decides its deferred unresolved compound Places and amends its kept operands: an operation Binding left
     unresolved keeps every operand its form evaluates but an unresolved construct without a Type, also labeled.
+  - Amended by BU-235 (D-865): (1)'s definition is the Closure's once its latest binding bound its header and body, classified its
+    receiver and published it (`Published`); its `Signature` is null exactly at a failed parameter or result slot, so "`Signature`
+    set" no longer gates the definition.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19; plan K6b, R5-M30; under
   R5-M18, R5-M61, R5-M67 and R5-M68; DEC Q6 form 1) What a compiler function, a requirement's function item or a shim runs on a user
   Type is `TyCtxt.Witness` of the requirement there, acted on by R5-M67's kind table, one function (`InstanceCollector.Requirement`,
