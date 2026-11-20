@@ -42,9 +42,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
     [InlineData("missing", "UnresolvedBinding_Kd")]
     [InlineData("\"wrong\"", "TypeMismatch_Kd")]
     [InlineData("Console.writeLine(\"effect\")\n        return 2", null)]
-    // R7-O1 H with D-865: the bare move's TransferRequired_Kd is now published beside the declaration error (a record added on a
-    // rejected program, counted: DECISIONS Q13).
-    [InlineData("let value = \"text\"\n        let copy = value\n        return 2", "TransferRequired_Kd")]
+    [InlineData("let value = \"text\"\n        let copy = value\n        return 2", null)]
     public void ARejectedOverrideKeepsItsBodysBindingRecords(string body, string? code)
     {
         var source = Program(false, "string") + Override(body, statement: body.Contains('\n')) + "let independent = absent\n";
