@@ -1072,6 +1072,49 @@ public sealed partial class HirFormsTest
         Assert.Equal("indexUniq", ExpansionPlan.Of(c.Binding, selection)!.Value.Second!.Target.Name);
     }
 
+    // SPEC 4.7.1 step 3, 8.14, 13.5.5 (R7 plan Z23; PLAN G147 (2) (a)): a standing bare take of a user index's element that Reborrows in
+    // some admitted case and Copies in another selects per case, as the take's Copy or Reborrow is ("each operation applies the rule of each
+    // admitted Semantics"): a selection by case (HirTables.IndexCaseDecider) whose decider is the Type of the Place taken by case, the
+    // element's (a `let` in the ref or uniq and the owner or uniq cases, an explicit discard, a Dictionary element) or a Field's below it
+    // (SPEC 3.4.3: its receiver needs exclusive capability only where the Field's take Reborrows), and whose expansion names both calls;
+    // a user index below such an element, whose receiver the element's selection takes exclusively only where it selects indexUniq,
+    // selects by the same decider (`w[0][0]`; F's ruling 3), while a key's own take keeps its own (`u[0]` in r1, `r/U`). The legality
+    // stays the generic body's (SPEC 8.15): an Indexable without indexUniq selects index, the uniq case's Reborrow of the Field below it
+    // the Language error (SPEC 3.5.1); `s is ref` alone is a read in its one case.
+    [Theory]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref or uniq\n    let x = v[0]\n    _ = x\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is owner or uniq\n    T is Copy\n    let x = v[0]\n    _ = x\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref or uniq\n    _ = v[0]\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<Holder<s/T>>)\n    s is ref or uniq\n    let y = v[0].items\n    _ = y\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(d: uniq/Dictionary<i32, s/T>)\n    s is ref or uniq\n    let x = d[1]\n    _ = x\n", "d[1] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(w: uniq/Two<Two<s/T>>)\n    s is ref or uniq\n    let x = w[0][0]\n    _ = x\n", "w[0][0] indexUniq index s/T | w[0] indexUniq index s/T", null)]
+    [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>)\n    s is ref or uniq\n    r is ref or uniq\n    let x = w[0][pick(u[0])]\n    _ = x\n", "w[0][pick(u[0])] indexUniq index s/T | w[0] indexUniq index s/T | u[0] indexUniq index r/U", null)]
+    [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T>(w: uniq/Two<Two<s/T>>, u: uniq/Two<s/T>)\n    s is ref or uniq\n    let x = w[0][pick(u[0])]\n    _ = x\n", "w[0][pick(u[0])] indexUniq index s/T | w[0] indexUniq index s/T | u[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref\n    let x = v[0]\n    _ = x\n", "v[0] index - -", null)]
+    [InlineData("struct Peek<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var first: T\n    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\nfunc f<s/T>(v: uniq/Peek<Holder<s/T>>)\n    s is ref or uniq\n    let y = v[0].items\n    _ = y\n", "v[0] index - -", nameof(DiagnosticCode.TransferRequired_Kd))]
+    public void ATakeByCaseSelectsByItsCases(string program, string expected, string? code)
+    {
+        var source = OverwrittenTakes + program + "()\n";
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && ExpansionPlan.Of(c.Binding, x)?.Second is not null).ToArray();
+        Assert.Equal(expected, string.Join(" | ", selections.Select(x => Selection(c, x))));
+        foreach (var receiver in selections.Where(static x => HirTables.IndexCaseDecider(x) is not null).Select(static x => ((IndexKoto)x).Left))
+        {
+            // Both calls' inputs (DECISIONS R4-M145): the receiver's column is indexUniq's exclusive take, its plan row index's shared one.
+            var (last, earlier) = (HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust);
+            Assert.Equal((true, false, true), (last.ExclusiveMode, earlier.ExclusiveMode, earlier != default));
+        }
+
+        static string Selection(Compilation c, Koto index)
+        {
+            var plan = ExpansionPlan.Of(c.Binding, index)!.Value;
+            var decider = HirTables.IndexCaseDecider(index);
+            return $"{index} {plan.Second!.Target.Name} {plan.Shared?.Target.Name ?? "-"} {(decider is null ? "-" : Binding.HoverTypeName(decider))}";
+        }
+    }
+
     // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that
     // turns a discarded Place into a value (`let x = 2` replaced, so the statement `x` names the function `x`) leaves no earlier pass's
     // Type in its row, which MirBuilder.Held would hold the value at.

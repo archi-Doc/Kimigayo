@@ -1642,6 +1642,38 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         Assert.True(reported || findings.Length == 0);
     }
 
+    // R7 plan Z23 (SPEC 8.14, 4.7.1 step 3; the owner's O-446 (a)): a CaseSwitch's decider is a TypeToken constant (else Operation) of a
+    // pair layer of the body's binders or of a case-free Type (a default's copy, decided by its own Type); a pair layer of no binder of the
+    // body is a Binder finding.
+    [Theory]
+    [InlineData("binder", "")]
+    [InlineData("caseFree", "")]
+    [InlineData("foreign", "Binder")]
+    [InlineData("operand", "Operation")]
+    public void ACaseSwitchDecidesByATypeTokenOfItsBinders(string decider, string expected)
+    {
+        var binders = new List<PairBinder>();
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var flag = MirModelTest.Local(body, BoundType.Boolean);
+        var (entry, exclusive, shared, join) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var token = decider == "caseFree" ? BoundType.ISize : Fixture.Value.Types.Pair;
+        var operand = decider == "operand" ? MirOperand.Copy(flag) : MirOperand.Const(body.Const(new(MirConstKind.TypeToken, token)));
+        body.Terminate(entry, MirTerminator.CaseSwitch(operand, body.AddCase(1, exclusive), shared, At));
+        body.Terminate(exclusive, MirTerminator.Goto(join, At));
+        body.Terminate(shared, MirTerminator.Goto(join, At));
+        body.Terminate(join, MirTerminator.Return(At));
+        if (decider != "foreign")
+        {
+            body.Binders.AddRange(binders);
+        }
+
+        Assert.Equal(expected, string.Join(", ", Validate(body).Select(static x => x.Rule)));
+        Assert.Equal(1, body.CaseSwitches); // Terminate, their one writer, counts them.
+    }
+
     // SPEC 8.15, 23.1.1, 8.3.4: Binding publishes no part of a definition beyond PairBinder.CaseBound views or whose binders admit no case
     // (Binding.CaseLimits), so a body with more views or none is a Binder finding at the body, which is not checked further: six binders of
     // two cases, 64 views, are valid but for an Adapt no view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views
