@@ -38,7 +38,7 @@ internal sealed partial class MirBuilder
         {
             position = key is null ? this.Boundary(index.Right, this.Length(sequence, index), index) : this.Resolve(key, index, sequence);
         }
-        else if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
+        else if (this.body.TypeOf(sequence) is { IsPointer: true } pointer)
         {
             var count = this.Operand(index.Right, expected: null);
             var offset = this.Temp(pointer, index);

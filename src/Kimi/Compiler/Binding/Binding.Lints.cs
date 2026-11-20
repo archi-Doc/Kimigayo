@@ -365,7 +365,7 @@ public sealed partial class Binding
         }
 
         if (node is NoInitKoto || ElementAccess.IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
-            ReferenceTypes.IsPointer(arithmetic.Left.BoundType)))
+            arithmetic.Left.BoundType is { IsPointer: true }))
         {
             return true;
         }

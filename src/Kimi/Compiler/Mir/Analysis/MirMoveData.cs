@@ -31,8 +31,6 @@
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
 
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
-
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A move path by its pre-order number: its root local, its parent (-1 for a root), the end of its subtree [path, End), whether
@@ -272,7 +270,7 @@ internal sealed class MirMoveData(TyCtxt types)
         found = this.Resolve(prefix);
         found = row.Kind switch
         {
-            MirProjectionKind.Deref => (found & ~3) | (this.body.TypeOf(prefix)?.Semantics == SemanticsKind.Raw ? Raw : NoPath),
+            MirProjectionKind.Deref => (found & ~3) | (this.body.TypeOf(prefix) is { IsPointer: true } ? Raw : NoPath),
             _ when (found & 3) == Raw && row.Kind != MirProjectionKind.PairLayer && !TyCtxt.RawPart(this.body.TypeOf(prefix)) => (found & ~3) | NoPath,
             _ when (found & 3) != Direct || row.Kind == MirProjectionKind.PairLayer => found,
             MirProjectionKind.Index => found | NoPath,

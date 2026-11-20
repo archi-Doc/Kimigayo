@@ -147,7 +147,7 @@ public sealed partial class Binding
                     if (this.FunctionItemSignature(candidateItem) is { } actual)
                     {
                         var contract = ComparisonFailure.Shape;
-                        var structure = bound && ReferenceTypes.StorageMatches(required, actual);
+                        var structure = bound && TyCtxt.StorageMatches(required, actual);
                         return structure && !this.DefinitionContractFits(candidateItem, required, use, null, out contract) && contract.IsCondition
                             ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, this.ContractFact(use, contract, use))
                             : this.FailMismatch(use, use, actual, required, contract);

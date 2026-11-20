@@ -111,22 +111,22 @@ public sealed partial class Binding
     /// <returns>The View Target, or null.</returns>
     internal BoundType? ViewTarget(BoundType? type, Koto at)
     {
-        while (ReferenceTypes.IsStorage(type))
+        while (TyCtxt.IsStoredReference(type))
         {
-            type = type!.Components[0];
+            type = type!.SafeReferent;
         }
 
         return type is not null && this.ObjectCases(type, this.ConstraintScope(at), out var view) != SemanticsMask.None ? view : null;
     }
 
     /// <summary>Tells whether a receiver's Place is reached through a stored reference or a borrow in every case (SPEC 4.7.1, 4.8.2): a
-    /// storage reference (<see cref="ReferenceTypes.IsStorage"/>), or an object layer whose every case is an object borrow
+    /// storage reference (<see cref="TyCtxt.IsStoredReference"/>), or an object layer whose every case is an object borrow
     /// (<see cref="ObjectCases"/>); a case that is an owning handle keeps an owned root, as a concrete handle does.</summary>
     /// <param name="type">The receiver's Type.</param>
     /// <param name="at">The receiver, whose scope gives a pair layer's admitted set.</param>
     /// <returns>Whether no owned root holds the selected Place.</returns>
     internal bool BorrowsInEveryCase(BoundType? type, Koto at)
-        => ReferenceTypes.IsStorage(type) ||
+        => TyCtxt.IsStoredReference(type) ||
             (type is not null && this.ObjectCases(type, this.ConstraintScope(at), out _) is var cases && cases != SemanticsMask.None && (cases & ~SemanticsMask.ObjectBorrow) == 0);
 
     /// <summary>Gets the Semantics of a shared borrow of a stored value (SPEC 4.7.1, 10.2): `ref` of an owned value or a stored `uniq`,
@@ -187,7 +187,7 @@ public sealed partial class Binding
     {
         adapted = actual;
         kind = ArgumentOperationKind.Value;
-        if (pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        if (pattern.SafeReferent is not { } referent)
         {
             return false;
         }
@@ -195,7 +195,7 @@ public sealed partial class Binding
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         // A layer admitting no case selects no receiver here (stopped: the call, not the receiver, would have to rest; PLAN G750).
         var admitted = this.FollowablePair(actual, scope, out var target) ?? SemanticsMask.None;
-        if (admitted != SemanticsMask.None && !this.ReceiverTarget(target, pattern.Components[0], scope))
+        if (admitted != SemanticsMask.None && !this.ReceiverTarget(target, referent, scope))
         {
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
@@ -205,13 +205,13 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.ReceiverTarget(target, pattern.Components[0], scope))
+        if (this.ReceiverTarget(target, referent, scope))
         {
             adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
             kind = ArgumentOperationKind.Borrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
-            this.SharedReferenceThroughLayers(target, pattern.Components[0], scope, out _) is { } inner)
+            this.SharedReferenceThroughLayers(target, referent, scope, out _) is { } inner)
         {
             // The inner shared reference Copies in every admitted case and keeps only its own dependencies.
             adapted = inner;

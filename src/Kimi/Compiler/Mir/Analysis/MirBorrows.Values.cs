@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
-
 namespace Kimi.Compiler.Mir;
 
 // A5's values on a state (A3 5's val and issued, with E3; SPEC 15.6 Addresses, 5.2.2, 5.7): what an rvalue, an operand or a Place carries,
@@ -69,9 +67,9 @@ internal sealed partial class MirBorrows
     {
         MirRvalueKind.Use or MirRvalueKind.Adapt => true,
         MirRvalueKind.Cast => (MirCastKind)rvalue.Op is MirCastKind.Erasure or MirCastKind.Upcast ||
-            ((MirCastKind)rvalue.Op == MirCastKind.Pointer && rvalue.Type?.Semantics == SemanticsKind.Raw),
+            ((MirCastKind)rvalue.Op == MirCastKind.Pointer && rvalue.Type is { IsPointer: true }),
         MirRvalueKind.BinaryOp => (MirBinaryOp)rvalue.Op is MirBinaryOp.Add or MirBinaryOp.Sub &&
-            cases.TypeOf(this.body.Operands[rvalue.Start]).Semantics == SemanticsKind.Raw,
+            cases.TypeOf(this.body.Operands[rvalue.Start]).IsPointer,
         _ => false,
     };
 
@@ -258,7 +256,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return ReferenceTypes.IsReference(cases.TypeOf(place));
+        return cases.TypeOf(place).SafeReferent is not null;
     }
 
     // Whether a projection is a Case payload step: a Downcast, the payload Tuple of a Case, or the Field of that Tuple, a payload.

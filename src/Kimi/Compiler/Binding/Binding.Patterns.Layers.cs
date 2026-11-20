@@ -30,7 +30,7 @@ public sealed partial class Binding
         layers = 0;
         while (true)
         {
-            if (structural && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            if (structural && type.SafeReferent is { } referent)
             {
                 // SPEC 10.2: a ref layer is a Copy that restarts the dependency at its own Origin; a uniq layer below it
                 // is Reborrowed, so its Origin is met with the dependency reached so far.
@@ -38,7 +38,7 @@ public sealed partial class Binding
                 var readOnly = type.Semantics == SemanticsKind.Ref || reach.Access == PatternAccessMode.Shared;
                 var restarted = this.MeetLayer(origin, type.Origin, shared: type.Semantics == SemanticsKind.Ref);
                 reach = new(readOnly ? PatternAccessMode.Shared : PatternAccessMode.Exclusive, restarted, OwnedPart: false);
-                type = type.Components[0];
+                type = referent;
                 layers++;
                 continue;
             }
