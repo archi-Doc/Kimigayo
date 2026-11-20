@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 // - Outputs: the state, NotStarted, Running, Done or Error, valid in the pass that set it, two bits per kind in BindingSymbol's ushort,
 //   room for eight kinds; a ninth kind fails BindingSymbol.QueryRoom at compile time. The output stays where the kind's owner publishes
 //   it (Signature, owned by BindHeader: the symbol's and its parameters' Types). Error is a failed query's answer: its kind's rule
-//   recorded the failure at the declaration (SPEC 23.1.2), and every demand of the pass that reads it rests on that record
+//   recorded the failure at the declaration (SPEC 23.1.2), and each reader of the failed answer its row names rests on that record
 //   (QueryRecord), never on what the computation consulted (R7-D2 d2; G812 ruling 167).
 // - Invariants: a state set in an earlier pass reads NotStarted (no per-symbol reset), up to the stamp's uint copy: a state not written
 //   in any of the 2^32 - 1 passes before a read aliases one 2^32 passes old (about 4.3 * 10^9 Binds of one Binding). NotStarted
@@ -25,10 +25,11 @@ namespace Kimi.Compiler;
 //   (InternalInvariant: a library fact completed in a program pass). The same holds for every declaration of the frozen library table,
 //   stamped or not (B6: SetQueryState refuses by the declaration's table). Each kind's answer for a Frozen state that is not Done is its
 //   row's "Frozen" clause.
-// - Kinds (one row each): Signature. Re-entry: an inferred stored Property's (one without a Type yet) is CyclicBinding_Kd at the
-//   declaration and Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. Error:
-//   every use of the Property rests on the declaration's record (BindReference). Not ready: a header waiting on an associated Type is
-//   abandoned. Frozen: Done (the freeze verifies every library header Done). SignatureVerdict
+// - Kinds (one row each): Signature. Re-entry: a Property's whose Type is not yet formed is CyclicBinding_Kd at the declaration and
+//   Error (BindHeader's ReenterHeader, SPEC 11.6, 9); another header's reads no evidence and records nothing. Error's readers: a use of
+//   the Property rests on the declaration's record (BindReference); the declaration's own variable binding records nothing more
+//   (BindVariableCore); the conformance proof (VerifyPropertyRequirement) reads the Type only, not yet the record. Not ready: a header
+//   waiting on an associated Type is abandoned. Frozen: Done (the freeze verifies every library header Done). SignatureVerdict
 //   (Binding.ConstraintValidation.Formation): output, the state itself: Done means Proven in this pass. Re-entry: Unknown, no evidence
 //   (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances (contractHeadersReady), is abandoned
 //   and computed again at each read until R7-C2 (PLAN G375). A requirement's call is outside the query, and no reader runs inside
@@ -82,7 +83,7 @@ internal enum DeclState : byte
     /// <summary>Computed in this pass.</summary>
     Done,
 
-    /// <summary>Failed in this pass: the kind's rule recorded at the declaration, which every demand rests on (Binding.QueryRecord).</summary>
+    /// <summary>Failed in this pass: the kind's rule recorded at the declaration, which the row's readers rest on (Binding.QueryRecord).</summary>
     Error,
 }
 
@@ -128,8 +129,8 @@ public sealed partial class Binding
         symbol.SetQueryState(kind, this.storageVersion, DeclState.Error);
     }
 
-    // SPEC 23.1.2: the record a demand of a failed query rests on, the declaration's own (its kind's rule recorded it), or null. Every
-    // reader of a query that can fail consults it, so each binding of a use in the pass reaches the same reported record.
+    // SPEC 23.1.2: the record a demand of a failed query rests on, the declaration's own (its kind's rule recorded it), or null. The
+    // readers its row names consult it, so each binding of a use in the pass reaches the same reported record.
     private Koto? QueryRecord(BindingSymbol symbol, DeclQueryKind kind) => this.QueryState(symbol, kind) == DeclState.Error ? symbol.Declaration : null;
 
     // The library's symbols whose query states the freeze keeps (FreezeLibrary, in the library pass): every library symbol the layer

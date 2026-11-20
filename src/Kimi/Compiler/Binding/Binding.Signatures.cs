@@ -128,8 +128,8 @@ public sealed partial class Binding
     }
 
     // The Signature kind's re-entry rule (Binding.DeclQuery's row; SPEC 11.6 "Cycles between inferred initializers are errors", SPEC 9):
-    // a demand of an inferred stored Property's header while it is computed (no Type yet) is CyclicBinding_Kd at the declaration, and
-    // the query fails (Error), so every demand of the pass, the computation the re-entry interrupted included, rests on that record. The
+    // a demand of a Property's header while it is computed and its Type is not yet formed is CyclicBinding_Kd at the declaration, and the
+    // query fails (Error), so a use of the Property in the pass, in the computation the re-entry interrupted too, rests on that record. The
     // cycle is recorded once per pass, at the header that started first (DECISIONS BU-105). Any other header's re-entry reads its output
     // as far as formed and records nothing (SPEC 10.5, 10.8).
     private void ReenterHeader(BindingSymbol symbol)
