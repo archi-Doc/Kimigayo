@@ -1059,6 +1059,96 @@ public sealed partial class MirBorrowsTest
                     inspect(res)
                 """));
 
+    // SPEC 15.6.4 ("A raw layer that an argument holds by value through no shared layer, a Tuple element, an Option payload, a Field or a
+    // Type argument included, is retained as a raw pointer argument is"; D-933, F's G147 ruling 14): Raw.initialize stores a value whose
+    // raw layer addresses w (y's Loan) in storage the body does not own, where it may be used after every point, so `y@follow = 5` errs
+    // whether the layer is a Tuple element (tupleBad), a Field (fieldBad), a Case payload (payloadBad), a nested Field (nestedBad), a
+    // generic struct's own Field (genericBad) or a Field of its Type argument (argumentBad); each null twin is valid (fail-before: dev
+    // accepted fieldBad, payloadBad and nestedBad, whose raw layers were no raw source).
+    [Fact]
+    public void AFieldOrPayloadRawLayerIsARawSource()
+        => Assert.Equal(
+            [
+                "tupleBad: y@follow = 5", "fieldBad: y@follow = 5", "payloadBad: y@follow = 5", "nestedBad: y@follow = 5", "genericBad: y@follow = 5",
+                "argumentBad: y@follow = 5",
+            ],
+            Problems("""
+                struct Fq
+                    public var p: raw/(raw/u8)
+                    public var q: raw/u8
+                    public init(q: raw/u8)
+                        self.p = null
+                        self.q = q
+                enum Eq
+                    A(raw/u8)
+                    B
+                struct Inq
+                    public var q: raw/u8
+                    public init(q: raw/u8) => self.q = q
+                struct Nq
+                    public var inner: Inq
+                    public init(q: raw/u8) => self.inner = Inq.init(q: q)
+                struct Gq<T>
+                    public var v: T
+                    public var q: raw/u8
+                    public init(v: T, q: raw/u8)
+                        self.v = v@move
+                        self.q = q
+                struct G2q<T>
+                    public var v: T
+                    public init(v: T) => self.v = v@move
+                func tupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(raw/u8, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (w@raw@raw/u8, 1))
+                    y@follow = 5
+                func fieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Fq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Fq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                func fieldOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Fq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Fq.init(q: null))
+                    y@follow = 5
+                func payloadBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Eq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, .A(w@raw@raw/u8))
+                    y@follow = 5
+                func payloadOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Eq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, .A(null))
+                    y@follow = 5
+                func nestedBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Nq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Nq.init(q: w@raw@raw/u8))
+                    y@follow = 5
+                func nestedOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Nq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Nq.init(q: null))
+                    y@follow = 5
+                func genericBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Gq<i32> = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Gq<i32>.init(v: 1, q: w@raw@raw/u8))
+                    y@follow = 5
+                func genericOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Gq<i32> = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Gq<i32>.init(v: 1, q: null))
+                    y@follow = 5
+                func argumentBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/G2q<raw/u8> = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, G2q<raw/u8>.init(v: w@raw@raw/u8))
+                    y@follow = 5
+                """));
+
     // SPEC 15.6 (a raw pointer that reaches no holder reaches only storage the body does not own, where what is stored may be used after
     // every point; condition 5; DECISIONS R4-M120's departure 1, B1): what that storage holds may refer to it, so a pointer read through a
     // parameter reaches it from any local holder that keeps it, and a call storing x's Loan through the holder keeps it there: a raw local,

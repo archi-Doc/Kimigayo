@@ -235,7 +235,7 @@ public sealed partial class Binding
     // are its environment as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148; one that does not substitute is the
     // contract's Limit). A raw input's walk starts here, past its own layer's atom (RetentionInput). A raw layer of an input not past a
     // shared layer is one of its raw sources (retentionRawSources; SPEC 15.6.4 at the raw source, DECISIONS BU-66; a call writes through
-    // none past one, 5.2.1).
+    // none past one, 5.2.1), and so is one a struct or enum there holds as a part of its value (StoredRawSources).
     private void RetentionParts(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
         at = type.Kind == BoundTypeKind.Closure ? at with { Place = at.Place | RetentionPlace.Captured, Signature = Below(at.Signature, null) } : at;
@@ -247,12 +247,7 @@ public sealed partial class Binding
         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
         if (raw && !inside && !at.Shared && at.Input >= 0)
         {
-            this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));
-            this.RawStated(type, at.Input);
-            if (at.Kind != RetentionKind.Value && at.Layer is { } borrow)
-            {
-                this.retentionRawStated.Add((at.Input, borrow)); // Past a borrow, in its referent: a layer stating that Origin addresses it.
-            }
+            this.RawSource(type, at);
         }
 
         var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : HoldStep.Address;
@@ -273,6 +268,58 @@ public sealed partial class Binding
             var component = below with { Signature = Below(at.Signature, DeclaredComponent(at.Signature, type, i)) };
             this.RetentionWalk(type.Components[i], component, ComposeVariance(variance, ComponentVariance(type, i, this)), inside);
         }
+
+        if (!inside && !past && at.Input >= 0 && (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)))
+        {
+            this.StoredRawSources(type, null, null, below);
+        }
+    }
+
+    // A raw layer input `at.Input` holds at a position past no shared layer: one of its raw sources (SPEC 15.6.4 at the raw source,
+    // DECISIONS BU-66), by its own value where the input holds the position by value, else by its chain, with the Origin the layer states
+    // (RawStated) and, past a borrow, that borrow's.
+    private void RawSource(BoundType layer, in RetentionAtom at)
+    {
+        this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));
+        this.RawStated(layer, at.Input);
+        if (at.Kind != RetentionKind.Value && at.Layer is { } borrow)
+        {
+            this.retentionRawStated.Add((at.Input, borrow)); // Past a borrow, in its referent: a layer stating that Origin addresses it.
+        }
+    }
+
+    // SPEC 15.6.4 ("A raw layer that an argument holds by value through no shared layer, a Tuple element, an Option payload, a Field or a
+    // Type argument included, is retained as a raw pointer argument is"; D-933): the raw layers a struct or enum holds as parts of its
+    // value, Holdings' rows that pass on (Hold.PassesOn: its Fields, Case payloads and base, the Tuples and fixed arrays within them, an
+    // owning handle's payload, a collection's elements, its Type arguments), are raw sources of the input as its components' are
+    // (RawSource), each Type once per position (retentionStored: by-value containment is acyclic, so the walk is linear in the distinct
+    // parts). Their Origins are the instance's Origin arguments, which the walk's atoms name already, so it adds no atom; at Binding's
+    // Limit the contract is the Limit, as the hold walk's.
+    private void StoredRawSources(BoundType type, BoundType? written, BoundType? holder, in RetentionAtom at)
+    {
+        if (!this.retentionStored.Add((type, at)))
+        {
+            return;
+        }
+
+        var run = this.HeldRun(type, written, holder, out var complete);
+        this.retentionLimit |= !complete;
+        for (var i = run.Start; i < run.End; i++)
+        {
+            if (this.retentionHeld[i] is { PassesOn: true, Part: { } part } entry)
+            {
+                if (part is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+                {
+                    this.RawSource(part, at);
+                }
+                else
+                {
+                    this.StoredRawSources(part, entry.Written, entry.Holder, at);
+                }
+            }
+        }
+
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
     }
 
     // A raw source's layer `type` of input `index`: its stated Origin, where it states one other than `self` (retentionRawStated).

@@ -1288,7 +1288,8 @@ public sealed partial class RetentionTest
     // into an unstated layer, which unties the storage (R-B2), and the storage a read through it (SPEC 15.6.4 as DECISIONS R4-M116
     // revised it: a pointer is never part of its own pointee);
     // Text.writer, a body since R8-W2 b2-1 whose summary is derived, its destination, its Utf8Writer untied by the unstated raw Fields
-    // Utf8Writer.init stores; Raw.slice's result, a fresh anchor, is untied unless its pointee's Origins tie it, and lies within its
+    // Utf8Writer.init stores, with the chain read through the destination's raw Field (HeapBuffer's, a raw source since D-933: SPEC
+    // 15.6.4 "a Field"; before, `result {0 Value}, untied`); Raw.slice's result, a fresh anchor, is untied unless its pointee's Origins tie it, and lies within its
     // storage, which it retains (D14, R4-M116 item 4) with a read through it; Raw.allocate's, a raw pointer without an Origin, retains
     // every argument with its chain and is untied (SPEC 15.6.4's rule A, DECISIONS BU-40). Raw.initialize<T>(storage: raw/T, value: T)
     // is read in its own terms (PLAN G935, the owner's O-360 (a)): `*storage` is storage of its own T, which holds `value` (Value: the
@@ -1310,7 +1311,9 @@ public sealed partial class RetentionTest
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Chain}, untied")]
     [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {1 Value}, reached {}")]
-    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value}, untied")]
+    [InlineData(Pp + "let s: raw/Pp = Raw.allocate(1)\nunsafe => Raw.initialize(s, Pp.init(p: null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Field's raw layer is a raw source (SPEC 15.6.4 "a Field"; fail-before: no row).
+    [InlineData("enum Ep\n    A(raw/u8)\n    B\nlet s: raw/Ep = Raw.allocate(1)\nunsafe => Raw.initialize(s, .A(null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Case payload's (fail-before: no row).
+    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
