@@ -4,14 +4,23 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Acquisitions (SPEC 3.5, 10.2, 13.5.6, 15.1.5): a Place as its consumer's acquisition and adaptation take it (Acquire), by the pair
-// layer's case (ByCase), and the one borrow rule (Ref, Lent), each formed in a temp or the place given (Temporary, Borrow); a Place in an
-// Opaque temp is lent by none (Unlent; DECISIONS R4-M149).
+// Acquisitions (SPEC 3.5, 10.2, 13.5.6, 15.1.5): a node's Place formed and taken (Formed; a take by case, Take, MirBuilder.Cases.cs), a
+// Place as its consumer's acquisition and adaptation take it (Acquire), by the pair layer's case (ByCase), and the one borrow rule (Ref,
+// Lent), each formed in a temp or the place given (Temporary, Borrow); a Place in an Opaque temp is lent by none (Unlent; DECISIONS R4-M149).
 internal sealed partial class MirBuilder
 {
     // The body's Opaque temps (DECISIONS R4-M149): the temps the builder holds an Opaque value in for a consumer, the derived value of a
     // node Binding rejected (Value) and an unsupported or derived form's value (Unsupported); a place a consumer gave is none.
     private readonly HashSet<int> opaqueTemps = [];
+
+    // SPEC 3.5, 4.7.4: a take of a node, its Place formed (a temporary's value held, Value) and taken as Acquire takes it, into the place
+    // given where the acquisition forms its value there: a take formed again reads the nodes an expansion located (Located), so its
+    // Place's receivers and keys are evaluated once, and acquires into the place its first forming gave.
+    private MirOperand Formed(Koto node, HirAdjust adjust, BoundType? expected, bool input, bool reserves, MirPlace? into)
+    {
+        var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
+        return this.Acquire(adjust, place, expected, reserves, node, into);
+    }
 
     // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (ByCase; a PairAcquire is the
     // whole rvalue of an Assign to the local given or a temp) or, a stored exclusive reference, Reborrowed in its own mode (SPEC 15.1.5).
@@ -104,11 +113,9 @@ internal sealed partial class MirBuilder
         if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
             stored.Components is not [var referent] || !MirTypes.Agrees(compilation.Types, this.body, named, referent))
         {
-            this.Record(node, DiagnosticCode.InternalInvariant_Kd);
-            var temp = this.Temp(stored, node);
-            this.opaqueTemps.Add(temp.Root);
+            var temp = this.OpaqueTemp(stored, node);
             this.SiteRoots(place);
-            this.Site(node, temp, Completes(node));
+            this.Invariant(node, temp, Completes(node));
             return MirOperand.Move(temp);
         }
 

@@ -72,7 +72,7 @@ internal sealed class MirAnalysis
         this.cases = new(types);
         this.moves = new(types);
         this.lints = new(reach);
-        this.flow = new(reach);
+        this.flow = new(reach, this.cases);
         this.drops = new(types, this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, this.flow);
