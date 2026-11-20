@@ -596,9 +596,9 @@ public sealed partial class Binding
 
     // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3: after the expected result, the late pass of the evidence walk (the Literal parts' defaults
     // applied to the selected candidate and range typing), then the arguments' root rows (Contribute) and the first solve of the
-    // candidate's Origins, which the well-formedness of each Signature position (F1, R4-M164: each leaf row of an argument,
-    // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted),
-    // after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
+    // candidate's Origins, which the well-formedness of each instantiated input (F1, R4-M164: each leaf row of an argument and the
+    // receiver, CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots; PLAN G1115) shortens once the slots are
+    // solved, after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
     // inapplicable. Before the walk it publishes the slots that steps 3 and 4 left unbound in `left` (SlotSolution.Left): only they take
     // their literals whole in it (SPEC 4.3.1 Places, 10.8).
     private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet left)
@@ -637,7 +637,7 @@ public sealed partial class Binding
                     this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
                 {
                     this.DiscoverPremiseOrigins(solution, inference, instantiated);
-                    this.CollectInputPremises(pattern, instantiated, null, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
+                    this.CollectInputPremises(pattern, instantiated, inference, call); // Rule C: over the instantiated parameter Type (SPEC 15.6.4 step 3).
                 }
             }
 

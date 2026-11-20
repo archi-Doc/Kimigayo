@@ -316,20 +316,19 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, 15.6.4 step 3: an input's well-formedness, its parameter pattern beside the Type `instantiated` that a call collects
-    // for that input and beside `supplied`, an Evidence position's own Type (null for a Signature position), shortens the call's solution
-    // where the arguments alone would leave an instantiated input ill formed (SolveOriginInference): the premises its selected call judges
-    // (RequireInputPremises), one enumeration, so a slot's solution that replaced the argument's Origin bounds the layer above it (PLAN
-    // G1115). Only a call collects it: a whole-contract comparison proves it instead (ProvesInputPremises), since the required contract's
-    // input premises are no premises at its use.
-    private void CollectInputPremises(BoundType pattern, BoundType instantiated, BoundType? supplied, OriginInference inference, Koto use)
+    // SPEC 15.3.7, 15.6.4 step 3, 15.3.6: an input's well-formedness, its parameter pattern beside the Type `instantiated` that a call
+    // collects for that input, a slot's solution included (PLAN G1115), shortens the call's solution where the arguments alone would leave
+    // an instantiated input ill formed (SolveOriginInference): every premise is an upper bound of its layer's Origin, and the selected
+    // call requires those the argument's own Type does not satisfy (RequireInputPremises). Only a call collects it: a whole-contract
+    // comparison proves it instead (ProvesInputPremises), since the required contract's input premises are no premises at its use.
+    private void CollectInputPremises(BoundType pattern, BoundType instantiated, OriginInference inference, Koto use)
     {
         if (!instantiated.StoresOrigin)
         {
             return;
         }
 
-        foreach (var premise in new WellFormedPremises(this, pattern, instantiated, supplied, WellFormedSubject.Input, null, use, default))
+        foreach (var premise in new WellFormedPremises(this, pattern, instantiated, null, WellFormedSubject.Input, null, use, default))
         {
             BoundOrigins(inference, premise.Longer, premise.Outer, result: false);
             if (premise.Equality)
@@ -579,7 +578,7 @@ public sealed partial class Binding
                 }
             }
 
-            this.CollectInputPremises(parameters.Components[i], parameters.Components[i], null, inference, use);
+            this.CollectInputPremises(parameters.Components[i], parameters.Components[i], inference, use);
         }
 
         // J2 (SPEC 15.3.6, 15.2.2; PLAN G936; R7-O1 b1, the Middle's ruling of 2026-11-19): the direct call's rule, one member for both
