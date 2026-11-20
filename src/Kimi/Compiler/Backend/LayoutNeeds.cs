@@ -57,7 +57,7 @@ internal static class LayoutNeeds
     /// <param name="operand">Its first operand's Type; none for a derived temp of no Type (PLAN G1073), which is no raw pointer.</param>
     /// <returns>Its need.</returns>
     internal static LayoutNeed Of(MirBinaryOp op, BoundType? operand)
-        => op is MirBinaryOp.Add or MirBinaryOp.Sub && operand is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw }
+        => op is MirBinaryOp.Add or MirBinaryOp.Sub && operand is { IsPointer: true }
             ? LayoutNeed.Element : LayoutNeed.None;
 
     /// <summary>Gets a keyed Storage's need (SPEC 4.8.1, 8.15.3; PLAN G597), by where its key starts the view in its reader's instance

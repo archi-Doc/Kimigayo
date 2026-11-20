@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
-using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -88,7 +87,7 @@ internal sealed partial class FunctionCodegen
         }
 
         var type = this.collector.TypeOf(this.item, constant.Type)!;
-        if (constant.Kind == MirConstKind.Integer && type.Semantics == SemanticsKind.Raw)
+        if (constant.Kind == MirConstKind.Integer && type.IsPointer)
         {
             value = new('n', 0); // SPEC 5.1: null, the one raw pointer constant.
             return true;

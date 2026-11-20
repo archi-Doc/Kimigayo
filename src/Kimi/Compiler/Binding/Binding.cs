@@ -100,12 +100,14 @@ public sealed partial class Binding
         this.invalidStaticOriginSlots = new(this);
         this.callablePremiseFailures = new(this);
         this.effectBoundRejections = new(this);
+        this.receiverOperations = new(this);
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
         this.callInferenceFailures = new(this);
         this.callableSelectionFailures = new(this);
         this.baseCallFailures = new(this);
         this.objectErasureFailures = new(this);
+        this.resultContexts = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);

@@ -1,22 +1,26 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type.
-    internal static BoundType ComparisonReferent(BoundType type) => ComparisonReferent(type, out _);
+    // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type; a string comparison operand is
+    // one whose terminal Type is string.
+    [return: NotNullIfNotNull(nameof(type))]
+    internal static BoundType? ComparisonReferent(BoundType? type) => ComparisonReferent(type, out _);
 
     // SPEC 3.4.3, 13.4: the terminal Type below every ref and uniq layer of a Type, and the number of those layers.
-    internal static BoundType ComparisonReferent(BoundType type, out int layers)
+    [return: NotNullIfNotNull(nameof(type))]
+    internal static BoundType? ComparisonReferent(BoundType? type, out int layers)
     {
         layers = 0;
-        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (type?.SafeReferent is { } referent)
         {
             layers++;
-            type = type.Components[0];
+            type = referent;
         }
 
         return type;
@@ -54,14 +58,13 @@ public sealed partial class Binding
     // in value or valueborrow), or null for any other Type: also the referent an update locates its receiver at (BindPropertyUpdate). A
     // layer admitting no case ends the walk (stopped: it has no node to rest; its operand's consumer would; PLAN G750).
     private BoundType? LayerBelow(BoundType type, BindingScope scope)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent
-            : this.FollowablePair(type, scope, out var target) is { } admitted && admitted != SemanticsMask.None ? target : null;
+        => type.SafeReferent ?? (this.FollowablePair(type, scope, out var target) is { } admitted && admitted != SemanticsMask.None ? target : null);
 
     private BoundType? CompleteComparison(
         BinaryKoto binary, BoundType left, BoundType right, BindingScope scope, OperatorApplicability decision)
     {
-        if ((ReferenceTypes.EndsInString(left) || ReferenceEquals(left, BoundType.Never)) &&
-            (ReferenceTypes.EndsInString(right) || ReferenceEquals(right, BoundType.Never)))
+        if ((ReferenceEquals(ComparisonReferent(left), BoundType.String) || ReferenceEquals(left, BoundType.Never)) &&
+            (ReferenceEquals(ComparisonReferent(right), BoundType.String) || ReferenceEquals(right, BoundType.Never)))
         {
             this.CompareInPlace(binary.Left);
             this.CompareInPlace(binary.Right);
@@ -99,7 +102,7 @@ public sealed partial class Binding
         }
 
         var integer = decision.Requirement?.Contract == this.Library.PrimitiveInteger && decision.Proof == ConstraintProof.Proven;
-        return left.Kind == BoundTypeKind.Primitive || ReferenceTypes.IsPointer(left) || integer
+        return left.Kind == BoundTypeKind.Primitive || left.IsPointer || integer
             ? Complete(binary, BoundType.Boolean) : this.BindContractComparison(binary, left, scope);
     }
 

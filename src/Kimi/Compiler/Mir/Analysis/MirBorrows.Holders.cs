@@ -570,7 +570,7 @@ internal sealed partial class MirBorrows
         }
 
         // A whole Place of no Type (the delivery into _0 or a derived temp's read, PLAN G1073, MirCases.KnownTypeOf) is no reference (rule W).
-        var (at, reference) = (from.Projection, ReferenceTypes.IsReference(cases.KnownTypeOf(from)));
+        var (at, reference) = (from.Projection, cases.KnownTypeOf(from)?.SafeReferent is not null);
         while (at != 0 && (this.Payload(at) || (reference && this.body.Projections[at].Kind == MirProjectionKind.Field)))
         {
             at = this.body.Projections[at].Prefix;

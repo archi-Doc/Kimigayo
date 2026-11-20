@@ -149,7 +149,7 @@ internal sealed partial class MirBorrows
 
         if (!(AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) || type.Symbol!.Adt is not { InlineCycle: false })
         {
-            return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? (Extent.Positive, Extent.None) : open;
+            return type is { IsPointer: true } ? (Extent.Positive, Extent.None) : open;
         }
 
         for (var i = 0; most != full && i < AdtDef.Count(type); i++)
@@ -224,7 +224,7 @@ internal sealed partial class MirBorrows
             return this.Leads(place, part!, grid: true);
         }
 
-        return of is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var to, ..] }
+        return of is { IsPointer: true, Components: [var to] }
             ? this.Leads(place, cases.Type(to), grid: true) : field == 0 && part is not null;
     }
 
@@ -259,7 +259,7 @@ internal sealed partial class MirBorrows
             this.Scalar(led) == Extent.Positive;
         return first || Pointer(this.End(place, grid: true)) ? PunWrite.Pun : PunWrite.Undecided;
 
-        static bool Pointer(BoundType? row) => row is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        static bool Pointer(BoundType? row) => row is { IsPointer: true };
     }
 
     // What a write of a raw Place of Type `type` at Position `on`, or of a raw Place within it (SPEC 5.2: its Fields and elements are raw
@@ -342,7 +342,7 @@ internal sealed partial class MirBorrows
     {
         var type = cases.Type(at.Type!);
         var start = this.punRaw.Count;
-        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ||
+        if (type is { IsPointer: true } ||
             (types.RawPlaces(at, this.punRaw) == RawPlacesAnswer.Undecided && this.punRaw.Count == start))
         {
             into.Add(at);
