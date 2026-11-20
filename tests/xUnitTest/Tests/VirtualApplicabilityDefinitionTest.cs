@@ -70,6 +70,21 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         Assert.Equal(codes.Split(' ').Append("UnresolvedBinding_Kd").Order(), TestDiagnostics.Of(c).Select(static x => x.Code).Order());
     }
 
+    // R7-C3 (F's C2 ruling 314, DECISIONS Q13): a generic override of a slot whose `T is Copy` the derived struct's `U is not Copy`
+    // refutes is one declaration error at the override (SPEC 6.4.3). Since the override's refuted premise is its failed premise (ruling
+    // 313), the receiver's `Self` also records InvalidConstraint_Kd: record selection on an invalid program, pinned here. Open (the PLAN
+    // issue of rulings 298 and 311, widened by ruling 314; the Middle's N2): the receiver's formation reads the failed `U is Copy` as
+    // contrary evidence instead of resting on it.
+    [Fact]
+    public void AGenericOverridesRefutedPremiseAlsoRecordsAtItsReceiver()
+    {
+        const string Source = "public func main() => ()\nopen struct Base<T>\n    public virtual func read(self: objref/Self)\n        T is Copy\n" +
+            "        return\nstruct Derived<U> : Base<U>\n    U is not Copy\n    override func read(self: objref/Self) => ()\n";
+        Assert.Equal(
+            ["InvalidConstraint_Kd read(self: objref/Self) => ()", "InvalidConstraint_Kd Self"],
+            DiagnosticCorpus.Check(Source).Diagnostics.Select(x => $"{x.Code} {Source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}"));
+    }
+
     // Derived declares no override of the refuted slot (one is a declaration error, SPEC 6.4.3): the call's or Item's record is the one.
     [Theory]
     [InlineData(false, false)]

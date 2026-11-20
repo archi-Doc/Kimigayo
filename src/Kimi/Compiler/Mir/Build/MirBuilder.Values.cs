@@ -181,9 +181,9 @@ internal sealed partial class MirBuilder
     // acquired (reserves, MirCases.Reserves) and has no preparation path (A3 E13 (4)).
     private MirOperand Operand(Koto node, HirAdjust adjust, BoundType? expected, bool input = false, MirPlace? into = null)
     {
-        var reserves = input && MirCases.Reserves(this.body, expected ?? TypeOf(node));
+        var reserves = input && MirCases.Reserves(this.body, expected ?? KnownType(node));
         input &= MirTypes.IsExclusive(expected) ||
-            (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
+            (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(KnownType(node))));
         reserves |= input;
         if (InPlace(adjust))
         {
@@ -296,7 +296,7 @@ internal sealed partial class MirBuilder
 
         for (var i = 0; i < captures.Count; i++)
         {
-            var type = captures[i].Environment.Type ?? BoundType.Unit;
+            var type = captures[i].Environment.Type;
             if (this.Bound(captures[i].Source) is not { } place)
             {
                 place = this.Invariant(closure, type);
@@ -332,8 +332,9 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite).
-        var source = ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
+        // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite); a derived right
+        // side's Type may be unknown (KnownType).
+        var source = ReferenceEquals(KnownType(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
         var value = this.Hold(TypeOf(source), source, MirLocalRole.Assigned);
         var rest = this.AssignApart(value, assignment.Right);
         this.Made(value);
@@ -469,20 +470,20 @@ internal sealed partial class MirBuilder
 
     private MirPlace Temp(Koto node) => this.Temp(TypeOf(node), node);
 
-    private MirPlace Temp(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
+    private MirPlace Temp(BoundType? type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
         => this.Made(this.Hold(type, node, role, name));
 
     // The place given where it has the Type, else a new temp of it.
-    private MirPlace Temp(BoundType type, Koto node, MirPlace? into) => this.Given(into, type) ?? this.Temp(type, node);
+    private MirPlace Temp(BoundType? type, Koto node, MirPlace? into) => this.Given(into, type) ?? this.Temp(type, node);
 
     // The place given where it has the Type, which its holder makes (Made), else none.
-    private MirPlace? Given(MirPlace? into, BoundType type) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place : null;
+    private MirPlace? Given(MirPlace? into, BoundType? type) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place : null;
 
-    // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own: an Opaque temp, which nothing
-    // lends (Unlent; DECISIONS R4-M149).
+    // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own, none where both are unknown (a
+    // derived value delivered into a failed slot, PLAN G1073): an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149).
     private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)
     {
-        var temp = this.OpaqueTemp(type ?? TypeOf(node), node);
+        var temp = this.OpaqueTemp(type ?? KnownType(node), node);
         if (derived)
         {
             this.Opaque(node, temp);
@@ -498,13 +499,14 @@ internal sealed partial class MirBuilder
     // A broken HIR contract's value (Invariant) in a temp of the Type its consumer expects, else of its own: an Opaque temp (Unlent).
     private MirPlace Invariant(Koto node, BoundType? type = null)
     {
-        var temp = this.OpaqueTemp(type ?? TypeOf(node), node);
+        var temp = this.OpaqueTemp(type ?? KnownType(node), node);
         this.Invariant(node, temp);
         return temp;
     }
 
-    // A temp of a Type holding an Opaque value, which nothing lends (Unlent; DECISIONS R4-M149).
-    private MirPlace OpaqueTemp(BoundType type, Koto node)
+    // A temp of the node's Type (or the one its consumer expects), or of none for a node of no Type (PLAN G1073), holding an Opaque
+    // value, which nothing lends (Unlent; DECISIONS R4-M149).
+    private MirPlace OpaqueTemp(BoundType? type, Koto node)
     {
         var temp = this.Temp(type, node);
         this.opaqueTemps.Add(temp.Root);

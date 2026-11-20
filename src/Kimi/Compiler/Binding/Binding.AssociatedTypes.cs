@@ -657,9 +657,12 @@ public sealed partial class Binding
         {
             if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
             {
-                // Every reader reads an inferred binding as its normal form; a requirement's evidence image of it is open (PLAN G1001).
+                // Every reader reads an inferred binding as its normal form; a requirement's evidence image of it is open (PLAN G1001). SPEC
+                // 6.2, DECISIONS BU-128: one on an inline cycle names no Type after the failed Binding, as a written one does (its failed
+                // specification fails the conformance's environment, so its path's conditions are Error).
                 this.InferAssociatedTypes(batch);
-                return batch.State == 2 && !ReferenceEquals(batch, this.collectingAssociated) && !binding.InferenceConflict ? binding.Inferred : null;
+                return batch.State == 2 && !ReferenceEquals(batch, this.collectingAssociated) && !binding.InferenceConflict && !binding.InlineCycle
+                    ? binding.Inferred : null;
             }
 
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
@@ -774,6 +777,9 @@ public sealed partial class Binding
 
         internal bool InferenceConflict { get; set; }
 
+        // Whether the binding lies on an inline storage cycle (Binding.InlineLayouts, SPEC 6.2), written after the cycles are judged.
+        internal bool InlineCycle { get; set; }
+
         internal InferenceProblem Problem { get; set; }
 
         internal FunctionKoto? ProblemSource { get; set; }
@@ -791,6 +797,7 @@ public sealed partial class Binding
             this.Inferred = null;
             this.InferenceSource = null;
             this.InferenceConflict = false;
+            this.InlineCycle = false;
             this.Problem = InferenceProblem.None;
             this.ProblemSource = null;
             this.ProblemDetail = null;

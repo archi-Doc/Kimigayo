@@ -70,7 +70,17 @@ public sealed partial class Binding
 
         if (variable is not PropertyKoto)
         {
-            this.BindVariable(variable, symbol.Scope);
+            // A use binds a declaration this pass has not bound yet (BindReference), which consults it there (BindVariable); a bound one
+            // without a Type is the failed slot, which its use consults and rests on (SPEC 23.1.2; PLAN G1110, D-865).
+            if (this.RecordedState(variable) == BindingState.Unvisited)
+            {
+                this.BindVariable(variable, symbol.Scope);
+            }
+            else
+            {
+                this.Consulted(variable);
+            }
+
             return true;
         }
 

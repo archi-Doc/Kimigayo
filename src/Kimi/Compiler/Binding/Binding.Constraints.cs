@@ -197,6 +197,12 @@ public sealed partial class Binding
         {
             var subject = proposition.Subject!;
             var closure = BoundClosure.Of(subject);
+            if (closure is { Signature: null })
+            {
+                // A Closure value proved Callable has a Signature; a definition without one (a failed slot) is no value (PLAN G1110).
+                throw new InvalidOperationException("A Callable subject's Closure definition has no Signature (InternalInvariant; BoundClosure.Of).");
+            }
+
             var signature = this.ClosureSignature(subject) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             if (signature is null)
             {

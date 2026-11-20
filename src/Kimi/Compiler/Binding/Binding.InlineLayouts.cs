@@ -14,7 +14,9 @@ namespace Kimi.Compiler;
 //   and Binding.IsRecursive (SPEC 8.3.3).
 // - Outputs: AdtDef.InlineCycle and one InvalidInlineLayout_Kd at each such declaration, in storageDeclarations order, and one at each
 //   such binding: its specification (SpecificationPart, SPEC 8.5.1), else its conformance clause, an inherited path's at the heir's
-//   base clause after that clause's own checks (ReportInheritedInlineCycles, SPEC 8.6.2).
+//   base clause after that clause's own checks (ReportInheritedInlineCycles, SPEC 8.6.2); and AssociatedBinding.InlineCycle on a
+//   declared path's binding on a cycle, which an inferred binding's readers read (a written one's failed specification already fails its
+//   conformance's environment), so either kind names no Type after the failed Binding.
 // - Representation: a node per struct or enum declaration (its storage walked and proven in the declaration's scope) and per associated
 //   binding of a conformance path, inherited paths included (InlineBinding: an inherited path's binding is its source's on the base
 //   clause's instance; walked and proven in that path's Scope, SPEC 8.8.2's D + P, which Binding.InheritedConformances builds for an
@@ -90,6 +92,10 @@ public sealed partial class Binding
             if (this.inlineSummaryPool[i] is { Path: { InheritedBase: null } path, Cyclic: true } node)
             {
                 this.Fail(this.SpecificationPart(path, node.Identity) ?? (Koto)path.RootPath.Declaration, BindingFailure.InvalidInlineLayout);
+                if (this.AssociatedBindingOf(path.RootPath, node.Identity) is { } binding)
+                {
+                    binding.InlineCycle = true;
+                }
             }
         }
     }

@@ -41,7 +41,8 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BindingScope, bool> identityRecorded = new(ReferenceEqualityComparer.Instance); // whether it is the owner's failure
+    // A scope's recorded premise error: whether it is the owner's failure, and whether an own class reached the closure limit.
+    private readonly Dictionary<BindingScope, (bool Own, bool Limited)> identityRecorded = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
     private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
@@ -277,7 +278,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var (worst, waiting) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, out _) : null);
+        var (worst, waiting, limited) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, out _) : null);
         var failure = worst switch
         {
             IdentityClasses.One when waiting && mode == BindingMode.Final => BindingFailure.Unsupported,
@@ -293,7 +294,7 @@ public sealed partial class Binding
             return false;
         }
 
-        this.identityRecorded.Add(scope, scope.Owner.BindingFailure == BindingFailure.None);
+        this.identityRecorded.Add(scope, (scope.Owner.BindingFailure == BindingFailure.None, limited));
         this.Fail(scope.Owner, failure);
         return true;
     }
@@ -304,7 +305,24 @@ public sealed partial class Binding
     // or a premise whose proof failed and left the evidence (FailPremise), both its own record.
     private bool KeepsPremiseErrorContext(Koto declaration)
         => this.scopes.TryGetValue(declaration, out var scope) && scope.Constraints is { } environment &&
-            ((this.identityRecorded.TryGetValue(scope, out var own) && own) || ReferenceEquals(environment.FailedPremise?.Use, declaration));
+            ((this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Own) ||
+                ReferenceEquals(environment.FailedPremise?.Use, declaration));
+
+    // SPEC 8.3.3 Limits: whether a declaration's premise closure (its own premises or an enclosing declaration's) reached the limit,
+    // whatever its first failure: a class past it is cut, so a judgment through it depends on the limited analysis. Binding.CaseLimits'
+    // PartsVerified reads it until a cut class gives Binding's typing no member (the PLAN open issue on cut classes), which removes the read.
+    private bool PremiseClosureLimited(Koto declaration)
+    {
+        for (var scope = this.scopes.GetValueOrDefault(declaration); scope is not null; scope = scope.Parent)
+        {
+            if (this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Limited)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // R7-C3 (F's C2 ruling 276 (4); SPEC 8.2.3, 23.1.2): the class table's erroneous state is the identity premise error's one
     // representation (dev's producer channel, ruling 245 (ii)). A check that reads Types with a part in a final erroneous class of its
@@ -317,7 +335,7 @@ public sealed partial class Binding
         for (var current = scope; current is not null && this.identityRecorded.Count != 0; current = current.Parent)
         {
             // The producer's own checks (its frame) are the error's sites, never its readers (ChecksOwnSite).
-            if (this.identityRecorded.TryGetValue(current, out var own) && own && !this.ChecksOwnSite(current.Owner) &&
+            if (this.identityRecorded.TryGetValue(current, out var recorded) && recorded.Own && !this.ChecksOwnSite(current.Owner) &&
                 this.ClassesOf(current, out _) is { } classes && (classes.Holds(a) || classes.Holds(b)))
             {
                 producer = current;
