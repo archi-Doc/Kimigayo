@@ -25,8 +25,8 @@ namespace Kimi.Compiler.Mir;
 // the raw Places within a written Type (SPEC 5.2: its Fields and elements; TyCtxt.RawPlaces, the one statement), an array of no
 // element cut by Within's array row (Sized); a part they miss would drop a write, so where RawPlaces answers Empty, or Undecided with
 // no row published, they add the written side (O-220 (a), O-231 (a)): its by-value parts (Holdings' Inline entries: an enum's Case
-// payloads, a Closure's environment, an owner layer's target; an Unsupported row undecided, Unstated), each off; an abstract part's
-// own entry adds nothing (Scalar's abstract row judged the part).
+// payloads, a Closure's environment, an owner layer's target), each off; no other entry writes there: an erased environment (no raw
+// Place lies within a Function value, SPEC 5.2), a layer, an abstract part's own entry (Scalar's abstract row judged the part).
 // Must not: test a Type's Kind or an AdtDef fact for the chain's step (TyCtxt.Leading's); read Binding's holdings for the bytes a Place
 // has (they state the Loans and layers a value carries); decide SPEC 5.2's punnable set (TyCtxt.Punnable's).
 internal sealed partial class MirBorrows
@@ -66,12 +66,6 @@ internal sealed partial class MirBorrows
     // PlaceBytes' join: each answer's most.
     private static (Extent Pointer, Extent Fixed) Most((Extent Pointer, Extent Fixed) a, (Extent Pointer, Extent Fixed) b)
         => (Most(a.Pointer, b.Pointer), Most(a.Fixed, b.Fixed));
-
-    // What a Holdings entry that names no stored part writes, as the written side's fold reads it (Within; Scalared: whether it may
-    // write): a form with no row undecided (Holdings' contract: each reader's undecided outcome); none for an erased environment (no raw
-    // Place lies within a Function value, SPEC 5.2), a layer or an abstract part's own entry (Scalar's row reads the part); null for
-    // an Inline part, which the fold reads by its Type.
-    private static PunWrite? Unstated(in Hold entry) => entry.Step == HoldStep.Unsupported ? PunWrite.Undecided : null;
 
     // How much of a Scalar a punnable Type holds inline (A5's own fact; SPEC 5.2's punnable set is TyCtxt.Punnable's): a Scalar surely, and
     // so an abstract part, a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them), judged as one at its Position
@@ -322,10 +316,6 @@ internal sealed partial class MirBorrows
             {
                 result = Worse(result, this.Within(place, cases.Type(part), on: false));
             }
-            else if (Unstated(this.punHolds[i]) is { } unstated)
-            {
-                result = Worse(result, unstated);
-            }
         }
 
         this.punHolds.RemoveRange(start, this.punHolds.Count - start);
@@ -390,8 +380,7 @@ internal sealed partial class MirBorrows
         _ = types.Holdings(type, null, null, this.punHolds);
         for (var i = held; !found && i < this.punHolds.Count; i++)
         {
-            found = this.punHolds[i] is { Step: HoldStep.Inline, Part: { } part } ? this.Scalared(cases.Type(part))
-                : Unstated(this.punHolds[i]) is not null;
+            found = this.punHolds[i] is { Step: HoldStep.Inline, Part: { } part } && this.Scalared(cases.Type(part));
         }
 
         this.punHolds.RemoveRange(held, this.punHolds.Count - held);
