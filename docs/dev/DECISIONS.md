@@ -5619,6 +5619,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded in part by R7-M53 (2026-11-19): X-2's DEC O4 line and the Exceptions list for A5-F7, A5-F8, A5-F10, A6's 2g units
     with G105, G126 and G147 (2): their stage is the R7 plan's stream Z, and each of the 25 producers is removed, not excepted.
   - Applied by R7-M55 (2026-11-20; R7-M53's Rule): B2, B4-B8 and B12-B16 are broken HIR contracts (`InternalInvariant_Kd`).
+  - Applied by R7-M57 (2026-11-20; R7-M53's Rule): A4's E1, E2 and A5's M3c (i)-(iii) are broken contracts or resting answers;
+    M3c's Unclassed arm stays with Z9.
   - Applied by R7-M58 (2026-11-20; R7-M53's Rule): X3, a capture use no consumer takes, is a broken contract (`InternalInvariant_Kd`).
 - **R4-M166 A declaration's Contract reference is instantiated for the conforming Type (G180)** (2026-11-03; the owner, verbatim
   「2すべてa」 and 「3案の通り」: option (a), now, not waiting for G170's C3; BU's review REVISE B1, the fix round under the owner's 「GO」)
@@ -23062,6 +23064,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     hold the same fact twice).
   - **Rows.** `MirBuildTest.AnArmNoPublishedFormTakesIsABrokenContract` (13 rows) and `AResolvedNodeWithoutItsFactsIsABrokenContract`;
     no record, HIR or MIR moves on programs.
+- **R7-M57 The analyses' closed classes: one broken-contract form per place, resting answers without records** (Middle, 2026-11-20;
+  PLAN G396 (3), stream Z2, Q-559, D-905; Major; the owner's order, DECISIONS Q22; brief `middle\notes\z2-design-brief.md`, state
+  `z2-state.md`; the Middle's rulings, 11-20; the Middle's code review, ACCEPT WITH CONDITIONS, C1-C3 and N2-N6 taken, N1 is PLAN
+  G1125) SPEC 4.9.6, 15.6.4, 23.1.2.
+  - **Rule.** R7-M53's Rule applied to A4's E1 and E2 and A5's M3c (i)-(iii). In a complete compilation (`TyCtxt.BindingComplete`) a
+    broken contract has one form per place: where it has a site, a located `InternalInvariant_Kd`; where it has none, a throw
+    (BU-102's form: the check ends as `CheckFaulted_Kd`), since no program reaches it and the solve keeps no state to record it. In an
+    incomplete compilation either is Derived with no record (BU-102; R5-M183: a Closure in a declaration Binding rejected has no body;
+    the collector's `Report` reads the same fact, R5-M151).
+  - **A4 (`MirEffects`).** Where Local meets a broken contract at a call (E1: a callee with no MIR body, no published row and no
+    Bodyless category; E2: a comparison leaf with no answer, `ComparisonKind.None`), `Broken` records `InternalInvariant_Kd` under
+    `Ownership.Internal` at the call in its view through `MirReport` (R4-M148's path, as A5's `Internal`), and the call's class is the
+    existing Derived, so the obligations over it record nothing: no new class, no `MirOutcome` rank. Where the solve
+    (`MirEffects.Solve`) meets E1, it throws. `BodylessKind.Unclassified` (`KimiLibraryKinds.cs`) states the contract for both its
+    readers, A4 and the instance collector.
+  - **A5 (`MirOrigins.Outlives`).** It answers `MirRelation` (`Holds`, `Rests`, `Undecided`, `Fails`; a conjunction's answer is its
+    pairs' greatest), read by `MirBorrows.Calls`. Rests reads a recorded failure directly, so the call records nothing of its own
+    (SPEC 23.1.2): a Dependent end, which exists only in an incomplete compilation since BU-102's `InternAtom` throws for one in a
+    complete compilation (M3c (ii)), or the class's meet law over the storage limit: `IndexClass` fails exactly when `ClassEdges`
+    does, and Judge has then recorded the body's one `OwnershipStorageLimit_Kd` (R4-M15a; M3c (iii)). Neither has a source row within
+    the test budget, so these arguments stand in `Outlives`' contract. Undecided is an Unclassed end only. Within a pair a Dependent
+    end is read before an Unclassed one; across pairs Undecided outranks Rests. A view Judge did not classify, or another body, is a
+    broken contract, a throw (M3c (i)).
+  - **Not removed.** M3c's Unclassed arm keeps the call's located `Unsupported_Kd` (`MirBorrows.Locations`' limit) until Z9 (R7-O3),
+    which owns M3c's remainder. E6 (`MirEffects.Solve`'s `Process` default) waits for the Front's value-call acquisition (PLAN G1120,
+    SPEC 7.3.3), then joins the throw form after its re-proof.
+  - **Applies** R7-M53's Rule (which supersedes R4-M165's DEC O4 for stream Z's producers) to E1, E2 and M3c (i)-(iii).
+  - **Rejected.** A Broken class with a `MirOutcome` rank (a new representation in A4 and A5 for unreachable cases); a throw at the
+    sited arms (it would lose the other bodies' failures); Cause facts on the call's limit record (the located `Unsupported_Kd` would
+    stay); a stratum-wide "skipped" flag; a test hook lowering the storage limit.
+  - **Rows.** `MirEffectsTest.ABodylessCallWithoutACategoryIsABrokenContract`, `AClosureARejectedStaticLeftWithoutABodyIsItsDependent`
+    and `MirOriginsTest.AnOutlivesQueryOfAnUnclassifiedViewIsABrokenContract`; only dependent `Unsupported_Kd` records on rejected
+    programs go (Q13), none in the snapshot corpus.
 - **R7-M58 X3: a capture use no consumer takes is a broken contract** (Middle, 2026-11-20; PLAN G396 (3), stream Z8, Q-561, D-909;
   Minor by the plan, a Binding file: the Front's read, ACCEPT WITH CONDITIONS, C1 taken; the Middle's acceptance of the move, 11-20)
   SPEC 4.7.1, 7.7.3, 13.7.1, 23.1.2.
