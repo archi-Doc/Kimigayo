@@ -96,7 +96,7 @@ public sealed class MirDataflowTest
     // A body's liveness by the dataflow: each block's entry state, recorded as ReplayBackward applies it.
     private static (MirDataflow Flow, ulong[] Entries) Solve(MirBody body)
     {
-        var flow = new MirDataflow(new MirReach());
+        var flow = new MirDataflow(new MirReach(), null); // Bodies without a case branch: no view.
         flow.Begin(body);
         var words = Words(body);
         var live = new Liveness(body, flow.Prepare(words, 0, words, out _)!, new ulong[body.Blocks.Length * words]);

@@ -10,10 +10,16 @@ public sealed partial class Binding
     // SPEC 13.4: every safe value-reference layer of an operand is followed to the terminal Type; a string comparison operand is
     // one whose terminal Type is string.
     [return: NotNullIfNotNull(nameof(type))]
-    internal static BoundType? ComparisonReferent(BoundType? type)
+    internal static BoundType? ComparisonReferent(BoundType? type) => ComparisonReferent(type, out _);
+
+    // SPEC 3.4.3, 13.4: the terminal Type below every ref and uniq layer of a Type, and the number of those layers.
+    [return: NotNullIfNotNull(nameof(type))]
+    internal static BoundType? ComparisonReferent(BoundType? type, out int layers)
     {
+        layers = 0;
         while (type?.SafeReferent is { } referent)
         {
+            layers++;
             type = referent;
         }
 
