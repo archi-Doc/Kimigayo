@@ -23003,7 +23003,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     columns (D2-1 option (i): a candidate's Origins are a slice of one `count x stride` array). **Rejected** (D2-1): one array per
     candidate (option (ii)), which keeps the consumers' two forms and adds a column of arrays. **Cost:** cold, warm (0 B) and retained
     Bind bytes unchanged (Calls32/512, Hello, Milestone26, OriginOverloads32/512); time is the landing window's RP8 slot.
-  - Commits 2b0, 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
+  - **Commit 2b0: one width, measured once after binding the candidates' headers** (D2-4 option (a); `cc8999969`, its row
+    written once in `f1510b707`; Q-554, D-894). A call's candidate set is measured (`MeasureCandidates`: whether the call solves
+    Origins, and its Origin and input-Origin widths) after the headers it reads are bound: `RentCandidates`, before the
+    measurement in `BindCallCore` and `SelectOmittedBaseConstructor`, decides each candidate's accessibility once into its row (the
+    one verdict the evaluation reads, D2-7) and binds each accessible candidate's header; the evaluation no longer binds one.
+    Before, a call bound while `BindDeclarations`' header loop had not reached a candidate (an inferred static Field calling a
+    function declared below it) measured that candidate's unbound header. **Rule (the width condition, A9):** a view of the call's
+    Origin scratch formed for a candidate (its `Solution`, the fixed re-check's solution, the winner's stored slice) covers the
+    candidate's Origins and input Origins, or the call solves none; a shortfall is a broken contract (a Release check, an
+    InternalInvariant), never a dropped slot. The three clipping bounds become one rule, `SlotSolution.InputSpan()` (empty when
+    the call solves no Origins, else the binder's inputs). **A candidate's row is written once:** `RentCandidates` stores its
+    Symbol and Accessible into the cleared row, the evaluation its other fields through a `ref`, since a whole store of a row
+    holding references is coreclr's bulk write barrier (the row written twice in full cost 1-2% of a call-heavy Bind). **Rejected:**
+    (b) proving the late measurement unreachable (reached: 16 measurements of an unbound header in the suite); (c) a
+    per-candidate width beside the late measurement (two widths of one call); the one-pass walk F (it did not remove the barrier).
+    **Left (O10, PLAN G1098):** `MatchInputOrigin`'s skip and `MatchResultOrigins`' bound stay for their callers that reserve
+    their own widths. Behaviour unchanged; Bind bytes unchanged; time is the landing window's RP8 slot.
+  - Commits 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
 - **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
   and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
   dev 5dd6543e6, `middle\notes\g396-plan.md` and `front\notes\G147\census.md`). Under Q22, supersedes R4-M165's X-2 line ("the 25
