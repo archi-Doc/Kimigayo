@@ -217,16 +217,20 @@ public class QualificationRequiredTest
     // receiver, so the path fails and the access records QualificationRequired_Kd (cause Receiver, no qualifying repair: the use is
     // written qualified), whether the Type path is the sole one (`T.n`) or the value path fails beside it (`T: ref/H`, H has no `n`).
     // The programs are invalid. Fail-before: Binding accepted the access and `kimi check`'s MIR builder met a Type as a Field's
-    // receiver: InternalInvariant_Kd at `T` (rb30i on Q-584's head too).
+    // receiver: InternalInvariant_Kd at `T` (rb30i on Q-584's head too). R7-D1's p8 (the Middle's C-359 r3 N2, G812 ruling 170): `static`
+    // is no modifier (SPEC 6.1: MisplacedSyntax_Kd at it), so `b` is an instance Field and `T.b` in a Field's initializer is the same
+    // static use (fail-before: InternalInvariant_Kd at `T.b` on dev a585b50a5 and the joint head).
     [Theory]
-    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f() -> i32 => T.n\n")]
-    [InlineData("struct H\n    public init() => ()\nstruct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f(T: ref/H) -> i32 => T.n\n")]
-    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc a() -> i32 => T.n\n")]
-    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc b(T: ref/H) -> i32 => T.n\n")]
-    public void AnInstanceMemberReachedByATypePathRequiresAReceiver(string source)
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f() -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct H\n    public init() => ()\nstruct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f(T: ref/H) -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc a() -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc b(T: ref/H) -> i32 => T.n\n", "QualificationRequired_Kd T.n")]
+    [InlineData("struct T\n    var a = T.b\n    static var b = 1\n", "MisplacedSyntax_Kd static; QualificationRequired_Kd T.b")]
+    public void AnInstanceMemberReachedByATypePathRequiresAReceiver(string source, string records)
     {
-        var record = Assert.Single(DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics);
-        Assert.Equal(("QualificationRequired_Kd", "T.n"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        var diagnostics = DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics;
+        Assert.Equal(records, string.Join("; ", diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}").Order(StringComparer.Ordinal)));
+        var record = Assert.Single(diagnostics, static x => x.Code == "QualificationRequired_Kd");
         Assert.Equal("Receiver", record.Reason![3].Value);
         Assert.Empty(record.Repairs ?? []);
     }
