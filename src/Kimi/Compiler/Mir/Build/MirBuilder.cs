@@ -341,6 +341,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.locals.Clear();
         this.targets.Clear();
         this.opaqueTemps.Clear();
+        this.decided.Clear();
         (this.temporaries, this.lexical, this.scopeIds, this.prepared) = (-1, -1, 0, 0);
         this.scopes.Clear();
         this.registrations.Clear();
