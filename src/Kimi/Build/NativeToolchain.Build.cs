@@ -32,7 +32,8 @@ internal static partial class NativeToolchain
         string path, string? toolchainRoot, string? llvmBin, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
         => BuildManifest(path, toolchainRoot, llvmBin, ExternalToolExecutor.Create, report, cancellationToken);
 
-    // The same build with a given executor's factory: the entry by which tests select Tatara's (TataraExecutor.Create) until unit A4.
+    // The same build with a given executor's factory: the entry by which tests select Tatara's (TataraExecutor.Create). Temporary
+    // (Tatara A2 to A4): unit A4 removes this overload when Tatara's executor becomes the build's.
     internal static async Task BuildManifest(
         string path,
         string? toolchainRoot,

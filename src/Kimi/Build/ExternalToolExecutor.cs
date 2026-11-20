@@ -9,7 +9,7 @@ internal static partial class NativeToolchain
 {
     /// <summary>The native build's work by the toolchain's tools, one process each (ExecuteTool, in the output directory):
     /// O0 launches six tools, O2 eight. Temporary (Tatara A2 to A4): unit A4 deletes it.</summary>
-    private sealed class ExternalToolExecutor : NativeExecutor
+    internal sealed class ExternalToolExecutor : NativeExecutor
     {
         private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
 

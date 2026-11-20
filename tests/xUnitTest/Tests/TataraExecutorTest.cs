@@ -16,12 +16,16 @@ namespace XunitTest;
 // root holding tatara.dll, named by KIMI_TOOLCHAIN_ROOT in the test process's own environment. KIMI_TATARA_CORPUS names a corpus
 // directory that replaces the fixed rows: its pairs/<row>/ (a generated project) go through the executor comparison, its
 // fixtures/*.ll (bare IR) through the tool control comparison at O0 and O2; each row's outcome is appended to <corpus>/results.tsv.
-// src/Tatara/run-corpus.ps1 prepares the root and the corpus and runs this class; the fatal row (Fatal) runs in its own process.
+// tests/scripts/run-tatara-corpus.ps1 prepares the root and the corpus and runs this class. A fatal row (Fatal) leaves Tatara
+// refusing every later call for the rest of its process, so each fatal row runs in a test process of its own, never beside another
+// row of either class.
 public sealed class TataraExecutorTest : IDisposable
 {
     private const string Triple = WindowsProfile.Target;
 
     private static readonly string[] Levels = ["O0", "O2"];
+
+    private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-" + Guid.NewGuid().ToString("N"));
 
@@ -73,8 +77,23 @@ public sealed class TataraExecutorTest : IDisposable
     {
         var rows = Corpus is { } corpus
             ? Directory.GetFiles(Path.Combine(corpus, "fixtures"), "*.ll").SelectMany(ir => Levels.Select(level => ir + "|" + level)).ToArray()
-            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => Path.ChangeExtension(Path.ChangeExtension(m, null), ".ll") + "|" + Level(m)).ToArray();
+            : (await this.FixedRows()).Select(row => Manifest(row)).Select(m => Path.ChangeExtension(Path.ChangeExtension(m, null), ".ll") + "|" + Level(m))
+                .Concat(Levels.Select(level => this.DebugIr() + "|" + level)).ToArray();
         await Run(rows, row => this.CompareWithTools(row));
+    }
+
+    // C1's deep input: a global of 20,000 nested array types, deeper than dotnet's 1.5 MiB reserve allows and within the tools' 10 MB;
+    // Tatara's optimize and emit return 0 with the tools' products (the link fails alike on both sides: no entry).
+    [Fact(Explicit = true)]
+    public async Task DeepInputEqualsTheTools()
+    {
+        var deep = Path.Combine(this.directory, "deep.ll");
+        File.WriteAllText(deep, "target triple = \"x86_64-pc-windows-msvc\"\n\n@g = global " + string.Concat(Enumerable.Repeat("[1 x ", 20000)) + "i32" + new string(']', 20000) + " zeroinitializer\n");
+        foreach (var level in Levels)
+        {
+            var outcome = await this.CompareWithTools(deep + "|" + level);
+            Assert.True(outcome is "equal" or "equal failure\tlink", level + ": " + outcome);
+        }
     }
 
     // Twenty builds in one process alternating two programs give equal bytes each time.
@@ -93,19 +112,25 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
-    // A request that fails with return 1 is the toolchain's failure, and the next request succeeds: an invalid IR, then a link with
-    // an undefined symbol.
+    // A request that fails with return 1 is the toolchain's failure, and the next request succeeds: an invalid IR; an inline-asm
+    // constraint error, which llc reports after opening the object and which leaves no object, as llc's; then a link with an
+    // undefined symbol.
     [Fact(Explicit = true)]
     public async Task FailedRequestsLeaveTataraUsable()
     {
         var row = await this.Generate("hello", Hello, "O0");
         var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
-        var executor = this.Executor(Path.GetDirectoryName(ir)!);
+        var executor = Executor(Path.GetDirectoryName(ir)!);
         var invalid = Path.Combine(this.directory, "invalid.ll");
         File.WriteAllText(invalid, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f( {\n");
         var error = await Assert.ThrowsAsync<IOException>(() => executor.Emit(invalid, Path.Combine(this.directory, "invalid.obj"), "O0"));
         Assert.StartsWith("Tatara failed: emit\n", error.Message, StringComparison.Ordinal);
         Assert.True(NativeToolchain.IsToolchainFailure(error));
+        var asm = Path.Combine(this.directory, "asmerror.ll");
+        File.WriteAllText(asm, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f() {\nentry:\n  %r = call i32 asm sideeffect \"mov $0, 1\", \"={notaregister}\"()\n  ret i32 %r\n}\n");
+        var asmError = await Assert.ThrowsAsync<IOException>(() => executor.Emit(asm, Path.Combine(this.directory, "asmerror.obj"), "O0"));
+        Assert.StartsWith("Tatara failed: emit\n", asmError.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(this.directory, "asmerror.obj")));
         var obj = Path.Combine(this.directory, "hello.obj");
         await executor.Emit(ir, obj, "O0");
         var link = await Assert.ThrowsAsync<IOException>(() => executor.Link([obj, Kernel32, "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(this.directory, "a.exe")]));
@@ -162,15 +187,15 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.True(differences.IsEmpty, string.Join("\n", differences));
     }
 
-    // One pair through both executors: "equal", "equal failure" (both failed with the same report but for the failure's text, which
-    // names the tool or the operation, design A2 §5), or what differs.
+    // One pair through both executors: "equal", "equal failure" (both failed alike: the same executor call or NativeBuild's own
+    // verdict, the same exception type, and the same text but for the tool's name or path and the folder, design A2 §5), or what
+    // differs.
     private static async Task<string> CompareExecutors(string row)
     {
         var work = row + ".compare";
-        var sides = new (string Name, Func<string, Action<DiagnosticSeverity, string>, Task> Build)[]
+        var sides = new (string Name, Func<NativeExecutorContext, JsonObject, NativeExecutor> Create)[]
         {
-            ("tools", (manifest, report) => NativeToolchain.BuildManifest(manifest, null, null, report, CancellationToken.None)),
-            ("tatara", (manifest, report) => NativeToolchain.BuildManifest(manifest, null, null, NativeToolchain.TataraExecutor.Create, report, CancellationToken.None)),
+            ("tools", NativeToolchain.ExternalToolExecutor.Create), ("tatara", NativeToolchain.TataraExecutor.Create),
         };
         var reports = new string[2];
         for (var i = 0; i < 2; i++)
@@ -180,27 +205,62 @@ public sealed class TataraExecutorTest : IDisposable
             var report = new List<string>();
             var manifest = Path.Combine(copy, Path.GetRelativePath(row, Manifest(row)));
             Action<DiagnosticSeverity, string> add = (severity, text) => report.Add(severity + " " + text.Replace(copy, "<dir>", StringComparison.OrdinalIgnoreCase));
+            var recording = new RecordingExecutor(sides[i].Create);
             try
             {
-                await sides[i].Build(manifest, add);
+                await NativeToolchain.BuildManifest(manifest, null, null, recording.Create, add, CancellationToken.None);
             }
             catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
             {
-                report.Add("failure");
+                report.Add(recording.Failed is { } call
+                    ? $"failure in {call}: {ex.GetType().Name}: {FailureText(ex.Message, copy)}"
+                    : $"failure: {ex.GetType().Name}: {ex.Message.Replace(copy, "<dir>", StringComparison.OrdinalIgnoreCase)}");
             }
 
             reports[i] = string.Join("\n", report);
         }
 
         var differences = CompareFiles(Path.Combine(work, "tools"), Path.Combine(work, "tatara"));
-        var failed = reports[0].EndsWith("failure", StringComparison.Ordinal) || reports[1].EndsWith("failure", StringComparison.Ordinal);
+        var failed = reports.Any(r => r.Split('\n')[^1].StartsWith("failure", StringComparison.Ordinal));
         if (reports[0] != reports[1])
         {
             differences.Add("report: " + reports[0].ReplaceLineEndings(" ") + " | " + reports[1].ReplaceLineEndings(" "));
         }
 
-        Directory.Delete(work, true);
-        return differences.Count != 0 ? "differ\t" + string.Join("; ", differences) : failed ? "equal failure" : "equal";
+        return Clean(work, differences.Count != 0 ? "differ\t" + string.Join("; ", differences) : failed ? "equal failure" : "equal");
+    }
+
+    // A row's verdict is decided before its work folder is deleted; a folder that cannot be deleted (an executable still held, for
+    // example) is reported as the cleanup's, beside the verdict.
+    private static string Clean(string work, string verdict)
+    {
+        try
+        {
+            Directory.Delete(work, true);
+            return verdict;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return verdict + "\tcleanup: " + ex.GetType().Name + ": " + ex.Message;
+        }
+    }
+
+    // A failed call's text after its header line ("Tool failed: <path>; exit=<code>" or "Tatara failed: <operation>"), with the tools'
+    // paths replaced by their names and the given folders removed: the tool's text and Tatara's compare equal when they say the same.
+    private static string FailureText(string message, params string[] folders)
+    {
+        var text = message[(message.IndexOf('\n') + 1)..];
+        foreach (var name in ToolNames)
+        {
+            text = text.Replace(Path.Combine(Root, name + ".exe"), name, StringComparison.OrdinalIgnoreCase).Replace(name + ".exe", name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        foreach (var folder in folders)
+        {
+            text = text.Replace(folder + Path.DirectorySeparatorChar, string.Empty, StringComparison.OrdinalIgnoreCase).Replace(folder, "<dir>", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return text.ReplaceLineEndings(" ").Trim();
     }
 
     // Every file of the two folders: equal names and bytes; a build record equal but for its tools.
@@ -242,7 +302,11 @@ public sealed class TataraExecutorTest : IDisposable
         }
     }
 
-    private static async Task<string> Tool(string name, string directory, params string[] arguments)
+    private static async Task<string> Tool(string name, string directory, params string[] arguments) => (await Launch(name, directory, arguments)).Failure;
+
+    // A tool of the root run in the directory: its failure ("<name> exit=<code>", a line end, then its output; empty on success) and
+    // its standard output.
+    private static async Task<(string Failure, string Output)> Launch(string name, string directory, params string[] arguments)
     {
         var start = new ProcessStartInfo(Path.Combine(Root, name + ".exe")) { WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments)
@@ -254,11 +318,29 @@ public sealed class TataraExecutorTest : IDisposable
         var output = process.StandardOutput.ReadToEndAsync();
         var errors = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
-        return process.ExitCode == 0 ? string.Empty : $"{name} exit={process.ExitCode} {await output}{errors}";
+        return (process.ExitCode == 0 ? string.Empty : $"{name} exit={process.ExitCode}\n{await output}{errors}", await output);
     }
 
-    // The steps, each run by the tools and by Tatara; a later step's input is that side's own product.
-    private static IEnumerable<(string Step, Func<Task<string>> Tools, Func<Task> Tatara)> Steps(string ir, string level, string tools, string tatara, NativeExecutor executor)
+    // The tools' facts of an object, as ExternalToolExecutor reads them: the two llvm-nm listings and llvm-readobj's two predicates.
+    private static async Task<(string Failure, string Facts)> ToolFacts(string directory, string obj)
+    {
+        var undefined = await Launch("llvm-nm", directory, "--undefined-only", "--format=posix", obj);
+        var defined = await Launch("llvm-nm", directory, "--defined-only", "--extern-only", "--format=posix", obj);
+        var inspection = await Launch("llvm-readobj", directory, "--unwind", "--coff-directives", obj);
+        var failure = undefined.Failure + defined.Failure + inspection.Failure;
+        return failure.Length != 0 ? (failure, string.Empty) : (string.Empty, Facts(new ObjectFacts(
+            NativeToolchain.PosixSymbols(undefined.Output),
+            NativeToolchain.PosixSymbols(defined.Output),
+            inspection.Output.Contains("RuntimeFunction", StringComparison.Ordinal),
+            inspection.Output.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase))));
+    }
+
+    private static string Facts(ObjectFacts facts)
+        => string.Join(' ', facts.Undefined) + " | " + string.Join(' ', facts.DefinedExternal) + " | unwind " + facts.HasUnwind + ", default library " + facts.HasDefaultLibrary;
+
+    // The steps, each run by the tools and by Tatara; a later step's input is that side's own product. The inspect step writes each
+    // side's facts to inspected (tools, then Tatara).
+    private static IEnumerable<(string Step, Func<Task<string>> Tools, Func<Task> Tatara)> Steps(string ir, string level, string tools, string tatara, NativeExecutor executor, string[] inspected)
     {
         var (toolIr, tataraIr) = (ir, ir);
         if (level == "O2")
@@ -268,11 +350,23 @@ public sealed class TataraExecutorTest : IDisposable
         }
 
         yield return ("emit", () => Tool("llc", tools, "-" + level, "-filetype=obj", "-mtriple=" + Triple, "-mcpu=" + WindowsProfile.Cpu, "-mattr=" + WindowsProfile.Features, "-relocation-model=" + WindowsProfile.RelocationModel, "-code-model=" + WindowsProfile.CodeModel, toolIr, "-o", "input.obj"), () => executor.Emit(tataraIr, Path.Combine(tatara, "input.obj"), level));
+        yield return ("inspect", async () =>
+        {
+            var (failure, facts) = await ToolFacts(tools, Path.Combine(tools, "input.obj"));
+            inspected[0] = facts;
+            return failure;
+        }, async () => inspected[1] = Facts(await executor.Inspect(Path.Combine(tatara, "input.obj"))));
         yield return ("link", () => Tool("lld-link", tools, LinkArguments(Path.Combine(tools, "input.obj"), Path.Combine(tools, "input.exe"))), () => executor.Link(LinkArguments(Path.Combine(tatara, "input.obj"), Path.Combine(tatara, "input.exe"))));
     }
 
-    // One IR at one level: the tools (opt -S default<O2>, llc, lld-link with P13's arguments) in one folder, Tatara's optimize, emit,
-    // inspect and link in another, the same input file read by both; equal O2 text, object and executable, or equal failing step.
+    private static NativeExecutor Executor(string output)
+        => NativeToolchain.TataraExecutor.Create(
+            new NativeExecutorContext(Root, Root, output, output, (_, _) => { }, CancellationToken.None, Triple, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel),
+            new JsonObject());
+
+    // One IR at one level: the tools (opt -S default<O2>, llc, llvm-nm and llvm-readobj, lld-link with P13's arguments) in one folder,
+    // Tatara's optimize, emit, inspect and link in another, the same input file read by both; equal O2 text, object, object facts and
+    // executable, or the same failing step with the same text (FailureText).
     private async Task<string> CompareWithTools(string row)
     {
         var (ir, level) = (row[..row.LastIndexOf('|')], row[(row.LastIndexOf('|') + 1)..]);
@@ -280,40 +374,73 @@ public sealed class TataraExecutorTest : IDisposable
         var (tools, tatara) = (Path.Combine(work, "tools"), Path.Combine(work, "tatara"));
         Directory.CreateDirectory(tools);
         Directory.CreateDirectory(tatara);
-        var executor = this.Executor(tatara);
-        string toolStep = string.Empty, tataraStep = string.Empty;
-        foreach (var (step, run, call) in Steps(ir, level, tools, tatara, executor))
+        var executor = Executor(tatara);
+        var inspected = new string[2];
+        (string Step, string Text) toolFailure = (string.Empty, string.Empty), tataraFailure = (string.Empty, string.Empty);
+        foreach (var (step, run, call) in Steps(ir, level, tools, tatara, executor, inspected))
         {
-            toolStep = toolStep.Length == 0 && await run() is { Length: > 0 } failed ? step + ": " + failed : toolStep;
+            toolFailure = toolFailure.Step.Length == 0 && await run() is { Length: > 0 } failed ? (step, FailureText(failed, tools)) : toolFailure;
             try
             {
-                if (tataraStep.Length == 0)
+                if (tataraFailure.Step.Length == 0)
                 {
                     await call();
                 }
             }
             catch (IOException ex)
             {
-                tataraStep = step + ": " + ex.Message;
+                tataraFailure = (step, FailureText(ex.Message, tatara));
             }
         }
 
         var differences = CompareFiles(tools, tatara);
-        Directory.Delete(work, true);
-        var toolFailed = toolStep.Split(':')[0];
-        var tataraFailed = tataraStep.Split(':')[0];
-        if (toolFailed != tataraFailed)
+        if (inspected[0] != inspected[1])
         {
-            return "differ\tfailing step: tools " + (toolStep.Length == 0 ? "none" : toolStep) + " | tatara " + (tataraStep.Length == 0 ? "none" : tataraStep);
+            differences.Add("inspect: tools " + inspected[0] + " || tatara " + inspected[1]);
         }
 
-        return differences.Count != 0 ? "differ\t" + string.Join("; ", differences) : toolFailed.Length != 0 ? "equal failure\t" + toolFailed : "equal";
+        var verdict = toolFailure != tataraFailure
+            ? "differ\tfailure: tools " + (toolFailure.Step.Length == 0 ? "none" : toolFailure) + " | tatara " + (tataraFailure.Step.Length == 0 ? "none" : tataraFailure)
+            : differences.Count != 0 ? "differ\t" + string.Join("; ", differences) : toolFailure.Step.Length != 0 ? "equal failure\t" + toolFailure.Step : "equal";
+        return Clean(work, verdict);
     }
 
-    private NativeExecutor Executor(string output)
-        => NativeToolchain.TataraExecutor.Create(
-            new NativeExecutorContext(Root, Root, output, output, (_, _) => { }, CancellationToken.None, Triple, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel),
-            new JsonObject());
+    // C-424 N6: an IR with a CodeView compile unit (the debug information no fixed row's IR carries).
+    private string DebugIr()
+    {
+        var path = Path.Combine(this.directory, "debug.ll");
+        var ir = """
+            target triple = "x86_64-pc-windows-msvc"
+
+            @g = global i32 7, align 4
+
+            define i32 @f(i32 %x) !dbg !8 {
+            entry:
+              %p = alloca i32, align 4
+              store i32 %x, ptr %p, align 4, !dbg !12
+              %v = load i32, ptr %p, align 4, !dbg !12
+              %w = load i32, ptr @g, align 4, !dbg !13
+              %y = add i32 %v, %w, !dbg !13
+              ret i32 %y, !dbg !13
+            }
+
+            !llvm.dbg.cu = !{!0}
+            !llvm.module.flags = !{!3, !4}
+
+            !0 = distinct !DICompileUnit(language: DW_LANG_C99, file: !1, producer: "debug row", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)
+            !1 = !DIFile(filename: "debug.c", directory: "C:\\debug")
+            !3 = !{i32 2, !"CodeView", i32 1}
+            !4 = !{i32 2, !"Debug Info Version", i32 3}
+            !8 = distinct !DISubprogram(name: "f", scope: !1, file: !1, line: 1, type: !9, scopeLine: 1, spFlags: DISPFlagDefinition, unit: !0)
+            !9 = !DISubroutineType(types: !10)
+            !10 = !{null}
+            !12 = !DILocation(line: 2, column: 3, scope: !8)
+            !13 = !DILocation(line: 3, column: 5, scope: !8)
+
+            """;
+        File.WriteAllText(path, ir);
+        return path;
+    }
 
     // The fixed rows, each a generated project: Hello and Milestones 1, 17 and 30 at O0 and O2, the FFI program with a user static
     // library (test-cli.ps1's foreign supply) at O2, and Hello's Debug build.
@@ -394,10 +521,32 @@ public sealed class TataraExecutorTest : IDisposable
         return await this.Generate("ffi-O2", source, "O2", supply: supply);
     }
 
-    // The fatal row, alone in its own test process (run-corpus.ps1 runs this class separately): an LLVM fatal error returns 2, and the
-    // failing request and every later one are the toolchain's failure naming the first cause.
+    // The fatal rows, each alone in its own test process (run-tatara-corpus.ps1 runs each by its method): a return of 2 makes the
+    // failing request and every later one the toolchain's failure naming the first cause, for the rest of the process.
     public sealed class Fatal
     {
+        // LLD's fatal(): a malformed static library; LLD's canRunAgain is false.
+        [Fact(Explicit = true)]
+        public async Task LinkerFatalRefusesEveryLaterCall()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-fatal-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "f.ll"), "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine void @f() {\n  ret void\n}\n");
+            File.WriteAllText(Path.Combine(directory, "malformed.lib"), "!<arch>\nnot a library member\n");
+            var executor = Executor(directory);
+            var obj = Path.Combine(directory, "f.obj");
+            await executor.Emit(Path.Combine(directory, "f.ll"), obj, "O0");
+            var error = await Assert.ThrowsAsync<IOException>(() => executor.Link([obj, Path.Combine(directory, "malformed.lib"), "/entry:f", "/subsystem:console", "/nodefaultlib", "/out:" + Path.Combine(directory, "f.exe")]));
+            Assert.StartsWith("Tatara failed: link\n", error.Message, StringComparison.Ordinal);
+            Assert.Contains("lld-link: error:", error.Message, StringComparison.Ordinal);
+            Assert.Contains("truncated or malformed archive", error.Message, StringComparison.Ordinal);
+            var later = await Assert.ThrowsAsync<IOException>(() => executor.Inspect(obj));
+            Assert.StartsWith("Tatara failed: inspect\n", later.Message, StringComparison.Ordinal);
+            Assert.Contains("truncated or malformed archive", later.Message, StringComparison.Ordinal);
+            Assert.True(NativeToolchain.IsToolchainFailure(later));
+            Directory.Delete(directory, true);
+        }
+
         [Fact(Explicit = true)]
         public async Task FatalErrorRefusesEveryLaterCall()
         {
@@ -416,8 +565,7 @@ public sealed class TataraExecutorTest : IDisposable
 
                 """;
             File.WriteAllText(fatal, ir);
-            var context = new NativeExecutorContext(Root, Root, directory, directory, (_, _) => { }, CancellationToken.None, Triple, WindowsProfile.Cpu, WindowsProfile.Features, WindowsProfile.RelocationModel, WindowsProfile.CodeModel);
-            var executor = NativeToolchain.TataraExecutor.Create(context, new JsonObject());
+            var executor = Executor(directory);
             var error = await Assert.ThrowsAsync<IOException>(() => executor.Emit(fatal, Path.Combine(directory, "fatal.obj"), "O2"));
             Assert.StartsWith("Tatara failed: emit\n", error.Message, StringComparison.Ordinal);
             Assert.Contains("Cannot select", error.Message, StringComparison.Ordinal);
@@ -426,6 +574,47 @@ public sealed class TataraExecutorTest : IDisposable
             Assert.Contains("Cannot select", later.Message, StringComparison.Ordinal);
             Assert.True(NativeToolchain.IsToolchainFailure(later));
             Directory.Delete(directory, true);
+        }
+    }
+
+    // An executor that records which of its calls failed (C-424 C3'): the executor comparison tells a failed call from NativeBuild's
+    // own verdict.
+    private sealed class RecordingExecutor(Func<NativeExecutorContext, JsonObject, NativeExecutor> create) : NativeExecutor
+    {
+        private NativeExecutor inner = null!;
+
+        internal string? Failed { get; private set; }
+
+        internal NativeExecutor Create(NativeExecutorContext context, JsonObject identities)
+        {
+            this.inner = create(context, identities);
+            return this;
+        }
+
+        internal override Task Optimize(string ir, string optimizedIr) => this.Record("optimize", () => this.inner.Optimize(ir, optimizedIr));
+
+        internal override Task Emit(string ir, string obj, string optimization) => this.Record("emit", () => this.inner.Emit(ir, obj, optimization));
+
+        internal override async Task<ObjectFacts> Inspect(string obj)
+        {
+            var facts = default(ObjectFacts);
+            await this.Record("inspect", async () => facts = await this.inner.Inspect(obj));
+            return facts;
+        }
+
+        internal override Task Link(IReadOnlyList<string> arguments) => this.Record("link", () => this.inner.Link(arguments));
+
+        private async Task Record(string call, Func<Task> run)
+        {
+            try
+            {
+                await run();
+            }
+            catch
+            {
+                this.Failed = call;
+                throw;
+            }
         }
     }
 }

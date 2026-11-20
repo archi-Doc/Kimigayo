@@ -6,7 +6,8 @@ namespace Kimi.Build;
 
 /// <summary>The work of a native build that runs LLVM or LLD: four calls, in the order NativeBuild makes them. NativeBuild owns the
 /// steps, the verdicts, the redaction between <see cref="Optimize"/> and <see cref="Emit"/> and the record's form; an executor only
-/// runs the work and reads the object's facts. A failure is the toolchain's (IsToolchainFailure). Temporary seam (Tatara A2 to A4):
+/// runs the work and reads the object's facts. Every path an executor receives is absolute. A failure is the toolchain's
+/// (IsToolchainFailure). Temporary seam (Tatara A2 to A4):
 /// unit A4 deletes the external implementation and this type.</summary>
 internal abstract class NativeExecutor
 {

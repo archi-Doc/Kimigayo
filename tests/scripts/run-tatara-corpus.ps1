@@ -1,8 +1,10 @@
 # Runs TataraExecutorTest against a private toolchain root (Tatara design A2 §4.5; temporary until unit A4 builds tatara.dll for every
 # lane): the root is a copy of the shared toolchain plus the given tatara.dll, set for this process only (DECISIONS T-M3); a DLL whose
-# build identity is not this checkout's (identity.ps1) is refused. Without -Fixtures the class runs its fixed rows; with it, the corpus
-# is those fixture .ll files (tool control comparison at O0 and O2) and a pair per milestone and level (executor comparison). The fatal
-# row runs in a second test process. Writes <Output>/report.md with the hashes, the test results and the corpus counts.
+# build identity is not this checkout's (src/Tatara/identity.ps1) is refused. Without -Fixtures the class runs its fixed rows; with it,
+# the corpus is those fixture .ll files (tool control comparison at O0 and O2) and a pair per milestone and level (executor
+# comparison). Each fatal row runs in a test process of its own. Writes <Output>/report.md with the run's identity (the checkout,
+# its state and the binaries' hashes, read at the start), the test results and the corpus counts. The caller wraps the run in its
+# own guard (the test processes and the pairs' kimi emit runs alike).
 param(
     [Parameter(Mandatory)] [string] $Dll,
     [Parameter(Mandatory)] [string] $Output,
@@ -11,12 +13,14 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$guard = 'C:\Users\bwff1\repos\archi-Doc\Kimigayo\artifacts\board\tools\quiet_guard.py'
 $Output = [IO.Path]::GetFullPath($Output)
 New-Item -ItemType Directory -Force -Path $Output | Out-Null
+$tests = Join-Path $repository "tests\xUnitTest\bin\$Configuration\net10.0\xUnitTest.dll"
+$kimi = Join-Path $repository "tests\xUnitTest\bin\$Configuration\net10.0\Kimi.dll"
+$checkout = @("Checkout at the start: $(git -C $repository rev-parse HEAD)", '', '``` git status --porcelain') + @(git -C $repository status --porcelain) + '```'
 
 # The DLL's identity, read in a child process so this process maps no tatara.dll.
-. (Join-Path $PSScriptRoot 'identity.ps1')
+. (Join-Path $repository 'src\Tatara\identity.ps1')
 $expected = Get-TataraBuildIdentity
 $read = @'
 param($path)
@@ -41,10 +45,10 @@ foreach ($file in Get-ChildItem -LiteralPath $shared -Recurse -File) {
     }
 }
 Copy-Item -LiteralPath $Dll -Destination (Join-Path $root 'tatara.dll') -Force
-$hashes = @(Get-ChildItem -LiteralPath $root -File | Where-Object { $_.Name -in 'tatara.dll', 'opt.exe', 'llc.exe', 'lld-link.exe', 'clang.exe', 'llvm-lib.exe' } |
-    ForEach-Object { "| $($_.Name) | $((Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant()) |" })
+$hashed = @(Get-ChildItem -LiteralPath $root -File | Where-Object { $_.Name -in 'tatara.dll', 'opt.exe', 'llc.exe', 'lld-link.exe', 'llvm-nm.exe', 'llvm-readobj.exe', 'clang.exe', 'llvm-lib.exe' }) +
+    @(Get-Item -LiteralPath $kimi, $tests)
+$hashes = @($hashed | ForEach-Object { "| $($_.Name) | $((Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant()) |" })
 
-$tests = Join-Path $repository "tests\xUnitTest\bin\$Configuration\net10.0\xUnitTest.dll"
 $env:KIMI_TOOLCHAIN_ROOT = $root
 $env:KIMI_TATARA_CORPUS = $null
 $corpusLines = @()
@@ -54,9 +58,9 @@ if ($Fixtures) {
     Remove-Item -LiteralPath $corpus -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path (Join-Path $corpus 'pairs') | Out-Null
     New-Item -ItemType Junction -Path (Join-Path $corpus 'fixtures') -Target ([IO.Path]::GetFullPath($Fixtures)) | Out-Null
-    $kimi = Join-Path $repository "tests\xUnitTest\bin\$Configuration\net10.0\Kimi.dll"
+    $sources = @(Get-ChildItem -LiteralPath (Join-Path $repository 'tests\milestones') -Filter '*.kimi')
     $skipped = @()
-    foreach ($source in Get-ChildItem -LiteralPath (Join-Path $repository 'tests\milestones') -Filter '*.kimi') {
+    foreach ($source in $sources) {
         foreach ($level in 'O0', 'O2') {
             $pair = Join-Path $corpus "pairs\$($source.BaseName)-$level"
             New-Item -ItemType Directory -Path $pair | Out-Null
@@ -67,18 +71,21 @@ if ($Fixtures) {
         }
     }
     $env:KIMI_TATARA_CORPUS = $corpus
-    $corpusLines += "Fixtures: $Fixtures ($((Get-ChildItem -LiteralPath $Fixtures -Filter '*.ll').Count) .ll files)", "Milestone pairs: $((Get-ChildItem (Join-Path $corpus 'pairs') -Directory).Count); not generated: $($skipped -join ', ')"
+    $corpusLines += "Fixtures: $Fixtures ($((Get-ChildItem -LiteralPath $Fixtures -Filter '*.ll').Count) .ll files)",
+        "Milestones: $($sources.Count) sources at O0 and O2; pairs generated: $((Get-ChildItem (Join-Path $corpus 'pairs') -Directory).Count); not generated: $($skipped -join ', ')"
 }
 
-# The class, then the fatal row in its own process.
+# The class, then each fatal row in its own process.
 $results = @()
-foreach ($class in 'XunitTest.TataraExecutorTest', 'XunitTest.TataraExecutorTest+Fatal') {
-    $xml = Join-Path $Output "$class.xml"
-    $log = & python -I -X utf8 $guard run t-a2 -- dotnet $tests -class $class -explicit only -xml $xml 2>&1 | Out-String
-    $results += "## $class (exit $LASTEXITCODE)", '', '```', $log.Trim(), '```', ''
+$runs = @(, @('XunitTest.TataraExecutorTest', '-class', 'XunitTest.TataraExecutorTest'))
+foreach ($fatal in 'FatalErrorRefusesEveryLaterCall', 'LinkerFatalRefusesEveryLaterCall') { $runs += , @("Fatal.$fatal", '-method', "XunitTest.TataraExecutorTest+Fatal.$fatal") }
+foreach ($run in $runs) {
+    $xml = Join-Path $Output "$($run[0]).xml"
+    $log = & dotnet $tests $run[1] $run[2] -explicit only -xml $xml 2>&1 | Out-String
+    $results += "## $($run[0]) (exit $LASTEXITCODE)", '', '```', $log.Trim(), '```', ''
 }
 
-$report = @('# Tatara corpus run', '', "Checkout: $(git -C $repository rev-parse HEAD); build identity $expected", '', '| File | SHA-256 |', '|---|---|') + $hashes + '' + $corpusLines + '' + $results
+$report = @('# Tatara corpus run', '') + $checkout + @('', "Build identity $expected", '', '| File | SHA-256 |', '|---|---|') + $hashes + '' + $corpusLines + '' + $results
 if ($env:KIMI_TATARA_CORPUS) {
     $rows = @(Get-Content -LiteralPath (Join-Path $env:KIMI_TATARA_CORPUS 'results.tsv') -ErrorAction SilentlyContinue)
     $report += '## Corpus rows', '', '| Outcome | Rows |', '|---|---|'
