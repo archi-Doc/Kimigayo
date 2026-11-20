@@ -120,7 +120,7 @@ internal sealed partial class MirBuilder
             case HirOp.Aggregate:
                 this.Aggregate(destination, node, TypeOf(node));
                 break;
-            case HirOp.Assign or HirOp.CompoundAssign when HirTables.Op(Child(node)) == HirOp.Error: // Derived from its target's error.
+            case HirOp.Assign or HirOp.CompoundAssign when HirTables.Op(Designated(Child(node))) == HirOp.Error: // Its target Place's error.
                 this.DerivedWrite(node, destination);
                 break;
             case HirOp.Assign:
