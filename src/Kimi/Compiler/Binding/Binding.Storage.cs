@@ -350,7 +350,7 @@ public sealed partial class Binding
             }
 
             var parts = components.AsSpan(0, declared.Components.Count);
-            if (declared is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: null })
+            if (declared is { IsPointer: true, RawOrigin: null })
             {
                 return this.types.Pointer(parts[0], BoundOrigin.Unstated);
             }

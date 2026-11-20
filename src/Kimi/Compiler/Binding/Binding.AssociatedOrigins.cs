@@ -65,10 +65,10 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+        if (type.SafeReferent is { } referent)
         {
-            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
-                this.HasSupportedAssociatedFormation(type.Components[0]);
+            return type.Origin is not null && (referent.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
+                this.HasSupportedAssociatedFormation(referent);
         }
 
         // SPEC 8.1.2, 8.5: an original, annotated or applied pair layer whose binder admits only value or valueborrow Semantics is a

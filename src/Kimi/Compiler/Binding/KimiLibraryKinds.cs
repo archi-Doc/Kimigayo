@@ -101,7 +101,9 @@ internal enum IntrinsicId : byte
 /// turns into its effect class and the instance collector into what its call runs.</summary>
 internal enum BodylessKind : byte
 {
-    /// <summary>None of the others: A4's limit, and a broken contract for the instance collector (since PLAN G890).</summary>
+    /// <summary>None of the others: a broken contract for both readers in a complete compilation (the instance collector since PLAN G890,
+    /// A4 since Z2: the located InternalInvariant_Kd at a call, a throw in its solve); in an incomplete one, a dependent of Binding's
+    /// records for both (TyCtxt.BindingComplete).</summary>
     Unclassified,
 
     /// <summary>A library declaration's `#Intrinsic` (its Definition's IntrinsicId), whose effects are MIR's row of it.</summary>

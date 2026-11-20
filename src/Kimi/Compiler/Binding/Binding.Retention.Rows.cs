@@ -514,7 +514,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.retentionArguments[input] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        return this.retentionArguments[input] is { IsPointer: true };
     }
 
     // Whether the instantiated tests (the closure, CanHold, pairs) may give a position input `input`'s row: anywhere but in the callee's kept
@@ -561,7 +561,7 @@ public sealed partial class Binding
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
-        if (ReferenceTypes.IsPointer(declared) && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
+        if (declared.IsPointer && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
         {
             var first = this.rawMembers.Count;
             this.retentionLimit |= !this.RawMembers(OwnedOrigin(declared)!, CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1], this.rawMembers);
@@ -635,7 +635,7 @@ public sealed partial class Binding
     // one of the callable's parameters holds the input's Type, Origins erased, or is a raw pointer as the input is (BU-66).
     private bool Takes(BoundType callable, BoundType argument, BindingScope? view)
     {
-        var pointer = argument is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        var pointer = argument is { IsPointer: true };
         if (this.Hands(argument, callable) || (argument.CarriesAnyOrigin && !pointer))
         {
             return true;
@@ -646,7 +646,7 @@ public sealed partial class Binding
         {
             var parameter = parameters.Components[j];
             this.retentionWalked.Clear();
-            if ((pointer && parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw }) || this.Occurs(parameter, argument, view))
+            if ((pointer && parameter is { IsPointer: true }) || this.Occurs(parameter, argument, view))
             {
                 return true;
             }
@@ -1285,7 +1285,7 @@ public sealed partial class Binding
             hidden |= places && entry.Step == HoldStep.Abstract;
         }
 
-        var stated = stepped && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } &&
+        var stated = stepped && type is { IsPointer: true } &&
             OwnedOrigin(type) is { Kind: not OriginKind.Unstated } origin ? origin : null;
         if (stated is not null && this.retentionRawSources.Count > 0)
         {

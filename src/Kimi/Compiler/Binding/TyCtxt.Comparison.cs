@@ -62,7 +62,7 @@ internal sealed partial class TyCtxt
     // and ComparisonProof's float order under operators.
     internal static bool OperatorCompares(BoundType? type, KimiDeclarationId contract)
         => OperatorTableRuns(type, contract) || type is { IsFloatingPoint: true } || ReferenceEquals(type, BoundType.Never) ||
-            (contract == KimiDeclarationId.Equatable && ReferenceTypes.IsPointer(type));
+            (contract == KimiDeclarationId.Equatable && type is { IsPointer: true });
 
     // SPEC 13.4, 13.4.1, 12.4.3: how a comparison of Self under Equatable or Comparable runs, as source operators or the Contract's mapping
     // compare it.

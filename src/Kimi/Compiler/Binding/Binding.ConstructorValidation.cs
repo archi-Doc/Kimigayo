@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, CallInferenceFailure>? callInferenceFailures;
+    private readonly CallInferenceFailureRows callInferenceFailures;
 
     // Test/measurement switch for the full reference path. It never changes language behavior.
     internal bool UseConstructorReferenceCheck { get; set; }
@@ -58,7 +58,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private enum ConstructionCheck : byte
+    internal enum ConstructionCheck : byte
     {
         ChangedSelection,
         WaitingContext,
@@ -66,7 +66,7 @@ public sealed partial class Binding
         AcquisitionCorrelation,
     }
 
-    private readonly record struct CallInferenceFailure(FunctionKoto Selected, FunctionKoto? Other, BoundType? Construction, ConstructionCheck Check, int Slot = -1, BoundType? LeftBinding = null, BoundType? RightBinding = null);
+    internal readonly record struct CallInferenceFailure(FunctionKoto Selected, FunctionKoto? Other, BoundType? Construction, ConstructionCheck Check, int Slot = -1, BoundType? LeftBinding = null, BoundType? RightBinding = null);
 
     private static bool ContainsUnspellableType(BoundType type)
     {
@@ -256,7 +256,7 @@ public sealed partial class Binding
 
         bool Reject(FunctionKoto? other, ConstructionCheck check)
         {
-            this.FailExplained(ref this.callInferenceFailures, call, BindingFailure.ConstructorSelectionChanged, new CallInferenceFailure(selectedFunction, other, construction, check), true);
+            this.FailExplained(CallInferenceFailureRows.Family, call, BindingFailure.ConstructorSelectionChanged, new CallInferenceFailure(selectedFunction, other, construction, check), true);
             return false;
         }
     }
@@ -280,5 +280,16 @@ public sealed partial class Binding
                 : [CallOwnSlots(fact.Selected)[fact.Slot].Identifier]
             : [DiagnosticTypeName(fact.Construction!)];
         node.ReportIn(store, requirement, code, evidence: evidence, related: related, note: note);
+    }
+
+    /// <summary>The `callInferenceFailures` family's one accessor (DECISIONS BU-220): a pass family, the selection a fixed construction's
+    /// or shape contract's later check rejected, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
+    /// present row always has its Selected function). Its members keep the names its readers use.</summary>
+    private readonly struct CallInferenceFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<CallInferenceFailure, PassCounter> Family(ref NodeColumns columns) => ref columns.CallInferenceFailures;
+
+        internal bool TryGetValue(Koto call, out CallInferenceFailure failure) => (failure = binding.RecordedFact(call, Family)).Selected is not null;
     }
 }
