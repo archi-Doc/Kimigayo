@@ -1654,3 +1654,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   revision with an independent review. The cancellation bullet gains the second Ctrl+C and its exception, a publication SPEC
   §23.2.3 protects; the `tatara` row's Ctrl+C names its three states: a line, the prompt and awaited redirected input (since A4 a
   press there cancels the session, as any command's). The wording is the unit's and its review's, so no plan text is frozen.
+- Revision 4 (2026-11-21, the Middle's reviews of unit A4, C-427 (design), C-428 and C-429 (implementation), and the owner's
+  O-460 (a) 「(a) as recommended」; T's D-981): §2 gains decision 17 (a second Ctrl+C); §5 A4 as built: setup's input
+  (`-LlvmRoot`) and writes, the record's `tatara` member with `schemaVersion` 1, `LlvmBin` accepted and unread until B6, the
+  second Ctrl+C, the gate's head, and "the tool-launching code" becomes "the build's tool launching". Stage A is complete with
+  A4's window. Nothing frozen.
