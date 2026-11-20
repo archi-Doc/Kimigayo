@@ -234,8 +234,17 @@ public sealed partial class Binding
 
     // A projection at a by-value position, resolved in the walking node's scope (SPEC 8.6.1): a binding adds the edge to its node and
     // walks that node's summary under the Subject; a builtin output is walked; a pending projection is a summary part (AddInlinePart).
+    // R7-C3 (F's C2 ruling 304, the Middle's RP17 B1; SPEC 6.2, 8.2.3): a projection the node's scope identifies with another Type by a
+    // premise is that Type, read through the one identity judge (ClassForm, the walk's reading of identical Types), so `struct S2<V>`
+    // with `V.(Has2).Out is S2<V>` storing `V.(Has2).Out` reaches S2 again.
     private void VisitInlineProjection(InlineSummary summary, BoundType part, uint query)
     {
+        if (this.ClassForm(part, summary.Scope, out _) is { Kind: not BoundTypeKind.AssociatedProjection } identified)
+        {
+            this.VisitInlinePart(summary, identified, query);
+            return;
+        }
+
         var outcome = this.ProjectionSpecification(part, summary.Scope);
         if (outcome.Type is not { } specified)
         {

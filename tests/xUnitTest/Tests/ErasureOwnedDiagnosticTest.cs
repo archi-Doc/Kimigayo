@@ -262,8 +262,10 @@ public class ErasureOwnedDiagnosticTest
     // A1<Y>.(Has2).Out by a hop and tests Q<PH<A2<Y>>>.(K).B, then Q<i32>.(K).B, which is not deeper: valid, as its twin (it was
     // InternalInvariant_Kd at the closure). n4: an inner conformance at the end of a chain. mx2's hop step Q<H<...<i32>>>.(K).B is deeper
     // and no hop clause fails: no SPEC 8.3.3 record, so the use rests on the stored Type's located Unsupported_Kd until PLAN G369's exact
-    // re-entry test (it was InternalInvariant_Kd at the closure); mx2-identity reaches the same through an identity premise on a Type
-    // parameter; mx2-ctl reaches that root through one level.
+    // re-entry test (it was InternalInvariant_Kd at the closure). mx2-identity reached the same through an identity premise on a Type
+    // parameter until R7-C3: the one judge forms its hop (`Y.(Has2).Out` is `PH<W<W<V>>>`, ending at `V.(Has2).Out is Owned`), so it is
+    // valid and accepted (F's C2 ruling 304, the Middle's RP17 C1); mx2 keeps the located Unsupported_Kd. mx2-ctl reaches that root
+    // through one level.
     [Theory]
     [InlineData("mx1", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct A2<Y>\n    Self is Has2\n    associate Has2.Out is Q<i32>\n    let y: Y\nstruct A1<Y>\n    Self is Has2\n    associate Has2.Out is Q<PH<A2<Y>>>\n    let y: Y\nstruct S<Y>\n    Y is Owned\n    let p: PH<A1<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
     [InlineData("mx1-twin", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct A1<Y>\n    Self is Has2\n    associate Has2.Out is Q<i32>\n    let y: Y\nstruct S<Y>\n    Y is Owned\n    let p: PH<A1<Y>>\n    func inspect(a: S<Y>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "")]
@@ -321,6 +323,21 @@ public class ErasureOwnedDiagnosticTest
     [InlineData("guard", "mp-bad", MixedChain + MixedStore + "    let q: Missing\n    func inspect(a: S<Z, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        return\n", "*: let q: Missing | ...")]
     public void OwnedReachesAStoredProjection(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // R7-C3 (F's C2 ruling 304, the Middle's RP17 on Q-584: B1, C2; SPEC 6.2, 8.2.3, 15.6). y1: S2's storage `V.(Has2).Out` is S2<V>
+    // under its premise, so it reaches S2 again: InvalidInlineLayout_Kd at S2 (dev's; the inline walk reads the projection through the
+    // one judge, and failed before the fix: accepted). y4: S2's record with a concrete Z; Z's binding's formation `S2<Z>` records over
+    // S2's failure (the cycle is S2's under the identity; dev's InvalidInlineLayout_Kd at the binding becomes this record, DECISIONS
+    // Q13). da1/da2: the identified `T.(K).X` local is an i32 to A5 (dv1's counterpart, newly accepted da2). m4: mx2-identity's
+    // inspect reaches A5 (MovedPlace_Kd in place of the G369 Unsupported_Kd).
+    [Theory]
+    [InlineData("y1", "contract Has2\n    associate Out\nstruct S2<V>\n    V is Has2\n    V.(Has2).Out is S2<V>\n    let p: V.(Has2).Out\npublic func main() => ()\n", "InvalidInlineLayout_Kd struct | InvalidConstraint_Kd V.(Has2).Out | InvalidConstraint_Kd S2<V> | InvalidConstraint_Kd V.(Has2).Out")]
+    [InlineData("y4", "contract Has2\n    associate Out\nstruct S2<V>\n    V is Has2\n    V.(Has2).Out is S2<V>\n    let p: V.(Has2).Out\nstruct Z\n    Self is Has2\n    associate Has2.Out is S2<Z>\nfunc use(s: ref/S2<Z>) -> i32 => 0\npublic func main() => ()\n", "InvalidInlineLayout_Kd struct | InvalidConstraint_Kd V.(Has2).Out | InvalidConstraint_Kd S2<V> | InvalidConstraint_Kd V.(Has2).Out | InvalidConstraint_Kd S2<Z> | InvalidConstraint_Kd S2<Z>")]
+    [InlineData("da1", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc sink(v: ref/i32) -> i32 => 0\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    var c: T.(K).X = v\n    let r = c@ref\n    c = 5\n    return sink(r)\npublic func main() => ()\n", "ComparisonLoanConflict_Kd c = 5")]
+    [InlineData("da2", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc sink(v: ref/i32) -> i32 => 0\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    var c: T.(K).X = v\n    let r = c@ref\n    let k = sink(r)\n    c = 5\n    return k\npublic func main() => ()\n", "")]
+    [InlineData("m4", "contract Has2\n    associate Out\ncontract K\n    associate B\nstruct H<X>\n    let x: X\nstruct Q<X>\n    Self is K\n    associate K.B is H<X>\nstruct W<X>\n    X is Has2\n    Self is Has2\n    associate Has2.Out is X.(Has2).Out\n    let x: X\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S<Y, V>\n    Y is Has2\n    V is Has2\n    Y is Owned\n    V is Owned\n    Y.(Has2).Out is PH<W<W<V>>>\n    V.(Has2).Out is Owned\n    let p: PH<W<Y>>\n    func inspect(a: S<Y, V>) -> ()\n        let g: () -> () = func [a@move] () => ()\n        let b = a@move\n        return\n\npublic func main() -> ()\n    return\n", "MovedPlace_Kd a")]
+    public void AnIdentifiedTypeIsOneTypeForStorageAndA5(string id, string program, string records)
+        => Assert.Equal((id, records), (id, string.Join(" | ", Records(program))));
 
     private static string[] Records(string source) => [.. DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")];
 
