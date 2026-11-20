@@ -18,14 +18,12 @@ namespace Kimi.Compiler.Mir;
 // Type's guard; a call input's key is the called function's parameter key (InputKey), so a layer its own Type parameters' bindings hide
 // adds no reach; a holder that may afterwards hold the call's own pointer at such a layer reaches storage the body does not own, with the
 // record of that layer's pointee (OwnPointer; SPEC 15.6.4's composition), and a key with a part that is no layer the walked Type expression
-// writes keeps the declared step (PunKey.Declared; SPEC 5.7 Calls). The key table keeps every layer's row for all its readers; only W's
-// per-row reads (ReadAt's ReadPart, OwnPointer) skip a Members layer's own row (a raw layer stating an Origin other than `self` and
-// `static`: punPastMembers; SPEC 5.2.1: these rules apply only to a layer that states no Origin). At the first step the reading path's Type
-// is the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate (MirBorrows.PunTypes'
-// Designates) is read punned (SPEC 5.2), its state read as well at the guard of that Type's raw pointer raw Places, each a layer read at
-// its own key (Reading; never the whole Type's guard: a part that is no raw Place is not read), and storage the body does not own is
-// reached, with those layers' record, where that guard steps over an `owner` Scalar's byte or a byte that a punned write may not change, a
-// reference's or a handle's (Punned; MirBorrows.PunTypes' PlaceBytes).
+// writes keeps the declared step (PunKey.Declared; SPEC 5.7 Calls). At the first step the reading path's Type is the input's pointee or
+// referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate (MirBorrows.PunTypes' Designates) is read punned
+// (SPEC 5.2), its state read as well at the guard of that Type's raw pointer raw Places, each a layer read at its own key (Reading; never
+// the whole Type's guard: a part that is no raw Place is not read), and storage the body does not own is reached, with those layers'
+// record, where that guard steps over an `owner` Scalar's byte or a byte that a punned write may not change, a reference's or a handle's
+// (Punned; MirBorrows.PunTypes' PlaceBytes).
 // No element carries a Type.
 // A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
 // reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
@@ -75,13 +73,13 @@ internal sealed partial class MirBorrows
     private int[] writableBy = []; // By holder: the closure that reached it through no shared Loan (Φ_W's strip).
     private bool partsWritable; // Whether a part read through no shared Loan carries Φ_W (Parts), which the parts' union then keeps.
     private int closures; // The closures made (Chain).
-    private int[] writing = []; // By slot: the W walk that reached it.
+    private long[] writing = []; // By slot: the W walk that reached it.
     private byte[] writingVia = []; // By slot: how that walk reached it (ViaRoot, ViaPast).
     private (BoundType? Type, bool Several)[] writingPlace = []; // By slot: the erased case Type of the storage by which that walk
                                                                  // reached it past a holder (a reading layer's, ReadPart; else the
                                                                  // Place the reaching Loan names, PlaceType), or several.
-    private int[] keyedBy = []; // By slot: the W walk that reads it on at a reading key, not by the declared step.
-    private int walks; // The W walks made.
+    private long[] keyedBy = []; // By slot: the W walk that reads it on at a reading key, not by the declared step.
+    private long walks; // The W walks made; never reset, so a long: W's read-once mark is the ordered level 2 · walks (an int wraps at 2^31 walks).
     private bool walkResting; // Whether the W walk read a set that rests on an undecided write (Φ_M, Φ_U; MirBorrows.Puns).
     // Whether the W walk's call composes (SPEC 15.6.4: every call but those whose writes SPEC states): CallRetention.Composes of the plan
     // whose output the walk stores through, a Call's or a drop row's (Keep), or the Call's own (CarriedInput), set where the walk begins;
@@ -747,12 +745,8 @@ internal sealed partial class MirBorrows
 
         for (var j = 0; j < facts.FirstCount; j++)
         {
-            // A Members layer's own row is no layer W reads here (the header).
-            if (!this.punPastMembers[facts.PastStart + j])
-            {
-                this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
-                this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
-            }
+            this.ReadPart(Placed(state[node.Slot]), guard, readOn, node.Key, j, output);
+            this.ReadPart(Shared(state[node.Slot]), guard, readOn, node.Key, j, output);
         }
 
         if (guard == MirWrites.Through && this.walkComposes)
@@ -980,8 +974,7 @@ internal sealed partial class MirBorrows
         {
             var pointee = this.punViewTypes[facts.FirstStart + j];
             var past = this.punPastKeys[facts.PastStart + j];
-            if (this.punPastRaw[facts.PastStart + j] && !this.punPastMembers[facts.PastStart + j] &&
-                (this.KeptEntry(past, output) is not null || this.Holds(pointee, out _)))
+            if (this.punPastRaw[facts.PastStart + j] && (this.KeptEntry(past, output) is not null || this.Holds(pointee, out _)))
             {
                 this.Written(Escaped, -1, ViaPast, this.EntryName(past, output));
             }
@@ -1004,7 +997,7 @@ internal sealed partial class MirBorrows
     // part it is; Written is idempotent, so a part read again writes nothing more.
     private void Read(int part, MirWrites guard)
     {
-        if (Steps(ref this.walkedBy, part, (2L * this.walks) + (guard == MirWrites.Through ? 1 : 0)))
+        if (Steps(ref this.walkedBy, part, (2 * this.walks) + (guard == MirWrites.Through ? 1 : 0)))
         {
             this.Write(part, ViaPast, guard);
         }

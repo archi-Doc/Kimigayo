@@ -7,8 +7,7 @@ namespace Kimi.Compiler.Mir;
 // A5's pun rule, its Place keys (PLAN G667b; contract in MirBorrows.Puns.cs; SPEC 5.7 Calls). Responsibility: Binding's facts at a
 // Place's key (TyCtxt.OwnLayers), folded once per program version (R4-M140): whether a raw layer is at the Place's own address, what
 // its layers state (Stated; AnyStated, which A5's storing rule reads at a store's destination, MirBorrows.Storing), the Types a write through
-// them writes and the keys past them, each past key with whether its layer is raw and whether it is a Members layer (a raw layer stating
-// an Origin other than `self` and `static`, whose row W's per-row reads skip), a hidden layer (OwnLayer.Hidden) with neither, and
+// them writes and the keys past them, each past key with whether its layer is raw, a hidden layer (OwnLayer.Hidden) with neither, and
 // whether every part there is hidden (WhollyHidden: a value that adds no reach of its own);
 // whether W reads a holder at the key by the declared step (Declared: a part there is no layer the walked Type expression writes);
 // a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run; a call input's key (InputKey);
@@ -22,10 +21,6 @@ internal sealed partial class MirBorrows
     private readonly List<OwnLayer> punLayers = []; // OwnLayers' scratch.
     private readonly List<PlaceKey> punPastKeys = []; // The keys past each key's writable entries (PunKey's spans).
     private readonly List<bool> punPastRaw = []; // Beside punPastKeys: whether the layer is a raw layer (else an exclusive borrow).
-    // Beside punPastKeys: whether the row is a Members layer's own (a raw layer stating an Origin other than `self` and `static`), which
-    // only W's per-row reads skip (MirBorrows.Reach's ReadAt, OwnPointer). A second bool, not a row-kind column with punPastRaw: Keyed
-    // reads punPastRaw too, so one column would reach a reader past the two that skip (the third design review's T3).
-    private readonly List<bool> punPastMembers = [];
     private readonly List<int> punWalk = []; // Below's walk: key indices.
     private int[] entryKeys = []; // Per run: an entry's key index plus one (0: not yet read).
     private int punRun = -1; // The run whose scans and entry keys the tables hold.
@@ -72,7 +67,6 @@ internal sealed partial class MirBorrows
             this.punViewTypes.Clear();
             this.punPastKeys.Clear();
             this.punPastRaw.Clear();
-            this.punPastMembers.Clear();
         }
 
         if (this.punRun != this.run)
@@ -172,7 +166,6 @@ internal sealed partial class MirBorrows
                 this.punViewTypes.Add(cases.Type(to));
                 this.punPastKeys.Add(past);
                 this.punPastRaw.Add(layer is not null);
-                this.punPastMembers.Add(layer is not null && step is HoldStep.Shared or HoldStep.Exclusive);
             }
         }
 
