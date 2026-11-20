@@ -1,9 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Text;
 using Kimi;
 using Kimi.Command;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace XunitTest;
@@ -91,6 +95,23 @@ public sealed class CommandExecutionTest : IDisposable
         Environment.ExitCode = 0;
         Assert.Equal(130, exit);
         Assert.Contains("Command cancelled.", console.Text, StringComparison.Ordinal);
+    }
+
+    // Kimigayo.RunEnded (Tatara unit SP1) runs once per run attempt, also when no program ran: here the build fails.
+    [Fact]
+    public async Task ARunWhoseBuildFailsCallsRunEndedOnce()
+    {
+        var kimigayo = new Kimigayo(new DiagnosticContractTest.DiagnosticConsole());
+        var calls = 0;
+        kimigayo.RunEnded = () => calls++;
+        var project = this.Write("Hello");
+        File.WriteAllText(Path.ChangeExtension(project, ".kimi"), "func f( => ()");
+        Environment.ExitCode = 0;
+        await new RunCommand(null!, kimigayo, new Solution(kimigayo)).Execute(new(), [project], TestContext.Current.CancellationToken);
+        var exit = Environment.ExitCode;
+        Environment.ExitCode = 0;
+        Assert.Equal(1, exit);
+        Assert.Equal(1, calls);
     }
 
     private async Task<int> Execute(string origin, Kimigayo kimigayo, string project)
@@ -230,6 +251,84 @@ public sealed class CommandExecutionTest : IDisposable
             var exit = Environment.ExitCode;
             Environment.ExitCode = 0;
             Assert.Equal(2, exit);
+        }
+
+        // Kimigayo.RunEnded (Tatara unit SP1): a cancelled run <file.exe> calls it once, after its program ended (RunExecutable kills the
+        // tree and drains the output first) and before "Command cancelled.", and returns 130 (after a cancellation the outcome is the
+        // cancellation). The program is the test apphost's sleeping probe (TestProcessRecoveryTest.ProcessProbe): run passes no argument,
+        // so the row sets the probe's environment while the program starts (this collection runs alone).
+        [Fact]
+        public async Task ACancelledRunCallsRunEndedAfterItsProgramAndBeforeItsResult()
+        {
+            Assert.SkipUnless(OperatingSystem.IsWindows(), "The probe runs on Windows.");
+            var executable = Path.ChangeExtension(typeof(CommandExecutionTest).Assembly.Location, ".exe");
+            var name = Path.GetFileNameWithoutExtension(executable);
+            var before = Process.GetProcessesByName(name).Select(static x => x.Id).ToHashSet();
+            var readyName = "kimi-run-ready-" + Guid.NewGuid().ToString("N");
+            using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, readyName);
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            var console = new DiagnosticContractTest.DiagnosticConsole();
+            var kimigayo = new Kimigayo(console);
+            Process? program = null;
+            bool? ended = null;
+            kimigayo.RunEnded = () =>
+            {
+                ended = program?.HasExited;
+                console.WriteLine("RunEnded");
+            };
+
+            Environment.SetEnvironmentVariable("KIMI_TEST_PROCESS_PROBE", "sleep");
+            Environment.SetEnvironmentVariable("KIMI_TEST_PROCESS_READY", readyName);
+            Environment.ExitCode = 0;
+            var run = new RunCommand(null!, kimigayo, new Solution(kimigayo)).Execute(new(), [executable], cancel.Token);
+            try
+            {
+                Assert.True(await Task.Run(() => ready.WaitOne(TimeSpan.FromSeconds(30)), TestContext.Current.CancellationToken), "The program did not start.");
+                program = Assert.Single(Process.GetProcessesByName(name), x => !before.Contains(x.Id) && Runs(x, executable));
+                _ = program.SafeHandle; // Held, so HasExited reads this process after it ends.
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("KIMI_TEST_PROCESS_PROBE", null);
+                Environment.SetEnvironmentVariable("KIMI_TEST_PROCESS_READY", null);
+                cancel.Cancel();
+                await run;
+            }
+
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            Assert.Equal(130, exit);
+            Assert.True(ended);
+            Assert.Equal("RunEnded\nCommand cancelled.\n", console.Text);
+        }
+
+        // A redirected kimi tatara session installs no Kimigayo.RunEnded (Tatara unit SP1: only a terminal session replaces it): its run
+        // line calls the action installed before the session, which is still current at its end.
+        [Fact]
+        public async Task ARedirectedSessionLeavesRunEnded()
+        {
+            var provider = TataraCommandTest.Unit(new TataraCommandTest.SessionConsole()).Context.ServiceProvider;
+            var kimigayo = provider.GetRequiredService<Kimigayo>();
+            var calls = 0;
+            Action action = () => calls++;
+            kimigayo.RunEnded = action;
+            var input = new MemoryStream(Encoding.UTF8.GetBytes($"run \"{this.directory.Replace('\\', '/')}/missing.exe\"\n"));
+            Assert.Equal(1, await provider.GetRequiredService<TataraCommand>().Run(input, TestContext.Current.CancellationToken));
+            Assert.Equal(1, calls);
+            Assert.Same(action, kimigayo.RunEnded);
+        }
+
+        // Whether the process runs the file; one that cannot be read (another user's, or one that ended) does not.
+        private static bool Runs(Process process, string executable)
+        {
+            try
+            {
+                return string.Equals(process.MainModule?.FileName, executable, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+            {
+                return false;
+            }
         }
     }
 }

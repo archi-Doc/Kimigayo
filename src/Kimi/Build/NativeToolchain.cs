@@ -102,6 +102,11 @@ internal static partial class NativeToolchain
         return await RunExecutable(paths.Executable, Path.GetFullPath(project.Directory.Length == 0 ? "." : project.Directory), cancellationToken);
     }
 
+    // Runs a program and returns its exit code; its output is copied to Kimi's raw standard streams and is complete when this returns
+    // or throws: the copies take no token and are awaited after Wait, which on cancellation kills the tree first, so the pipes reach
+    // their end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome
+    // and the cancellation is rethrown. A descendant that escaped the kill's walk (its parent exited first) and holds the output keeps
+    // a cancelled run waiting until it exits or a second Ctrl+C ends the process.
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -119,10 +124,20 @@ internal static partial class NativeToolchain
             RedirectStandardError = true,
         };
         using var process = Process.Start(start) ?? throw new IOException("Cannot start: " + executable);
-        var stdout = process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput(), cancellationToken);
-        var stderr = process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError(), cancellationToken);
-        await Wait(process, cancellationToken);
-        await Task.WhenAll(stdout, stderr);
+        var output = Task.WhenAll(
+            process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
+            process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+        try
+        {
+            await Wait(process, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            await output.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            throw;
+        }
+
+        await output;
         return process.ExitCode;
     }
 
