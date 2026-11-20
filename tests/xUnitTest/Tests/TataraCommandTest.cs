@@ -35,8 +35,8 @@ public sealed class TataraCommandTest : IDisposable
     [InlineData("build \"With space/Lib.kimiproj\"\n", 0, "Project: Lib (Lib.kimiproj)")]
     public async Task ALineIsGatedByItsFirstWord(string lines, int exit, string? expected)
     {
-        this.WriteLibrary("Lib");
-        this.WriteLibrary("With space");
+        this.Library("Lib");
+        this.Library("With space");
         var (code, text, _) = await this.Session(lines + "build Lib/Lib.kimiproj\nexit\n");
         Assert.Equal(exit, code);
         if (expected is not null)
@@ -62,7 +62,7 @@ public sealed class TataraCommandTest : IDisposable
     // reads the input's later lines); a carriage return before the line feed and a byte order mark at the start are dropped.
     [Theory]
     [InlineData("exit\nrest", 5)]
-    [InlineData("﻿exit\r\nrest", 9)]
+    [InlineData("\uFEFFexit\r\nrest", 9)]
     [InlineData("\n", 1)]
     [InlineData("", 0)]
     public async Task TheSessionEndsAtExitOrTheEndAndReadsNoFurther(string input, int position)
@@ -83,11 +83,11 @@ public sealed class TataraCommandTest : IDisposable
         var session = Path.Combine(this.directory, "session");
         foreach (var root in new[] { single, session })
         {
-            this.WriteLibrary(Path.Combine(root, "Lib"));
+            WriteLibrary(Path.Combine(root, "Lib"));
         }
 
         var console = new SessionConsole();
-        var product = Unit(console, null);
+        var product = Unit(console);
         var current = Environment.CurrentDirectory;
         Environment.CurrentDirectory = single;
         try
@@ -114,9 +114,11 @@ public sealed class TataraCommandTest : IDisposable
     [Fact]
     public async Task EachLineGetsItsOwnSolutionAndTheSessionCountsFailures()
     {
-        this.WriteLibrary("Lib");
-        var (code, _, _) = await this.Session("build Lib/Lib.kimiproj\nbuild Lib/Lib.kimiproj\n", solutions: 2);
+        this.Library("Lib");
+        var console = new SessionConsole();
+        var (code, _, _) = await Session("build Lib/Lib.kimiproj\nbuild Lib/Lib.kimiproj\n", this.directory, console, TestContext.Current.CancellationToken);
         Assert.Equal(0, code);
+        Assert.Equal(2, console.Solutions);
         (code, _, _) = await this.Session("build Lib/Lib.kimiproj\nbuild Missing.kimiproj\nbuild Lib/Lib.kimiproj\n");
         Assert.Equal(1, code);
     }
@@ -126,16 +128,20 @@ public sealed class TataraCommandTest : IDisposable
     [Fact]
     public async Task APressDuringALineCancelsOnlyThatLine()
     {
-        this.WriteLibrary("Lib");
+        this.Library("Lib");
         var previous = Program.CancelKey;
         var pressed = 0;
-        var (code, text, _) = await this.Session("build Lib/Lib.kimiproj\nbuild Lib/Lib.kimiproj\n", onProject: () =>
+        var console = new SessionConsole
         {
-            if (pressed++ == 0)
+            OnProject = () =>
             {
-                Program.CancelKey();
-            }
-        });
+                if (pressed++ == 0)
+                {
+                    Program.CancelKey();
+                }
+            },
+        };
+        var (code, text, _) = await Session("build Lib/Lib.kimiproj\nbuild Lib/Lib.kimiproj\n", this.directory, console, TestContext.Current.CancellationToken);
         Assert.Same(previous, Program.CancelKey);
         Assert.Equal(1, code);
         Assert.Equal(1, Count(text, "Command cancelled."));
@@ -143,22 +149,37 @@ public sealed class TataraCommandTest : IDisposable
         Assert.Equal(2, Count(text, "Project: Lib (Lib.kimiproj)"));
     }
 
-    // The second press during a cancelled line ends the process at once with 130 by TerminateProcess on the current process: a child
-    // test process ends itself through the same primitive.
+    // The root's termination (the window's close, logoff: the token Run takes) cancels the running line and ends the session: the second
+    // line never runs.
     [Fact]
-    public async Task EndProcessEndsTheProcessWith130()
+    public async Task TheRootsTerminationEndsTheSession()
+    {
+        this.Library("Lib");
+        var previous = Program.CancelKey;
+        using var root = new CancellationTokenSource();
+        var console = new SessionConsole { OnProject = root.Cancel };
+        var (code, text, _) = await Session("build Lib/Lib.kimiproj\nbuild Lib/Lib.kimiproj\n", this.directory, console, root.Token);
+        Assert.Same(previous, Program.CancelKey);
+        Assert.Equal(1, code);
+        Assert.Equal(1, Count(text, "Command cancelled."));
+        Assert.Equal(1, Count(text, "Project: Lib (Lib.kimiproj)"));
+    }
+
+    // A second press during a line already cancelled ends the process at once with 130 by TerminateProcess on the current process: a
+    // child test process runs a session whose line's build presses twice.
+    [Fact]
+    public async Task ASecondPressDuringALineEndsTheProcessWith130()
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!)
         {
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
         };
-        var assembly = typeof(TataraCommandTest).Assembly.Location;
         if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
         {
-            start.ArgumentList.Add(assembly);
+            start.ArgumentList.Add(typeof(TataraCommandTest).Assembly.Location);
         }
 
-        foreach (var argument in new[] { "-method", "XunitTest.TataraCommandTest+Child.EndsItself", "-explicit", "only" })
+        foreach (var argument in new[] { "-method", "XunitTest.TataraCommandTest+Child.PressesTwiceDuringALine", "-explicit", "only" })
         {
             start.ArgumentList.Add(argument);
         }
@@ -170,13 +191,18 @@ public sealed class TataraCommandTest : IDisposable
         Assert.True(process.ExitCode == 130, await output);
     }
 
-    internal static CommandUnit.Product Unit(SessionConsole console, Action<IServiceCollection>? configure)
+    // A unit built as the CLI builds it, with the host's console replaced; the console counts the Solution objects it creates.
+    internal static CommandUnit.Product Unit(SessionConsole console)
     {
         var builder = new CommandUnit.Builder();
         builder.Configure(context =>
         {
             context.Services.AddSingleton<IConsoleService>(console);
-            configure?.Invoke(context.Services);
+            context.Services.AddTransient(x =>
+            {
+                console.Solutions++;
+                return new Solution(x.GetRequiredService<Kimigayo>());
+            });
         });
         return (CommandUnit.Product)builder.Build();
     }
@@ -199,31 +225,18 @@ public sealed class TataraCommandTest : IDisposable
             .Select(x => Path.GetRelativePath(root, x) + "\n" + File.ReadAllText(x).Replace(root.Replace("\\", "\\\\", StringComparison.Ordinal), "<W>", StringComparison.Ordinal)
                 .Replace(root, "<W>", StringComparison.Ordinal)));
 
-    // A session over the input in the folder (this test's by default); solutions, when given, is the number of Solution objects the
-    // session must create; onProject runs when a line's build prints its project line.
-    private async Task<(int Code, string Text, MemoryStream Input)> Session(string input, string? folder = null, int? solutions = null, Action? onProject = null)
+    // A session over the input in the folder, with the root's token.
+    internal static async Task<(int Code, string Text, MemoryStream Input)> Session(string input, string folder, SessionConsole console, CancellationToken cancellationToken)
     {
-        var console = new SessionConsole { OnProject = onProject };
-        var created = 0;
-        var product = Unit(console, services => services.AddTransient(x =>
-        {
-            created++;
-            return new Solution(x.GetRequiredService<Kimigayo>());
-        }));
-        var command = product.Context.ServiceProvider.GetRequiredService<TataraCommand>();
+        var command = Unit(console).Context.ServiceProvider.GetRequiredService<TataraCommand>();
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(input));
         var current = Environment.CurrentDirectory;
-        Environment.CurrentDirectory = folder ?? this.directory;
+        Environment.CurrentDirectory = folder;
         try
         {
             Environment.ExitCode = 0;
-            var code = await command.Run(stream, TestContext.Current.CancellationToken);
+            var code = await command.Run(stream, cancellationToken);
             Assert.Equal(0, Environment.ExitCode);
-            if (solutions is { } expected)
-            {
-                Assert.Equal(expected, created);
-            }
-
             return (code, console.Text, stream);
         }
         finally
@@ -232,19 +245,39 @@ public sealed class TataraCommandTest : IDisposable
         }
     }
 
-    private void WriteLibrary(string folder)
+    // A Library project in the folder: one function, no native build.
+    internal static void WriteLibrary(string path)
     {
-        var path = Path.Combine(this.directory, folder);
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, "Lib.kimiproj"), $"OutputKind=\"Library\" Targets={{\"{WindowsProfile.Target}\"}}");
         File.WriteAllText(Path.Combine(path, "lib.kimi"), "func one() -> i32 => 1\n");
     }
 
-    // The child process of EndProcessEndsTheProcessWith130: it ends itself, so it never reports a result.
+    private Task<(int Code, string Text, MemoryStream Input)> Session(string input, string? folder = null)
+        => Session(input, folder ?? this.directory, new SessionConsole(), TestContext.Current.CancellationToken);
+
+    private void Library(string folder) => WriteLibrary(Path.Combine(this.directory, folder));
+
+    // The child process of ASecondPressDuringALineEndsTheProcessWith130: its session's line presses twice, which ends the process with
+    // 130, so it never reports a result.
     public sealed class Child
     {
         [Fact(Explicit = true)]
-        public void EndsItself() => TataraCommand.EndProcess();
+        public async Task PressesTwiceDuringALine()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-press-" + Guid.NewGuid().ToString("N"));
+            WriteLibrary(Path.Combine(directory, "Lib"));
+            var console = new SessionConsole
+            {
+                OnProject = () =>
+                {
+                    Program.CancelKey();
+                    Program.CancelKey();
+                },
+            };
+            await Session("build Lib/Lib.kimiproj\n", directory, console, TestContext.Current.CancellationToken);
+            Assert.Fail("The second press did not end the process.");
+        }
     }
 
     // The host's console: its text, with a hook on a build's project line (the moment a line's build runs).
@@ -259,6 +292,8 @@ public sealed class TataraCommandTest : IDisposable
         public bool EnableColor { get; set; }
 
         public Action? OnProject { get; init; }
+
+        public int Solutions { get; set; }
 
         public void Write(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 

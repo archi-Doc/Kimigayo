@@ -17,7 +17,8 @@ namespace Kimi.Command;
 // ended the session). Invariants: a line is a command line, parsed and executed by CommandUnit.Product.Execute with a new DI scope's
 // provider and the line's own token, so nothing is reused between lines but the process's library per target, Tatara's loaded DLL
 // per path and its refusal, Kimigayo, the current directory and the runtime; the session owns Ctrl+C while it runs (Program.CancelKey)
-// and restores it at its end. Prohibitions: no build rule of its own; the loop catches nothing (CommandExecution classifies a
+// and restores it at its end (a press while the redirected reader waits for input does nothing: such a session ends at its input's
+// end, at exit or at the window's close; at a terminal only exit and the window's close end it). Prohibitions: no build rule of its own; the loop catches nothing (CommandExecution classifies a
 // command's failures); a refusal is read from Tatara, never from a message's text. Temporary (Tatara A3 to A4): the session sets
 // Kimigayo.NativeExecutor to Tatara's factory; unit A4 makes Tatara's executor the build's.
 [SimpleCommand("tatara")]
@@ -70,8 +71,8 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
         {
             while (!cancellationToken.IsCancellationRequested && await this.ReadLine(input, cancellationToken).ConfigureAwait(false) is { } line)
             {
-                var words = SimpleParserHelper.SplitArguments(line, default);
-                if (words.Length == 0)
+                var words = line.Length > LineLimit ? null : SimpleParserHelper.SplitArguments(line, default); // The limit first, for every line.
+                if (words is [])
                 {
                     continue; // An empty line.
                 }
@@ -80,7 +81,7 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
                     break;
                 }
 
-                var code = Refusal(line, words) is { } error ? this.Fail(error) : await this.RunLine(line, cancellationToken).ConfigureAwait(false);
+                var code = Refusal(words) is { } error ? this.Fail(error) : await this.RunLine(line, cancellationToken).ConfigureAwait(false);
                 if (code != 0)
                 {
                     failed = true;
@@ -110,11 +111,11 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool TerminateProcess(nint process, uint exitCode);
 
-    // The gate (§2.1), on SimpleCommandLine's own split of a nonempty line other than exit: build and run (case-insensitive, as command
-    // names compare) are command lines; anything else is that line's error.
-    private static string? Refusal(string line, string[] words)
+    // The gate (§2.1), on SimpleCommandLine's own split of a nonempty line other than exit (null: a line above the limit, not split):
+    // build and run (case-insensitive, as command names compare) are command lines; anything else is that line's error.
+    private static string? Refusal(string[]? words)
     {
-        if (line.Length > LineLimit)
+        if (words is null)
         {
             return $"The line is longer than {LineLimit} characters.";
         }
@@ -233,7 +234,7 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
         }
 
         var line = CollectionsMarshal.AsSpan(bytes);
-        if (!this.started && line.StartsWith("﻿"u8))
+        if (!this.started && line.StartsWith("\uFEFF"u8))
         {
             line = line[3..];
         }

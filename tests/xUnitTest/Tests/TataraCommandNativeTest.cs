@@ -39,7 +39,7 @@ public sealed class TataraCommandNativeTest : IDisposable
         {
             Edit(single, i);
             var console = new TataraCommandTest.SessionConsole();
-            var product = TataraCommandTest.Unit(console, null);
+            var product = TataraCommandTest.Unit(console);
             codes.Add(await InFolder(single, async () =>
             {
                 await product.Execute(lines[i], product.Context.ServiceProvider, TestContext.Current.CancellationToken);
@@ -129,7 +129,7 @@ public sealed class TataraCommandNativeTest : IDisposable
     private static async Task<(int Code, string Text)> Session(string folder, (string Line, Action? Before)[] lines, Action? onProject = null)
     {
         var console = new TataraCommandTest.SessionConsole { OnProject = onProject };
-        var product = TataraCommandTest.Unit(console, null);
+        var product = TataraCommandTest.Unit(console);
         var command = product.Context.ServiceProvider.GetRequiredService<TataraCommand>();
         var code = await InFolder(folder, () => command.Run(new LineStream(lines), TestContext.Current.CancellationToken));
         return (code, console.Text);
