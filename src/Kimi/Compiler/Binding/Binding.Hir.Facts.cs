@@ -46,8 +46,9 @@ public sealed partial class Binding
     /// its entry, step, iterator symbol and decomposition; a match or a try its current plan, valid (no Pattern or guard failed) and not
     /// pending; a dictionary literal its lookup; a closure its definition; a conversion its binding (a case adaptation its plan); a Tuple
     /// literal its Type, an array literal a fixed-array Type or, without a fill, an Array Type, and an enum Case construction its plan; a
-    /// declared local its symbol; a name its symbol and, but for a function's name, whose value its consumer forms from the selection, its
-    /// Type (DECISIONS Z16: a name of a binding without a Type is an Error, which rests on that binding's failure).</summary>
+    /// declared local its symbol; a name its symbol and, but for a function's name Binding resolved, whose value its consumer forms from the
+    /// selection, its Type (DECISIONS Z16: a name of a binding without a Type, or of a function Binding left unresolved, is an Error, which
+    /// rests on that binding's failure or on its signature's).</summary>
     /// <param name="node">An evaluated node.</param>
     /// <param name="op">The Op its form calls for.</param>
     /// <returns>Whether the node has its facts.</returns>
@@ -107,7 +108,8 @@ public sealed partial class Binding
             case HirOp.Let:
                 return HirTables.Symbol(node) is not null;
             case HirOp.Name:
-                return HirTables.Symbol(node) is { } symbol && (symbol.Kind == BindingSymbolKind.Function || HirTables.Meaning(node) is not null) &&
+                return HirTables.Symbol(node) is { } symbol &&
+                    (HirTables.Meaning(node) is not null || (symbol.Kind == BindingSymbolKind.Function && node.BindingState == BindingState.Resolved)) &&
                     (symbol.Kind != BindingSymbolKind.Storage || (symbol.Declaration is { } property && HirTables.Symbol(property) is not null));
             default:
                 return true;

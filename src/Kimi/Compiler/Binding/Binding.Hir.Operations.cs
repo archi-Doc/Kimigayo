@@ -233,10 +233,11 @@ public sealed partial class Binding
         // in a qualifier is none) and rests on causes (RestingCauses), which keeps its own children by this rule. Stay replaced: an Error
         // Binding left unresolved without causes of its own, such as a closure whose parameters the failed call was to give their Types,
         // whose value rests on the parent's failure; a part without a Type that is no Error, since no destination Type holds it (a
-        // construct, PLAN G121's kept-construct design, its parts' problems lost; a noinit); a function's name, whose value its consumer
-        // forms (its erasure, which a kept part has none of); and a part holding a jump published without failure whose target row is the Error, a form a jump can
-        // target (StructuralCompletion.IsTransferTarget), since the builder resolves such a row against the targets it opened, and an
-        // Error opens none (its InternalInvariant_Kd; DECISIONS BU-106).
+        // construct, PLAN G121's kept-construct design, its parts' problems lost; a noinit); a function's name Binding resolved, whose value
+        // its consumer forms (its erasure, which a kept part has none of; one left unresolved is an Error, HasFacts); and a part holding a
+        // jump published without failure whose target row is the Error, a form a jump can target (StructuralCompletion.IsTransferTarget),
+        // since the builder resolves such a row against the targets it opened, and an Error opens none (its InternalInvariant_Kd;
+        // DECISIONS BU-106).
         private bool Keeps(Koto child, Koto parent)
         {
             var op = binding.OpOf(child);
