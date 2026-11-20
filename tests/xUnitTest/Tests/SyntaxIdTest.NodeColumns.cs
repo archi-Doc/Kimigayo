@@ -201,7 +201,7 @@ public partial class SyntaxIdTest
     // reached by two paths (AssociatedIdentityTest); InferenceFailures, an inference hole no implementation fills; CallableConstraints,
     // a callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); ClauseConstraints, a Function Item
     // reference whose Type argument's clause is refuted (ConstraintBindingTest); B2b-1's UnboundSlots, a call whose slot nothing binds,
-    // and UniqIndexing, a Dictionary's user index).
+    // and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -243,6 +243,7 @@ public partial class SyntaxIdTest
     [InlineData("ClauseConstraints", "struct K<T>\n    T is Copy\n    public let t: T\nfunc id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<K<string>>\n    return 0\n", DiagnosticCode.UnsatisfiedConstraint_Kd)]
     [InlineData("UnboundSlots", "func make<T>() -> i32 => 1\nlet x = make()\n", DiagnosticCode.UnboundTypeArgument_Kd)]
     [InlineData("UniqIndexing", "let d: Dictionary<i32, i32> = [1: 2]\nlet x = d[1]\n")]
+    [InlineData("RequirementGroups", "contract Reader\n    func read(self: ref/Self) -> i32\nfunc f<T>(x: ref/T) -> i32\n    T is Reader\n    return x.read()\n")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program, DiagnosticCode? reported = null)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)

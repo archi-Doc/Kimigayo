@@ -78,6 +78,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ClauseConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UnboundSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UniqIndexing"] = "never written: the library indexes no user Indexable and no view",
+        ["NodeColumns.RequirementGroups"] = "released at the freeze: the library pass's requirement groups, its member lookups' working state, no reader reads after it (R7-N5 B3-2; TheFreezeReleasesTheLibrarysWorkingState)",
     };
 
     // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
@@ -465,11 +466,11 @@ public partial class KimiLibraryShapeTest
     // R7-N5 B2a-2 (B's rulings 1 and 6 on C-403, the Front's R1 and R4; DECISIONS BU-220 as amended): a working-state family has no
     // library base. The library pass writes its rows in the freeze compilation's Binding (whose pool keeps the result contexts it
     // rented; with either Release row skipped, NoLaterStepWritesTheLibraryLayer and TheLibraryLayerAfterARestartIsTheEmptyPrograms
-    // find the library pass's 125 receiver operations and 204 result contexts) and the freeze releases the library's ResultContexts and
-    // ReceiverOperations columns: stamp 0, no row and no arena. Counters are per Binding (R8-M53): a reading compilation's first run
-    // has the library pass's counter value, 1 (FreezeLibrary refuses a rerun), so a column the freeze left at that stamp would answer
-    // the library pass's rows (and the freeze Binding's pooled contexts) there; released, no library node's row answers, while the
-    // program's own `if` keeps its row.
+    // find the library pass's 125 receiver operations and 204 result contexts) and the freeze releases the library's ResultContexts,
+    // ReceiverOperations and RequirementGroups (B3-2: its 30 groups at library member accesses) columns: stamp 0, no row and no
+    // arena. Counters are per Binding (R8-M53): a reading compilation's first run has the library pass's counter value, 1 (FreezeLibrary
+    // refuses a rerun), so a column the freeze left at that stamp would answer the library pass's rows (and the freeze Binding's pooled
+    // contexts) there; released, no library node's row answers, while the program's own `if` keeps its row.
     [Fact]
     public void TheFreezeReleasesTheLibrarysWorkingState()
     {
@@ -484,10 +485,12 @@ public partial class KimiLibraryShapeTest
         var families = library.Kotonoha.Syntax.Hir.Families;
         Released(families.ResultContexts);
         Released(families.ReceiverOperations);
+        Released(families.RequirementGroups);
         var nodes = library.Kotonoha.Syntax.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
         Assert.Contains(nodes, static x => x is IfKoto or MatchKoto or DoKoto or LoopKoto);
         Assert.All(nodes, x => Assert.Null(families.ResultContexts.Get(x.SyntaxId, c.Binding)));
         Assert.All(nodes, x => Assert.Null(families.ReceiverOperations.Get(x.SyntaxId, c.Binding).Source));
+        Assert.All(nodes, x => Assert.Null(families.RequirementGroups.Get(x.SyntaxId, c.Binding)));
         var target = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().Single();
         Assert.NotNull(c.Kotonoha.Syntax.Hir.Families.ResultContexts.Get(target.SyntaxId, c.Binding));
 

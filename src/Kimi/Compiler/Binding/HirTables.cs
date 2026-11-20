@@ -350,6 +350,7 @@ internal struct NodeColumns
     internal StampedColumn<Binding.ReferenceConstraintFailure, Binding.PassCounter> ClauseConstraints; // Pass: a node's clause record (Binding.ConstraintValidation.Records.cs).
     internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
+    internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
 
     internal void Resize(int length)
     {
@@ -417,6 +418,7 @@ internal struct NodeColumns
         this.ClauseConstraints.Grow(length);
         this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
+        this.RequirementGroups.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -462,6 +464,7 @@ internal struct NodeColumns
         this.ClauseConstraints.Freeze(binding);
         this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
+        this.RequirementGroups.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -534,6 +537,7 @@ internal struct NodeColumns
             ClauseConstraints = this.ClauseConstraints.Renumbered(length),
             UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
+            RequirementGroups = this.RequirementGroups.Renumbered(length),
         };
         return columns;
     }
