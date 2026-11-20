@@ -108,24 +108,24 @@ int32_t TATARA_CALL tatara_emit(const TataraTarget* target, TataraText ir, Tatar
             setFunctionAttributes(function, cpu, features);
         }
 
-        // As llc, a failure after the object is opened leaves none (tatara::removeOutput).
-        std::error_code error;
-        raw_fd_ostream object(tatara::view(obj), error, sys::fs::OF_None);
-        if (error) {
-            message << "llc: error: " << tatara::view(obj) << ": " << error.message() << "\n";
+        // As llc, a failure after the object is opened leaves none (tatara::removeOutput; a return of 2: tatara::run).
+        int descriptor = tatara::openOutput(outcome, tatara::view(obj), sys::fs::OF_None, "llc: error: ", message);
+        if (descriptor < 0) {
             return 1;
         }
+
+        raw_fd_ostream object(descriptor, true);
 
         legacy::PassManager passes;
         passes.add(new TargetLibraryInfoWrapperPass(TargetLibraryInfoImpl(triple)));
         if (machine->addPassesToEmitFile(passes, object, nullptr, CodeGenFileType::ObjectFile, false)) {
             message << "llc: error: target does not support generation of this file type\n";
-            tatara::closeOutput(object, tatara::view(obj), "llc: error: ", message);
+            tatara::closeOutput(outcome, object, "llc: error: ", message);
             return tatara::removeOutput(tatara::view(obj), message);
         }
 
         passes.run(*module);
-        bool closed = tatara::closeOutput(object, tatara::view(obj), "llc: error: ", message);
+        bool closed = tatara::closeOutput(outcome, object, "llc: error: ", message);
         return closed && !context.getDiagHandlerPtr()->HasErrors ? 0 : tatara::removeOutput(tatara::view(obj), message);
     });
 }

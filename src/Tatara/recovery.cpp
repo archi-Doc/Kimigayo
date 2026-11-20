@@ -71,5 +71,16 @@ int32_t tatara::run(TataraResult** result, function_ref<int32_t(TataraResult&)> 
 
     refused = true;
     firstCause = outcome->message;
+
+    // The operation's frame never returned: the output it opened is closed here (its descriptor recorded until closeOutput) and
+    // removed, as llc and opt leave none when they crash.
+    if (outcome->outputDescriptor >= 0) {
+        sys::Process::SafelyCloseFileDescriptor(outcome->outputDescriptor);
+    }
+
+    if (!outcome->output.empty()) {
+        tatara::removeOutput(outcome->output, message);
+    }
+
     return 2;
 }

@@ -32,13 +32,13 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
             module->setDataLayout(machine->createDataLayout());
         }
 
-        // As opt, a failure after the file is opened leaves none (tatara::removeOutput).
-        std::error_code error;
-        raw_fd_ostream text(tatara::view(optimizedIr), error, sys::fs::OF_TextWithCRLF);
-        if (error) {
-            message << "opt: " << tatara::view(optimizedIr) << ": " << error.message() << "\n";
+        // As opt, a failure after the file is opened leaves none (tatara::removeOutput; a return of 2: tatara::run).
+        int descriptor = tatara::openOutput(outcome, tatara::view(optimizedIr), sys::fs::OF_TextWithCRLF, "opt: ", message);
+        if (descriptor < 0) {
             return 1;
         }
+
+        raw_fd_ostream text(descriptor, true);
 
         LoopAnalysisManager loops;
         FunctionAnalysisManager functions;
@@ -59,7 +59,7 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
         passes.addPass(VerifierPass());
         passes.run(*module, modules);
         module->print(text, nullptr);
-        bool closed = tatara::closeOutput(text, tatara::view(optimizedIr), "opt: ", message);
+        bool closed = tatara::closeOutput(outcome, text, "opt: ", message);
         return closed && !context.getDiagHandlerPtr()->HasErrors ? 0 : tatara::removeOutput(tatara::view(optimizedIr), message);
     });
 }

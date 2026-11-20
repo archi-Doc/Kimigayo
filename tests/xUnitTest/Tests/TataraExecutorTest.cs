@@ -591,6 +591,7 @@ public sealed class TataraExecutorTest : IDisposable
             Directory.Delete(directory, true);
         }
 
+        // An LLVM fatal error after the object is opened; the object is removed, as llc leaves none (C-424 R2).
         [Fact(Explicit = true)]
         public async Task FatalErrorRefusesEveryLaterCall()
         {
@@ -613,6 +614,7 @@ public sealed class TataraExecutorTest : IDisposable
             var error = await Assert.ThrowsAsync<IOException>(() => executor.Emit(fatal, Path.Combine(directory, "fatal.obj"), "O2"));
             Assert.StartsWith("Tatara failed: emit\n", error.Message, StringComparison.Ordinal);
             Assert.Contains("Cannot select", error.Message, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(directory, "fatal.obj")));
             var later = await Assert.ThrowsAsync<IOException>(() => executor.Inspect(Path.Combine(directory, "fatal.obj")));
             Assert.StartsWith("Tatara failed: inspect\n", later.Message, StringComparison.Ordinal);
             Assert.Contains("Cannot select", later.Message, StringComparison.Ordinal);
