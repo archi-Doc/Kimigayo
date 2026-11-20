@@ -1,6 +1,7 @@
 # Installs the pinned LLVM tools, the backend and tatara.dll from the extracted LLVM release archive into a toolchain root and records
-# them in installation.json (Tatara design A4 §2.3). A file whose destination already has the same SHA-256 is not written, so an
-# unchanged rerun writes nothing a running process holds; tatara.dll and the record are replaced by a move.
+# them in installation.json (Tatara design A4 §2.3). The tools and tatara.dll are validated and built before the root changes. A file
+# whose destination already has the same SHA-256 is not written, so an unchanged rerun writes nothing a running process holds;
+# tatara.dll and the record are replaced by a move.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmRoot,
@@ -29,9 +30,18 @@ foreach ($name in $names) {
 
 function Get-Sha256([string] $Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 
+# tatara.dll: built outside the repository before the first write to the root (it needs only the archive), its build identity this
+# checkout's. build.ps1 loads the DLL in a child process and checks its build identity against the checkout's (identity.ps1); the
+# checkout must be the same after the build.
+$identity = Get-TataraBuildIdentity
+$build = Join-Path ([IO.Path]::GetTempPath()) ('kimi-tatara-' + [guid]::NewGuid().ToString('N'))
+& (Join-Path $PSScriptRoot '../../Tatara/build.ps1') -LlvmRoot $LlvmRoot -OutputDirectory $build
+if ((Get-TataraBuildIdentity) -cne $identity) { throw "src/Tatara changed during setup: tatara.dll's build identity $identity is not this checkout's." }
+$built = Join-Path $build 'tatara.dll'
+
 New-Item -ItemType Directory -Force -Path $ToolchainRoot | Out-Null
-# A tatara.dll an earlier run renamed aside goes once no process maps it.
-foreach ($old in Get-ChildItem -LiteralPath $ToolchainRoot -Filter 'tatara.dll.*.old' -File) {
+# A tatara.dll an earlier run renamed aside, or the temporary copy of a failed run, goes once no process maps it.
+foreach ($old in Get-ChildItem -LiteralPath $ToolchainRoot -File | Where-Object Name -Match '^tatara\.dll\..+\.(old|tmp)$') {
     try { [IO.File]::Delete($old.FullName) }
     catch [UnauthorizedAccessException], [IO.IOException] { Write-Output "Still mapped, kept: $($old.FullName)" }
 }
@@ -61,21 +71,14 @@ foreach ($file in $dllFiles) {
     $dlls[[IO.Path]::GetFileName($file)] = Get-Sha256 (Join-Path $ToolchainRoot ([IO.Path]::GetFileName($file)))
 }
 
-# tatara.dll: built outside the repository, its build identity this checkout's, installed beside a loaded one by renaming that aside.
-# build.ps1 loads the DLL in a child process and checks its build identity against the checkout's (identity.ps1); the checkout must
-# be the same after the build.
-$identity = Get-TataraBuildIdentity
-$build = Join-Path ([IO.Path]::GetTempPath()) ('kimi-tatara-' + [guid]::NewGuid().ToString('N'))
-& (Join-Path $PSScriptRoot '../../Tatara/build.ps1') -LlvmRoot $LlvmRoot -OutputDirectory $build
-if ((Get-TataraBuildIdentity) -cne $identity) { throw "src/Tatara changed during setup: tatara.dll's build identity $identity is not this checkout's." }
-$built = Join-Path $build 'tatara.dll'
+# tatara.dll installed beside a loaded one by renaming that aside (Windows allows renaming a loaded image).
 $tatara = Join-Path $ToolchainRoot 'tatara.dll'
 $tataraSha256 = Get-Sha256 $built
 if (-not (Test-KimiSameFile $built $tatara)) {
     $temporary = "$tatara.$([guid]::NewGuid().ToString('N')).tmp"
     Copy-Item -LiteralPath $built -Destination $temporary
     if (Test-Path -LiteralPath $tatara) { Move-Item -LiteralPath $tatara -Destination "$tatara.$(Get-Date -Format yyyyMMddHHmmss).old" }
-    Move-Item -LiteralPath $temporary -Destination $tatara
+    Move-KimiFile $temporary $tatara
     Write-Output "Installed: $tatara"
 }
 Remove-Item -LiteralPath $build -Recurse -Force
@@ -87,7 +90,7 @@ $temporary = "$record.$([guid]::NewGuid().ToString('N')).tmp"
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporary -Encoding utf8
 if (Test-KimiSameFile $temporary $record) { Remove-Item -LiteralPath $temporary }
 else {
-    Move-Item -LiteralPath $temporary -Destination $record -Force
+    Move-KimiFile $temporary $record
     Write-Output "Installed: $record"
 }
 Write-Output "Toolchain ready: $ToolchainRoot"
