@@ -5,7 +5,6 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/ToolOutputFile.h"
 
 using namespace llvm;
 
@@ -33,9 +32,9 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
             module->setDataLayout(machine->createDataLayout());
         }
 
-        // As opt: a ToolOutputFile, kept only on success.
+        // As opt, a failure after the file is opened leaves none (tatara::removeOutput).
         std::error_code error;
-        ToolOutputFile text(tatara::view(optimizedIr), error, sys::fs::OF_TextWithCRLF);
+        raw_fd_ostream text(tatara::view(optimizedIr), error, sys::fs::OF_TextWithCRLF);
         if (error) {
             message << "opt: " << tatara::view(optimizedIr) << ": " << error.message() << "\n";
             return 1;
@@ -59,19 +58,8 @@ int32_t TATARA_CALL tatara_optimize(const TataraTarget* target, TataraText ir, T
         ModulePassManager passes = builder.buildPerModuleDefaultPipeline(OptimizationLevel::O2);
         passes.addPass(VerifierPass());
         passes.run(*module, modules);
-        module->print(text.os(), nullptr);
-        text.os().close();
-        if (text.os().has_error()) {
-            message << "opt: " << tatara::view(optimizedIr) << ": " << text.os().error().message() << "\n";
-            text.os().clear_error();
-            return 1;
-        }
-
-        if (context.getDiagHandlerPtr()->HasErrors) {
-            return 1;
-        }
-
-        text.keep();
-        return 0;
+        module->print(text, nullptr);
+        bool closed = tatara::closeOutput(text, tatara::view(optimizedIr), "opt: ", message);
+        return closed && !context.getDiagHandlerPtr()->HasErrors ? 0 : tatara::removeOutput(tatara::view(optimizedIr), message);
     });
 }

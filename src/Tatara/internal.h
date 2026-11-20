@@ -1,5 +1,5 @@
-// What Tatara's sources share behind the C ABI: the result object, the recovery boundary (recovery.cpp) and reading an IR module
-// as the tools read it (module.cpp). Nothing here crosses the ABI.
+// What Tatara's sources share behind the C ABI: the result object, the recovery boundary (recovery.cpp), reading an IR module
+// as the tools read it and closing or removing an output file (module.cpp). Nothing here crosses the ABI.
 #ifndef TATARA_INTERNAL_H
 #define TATARA_INTERNAL_H
 
@@ -40,6 +40,13 @@ std::unique_ptr<llvm::Module> readModule(llvm::StringRef path, llvm::LLVMContext
 std::unique_ptr<llvm::TargetMachine> createMachine(const llvm::Triple& triple, llvm::StringRef cpu, llvm::StringRef features,
     const llvm::TargetOptions& options, std::optional<llvm::Reloc::Model> relocation, std::optional<llvm::CodeModel::Model> code,
     llvm::CodeGenOptLevel level, const char* tool, llvm::raw_ostream& message);
+
+// An output file as llc and opt leave it, without their ToolOutputFile (whose RemoveFileOnSignal would install LLVM's console
+// handler and unhandled-exception filter in the host). closeOutput closes the stream; false when the write or the close failed, with
+// "<prefix><path>: <error>" written. removeOutput removes the closed file after a failure and returns 1; a file that cannot be
+// removed adds its own line to message.
+bool closeOutput(llvm::raw_fd_ostream& stream, llvm::StringRef path, const char* prefix, llvm::raw_ostream& message);
+int32_t removeOutput(llvm::StringRef path, llvm::raw_ostream& message);
 
 } // namespace tatara
 

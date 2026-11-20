@@ -1,4 +1,4 @@
-// Reading an IR module and making a target machine as opt and llc do (internal.h).
+// Reading an IR module, making a target machine and leaving an output file as opt and llc do (internal.h).
 #include "internal.h"
 
 #include "llvm/IR/DiagnosticHandler.h"
@@ -7,6 +7,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/SourceMgr.h"
 
 using namespace llvm;
@@ -68,4 +69,25 @@ std::unique_ptr<TargetMachine> tatara::createMachine(const Triple& triple, Strin
     }
 
     return std::unique_ptr<TargetMachine>(target->createTargetMachine(triple, cpu, features, options, relocation, code, level));
+}
+
+bool tatara::closeOutput(raw_fd_ostream& stream, StringRef path, const char* prefix, raw_ostream& message)
+{
+    stream.close();
+    if (!stream.has_error()) {
+        return true;
+    }
+
+    message << prefix << path << ": " << stream.error().message() << "\n";
+    stream.clear_error();
+    return false;
+}
+
+int32_t tatara::removeOutput(StringRef path, raw_ostream& message)
+{
+    if (std::error_code error = sys::fs::remove(path)) {
+        message << "Tatara: cannot remove " << path << ": " << error.message() << "\n";
+    }
+
+    return 1;
 }

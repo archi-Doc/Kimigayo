@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Kimi;
@@ -30,6 +31,10 @@ public sealed class TataraExecutorTest : IDisposable
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-" + Guid.NewGuid().ToString("N"));
 
     public TataraExecutorTest() => Directory.CreateDirectory(this.directory);
+
+    private delegate IntPtr SetFilter(IntPtr filter);
+
+    private delegate int ModuleFromAddress(uint flags, IntPtr address, out IntPtr module);
 
     private static string Root => Environment.GetEnvironmentVariable("KIMI_TOOLCHAIN_ROOT") ?? throw new InvalidOperationException("KIMI_TOOLCHAIN_ROOT is not set.");
 
@@ -138,6 +143,45 @@ public sealed class TataraExecutorTest : IDisposable
         Assert.Contains("undefined symbol", link.Message, StringComparison.Ordinal);
         await executor.Link(LinkArguments(obj, Path.Combine(this.directory, "b.exe")));
         Assert.True(File.Exists(Path.Combine(this.directory, "b.exe")));
+    }
+
+    // Tatara takes no signal or exception-filter state (C-424 R1): after an optimize, an emit, a failed emit, an inspect and a link,
+    // the process's unhandled-exception filter is still in the module that owned it before (the host's, never tatara.dll). LLVM's
+    // Windows signal registration sets this filter and its console handler together, so an unchanged filter also means no console
+    // handler. The filter is read by setting it and restoring it at once.
+    [Fact(Explicit = true)]
+    public async Task UnhandledExceptionFilterStaysTheHosts()
+    {
+        var row = await this.Generate("hello", Hello, "O0");
+        var ir = Path.ChangeExtension(Path.ChangeExtension(Manifest(row), null), ".ll");
+        var executor = Executor(Path.GetDirectoryName(ir)!);
+        var before = FilterOwner();
+        await executor.Optimize(ir, Path.Combine(this.directory, "hello.O2.ll"));
+        var obj = Path.Combine(this.directory, "hello.obj");
+        await executor.Emit(ir, obj, "O0");
+        var asm = Path.Combine(this.directory, "asmerror.ll");
+        File.WriteAllText(asm, "target triple = \"x86_64-pc-windows-msvc\"\n\ndefine i32 @f() {\nentry:\n  %r = call i32 asm sideeffect \"mov $0, 1\", \"={notaregister}\"()\n  ret i32 %r\n}\n");
+        await Assert.ThrowsAsync<IOException>(() => executor.Emit(asm, Path.Combine(this.directory, "asmerror.obj"), "O0"));
+        await executor.Inspect(obj);
+        await executor.Link(LinkArguments(obj, Path.Combine(this.directory, "hello.exe")));
+        var tatara = NativeLibrary.Load(Path.Combine(Root, "tatara.dll"));
+        NativeLibrary.Free(tatara);
+        Assert.Equal(before, FilterOwner());
+        Assert.NotEqual(tatara, before);
+    }
+
+    // The module that owns the process's unhandled-exception filter (IntPtr.Zero: none), through kernel32's exports.
+    private static IntPtr FilterOwner()
+    {
+        var kernel32 = NativeLibrary.Load("kernel32.dll");
+        var set = Marshal.GetDelegateForFunctionPointer<SetFilter>(NativeLibrary.GetExport(kernel32, "SetUnhandledExceptionFilter"));
+        var owner = Marshal.GetDelegateForFunctionPointer<ModuleFromAddress>(NativeLibrary.GetExport(kernel32, "GetModuleHandleExW"));
+        var filter = set(IntPtr.Zero);
+        set(filter);
+        NativeLibrary.Free(kernel32);
+
+        // GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT
+        return filter == IntPtr.Zero || owner(6, filter, out var module) == 0 ? filter : module;
     }
 
     private static string Milestone(int number) => Path.Combine(Repository.Root, "tests", "milestones", $"Milestone{number}.kimi");
