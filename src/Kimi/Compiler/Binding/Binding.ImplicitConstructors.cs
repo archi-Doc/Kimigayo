@@ -61,6 +61,7 @@ public sealed partial class Binding
         }
 
         var candidates = FunctionGroup.Of(group);
+        var evaluated = this.RentCandidates(candidates, call.Method, this.scopes[constructor]);
         var shape = MeasureCandidates(candidates, true);
         var obligationCount = this.obligations.Count;
         var acquisition = this.acquisitionFailure;
@@ -72,7 +73,6 @@ public sealed partial class Binding
         var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
         var origins = this.originScratch.Rent(shape.Origins);
         var inputs = this.originScratch.Rent(shape.InputOrigins);
-        var evaluated = this.candidateScratch.Rent(shape.Count);
         var operations = this.argumentOperationScratch.Rent(shape.Count);
         var childSlices = this.indexScratch.Rent(shape.Count * 2); // R3: each candidate's (empty) slice; the call has no argument.
         try

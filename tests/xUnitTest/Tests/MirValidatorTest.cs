@@ -644,14 +644,16 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     // G191 (K package 4.5 row 7, DECISIONS R4-M121): the builder builds a static's Place after its staticEnsure (MirBuilder.Places), so each
     // static root of a Place a location accesses is named by a staticEnsure of the body: the built body is valid, and with its ensure turned
     // into a Goto its read is an Unensured finding at the access. An Opaque site's root names a static the replaced syntax may access, with
-    // no staticEnsure (here a call Binding rejects), and is valid.
+    // no staticEnsure (here a branch of an `if` without a Type, which the call Binding rejects keeps replaced, PLAN G121; a direct argument
+    // is kept and ensured since DECISIONS Z16), and is valid.
     [Theory]
     [InlineData(null)]
     [InlineData("goto")]
     [InlineData("opaque")]
     public void AStaticPlaceIsEnsuredByItsBody(string? form)
     {
-        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc use() -> i32 => " + (form == "opaque" ? "missing(Registry.total)\n" : "Registry.total\n"));
+        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc use(c: bool) -> i32 => " +
+            (form == "opaque" ? "missing(if c => missing2 else => Registry.total)\n" : "Registry.total\n"));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");

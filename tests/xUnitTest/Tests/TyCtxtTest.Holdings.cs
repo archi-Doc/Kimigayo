@@ -64,6 +64,27 @@ public sealed partial class TyCtxtTest
         Assert.Equal(entries, Shown(Entries(c, p[parameter], null, null)));
     }
 
+    // PLAN G147 D-940: Holdings is total over the Types Binding forms, so a Type with no row breaks Binding's formation contract and throws,
+    // never an entry. One row per throw site, each by the only Type of its form, which no value has: a library declaration's own unapplied
+    // Type (a collection kind with no component), a `Semantics` layer whose Semantics is a parameter, and a group's Type (an environment).
+    [Theory]
+    [InlineData("declaration")]
+    [InlineData("layer")]
+    [InlineData("group")]
+    public void ATypeWithNoRowIsABrokenFormationContract(string form)
+    {
+        var c = MinimalEmissionTest.Analyze("public func main() => ()\n");
+        var group = c.Library.BoolFormatMembers!.SymbolOf(c)!;
+        Assert.Equal(BindingSymbolKind.Container, group.Kind); // SPEC 9.2: a group is a Container, so no Type position admits it.
+        var type = form switch
+        {
+            "declaration" => c.Library.GetSymbol(KimiDeclarationId.Array)!.Type!,
+            "layer" => c.Types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Parameter, [BoundType.I32]),
+            _ => c.Types.Intern(BoundTypeKind.Nominal, group, SemanticsKind.Owner, []),
+        };
+        Assert.Contains("InternalInvariant", Assert.Throws<InvalidOperationException>(() => c.Types.Holdings(type, null, null, [])).Message, StringComparison.Ordinal);
+    }
+
     // SPEC 5.7, 5.2.1 condition 3, 8.1.1: a raw layer's entries through its stored part, by the step StoredStep's path query reads (rows 12,
     // 13 with and without an Origin argument, 14 and 15); a declaration's mark at any depth (N7), where a parameter's layer is row 11.
     [Fact]
@@ -164,7 +185,6 @@ public sealed partial class TyCtxtTest
 
             into.Clear();
             Assert.True(types.Holdings(type, null, null, into), type.Name);
-            Assert.DoesNotContain(into, x => x.Step == HoldStep.Unsupported);
             foreach (var entry in into)
             {
                 pending.Push(entry.Part!);

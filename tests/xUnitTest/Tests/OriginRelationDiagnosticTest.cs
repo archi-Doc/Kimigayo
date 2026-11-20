@@ -212,12 +212,14 @@ public partial class OriginRelationDiagnosticTest
 
     // The rows of ABorrowThroughLayersIsContainedInEach whose fit is Refuted at the returned value X: A5's one record at X names the
     // borrow that supplied its end (R7-O1 H; its twin at `return X`, R6-check H5, R4-M108, H3b T50, went with Binding's record there).
-    // Each record: its primary and label.
+    // Each record: its primary and label (another code: the code). With D-920 an Array element's Loan is met at the whole Array, so the
+    // returned `entries[0]@follow@ref`, which H builds (no failed return), also conflicts at `entries`' storage end, a record rule W does
+    // not derive there: added on a rejected program (DECISIONS Q13, counted: ComparisonLoanConflict_Kd 1).
     [Theory]
     [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    let found = entries[1]@follow@ref\n    return found\n", "found: requires the borrow entries[1]@follow@ref outlives a, which is false")]
     [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n" + Entries + "    return entries.index(1)@follow@follow@ref\n", "entries.index(1)@follow@follow@ref: requires the borrow entries.index(1)@follow@follow@ref outlives a, which is false")]
     [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries.indexUniq(1)@follow@follow@uniq\n", "entries.indexUniq(1)@follow@follow@uniq: requires the borrow entries.indexUniq(1)@follow@follow@uniq outlives a, which is false")]
-    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    var entries: Array<uniq/i32 during a> = [value@move]\n    return entries[0]@follow@ref\n", "entries[0]@follow@ref: requires the borrow entries[0]@follow@ref outlives a, which is false")]
+    [InlineData("func leak(value: uniq/i32 during a) -> ref/i32 during a\n    var entries: Array<uniq/i32 during a> = [value@move]\n    return entries[0]@follow@ref\n", "var entries: Array<uniq/i32 during a> = [value@move]: ComparisonLoanConflict_Kd | entries[0]@follow@ref: requires the borrow entries[0]@follow@ref outlives a, which is false")]
     [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return entries[1]\n", "entries[1]: requires the borrow entries outlives a, which is false")]
     [InlineData("func leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    let c = entries[1]\n    return c\n", "c: requires the borrow entries outlives a, which is false")]
     [InlineData("func keep(value: uniq/i32 during a) -> uniq/i32 during a => value\nfunc leak(value: uniq/i32 during a) -> uniq/i32 during a\n" + Entries + "    return keep(entries[1])\n", "keep(entries[1]): requires the borrow entries outlives a, which is false")]
@@ -226,8 +228,7 @@ public partial class OriginRelationDiagnosticTest
     {
         var source = body + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), x.Code));
-        Assert.Equal(records, string.Join(" | ", errors.Select(x => $"{Text(source, x.Span)}: {x.Label}")));
+        Assert.Equal(records, string.Join(" | ", errors.Select(x => $"{Text(source, x.Span)}: {(x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? x.Label : x.Code)}")));
     }
 
     // SPEC 15.6.1: a relation that a premise proves is no failure.

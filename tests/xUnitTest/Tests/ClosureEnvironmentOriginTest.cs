@@ -757,7 +757,7 @@ public class ClosureEnvironmentOriginTest
     // They were at the whole declaration and an independent record. Since R7-O1 H the pending relation is a row A5 judges, its one record
     // at the initializer (H11b D5); d3's MovedPlace_Kd and A5's twin at the declaration are gone: SPEC 7.7.2 makes each environment
     // binding a local of the call, so moving `t` out leaves `n` initialized, and that record was false, read through the opaque node
-    // (Q13, a false record removed).
+    // (Q13, a false record removed; on dev Z16 removes it too: the declaration keeps its initializer's Borrow, G147 ruling 5).
     [Theory]
     [InlineData(LocalAnnotatedConsuming, Unsatisfied + " n@ref")]
     [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]

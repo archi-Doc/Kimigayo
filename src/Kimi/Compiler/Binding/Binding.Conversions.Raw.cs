@@ -32,7 +32,7 @@ public sealed partial class Binding
         }
 
         BoundType borrowed;
-        if (ElementAccess.IsRawRooted(this, conversion.Left))
+        if (this.IsRawRooted(conversion.Left))
         {
             // SPEC 5.4, 5.2.2: the address of a raw Place or a part of one borrows that Place as a fresh anchor.
             borrowed = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);

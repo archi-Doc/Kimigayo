@@ -15,15 +15,10 @@ internal sealed partial class MirBuilder
     // SPEC 14.8, 17.3: a match, or a try with its synthesized arms, a target for a yield. The Subject and the tests' temporaries end
     // when the match does, after the selected arm's scope (SPEC 15.1.6); a link whose Pattern tests nothing and has no guard still branches,
     // on a constant, to the next one, so that even a catch-all can fail for the analyses; as a call's input, each arm's value as Result
-    // places it (input).
+    // places it (input). Its plan is valid and settled (HasFacts' Match/Try row; one whose Pattern or guard failed is an Error).
     private void Match(MirPlace destination, MatchKoto match, bool input)
     {
         var plan = BoundMatch.Of(compilation.Binding, match)!;
-        if (plan.Invalid || plan.Pending)
-        {
-            this.Opaque(match, destination); // A Pattern or guard of it failed.
-            return;
-        }
 
         // The Subject's Type, none for a Subject of no Type (KnownType, PLAN G1073: a use of a failed getter Binding keeps as the
         // Subject, G492-a (iii) and D-823), whose patterns' accesses are the validator's findings (PLAN G1076's open issue), never a fault.
@@ -200,7 +195,7 @@ internal sealed partial class MirBuilder
                 var place = this.selected[start + i];
                 var mutable = Binding.Reassignable(symbol);
                 var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, local: true), mutable, symbol.Name)), this.lexical);
-                var value = adjust.Acquire == HirAcquire.Failed ? MirOperand.Move(this.Unsupported(binding, derived: true, type))
+                var value = adjust.Acquire == HirAcquire.Failed ? MirOperand.Move(this.Opaque(binding, type))
                     : this.Acquire(adjust, place, type, input: false, binding, new(local));
                 this.Use(new(local), value, binding);
                 this.locals[symbol] = local;
