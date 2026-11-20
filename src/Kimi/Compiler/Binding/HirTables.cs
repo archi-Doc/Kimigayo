@@ -324,6 +324,7 @@ internal struct NodeColumns
     internal PagedColumn<InvocationKoto?> ResolvedKeys; // Kept: a selection key's synthesized `resolved` call (Binding.Ranges.cs).
     internal PagedColumn<BoundMatch?> MatchPlans; // Kept: the plan object a match keeps across rebinds (Binding.Patterns.cs).
     internal PagedColumn<Binding.Refusal?> Refusals; // Kept: the refusal a refused analysis's site holds (Binding.ConstraintValidation.Proofs.cs).
+    internal PagedColumn<Binding.TypeRoleCause> FormationCauses; // Kept: a pair occurrence's Language formation causes, emptied at each Final check (Binding.ConstraintValidation.cs).
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
@@ -392,6 +393,7 @@ internal struct NodeColumns
         this.ResolvedKeys.Grow(length);
         this.MatchPlans.Grow(length);
         this.Refusals.Grow(length);
+        this.FormationCauses.Grow(length);
         this.AliasTargets.Grow(length);
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
@@ -511,6 +513,7 @@ internal struct NodeColumns
             ResolvedKeys = this.ResolvedKeys.Renumbered(length),
             MatchPlans = this.MatchPlans.Renumbered(length),
             Refusals = this.Refusals.Renumbered(length),
+            FormationCauses = this.FormationCauses.Renumbered(length),
             AliasTargets = this.AliasTargets.Renumbered(length),
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
@@ -573,6 +576,7 @@ internal struct NodeColumns
         this.ResolvedKeys.Retire();
         this.MatchPlans.Retire();
         this.Refusals.Retire();
+        this.FormationCauses.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -605,6 +609,7 @@ internal struct NodeColumns
         this.ResolvedKeys.MoveTo(ref target.ResolvedKeys, from, to);
         this.MatchPlans.MoveTo(ref target.MatchPlans, from, to);
         this.Refusals.MoveTo(ref target.Refusals, from, to);
+        this.FormationCauses.MoveTo(ref target.FormationCauses, from, to);
     }
 }
 

@@ -135,7 +135,9 @@ public partial class SyntaxIdTest
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
     // its container's list; OverrideEntries: a Type's implementations by original; Refusals: the refusal a losing candidate's request
     // past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by reflection, since the families'
-    // rows differ.
+    // rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each Final check's start empties them,
+    // so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
+    // PairAnnotationBindingTest.AnEditThatFormsAFieldLeavesItsReadNoFormationCause fails without that `Empty()`.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]

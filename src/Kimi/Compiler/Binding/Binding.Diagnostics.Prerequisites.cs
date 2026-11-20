@@ -383,11 +383,11 @@ public sealed partial class Binding
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
             (this.RecordedState(part) == BindingState.Invalid || this.HasFailureCauses(part))) ||
             (failure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
-            this.formationCauses?.ContainsKey(occurrence) == true) ||
+            this.formationCauses.ContainsKey(occurrence)) ||
             (failure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
             (this.RecordedFailure(specification) != BindingFailure.None || this.RecordedState(specification) == BindingState.Invalid)) ||
             (failure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
-            this.formationCauses?.ContainsKey(read) == true) ||
+            this.formationCauses.ContainsKey(read)) ||
             (failure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
             this.KeepsPremiseErrorContext(premise));
 
