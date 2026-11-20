@@ -17,12 +17,14 @@ namespace Kimi.Compiler;
 /// <see cref="BoundMatch.Of"/>, and each consumed child's acquisition its Adjust.</summary>
 /// <param name="Kind">The expansion.</param>
 /// <param name="First">An index's key resolution; a compound update's getter.</param>
-/// <param name="Second">An index's selected element or view call; a compound update's setter.</param>
+/// <param name="Second">An index's selected element or view call, <c>indexUniq</c> for a selection by case; a compound update's setter.</param>
 /// <param name="Evaluated">The argument of the key resolution that reads the length of the receiver the selection evaluated, or of the
 /// setter that takes the value the update computed, as the call's plan records it; -1 when none.</param>
 /// <param name="Direct">An interpolation passed directly as the one argument of <c>Console.writeLine</c>, whose writes the instance places
 /// in a stack region when they are bounded within the profile's limit (SPEC 22.7).</param>
-internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? First = null, CallPlan? Second = null, int Evaluated = -1, bool Direct = false)
+/// <param name="Shared">An index's <c>index</c> call where its selection is by case (<see cref="HirTables.IndexCaseDecider"/>), the call
+/// the admitted cases its decider does not make exclusive select; null otherwise.</param>
+internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? First = null, CallPlan? Second = null, int Evaluated = -1, bool Direct = false, CallPlan? Shared = null)
 {
     /// <summary>Gets the expansion of a published node, or null when its Op is none.</summary>
     /// <param name="binding">The reader's Binding, whose current pass's plans are read.</param>
@@ -48,7 +50,8 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
             case HirOp.Index or HirOp.Call when node is IndexKoto index:
                 var key = binding.ResolvedKeyCall(index)?.CallStorage;
                 var selected = binding.SelectedIndexCall(index, HirTables.PlanOf(index).Mode != 0);
-                return new(ExpansionKind.Index, key, selected?.CallStorage, key?.Evaluated ?? -1);
+                var shared = HirTables.IndexCaseDecider(index) is null ? null : binding.IndexerCall(index, exclusive: false)?.CallStorage;
+                return new(ExpansionKind.Index, key, selected?.CallStorage, key?.Evaluated ?? -1, Shared: shared);
             default:
                 return null;
         }
@@ -68,6 +71,6 @@ internal enum ExpansionKind : byte
     Try, // Its Pattern plan's arms: the payload, or the failure the generated return transfers (SPEC 17.3).
     Format, // An interpolation's buffer and adapter calls, then its writes; a $tryWrite's writes, then its status (SPEC 22.10).
     DictionaryLiteral, // Its key lookup (SPEC 12.4.3), for each entry before its insertion.
-    Index, // A built-in element or slice, by its key or its key's resolution, or a user or view selection's selected call (SPEC 4.7.1).
+    Index, // A built-in element or slice, by its key or its key's resolution, or a user or view selection's selected call, or both by case (SPEC 4.7.1).
     CompoundAssign, // Its Place, or its Property's getter and setter, read and written once; its arithmetic call, or a primitive operation.
 }

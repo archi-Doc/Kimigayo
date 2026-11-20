@@ -94,7 +94,7 @@ fn counters @11
       StorageLive(_20) @43 s1
       _20 = const 1_i32 as isize (Integer) proven @45 s1
       EndBorrow(_19) @43 s1
-      (*_2)[_20] = move _18 @42 s1
+      (*_2)[_20 = 1] = move _18 @42 s1
       _17 = const () @42 s1
       StorageDead(_20) @43 s1
       StorageDead(_19) @43 s1

@@ -49,6 +49,7 @@ internal enum MirTerminatorKind : byte
     Drop,
     Return, // The value of local 0.
     Unreachable,
+    CaseSwitch, // A case branch (SPEC 8.14, 4.7.1): the successor each Semantics case view selects by its decider (MirCases.Branch).
 }
 
 /// <summary>A step of a Place (plan 5.4): what the Type of the Place it applies to admits.</summary>

@@ -158,9 +158,10 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
     }
 }
 
-/// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges) or a SwitchInt's
+/// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges), a SwitchInt's
 /// otherwise, whose value-target pairs are <see cref="Count"/> entries of <see cref="MirBody.Cases"/> from <see cref="Start"/>, as a
-/// Call's arguments are of <see cref="MirBody.Operands"/>. <see cref="Operand"/> is a SwitchInt's operand or a Value callee,
+/// Call's arguments are of <see cref="MirBody.Operands"/>, or a CaseSwitch's shared side, whose one entry is its exclusive side.
+/// <see cref="Operand"/> is a SwitchInt's operand, a CaseSwitch's decider (a TypeToken constant) or a Value callee,
 /// <see cref="Place"/> a Call's destination or the dropped Place, <see cref="CheckTarget"/> the block only the checks reach
 /// (-1: none), and <see cref="Places"/> whether a Call is a construction's insertion, not a call of the program: each operand a Move of
 /// a whole temp it transfers into the construction, the first the construction's exclusive borrow, formed in the Call's block
@@ -182,6 +183,9 @@ internal readonly record struct MirTerminator(
 
     internal static MirTerminator SwitchInt(MirOperand operand, int start, int count, int otherwise, SourceInfo source) =>
         new(MirTerminatorKind.SwitchInt, source, otherwise, Operand: operand, Start: start, Count: count);
+
+    internal static MirTerminator CaseSwitch(MirOperand decider, int exclusive, int shared, SourceInfo source) =>
+        new(MirTerminatorKind.CaseSwitch, source, shared, Operand: decider, Start: exclusive, Count: 1); // exclusive: its Cases entry.
 
     internal static MirTerminator Call(
         MirCallee callee,
@@ -228,10 +232,11 @@ internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int1
 }
 
 /// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,
-/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects
-/// (null when its base does not admit it).
+/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index), the Type it selects
+/// (null when its base does not admit it) and, for an Index of a fixed array, its key's constant index (SPEC 15.1.3, in range or not, as
+/// Binding publishes it; the constant Place comparison reads, SPEC 15.6.2), else -1.
 /// Chains are independent of their roots, so equal prefixes share ids.</summary>
-internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type);
+internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type, int Position);
 
 internal readonly record struct MirSwitchCase(long Value, int Target);
 

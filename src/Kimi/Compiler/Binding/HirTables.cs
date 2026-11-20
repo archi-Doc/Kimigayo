@@ -120,6 +120,18 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
+    /// <summary>Gets the decider of a published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23):
+    /// its plan row's Mode 2, which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases
+    /// where a standing take Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a
+    /// Field's or Tuple element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's
+    /// case Type is an exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's
+    /// ExpansionPlan names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145).
+    /// Null for a selection that is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) and for any other node; no
+    /// reader reads Mode 2 or the decider otherwise.</summary>
+    /// <param name="index">The index expression.</param>
+    /// <returns>The decider, or null.</returns>
+    internal static BoundType? IndexCaseDecider(Koto index) => index is IndexKoto && PlanOf(index) is { Mode: 2, Plan: BoundType decider } ? decider : null;
+
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
     /// operand is a Transfer whose Take OffersTake allowed through its raw branch (ElementAccess.IsRawPlace; Binding.DestroysInPlace),
     /// the discard's plan row Flag.</summary>
@@ -323,6 +335,12 @@ internal struct NodeColumns
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
     internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
+    internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
+    internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
+    internal StampedColumn<Binding.CallInferenceFailure, Binding.PassCounter> CallInferenceFailures; // Pass: the selection a construction's or shape contract's later check rejected (Binding.ConstructorValidation.cs).
+    internal StampedColumn<(bool Failed, int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other), Binding.PassCounter> CallableSelectionFailures; // Pass: a failed Callable value call's candidates and shape position (Binding.CallableSelection.cs).
+    internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
+    internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
 
     internal void Resize(int length)
     {
@@ -375,6 +393,12 @@ internal struct NodeColumns
         this.InvalidStaticOriginSlots.Grow(length);
         this.CallablePremiseFailures.Grow(length);
         this.EffectBoundRejections.Grow(length);
+        this.InferredArrayLengths.Grow(length);
+        this.ArrayInferenceShapes.Grow(length);
+        this.CallInferenceFailures.Grow(length);
+        this.CallableSelectionFailures.Grow(length);
+        this.BaseCallFailures.Grow(length);
+        this.ObjectErasureFailures.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -403,6 +427,12 @@ internal struct NodeColumns
         this.InvalidStaticOriginSlots.Freeze(binding);
         this.CallablePremiseFailures.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
+        this.InferredArrayLengths.Freeze(binding);
+        this.ArrayInferenceShapes.Freeze(binding);
+        this.CallInferenceFailures.Freeze(binding);
+        this.CallableSelectionFailures.Freeze(binding);
+        this.BaseCallFailures.Freeze(binding);
+        this.ObjectErasureFailures.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -460,6 +490,12 @@ internal struct NodeColumns
             InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
             CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
+            InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
+            ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
+            CallInferenceFailures = this.CallInferenceFailures.Renumbered(length),
+            CallableSelectionFailures = this.CallableSelectionFailures.Renumbered(length),
+            BaseCallFailures = this.BaseCallFailures.Renumbered(length),
+            ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
         };
         return columns;
     }
@@ -564,8 +600,9 @@ internal struct PlanRow
     private ulong foldedHigh;
     private ulong foldedLow;
 
-    /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a ConstIndex position or a Tuple element's
-    /// position.</summary>
+    /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a fixed-array element's constant index (SPEC
+    /// 15.1.3, on a ConstIndex or an Index Place, however the array is reached, in range or not: ElementAccess.ConstantIndex) or a Tuple
+    /// element's position.</summary>
     internal Int128? Folded
     {
         readonly get => this.folded ? new Int128(this.foldedHigh, this.foldedLow) : null;

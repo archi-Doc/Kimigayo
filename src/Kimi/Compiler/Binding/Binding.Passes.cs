@@ -58,7 +58,7 @@ public sealed partial class Binding
     // over the two fixed parts, so a read outside a pass allocates nothing and sees every pass's entries.
     private readonly LayerList<Koto> nodesView;
     private readonly LayerList<BindingIssue> issuesView;
-    private readonly LayerList<Koto> derivedIssuesView;
+    private readonly LayerList<BindingIssue> derivedIssuesView;
     private readonly LayerList<BindingObligation> obligationsView;
     private readonly LayerList<LibraryImport> libraryImportsView;
     private readonly LayerList<FunctionKoto> virtualDeclarationsView;
@@ -361,7 +361,7 @@ public sealed partial class Binding
 
         internal List<BindingIssue> Issues { get; } = new();
 
-        internal List<Koto> DerivedIssues { get; } = new();
+        internal List<BindingIssue> DerivedIssues { get; } = new();
 
         internal List<BindingObligation> Obligations { get; } = new();
 

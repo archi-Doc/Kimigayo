@@ -72,6 +72,10 @@ internal sealed class MirBody
 
     internal ReadOnlySpan<MirSwitchCase> Cases => this.cases.AsSpan(0, this.caseCount);
 
+    /// <summary>Gets the number of the body's CaseSwitch terminators, which <see cref="Terminate"/>, their one writer, counts: a body
+    /// without one has the same blocks in every view.</summary>
+    internal int CaseSwitches { get; private set; }
+
     internal ReadOnlySpan<MirConst> Consts => this.consts.AsSpan(0, this.constCount);
 
     internal ReadOnlySpan<MirProjection> Projections => this.projections.AsSpan(0, this.projectionCount);
@@ -275,7 +279,7 @@ internal sealed class MirBody
     /// <param name="source">The body's syntax.</param>
     internal void Reset(MirDefKey key, SourceRef source)
     {
-        (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord) = (key, source, false, false);
+        (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord, this.CaseSwitches) = (key, source, false, false, 0);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
         this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
         this.projectionIds?.Clear();
@@ -290,8 +294,8 @@ internal sealed class MirBody
     /// <param name="built">The body built.</param>
     internal void Store(MirBody built)
     {
-        (this.Key, this.Source, this.Ordinal, this.HasFinding, this.HasConstructionRecord) =
-            (built.Key, built.Source, built.Ordinal, built.HasFinding, built.HasConstructionRecord);
+        (this.Key, this.Source, this.Ordinal, this.HasFinding, this.HasConstructionRecord, this.CaseSwitches) =
+            (built.Key, built.Source, built.Ordinal, built.HasFinding, built.HasConstructionRecord, built.CaseSwitches);
         this.Binders.Clear();
         this.Binders.AddRange(built.Binders);
         this.localCount = Store(ref this.locals, built.Locals);
@@ -332,7 +336,12 @@ internal sealed class MirBody
         target.Count++;
     }
 
-    internal void Terminate(int block, in MirTerminator terminator) => this.blocks[block].Terminator = terminator;
+    internal void Terminate(int block, in MirTerminator terminator)
+    {
+        this.CaseSwitches += (terminator.Kind == MirTerminatorKind.CaseSwitch ? 1 : 0) -
+            (this.blocks[block].Terminator.Kind == MirTerminatorKind.CaseSwitch ? 1 : 0);
+        this.blocks[block].Terminator = terminator;
+    }
 
     internal int AddOperand(in MirOperand operand) => Add(ref this.operands, ref this.operandCount, operand);
 
@@ -359,11 +368,12 @@ internal sealed class MirBody
     /// <param name="place">The Place.</param>
     /// <param name="kind">The projection.</param>
     /// <param name="arg">Its argument.</param>
+    /// <param name="position">An Index's constant index (<see cref="MirProjection.Position"/>), else -1.</param>
     /// <returns>The projected Place; its Type is null when the projection is not admitted, which the validator reports (MirValidator.Tables):
     /// a later step in the projection table, a first step at each Place a location names, a diverging Call's destination included.</returns>
-    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg)
+    internal MirPlace Project(TyCtxt types, MirPlace place, MirProjectionKind kind, int arg, int position = -1)
     {
-        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg));
+        var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(types, this.TypeOf(place), kind, arg), position);
         ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds ??= new(), row, out var exists);
         if (!exists)
         {
