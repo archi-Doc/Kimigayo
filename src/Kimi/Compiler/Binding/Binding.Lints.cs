@@ -106,13 +106,16 @@ public sealed partial class Binding
     /// <returns>The nodes in walk order, or empty when the check does not rest on a guess.</returns>
     internal ReadOnlySpan<Koto> GuessedCompletionNodes(Koto node, Koto root)
     {
-        if (!node.CodeContext.HasRecoveries && this.Result.IsComplete)
+        // A check rests on no guess when the node's own pass is complete and its syntax recovered nothing: the running pass, or for a
+        // frozen library node the library's pass, which is complete and without recoveries. So no walk composes a frozen node
+        // (StructuralCompletion's invariant; KimiLibraryShapeTest.TheGuessRuleAnswersNoneAtAFrozenNode).
+        if (!node.CodeContext.HasRecoveries && (node.SyntaxOwner is { Frozen: true } || this.Result.IsComplete))
         {
             return default;
         }
 
         var structural = this.ResultStructure();
-        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess);
+        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess, static (ref NodeColumns columns) => ref columns.GuessedCompletions);
         var nodes = this.guessNodes ??= new();
         guessed.Clear();
         nodes.Clear();
@@ -625,7 +628,7 @@ public sealed partial class Binding
     {
         // Binding's structural completion with its Never evidence, cleared once per walk: the descents of discarded tails and the
         // end arrivals compose each node's completion once.
-        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence);
+        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.LintCompletions);
 
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;

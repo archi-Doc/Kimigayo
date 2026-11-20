@@ -284,6 +284,28 @@ public class CurrentControlFlowTest
         }
     }
 
+    // R7-N5 B6b: a query memo's row holds only in the query that wrote it (Clear advances the instance's query; a row of another query
+    // reads absent), so a guess query asked again, in the same pass and after an edit's rebind, walks again and records its guessed node
+    // again; a row the earlier query left would answer without recording it.
+    [Fact]
+    public void AGuessQueryAskedAgainAnswersTheSameNodes()
+    {
+        var c = Parse("func run(flag: bool)\n    require flag else => missing()\n");
+        Assert.False(c.Bind().IsComplete);
+        for (var i = 0; i < 3; i++)
+        {
+            if (i == 2)
+            {
+                c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+                Assert.False(c.Bind().IsComplete);
+            }
+
+            var body = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>().Single().ElseBody;
+            var nodes = c.Binding.GuessedCompletionNodes(body, body);
+            Assert.True(nodes.Length == 1 && nodes[0] == body, $"query {i}: {nodes.Length} nodes");
+        }
+    }
+
     private static Compilation Parse(string source)
     {
         var c = Compilation.CreateForTest();

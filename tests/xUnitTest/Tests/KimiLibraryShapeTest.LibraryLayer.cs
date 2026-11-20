@@ -413,7 +413,6 @@ public partial class KimiLibraryShapeTest
             ["Binding.identityPool"] = Rule.Program, // The free identity tables each capability epoch's end returns (ResetIdentityClasses).
             ["Binding.inlineSummaries"] = Rule.Program, // ValidateInlineLayouts' summaries, emptied at its start in each pass.
             ["Binding.inlineSummaryPool"] = Rule.Program, // Their pool: its live prefix is inlineSummaries' values (AssertLivePrefix).
-            ["Binding.resultStructure.cache"] = Rule.Program, // The result walk's Completion memo of the body it walked last (M4).
             ["Binding.resultStructure.outward"] = Rule.Program, // That walk's Outward target chains, emptied by its Clear for each body.
             ["Binding.hirPublisher.completion.outward"] = Rule.Program, // The publisher's Outward target chains for the body it published last (M4).
 

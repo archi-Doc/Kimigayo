@@ -6,9 +6,13 @@
 // omitted default arguments, read through its creator's Binding (Binding.CallOf), and each jump's published target
 // (Binding.TransferTarget, BU-101), the one input of a composed form that is not one of its parts.
 // Output: CanComplete, read by Binding's result Types and the HIR Completion column.
-// A node still being composed (a recursive default) is assumed to complete. Results stay cached until Clear, which a caller calls
-// whenever its Never evidence may change. A completion's transfers are values: the SyntaxIds of the targets its Exit and Yield
-// transfers reach outward (Outward). The cache is keyed by Koto reference: ARCH "Syntax identity" debt, due by R7's exit (R7-N5 B6b).
+// A node still being composed (a recursive default) is assumed to complete. Results hold until Clear, which a caller calls whenever its
+// Never evidence may change: each instance's query memo is its own working-state family of the node's module's NodeColumns (Memo),
+// whose row carries the query that wrote it, so Clear advances the instance's query and a row of another query reads absent (DECISIONS
+// BU-220 as R7-N5 B6b amends it). A completion's transfers are values: the SyntaxIds of the targets its Exit and Yield transfers reach
+// outward (Outward).
+// Invariant: a query composes only nodes of the running pass's modules, never a frozen library node (the library declares no parameter
+// default, and GuessedCompletionNodes answers none at a frozen node: KimiLibraryShapeTest's two premise rows).
 // Must not evaluate constants or Scope Exit cleanup, or report diagnostics.
 
 using Kimi.Compiler.Parsing;
@@ -21,16 +25,25 @@ namespace Kimi.Compiler;
 /// <param name="isGuess">Whether a read the composition makes at a node is unknown, assumed then not to complete normally: asked only
 /// where it reads the node itself, at a block (its items, which the parser may have supplied) and at an evaluated node (its Never
 /// evidence), never at a form it composes from its parts (PLAN G47).</param>
-internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isNever, Func<Koto, bool>? isGuess = null)
+/// <param name="memo">The instance's family in a module's NodeColumns, which holds its query memo.</param>
+internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isNever, Func<Koto, bool>? isGuess, StructuralCompletion.Memo memo)
 {
-    private readonly Dictionary<Koto, Completion> cache = new(ReferenceEqualityComparer.Instance);
-
     // The chains of Outward's target ids: cell i - 1 holds a target and the next cell's index plus 1 (0 ends the chain). A chain grows
-    // only at its head and never changes once a completion holds it, so completions share tails; Clear empties the cells with the
-    // cache that holds their chains.
+    // only at its head and never changes once a completion holds it, so completions share tails; Clear empties the cells when it ends
+    // the query whose rows hold their chains.
     private readonly List<(int Target, int Next)> outward = new();
     private readonly List<Koto> children = new();
     private Collector? collector;
+
+    // The query the memo's current rows carry: 1 at creation, advanced by Clear, so 0 (an absent row's) is no query.
+    private uint query = 1;
+
+    /// <summary>Selects an instance's working-state family of a module's NodeColumns: a node's completion in the query its row carries.
+    /// Each of the four creators passes a static lambda naming its family, chosen once at creation (no capture, no allocation); no reader
+    /// tests which family an instance holds (DECISIONS BU-220 as R7-N5 B6b amends it).</summary>
+    /// <param name="columns">The module's families.</param>
+    /// <returns>The instance's column.</returns>
+    internal delegate ref StampedColumn<(uint Query, Completion Completion), Binding.PassCounter> Memo(ref NodeColumns columns);
 
     internal static void CollectEvaluationChildren(Koto node, List<Koto> children, KotoVisitor collector)
     {
@@ -51,7 +64,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
 
     internal void Clear()
     {
-        this.cache.Clear();
+        this.query++;
         this.outward.Clear();
     }
 
@@ -150,20 +163,22 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
 
     private Completion Visit(Koto node)
     {
-        if (this.cache.TryGetValue(node, out var cached))
+        if (node.SyntaxOwner is { } table && memo(ref table.Hir.Families).Get(node.SyntaxId, binding) is var row && row.Query == this.query)
         {
-            return cached;
+            return row.Completion;
         }
 
         // Selected defaults can form recursive evaluation dependencies. Until a
         // node completes, conservatively assume completion; semantic flow retains
         // a pending obligation for recursive defaults.
-        this.cache[node] = new(true, 0);
+        this.Remember(node, new(true, 0));
         this.Work++;
         var result = this.CloseTransfers(node, this.Compose(node));
-        this.cache[node] = result;
+        this.Remember(node, result);
         return result;
     }
+
+    private void Remember(Koto node, Completion completion) => memo(ref HirTables.Of(node).Families).Ref(node.SyntaxId, binding) = (this.query, completion);
 
     // A form's completion from its parts' completions in evaluation order; any other node evaluates its children (Evaluate).
     private Completion Compose(Koto node)
@@ -302,7 +317,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
     // A node's Structural Completion (SPEC 14.9.3): whether it can complete normally, and the targets, by SyntaxId in the node's module,
     // that its Exit and Yield transfers reach outward (a chain of outward; 0 for none). A transfer never leaves its function (SPEC
     // 14.5), and an omitted default argument passes only Normal on, so a chain's targets are ancestors in the node's own module.
-    private readonly record struct Completion(bool Normal, int Outward);
+    internal readonly record struct Completion(bool Normal, int Outward);
 
     private sealed class Collector(List<Koto> children) : KotoVisitor
     {
