@@ -48,13 +48,17 @@ public sealed class TataraCommandTest : IDisposable
         Assert.Equal(lines.Contains("BUILD", StringComparison.Ordinal) || lines.Contains("With space", StringComparison.Ordinal) ? 2 : 1, Count(text, "Project: Lib (Lib.kimiproj)"));
     }
 
-    // A line above the limit (32,767 code units, a command line's) is refused, not cut; one at the limit is a command line.
-    [Fact]
-    public async Task ALineAboveTheLimitIsRefused()
+    // A line above the limit (32,767 code units, a command line's) is refused before every other rule, not cut, exit padded with
+    // spaces past the limit included; a line at the limit is a command line or exit.
+    [Theory]
+    [InlineData("build ", 'a', 2)]
+    [InlineData("exit", ' ', 1)]
+    public async Task ALineAboveTheLimitIsRefused(string word, char padding, int failures)
     {
-        var (code, text, _) = await this.Session("build " + new string('a', TataraCommand.LineLimit - 6) + "\nbuild " + new string('a', TataraCommand.LineLimit - 5) + "\n");
+        var limit = word + new string(padding, TataraCommand.LineLimit - word.Length);
+        var (code, text, _) = await this.Session(limit + padding + "\n" + limit + "\n");
         Assert.Equal(1, code);
-        Assert.Equal(2, Count(text, "Exit code: 1"));
+        Assert.Equal(failures, Count(text, "Exit code: 1"));
         Assert.Equal(1, Count(text, $"The line is longer than {TataraCommand.LineLimit} characters."));
     }
 
@@ -170,10 +174,12 @@ public sealed class TataraCommandTest : IDisposable
     [Fact]
     public async Task ASecondPressDuringALineEndsTheProcessWith130()
     {
+        this.Library("Lib");
         var start = new ProcessStartInfo(Environment.ProcessPath!)
         {
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
         };
+        start.Environment[Child.Folder] = this.directory;
         if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
         {
             start.ArgumentList.Add(typeof(TataraCommandTest).Assembly.Location);
@@ -259,14 +265,14 @@ public sealed class TataraCommandTest : IDisposable
     private void Library(string folder) => WriteLibrary(Path.Combine(this.directory, folder));
 
     // The child process of ASecondPressDuringALineEndsTheProcessWith130: its session's line presses twice, which ends the process with
-    // 130, so it never reports a result.
+    // 130, so it never reports a result. Its folder is the parent's (named by Folder, removed by the parent).
     public sealed class Child
     {
+        internal const string Folder = "KIMI_TATARA_PRESS_FOLDER";
+
         [Fact(Explicit = true)]
         public async Task PressesTwiceDuringALine()
         {
-            var directory = Path.Combine(Path.GetTempPath(), "kimi-tatara-press-" + Guid.NewGuid().ToString("N"));
-            WriteLibrary(Path.Combine(directory, "Lib"));
             var console = new SessionConsole
             {
                 OnProject = () =>
@@ -275,7 +281,7 @@ public sealed class TataraCommandTest : IDisposable
                     Program.CancelKey();
                 },
             };
-            await Session("build Lib/Lib.kimiproj\n", directory, console, TestContext.Current.CancellationToken);
+            await Session("build Lib/Lib.kimiproj\n", Environment.GetEnvironmentVariable(Folder)!, console, TestContext.Current.CancellationToken);
             Assert.Fail("The second press did not end the process.");
         }
     }
