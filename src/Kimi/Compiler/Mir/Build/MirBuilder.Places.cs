@@ -46,7 +46,7 @@ internal sealed partial class MirBuilder
             HirPlaceKind.ConstIndex => this.ConstElement((IndexKoto)node, input),
             HirPlaceKind.CallResult => this.Referent(node),
             HirPlaceKind.Value => this.Value(node, input: input),
-            _ => this.Unsupported(node),
+            _ => this.Invariant(node), // Unset is no evaluated node's (HirPlace's contract); Downcast only a Pattern position's.
         };
 
         return this.FollowLayers(place, shape.Layers);
@@ -141,8 +141,8 @@ internal sealed partial class MirBuilder
             case HirRes.Field: // A Property, or an accessor's storage of its Property.
                 var property = symbol!.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!)! : symbol;
                 return this.Storage(property, this.receiver < 0 ? null : new MirPlace(this.receiver), node);
-            default:
-                return this.Unsupported(node);
+            default: // HasFacts' Name row gives a name its symbol; a local's binding is bound before its uses, a capture's in its body.
+                return this.Invariant(node);
         }
     }
 
@@ -155,7 +155,8 @@ internal sealed partial class MirBuilder
             return this.Static(property, node);
         }
 
-        return receiver is { } place ? this.Field(this.FollowTo(place, null), property, node) : this.Unsupported(node);
+        // An instance Property's storage is read only through a receiver: `x.p`, or `storage` in its accessor, whose body has its self.
+        return receiver is { } place ? this.Field(this.FollowTo(place, null), property, node) : this.Invariant(node);
     }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a
@@ -286,10 +287,17 @@ internal sealed partial class MirBuilder
             MirProjectionKind.Field,
             index);
 
-    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names.
+    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names;
+    // a selection by case selects its call per side (Selected, MirBuilder.Cases.cs).
     private MirPlace Referent(Koto node)
     {
-        var call = ExpansionPlan.Of(compilation.Binding, node)!.Value.Second!;
+        var plan = ExpansionPlan.Of(compilation.Binding, node)!.Value;
+        return HirTables.IndexCaseDecider(node) is { } decider ? this.Selected(node, plan, decider) : this.Referent(node, plan.Second!);
+    }
+
+    // SPEC 4.7.1: the referent of the reference a subscript's call returns, the call into its own result temp.
+    private MirPlace Referent(Koto node, CallPlan call)
+    {
         var result = this.Hold(call.ReturnType, node);
         this.Call(result, call, node, first: null);
         return this.body.Project(compilation.Types, this.Made(result), MirProjectionKind.Deref, 0);

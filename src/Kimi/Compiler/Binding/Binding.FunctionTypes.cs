@@ -21,12 +21,10 @@ namespace Kimi.Compiler;
 // - Prohibitions: the Type relation's walk stays in Binding.TypeRelations.Walk.cs; these judgments call its entries.
 public sealed partial class Binding
 {
-    // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.10).
+    // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.10), below the callee's
+    // acquisition layers (CallableCore).
     internal static Koto? SignatureOwner(BoundType callee)
-    {
-        var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
-        return owner is { Kind: BoundTypeKind.FunctionItem or BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
-    }
+        => CallableCore(callee) is { Kind: BoundTypeKind.FunctionItem or BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
 
     // SPEC 10.5: the input Origins a slot binding holds. `perCall` collects the parameters of S whose per-call Origin, the outer Origin
     // of a direct input that S quantifies, the binding holds, alone or in a meet; `foreign` is any other input Origin, except one that a
