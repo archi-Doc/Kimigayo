@@ -23161,6 +23161,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     (R4-M196).
   - **Rejected:** a `TyCtxt.SafeReferent(t)` static (design P2: single-Type facts are `BoundType`'s; the Front's C-402).
   - **Amends** BU-6, BU-175, G51-2 and R8-M47, each of which names a deleted member; each entry's line states the change.
+  - Amended by R7-T2 U7 (Q-572, D-926): `BoundType.IsPointer` (SPEC 5.1's raw pointer `raw/T`, one layer) is the second such fact;
+    it replaces `ReferenceTypes.IsPointer` and every other spelling of the raw-layer test (`Semantics == Raw` with or without the
+    Kind or component test: the same set, Raw occurring only on a one-component Semantics layer) in Binding (BoundType's own
+    `Origin` and `RawOrigin` getters among them), the root `ElementAccess`, MIR (the builder, the validator, A5) and the Backend.
+    `ReferenceTypes.StorageMatches` is `TyCtxt.StorageMatches` (a relation of two Types, Origins erased, SPEC 21.3.1);
+    `ReferenceTypes.cs` is deleted.
 - **R7-M57 The analyses' closed classes: one broken-contract form per place, resting answers without records** (Middle, 2026-11-20;
   PLAN G396 (3), stream Z2, Q-559, D-905; Major; the owner's order, DECISIONS Q22; brief `middle\notes\z2-design-brief.md`, state
   `z2-state.md`; the Middle's rulings, 11-20; the Middle's code review, ACCEPT WITH CONDITIONS, C1-C3 and N2-N6 taken, N1 is PLAN
@@ -24404,6 +24410,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     statement); a MIR operator-to-Contract switch beside the Backend's Contract-to-operator one (a third copy of the pairing);
     keeping Binding's token and Symbol members in the root file (the Front, C-208).
   - **Moves:** none (probes, snapshots, compare-fixtures; the commit states them).
+  - Amended by R7-T2 U7 (R7-M56's amending line): `ReferenceTypes.IsPointer` is `BoundType.IsPointer`, a Type's own fact (the same
+    set); the builder's read stays, and every open-coded raw-layer test in Binding, MIR and the Backend reads it.
 
 - **R8-M26 MIR publishes whether an rvalue kind has a Place: `MirDescriptor.HasPlace`** (Middle, 2026-11-10; PLAN G668's remainder,
   G668c; Minor, behavior-preserving; review ACCEPT by the Middle's reviewer, who wrote none of it; amends R4-M62).
