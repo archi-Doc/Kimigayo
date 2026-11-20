@@ -36,6 +36,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand<RunCommand, RunCommand.Options>();
                 context.AddCommand<TestCommand>();
                 context.AddCommand<ToolchainCommand, ToolchainCommand.Options>();
+                context.AddCommand<TataraCommand>();
 
                 // Logger
                 context.ClearLogOutputResolvers();
