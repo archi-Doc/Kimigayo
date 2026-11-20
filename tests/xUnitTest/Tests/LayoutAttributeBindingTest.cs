@@ -35,20 +35,27 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
-    // R7-E2 E2-1 (SPEC 6.7.1, 23.1.2; P4): a C-layout struct whose stored Fields lie in two fragments fails one requirement, the split
-    // Field's; the struct's layout is that requirement's verdict over the failed Field, so the struct is Invalid resting on the Field with
-    // no failure of its own (RestOnPart), and a function taking it reads the Invalid struct: the Field's record alone.
-    [Fact]
-    public void ASplitCLayoutStructRestsOnItsSplitField()
-    {
-        var c = CompilationTestHelper.ParseSuccess("#Layout(\"C\")\nstruct P\n    var a: i32 = 0\nstruct P\n    var b: i32 = 0\nfunc use(p: P) -> i32 => 0");
-        var type = c.Kotonoha.RootKoto.NestedContainers.Single();
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal((BindingState.Invalid, BindingFailure.None), (type.StateOf(), type.FailureOf()));
-        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.FailureOf() == BindingFailure.SplitCLayoutStorage);
-        Assert.Equal(field.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(BindingFailure.SplitCLayoutStorage)), Assert.Single(c.Binding.FailureCauses(type)!));
-        Assert.Equal("SplitCLayoutStorage_Kd", Assert.Single(CompilationTestHelper.BindingErrors(c)).Code);
-    }
+    // SPEC 6.7.1, 23.1.2: a C-layout struct whose stored Fields lie in two fragments fails the split requirement, independent of a syntax
+    // error in the split Field's initializer (fixing either leaves the other), so both are reported. The struct's own
+    // InvalidTypeFormation_Kd, dependent on the split, stands for it while the Field's record derives from the recovery its initializer
+    // read (ValidateLayoutFragments' Transitional). Twins: the split alone (r1) and the syntax error alone (q1d).
+    [Theory]
+    [InlineData("q1a", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n\nstruct P\n    var b: i32 = 1 +\n\nfunc use(p: P) -> i32 => 0\n\npublic func main() => ()\n", "InvalidTypeFormation_Kd: struct P | MissingSyntax_Kd: var b: i32 = 1 +")]
+    [InlineData("r1", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n\nstruct P\n    var b: i32 = 0\n\nfunc use(p: P) -> i32 => 0\n\npublic func main() => ()\n", "InvalidTypeFormation_Kd: struct P | SplitCLayoutStorage_Kd: var b: i32 = 0")]
+    [InlineData("q1d", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n    var b: i32 = 1 +\n\nfunc use(p: P) -> i32 => 0\n\npublic func main() => ()\n", "MissingSyntax_Kd: var b: i32 = 1 +")]
+    public void ASplitCLayoutStructIsReportedBesideItsFieldsSyntaxError(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+
+    // SPEC 6.7.1, 23.1.2: fragments that specify different modes conflict, independently of a fragment's second Layout and of a Layout
+    // without a string, and each is reported, the conflict too where its specification also repeats its fragment's Layout. Twins: equal
+    // modes keep the repetition and the operand alone (q2w); one Layout per fragment keeps the conflict alone (q2u). The split check under
+    // the conflict reads the C mode, and its records rest on it (`...`).
+    [Theory]
+    [InlineData("q2v", "#Layout(\"Kimigayo\")\nstruct P\n    var a: i32 = 0\n\n#Layout(\"C\")\n#Layout(1)\nstruct P\n    var b: i32 = 0\n\npublic func main() => ()\n", "ConflictingLayout_Kd: #Layout(\"C\") | InvalidLayoutAttribute_Kd: #Layout(\"C\") | InvalidLayoutAttribute_Kd: #Layout(1) | ...")]
+    [InlineData("q2w", "#Layout(\"Kimigayo\")\nstruct P\n    var a: i32 = 0\n\n#Layout(\"Kimigayo\")\n#Layout(1)\nstruct P\n    var b: i32 = 0\n\npublic func main() => ()\n", "InvalidLayoutAttribute_Kd: #Layout(\"Kimigayo\") | InvalidLayoutAttribute_Kd: #Layout(1)")]
+    [InlineData("q2u", "#Layout(\"C\")\nstruct P\n    var a: i32 = 0\n\n#Layout(\"Kimigayo\")\nstruct P\n    var b: i32 = 0\n\npublic func main() => ()\n", "ConflictingLayout_Kd: #Layout(\"Kimigayo\")")]
+    public void ALayoutConflictIsReportedBesideARepeatedLayout(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
     // A conflicting Layout invalidates its target through its Attribute (InvalidateAttributeTarget) beside a failed Origin clause, which
     // fails only itself (SPEC 15.3.3, 23.1.2; H11b-0 B1): the struct holds no failure of its own and rests on the conflicting Attribute,
