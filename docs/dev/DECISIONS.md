@@ -2655,6 +2655,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (it reads no view and runs outside walks). One `MirSteps.Index` holds the Index-step rule for Walk and `Element`. Reason no
     longer holding: "the body (per call)" was `MirBorrows.Walk`'s `this.body`, moved verbatim, while every caller's body is the one
     `MirCases` selects (MirAnalysis.Borrows, MirOrigins.Judge).
+  - Amended by R4-M227 (D-920): `MirStepClass.ArrayElement`, an Array's element, classed by `MirSteps.Index`'s Array row; read as
+    Index by every reader but the conflicts relation.
 - **R4-M101 The C1-F4 view and Binding's formation context** (2026-10-22; under R4-M94's package; E4's "Recorded limit" superseded in
   part by R4-M168; E2's end list superseded in part by BU-89; E2's and E4's InternalInvariant_Kd, and E4's sharing rule, superseded in
   part by BU-102: the view's throw, an atom's part its forming unit's)
@@ -7511,8 +7513,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Index row (`MirProjection.Position`, a datum, validated, printed by the MIR dump as `p[_3 = 5]`; no vocabulary entry); `MirSteps`
     gives it a ConstIndex step classed Index. `ConstIndex` itself stays 15.1.3's in-range direct Move Path (codegen's unchecked
     offset, MirMoveData, MirDrops). An Array's or Slice's element has none.
-  - **Not covered.** SPEC 4.7.1's whole-Array borrow for a Loan past an Array element's borrow Deref (`hs[0]@follow.a@ref` live,
-    `hs[1] = ...` accepted): PLAN G1139 (D-920).
+  - **Not covered.** Superseded by R4-M227 (D-920): a Loan past an Array element's borrow Deref is met at its receiver, the whole
+    Array (SPEC 4.7.1).
   - **Moves (Q13).** Invalid programs newly rejected: a write, update, increment, exclusive borrow, `replace` or `swap` of one part of
     an Array element, or of a fixed-array element at an index other than a constant one, while a Loan of another part is live. Valid
     programs newly accepted: an out-of-range constant beside another constant, constants through a reference. On already-rejected
@@ -7542,6 +7544,44 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **Rejected.** Excluding the reference's Loans from `Chain` in `Calls.Retained` (a second copy of rule A for one caller); forming an
     address of the destroyed Place past a Deref (a non-direct entry names no holder, so it reads nothing and only adds an entry).
   - **Cost.** One step walk per Drop past a Deref per pass; no allocation (`Issued` uses the walk buffer and the set pool).
+- **R4-M227 An Array element's Loan is met at its receiver, the whole Array** (Middle, A5, 2026-11-21; PLAN G1139, D-920, Q-601; found
+  by D-910's design review B2; Major; design `...\2026-11-16-pause\middle\notes\d920-design.md` with its rulings, conditions 1-6;
+  the code review's rulings 1-3) SPEC 4.7.1, 15.6.2, 15.6.3. Supersedes R4-M225's "Not covered" bullet; amends R4-M100 (`MirStepClass`
+  gains `ArrayElement`).
+  - **Rule.** `MirSteps.Index`, the one table of an Index step's class by its sequence's Type (SPEC 4.7.1's table): a Slice's its
+    view's shared Deref (E6), an Array's `ArrayElement` (the referent of its `index` or `indexUniq` call, which borrows the whole
+    Array), a fixed array's `Index` (a built-in projection). A Loan through an ArrayElement step is met as that call's receiver Loan:
+    the conflicts relation compares it on its steps up to its receiver, before its first ArrayElement step (`Loan.ReceiverSteps`, set
+    by `MirBorrows.Issue`; Count without one, and an address entry's), in `Hits` and its trie form `Through`. So a write, `replace`,
+    destruction or read of the Array, of any of its elements or of a prefix with no borrow Deref between meets every Loan through that
+    Array's element by mode, past the element's Deref too, and a borrow Deref above the Array still exempts a shallow access (15.6.2).
+    Every other reader keeps a Loan's full steps (a reservation's own Place, the parents' trie, Departs, PunKeys, SlotRooted) and reads
+    ArrayElement as Index.
+  - **Owner and names.** The fact is the Index row's MIR Type (the builder's, validated by MirValidator through
+    `MirBody.ProjectedType`), read by MirSteps' table as it reads a Slice's; no HIR, Binding, builder, MIR form or vocabulary change
+    (`MirStepClass` is A5's own enum, R4-M100, not a closed vocabulary). `ArrayElement` is SPEC 4.7.1's term: Binding's
+    `PathStep.ArrayElement` names the same element for an owned Array (MIR's class also covers one reached through a reference,
+    Binding's `BorrowedElement`), and Binding builds no index call for it (built-in indexing; `SelectedIndexCall` is null), so the class
+    is named for the element, not the call. `TyCtxt.RawPart` states the same 4.7.1 fact for raw Places; the contracts differ (raw-Place
+    propagation, a Loan's comparison), so both stay, and PLAN G672 names both for a later unification.
+  - **Moves (Q13).** Invalid programs newly rejected: with a shared Loan past an Array element's borrow Deref live
+    (`r = hs[0]@follow.a@ref`), a write, `replace` or destruction (the storage end included) of any element or of the Array, through a
+    local reference or a `uniq/Array` parameter, nested in a fixed array or an Array, and a fixed array's element inside an Array; with
+    an exclusive Loan through an element live (`q = hs[0]@follow@uniq`), an access of the Array that selects no element (`hs.length`,
+    `hs = [...]`, `replace(hs@uniq, ...)`). Valid programs newly rejected: none. Records on already-rejected programs: a write of another
+    element while q is live gains its own record beside the selection's guard (as R4-M225's a14/a15); at a destroying `replace` of the
+    Array, err(destroy) (Hits' complement, E11) no longer reports a Loan through its element, which the activation's write now reaches:
+    a shared one gets the activation's `CallActivationConflict_Kd` at the same call instead of `ComparisonLoanConflict_Kd`, an exclusive
+    one its record at the reservation's formation (R4-M68) instead of at the call.
+  - **Rows.** `MirBorrowsTest.AnArrayElementLoanIsMetAtItsReceiver`.
+  - **Rejected.** The builder forming the receiver borrow and projecting the element through it (`(*g)[i]`, SPEC's literal shape): a
+    second Borrow per Array access, the guard's mode split at the key (SPEC 4.7.4), record moves on every rejected Array program and MIR
+    goldens, for the same verdicts; a `MirProjection` datum or projection kind (a second representation of the Type, or a vocabulary
+    entry); a Hits clause reading the sequence's Type (a step's meaning decided outside MirSteps' table, a clause for one form); storing
+    a Loan's steps cut (reservations, parents and PunKeys need the full path); a `MirStep` flag beside its class (two representations of
+    a step's meaning). Names: `MirStepClass.Element` (`MirSteps.Element()` and the Backend's `LayoutNeed.Element` mean any sequence's
+    element), `IndexCall` (Binding builds no index call for an Array's element), `Loan.Reach` (MirBorrows' reach on a state) and
+    `Loan.Compared` (comparison members in MirBuilder and MirEffects): each would give a name in use a second meaning. Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
