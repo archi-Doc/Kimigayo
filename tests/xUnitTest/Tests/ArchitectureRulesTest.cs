@@ -32,9 +32,11 @@ public class ArchitectureRulesTest
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
     // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and
-    // DependencyLock (ArtifactFiles.Replace only).
+    // DependencyLock (ArtifactFiles.Replace only). Unit/Kimigayo.cs (the native executor's factory) is a temporary row, approved by the
+    // owner (O-455 (a)); unit A4 removes it.
     private const string BuildReaders = "SolutionAndProject/DependencyLock.cs;SolutionAndProject/Project.cs;Unit/Command/BuildCommand.cs;" +
-        "Unit/Command/CommandExecution.cs;Unit/Command/RestoreCommand.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
+        "Unit/Command/CommandExecution.cs;Unit/Command/RestoreCommand.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs;" +
+        "Unit/Kimigayo.cs";
 
     // The R7-R9 plan's unit M1 (ComponentIsReadOnlyByItsReaders): Documentation's readers, hover's projection in check and its rendering in
     // the LSP. The compiler reads only the association, Core's DocumentationSource, which Documentation reads in turn.
