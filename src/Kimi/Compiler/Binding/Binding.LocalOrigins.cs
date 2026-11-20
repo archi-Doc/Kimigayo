@@ -50,7 +50,7 @@ public sealed partial class Binding
             {
                 if (IsWithin(pending.Binder!, local.InitializerKoto!) && ReferenceEquals(this.OpenInitializer(pending, obligation.Use), local))
                 {
-                    declaration.Forming.Replacements[pending] = this.LocalRegionSlot(local, slot--);
+                    declaration.Forming.Replacements[pending] = this.LocalRegionSlot(local, slot--, this.OccurrenceVariance(type, pending, this));
                 }
                 else if (!bound)
                 {
@@ -112,7 +112,7 @@ public sealed partial class Binding
                 }
 
                 declaration ??= this.OriginDeclarationFor(owner);
-                declaration.Forming.Replacements[pending] = this.LocalRegionSlot(owner, slot--);
+                declaration.Forming.Replacements[pending] = this.LocalRegionSlot(owner, slot--, this.OccurrenceVariance(declared, pending, this));
             }
 
             this.obligationSet.Remove(obligation);
@@ -140,7 +140,7 @@ public sealed partial class Binding
 
             foreach (var pending in solved)
             {
-                var region = this.LocalRegionSlot(owner, slot--);
+                var region = this.LocalRegionSlot(owner, slot--, this.OccurrenceVariance(declared, pending, this));
                 this.PublishRegionValue(region, declaration.Forming.Replacements[pending], owner);
                 declaration.Forming.Replacements[pending] = region;
             }
@@ -189,7 +189,7 @@ public sealed partial class Binding
                 if (IsMutableDeclaration(owner))
                 {
                     var region = declaration.Forming.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
-                        ? previous : this.LocalRegionSlot(owner, slot--);
+                        ? previous : this.LocalRegionSlot(owner, slot--, polarity);
                     declaration.Forming.Replacements[pending] = region;
                     this.originStateVersion++;
                     if (!ReferenceEquals(value, pending))
@@ -205,7 +205,7 @@ public sealed partial class Binding
                     value = this.RegionValueAtUse(value, owner);
                     declaration.Forming.Replacements[pending] = declaration.Forming.Replacements.TryGetValue(pending, out var previous)
                         ? this.Meet(this.RegionValueAtUse(previous, owner), value)
-                        : ReferenceEquals(value, pending) ? this.LocalRegionSlot(owner, slot--) : value;
+                        : ReferenceEquals(value, pending) ? this.LocalRegionSlot(owner, slot--, polarity) : value;
                     this.originStateVersion++;
                 }
 
@@ -220,7 +220,8 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 15.4.4: covariant positions meet upper bounds; contravariant positions select an existing lower bound proven to
-    // outlive the others. Repeated passes propagate dependent slots without inventing unions. Once every lower bound is seen, a
+    // outlive the others (StrongestLowerBound, each clause's lower bound before the candidate held, so that an equal one keeps it, at the
+    // clause; OriginCandidate's contravariant row). Repeated passes propagate dependent slots without inventing unions. Once every lower bound is seen, a
     // contravariant slot whose candidate is not proven to outlive each of them has no candidate and is a local region of `owner`, at
     // `slot` (DECISIONS R4-M112): one decision, whatever the clause order.
     private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred, VariableKoto owner, ref int slot)
@@ -238,12 +239,21 @@ public sealed partial class Binding
                 if (inferred.TryGetValue(relation.Longer, out var lowerVariance) && lowerVariance == OriginVariance.Contravariant &&
                     declaration.Forming.Replacements.TryGetValue(relation.Longer, out var lowerCandidate) && !IsLocalRegion(lowerCandidate))
                 {
-                    var lower = this.ResolveOrigin(relation.Shorter, declaration);
-                    if (!this.ProvesOriginOutlives(lowerCandidate, lower, relation.Syntax) && this.ProvesOriginOutlives(lower, lowerCandidate, relation.Syntax))
+                    var lowers = this.originScratch.Rent(2);
+                    try
                     {
-                        declaration.Forming.Replacements[relation.Longer] = lower;
-                        this.originStateVersion++;
-                        changed = true;
+                        (lowers[0], lowers[1]) = (this.ResolveOrigin(relation.Shorter, declaration), lowerCandidate);
+                        var lower = this.StrongestLowerBound(lowers.AsSpan(0, 2), relation.Syntax, default, out _);
+                        if (this.OriginCandidate(OriginVariance.Contravariant, null, lower, relation.Syntax, default) is { } selected && !ReferenceEquals(selected, lowerCandidate))
+                        {
+                            declaration.Forming.Replacements[relation.Longer] = selected;
+                            this.originStateVersion++;
+                            changed = true;
+                        }
+                    }
+                    finally
+                    {
+                        this.originScratch.Return(lowers, clearArray: true);
                     }
                 }
 
@@ -285,7 +295,7 @@ public sealed partial class Binding
 
             if (!this.ProvesOriginOutlives(candidate, this.ResolveOrigin(relation.Shorter, declaration), relation.Syntax))
             {
-                declaration.Forming.Replacements[relation.Longer] = this.LocalRegionSlot(owner, slot--);
+                declaration.Forming.Replacements[relation.Longer] = this.LocalRegionSlot(owner, slot--, OriginVariance.Contravariant);
                 this.originStateVersion++;
             }
         }

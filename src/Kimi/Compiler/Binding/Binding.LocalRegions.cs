@@ -6,7 +6,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a region owner's Type (IsRegionOwner: every local, a var Pattern
-// binding or a var for slot; LocalRegionSlot), the bounds recorded on them (RecordLocalRegionBound, RecordRegionBound), their finite
+// binding or a var for slot; LocalRegionSlot, with its row), the bounds recorded on them (RecordLocalRegionBound, RecordRegionBound) and
+// the lower bounds a slot region is recorded to outlive (RecordRegionTarget), their finite
 // sources (LocalRegionSources) and the value that brought a source in (LocalRegionSourceUse), and the relations judged through those
 // sources (RegionContains, JudgeLocalRegion). A row is read through one find (Region) and written through one create (WrittenRegion).
 // The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's D-9 line): the find reads the library layer's part first, then the
@@ -307,10 +308,13 @@ public sealed partial class Binding
         return solution;
     }
 
+    // Whether `origin` is a region slot of a region owner's Type (LocalRegionSlot), not a call's open region.
+    private static bool SlotRegion(BoundOrigin origin)
+        => origin is { Kind: OriginKind.Inference, Open: false, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder);
+
     // Whether `origin` is a `var` region of `body` (a reassignable region owner's region; O-422 (a)).
     private static bool OwnVarRegion(BoundOrigin origin, Koto? body)
-        => origin is { Kind: OriginKind.Inference, Open: false, Binder: { } binder, Slot: < 0 } && IsRegionOwner(binder) && IsMutableDeclaration(binder) &&
-            ReferenceEquals(BodyOwner(binder), body);
+        => SlotRegion(origin) && IsMutableDeclaration(origin.Binder!) && ReferenceEquals(BodyOwner(origin.Binder!), body);
 
     // The innermost function whose body holds `node`: a Closure's and a nested function's signature and body are their own.
     private static Koto? BodyOwner(Koto node)
@@ -486,7 +490,10 @@ public sealed partial class Binding
         {
             region.Parents.Clear();
             region.Values.Clear();
+            region.Targets.Clear();
+            region.TargetValues.Clear();
             region.Sources.Clear();
+            region.Row = OriginVariance.Unused;
             region.Version = -1;
             region.Value = null;
             region.Body = null;
@@ -527,10 +534,19 @@ public sealed partial class Binding
         return region;
     }
 
-    private BoundOrigin LocalRegionSlot(Koto owner, int slot)
+    // A region slot of `owner`'s Type with its row (SPEC 15.3.6's table: the slot's variance in the local's Type, as RelationWalk composes
+    // it); a slot recorded again at another row is invariant.
+    private BoundOrigin LocalRegionSlot(Koto owner, int slot, OriginVariance row)
     {
         var origin = this.OriginAtom(owner, OriginKind.Inference, slot);
-        _ = this.WrittenRegion(origin);
+        var region = this.WrittenRegion(origin);
+        var joined = region.Row == OriginVariance.Unused || region.Row == row ? row : OriginVariance.Invariant;
+        if (region.Row != joined)
+        {
+            EnsureWritable(region);
+            region.Row = joined;
+        }
+
         return origin;
     }
 
@@ -553,12 +569,19 @@ public sealed partial class Binding
 
         void Add(BoundOrigin source, BoundOrigin target)
         {
-            if (ReferenceEquals(source, target) || !BoundableIn(target, body))
+            if (ReferenceEquals(source, target))
             {
                 return;
             }
 
-            this.RecordRegionBound(source, target, evidence);
+            if (BoundableIn(target, body))
+            {
+                this.RecordRegionBound(source, target, evidence);
+            }
+            else
+            {
+                this.RecordRegionTarget(source, target, evidence);
+            }
         }
     }
 
@@ -580,10 +603,25 @@ public sealed partial class Binding
             this.regionVersion++;
         }
 
+        this.RecordRegionTarget(source, target, evidence);
+
         // J2: a bound of a waited variable's own solution `(E and region)` bounds its region too (RecordOpening).
         if (region.Solved is { } solved && BoundsSolved(source, target, solved))
         {
             this.RecordRegionBound(source, solved, evidence);
+        }
+    }
+
+    // SPEC 15.3.6: a region slot at the longer end of a recorded bound has its shorter end as a lower bound (LocalRegion.Targets), a fixed
+    // Origin included, which no region row bounds; it moves the graph's version, as its value reads it.
+    private void RecordRegionTarget(BoundOrigin source, BoundOrigin target, Koto evidence)
+    {
+        if (SlotRegion(source) && this.WrittenRegion(source) is var region && !region.Targets.Contains(target))
+        {
+            EnsureWritable(region);
+            region.Targets.Add(target);
+            region.TargetValues.Add(evidence);
+            this.regionVersion++;
         }
     }
 
@@ -645,11 +683,19 @@ public sealed partial class Binding
         return result;
     }
 
-    // A target Origin's row: the bounds recorded on it (Parents, each with its Values entry), the memo of its sources (Sources, current
-    // while Version is the graph's version) and, for a `let` region, its value and the body that reads it so (PublishRegionValue).
+    // A target Origin's row: the bounds recorded on it (Parents, each with its Values entry), for a local region the Origins it is
+    // recorded to outlive (Targets, each with its TargetValues entry) and its slot's variance (Row, LocalRegionSlot), the memo of its sources
+    // (Sources, current while Version is the graph's version) and, for a `let` region, its value and the body that reads it so
+    // (PublishRegionValue).
     internal sealed class LocalRegion
     {
         internal List<BoundOrigin> Parents { get; } = new();
+
+        internal List<BoundOrigin> Targets { get; } = new();
+
+        internal List<Koto> TargetValues { get; } = new();
+
+        internal OriginVariance Row { get; set; }
 
         internal List<BoundOrigin> Sources { get; } = new();
 

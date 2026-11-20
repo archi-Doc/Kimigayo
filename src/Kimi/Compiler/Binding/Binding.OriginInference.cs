@@ -193,13 +193,7 @@ public sealed partial class Binding
             foreach (var variable in inference.Variables)
             {
                 var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs);
-                var candidate = variable.Polarity == 2 ? lower : upper ?? lower;
-                if (variable.Polarity == 3 && (upper is null || lower is null ||
-                    !this.ProvesOriginOutlives(upper, lower, use, inference.Comparison) || !this.ProvesOriginOutlives(lower, upper, use, inference.Comparison)))
-                {
-                    candidate = null;
-                }
-
+                var candidate = this.OriginCandidate((OriginVariance)variable.Polarity, upper, lower, use, inference.Comparison);
                 if (!ReferenceEquals(Get(variable.Origin, origins, inputs), candidate))
                 {
                     Set(variable.Origin, candidate, origins, inputs);
@@ -304,41 +298,56 @@ public sealed partial class Binding
         return true;
 
         // SPEC 15.3.6, from the solution reached so far: the meet of a variable's upper bounds, its lower bound proven to outlive every
-        // other (none when no lower bound does), and the failure of its first pair of lower bounds of which neither outlives the other.
-        // `shortens`: an input's well-formedness may shorten the meet (not for an invariant variable).
+        // other (StrongestLowerBound; none when no lower bound does), and the failure of its first pair of lower bounds of which neither
+        // outlives the other. `shortens`: an input's well-formedness may shorten the meet (not for an invariant variable).
         (BoundOrigin? Upper, BoundOrigin? Lower, ComparisonFailure Conflict) Limits(BoundOrigin variable, bool shortens, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
         {
             BoundOrigin? upper = null;
-            BoundOrigin? lower = null;
-            ComparisonFailure conflict = default;
-            var incomparable = false;
-            foreach (var bound in inference.Bounds)
+            var floors = this.originScratch.Rent(inference.Bounds.Count);
+            try
             {
-                if (bound.Condition == 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Resolve(bound.Longer, bound.LongerVariable, origins, inputs) is { } limit)
+                var count = 0;
+                foreach (var bound in inference.Bounds)
                 {
-                    upper = upper is null ? limit : this.Meet(upper, limit);
-                }
-
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs) is { } floor)
-                {
-                    if (lower is null || this.ProvesOriginOutlives(floor, lower, use, inference.Comparison))
+                    if (bound.Condition == 0 && bound.ShorterVariable && ReferenceEquals(bound.Shorter, variable) && Resolve(bound.Longer, bound.LongerVariable, origins, inputs) is { } limit)
                     {
-                        lower = floor;
+                        upper = upper is null ? limit : this.Meet(upper, limit);
                     }
-                    else if (!incomparable && !this.ProvesOriginOutlives(lower, floor, use, inference.Comparison))
+
+                    if (Floor(bound.Longer, bound.Shorter, bound.LongerVariable, bound.ShorterVariable, variable, origins, inputs) is { } floor)
                     {
-                        incomparable = true;
-                        conflict = BoundFailure(inference.Comparison, bound.Member, bound.Clause, lower, floor, false);
+                        floors[count++] = floor;
                     }
                 }
-            }
 
-            // A later lower bound can outlive an incomparable pair: the strongest lower bound is then that one, whatever the order.
-            if (incomparable && Strongest(variable, origins, inputs) is { } strongest)
+                var lower = this.StrongestLowerBound(floors.AsSpan(0, count), use, inference.Comparison, out var pair);
+                ComparisonFailure conflict = default;
+                for (var (i, k) = (0, 0); pair.Floor >= 0 && i < inference.Bounds.Count; i++)
+                {
+                    var bound = inference.Bounds[i];
+                    if (Floor(bound.Longer, bound.Shorter, bound.LongerVariable, bound.ShorterVariable, variable, origins, inputs) is not null && k++ == pair.Floor)
+                    {
+                        conflict = BoundFailure(inference.Comparison, bound.Member, bound.Clause, floors[pair.Lower], floors[pair.Floor], false);
+                        break;
+                    }
+                }
+
+                return (Conditional(variable, upper, shortens, origins, inputs), lower, conflict);
+            }
+            finally
             {
-                (lower, incomparable) = (strongest, false);
+                this.originScratch.Return(floors, clearArray: true);
             }
+        }
 
+        // A bound's lower bound of `variable`, its shorter end read from the solution reached, when its longer end is the variable.
+        BoundOrigin? Floor(BoundOrigin longer, BoundOrigin shorter, bool longerVariable, bool shorterVariable, BoundOrigin variable, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+            => longerVariable && ReferenceEquals(longer, variable) ? Resolve(shorter, shorterVariable, origins, inputs) : null;
+
+        // The meet of a variable's unconditional upper bounds (`upper`) with the limits only some Semantics cases require and, where it
+        // `shortens`, its inputs' well-formedness.
+        BoundOrigin? Conditional(BoundOrigin variable, BoundOrigin? upper, bool shortens, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
+        {
             // SPEC 15.6.5 (PLAN G809): a limit required only in some Semantics cases joins the meet unless, in those cases, it
             // outlives the meet of the limits every case requires, and every such limit joins when no limit is required in every
             // case; each is judged against that meet alone, so the candidate does not depend on the order of the bounds. For a
@@ -370,36 +379,7 @@ public sealed partial class Binding
                 }
             }
 
-            return (upper, incomparable ? null : lower, conflict);
-        }
-
-        // The lower bound of `variable` proven to outlive every other, if any.
-        BoundOrigin? Strongest(BoundOrigin variable, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
-        {
-            foreach (var bound in inference.Bounds)
-            {
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs) is { } floor &&
-                    OutlivesEveryFloor(variable, floor, origins, inputs))
-                {
-                    return floor;
-                }
-            }
-
-            return null;
-        }
-
-        bool OutlivesEveryFloor(BoundOrigin variable, BoundOrigin candidate, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
-        {
-            foreach (var bound in inference.Bounds)
-            {
-                if (bound.LongerVariable && ReferenceEquals(bound.Longer, variable) && Resolve(bound.Shorter, bound.ShorterVariable, origins, inputs) is { } floor &&
-                    !this.ProvesOriginOutlives(candidate, floor, use, inference.Comparison))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return upper;
         }
 
         // The representative of a variable without a principal solution (above): an invariant one's fixed equality partner, an Origin
@@ -417,7 +397,7 @@ public sealed partial class Binding
             }
 
             var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs);
-            return upper ?? lower;
+            return this.OriginCandidate(OriginVariance.Covariant, upper, lower, use, inference.Comparison);
         }
 
         // J2 (SPEC 15.3.6; the owner's O-362 (a)): a covariant variable that an evidence position and a position without evidence both
@@ -488,6 +468,62 @@ public sealed partial class Binding
 
             return meet;
         }
+    }
+
+    // SPEC 15.3.6's row rule (DECISIONS BU-221; R7-O2), read by the call solve (Limits, the representative), a local's clauses
+    // (SolveLocalBounds) and a local region's value: a variable's candidate by its row from the meet of its upper bounds (`upper`) and its
+    // strongest lower bound (`lower`, StrongestLowerBound): covariant, and a row not yet known, the meet, else the lower bound;
+    // contravariant the lower bound; invariant the meet when it and the lower bound are proven equal, else none. Proofs at `use` in
+    // `comparison`.
+    private BoundOrigin? OriginCandidate(OriginVariance row, BoundOrigin? upper, BoundOrigin? lower, Koto use, in CallableInstance comparison)
+        => row switch
+        {
+            OriginVariance.Contravariant => lower,
+            OriginVariance.Invariant => upper is not null && lower is not null && this.ProvesOriginOutlives(upper, lower, use, comparison) &&
+                this.ProvesOriginOutlives(lower, upper, use, comparison) ? upper : null,
+            _ => upper ?? lower,
+        };
+
+    // SPEC 15.3.6 (DECISIONS BU-221): of `lowers` in their order, the lower bound proven to outlive every other: each one proven to outlive
+    // the one held so far replaces it; once a pair is incomparable (`conflict`: the one held and the first lower bound that neither outlives
+    // nor is outlived by it, as indices; (-1, -1) with none), the first one proven to outlive every lower bound, whatever the order, none
+    // when none is. Proofs at `use` in `comparison`.
+    private BoundOrigin? StrongestLowerBound(ReadOnlySpan<BoundOrigin> lowers, Koto use, in CallableInstance comparison, out (int Lower, int Floor) conflict)
+    {
+        conflict = (-1, -1);
+        var held = -1;
+        for (var i = 0; i < lowers.Length; i++)
+        {
+            if (held < 0 || this.ProvesOriginOutlives(lowers[i], lowers[held], use, comparison))
+            {
+                held = i;
+            }
+            else if (conflict.Floor < 0 && !this.ProvesOriginOutlives(lowers[held], lowers[i], use, comparison))
+            {
+                conflict = (held, i);
+            }
+        }
+
+        if (conflict.Floor < 0)
+        {
+            return held < 0 ? null : lowers[held];
+        }
+
+        for (var i = 0; i < lowers.Length; i++)
+        {
+            var every = true;
+            for (var k = 0; every && k < lowers.Length; k++)
+            {
+                every = this.ProvesOriginOutlives(lowers[i], lowers[k], use, comparison);
+            }
+
+            if (every)
+            {
+                return lowers[i];
+            }
+        }
+
+        return null;
     }
 
     private sealed class OriginInference(Koto use, Koto binder)
