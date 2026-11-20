@@ -254,7 +254,7 @@ internal sealed partial class MirBuilder
                 { Acquire: HirAcquire.Reborrow, Adaptation: HirAdaptation.None } && TypeOf(conversion.Left).Components is [var payload]
                 ? compilation.Types.Reference(type.Semantics, payload, type.Origin) : null;
             var operand = this.Operand(conversion.Left, borrowed);
-            var source = this.TypeOf(operand) ?? type;
+            var source = this.TypeOf(operand) ?? type; // An unknown operand (derived, PLAN G1073) as the conversion's own: it agrees with any.
             var kind = binding switch
             {
                 ConversionBinding.Wrap => MirCastKind.Wrap,

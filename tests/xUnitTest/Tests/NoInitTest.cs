@@ -49,26 +49,31 @@ public class NoInitTest(ITestOutputHelper output)
         => ScalarEmissionTest.EmitFixture("NoInit" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
 
     [Theory]
-    [InlineData("unsafe\n    let values: [1 of i32] = noinit", "local var")]
-    [InlineData("unsafe\n    var values = noinit", "explicit fixed-array")]
-    [InlineData("unsafe\n    var values: Array<i32> = noinit", "explicit fixed-array")]
-    [InlineData("unsafe\n    var values: [_ of i32] = noinit", "hole")]
-    [InlineData("unsafe\n    var values: [2 of _] = noinit", "hole")]
-    [InlineData("unsafe\n    var values: [2 of [2 of i32]] = noinit", "owner Scalar")]
-    [InlineData("unsafe\n    var values: [2 of raw/i32] = noinit", "owner Scalar")]
-    [InlineData("unsafe\n    var values: [0 of ref/i32 during static] = noinit", "owner Scalar")]
-    [InlineData("func f(input: uniq/i32)\n    unsafe\n        var values: [2 of uniq/i32 during input] = noinit", "owner Scalar")]
-    [InlineData("unsafe\n    var values: [2 of ()] = noinit", "owner Scalar")]
-    [InlineData("unsafe\n    var values: [2 of string] = noinit", "owner Scalar")]
-    [InlineData("struct S\n    Self is Copy\nunsafe\n    var values: [2 of S] = noinit", "owner Scalar")]
-    [InlineData("func make<T>()\n    T is Copy\n    unsafe\n        var values: [2 of T] = noinit", "owner Scalar")]
-    [InlineData("group G\n    public var values: [2 of i32] = noinit", "local var")]
-    [InlineData("struct S\n    var values: [2 of i32] = noinit", "local var")]
-    [InlineData("let noinit = 7\nlet value = noinit", "local var")]
-    public void IneligibleDirectivesHaveOneFactualError(string source, string reason)
+    [InlineData("unsafe\n    let values: [1 of i32] = noinit", "local var", null)]
+    [InlineData("unsafe\n    var values = noinit", "explicit fixed-array", null)]
+    [InlineData("unsafe\n    var values: Array<i32> = noinit", "explicit fixed-array", null)]
+    [InlineData("unsafe\n    var values: [_ of i32] = noinit", "hole", null)]
+    [InlineData("unsafe\n    var values: [2 of _] = noinit", "hole", null)]
+    [InlineData("unsafe\n    var values: [2 of [2 of i32]] = noinit", "owner Scalar", null)]
+    [InlineData("unsafe\n    var values: [2 of raw/i32] = noinit", "owner Scalar", null)]
+    [InlineData("unsafe\n    var values: [0 of ref/i32 during static] = noinit", "owner Scalar", null)]
+    [InlineData("func f(input: uniq/i32)\n    unsafe\n        var values: [2 of uniq/i32 during input] = noinit", "owner Scalar", null)]
+    [InlineData("unsafe\n    var values: [2 of ()] = noinit", "owner Scalar", null)]
+    [InlineData("unsafe\n    var values: [2 of string] = noinit", "owner Scalar", null)]
+    [InlineData("struct S\n    Self is Copy\nunsafe\n    var values: [2 of S] = noinit", "owner Scalar", null)]
+    [InlineData("func make<T>()\n    T is Copy\n    unsafe\n        var values: [2 of T] = noinit", "owner Scalar", null)]
+    [InlineData("group G\n    public var values: [2 of i32] = noinit", "local var", "Unsupported_Kd")]
+    [InlineData("struct S\n    var values: [2 of i32] = noinit", "local var", null)]
+    [InlineData("let noinit = 7\nlet value = noinit", "local var", null)]
+    // A mutable group static is the located Unsupported_Kd at its declaration (DECISIONS R5-M82), an independent record beside the
+    // directive's one factual error (SPEC 23.1.2), as for a valid group `var`.
+    public void IneligibleDirectivesHaveOneFactualError(string source, string reason, string? other)
     {
         var diagnostics = DiagnosticCorpus.Check(source + "\n()\n").Diagnostics;
-        var error = Assert.Single(diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
+        var errors = diagnostics.Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        var error = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.InvalidNoInit_Kd));
+        string[] others = other is null ? [] : [other];
+        Assert.Equal(others, errors.Where(x => !ReferenceEquals(x, error)).Select(static x => x.Code));
         Assert.Equal(nameof(DiagnosticCode.InvalidNoInit_Kd), error.Code);
         Assert.Equal("noinit", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Contains(error.Reason!, x => x.Value.Contains(reason, StringComparison.Ordinal));

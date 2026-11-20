@@ -32,6 +32,7 @@ public class TestExecutionAnalysisTest
     [InlineData("Missing.startup()\n#Test\nfunc sample() => ()")]
     [InlineData("#Test\nfunc sample()\n    $expect(1)")]
     [InlineData("#Test\nfunc sample()\n    $require(true, message: 1)")]
+    [InlineData("#Test\nfunc sample()\n    let x: Missing = \"m\"\n    $expect(true, message: x)")] // PLAN G1073: a failed slot's message.
     [InlineData("func ordinary()\n    $expect(true)\n#Test\nfunc sample() => ()")]
     [InlineData("func ordinary() -> string => Test.tempDirectory()\n#Test\nfunc sample() => ()")] // SPEC 22.1: only in test-only bodies.
     [InlineData("#Test\nfunc sample() => ()\n#Test\nfunc another() => sample()")]

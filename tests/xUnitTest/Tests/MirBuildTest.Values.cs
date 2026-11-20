@@ -22,10 +22,12 @@ public sealed partial class MirBuildTest
 
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
-    // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose rejected declaration has no Type (one with a Type is
-    // its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage), and the Field initializer of a declaration Binding did not bind (a
-    // struct with a misplaced `length` slot), in each constructor. Building goes on after each. The unbuilt form is the tuple operator
-    // without its comparison (Unbuilt); its Opaque names the roots of its operands.
+    // Opaque without a record (SPEC 23.1.2): Binding's Error (a rejected declaration's kept initializer its own, DECISIONS Z16) and a use
+    // of a local whose rejected declaration has no Type (one with a Type is its local's, ARejectedDeclarationsLocalIsItsNamesOneStorage).
+    // Building goes on after each. A Field Binding failed whose own Type is valid (a struct with a misplaced `length` slot) has its
+    // initializer published (PLAN G1071's gate 1, F's C2 ruling 261 (3)), so each constructor builds it, with no Opaque, record or finding
+    // (it was an Opaque in each constructor while only a Resolved definition's parts were published). The unbuilt form is the tuple
+    // operator without its comparison (Unbuilt); its Opaque names the roots of its operands.
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
@@ -48,9 +50,9 @@ public sealed partial class MirBuildTest
         Assert.Equal(["u == v", "x == y"], records);
         Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "u == v"));
 
-        Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
+        Assert.Equal(0, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
-        Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
+        Assert.Equal(["missing", "let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts
@@ -271,7 +273,7 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
         var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        var temps = f.Locals.ToArray().Where(x => x.Kind == MirLocalKind.Temp && c.SyntaxOf(x.Source.Syntax).ToString() == target).Select(static x => TyCtxt.Name(x.Type));
+        var temps = f.Locals.ToArray().Where(x => x.Kind == MirLocalKind.Temp && c.SyntaxOf(x.Source.Syntax).ToString() == target).Select(static x => TyCtxt.Name(x.Type!));
         Assert.Contains(type, temps);
         Assert.DoesNotContain("Never", temps);
     }
@@ -346,7 +348,7 @@ public sealed partial class MirBuildTest
         var program = Compile("public func main()\n    let values: [3 of string] = [\"a\", \"b\", \"c\"]\n    for value in values@move => ()\n").BuildMir();
         Assert.Empty(program.Findings);
         var drop = program.Bodies.ToArray()
-            .Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "drop" } && x.Locals[1].Type.Symbol?.Name == "FixedOwnedRemainder");
+            .Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "drop" } && x.Locals[1].Type?.Symbol?.Name == "FixedOwnedRemainder");
         Assert.DoesNotContain(drop.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Drop && x.Terminator.Place.Root == 1);
     }
 
@@ -358,7 +360,7 @@ public sealed partial class MirBuildTest
         var program = Compile("public func main()\n    let values: Array<string> = [\"a\"]\n    for value in values@move => ()\n").BuildMir();
         Assert.Empty(program.Findings);
         var init = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "init" } &&
-            x.Locals.ToArray().Any(static y => y.Type.Symbol?.Name == "ArrayOwningIterator") && x.Locals.ToArray().Any(static y => y.Type.Symbol?.Name == "InlineStorage"));
+            x.Locals.ToArray().Any(static y => y.Type?.Symbol?.Name == "ArrayOwningIterator") && x.Locals.ToArray().Any(static y => y.Type?.Symbol?.Name == "InlineStorage"));
         Assert.DoesNotContain(init.Blocks.ToArray(), x => x.Terminator.Kind == MirTerminatorKind.Drop && init.TypeOf(x.Terminator.Place)?.Symbol?.Name == "InlineStorage");
     }
 
@@ -428,6 +430,65 @@ public sealed partial class MirBuildTest
         var internals = program.Records(MirRecordClass.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject).ToArray();
         Assert.All(broken, x => Assert.Single(internals, y => y == SourceRef.Of(x)));
         Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records(MirRecordClass.Construction).Select(static x => x.Subject));
+    }
+
+    // SPEC 23.1.2, DECISIONS R4-M61's slot rows: a slot of no Type is the failed slot only where Binding recorded a cause at its
+    // TypeSource, so a node declaring one without it (a function's result, a parameter, also of a definition Binding rejected, a let's
+    // local, a match's or a for loop's binding, a Closure's parameter or result) is published Error and recorded as InternalInvariant_Kd at it, never a fault; a default
+    // template is built only beside its definition's Body (a twin keeps its own). A read of a broken slot is a broken contract too, at the
+    // read (PLAN G396 (3) Z1, F's C2 ruling 310): the use of the broken `let x`, whose local no build binds.
+    [Fact]
+    public void ASlotOfNoTypeWithoutItsFailedFactIsABrokenContract()
+    {
+        var c = Compile(
+            "func result() -> i32 => 1\nfunc param(x: i32, n: i32 = 1) -> i32 => x\nfunc kept(x: i32, n: i32 = 1) -> i32 => x\n" +
+            "group G\n    protected func guarded(x: i32) -> i32 => x\nfunc local() -> i32\n    let x = 1\n    return x\n" +
+            "func pick(o: Option<i32>) -> i32\n    match o\n        .Some(let v) => return v\n        _ => return 0\n" +
+            "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n" +
+            "func closures() -> i32\n    let p = func [] (v: i32) -> i32 => v\n    let r = func [] () -> i32 => 1\n    return p(1) + r()\n");
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var literals = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
+        var functions = nodes.OfType<FunctionKoto>().Where(static x => !x.IsAnonymous).ToDictionary(static x => x.Name);
+        var local = nodes.OfType<VariableKoto>().Single(static x => x.ToString().StartsWith("let x", StringComparison.Ordinal));
+        var match = nodes.OfType<MatchKoto>().Single();
+        var loop = nodes.OfType<ForKoto>().Single();
+        var read = nodes.OfType<IdentifierNameKoto>().Single(x => x.Parent is ReturnKoto && ReferenceEquals(HirTables.Symbol(x), HirTables.Symbol(local)));
+        HirTables.Symbol(functions["result"])!.Type = null; // After Binding the Types go with no cause recorded; CheckBound publishes them.
+        c.Binding.ParameterSymbol(functions["param"], 0).Type = null;
+        c.Binding.ParameterSymbol(functions["guarded"], 0).Type = null; // Rejected by Binding (a protected function in a group, SPEC 9.4).
+        HirTables.Symbol(local)!.Type = null;
+        BoundMatch.Of(c.Binding, match)!.Positions.Single(static x => x.BodySymbol is not null).BodySymbol!.Type = null;
+        BoundMatch.Of(c.Binding, loop)!.Positions.Single(static x => x.BodySymbol is not null).BodySymbol!.Type = null;
+        c.Binding.ParameterSymbol(literals[0], 0).Type = null; // A Closure's parameter and result slots (PLAN G1110).
+        HirTables.Symbol(literals[1])!.Type = null;
+        c.Binding.CheckBound();
+        var program = c.BuildMir();
+        Koto[] broken = [functions["result"], functions["param"], functions["guarded"], local, match, loop, literals[0], literals[1]];
+        Assert.Empty(program.Findings);
+        Assert.All(broken, static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
+        Assert.Equal(
+            broken.Append(read).Select(SourceRef.Of).OrderBy(static x => x.Id),
+            program.Records(MirRecordClass.Construction).Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject).OrderBy(static x => x.Id));
+        var templates = program.Bodies.ToArray().Where(static x => x.Key.Kind == MirBodyKind.DefaultTemplate).Select(static x => x.Key.Decl!.Name);
+        Assert.Equal(["kept"], templates);
+    }
+
+    // PLAN G1073 (SPEC 23.1.2; F's C2 ruling 308 (4)): an accessor whose written receiver's Type failed executes with no self input, and
+    // its body's `storage` reads its self, the failed slot: the write is derived from the slot's record (an Opaque, no construction
+    // record; fail-before: InternalInvariant_Kd at `storage`, Z1's no-receiver arm). The twin with a valid self writes its self's Field.
+    [Theory]
+    [InlineData("uniq/Missing")]
+    [InlineData("uniq/Self")]
+    public void AStorageWriteThroughAFailedSelfIsDerived(string receiver)
+    {
+        var c = Compile($"struct HW\n    public var x: i32\n        set(self: {receiver}, value: i32) -> ()\n            storage = 1\n    public init(x: i32) => self.x = x\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "x.Set");
+        var writes = body.Statements.ToArray().Count(x => x.Kind == MirStatementKind.Assign && x.Place.Projection != 0 && body.Projections[x.Place.Projection].Kind == MirProjectionKind.Field);
+        Assert.Equal(receiver == "uniq/Self" ? 1 : 0, writes);
+        Assert.Equal(receiver != "uniq/Self", body.HasOpaque);
     }
 
     // PLAN G396 (3) Z1 (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR vocabulary, or of a fact a published Op
@@ -648,15 +709,31 @@ public sealed partial class MirBuildTest
         Assert.Empty(program.Findings);
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var held = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Ref)
-            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type), Binding.HoverTypeName(x.Rvalue.Type!)));
+            .Select(x => (Binding.HoverTypeName(body.Locals[x.Place.Root].Type!), Binding.HoverTypeName(x.Rvalue.Type!)));
         Assert.Equal(Enumerable.Repeat(("uniq/i32 during (s and a)", "uniq/i32 during (s and a)"), 4), held);
+    }
+
+    // PLAN G1073 (SPEC 23.1.2; the design's R1-10): a parameter whose Type Binding failed is a local of no Type, in its function's body and,
+    // as the prepared input of a later default's template, never a reference over no Type; both bodies validate, with no record (g's
+    // call omits the default into a failed signature: an Opaque, no copy).
+    [Fact]
+    public void AFailedParameterIsALocalOfNoTypeInItsBodyAndALaterDefaultsTemplate()
+    {
+        var c = Compile("func g<T>(t: T, u: Missing, v: i32 = 1) -> i32\n    return v\nfunc h() -> i32\n    return g(1, 2)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name == "g").ToDictionary(static x => x.Key.Kind);
+        Assert.Null(bodies[MirBodyKind.Fn].Locals.ToArray().Single(static x => x.Name == "u").Type);
+        Assert.Null(bodies[MirBodyKind.DefaultTemplate].Locals.ToArray().Single(static x => x.Name == "u").Type);
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M145, BU-103): a Place whose bare acquisition failed, a Place without a Type (its parameter's Type
     // unresolved), is a derived Opaque with no record, discarded or as an item no consumer took (its Adjust unset, which the container
     // reads as a discard), its plan row Failed, as any consumed child's Failed Adjust is; a complete compilation has no such row
-    // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition). g's fallthrough into i32 rests on that Error (no FunctionFallthrough_Kd), so
-    // its result is a second derived Opaque, without a root (MirBuilder.Leave).
+    // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition). The discarded value is of no Type, the statement's Type Binding failed (PLAN
+    // G1073: MirBuilder.Held). g's fallthrough into i32 rests on that Error (no FunctionFallthrough_Kd), so its result is a second derived
+    // Opaque, without a root (MirBuilder.Leave).
     [Fact]
     public void AFailedDiscardRowIsDerivedFromABindingError()
     {
@@ -671,7 +748,7 @@ public sealed partial class MirBuildTest
             var b = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "b");
             var opaques = Opaques(body);
             Assert.Equal([b], opaques[0].Roots);
-            Assert.Equal(name == "g" ? ["()", "i32"] : ["()"], opaques.Select(static x => x.Type));
+            Assert.Equal(name == "g" ? [null, "i32"] : [null], opaques.Select(static x => x.Type));
             Assert.Equal(name == "g" ? [0] : [], opaques[1..].Select(static x => x.Root + x.Roots.Length));
         }
     }
@@ -831,7 +908,7 @@ public sealed partial class MirBuildTest
         => string.Join(", ", sites.Select(x => x == subject ? "body" : $"{c.SyntaxOf(x).GetType().Name} {c.SyntaxOf(x).ToString().Split('\n')[0].Trim()}".Trim()));
 
     // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
-    private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
+    private static (string? Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
         .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Opaque)
-        .Select(x => (TyCtxt.Name(body.TypeOf(x.Place)!), x.Place.Root, body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray()))];
+        .Select(x => (body.TypeOf(x.Place) is { } type ? TyCtxt.Name(type) : null, x.Place.Root, body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray()))];
 }

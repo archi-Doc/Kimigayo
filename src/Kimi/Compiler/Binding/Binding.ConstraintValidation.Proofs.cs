@@ -357,18 +357,50 @@ public sealed partial class Binding
         return proof;
     }
 
-    // The answer of a proof that read an Invalid environment (the one proof read of it): Error resting on the environment, whose Use is
-    // the node that made it Invalid; inside a combined proof it joins the proof in progress (ReadVerdict), else the channel.
-    private ConstraintProof InvalidEnvironment(ConstraintEnvironment environment)
+    // The one channel of an Error resting on a failed node's record (a failed premise's, a named input's: R7-C3).
+    private ConstraintProof RestOnFailure(ICheckCause cause)
     {
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
-            return this.ReadVerdict(ConstraintProof.Error, environment, null);
+            return this.ReadVerdict(ConstraintProof.Error, cause, null);
         }
 
-        this.failedCause ??= environment;
+        this.failedCause ??= cause;
         return ConstraintProof.Error;
     }
+
+    // R7-C3 (F's C2 ruling 255; AGENTS Diagnostics, SPEC 23.1.2): the declaration's record a judgment of `subject is contract` rests on
+    // when it is a named unproven input of the view (NameUnprovenInput), as written or identical in the view: the proof reads that failed
+    // input directly. The declaration's own checks (its frame) are the input's sites, never its readers; nothing else rests.
+    private PremiseFailure? UnprovenInputRead(BoundType subject, BindingSymbol contract, BindingScope scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { FailedPremise: { } failure, UnprovenInputs: { Count: > 0 } inputs } || this.ChecksOwnSite(current.Owner))
+            {
+                continue;
+            }
+
+            foreach (var (named, namedContract) in inputs)
+            {
+                if (ReferenceEquals(namedContract, contract) && (ReferenceEquals(named, subject) || this.IdentityProven(subject, named, scope)))
+                {
+                    return failure;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its
+    // proof scope newly read) is derived: it decides the list only when every independent obligation is Proven (DerivedVerdict), so an
+    // independent Unknown or Refuted keeps its own record. One rule for every clause list (CheckConstraints, the conditions).
+    private bool DerivedObligation(ConstraintProof outcome, ICheckCause? before)
+        => outcome == ConstraintProof.Error && this.ScopeReads.Error is { Use.BindingState: BindingState.Invalid } read && !ReferenceEquals(read, before);
+
+    private ConstraintProof DerivedVerdict(ConstraintProof independent, bool derived)
+        => derived && independent == ConstraintProof.Proven ? ConstraintProof.Error : independent;
 
     // SPEC 8.3.3 (Limits), 23.1.1 (DECISIONS BU-22's L): an analysis a judgment needs reached an implementation limit (`limit`, a
     // failure whose record's category is Resource), so its negative answer is a resource failure, never Unknown or Refuted. The
@@ -476,7 +508,8 @@ public sealed partial class Binding
     }
 
     // What a proof scope read, of which it keeps what its own answer rests on (EndProof): the first limit (L, an Unknown resting on a
-    // located Unsupported_Kd or on a refusal's Resource record) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
+    // located Unsupported_Kd, on a refusal's Resource record or on a consulted failed premise's record: R7-C3, F's C2 ruling 276's
+    // exit order, so valid facts that prove or refute decide first) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
     // Unknown rests on (design-r2 Amendment 4); the clause fact, the clause a clause list's combined verdict rests on, handed one step
     // outward (G351a); and the first Origin not proven `static` an Owned answer rests on, kept only when the answer is not Proven
     // (R4-M161, r2-1b; CapabilityWork.Origin). All but the causes are diagnostic payload only.

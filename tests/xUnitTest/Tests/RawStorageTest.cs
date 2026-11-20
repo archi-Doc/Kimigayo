@@ -339,6 +339,25 @@ public class RawStorageTest
     public void ASelfLayerAdmitsReadsSharedBorrowsAndNull(string construction, string use)
         => Assert.Empty(RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
 
+    // SPEC 5.7 (D-972): a layer k Tuple elements inside a stored Field is judged at every k (PathOrigin keeps every inline selection):
+    // a non-null write is an Origin relation error, a null write is admitted; a 16-entry buffer dropped the Field from the 17th on.
+    [Theory]
+    [InlineData(16, "fresh", "UnsatisfiedOriginRelation_Kd")]
+    [InlineData(17, "fresh", "UnsatisfiedOriginRelation_Kd")]
+    [InlineData(24, "fresh", "UnsatisfiedOriginRelation_Kd")]
+    [InlineData(16, "null", "")]
+    [InlineData(17, "null", "")]
+    [InlineData(24, "null", "")]
+    public void ADeepInlineLayerIsWrittenWithNullOnly(int k, string value, string records)
+    {
+        var place = "b.t" + string.Concat(Enumerable.Repeat(".0", k));
+        var source = $"struct B\n    internal var t: {new string('(', k)}raw/u8 during self{string.Concat(Enumerable.Repeat(", isize)", k))}\n" +
+            $"    public init()\n        self.t = {new string('(', k)}null{string.Concat(Enumerable.Repeat(", 1)", k))}\n" +
+            $"func reset(fresh: raw/u8)\n    var b = B.init()\n    {place} = {value}";
+        string[] expected = records.Length == 0 ? [] : [$"{records}: {place} = {value}"];
+        Assert.Equal(expected, RawPointerSyntaxTest.Records(source));
+    }
+
     // H3b T31a, PQ-10: these valid forms (SPEC 5.7's allowlist, 15.6.2) are refused by A5's located Unsupported_Kd at a non-raw borrow
     // of a layer's Place or at a Borrow or Copy read of an enclosing Tuple or fixed-array Place (DECISIONS R4-M120, PQ-10's interim); the
     // old analysis accepted them. H5's (e) list (the owner, 2026-11-03, 「推奨どおり」, board O-1): PLAN G212's unit (U-B3) restores the

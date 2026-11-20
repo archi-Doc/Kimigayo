@@ -270,6 +270,37 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             public func get(self: ref/Self) -> Box<S> => $abort("x")
         """;
 
+    // The inferred binding's cycle beside a Resolved body that makes a Box<S> value, and the written binding with S's method returning
+    // Box<S> (the inferred row's shape): ruling 261's rows (PLAN G1071 gate 1 publishes S.get's body; F's C2 ruling 261 (2)).
+    private const string InlineCycleInferredWithAValue = """
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+            public init() => self.next = .None
+        struct S
+            Self is C
+            public func get(self: ref/Self) -> Box<S> => $abort("x")
+        func h() -> i32
+            let b = Box<S>.init()
+            return 0
+        """;
+
+    private const string InlineCycleWrittenWithAMethod = """
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+        struct S
+            Self is C
+            associate C.Item is Box<S>
+            public func get(self: ref/Self) -> Box<S> => $abort("x")
+        """;
+
     private const string InlineCycleInTupleAndArray = """
         contract C
             associate Item
@@ -614,7 +645,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData("pl1n", "contract M\ncontract K\n    associate X\ncontract E\n    associate W is M\ncontract C\n    associate Item is M\ncontract D\n    associate Y\nstruct R\n    Self is M\nstruct Box<T>\n    T is E\n    Self is K\n    associate K.X is R\nstruct S\n    Self is E\n    Self is C\n    Self is D\n    associate E.W is S.(D).Y\n    associate D.Y is Box<S>.(K).X\n    associate C.Item is S.(D).Y\n", "UnprovenConstraint_Kd@17:5")]
     [InlineData("rt2", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\n    associate Item2 is M\ncontract D\n    associate Y\nstruct R\n    Self is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    Self is D\n    associate D.Y is Box<S>.(K).X\n    associate C.Item is S.(D).Y\n    associate C.Item2 is S.(D).Y\n", "UnprovenConstraint_Kd@16:5")]
     [InlineData("ind2r", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\ncontract D\n    associate Y\nstruct R\n    Self is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    associate C.Item is Q.(D).Y\nstruct Q\n    Self is D\n    associate D.Y is Box<S>.(K).X\n", "UnprovenConstraint_Kd@15:5")]
-    [InlineData("ind1i", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\ncontract D\n    associate Y\ncontract E\n    associate Z\n    func z(self: ref/Self) -> Z\nstruct R\n    Self is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is E\n    Self is C\n    Self is D\n    associate D.Y is Box<S>.(K).X\n    associate C.Item is S.(D).Y\n    public func z(self: ref/Self) -> S.(D).Y => $abort(\"x\")\n", "UnprovenConstraint_Kd@19:5")]
+    [InlineData("ind1i", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\ncontract D\n    associate Y\ncontract E\n    associate Z\n    func z(self: ref/Self) -> Z\nstruct R\n    Self is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is E\n    Self is C\n    Self is D\n    associate D.Y is Box<S>.(K).X\n    associate C.Item is S.(D).Y\n    public func z(self: ref/Self) -> S.(D).Y => $abort(\"x\")\n", "IncompatibleContractImplementation_Kd@18:5 UnprovenConstraint_Kd@19:5")] // R7-C3 (F's C2 ruling 283 (d), Q13): S's E conformance keeps its own record (IncompatibleContractImplementation_Kd for its InvalidConstraint_Kd); `Self is D`'s InvalidConstraint_Kd goes, its failure recorded at `associate D.Y is Box<S>.(K).X`
     [InlineData("pp1n", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\ncontract D\n    associate Y\nstruct R\n    Self is M\nstruct Q\n    Self is M\nstruct Pair<A, B>\n    Self is M when A is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    Self is D\n    associate D.Y is Box<S>.(K).X\n    associate C.Item is Pair<S.(D).Y, Q>\n", "UnprovenConstraint_Kd@19:5")]
     [InlineData("pp3n", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Q\n    Self is M\nstruct Pair<A, B>\n    Self is M when A is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    associate C.Item is Pair<Pair<Box<S>.(K).X, Q>, i32>\n", "UnprovenConstraint_Kd@17:5")]
     [InlineData("pc1n", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item\nstruct R\n    Self is M\nstruct Q\n    Self is M\nstruct Pair<A, B>\n    Self is M when A is M\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    associate C.Item is Pair<Box<S>.(K).X, Q> and M\n", "UnprovenConstraint_Kd@17:5")]
@@ -788,7 +819,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
 
     // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-128): a binding-only inline cycle is invalid at the binding, a Language record, never a
     // Resource one, used or not. These rows assert their records: each fails if S3 (VerifyConformance's formation of a binding, R7-C2 (b))
-    // goes without that judge, which leaves them clean or Resource records.
+    // goes without that judge, which leaves them clean or Resource records. A binding on the cycle names no Type after the failed Binding,
+    // inferred as written (F's C2 ruling 261), so a published body using the cyclic Type by value adds no generation limit: an inferred
+    // one's S.get (InlineCycleInferred, InlineCycleInferredWithAValue) gave GenerationResourceLimit_Kd once PLAN G1071's gate published it.
     [Theory]
     [InlineData(InlineCycleDirect, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
@@ -798,6 +831,8 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData(InlineCycleThroughTwoTypes, "Library", "2*InvalidConstraint_Kd 2*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleGrowing, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferredWithAValue, "Library", "4*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleWrittenWithAMethod, "Library", "4*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     public void ABindingOnlyInlineCycleIsItsBindingsError(string source, string outputKind, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source, outputKind));
 

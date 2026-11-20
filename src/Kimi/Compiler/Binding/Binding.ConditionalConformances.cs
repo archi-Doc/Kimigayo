@@ -55,14 +55,14 @@ public sealed partial class Binding
         {
             for (var left = a; left is not null; left = left.Parent)
             {
-                if (left.Constraints is not { Invalid: false } x)
+                if (left.Constraints is not { } x)
                 {
                     continue;
                 }
 
                 for (var right = b; right is not null; right = right.Parent)
                 {
-                    if (right.Constraints is not { Invalid: false } y)
+                    if (right.Constraints is not { } y)
                     {
                         continue;
                     }
@@ -327,7 +327,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                this.FailEnvironment(scope.Constraints ??= new(), syntax);
+                this.FailFacts(scope, syntax); // R7-C3: an invalid condition's premises fail with its judgment, never the environment
             }
         }
     }
@@ -335,14 +335,6 @@ public sealed partial class Binding
     private ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, BindingScope scope, out BoundConformancePath? evidence)
     {
         evidence = null;
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is { Invalid: true } invalid)
-            {
-                return this.InvalidEnvironment(invalid);
-            }
-        }
-
         if (this.contractHeadersReady && this.BuiltinArithmeticConformance(type, contract, scope))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
@@ -442,7 +434,7 @@ public sealed partial class Binding
                     definition = ConstraintProof.Error;
                 }
 
-                var condition = this.ProveConformanceConditions(path, type, scope);
+                var condition = this.PathEvidence(path, type, scope);
                 var available = definition == ConstraintProof.Proven ? condition : condition == ConstraintProof.Error ? ConstraintProof.Error : definition;
                 result = CombineProof(result, available, false);
                 if (available == ConstraintProof.Proven)
@@ -629,6 +621,16 @@ public sealed partial class Binding
         }
     }
 
+    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.3.2, 23.1.2): where evidence is taken from a path (ResolveConformance and the projection
+    // specification's PathConditions), an Invalid path is a failed input resting on the path (its Use failed, derived where linked), so
+    // no binding or witness of it is read; otherwise the path's conditions. An inherited path's binding is its declared path's
+    // (DeclaredPath, SPEC 8.6.2), so that path's Failed state is read the same way (the joint code review's B1, F's C2 ruling 302). A
+    // test of whether a path can apply reads the conditions alone (ProveConformanceConditions): an Invalid path is never evidence that
+    // the conformance does not apply (8.3.2 closed world).
+    private ConstraintProof PathEvidence(BoundConformancePath path, BoundType type, BindingScope scope)
+        => (path.Invalid ? path : path.DeclaredPath is { Invalid: true } declared ? declared : null) is { } failed ? this.RestOnFailure(failed)
+            : this.ProveConformanceConditions(path, type, scope);
+
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {
         if (path.InheritedFrom is not null)
@@ -642,11 +644,6 @@ public sealed partial class Binding
             }
 
             return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
-        }
-
-        if (path.Scope.Parent?.Constraints is { Invalid: true } invalid)
-        {
-            return this.InvalidEnvironment(invalid);
         }
 
         return this.ProveConditionalPremises(path.Premises, type, scope);
@@ -668,13 +665,21 @@ public sealed partial class Binding
 
         this.BeginProof();
         var result = ConstraintProof.Proven;
+        var derived = false;
         ClauseFact? conditions = null;
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
             var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.StoredConstraint(written, type), scope, type) : null;
             var limit = this.ScopeReads.Limit;
+            var error = this.ScopeReads.Error;
             var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
+            if (this.DerivedObligation(proof, error))
+            {
+                derived = true;
+                continue;
+            }
+
             if (proof != ConstraintProof.Proven)
             {
                 var onLimit = proof == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
@@ -684,6 +689,7 @@ public sealed partial class Binding
             result = CombineProof(result, proof, true);
         }
 
+        result = this.DerivedVerdict(result, derived);
         var verdict = this.EndProof(result);
         this.LeaveClause(conditions, result); // The conditions are a clause list (G351a).
         return verdict;

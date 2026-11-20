@@ -125,7 +125,7 @@ internal sealed partial class MirBorrows
     {
         this.Storing(place); // The storing rule (MirBorrows.Storing), before the walk buffer is filled.
         var (count, last, pointer) = this.WriteTargets(state, place); // `pointer`: what its last Deref goes through.
-        var receiving = this.wCount == 0 ? null : cases.TypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
+        var receiving = this.wCount == 0 ? null : cases.KnownTypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
             var slot = place.Root < 0 ? Escaped : this.slots[place.Root];
