@@ -26700,3 +26700,32 @@ holds the owner's decisions 1–13). Units of the Tatara lane record their entri
   - Rejected: the C++ under `src/Kimi/Build` (it would join the C# project's items and `Build`'s file set) or under `src/backend`
     (the Back's directory); a hand-raised ABI number (forgettable); the DLL in setup and CI from A1 (the shared junction); a copied
     list of Windows link libraries (the first build's: it differed from the archive's interface).
+  - Amended by T-M4 (unit A2, 2026-11-20): the start check is `tatara_abi`, the SHA-256 of `tatara.h` embedded in `Kimi.dll`, frozen
+    with `tatara_identity`'s shape; the whole-source build identity is recorded, not compared (C-420 N2). Tatara's only process-wide
+    LLVM state is the X86 target's registration, crash recovery and the fatal-error handler; every operation runs in
+    `RunSafelyOnThread` with 10,000,000 bytes of stack (the tools' reserve; dotnet's is 1,572,864). LLD's parallel executor is kept
+    across calls; its worker threads take the host's default stack and run outside recovery, so a fatal error or crash there ends the
+    process (C-424 C6'). `opt`'s default pipeline has SLP vectorization on, so Tatara sets it (found by a byte difference on
+    Milestone30; the pipelines' texts are then equal). A failed emit or optimize removes its output file itself (`raw_fd_ostream`; no
+    `ToolOutputFile`), also after a fatal error or crash (a return of 2 closes the recorded descriptor and removes the file): Tatara
+    installs no signal handler, console control handler or exception filter in the host process (C-424 R1, R2; regression
+    `UnhandledExceptionFilterStaysTheHosts`).
+- **T-M4 A2's temporary structures and the executor's four calls** (Tatara, 2026-11-20; the plan's unit A2, Q-574, D-928; Major;
+  design review C-423; implementation review C-424, ACCEPT WITH CONDITIONS, its fix round re-checked).
+  - `NativeBuild` runs its tool work through `NativeExecutor`: optimize, emit, inspect, link. The steps, the verdicts, the redaction
+    between optimize and emit and the record's form stay `NativeBuild`'s; the facts are symbol names with `llvm-nm`'s letters and two
+    flags.
+  - **Temporary, removed by unit A4:** (1) the seam itself (`NativeExecutor` with two implementations, its factory and the
+    `BuildManifest` overload that takes it): A4 deletes `ExternalToolExecutor` and the abstract type, and `NativeBuild` calls Tatara
+    directly; `ExternalToolExecutor` is `internal` (the comparison wraps its factory); (2) the executor comparison in
+    `TataraExecutorTest` (the tool control comparison stays, the gate of an LLVM update); (3) `Explicit = true` on the tests that load
+    `tatara.dll`.
+  - `.inspection.txt` is no longer written (A2-0): no reader, not in IMPL's artifact list.
+  - A2-1 (b1ed6bb6d) read `llvm-nm`'s posix line at its first separator, which changed the failure text of a program whose external
+    symbol holds a space or a tab; 87c4cda50 reads the name as everything before the last three fields
+    (`ExternalToolExecutor.PosixSymbols`), so both executors read such a symbol exactly (C-424 C4').
+  - **In stage A every failure Tatara reports is the toolchain's failure** ("Tatara failed: <operation>"), a load, bind or
+    start-check failure included; a return of 2 adds that Tatara cannot run again in the process. Rejected: an internal error for
+    fatal LLVM and LLD errors in stage A (they can be the user's: a malformed library, an IR `llc` cannot select from
+    `build --Manifest`).
+  - Rejected: three operations with the redaction in C++ (a second copy of P13's rule); a nullable inspection text kept until A4.
