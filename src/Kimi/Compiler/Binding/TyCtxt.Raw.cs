@@ -29,7 +29,7 @@ internal sealed partial class TyCtxt
     // array's element at any position, from-end included. An enum's Case payload is none (SPEC 5.2 lists Fields and elements: a payload is
     // reached by matching the enum, which reads it), nor is a Closure's environment, an Array's, view's or Dictionary's element (the
     // referent of `index`/`indexUniq`) or a reference's or handle's part (a referent). The one statement of the rule: Binding's IsRawPlace
-    // walk (ElementAccess), MIR's move paths (MirMoveData.Resolve) per step and RawPlaces' rows. A read of the Type; total; allocates nothing.
+    // walk (PlaceAuthority.Raw), MIR's move paths (MirMoveData.Resolve) per step and RawPlaces' rows. A read of the Type; total; allocates nothing.
     internal static bool RawPart(BoundType? container) => container is { Semantics: Parsing.SemanticsKind.Owner } &&
         (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container));
 
@@ -87,7 +87,7 @@ internal sealed partial class TyCtxt
     // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
     internal bool Punnable(BoundType type)
     {
-        if (type.IsScalar || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        if (type.IsScalar || type.IsAbstract || type.IsPointer)
         {
             return true;
         }

@@ -51,7 +51,7 @@ public sealed partial class Binding
     internal AcquisitionJudgment TakeJudgment(Koto place)
     {
         place = KotoHelper.UnwrapParentheses(place);
-        if (ElementAccess.IsRawRoot(place))
+        if (IsRawRoot(place))
         {
             return AcquisitionJudgment.Verified;
         }
@@ -264,7 +264,7 @@ public sealed partial class Binding
             case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
                 next = pair.Left;
                 return PathStep.PairFollow;
-            case Koto when ElementAccess.IsRawRoot(source):
+            case Koto when IsRawRoot(source):
                 next = source is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)source).Left;
                 return PathStep.RawFollow;
             case IndexKoto userIndex when ElementAccess.IsUserIndex(this, userIndex):
@@ -274,7 +274,7 @@ public sealed partial class Binding
                 index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
                 next = index.Left;
                 return PathStep.SliceElement;
-            case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType):
+            case IndexKoto index when index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary }:
                 next = index.Left;
                 return PathStep.BorrowedElement;
             case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Array && !ElementAccess.IsSlicing(this, element):
@@ -305,7 +305,7 @@ public sealed partial class Binding
 
         // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission, nor does any raw Origin (condition 3 of SPEC 5.2.1
         // bounds the access at run time); a safe shared layer inside the pointee does.
-        if (ElementAccess.IsRawRoot(node) || ElementAccess.IsPointerPath(this, node))
+        if (IsRawRoot(node) || this.IsPointerPath(node))
         {
             return !this.ReachedThroughShared(node);
         }
@@ -356,13 +356,13 @@ public sealed partial class Binding
             return this.WritableOwner(inline.Left);
         }
 
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(this, nested.Left)) &&
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && ElementAccess.AccessType(this, nested.Left)?.SafeReferent is not { Kind: BoundTypeKind.Tuple } &&
             ElementAccess.BorrowedPathRoot(this, nested) is { } root)
         {
             return ElementAccess.AccessType(this, root, true)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
         }
 
-        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.AccessType(this, tupleElement.Left)))
+        if (node is MemberAccessKoto tupleElement && ElementAccess.AccessType(this, tupleElement.Left)?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
             return ElementAccess.AccessType(this, tupleElement.Left, true)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(this, tupleElement, out _, out _);
         }
@@ -503,7 +503,7 @@ public sealed partial class Binding
     private bool OffersTake(Koto source)
     {
         var place = KotoHelper.UnwrapParentheses(source);
-        if (ElementAccess.IsRawPlace(this, place))
+        if (this.IsRawPlace(place))
         {
             return !this.ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless a safe shared layer inside it denies.
         }
@@ -513,18 +513,18 @@ public sealed partial class Binding
 
     // SPEC 14.2.4, 5.2.3: whether an explicit discard destroys its operand's Place in place: an operand `P@move`, parenthesized or not,
     // a Transfer (its plan row's conversion, which CompleteTransfer sets only after OffersTake allowed the Take) through OffersTake's raw
-    // branch (ElementAccess.IsRawPlace), which transfers nothing. The HIR publisher writes it as the discard's plan row Flag
+    // branch (IsRawPlace), which transfers nothing. The HIR publisher writes it as the discard's plan row Flag
     // (HirTables.DestroysInPlace).
     private bool DestroysInPlace(DiscardKoto discard)
         => KotoHelper.UnwrapParentheses(discard.Operand) is ConversionKoto transfer &&
-            HirTables.PlanOf(transfer).Conversion == ConversionBinding.Transfer && ElementAccess.IsRawPlace(this, transfer.Left);
+            HirTables.PlanOf(transfer).Conversion == ConversionBinding.Transfer && this.IsRawPlace(transfer.Left);
 
     // SPEC 3.5: a bare Place, as opposed to a Temporary Value or an explicit @ operation. Only a Place's
     // acquisition is restricted by the lending rule; a temporary transfers its ownership freely. SPEC 3.4.1, 5.2: a raw Place is a Place.
     private bool IsBarePlace(Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
-        return IsStaticField(source) || ElementAccess.IsRawRoot(source) || source switch
+        return IsStaticField(source) || IsRawRoot(source) || source switch
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
             ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => true, // SPEC 13.5.5: a selected referent is a Place.
@@ -533,8 +533,7 @@ public sealed partial class Binding
             // SPEC 4.7.1: a user index publishes a Place, whatever its key; a range selection of a sequence is a value (SPEC 4.8.2).
             IndexKoto index => ElementAccess.IsUserIndex(this, index) || (!ElementAccess.IsSlicing(this, index) &&
                 (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
-                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) ||
-                ReferenceTypes.IsDictionary(index.Left.BoundType))),
+                index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary })),
             _ => false,
         };
     }
@@ -620,7 +619,7 @@ public sealed partial class Binding
             return false; // SPEC 15.6.2: a shared layer anywhere on the path denies an exclusive borrow.
         }
 
-        if (ElementAccess.IsRawRoot(source))
+        if (IsRawRoot(source))
         {
             return true; // SPEC 5.2.2, 5.7: a raw Place is lent in either mode, never as static storage; only a safe shared layer inside it denies (above).
         }
@@ -661,12 +660,12 @@ public sealed partial class Binding
             return !exclusive;
         }
 
-        if (source is IndexKoto index && (ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType)))
+        if (source is IndexKoto index && index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary })
         {
             return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
         }
 
-        if (source is MemberAccessKoto element && ReferenceTypes.IsTuple(element.Left.BoundType))
+        if (source is MemberAccessKoto element && element.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
             return ElementAccess.TryBorrowedTupleElement(this, element, out _, out _) &&
                 (!exclusive || element.Left.BoundType!.Semantics == SemanticsKind.Uniq);

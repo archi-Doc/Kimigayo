@@ -4,8 +4,9 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Element access (SPEC 4.6-4.8, 5.2, 13.4): what a selection is as an element, a raw Place or a Place read in place.
-// - Responsibility: the element-access and raw-Place predicates that Binding's Place classification and the HIR publisher read.
+// Element access (SPEC 4.6-4.8, 13.4): what a selection is as an element or a Place read in place.
+// - Responsibility: the element-access predicates that Binding's Place classification and the HIR publisher read (a raw Place is
+//   Binding's own: Binding.PlaceAuthority.Raw).
 // - Inputs: a node and the reader's Binding, which every caller passes as the first parameter of each member that reads a Binding fact;
 //   never a node's own compilation.
 // - Outputs: the answers; nothing here writes a fact or reports a diagnostic.
@@ -16,8 +17,8 @@ internal static class ElementAccess
     // SPEC 4.8.2, 4.7.1: an element of a Slice or of a referenced array, including a fixed array reached through a
     // borrowed receiver; no owned root holds it.
     internal static bool IsSharedElement(Binding binding, Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
-        (HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(binding, element.Left)) ||
-            ReferenceTypes.IsDynamicArray(HirTables.TypeOf(element.Left)) || ReferenceTypes.IsDictionary(HirTables.TypeOf(element.Left)) ||
+        (HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.Slice || AccessType(binding, element.Left)?.SafeReferent is { Kind: BoundTypeKind.FixedArray } ||
+            HirTables.TypeOf(element.Left)?.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.Dictionary } ||
             (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(binding, element.Left)));
 
     // SPEC 3.4.3: the referent of an exclusive array reference offers element replacement, without requiring a mutable
@@ -26,7 +27,7 @@ internal static class ElementAccess
     // path authority decides it rather than the stored Type (PLAN G59).
     internal static bool IsExclusiveArrayElement(Binding binding, Koto source) => source is IndexKoto { Right: not RangeKoto } element && !IsSlicing(binding, source) &&
         ((AccessType(binding, element.Left, true) is { Semantics: SemanticsKind.Uniq } receiver &&
-            (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver))) ||
+            receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
         (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(binding, element.Left) &&
             binding.PathAuthority(element.Left, []) == SemanticsKind.Uniq));
 
@@ -69,7 +70,7 @@ internal static class ElementAccess
 
     // SPEC 4.7: a fixed array, Slice or Array, directly or through a reference: the receivers whose keys are positions.
     internal static bool IsSequence(BoundType? type)
-        => (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? type.Components[0] : type)?.Kind
+        => (type?.SafeReferent ?? type)?.Kind
             is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
 
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants. A fixed-array element's Move Path: a constant
@@ -121,84 +122,6 @@ internal static class ElementAccess
         return Binding.Reassignable(symbol) ? root : null;
     }
 
-    // SPEC 5, 5.2, 5.3: the root of a raw Place's path, `*p` or `p[n]` (the node itself, already unwrapped), the one test of it: the raw
-    // walks (IsRawPlace, IsRawRooted, IsPointerPath), Binding's Place classification (IsBarePlace, LendsPlace, PlaceOrigin,
-    // PlaceOriginSource, Writable, TakeJudgment), its path step (NextPathStep) and the unsafe-context rule (RequiresUnsafe) read it.
-    internal static bool IsRawRoot(Koto source)
-        => source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(HirTables.TypeOf(index.Left)));
-
-    // SPEC 5.2, 4.7.1, 15.1.5: a raw Place, the Place a Take moves without state tracking: *p, p[n], and each part of one the raw
-    // storage holds itself (TyCtxt.RawPart: a stored Field, a Tuple element, a fixed-array element at an integer or from-end position).
-    // An Array, view, Dictionary or user element, and a part past a stored reference, is a referent, never a raw Place. MIR's move paths
-    // read the same TyCtxt.RawPart per step (MirMoveData.Resolve).
-    internal static bool IsRawPlace(Binding binding, Koto source)
-    {
-        source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64; depth++)
-        {
-            if (IsRawRoot(source))
-            {
-                return true;
-            }
-
-            if (source is not BinaryKoto element || !IsSyntax(binding, element) || !TyCtxt.RawPart(HirTables.TypeOf(element.Left)) ||
-                (element is IndexKoto && KotoHelper.UnwrapParentheses(element.Right) is var key &&
-                    (key is RangeKoto || (key is not FromEndIndexKoto && HirTables.TypeOf(element.Right) is not { IsInteger: true }))))
-            {
-                return false;
-            }
-
-            source = KotoHelper.UnwrapParentheses(element.Left);
-        }
-
-        return false;
-    }
-
-    // SPEC 5.2.2, 4.7.1: a Place rooted at a raw Place: *p or p[n], or a Place reached from one by built-in steps (IsSyntax): a stored
-    // Field, a Tuple element and a built-in (no user indexer's) element at an integer position, an Array's included (its receiver is the
-    // raw Place's part), each step also past a reference stored in the raw storage (BorrowRawPlace then bounds a borrow by that
-    // reference's Origin). A range or from-end position ends it, so a from-end raw Place (IsRawPlace) is not rooted here. Its borrow is a
-    // fresh anchor (BorrowRawPlace), its address and its place-ness the raw Place's; only IsRawPlace's Places offer Take.
-    internal static bool IsRawRooted(Binding binding, Koto source)
-    {
-        source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64; depth++)
-        {
-            if (IsRawRoot(source))
-            {
-                return true;
-            }
-
-            if (source is not BinaryKoto element || !IsSyntax(binding, element) ||
-                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto ||
-                    HirTables.TypeOf(element.Right) is not { IsInteger: true })))
-            {
-                return false;
-            }
-
-            source = KotoHelper.UnwrapParentheses(element.Left);
-        }
-
-        return false;
-    }
-
-    // SPEC 5.2, 12: an inline stored field/Tuple/fixed-array path rooted at *p or p[n].
-    // Binding mutability does not decide its write permission.
-    internal static bool IsPointerPath(Binding binding, Koto source)
-    {
-        source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64 && source is BinaryKoto element && IsSyntax(binding, element) && TryType(binding, element, out _, out _); depth++)
-        {
-            source = KotoHelper.UnwrapParentheses(element.Left);
-            if (IsRawRoot(source))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>
     /// SPEC 3.4.3, 13.4: the Type through which a Place expression read in place, a receiver or a string comparison
     /// operand, is accessed. Through several reference layers, or for a shared element Place, it is the one reference
@@ -238,7 +161,7 @@ internal static class ElementAccess
     // The reference whose struct or Tuple referent `reference@follow` selects, or null.
     internal static Koto? FollowedReference(Binding binding, Koto receiver)
         => KotoHelper.UnwrapParentheses(receiver) is ConversionKoto followed && HirTables.PlanOf(followed).Conversion == ConversionBinding.Follow &&
-            AccessType(binding, followed.Left) is var type && (ReferenceTypes.IsStruct(type) || ReferenceTypes.IsTuple(type)) ? followed.Left : null;
+            AccessType(binding, followed.Left)?.SafeReferent is { } referent && (AdtDef.IsStruct(referent) || referent.Kind == BoundTypeKind.Tuple) ? followed.Left : null;
 
     // SPEC 4.7.1: an owned fixed-array element selected at a runtime index, which has no static Move Path.
     internal static bool IsRuntimeFixedElement(Binding binding, Koto selection)
@@ -255,7 +178,7 @@ internal static class ElementAccess
             }
 
             var receiver = AccessType(binding, field.Left);
-            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) ||
+            if (AdtDef.IsStruct(receiver?.SafeReferent) || receiver?.SafeReferent is { Kind: BoundTypeKind.Tuple } ||
                 (receiver is not null && binding.ObjectCases(receiver, binding.ConstraintScope(field.Left), out _) != SemanticsMask.None))
             {
                 return field.Left;
@@ -312,11 +235,11 @@ internal static class ElementAccess
         element = null;
         position = -1;
         var receiver = AccessType(binding, source.Left);
-        if (ReferenceTypes.IsTuple(receiver) && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
-            number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)receiver!.Components[0].Components.Count)
+        if (receiver?.SafeReferent is { Kind: BoundTypeKind.Tuple } tuple && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
+            number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)tuple.Components.Count)
         {
             position = (int)magnitude;
-            element = receiver.Components[0].Components[position];
+            element = tuple.Components[position];
             return true;
         }
 

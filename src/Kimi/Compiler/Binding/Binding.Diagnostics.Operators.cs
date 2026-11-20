@@ -61,7 +61,7 @@ public sealed partial class Binding
         {
             var note = requirementNote;
             var terminal = this.FactOf(problem, ProblemFactKind.Terminal)!.Value;
-            if (code == DiagnosticCode.NonNumericOperand_Kd && ReferenceTypes.EndsInString(this.report.Value(terminal)))
+            if (code == DiagnosticCode.NonNumericOperand_Kd && ReferenceEquals(ComparisonReferent(this.report.Value(terminal)), BoundType.String))
             {
                 note = StringOperatorNote;
             }

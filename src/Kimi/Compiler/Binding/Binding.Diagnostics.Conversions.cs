@@ -152,7 +152,7 @@ public sealed partial class Binding
     // fact a broken contract (design-r2 §2).
     private void RecordCondition(Koto node, in ComparisonFailure failure, BoundType implementation, BoundType required)
     {
-        if (failure.IsCondition && ReferenceTypes.StorageMatches(required, implementation))
+        if (failure.IsCondition && TyCtxt.StorageMatches(required, implementation))
         {
             this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, this.ContractFact(node, failure, node));
         }

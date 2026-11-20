@@ -361,7 +361,7 @@ public sealed partial class Binding
         return order != 0 ? order : (y.Root?.SyntaxId ?? 0).CompareTo(x.Root?.SyntaxId ?? 0);
     }
 
-    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (ElementAccess.IsRawRoot), pointer
+    // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (IsRawRoot), pointer
     // arithmetic, noinit, or one of the node's calls whose selected target is an unsafe function (the requirement is checked after
     // selection); null while Binding has not resolved an expression, whose need is then unknown.
     private bool? RequiresUnsafe(Koto node)
@@ -371,8 +371,8 @@ public sealed partial class Binding
             return node is ExpressionKoto or NoInitKoto ? null : false;
         }
 
-        if (node is NoInitKoto || ElementAccess.IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
-            ReferenceTypes.IsPointer(arithmetic.Left.BoundType)))
+        if (node is NoInitKoto || IsRawRoot(node) || (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.PlusEquals or KotoKind.MinusEquals } arithmetic &&
+            arithmetic.Left.BoundType is { IsPointer: true }))
         {
             return true;
         }
