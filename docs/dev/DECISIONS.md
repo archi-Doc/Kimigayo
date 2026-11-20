@@ -13093,6 +13093,10 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a raw case in each consumer (one form per site); routing implicit borrows to `BorrowRawPlace` (it decides a written
     conversion's result); the fact in `TyCtxt.RawPart` (it answers which parts a Take moves, not what is a Place); keeping the
     declared-result fit beside the anchor (two Origin rules for one borrow).
+  - Amended by R7-T2 U8 (Q-581, D-939): `IsRawRoot` and the raw walks (`IsRawPlace`, `IsRawRooted`, `IsPointerPath`) are Binding's
+    own members in `Binding.PlaceAuthority.Raw.cs` (the raw part of the Place classification, beside `PathOrigin`); `ElementAccess`
+    keeps the element-access predicates. The rule is unchanged. R4-M194's, BU-146's and BU-193's mentions of
+    `ElementAccess.IsRawPlace` and `IsRawRooted` are history this line covers.
 - **BU-155 Every Contract reference written in source is formed by one path, `BindContractReference` (PLAN G705)** (2026-11-11;
   Front, Binding; Major; the owner's O-145 (a) and O-151 (a) with its conditions; design review 3 ACCEPT with conditions 1-10,
   implementation review ACCEPT) SPEC 8.4.3, 8.5.1, 8.5.2, 8.11.1, 9.7, 9.7.1.
