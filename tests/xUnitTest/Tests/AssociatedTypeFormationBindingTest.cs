@@ -94,15 +94,17 @@ public class AssociatedTypeFormationBindingTest
     }
 
     [Theory]
-    [InlineData("contract C\n    associate Item is Box<string>\nstruct S\n    Self is C")]
-    [InlineData("contract Parent\n    associate Item is Box<string>\ncontract C: Parent\nstruct S\n    Self is C")]
-    [InlineData("contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Box<string>")]
-    public void FixedInheritedAndConditionalDefinitionsValidateFormation(string declaration)
+    // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the inherited and conditional definitions' paths stay verified after the Contract's own specification fails at the
+    // Definition deadline (PLAN issue: a path verification keeps a later Failed fact); no use is accepted through them (C3\c31b\t5 atf1.use).
+    [InlineData("contract C\n    associate Item is Box<string>\nstruct S\n    Self is C", false)]
+    [InlineData("contract Parent\n    associate Item is Box<string>\ncontract C: Parent\nstruct S\n    Self is C", true)]
+    [InlineData("contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Box<string>", true)]
+    public void FixedInheritedAndConditionalDefinitionsValidateFormation(string declaration, bool verified)
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\n" + declaration);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
+        Assert.All(Definition(c).Paths, path => Assert.Equal(verified, path.IsVerified));
     }
 
     [Theory]

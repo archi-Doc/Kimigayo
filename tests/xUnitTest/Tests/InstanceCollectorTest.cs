@@ -362,7 +362,7 @@ public sealed partial class InstanceCollectorTest
                 },
                 {
                     "virtualBlock", "contract Marker\n" + VirtualBase + "    Self is Marker when T is Missing\n    " + Slot + " => value@follow\n" + Create,
-                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd TransferRequired_Kd", string.Empty // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the two `Self` records go (dependents); TransferRequired_Kd at `value@follow` is an independent failure dev's whole-environment rest hid (a gain, SPEC 23.1.2)
                 },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", "Unsupported_Kd inspect(b)" },
