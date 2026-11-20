@@ -46,7 +46,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (source is not BinaryKoto element || !ElementAccess.IsSyntax(this, element) || !TyCtxt.RawPart(HirTables.TypeOf(element.Left)) ||
+            if (source is not BinaryKoto element || !this.IsSyntax(element) || !TyCtxt.RawPart(HirTables.TypeOf(element.Left)) ||
                 (element is IndexKoto && KotoHelper.UnwrapParentheses(element.Right) is var key &&
                     (key is RangeKoto || (key is not FromEndIndexKoto && HirTables.TypeOf(element.Right) is not { IsInteger: true }))))
             {
@@ -74,7 +74,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (source is not BinaryKoto element || !ElementAccess.IsSyntax(this, element) ||
+            if (source is not BinaryKoto element || !this.IsSyntax(element) ||
                 (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto ||
                     HirTables.TypeOf(element.Right) is not { IsInteger: true })))
             {
@@ -87,12 +87,12 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 5.2, 12: a Place reached from *p or p[n] by one or more built-in steps (IsSyntax) into an owned value (TryType): a stored
+    // SPEC 5.2, 12: a Place reached from *p or p[n] by one or more built-in steps into an owned value (IsInlinePart): a stored
     // Field, a Tuple element, or an element of a fixed array, Array or Dictionary. Binding mutability does not decide its write permission.
     private bool IsPointerPath(Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64 && source is BinaryKoto element && ElementAccess.IsSyntax(this, element) && ElementAccess.TryType(this, element, out _, out _); depth++)
+        for (var depth = 0; depth < 64 && source is BinaryKoto element && this.IsInlinePart(element); depth++)
         {
             source = KotoHelper.UnwrapParentheses(element.Left);
             if (IsRawRoot(source))
@@ -107,7 +107,7 @@ public sealed partial class Binding
     // The position an inline part step selects in its owner's Type (a Tuple element's, 0 for a fixed-array element); null for any other
     // step (SPEC 3.4.3).
     private int? InlinePosition(PathStep step, Koto source)
-        => step is PathStep.Member or PathStep.InlinePart && ElementAccess.TryType(this, (BinaryKoto)source, out _, out var position) ? Math.Max(position, 0) : null;
+        => step is PathStep.Member or PathStep.InlinePart && this.TryType((BinaryKoto)source, out _, out var position) ? Math.Max(position, 0) : null;
 
     // SPEC 5.7 (Reading a Field, Typed paths): the Origin of the last borrow or raw pointer that a Place's path dereferences, from the
     // leaf through NextPathStep: a member's, a borrowed element's or an inline part's the innermost borrow, raw or pair layer of the Type

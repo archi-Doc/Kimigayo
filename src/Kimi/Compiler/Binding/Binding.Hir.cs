@@ -201,7 +201,7 @@ public sealed partial class Binding
         // 13.5.4), its floating-point Type's bits, else its integer value as its Type's payload (TyCtxt.Normalize, DECISIONS BU-133;
         // a literal its Type does not hold, the operand of a folded wrap conversion or the number under a direct literal's sign, keeps
         // its value modulo 2^N, and a generic literal its value); a fixed-array element's constant index (SPEC 15.1.3, 15.6.2;
-        // ElementAccess.ConstantIndex): a ConstIndex Place's position, beside its PlaceShape, and an Index Place's constant, which Place
+        // Binding.ConstantIndex): a ConstIndex Place's position, beside its PlaceShape, and an Index Place's constant, which Place
         // comparison reads; a Tuple element's position (SPEC 3.2), the integer its Field names.
         private void Fold(Koto node, HirOp op)
         {
@@ -212,7 +212,7 @@ public sealed partial class Binding
                     : null;
                 HirTables.PlanFor(node, value is not null).Folded = value;
             }
-            else if (node is IndexKoto index && ElementAccess.ConstantIndex(binding, index) is >= 0 and var constant)
+            else if (node is IndexKoto index && binding.ConstantIndex(index) is >= 0 and var constant)
             {
                 HirTables.PlanFor(node, written: true).Folded = constant;
             }
@@ -255,8 +255,8 @@ public sealed partial class Binding
             },
             HirOp.Field => HirPlaceKind.Field,
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
-            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector(binding, (IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
-            HirOp.Call => ElementAccess.IsUserIndex(binding, node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
+            HirOp.Index => binding.IsSlicing(node) ? HirPlaceKind.Value : binding.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
+            HirOp.Call => binding.IsUserIndex(node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
             HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, binding.OpOf(inner)),
             _ => HirPlaceKind.Value,
         };

@@ -611,7 +611,7 @@ internal struct PlanRow
     private ulong foldedLow;
 
     /// <summary>Gets or sets the folded constant of a conversion, a number literal's value, a fixed-array element's constant index (SPEC
-    /// 15.1.3, on a ConstIndex or an Index Place, however the array is reached, in range or not: ElementAccess.ConstantIndex) or a Tuple
+    /// 15.1.3, on a ConstIndex or an Index Place, however the array is reached, in range or not: Binding.ConstantIndex) or a Tuple
     /// element's position.</summary>
     internal Int128? Folded
     {

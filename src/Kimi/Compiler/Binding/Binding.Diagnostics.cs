@@ -589,7 +589,7 @@ public sealed partial class Binding
     // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
     private string? SharedIndexNote(Koto target)
     {
-        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !ElementAccess.IsUserIndex(this, index) ||
+        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !this.IsUserIndex(index) ||
             this.Library.UniqIndexable is not { } uniqIndexable)
         {
             return null;
