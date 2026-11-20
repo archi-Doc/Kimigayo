@@ -424,7 +424,7 @@ public sealed partial class Binding
         // its path does not decide (SPEC 5.2).
         private bool ExclusiveUse(Koto node, Koto? parent, HirOp parentOp, bool exclusive)
             => this.uses.UseOf(node, parent, parentOp) is PlaceUse.ByCase or PlaceUse.Exclusive ||
-            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !ElementAccess.IsRawRooted(binding, parent!) &&
+            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !binding.IsRawRooted(parent!) &&
                 ReferenceEquals(Operand(parent), node));
     }
 }

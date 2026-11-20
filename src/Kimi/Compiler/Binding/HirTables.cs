@@ -121,7 +121,7 @@ internal struct HirTables
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
-    /// operand is a Transfer whose Take OffersTake allowed through its raw branch (ElementAccess.IsRawPlace; Binding.DestroysInPlace),
+    /// operand is a Transfer whose Take OffersTake allowed through its raw branch (Binding.IsRawPlace; Binding.DestroysInPlace),
     /// the discard's plan row Flag.</summary>
     /// <param name="discard">The explicit discard.</param>
     /// <returns>Whether it destroys in place, transferring nothing.</returns>
