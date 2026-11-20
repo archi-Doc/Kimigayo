@@ -113,6 +113,17 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var path = Path.GetFullPath("virtual-override-condition.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         c.Binding.ReportDiagnostics();
+        if (refuted)
+        {
+            // R7-C3 C3-1b (F's C2 ruling 297 (b), DECISIONS Q13): Derived's `U is not Copy` against the block's condition `U is Copy` is the
+            // block's own premise error (SPEC 8.2.3, 8.8.1; as O-296 (a)'s l2): InvalidConstraint_Kd at the conditional, and dev's
+            // UnprovenOverrideCondition_Kd at `U is Copy` rests on it.
+            Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "UnprovenOverrideCondition_Kd");
+            Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "InvalidConstraint_Kd" && x.Text is { } text && text.StartsWith("Self is Marker when U is Copy", StringComparison.Ordinal));
+            Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnresolvedBinding_Kd" && x.Text == "missing");
+            return;
+        }
+
         var shown = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenOverrideCondition_Kd");
         Assert.Equal("U is Copy", shown.Text);
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnresolvedBinding_Kd" && x.Text == "missing");
