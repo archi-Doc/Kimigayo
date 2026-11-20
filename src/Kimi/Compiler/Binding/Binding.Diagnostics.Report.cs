@@ -71,6 +71,20 @@ public sealed partial class Binding
     private static long? ImplementationLimit(BindingFailure failure)
         => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
 
+    // SPEC 4.3.4: a noinit directive's closed reason, with the declaration it initializes.
+    private static void ReportNoInit(Koto directive, DiagnosticCollection? store, in BindingProblem problem, NoInitProblem reason)
+    {
+        var variable = (VariableKoto)directive.Parent!;
+        var text = reason switch
+        {
+            NoInitProblem.LocalVar => "the declaration is not a local var",
+            NoInitProblem.Holes => "the annotation contains a length or element Type hole",
+            NoInitProblem.Element => $"owner Scalar is not proven for element {DiagnosticTypeName(variable.TypeKoto!.BoundType!.Components[0])}",
+            _ => "the declaration requires an explicit fixed-array Type annotation",
+        };
+        directive.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")]);
+    }
+
     // SPEC 23.2.2's fallback site: the first node whose recorded state is not Resolved, the program part's nodes first, then the library
     // layer's.
     private Koto? FirstIncompleteNode()
@@ -139,24 +153,6 @@ public sealed partial class Binding
         {
             // The recorded missing Name of the Constraint is its prerequisite.
             issue.Node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
-        }
-        else if (issue.Failure == BindingFailure.NoInit)
-        {
-            var variable = (VariableKoto)issue.Node.Parent!;
-            var reason = this.noInitFailures![issue.Node] switch
-            {
-                NoInitProblem.LocalVar => "the declaration is not a local var",
-                NoInitProblem.Holes => "the annotation contains a length or element Type hole",
-                NoInitProblem.Element => $"owner Scalar is not proven for element {DiagnosticTypeName(variable.TypeKoto!.BoundType!.Components[0])}",
-                _ => "the declaration requires an explicit fixed-array Type annotation",
-            };
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                evidence: [reason],
-                related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")],
-                note: "noinit skips stores but completes construction; the programmer must write a valid value before any element read, including a whole-array Copy or Move");
         }
         else if (issue.Failure == BindingFailure.ArrayAnnotationInference)
         {

@@ -255,22 +255,25 @@ public sealed partial class Binding
         return null;
     }
 
-    // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it; false for a
-    // mismatch or a located part, whose ReportIssue arms read their facts.
+    // The adapter's rows of a problem whose facts are its whole record, so no table of its node's first failure answers for it: a requirement's
+    // row that renders its facts and its subject's syntax, the operator row, then the fact-less row; false for a mismatch or a located part,
+    // whose ReportIssue arms read their facts.
     private bool ReportProblem(Koto node, DiagnosticCollection? store, int index)
     {
         var problem = this.report.Problem(index);
-        if (this.FactOf(index, ProblemFactKind.Operand) is not null)
+        switch ((BindingFailure)problem.Requirement.Kind)
         {
-            this.ReportOperatorOperand(node, store, index, problem);
-        }
-        else if (this.report.Facts(index).IsEmpty)
-        {
-            node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
-        }
-        else
-        {
-            return false;
+            case BindingFailure.NoInit when this.FactOf(index, ProblemFactKind.Reason) is { } reason:
+                ReportNoInit(node, store, problem, (NoInitProblem)reason.Value);
+                break;
+            case var _ when this.FactOf(index, ProblemFactKind.Operand) is not null:
+                this.ReportOperatorOperand(node, store, index, problem);
+                break;
+            case var _ when this.report.Facts(index).IsEmpty:
+                node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
+                break;
+            default:
+                return false;
         }
 
         return true;
