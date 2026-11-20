@@ -14,7 +14,11 @@
 // Output: Run's result, whether its round was clean; IncompatibleContractImplementation_Kd,
 // UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport for the obligations whose subject is in the root
 // range (the library's are the library check's, PLAN G951 E3), added by a clean round only; and for A5 the per-node summaries and a site's
-// key row and classes per view (Keys, Field).
+// key row and classes per view (Keys, Field). A broken contract has one form per place (Broken): one Local meets at a call (a function
+// without a body Binding gives no category, a comparison leaf with no answer) is InternalInvariant_Kd at the call through MirReport, its
+// class Derived; one the solve meets throws (DECISIONS BU-102's form: the check ends as CheckFaulted_Kd), since no program reaches it,
+// so the solve keeps no state to record it. Both only in a
+// complete compilation (TyCtxt.BindingComplete); in an incomplete one either is Derived with no record, resting on Binding's records.
 // The solve runs in rounds (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2 does not hold (one built since the
 // driver's last step, with no local facts) misses; the round goes on to its end, so it demands every body it reads, and commits nothing,
 // and the driver steps and runs the next round until one is clean.
@@ -31,6 +35,7 @@
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
+using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
@@ -50,8 +55,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     internal const byte Limit = 4;
 
     /// <summary>A class of a summary: an effect only an Opaque site, a callee whose definition rests on a recorded error (Binding rejected
-    /// it or the parser recorded its Body missing: TyCtxt.Bodyless's Dependent) or a body with a validator finding causes, a dependent of
-    /// that error (R4-M10, R5-M183).</summary>
+    /// it or the parser recorded its Body missing: TyCtxt.Bodyless's Dependent), a body with a validator finding or a broken contract
+    /// recorded at its call (Broken) causes, a dependent of that error (R4-M10, R5-M183).</summary>
     internal const byte Derived = 8;
 
     /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth
@@ -77,6 +82,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private readonly Locals programLocals = new(); // The program segment's, cleared per program version.
     private Locals writing = null!; // The segment Local records into, which a begin call names.
     private byte found; // The classes the current evaluation or local walk found.
+    private (MirReport Problems, SourceRef Subject, int Body, ulong Views) site; // The call Local reads (Terminator), where Broken records.
 
     /// <summary>Gets the one answer of classes (DECISIONS R4-M153): the Join of their outcomes, an <see cref="Environment"/> or
     /// <see cref="Unknown"/> effect decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep. A4's obligations and A5's effect
@@ -186,14 +192,15 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     // SPEC 8.11.2: the class of a call of a function without a MIR body, by Binding's category of it (TyCtxt.Bodyless): an intrinsic's
     // from MIR's own row of it (MirDescriptors: an environment effect where the row has one, else its inputs alone), a shim's its
-    // inputs, an import's an environment effect, a dependent's Derived, any other a limit.
-    private static byte Class(BindingSymbol function) => TyCtxt.Bodyless(function) switch
+    // inputs, an import's an environment effect, a dependent's Derived; none for Unclassified, a broken contract (BodylessKind: every
+    // other declaration with a Body disposition has a MIR body, built on demand while the program's demands are open, PLAN G951).
+    private static byte? Class(BindingSymbol function) => TyCtxt.Bodyless(function) switch
     {
         BodylessKind.Intrinsic => (MirDescriptors.Of(function.Definition.Id).Effects & MirEffect.Environment) != 0 ? Environment : (byte)0,
         BodylessKind.Shim => 0,
         BodylessKind.Import => Environment,
         BodylessKind.Dependent => Derived,
-        _ => Limit,
+        _ => null,
     };
 
     // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
@@ -210,12 +217,16 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         if (terminator.Kind == MirTerminatorKind.Drop)
         {
             this.Dropped(program, body, block, view, cases.TypeOf(terminator.Place));
+            return;
         }
-        else if (terminator.Kind != MirTerminatorKind.Call)
+
+        if (terminator.Kind != MirTerminatorKind.Call)
         {
             return;
         }
-        else if (callee.Kind == MirCalleeKind.Fn)
+
+        this.site = (program.Problems, body.Subject(terminator.Source), body.Ordinal, 1UL << (int)view);
+        if (callee.Kind == MirCalleeKind.Fn)
         {
             this.Function(program, callee);
         }
@@ -293,14 +304,37 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return;
         }
 
+        // A function without a body: a published row's, else Binding's category of it, none a broken contract at the call.
+        if (types.Published(symbol) is null && Class(symbol) is null)
+        {
+            this.found |= this.Broken();
+            return;
+        }
+
         this.Enter(null, subst, symbol);
+    }
+
+    // A broken contract Local meets at the call it reads (the class header's one form with a site; DECISIONS R4-M148's path, as A5's
+    // MirBorrows.Reports' Internal): InternalInvariant_Kd at the call in its view under Ownership.Internal, in a complete compilation
+    // (TyCtxt.BindingComplete); Derived, so every obligation over it is its dependent and records nothing (SPEC 23.1.2: the other bodies'
+    // failures stay reported). In an incomplete one the missing body or answer rests on Binding's records, no record of its own (BU-102:
+    // the state rests on a Binding failure; R5-M183: a Closure in a declaration Binding rejected has no body, the collector's Report alike).
+    private byte Broken()
+    {
+        if (types.BindingComplete)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+            _ = this.site.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.site.Subject, this.site.Body, this.site.Views));
+        }
+
+        return Derived;
     }
 
     // SPEC 13.4, 8.11.3 (DECISIONS R5-M166): a tuple operator's call runs, once per distinct node of its Self's comparison under source
     // operators (the validator checked it composes), what that node's leaf runs: a Witness leaf its witness (Function), a Requirement leaf
     // the requirement under the caller's premises (X2; its operands are shared borrows, so it destroys nothing), a Builtin leaf and a
-    // Composite's own node nothing. A None leaf, no answer (a broken contract the collector records as InternalInvariant_Kd at the item,
-    // a dependent in an incomplete Binding), is what Require gives a Type nothing resolves for: the Limit, never a silent empty summary.
+    // Composite's own node nothing. A None leaf, no answer, is a broken contract at the call (Broken; the collector records it as
+    // InternalInvariant_Kd at the item), never a silent empty summary.
     private void Compared(MirProgram program, MirBody body, BindingSymbol contract, ComparisonNode node)
     {
         if (!this.compared.Add(node))
@@ -324,7 +358,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.found |= types.DispatchBounds(body.Key.Decl, node.Target!, node.Subst!.Self, contract) == true ? (byte)0 : Unknown;
                 break;
             case ComparisonKind.None:
-                this.found |= Limit;
+                this.found |= this.Broken();
                 break;
             default:
                 throw new InvalidOperationException($"The comparison kind {node.Kind} has no effect row.");

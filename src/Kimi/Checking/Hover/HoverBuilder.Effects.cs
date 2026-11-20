@@ -44,7 +44,8 @@ internal sealed partial class HoverBuilder
                 WriteBounds(text, available);
             }
         }
-        else if (query.ValueCallOf(syntax) is { CalleeType: { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType } virtualItem)
+        else if (query.ValueCallOf(syntax) is { } virtualItem &&
+            query.CallableCore(virtualItem.CalleeType) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType)
         {
             info = new(
                 [this.Declaration(originalSlot)],

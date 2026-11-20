@@ -46,7 +46,7 @@ internal sealed partial class MirBuilder
             HirPlaceKind.ConstIndex => this.ConstElement((IndexKoto)node, input),
             HirPlaceKind.CallResult => this.Referent(node),
             HirPlaceKind.Value => this.Value(node, input: input),
-            _ => this.Unsupported(node),
+            _ => this.Invariant(node), // Unset is no evaluated node's (HirPlace's contract); Downcast only a Pattern position's.
         };
 
         return this.FollowLayers(place, shape.Layers);
@@ -141,8 +141,8 @@ internal sealed partial class MirBuilder
             case HirRes.Field: // A Property, or an accessor's storage of its Property.
                 var property = symbol!.Kind == BindingSymbolKind.Storage ? HirTables.Symbol(symbol.Declaration!)! : symbol;
                 return this.Storage(property, this.receiver < 0 ? null : new MirPlace(this.receiver), node);
-            default:
-                return this.Unsupported(node);
+            default: // HasFacts' Name row gives a name its symbol; a local's binding is bound before its uses, a capture's in its body.
+                return this.Invariant(node);
         }
     }
 
@@ -155,7 +155,8 @@ internal sealed partial class MirBuilder
             return this.Static(property, node);
         }
 
-        return receiver is { } place ? this.Field(this.FollowTo(place, null), property, node) : this.Unsupported(node);
+        // An instance Property's storage is read only through a receiver: `x.p`, or `storage` in its accessor, whose body has its self.
+        return receiver is { } place ? this.Field(this.FollowTo(place, null), property, node) : this.Invariant(node);
     }
 
     // The Place of a local or a parameter, in a default template a prepared parameter's slot its p_i references (SPEC 7.2.3), or in a

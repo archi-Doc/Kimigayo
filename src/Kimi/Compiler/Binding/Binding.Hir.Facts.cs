@@ -42,16 +42,18 @@ public sealed partial class Binding
 
     /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: an operation its Type (<see cref="Operation"/>),
     /// every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
-    /// symbol), and per Op: a call its plan (an index's selected call; a
+    /// symbol), and per Op: a sequence's metadata its form (<see cref="BuiltinForm"/>), a call its plan (an index's selected call; one
+    /// no expansion supplies inputs to with its operations, omitted defaults and receiver covering its parameters; a
     /// tuple operator's with its conforming Type and its two arguments, which its expansion reads, DECISIONS R5-M75), a
     /// key resolution its Evaluated argument, an assignment or update of a Property its accessors' plans (an update's setter with its
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
     /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and
     /// its entry, step, iterator symbol and decomposition; a match its current plan; a
     /// dictionary literal its lookup; a closure's creation its definition with a Signature (a closure's parts, which HirPublisher.Parts
-    /// publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a conversion its binding (a case adaptation its plan); a Tuple or array
-    /// literal its Type and an enum Case construction its plan; a declared local and a name their symbols; and every slot a declared
-    /// local, a definition's Body, a match, a try or a for loop declares stated (<see cref="SlotsStated"/>, PLAN G1073).</summary>
+    /// publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a conversion its binding (a case adaptation its plan); a Tuple literal its
+    /// Type, an array literal a fixed-array Type or, without a fill, an Array Type, and an enum Case construction its plan; a declared
+    /// local and a name their symbols; and every slot a declared local, a definition's Body, a match, a try or a for loop declares
+    /// stated (<see cref="SlotsStated"/>, PLAN G1073).</summary>
     /// <param name="node">An evaluated node.</param>
     /// <param name="op">The Op its form calls for.</param>
     /// <returns>Whether the node has its facts.</returns>
@@ -68,9 +70,9 @@ public sealed partial class Binding
                 var keyed = Planned(this.ResolvedKeyCall(index), out var key) && (key is null || key.Evaluated >= 0);
                 var selected = op == HirOp.Index || (Planned(this.SelectedIndexCall(index, exclusive: false), out var shared) && shared is not null);
                 return keyed && selected && Planned(this.IndexerCall(index, exclusive: true), out _); // indexUniq, bound only beside index.
-            case HirOp.Call:
-                return CallPlan.Of(this, node) is { } call && Complete(call) &&
-                    (!call.TupleOperator || call is { ConformingType: not null, ArgumentOperations.Length: 2 });
+            case HirOp.Call: // A call the builder builds as it is (no expansion supplies its inputs) covers its parameters.
+                return CallPlan.Of(this, node) is { } call && Complete(call) && (call.TupleOperator
+                    ? call is { ConformingType: not null, ArgumentOperations.Length: 2 } : ExpansionPlan.Of(this, node) is not null || call.Covers());
             case HirOp.Assign or HirOp.CompoundAssign:
                 var target = KotoHelper.UnwrapParentheses(node is BinaryKoto update ? update.Left : ((UnaryKoto)node).Operand);
                 if (!Planned(this.PropertyCall(target, PropertyAccessorKind.Get), out var getter) ||
@@ -99,9 +101,16 @@ public sealed partial class Binding
             case HirOp.Convert:
                 return ((ConversionKoto)node).ConversionBinding is not ConversionBinding.None and var binding &&
                     (binding != ConversionBinding.CaseAdaptation || HirTables.PlanOf(node).Plan is ExplicitAdaptationPlan);
-            case HirOp.Aggregate:
-                return node is TupleLiteralKoto or ArrayLiteralKoto ? HirTables.Meaning(node) is not null
-                    : BoundEnumConstruction.Of(this, node) is { } construction && Sourced(construction.PayloadOperations);
+            case HirOp.Aggregate: // A Tuple, a fixed array, an Array without a fill (SPEC 4.3.3) or an enum Case construction.
+                return node switch
+                {
+                    TupleLiteralKoto => HirTables.Meaning(node) is not null,
+                    ArrayLiteralKoto array => HirTables.TypeOf(node)?.Kind is BoundTypeKind.FixedArray ||
+                        (array.FillLength is null && HirTables.TypeOf(node)?.Kind is BoundTypeKind.Array),
+                    _ => BoundEnumConstruction.Of(this, node) is { } construction && Sourced(construction.PayloadOperations),
+                };
+            case HirOp.PrimitiveOp when node is MemberAccessKoto member: // A sequence's metadata, by its published form.
+                return SequenceMember(member) != BuiltinForm.None;
             case HirOp.Let:
                 return HirTables.Symbol(node) is not null && this.SlotsStated(node);
             case HirOp.Body:
