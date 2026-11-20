@@ -119,21 +119,14 @@ public sealed partial class Binding
         {
             if (variable is PropertyKoto)
             {
-                // Property and storage Types belong to the header. A use never re-enters accessor bodies.
+                // Property and storage Types belong to the header. A use never re-enters accessor bodies. SPEC 23.1.2 (DECISIONS BU-105):
+                // a use of a failed header (Error, its re-entry's cycle) rests on the declaration's record in every binding of the pass;
+                // one of a header without a Type, on the part that gives it.
                 var declaration = variable.BoundSymbol!;
-                // Interim until R7-D2 d2 (Binding.DeclQuery): the Signature re-entry's cycle record moves into the kind's rule.
-                if (this.QueryState(declaration, DeclQueryKind.Signature) == DeclState.Running)
-                {
-                    this.Fail(variable, BindingFailure.Cycle, true);
-                }
-                else
-                {
-                    this.BindHeader(declaration);
-                }
-
+                this.BindHeader(declaration);
                 if (symbol.Type is null)
                 {
-                    this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
+                    this.Consulted(this.QueryRecord(declaration, DeclQueryKind.Signature) ?? variable.TypeKoto ?? variable.InitializerKoto ?? variable);
                 }
             }
             else

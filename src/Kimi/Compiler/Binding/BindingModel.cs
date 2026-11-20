@@ -435,7 +435,7 @@ public sealed class BindingSymbol
     {
         if (this.Declaration.SyntaxOwner is { Frozen: true })
         {
-            if (state == DeclState.Done)
+            if (state is DeclState.Done or DeclState.Error)
             {
                 throw new InvalidOperationException($"A program pass completed the {kind} query of the frozen library declaration `{this.Name}` (InternalInvariant; PLAN G949 S1-1).");
             }

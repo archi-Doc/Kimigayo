@@ -117,23 +117,25 @@ public class BindingTest
     }
 
     // SPEC 11.6, 23.1.2 (DECISIONS BU-105): a cycle of inferred Properties is recorded once, at the declaration whose header started
-    // first; each other declaration on it, and a dependent beside it, rests on that record. The query state of a header lives one pass,
-    // so binding again gives the same records.
+    // first; each other declaration on it, and a dependent beside it, rests on that record (the Signature query's Error, R7-D2 d2), so
+    // their derived records (DerivedIssues) are not shown beside it. The query state of a header lives one pass, so binding again gives
+    // the same records.
     [Theory]
-    [InlineData("group Values\n    var a = b\n    var b = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
-    [InlineData("group Values\n    var a = Values.b\n    var b = a", "CyclicBinding_Kd var a = Values.b|PrerequisiteUnavailable_Kd var b = a")]
-    [InlineData("group Values\n    var a = b\n    var b = c\n    var c = a", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = c|PrerequisiteUnavailable_Kd var c = a")]
-    [InlineData("group Values\n    var a = b\n    var b = a\n    var c = a + 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a|PrerequisiteUnavailable_Kd var c = a + 1")]
-    [InlineData("group Values\n    var a = b\n    var b = a\n    var c: i32 = 1", "CyclicBinding_Kd var a = b|PrerequisiteUnavailable_Kd var b = a")]
-    [InlineData("group Values\n    var a: i32 = b\n    var b = a", "")]
-    [InlineData("group Values\n    var a: i32 = b\n    var b = c\n    var c = a", "")]
-    public void APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass(string source, string records)
+    [InlineData("group Values\n    var a = b\n    var b = a", "CyclicBinding_Kd var a = b", "var b = a")]
+    [InlineData("group Values\n    var a = Values.b\n    var b = a", "CyclicBinding_Kd var a = Values.b", "var b = a")]
+    [InlineData("group Values\n    var a = b\n    var b = c\n    var c = a", "CyclicBinding_Kd var a = b", "var b = c|var c = a")]
+    [InlineData("group Values\n    var a = b\n    var b = a\n    var c = a + 1", "CyclicBinding_Kd var a = b", "var b = a|var c = a + 1")]
+    [InlineData("group Values\n    var a = b\n    var b = a\n    var c: i32 = 1", "CyclicBinding_Kd var a = b", "var b = a")]
+    [InlineData("group Values\n    var a: i32 = b\n    var b = a", "", "")]
+    [InlineData("group Values\n    var a: i32 = b\n    var b = c\n    var c = a", "", "")]
+    public void APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass(string source, string records, string derived)
     {
         var compilation = CompilationTestHelper.ParseSuccess(source);
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.Equal(records.Length == 0, compilation.Bind().IsComplete);
             Assert.Equal(records, string.Join('|', CompilationTestHelper.BindingErrors(compilation).OrderBy(static x => x.Span.Start).Select(static x => $"{x.Code} {x.Text}")));
+            Assert.Equal(derived, string.Join('|', compilation.Binding.DerivedIssues.OrderBy(static x => x.Span.Start).Select(static x => x.ToString())));
         }
     }
 
