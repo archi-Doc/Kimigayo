@@ -13,7 +13,9 @@ namespace XunitTest;
 /// the first line of its subject and its views.</summary>
 public sealed partial class MirEffectsTest(ITestOutputHelper output)
 {
-    private const int All = Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1; // The root range of every module: every obligation judged.
+    // The root range of every source module, every obligation of the program judged; the library's are the library check's (PLAN G951
+    // E3), whose bodies a built program need not hold (an owing definition without a body is a broken contract since Z2).
+    private const int All = Kimi.Compiler.Parsing.SyntaxTable.LibraryModule;
 
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n";
 
@@ -987,6 +989,44 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
+    // The Z2 DECISIONS draft (PLAN G396 (3), E1): A4's broken contract has one form per place, in a complete compilation. A call Local
+    // reads whose callee has no MIR body, no published row and no Bodyless category (here: a program holding the caller alone, so
+    // H.helper's body is withheld) is InternalInvariant_Kd at the call in its view, its class Derived (before Z2: no record there, the
+    // obligation over it Unsupported_Kd); in an incomplete compilation (an unrelated function Binding rejects) the same call rests on
+    // Binding's records, no record (TyCtxt.BindingComplete). The solve meeting an owing definition without a body throws (BU-102's form:
+    // the check ends as CheckFaulted_Kd; before Z2: the obligation's located Unsupported_Kd).
+    [Fact]
+    public void ABodylessCallWithoutACategoryIsABrokenContract()
+    {
+        const string Calls = "group H\n    public func helper() => ()\n    public func caller() => H.helper()\n";
+        Assert.Equal(["InternalInvariant_Kd H.helper() 1"], LocalRecords(Calls));
+        Assert.Empty(LocalRecords(Calls + "    public func other() -> i32 => missingName\n"));
+
+        var witness = MirBuildTest.Compile(Sink + Loud + Witness + "        return .Ok(())\npublic func main() => ()\n");
+        _ = witness.BuildMir();
+        var solveCases = new MirCases(witness.Types);
+        var solve = new MirEffects(witness.Types, solveCases, new MirDataflow(new MirReach(), solveCases));
+        solve.BeginLibrary();
+        var thrown = Assert.Throws<InvalidOperationException>(() => solve.Run(new MirProgram(), new MirReport(), witness.SourceModules.Length));
+        Assert.Contains("every callee A4 enters has one or the other (InternalInvariant)", thrown.Message, StringComparison.Ordinal);
+
+        // A4's Local over `caller` alone, in a program that holds no body: every problem it records.
+        static string[] LocalRecords(string source)
+        {
+            var c = MirBuildTest.Compile(source + "public func main() => ()\n");
+            var caller = c.BuildMir().VersionBodies.ToArray().Single(static x => x.Key.Decl?.Name == "caller");
+            var cases = new MirCases(c.Types);
+            var (flow, held) = (new MirDataflow(new MirReach(), cases), new MirProgram());
+            var effects = new MirEffects(c.Types, cases, flow);
+            effects.BeginLibrary();
+            effects.BeginProgram();
+            flow.Begin(caller);
+            cases.Select(caller, 0);
+            effects.Local(held, caller, 0);
+            return [.. held.Problems.All.ToArray().Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        }
+    }
+
     // PLAN G951 E3 (DECISIONS R5-M168's input rule): A4 judges the obligations whose subject is in the root range; one outside it is the
     // library check's (MirAnalysisTest.TheLibraryHasNoAnalysisProblem, the library as a root module), so the failing witness of S
     // (LocalRecordsTheProgramsVersion's program) is not judged under a root range that excludes its module.
@@ -996,7 +1036,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
             "        return .Ok(())\npublic func main() => ()\n");
         var program = c.BuildMir();
-        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var cases = new MirCases(c.Types);
+        var flow = new MirDataflow(new MirReach(), cases);
         var (outside, inside) = (new MirReport(), new MirReport());
         Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, outside, 0);
         Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, inside, c.SourceModules.Length);
@@ -1009,14 +1050,16 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // version, finds the witness's failure, which composes its call of G.noisy (before G126, that view restarted the recording and lost
     // every other body); the next begin starts empty, so recording the next version in the driver's order takes a fresh A4's evaluations;
     // and a begin with no body recorded, here over a program without bodies, solves no node (before G126, Run evaluated the previous
-    // version's nodes).
+    // version's nodes); it judges no obligation, whose owing definition would have no body there (a broken contract since Z2:
+    // ABodylessCallWithoutACategoryIsABrokenContract).
     [Fact]
     public void LocalRecordsTheProgramsVersion()
     {
         var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
             "        return .Ok(())\npublic func main() => ()\n");
         var program = c.BuildMir();
-        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var cases = new MirCases(c.Types);
+        var flow = new MirDataflow(new MirReach(), cases);
         var effects = new MirEffects(c.Types, cases, flow);
         Assert.Equal([Failed], Record(lastFirst: true));
         program.Version++;
@@ -1025,7 +1068,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Analyze(fresh, flow, cases, program, new MirReport(), All);
         Assert.Equal(fresh.Evaluations, effects.Evaluations);
         effects.BeginLibrary();
-        Assert.True(effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport(), All));
+        Assert.True(effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport(), 0)); // No obligation: none has its body here.
         Assert.Equal(0, effects.Evaluations);
 
         string[] Record(bool lastFirst)
@@ -1140,7 +1183,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 var program = c.BuildMir();
                 Assert.Equal([Failed], Problems(c, program));
                 var (cases, report) = (new MirCases(c.Types), new MirReport());
-                var flow = new MirDataflow(new MirReach());
+                var flow = new MirDataflow(new MirReach(), cases);
                 var effects = new MirEffects(c.Types, cases, flow);
                 analyses[i] = (effects, flow, cases, program, report);
                 return () => Analyze(effects, flow, cases, program, report, All);

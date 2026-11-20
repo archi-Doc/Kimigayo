@@ -41,6 +41,18 @@ public sealed class VirtualHoverTest
         }
     }
 
+    // PLAN G1120 (D-888, review N3): a virtual Item called through a reference keeps its public contract, read below the callee's
+    // acquisition layers (CallableCore) as every value call's Callable is.
+    [Fact]
+    public void AVirtualItemCalledThroughAReferenceRetainsThePublicContract()
+    {
+        var source = Source.Replace("    return operation(value)\n", "    let held = operation@ref\n    return held(value)\n", StringComparison.Ordinal);
+        var snapshot = HoverBuilder.Create(Create(source));
+        var rendered = HoverRenderer.Render(At(snapshot, source.IndexOf("held(value)", StringComparison.Ordinal)), false, HoverPlacement.Canonical).Body;
+        Assert.Contains("Public slot: A.read", rendered);
+        Assert.Contains("Available bound: confined", rendered);
+    }
+
     [Fact]
     public void OverrideDeclarationsRetainTheirOwnDocumentationAndInheritedContract()
     {

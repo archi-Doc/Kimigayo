@@ -73,6 +73,57 @@ public class MirBuildScalingTest(ITestOutputHelper output)
             program.Problems.All.ToArray().Select(static x => x.Code).Distinct().OrderBy(static x => x.ToString()));
     }
 
+    // R7 plan Z23 (SPEC 8.14, 4.7.4; the design's §4.4, B2): a case branch opens only where a decision splits the views of the side being
+    // built, so a node is built at most once per view region (at most MirCases.Count, PairBinder.CaseBound). A key chain of one decision
+    // (`w1[0][pick(w2[0][pick(...)])]`) has one branch, its keys built once per side; an argument chain of separate takes
+    // (`pick2(v1[0], pick2(v2[0], ...))`) one branch per take: both grow linearly with N (10, 20, 30). Six binders of distinct decisions
+    // nested in keys (64 views) build level k on at most 2^k sides: 63 branches, within the bound. Each body is valid, with no finding.
+    [Fact]
+    public void CaseBranchesBuildEachNodeOncePerViewRegion()
+    {
+        var sizes = new[] { 10, 20, 30 };
+        var (keys, arguments) = (new long[3], new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var n = sizes[i];
+            var parameters = string.Join(", ", Enumerable.Range(1, n).Select(static k => $"w{k}: uniq/Two<Two<s/T>>"));
+            var chain = $"w{n}[0][0]";
+            for (var k = n - 1; k >= 1; k--)
+            {
+                chain = $"w{k}[0][pick({chain})]";
+            }
+
+            (keys[i], var branches) = Branches($"func f<s/T>({parameters}) -> ()\n    s is ref or uniq\n    let x = {chain}\n    _ = x\n");
+            Assert.Equal(1, branches);
+            var values = string.Join(", ", Enumerable.Range(1, n).Select(static k => $"v{k}: uniq/Two<s/T>"));
+            var nested = "0";
+            for (var k = n; k >= 1; k--)
+            {
+                nested = $"pick2(v{k}[0], {nested})";
+            }
+
+            (arguments[i], branches) = Branches($"func f<s/T>({values}) -> ()\n    s is ref or uniq\n    let x = {nested}\n    _ = x\n");
+            Assert.Equal(n, branches);
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: key chain blocks {string.Join(", ", keys)}; argument chain blocks {string.Join(", ", arguments)}");
+        Assert.True(keys[2] - keys[1] <= (2 * (keys[1] - keys[0])) + 8, $"key chain blocks {string.Join(", ", keys)}");
+        Assert.True(arguments[2] - arguments[1] <= (2 * (arguments[1] - arguments[0])) + 8, $"argument chain blocks {string.Join(", ", arguments)}");
+
+        var binders = string.Join(", ", Enumerable.Range(1, 6).Select(static k => $"s{k}/T{k}"));
+        var receivers = string.Join(", ", Enumerable.Range(1, 6).Select(static k => $"w{k}: uniq/Two<Two<s{k}/T{k}>>"));
+        var cases = string.Concat(Enumerable.Range(1, 6).Select(static k => $"    s{k} is ref or uniq\n"));
+        var distinct = "w6[0][0]";
+        for (var k = 5; k >= 1; k--)
+        {
+            distinct = $"w{k}[0][pick({distinct})]";
+        }
+
+        var (blocks, branched) = Branches($"func f<{binders}>({receivers}) -> ()\n{cases}    let x = {distinct}\n    _ = x\n");
+        output.WriteLine($"64 views: blocks {blocks}, branches {branched}");
+        Assert.Equal(63, branched);
+    }
+
     // The nested shape at a depth: K overwrites, each in the previous one's defer, then each target used.
     private static string Nested(int depth)
     {
@@ -114,5 +165,19 @@ public class MirBuildScalingTest(ITestOutputHelper output)
         Assert.Empty(program.Findings);
         Assert.Empty(program.Problems.All.ToArray());
         return program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main").Blocks.Length;
+    }
+
+    // The blocks and case branches of f in a program the MIR analyses accept without a finding or a problem.
+    private static (long Blocks, int Branches) Branches(string source)
+    {
+        const string Two = "struct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n" +
+            "    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+            "func pick<X>(value: X) -> isize => 0\nfunc pick2<X>(value: X, next: isize) -> isize => next\n";
+        var program = MirBuildTest.Compile(Two + source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Problems.All.ToArray());
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        return (body.Blocks.Length, body.CaseSwitches);
     }
 }

@@ -13,7 +13,7 @@
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
-//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
+//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located InternalInvariant_Kd of each use no consumer takes.
 // - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
 //   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
 //   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
@@ -291,13 +291,13 @@ public sealed partial class Binding
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
         // included; classification reads neither the signature nor the environment Type. A use of a pair-layer capture that no consumer
-        // takes, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M145). The
-        // relations that waited for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
+        // takes is a broken contract, a located InternalInvariant_Kd (DECISIONS R7-M53; it was R4-M145's net). The relations that waited
+        // for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
         var effects = this.closureEffects ??= new(this);
         effects.Classify(function, plan);
-        foreach (var (use, _) in effects.Unlisted)
+        foreach (var use in effects.Unlisted)
         {
-            this.Fail(use, BindingFailure.Unsupported);
+            this.Fail(use, BindingFailure.Internal);
         }
 
         // A use whose need no published fact decides leaves the receiver undecided, a located Unsupported_Kd: a call of a foreign import

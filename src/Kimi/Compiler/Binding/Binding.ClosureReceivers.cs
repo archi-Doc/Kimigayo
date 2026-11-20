@@ -12,9 +12,10 @@
 //   environment binding, makes it Exclusive; every other use borrows (Shared). An acquisition of the binding itself
 //   by value without an operator (TakenByCase: as the Adjust rule takes it from its consumer, a discarded Place included, or a
 //   nested bare entry) that Reborrows in some admitted cases makes it Exclusive in exactly those (SPEC 8.14): the capture is marked
-//   (BoundCapture.BareReborrows); every other use counts in every case (CaseFreeReceiver). A use of such a capture that no consumer
-//   takes is published (Unlisted) where it could leave a case Shared. A use a failure explains (SPEC 23.1.2: its own, or its
-//   consumer's failure or dependency outside a bare acquisition position) neither marks its capture nor is published.
+//   (BoundCapture.BareReborrows); every other use counts in every case (CaseFreeReceiver). Every use of such a capture is taken by
+//   its consumer's Adjust rule or explained: a use a failure explains (SPEC 23.1.2: its own, its consumer's failure or dependency
+//   outside a bare acquisition position, or a consumer the HIR publisher keeps Error or Unset) or that a Syntax node holds is taken
+//   by no acquisition and marks nothing. A use no consumer takes is a broken contract, published (Unlisted).
 // - Inputs: the Closure's bound body (each node's bound symbol, Type, call, value call and conversion), the adaptations Binding
 //   recorded, a nested Closure's published Storage; the Adjust rule (AdjustChildren, ChildAdjust, Discarded, Covers, OpOf, UseOf),
 //   IsBareAcquisitionPosition, HasFailureCauses and BareReborrows; each node's value identity (SourceRef), the key of what a Classify
@@ -23,7 +24,7 @@
 //   receiver reads (value calls, candidate selection and Callable proofs, effects and the MIR builder);
 //   CaseFreeReceiver and the captures' BareReborrows, from which a view of one case reads that case's receiver; Classified;
 //   ExclusiveUse and ExclusiveReborrow, the Exclusive cause a write record names (Binding.Diagnostics.cs); Unlisted, which
-//   BindConcreteClosure fails as the rule's net, a located Unsupported_Kd (the owner, 2026-10-25; DECISIONS R4-M145); Undecided,
+//   BindConcreteClosure fails as a broken contract, a located InternalInvariant_Kd (DECISIONS R7-M53; R4-M145's net); Undecided,
 //   the uses whose need no fact decides (a foreign import's call passed a pointer reached from a capture, DECISIONS R7-Y2; a write through
 //   a body local only some definitions derive from an environment pointer, R7-Y2c), which it fails alike.
 // - Invariants: Classify runs once per binding of a Closure that bound its body, right after it, from the facts BindClosure and
@@ -68,9 +69,8 @@ public sealed partial class Binding
         // The children's takes recorded and the definitions Derive read, over every Classify: a scaling check reads it (ClosureWork).
         public long Work { get; private set; }
 
-        // The uses of a capture that Reborrows in some admitted case that no consumer takes (TakenByCase is null), with the capture's
-        // index; after Classify, only those the receiver facts leave at Shared in a case (DECISIONS R4-M145).
-        public List<(Koto Use, int Capture)> Unlisted { get; } = new();
+        // The uses of a capture that Reborrows in some admitted case that no consumer takes (TakenByCase is null): broken contracts.
+        public List<Koto> Unlisted { get; } = new();
 
         // The uses whose need no published fact decides, each a located Unsupported_Kd: a call of a foreign import that a pointer reached
         // from a capture is passed to, whose contract's writes are prose (ContractWritesThrough; DECISIONS R7-Y2); a write-capability access
@@ -122,19 +122,6 @@ public sealed partial class Binding
 
             plan.Receiver = receiver;
             plan.Classified = true;
-
-            // The rule's net (the owner, 2026-10-25): an untaken use matters only where its capture is unmarked and the case-free
-            // receiver Shared, so a case may be Shared where SPEC 7.7.3 needs Exclusive.
-            var kept = 0;
-            for (var i = 0; i < this.Unlisted.Count; i++)
-            {
-                if (plan.CaseFreeReceiver == SemanticsKind.Ref && !plan.Storage[this.Unlisted[i].Capture].BareReborrows)
-                {
-                    this.Unlisted[kept++] = this.Unlisted[i];
-                }
-            }
-
-            this.Unlisted.RemoveRange(kept, this.Unlisted.Count - kept);
         }
 
         public override void Visit(Koto node)
@@ -192,7 +179,7 @@ public sealed partial class Binding
 
                 if (!need.Listed)
                 {
-                    this.Unlisted.Add((node, at)); // No consumer takes this use, so no rule decides whether it Reborrows by case.
+                    this.Unlisted.Add(node); // No consumer takes this use: a broken contract (TakenByCase).
                 }
             }
             else if (node.BoundSymbol is { Kind: BindingSymbolKind.Local } local && local.Type is { IsPointer: true })
@@ -447,7 +434,8 @@ public sealed partial class Binding
 
         // SPEC 3.5, 8.14, 14.2.2, 23.1.2 (DECISIONS R4-M145): whether a Place is taken by case (Take's ByCase, a pair-case acquisition that
         // Reborrows in some admitted case) as the Adjust rule takes it (TakesOf), its groups taken through: false where its own failure
-        // explains it; null where its consumer takes no such child (the net) or a user index's two selections take it differently (SPEC 4.7.1).
+        // explains it; null, a broken contract, where an evaluated consumer takes no such child or a user index's two selections take it
+        // differently, which SPEC 4.7.1 excludes (both take the key by `ref/Key` and the receiver by a borrow).
         private bool? TakenByCase(Koto place)
         {
             if (Rejected(place))
@@ -483,14 +471,17 @@ public sealed partial class Binding
             var closure = ReferenceEquals(consumer, this.function);
             if (!closure && binding.HasFailureCauses(consumer))
             {
-                return new(IsBareAcquisitionPosition(target) ? binding.ChildAdjust(target, HirAdaptation.None, UseKind.Acquisition, claimed: false) : default, default);
+                return new(IsBareAcquisitionPosition(target) ? binding.ChildAdjust(target, HirAdaptation.None, UseKind.Acquisition, claimed: PlaceUse.Shared) : default, default);
             }
 
             ref var facts = ref this.FactsOf(consumer);
             var op = closure ? HirOp.Closure : this.OpOf(consumer, ref facts);
             if (op is HirOp.Unset or HirOp.Error or HirOp.Syntax)
             {
-                return null; // The HIR publisher's walk takes no child of such a consumer.
+                // The HIR publisher's walk takes no child of such a consumer, so none is acquired: an Error's or Unset's own record
+                // explains it (SPEC 23.1.2: Binding's, the parser's, or the builder's at a broken or Unset node, R4-M61; an admitted
+                // misfit's value is the write's), and a Syntax node evaluates none.
+                return new(default, default);
             }
 
             var walked = exclusive ? Marks.ExclusiveWalk : Marks.SharedWalk;
@@ -498,7 +489,7 @@ public sealed partial class Binding
             {
                 facts.Marks |= walked;
                 var record = new TakeRecord(binding, this.met, exclusive);
-                binding.AdjustChildren(consumer, op, exclusive, ref record);
+                binding.AdjustChildren(consumer, op, exclusive ? PlaceUse.Exclusive : PlaceUse.Shared, ref record);
                 this.Work += record.Count;
             }
 
@@ -591,7 +582,7 @@ public sealed partial class Binding
                 if (child is not null)
                 {
                     ref var takes = ref this.Row(child, out var taken);
-                    this.Fix(ref takes, binding.ChildAdjust(child, adaptation, kind, taken && binding.Claimed(child, takes.Last, takes.Earlier)));
+                    this.Fix(ref takes, binding.ChildAdjust(child, adaptation, kind, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
                 }
             }
 
@@ -600,7 +591,7 @@ public sealed partial class Binding
                 if (child is not null)
                 {
                     ref var takes = ref this.Row(child, out var taken);
-                    this.Fix(ref takes, binding.ChildAdjust(child, operation, taken && binding.Claimed(child, takes.Last, takes.Earlier)));
+                    this.Fix(ref takes, binding.ChildAdjust(child, operation, taken ? binding.Claimed(child, takes.Last, takes.Earlier) : PlaceUse.Shared));
                 }
             }
 
