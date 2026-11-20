@@ -34,7 +34,7 @@ public sealed partial class Binding
 
     // The pass's change signal (ValidateConstraintEnvironments): advanced by every write of what an environment's judgment reads, in the
     // step that writes it: each Fail call, whether or not the node held a failure already (a conformance's, an identity's or an Access
-    // path's Invalid is written with one); each environment made Invalid (FailEnvironment); and an inference consumer made Invalid under
+    // path's Invalid is written with one); each premise failed (FailPremise, FailFacts); and an inference consumer made Invalid under
     // its source's use (InvalidateAssociatedEvidence). PublishSourceStates' state, written with no Fail at each ValidateConformances,
     // only withdraws a premise (AvailableContractPremise); the failure an Error reads (InvalidDeclarationContext) is written through Fail
     // by ValidateClosedTypeConstraints, which the rounds' condition runs before the walk (InvalidateProjectionCertificates).
@@ -79,9 +79,11 @@ public sealed partial class Binding
         => this.RecordedState(node) != BindingState.Resolved &&
             (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
 
-    // SPEC 23.1.2: the declaration part that gives a binding its Type: a parameter's written Type, an accessor parameter's annotation or
-    // Property Type, or a local's or Pattern's declaration; null for any other binding. A use or a written capture entry of a binding
-    // without a Type rests on it.
+    // SPEC 23.1.2 (PLAN G1073): the declaration part that gives a slot its Type, where Binding records that Type's failure: a
+    // parameter's written Type, an accessor parameter's annotation or Property Type; a definition's result: an accessor's executing
+    // function's written result, else its Property's Type or the Property, a function's or Closure's written result Type, else the
+    // function; a Property's (a static's or Field's), a local's or a Pattern's declaration; null for any other binding. A use or a
+    // written capture entry of a binding without a Type rests on it (ConsultTypeSource: not for a variable, a Property included).
     private static Koto? TypeSource(BindingSymbol symbol)
     {
         if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
@@ -96,7 +98,14 @@ public sealed partial class Binding
             return annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration;
         }
 
-        return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
+        if (symbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto definition })
+        {
+            return definition.Accessor?.Declaration is PropertyAccessorKoto executed
+                ? executed.ReturnType ?? Accessor(executed).Property.Declaration.TypeKoto ?? Accessor(executed).Property.Declaration
+                : definition.ReturnType ?? definition;
+        }
+
+        return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Property ? symbol.Declaration : null;
     }
 
     // Whether a match (a `try` included) or `for` takes `node` as its Subject (SPEC 15.1.6), as its consumer takes it (Grouped,
@@ -106,6 +115,12 @@ public sealed partial class Binding
         var taken = Grouped(node);
         return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
     }
+
+    // PLAN G1073, the failed-slot fact: a slot is stated when it has its Type or Binding recorded a cause at its TypeSource (its record
+    // reported or resting on a reported one), so a published slot of no Type is the failed slot. The HIR publisher's slot rows read it
+    // (HasFacts, SlotsStated); a node with a slot neither typed nor failed is Broken. One direction only: a Closure whose written result
+    // failed keeps an inferred Type until PLAN D-848.
+    private bool Stated(BindingSymbol slot) => slot.Type is not null || (TypeSource(slot) is { } source && this.HasFailureCauses(source));
 
     private bool IsUnresolvedPrerequisite(Koto node)
         => this.RecordedState(node) != BindingState.Resolved || IsRecovery(node, out _);
@@ -196,15 +211,38 @@ public sealed partial class Binding
         return -1;
     }
 
-    // An environment made Invalid by the failure of `node` (ConstraintEnvironment.Fail), counted in the change signal whether or not the
-    // writer also fails a node: under an owner that held a failure already it calls no Fail.
-    private void FailEnvironment(ConstraintEnvironment environment, Koto node)
+    // R7-C3 (F's C2 rulings 272-273): the premises of a declaration whose own judgment failed it (an invalid conditional or block) fail
+    // with it, each through the one writer.
+    private void FailFacts(BindingScope scope, Koto owner)
     {
-        environment.Fail(node);
-        this.Invalidated();
+        if (scope.Constraints is not { } environment)
+        {
+            return;
+        }
+
+        foreach (var fact in environment.Facts)
+        {
+            if (environment.FailPremise(fact, owner))
+            {
+                this.Invalidated();
+            }
+        }
     }
 
-    // The change signal's one writer: Fail, FailEnvironment and an evidence record made Invalid with no failure of its own call it.
+    // R7-C3 (B1'): a premise failed alone (ConstraintEnvironment.FailPremise), counted in the change signal when it newly failed: the
+    // environment's judgments read the remainder. True when it newly failed.
+    private bool FailPremise(ConstraintEnvironment environment, BoundConstraint fact, Koto owner)
+    {
+        if (!environment.FailPremise(fact, owner))
+        {
+            return false;
+        }
+
+        this.Invalidated();
+        return true;
+    }
+
+    // The change signal's one writer: Fail, FailPremise, FailFacts and an evidence record made Invalid with no failure of its own call it.
     private void Invalidated() => this.invalidations++;
 
     // The recorder: records the failure it is given and decides none (a miss's qualification is the resolver's, FailUnselected).
@@ -345,6 +383,11 @@ public sealed partial class Binding
     }
 
     private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
+
+    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2): whether the open consultation is `site`'s own check. A failure's own
+    // checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity premise
+    // error (IdentityPremiseErrorRead).
+    private bool ChecksOwnSite(Koto site) => ReferenceEquals(site, this.consultationNode);
 
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
     /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>

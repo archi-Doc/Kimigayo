@@ -255,8 +255,8 @@ public class ArchitectureRulesTest
     [InlineData("A walk's own count", "src/Kimi/Compiler", @"\b(?:[dD]epth|layers|count|steps|level|fields)\s*(?:<=|>=|==|<|>)\s*(?:[2-9]|\d\d+)\b", "Binding/Binding.Attributes.cs=1;Binding/Binding.Diagnostics.cs=1;Binding/Binding.FunctionTypes.cs=1;Binding/Binding.OriginDiagnostics.cs=1;Binding/Binding.PlaceAuthority.Raw.cs=4;Binding/Binding.PlaceAuthority.cs=2;Binding/Binding.PlaceOrigins.cs=1;Binding/Binding.SlotSet.cs=1;Binding/Binding.TypeRelations.Walk.cs=1;Binding/Binding.TypeRelations.cs=1;ElementAccess.cs=3;Parsing/Koto/Common/TemporaryKotoList.cs=2")]
     // DECISIONS R7-C2e1: a view's state is counted where it is written, so a ConstraintEnvironment's fact sets are written only by its own
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
-    [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")]
-    [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")]
+    [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")] // R7-C3 (F's C2 rulings 272-273): a failed premise stays in the sets (its state)
+    [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")] // R7-C3: FailPremise's change replaces Fail(Koto)'s (rulings 272-273)
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W8 and an outermost walk, the
     // ContractSolver header) give Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
     // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
@@ -265,11 +265,26 @@ public class ArchitectureRulesTest
     // walk's start and admission in each keeper, PremiseRefines and FirstRows (ContractSolver.Rows.cs).
     // R7-C2c2 c2-4a (review-impl-c24a B1, a row for the review): MemberOf's Complete where the view has no identity premise (no
     // table is read); with one it gives the table's W7.
-    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=4;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1;Binding/Binding.TypeIdentity.cs=2")]
+    // R7-C2c2 c2-4b (design R3.3): ClassForm's Complete where the view has no identity premise (with one it gives the table's W7, as
+    // MemberOf); SubstituteIdentity's and IdentityPremise's (TypeIdentity.cs's two; W2, W3, which W7 replaces, DECISIONS R7-M20) went
+    // with those members (a removed subject, not a weakened rule).
+    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=4;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.Keys.cs=2")]
     // R7-C2c2 c2-4a (design §4's Owner row, review-impl-c24a N4): an identity class's Member reaches the judgments only through
     // MemberOf, which the Contract judge, the capability judge, JudgeConstraintAtom's other arms and ContractTypeCore's (E) arm read;
-    // IdentityClasses.Member's other reader is Refuted. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's Member", "src/Kimi/Compiler", @"\bMemberOf\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Constraints.cs=1;Binding/Binding.ContractTypes.cs=1;Binding/Binding.Contracts.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1")]
+    // IdentityClasses.Member's other reader is Refuted; R7-C3 C7: the capability works' key reads it once more (JudgedCapabilityKey, the
+    // subject the judge judged). A further reader fails here until its row is reviewed.
+    [InlineData("Readers of a class's Member", "src/Kimi/Compiler", @"\bMemberOf\(", "Binding/Binding.Capabilities.cs=2;Binding/Binding.Constraints.cs=1;Binding/Binding.ContractTypes.cs=1;Binding/Binding.Contracts.cs=1;Binding/Binding.TypeIdentity.Keys.cs=1")]
+    // R7-C2c2 c2-4b (design R4.12b, R4.12c; ClassForm's contract in Keys.cs): an identity class's one form reaches Types only through
+    // ClassForm, read by the one intake of each judgment over identical Types: J1 a proposition's identity (Constraints.cs:
+    // NormalizeProofConstraint's subject, required Type and Contract reference; Contracts.cs: ProveConformance's subject and Contract
+    // reference), J3 the Type relation at a use (TypeRelations.Walk.cs: the walk root's two sides; CallableSelection.cs:
+    // CallableContractType; a failed fit's record and CheckTypeUse read the pair the walk's intake published, F's C2 rulings 307 (2),
+    // 315), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
+    // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
+    // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
+    // input (Expressions.cs: the expected and the bound Type; Variables.cs, Conversions.cs, NumericConversions.cs); Keys.cs is
+    // ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
@@ -510,7 +525,7 @@ public class ArchitectureRulesTest
 
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
     // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
-    // ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity, RequestCapability), and the two callees that can
+    // ProveConstraint, ResolveAssociated, NormalizeProof*, ClassForm, RequestCapability), and the two callees that can
     // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines, FirstRows, PremiseRows,
     // PremiseCallable and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
     // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row list (RowKind) and row merge (AddRow) are members.
@@ -527,10 +542,10 @@ public class ArchitectureRulesTest
         ];
         string[] allowed =
         [
-            "Add", "AddRow", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
-            "AvailableContractPremise", "ClassKey", "ClauseHeads", "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
-            "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
-            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "Meet",
+            "Add", "AddRow", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
+            "AvailableContractPremise", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
+            "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
+            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
             "RowContract", "RowKind", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",

@@ -469,7 +469,7 @@ public sealed partial class MirOriginsTest
             "    p@follow = local@ref\n    return 0\n";
         var (origins, body, _) = Judged(Source, "f");
         var z = body.Locals.ToArray().Single(static x => x.Name == "z");
-        var (b, c, site) = (z.Type.Origin!, z.Type.Components[0].Origin!, body.Subject(z.Source));
+        var (b, c, site) = (z.Type!.Origin!, z.Type!.Components[0].Origin!, body.Subject(z.Source));
         Assert.Equal((MirRelation.Holds, MirRelation.Fails), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
     }
 
@@ -481,7 +481,7 @@ public sealed partial class MirOriginsTest
     {
         var (origins, body, _) = Judged("func f(x: ref/i32 during a, y: ref/i32 during b) -> i32 => 0\n", "f");
         var (x, y) = (body.Locals.ToArray().Single(static l => l.Name == "x"), body.Locals.ToArray().Single(static l => l.Name == "y"));
-        var thrown = Assert.Throws<InvalidOperationException>(() => origins.Outlives(body, MirCases.Count(body), x.Type.Origin!, y.Type.Origin!, body.Subject(x.Source)));
+        var thrown = Assert.Throws<InvalidOperationException>(() => origins.Outlives(body, MirCases.Count(body), x.Type!.Origin!, y.Type!.Origin!, body.Subject(x.Source)));
         Assert.Contains("(InternalInvariant)", thrown.Message, StringComparison.Ordinal);
     }
 
@@ -501,7 +501,7 @@ public sealed partial class MirOriginsTest
         bool Fixed(string name, bool referent, ulong under)
         {
             var local = locals.Single(x => x.Name == name);
-            var (type, site) = (referent ? local.Type.Components[0] : local.Type, body.Subject(local.Source));
+            var (type, site) = (referent ? local.Type!.Components[0] : local.Type!, body.Subject(local.Source));
             Assert.Equal(OriginAtomKind.Inferred, rows.Atoms[c.Types.OriginAtom(body.Key.Body, type.Origin!, site)].Kind);
             return origins.Fixed(type, site, under);
         }

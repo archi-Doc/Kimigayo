@@ -196,12 +196,13 @@ internal sealed partial class InstanceCollector
 
     /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
     /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its instance under the representative, the
-    /// substitution alone (TyCtxt.Apply; a site reads its cause, In).</summary>
+    /// substitution alone (TyCtxt.Apply; a site reads its cause, In); none for none.</summary>
     /// <param name="item">The item.</param>
-    /// <param name="type">A Type of its body.</param>
-    /// <returns>The Type in the instance, or null where the substitution does not form it.</returns>
-    internal BoundType? TypeOf(int item, BoundType type)
-        => this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative).Type : type;
+    /// <param name="type">A Type of its body; none for a local of no Type (a slot Binding failed, PLAN G1073), which a body of a rejected
+    /// program alone has, so code generation, which runs on an accepted one, never meets it.</param>
+    /// <returns>The Type in the instance, or null where the substitution does not form it or it has no Type.</returns>
+    internal BoundType? TypeOf(int item, BoundType? type)
+        => type is not null && this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative).Type : type;
 
     /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
     /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
@@ -284,10 +285,12 @@ internal sealed partial class InstanceCollector
     }
 
     // A Type of an item's body in the item's instance read at a site (TyCtxt.Answered, its cause read there, Formed): the Type itself for a
-    // closed item; null where it does not form.
-    private BoundType? In(int item, SourceRef subject, BoundType type)
+    // closed item; null where it does not form. SPEC 23.1.2 (rule W, PLAN G1073): a local of no Type (a slot Binding failed, MirLocal) has
+    // no instance and no obligation: none, never substituted; BuildMir collects every validated body at check (SPEC 8.15.3), a rejected
+    // program's included.
+    private BoundType? In(int item, SourceRef subject, BoundType? type)
     {
-        if (this.Set.Items[item].Representative is not { } representative)
+        if (type is null || this.Set.Items[item].Representative is not { } representative)
         {
             return type;
         }

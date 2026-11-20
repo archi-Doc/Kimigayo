@@ -180,6 +180,22 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    g(iu(one, 0)@follow)\n    return 0\n", "clean")]
     [InlineData(OneOf + "ref/T during w\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(OneOf + "uniq/T during w\n    T is uniq/Meter during a\n    return iu(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    // R7-C3 (F's C2 ruling 307 (2); SPEC 8.2.3, 15.6.1): Type identity decides the structure, the Origin relation the Origins. Under the
+    // identity premise the result's Type is T's, so an Origin difference stays the relation's record (`during a`: `(one and a)` needs
+    // `one outlives a`), it holds under `origin a outlives one`, and only a structure that differs is a Type mismatch.
+    [InlineData(OneOf + "ref/T during a\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "ref/T during one\n    T is uniq/Meter during a\n    origin a outlives one\n    return ir(one, 0)\n", "clean")]
+    [InlineData(OneOf + "ref/i32 during one\n    T is uniq/Meter during a\n    let r = ir(one, 0)\n    return r\n", "1*TypeMismatch_Kd")]
+    // R7-C3 (F's C2 ruling 315; SPEC 8.2.3, 15.6.1): the walk's root pair is formed once, at its intake, and published with its parts,
+    // so CheckTypeUse's decomposition reads the pair the walk walked: a Closure's input under the identity premise fits the argument's
+    // structure and keeps only the Origin relation's record (fail-before: CheckFaulted_Kd; dev a585b50a5 adds NoApplicableOverload_Kd at
+    // the call), as the twin without the premise does on every side.
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    let k = func (x: ref/T during w) -> i32 => 0\n    return k(ir(one, 0))\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "i32\n    let k = func (x: ref/T during w) -> i32 => 0\n    return k(ir(one, 0))\n", "1*UnprovenOriginRelation_Kd")]
+    // R7-C3 (F's C2 ruling 316, the Middle's C6; SPEC 8.2.3, 15.6.1): a call of a Function value whose input names a premise-identified
+    // Type is accepted where its no-premise twin is: the identity changes no structure, and `origin a outlives one` makes the input well
+    // formed (fail-before: dev a585b50a5 rejected it with a false NoApplicableOverload_Kd at the call; 23be30ee3 gave CheckFaulted_Kd).
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    origin a outlives one\n    let k = func (x: ref/T during one) -> i32 => 0\n    return k(ir(one, 0))\n", "clean")]
     public void AnInputsWellFormednessOverASlotsSolutionBoundsItsLayer(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 

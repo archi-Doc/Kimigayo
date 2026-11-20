@@ -11,7 +11,7 @@ internal sealed partial class InstanceCollector
 {
     // Whether an operation's Types depend on slots: its first operand's or its result's.
     private static bool IsOpen(MirBody body, in MirRvalue rvalue)
-        => OperandType(body, body.Operands[rvalue.Start]).ContainsParameter || rvalue.Type is { ContainsParameter: true };
+        => OperandType(body, body.Operands[rvalue.Start]) is { ContainsParameter: true } || rvalue.Type is { ContainsParameter: true };
 
     // IMPL 21.3.3 (DECISIONS R5-M126): the gap of a Builtin witness's operation, an arithmetic shim's Contract's MIR operator
     // (MirTypes.ArithmeticOperation, SPEC 13.3.3) on the target's closed Self, which Requirement records at each site that requests the

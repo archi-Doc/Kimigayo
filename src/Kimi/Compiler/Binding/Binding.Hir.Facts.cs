@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the HIR contract between the publisher and the MIR builder: the Binding facts each published Op guarantees (DECISIONS R4-M61).
-// Input: a node, the Op its form calls for, Binding's plans and symbols. Output: whether the node has every fact its Op's building rule reads.
+// Input: a node, the Op its form calls for, Binding's plans and symbols. Output: whether the node has every fact its Op's building rule reads,
+// each slot it declares with its Type or its failed fact included (SlotsStated, PLAN G1073).
 // The publisher gives a node an Op only with its facts, so the builder trusts them; a fact the builder starts reading adds its row here.
 // Must not decide an Op, require a fact the builder does not read for it (a Type stands for Binding's resolution of the node), or leave
 // the builder a fallback for a missing fact.
@@ -48,9 +49,11 @@ public sealed partial class Binding
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
     /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and
     /// its entry, step, iterator symbol and decomposition; a match its current plan; a
-    /// dictionary literal its lookup; a closure its definition; a conversion its binding (a case adaptation its plan); a Tuple literal its
+    /// dictionary literal its lookup; a closure's creation its definition with a Signature (a closure's parts, which HirPublisher.Parts
+    /// publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a conversion its binding (a case adaptation its plan); a Tuple literal its
     /// Type, an array literal a fixed-array Type or, without a fill, an Array Type, and an enum Case construction its plan; a declared
-    /// local and a name their symbols.</summary>
+    /// local and a name their symbols; and every slot a declared local, a definition's Body, a match, a try or a for loop declares
+    /// stated (<see cref="SlotsStated"/>, PLAN G1073).</summary>
     /// <param name="node">An evaluated node.</param>
     /// <param name="op">The Op its form calls for.</param>
     /// <returns>Whether the node has its facts.</returns>
@@ -87,13 +90,14 @@ public sealed partial class Binding
                 return HirTables.Meaning(node) is not null && node.Formatting is { Writes.Count: > 0 } format && Formats(node, format);
             case HirOp.For:
                 return HirTables.Meaning(node) is not null && BoundMatch.Of(this, node) is not null && CallPlan.Of(this, node) is { } entry &&
-                    CallPlan.Of(this, node, 1) is { Receiver: { } receiver } step && Complete(entry) && Complete(step) && HirTables.Symbol(receiver) is not null;
+                    CallPlan.Of(this, node, 1) is { Receiver: { } receiver } step && Complete(entry) && Complete(step) && HirTables.Symbol(receiver) is not null &&
+                    this.SlotsStated(node);
             case HirOp.Match or HirOp.Try:
-                return BoundMatch.Of(this, node) is { IsCurrent: true };
+                return BoundMatch.Of(this, node) is { IsCurrent: true } && this.SlotsStated(node);
             case HirOp.DictionaryLiteral:
                 return CallPlan.Of(this, node) is { } find && Complete(find);
             case HirOp.Closure:
-                return ((FunctionKoto)node).ClosureDefinition is not null;
+                return this.ClosureParts((FunctionKoto)node) && ((FunctionKoto)node).ClosureDefinition!.Signature is not null;
             case HirOp.Convert:
                 return ((ConversionKoto)node).ConversionBinding is not ConversionBinding.None and var binding &&
                     (binding != ConversionBinding.CaseAdaptation || HirTables.PlanOf(node).Plan is ExplicitAdaptationPlan);
@@ -108,7 +112,9 @@ public sealed partial class Binding
             case HirOp.PrimitiveOp when node is MemberAccessKoto member: // A sequence's metadata, by its published form.
                 return SequenceMember(member) != BuiltinForm.None;
             case HirOp.Let:
-                return HirTables.Symbol(node) is not null;
+                return HirTables.Symbol(node) is not null && this.SlotsStated(node);
+            case HirOp.Body:
+                return this.SlotsStated(node);
             case HirOp.Name:
                 return HirTables.Symbol(node) is { } symbol &&
                     (symbol.Kind != BindingSymbolKind.Storage || (symbol.Declaration is { } property && HirTables.Symbol(property) is not null));
@@ -164,6 +170,61 @@ public sealed partial class Binding
             }
 
             return first > 0 || (CallPlan.Of(this, node, format.Writes.Count) is { } status && Complete(status));
+        }
+    }
+
+    // The facts a Closure's parts are published with (HirPublisher.Parts; DECISIONS R5-M63 (1) as amended by PLAN G1110): the definition
+    // this binding published and every slot of the literal stated, whatever the creation. The creation (HasFacts' Closure row) also needs
+    // the definition's Signature, which a failed slot leaves null.
+    private bool ClosureParts(FunctionKoto literal) => literal.ClosureDefinition is not null && this.SlotsStated(literal);
+
+    // PLAN G1073 (SPEC 23.1.2): whether every slot a node declares is stated (Stated): a declared local's; a definition's result and
+    // parameters (an accessor's executing function's, with its self and value; a static's or Field's Type); the bindings of a match's, a
+    // try's or a for loop's plan; a Closure's parameters and result as a named function's once its definition is published (PLAN G1110:
+    // a literal whose binding failed before its header formed, such as a header refuted by its expected Type, publishes no slot). A node with a slot neither typed
+    // nor failed lacks its facts (HirTables.Broken) whatever its state: Binding records every failed slot's cause at its TypeSource. No
+    // other node declares a slot the builder reads: a Closure's environment holds typed captures only (a capture of a source whose Type
+    // failed forms no environment binding); a static's Place is built only under its declaration's Body (MirBuilder's
+    // Static), whose row reads its Type; the default templates of a definition with a body only beside its Body (an Error definition
+    // replaces its defaults).
+    private bool SlotsStated(Koto node)
+    {
+        switch (node)
+        {
+            case PropertyKoto property:
+                return HirTables.Symbol(property) is not { } stored || this.Stated(stored);
+            case VariableKoto variable:
+                return HirTables.Symbol(variable) is not { Kind: BindingSymbolKind.Local } local || this.Stated(local);
+            case PropertyAccessorKoto accessor:
+                var bound = Accessor(accessor);
+                return this.Stated(CallPlan.Accessor(this, accessor)) && (bound.SelfSymbol is not { } self || this.Stated(self)) &&
+                    (bound.ValueSymbol is not { } value || this.Stated(value));
+            case FunctionKoto function when HirTables.Symbol(function) is { } symbol && (!function.IsAnonymous || function.ClosureDefinition is not null):
+                if (!this.Stated(symbol))
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < function.Parameters.Count; i++)
+                {
+                    if (!this.Stated(this.ParameterSymbol(function, i)))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            default:
+                var positions = BoundMatch.Of(this, node)?.Positions;
+                for (var i = 0; i < positions?.Count; i++)
+                {
+                    if (positions[i].BodySymbol is { } binding && !this.Stated(binding))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
         }
     }
 }

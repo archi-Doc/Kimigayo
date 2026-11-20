@@ -440,7 +440,7 @@ public sealed partial class Binding
         var target = this.BindType(conversion.Right, scope);
         if (target is not null)
         {
-            target = this.SubstituteIdentityPremises(target, scope);
+            target = this.ClassForm(target, scope, out _);
             Complete(conversion.Right, target);
         }
 
