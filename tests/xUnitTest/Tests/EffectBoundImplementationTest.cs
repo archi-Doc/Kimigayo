@@ -299,6 +299,28 @@ public partial class EffectBoundImplementationTest
         CompilationTestHelper.AssertRecordsAtLines(form, program, records);
     }
 
+    // R7 plan Z23 (SPEC 8.11.2, 8.15.2, 4.7.1 step 3): A4 reads each case's own selection: a `confined` implementation whose bare take
+    // of v[0] Copies in the ref case runs index there, which writes the Console (e1, accepted on dev 5dd6543e6, which read indexUniq in
+    // every view: a Q13 move), as `s is ref` alone does (e1r); `s is uniq` alone selects indexUniq, which reaches no environment (e1v).
+    [Theory]
+    [InlineData("ref or uniq", "IncompatibleContractImplementation_Kd @ Self is Poke")]
+    [InlineData("ref", "IncompatibleContractImplementation_Kd @ Self is Poke")]
+    [InlineData("uniq", "")]
+    public void AnIndexSelectedByCaseHasItsCasesEffects(string cases, string expected)
+    {
+        var source = "struct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    public init(first: T) => self.first = first@move\n" +
+            "    public func index(self, key: ref/isize) -> ref/T during self\n        Console.writeLine(\"index\")\n        return self.first@ref\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+            $"contract Poke\n    func poke<s/T>(self: uniq/Self, v: uniq/Two<s/T>)\n        s is {cases}\n        effect confined\n" +
+            $"struct Holder\n    Self is Poke\n    public init() => ()\n    public func poke<s/T>(self: uniq/Self, v: uniq/Two<s/T>)\n        s is {cases}\n" +
+            "        let x = v[0]\n        _ = x\nConsole.writeLine(\"ok\")\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(expected, string.Join("; ", c.Binding.Issues.Select(static x => $"{x.Code} @ {First(x.Node)}")
+            .Concat(c.Problems.Select(x => $"{x.Code} @ {First(c.SyntaxOf(x.Subject))}"))));
+
+        static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
+    }
+
     // R6-check H3b T40: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges an effect bound where Binding did. Binding
     // completes; a violated bound refuses the program with A4's IncompatibleContractImplementation_Kd at the conformance's `Self is C`
     // clause, and a kept one leaves no record. The MIR side is compared exactly (MirTargetSide): beside the bound's record it holds the

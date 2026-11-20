@@ -170,21 +170,21 @@ public sealed partial class Binding
         // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
         internal List<BindingObligation>? Rows { get; init; }
 
-        // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
-        // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
-        // that already fixed it; `instance` is the Callable comparison whose per-call Origins the parts are compared under.
+        // SPEC 3.8: the relation; Never relates only to itself. A Function Type's own syntax binds its per-call inputs (SPEC 8.10).
+        // `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the Callable comparison whose
+        // per-call Origins the parts are compared under.
         internal bool Fits(
-            BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
+            BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default)
         {
             if (this.parts is not { } parts || instance.Expected is not null || this.Discharged(actual, expected))
             {
-                return this.Relate(actual, expected, invariant, skipOrigin, instance, own);
+                return this.Relate(actual, expected, invariant, skipOrigin, instance);
             }
 
             // A pair of composite parts entered before in this invariance answers as it did there (FitPart.Same); the comparison of a
             // Function part, an instantiated outer Origin and a root's own inputs are walked where they occur.
             var key = (actual, expected, invariant);
-            var once = !skipOrigin && own is null && actual.Components.Count != 0 && actual.Kind is not (BoundTypeKind.Function or BoundTypeKind.FunctionItem);
+            var once = !skipOrigin && actual.Components.Count != 0 && actual.Kind is not (BoundTypeKind.Function or BoundTypeKind.FunctionItem);
             if (once && this.binding!.enteredParts.TryGet(key, this.partQuery, out var earlier))
             {
                 var first = parts[earlier];
@@ -200,7 +200,7 @@ public sealed partial class Binding
             var outerRested = this.binding!.fitRested;
             parts.Add(default);
             this.binding.fitRested = false;
-            var holds = this.Relate(actual, expected, invariant, skipOrigin, instance, own);
+            var holds = this.Relate(actual, expected, invariant, skipOrigin, instance);
             var failed = holds ? default : this.facts.Count > factStart ? this.facts[factStart] : this.failure;
             parts[entry] = new(actual, expected, holds, this.binding.fitRested, this.endedAt != entry, failed, factStart, this.facts.Count, parts.Count);
             if (once)
@@ -223,7 +223,7 @@ public sealed partial class Binding
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }
 
-        private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance, Koto? own)
+        private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance)
         {
             if (this.Discharged(actual, expected))
             {
@@ -291,7 +291,7 @@ public sealed partial class Binding
                 // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
                 // A comparison that fails keeps none of the region conjuncts it left as rows: its failure is its one fact (SPEC 15.6.1,
                 // 23.1.2); one that holds keeps them for the reader, also when another part of the walk fails.
-                var comparison = Comparison(actual, own, expected, instance, InComparison(instance) ? instance.Rows : this.Rows);
+                var comparison = Comparison(actual, expected, instance, InComparison(instance) ? instance.Rows : this.Rows);
                 var rows = comparison.Rows?.Count ?? 0;
                 if (this.FunctionFits(actual, expected, invariant, comparison) &&
                     (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))

@@ -84,10 +84,11 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 internal sealed partial class MirValidator(TyCtxt types)
 {
     private readonly MirCases cases = new(types);
-    private readonly List<(MirRvalue Site, SourceInfo Source)> caseSites = []; // The body's case sites, its Adapts and PairAcquire Uses (Views).
+    private readonly List<(MirRvalue Site, SourceInfo Source, int Block)> caseSites = []; // The body's case sites, its Adapts and PairAcquire Uses (Views).
     private readonly MirReach reach = new();
     private readonly HashSet<BoundType> parts = new(ReferenceEqualityComparer.Instance); // StatesUnstated's scratch (the Local row).
     private byte[] writes = []; // Per local, its writes' kinds.
+    private ulong[] blockViews = []; // In a body with a case branch, per block the views whose walk reaches it (Views).
 
     /// <summary>Validates a body and sets its verdict (<see cref="MirBody.HasFinding"/>): whether it added a finding.</summary>
     /// <param name="body">The body.</param>
@@ -130,7 +131,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
 
         checker.Finish();
-        checker.Views(this.cases);
+        checker.Views(this.cases, walked && body.CaseSwitches > 0 ? this.BlockViews(body) : null); // Successors in range only.
         if (walked)
         {
             this.Diverged(body, findings);
@@ -148,13 +149,37 @@ internal sealed partial class MirValidator(TyCtxt types)
 
     // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports; it
     // records each local's writes.
+    // R7 plan Z23 (SPEC 8.14): per block of a body with a case branch, the views whose walk from the entry, every edge followed, reaches
+    // it (MirReach under the view): one walk per view, so a case site is checked in the views that reach it at a cost linear in the body.
+    private ulong[] BlockViews(MirBody body)
+    {
+        if (this.blockViews.Length < body.Blocks.Length)
+        {
+            this.blockViews = new ulong[Math.Max(body.Blocks.Length, this.blockViews.Length * 2)];
+        }
+
+        Array.Clear(this.blockViews, 0, body.Blocks.Length);
+        for (var view = 0L; view < MirCases.Count(body); view++)
+        {
+            _ = this.cases.Select(body, view);
+            this.reach.Clear(body.Blocks.Length);
+            this.reach.Walk(body, 0, checks: true, this.cases);
+            for (var block = 0; block < body.Blocks.Length; block++)
+            {
+                this.blockViews[block] |= this.reach[block] ? 1UL << (int)view : 0;
+            }
+        }
+
+        return this.blockViews;
+    }
+
     private partial struct Checker(
         MirBody body,
         List<MirFinding> findings,
         bool[] unknown,
         bool[] ensured,
         List<(int Block, int Slot, SourceInfo Source)> accesses,
-        List<(MirRvalue Site, SourceInfo Source)> caseSites,
+        List<(MirRvalue Site, SourceInfo Source, int Block)> caseSites,
         byte[] writes,
         HashSet<BoundType> parts,
         TyCtxt types) : IMirUses
