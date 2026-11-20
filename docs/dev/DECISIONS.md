@@ -15372,7 +15372,7 @@ resumed by R4-M86 (2026-10-20).
     `originTwins`, `pairFollows`, `implicitPairFollows`, `phantomRawOrigins`, `invalidStaticOriginSlots`. `FailExplained` gains its
     column form (the family named by `FactFamily<T>`, the fact stored by `SetRecordedFact`); **staged removal:** its Dictionary form
     stays while a family is written through it, and the batch converting the last one (E) deletes it. `PairAdmitted` and
-    `ImplicitPairAdmitted` keep `EnsurePassNode` (ruling O3, PLAN G1070) until the last family reading through it converts.
+    `ImplicitPairAdmitted` keep `EnsurePassNode` for good (amended by R7-N5 B2a-2, below).
     `originInferences` stays out (B's ruling 2, PLAN G1078). Ratchet ("Node-keyed table members in Binding") 76 -> 70.
   - **R7-N5 B5b** (the Back's batch, Q-541; design `b4b5b-design.md` §4-§5, B's rulings 4, 7, 9): `effectBoundRejections` and
     `callablePremiseFailures`, step-cleared at `PrepareEffectBounds`, become pass families of `NodeColumns`
@@ -15386,6 +15386,32 @@ resumed by R4-M86 (2026-10-20).
     `callableSelectionFailures`, `baseCallFailures` and `objectErasureFailures` (failure facts stored through the recorder,
     `SetRecordedFact`). The library writes none of them (six `NotStamps` rows). `receiverOperations` and `resultContexts` are B2a-2's
     (released at the freeze, B's ruling 1); `noInitFailures` and `arrayInferenceFailures` are deleted by R7-E2-3. Ratchet 67 -> 61.
+  - **R7-N5 B2a-2** (the Back's batch, Q-577, D-936; design `b2a2-design.md` §1-§4, B's rulings 1-5 and B's ruling 6 on
+    `b2a-design.md`; the Front's R1-R4 and C1-C7 on C-403, 2026-11-20): a family no reader after the freeze reads a library row of
+    (its rows are its pass's working state: the binding steps, reports and HIR publication of the pass that wrote them) has no
+    base: the freeze releases its library rows. It is a pass column (`StampedColumn<T, Binding.PassCounter>`) whose one
+    `NodeColumns.Freeze` row is `Release()`, which drops its rows, arena and directory and leaves its stamp 0, the state of a column
+    the library pass never wrote (its declaration names the class `Work:`; its `NotStamps` row names the reason), so a library
+    node's row reads none after the library pass in every compilation. Reason: the base and overlay were written for fact
+    families, whose library rows a program pass reads; a working-state row is no fact, and freezing it would keep the library
+    pass's working state for the process (`resultContexts`: the library pass's 204 pooled contexts, aliased to the freeze
+    Binding's pool; `receiverOperations`: 125 rows, 65,944 B) with no reader. First families: `resultContexts`,
+    `receiverOperations` (ratchet 61 -> 59). Rejected: (b) the pool per pass part with the rows frozen (keeps working state as a
+    fact; a per-part store for one feature); (c) a kept column with a "begun in this pass" flag (a lifetime flag `StampedColumn`'s
+    contract forbids); a counter or column type steering the freeze (a mode carried by a type, or a wrapper forwarding every
+    operation); skipping the family in `NodeColumns.Freeze` (a skipped row keeps the library pass's run counter, 1, as its stamp,
+    current in every reading compilation's first run and in the freeze compilation's program pass: the alias); a Binding-owned
+    working-state store keyed by `(module, SyntaxId)` (a second node-column representation beside `NodeColumns`, which the one key
+    rule excludes).
+    - **`EnsurePassNode` stays for good** (B's B2a-2 ruling 5 and B2b ruling 8, the Front's C1 and C2 on C-403): its staged
+      removal (ruling O3, B's ruling 2 of 2026-11-19, PLAN G1070, now closed) is withdrawn, since the frozen base never holds its
+      five readers' families' library rows. By class: for a **released** family (`receiverOperations`:
+      `TryGetReceiverOperation`; `resolvedSlices`: `IsResolvedSlice`, from its conversion; `resultContexts` has no reader outside a
+      pass) the refusal is the answer, because the freeze released the library's rows; for a **never-written** family
+      (`pairFollows`: `PairAdmitted`; `implicitPairFollows`: `ImplicitPairAdmitted`; `uniqIndexing`: `HasExclusiveIndexer`, from
+      its conversion) "none" is the library's own answer, and `EnsurePassNode` is the contract check that no program pass asks a
+      library node. No N5 batch removes it; a family whose library rows a reader after the freeze reads is a fact family and keeps
+      `Freeze`. The comment of `EnsurePassNode` and Binding.Pass.cs' header state it.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -25839,6 +25865,15 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Superseded in part by R8-M55 (R8-L1 U3, 2026-11-19): the Adopted bullet's "No compilation reads `Of` before U3" (from U3 every
     compilation reads its target's frozen library) and the interim "Until U3, Core's `Publish` reports a MIR record through the node"
     (U3 routes it through `StoreOf`).
+  - Amended by R7-N5 B2a-2 (BU-220's B2a-2 line; also amends BU-105's R8-M53 line and BU-219's S1-1 stamping): "Every stamp a
+    frozen object holds is `Frozen`" (S1-1's rule across the process; BU-105's "a stamp a frozen library object holds is the
+    literal `Frozen`; no counter value of the freeze survives it"; BU-219's "from S1-1 stamps its facts `Frozen`") holds for every
+    stamp the freeze keeps; a working-state family's column keeps none: the freeze releases it (stamp 0 and no row, the state of a
+    never-written column), so no counter value of the freeze survives either way and BU-105's line holds as written. Counters are
+    per Binding (R8-M53), so the release is the family's Freeze row and never a skipped one. `FreezeLibrary`'s contract ("Stamp":
+    "every stamp the run made current on a library object or base store turns Frozen") names the release (Binding.Passes.cs).
+    R8-M55 is unchanged: the release runs inside the freeze (`Families.Freeze`), before the seal, so "a frozen one is read, never
+    bound again" and "after the seal no compilation writes a frozen library object" hold as written.
 - **R8-M54 The interners' two levels (R8-L1 U4; PLAN G949 Stage 2)** (Back, 2026-11-19; Major, identity in Stage 1; U4's design
   `back\notes\l1-s2\u4-design.md` §4, 5.7 and 7b.3, its review ACCEPT WITH CONDITIONS (`review-u4.md`), the implementation review
   ACCEPT WITH NOTES (`review-u4-impl.md`), B's rulings `rulings-u4.md`; the Front's consent on C-380 (23:27); C-380 F3 (a)-(c), F4;
