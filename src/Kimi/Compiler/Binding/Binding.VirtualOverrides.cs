@@ -481,15 +481,26 @@ public sealed partial class Binding
             var bound = this.StoredConstraint(fact, slot.DeclaringType);
             // SPEC 6.4.3: a substituted premise Refuted or Error for the derived Type makes the override one declaration error at the
             // override (the slot never exists for that Type; the owner's O-370); it supplies no evidence. The body's Binding-time records
-            // stand (SPEC 23.1.2); a rejected definition publishes no body (DECISIONS R4-M18).
+            // stand (SPEC 23.1.2); a rejected definition publishes no body (DECISIONS R4-M18). R7-C3 (F's C2 rulings 313, 271 (1), 255):
+            // the refuted premise is the override's failed premise, it and its conjuncts in the one Failed state (FailPremise), so a body
+            // proof that reads it rests on the override's record and none of it is evidence.
             var proof = this.ProveConstraint(bound, premises);
+            this.AddConstraintFact(premises.Constraints!, bound);
             if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
-                this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact)); // R7-C3 (F's C2 ruling 278): no premise of the body
-                continue;
+                this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
+                FailRefuted(bound);
             }
+        }
 
-            this.AddConstraintFact(premises.Constraints!, bound);
+        void FailRefuted(BoundConstraint part)
+        {
+            this.FailPremise(premises.Constraints!, part, function);
+            if (part.Kind == ConstraintKind.And)
+            {
+                FailRefuted(part.Left!);
+                FailRefuted(part.Right!);
+            }
         }
     }
 
