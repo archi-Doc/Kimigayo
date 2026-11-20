@@ -11,12 +11,13 @@ namespace Kimi.Build;
 
 internal static partial class NativeToolchain
 {
-    // The installation's command, which every setup remedy names: setup installs from the pinned LLVM release archive, extracted.
-    internal static readonly string SetupCommand = $"src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM {ToolchainIdentity.LlvmVersion} archive, extracted>";
-
     // Installation and explicit verification cover the entire distributed tool set.
     private static readonly string[] InstallationTools =
         ["clang", "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj", "llvm-objdump", "llvm-lib", "llvm-dlltool"];
+
+    // The installation's command, which every setup remedy names: setup installs from the pinned LLVM release archive, extracted. A
+    // property, so that only the remedies that name it read the catalog, never the type's initializer.
+    internal static string SetupCommand => $"src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM {ToolchainIdentity.LlvmVersion} archive, extracted>";
 
     internal static string RequireInstalledFile(string path)
     {
@@ -111,7 +112,8 @@ internal static partial class NativeToolchain
             record["tatara"] = new JsonObject
             {
                 ["path"] = Redact(tatara.Path, Directory.GetCurrentDirectory()), ["sha256"] = tataraHash, ["build"] = tatara.Build,
-                ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion,
+                ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion, ["expectedSha256"] = tataraSha256,
+                ["hashMatched"] = tataraHash == tataraSha256,
             };
             if (tataraHash != tataraSha256)
             {

@@ -27,7 +27,7 @@ foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-dlltool', 'llvm-readobj', 'l
 $profile = Read-KimiWindowsProfile
 $kernel = Get-KimiInstalledKernel32 $ToolchainRoot
 $archive = Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
-if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Installed backend is missing. Run setup.ps1.' }
+if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw "Installed backend is missing. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM $($profile.llvmVersion) archive, extracted>." }
 Write-Output 'Toolchain verification: not-performed'
 $allowedSymbols = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($symbol in $profile.providedSymbols) { $null = $allowedSymbols.Add($symbol) }

@@ -140,7 +140,7 @@ else {
         if (-not (Test-KimiSameFile $archive $installed)) {
             Copy-Item -LiteralPath $archive -Destination $temporary
             if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Backend changed during toolchain installation' }
-            [IO.File]::Move($temporary, $installed, $true)
+            Move-KimiFile $temporary $installed
             $written = $true
         }
     }
