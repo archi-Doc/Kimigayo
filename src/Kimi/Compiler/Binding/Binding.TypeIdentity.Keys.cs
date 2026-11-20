@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
@@ -158,14 +159,17 @@ public sealed partial class Binding
     //   at FixCallSlots, at a first binding or in a pattern; no reader outside the list (a missing comparison is found by its judgment,
     //   never added as a site); no second comparison after a failed one, no mode or bool parameter, no per-form clause, no first-premise
     //   or premise-order choice. ClassForm does not read MemberOf's unresolved-operand gate: a fit compares Types, not closed worlds (N1).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private BoundType ClassForm(BoundType type, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!type.HasAbstractPart || !HasTypeIdentity(scope))
-        {
-            return type;
-        }
+        return type.HasAbstractPart && HasTypeIdentity(scope) ? this.AbstractClassForm(type, scope, out completion) : type;
+    }
 
+    // ClassForm past its inlined domain test (F's C2 ruling 317 (3)): a Type with an abstract part in a view with an identity premise,
+    // in the view's classes.
+    private BoundType AbstractClassForm(BoundType type, BindingScope scope, out Completion completion)
+    {
         if (this.ClassesOf(scope, out completion) is not { } classes)
         {
             return type;
