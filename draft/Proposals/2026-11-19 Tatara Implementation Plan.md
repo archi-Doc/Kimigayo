@@ -37,6 +37,7 @@ tatara> exit
 | 11 | The session that wrote this plan is the T lane's planner. Seats 1+1. The prompt uses SimplePrompt. |
 | 12 | The T lane is added to AGENTS, WORKFLOW and COMPILER_ARCHITECTURE in the commit that adopts this plan. |
 | 13 | C++ is a thin layer only. Steps and verdicts stay in C# (P13). |
+| 14 | Unit A4 is judged on the `BuildChain` series run as an interleaved paired A/B (the base on the external tools against the candidate): on every row the candidate's p50 wall time is at most 1.03 times the base's, and its p95 peak committed memory is at most 64 MiB above the base's (the owner, 2026-11-20, board O-452, verbatim 「(b) と (m2)」). |
 
 Assumed without a question: agents run Opus 5.5; branches are `claude/t-*`; the usage-stop rule and the heavy-run rules apply as to
 every lane.
@@ -56,7 +57,8 @@ Read on dev `5dd6543e6`: `src/Kimi/Build/NativeToolchain.Build.cs` and the verif
    calls the LLVM tools directly and never `kimi build`. The script and the tools stay after the switch as an independent control; its
    reuse key does not move.
 4. **The new path writes no `.inspection.txt`.** The file is `llvm-readobj`'s raw output; IMPL's artifact list does not name it and no
-   test reads it. The same checks run on the facts Tatara returns.
+   test reads it. The same checks run on the facts Tatara returns. Unit A2's first commit stops writing it on the old path too (no
+   reader; IMPL's artifact list does not name it), so the two paths write equal file sets from A2.
 5. **The record's `tools` field changes:** the five tool paths become `tatara.dll`'s identity. The record's format is
    implementation-defined (IMPL §20.3.2), so IMPL does not change for it.
 
@@ -70,8 +72,10 @@ CLI ──> P13 (C#: steps, verdicts, the record) ──> executor ──> objec
                                                    └ Tatara (tatara.dll: thin C++ over LLVM / LLD)
 ```
 
-- **The executor** has the three operations that use tools, and nothing else.
-  - **Generate:** takes the IR and settings; returns the object (and, at O2, the optimized IR).
+- **The executor** has the four calls that run LLVM or LLD, and nothing else. Generation is two calls because the redaction of the
+  optimized text between them is P13's one rule, in C#.
+  - **Optimize:** verifies the IR, runs `default<O2>` and writes the text as `opt -S` writes it.
+  - **Emit:** verifies the IR and writes the object as `llc` writes it.
   - **Inspect:** reads the object; returns facts: undefined symbols, external definitions, whether unwind information exists, whether
     default-library directives exist.
   - **Link:** takes the permitted inputs and settings; writes the executable.
@@ -80,15 +84,26 @@ CLI ──> P13 (C#: steps, verdicts, the record) ──> executor ──> objec
   This temporary structure and its removal stage are recorded in COMPILER_ARCHITECTURE's ledger.
 - **Tatara's rules:**
   - LLVM / LLD state is released per request. No process-wide setting (`cl::opt`, `/mllvm`).
-  - No exception crosses the C ABI. A fatal error is reported as an internal error.
-  - An LLD error after P13 permitted the inputs is an internal error.
-  - The build identity is checked once at start.
+  - No exception crosses the C ABI. In stage A every failure Tatara reports is the toolchain's failure, as a failed tool is today
+    (stage A's P13 neither parses a user library nor judges which library supplies a symbol, and `build --Manifest` takes the user's
+    IR); after a fatal LLVM or LLD error Tatara cannot run again in that process, and every later call fails naming the first cause.
+    Both become internal errors with the stage B unit that gives P13 that judgment.
+  - At start P13 checks `tatara_abi` (the SHA-256 of `tatara.h`, which `Kimi.dll` embeds) and LLVM's version; the whole-source build
+    identity is recorded.
+  - Every operation runs inside LLVM's crash recovery on a thread with the tools' stack (10,000,000 bytes); crash recovery, the
+    fatal-error handler and the target's registration are Tatara's only process-wide state.
 
 ```c
-// tatara.h (the whole surface, as a sketch)
-int32_t tatara_generate(const TataraGenerateRequest* request, TataraGenerateResult* result);  // IR -> object, and the facts read
-int32_t tatara_link(const TataraLinkRequest* request, TataraLinkResult* result);              // permitted inputs -> executable
-void    tatara_release(void* result);
+// tatara.h (the whole surface, as a sketch: nine exports)
+void        tatara_identity(TataraIdentity* identity);                         // the build identity and LLVM's version
+const char* tatara_abi(void);                                                 // the SHA-256 of tatara.h
+int32_t     tatara_optimize(target, ir, optimizedIr, TataraResult** result);  // verify, default<O2>, the text
+int32_t     tatara_emit(target, ir, obj, optimizationLevel, TataraResult** result);  // verify, the object
+int32_t     tatara_inspect(obj, TataraResult** result);                       // the object's facts
+int32_t     tatara_link(arguments, count, TataraResult** result);             // permitted inputs -> executable
+TataraText  tatara_text(const TataraResult* result, int32_t kind);            // a result's text
+int32_t     tatara_flag(const TataraResult* result, int32_t kind);            // a result's flag
+void        tatara_release(TataraResult* result);
 ```
 
 ## 5. Stage A units
@@ -114,7 +129,8 @@ loading it; the baseline is in `artifacts/benchmarks/`; the owner has the propos
 
 ### A2 The Windows path
 
-Two commits.
+Three commits, one window: `.inspection.txt` no longer written; the seam (structure only); the Tatara executor (its
+native and managed sides).
 
 1. **Structure only (behavior unchanged):** the tool-using parts of `NativeBuild`'s Compile, Inspect and Link become the executor. The
    only executor is the external tools.
@@ -127,6 +143,9 @@ milestones, the FFI examples):
   diagnostics. Deleted in A4 with the external executor.
 - **Tool control test (permanent):** the test calls the same archive's external tools (`opt`, `llc`, `lld-link`) directly and compares
   their object and executable with Tatara's. It stays after A4 and is the pass condition of an LLVM update (§6).
+
+Both comparisons are xUnit methods (`Explicit` until A4); the corpus run executes the same methods over a named Session's fixtures
+and every milestone.
 
 **Done when (this is also the switch's gate):**
 
@@ -164,7 +183,7 @@ After A2's gate passes on the dev of that day, in a dedicated window.
 - IMPL §20.3.2's Toolchain wording is revised.
 - The setup tools and the native fixture runner do not change (§3, item 3).
 
-**Done when:** the Session passes; single-shot time and memory are within budget, judged on A1's series run at A4 as an interleaved
+**Done when:** the Session passes; single-shot time and memory are within budget (decision 14), judged on A1's series run at A4 as an interleaved
 paired A/B (the base on the external tools against the candidate); `kimi build` starts no child process.
 
 ## 6. Updating LLVM
@@ -235,15 +254,15 @@ Measured first; each one adopted is a unit of its own.
 | The prebuilt LLVM lacks a library, or its CRT does not fit | Checked first in A1. Otherwise built from source once, outside timing slots. |
 | Some inputs give different bytes | The text round trip is reproduced as it is. A remaining difference is investigated, then goes to the owner. |
 | Single-shot start slows (loading a large DLL) | Judged by A1's baseline and A4's measurement. Over budget: the owner decides before the switch. |
-| An LLVM fatal error ends the process | A fatal-error handler reports an internal error; the interactive session ends. |
+| An LLVM fatal error ends the process | Crash recovery turns it into the toolchain's failure; Tatara cannot run again, so the interactive session ends. |
 | The same files as R7 and R8 | Holds, minimal edits; A4 in a dedicated window. |
 
 ## 11. Owner questions to come
 
 | When | Subject |
 |---|---|
-| After A1 | Time and memory budgets |
-| During A2 | Inputs that still differ, if any |
+| After A1 | Time and memory budgets (answered: decision 14) |
+| During A2 | Inputs that still differ, if any (answered: none; 12,602 fixture rows and 80 milestone pairs equal) |
 | Before B5 | The IMPL wording for "the record is the truth" |
 | Before B6 | What is embedded; removing the old options |
 | Before B7 | The scope of Linux support |

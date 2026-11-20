@@ -349,7 +349,7 @@ public sealed partial class Binding
 
         if (unsupported)
         {
-            this.FailUnsupportedAt(call, call.Method.Span);
+            this.RecordLocated(call, call.Method.Span);
             return false;
         }
 
