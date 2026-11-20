@@ -186,10 +186,10 @@ public sealed partial class Binding
     // and the argument fits the substituted parameter after selection. An Origin the signature itself quantifies, such as a per-call
     // input, lies beyond the call and never solves an Origin in a slot: it becomes an open region that other evidence fills.
     // With `relateLater`, the actual is a value's Type whose Origin relations to the solution are judged after selection (SPEC 15.6.1),
-    // so Origin evidence never fails a structurally equal slot binding; `invariant` marks a position below an exclusive layer or an
-    // invariant schema slot. `binder` is the solve's binder (SolveBinder): its Declaration's Constraints decide a read Type, and its
-    // SlotOwner's slots are the ones bound.
-    private bool Infer(BoundType pattern, BoundType actual, SolveBinder binder, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
+    // so Origin evidence never fails a structurally equal slot binding; `polarity` is the position's (ComponentPolarity), 0 below an
+    // exclusive layer or an invariant schema slot. `binder` is the solve's binder (SolveBinder): its Declaration's Constraints decide a
+    // read Type, and its SlotOwner's slots are the ones bound.
+    private bool Infer(BoundType pattern, BoundType actual, SolveBinder binder, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, int polarity = 1)
     {
         var arguments = frame.Types;
         if (pattern.Kind == BoundTypeKind.AssociatedProjection)
@@ -220,18 +220,18 @@ public sealed partial class Binding
 
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+                return this.Infer(pattern.Components[0], actual, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, polarity);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
+                this.Infer(pattern.Components[0], actual.Components[0], binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, this.ComponentPolarity(actual, 0, polarity, default));
         }
 
         // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+            return this.Infer(pattern.Components[0], actual.Underlying, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, polarity);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(binder.SlotOwner, pattern.Symbol!) is var slot && slot >= 0)
@@ -294,7 +294,7 @@ public sealed partial class Binding
                     {
                         frame.SetType(slot, previous);
                     }
-                    else if (invariant)
+                    else if (polarity == 0)
                     {
                         frame.SetType(slot, actual);
                         frame.SetInvariant(slot);
@@ -327,7 +327,7 @@ public sealed partial class Binding
             }
 
             frame.SetType(slot, actual);
-            if (relateLater && invariant)
+            if (relateLater && polarity == 0)
             {
                 frame.SetInvariant(slot);
             }
@@ -369,8 +369,6 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            var below = invariant || IsInvariantLayer(pattern, this, null, default) ||
-                (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
             if (!this.Infer(
                 pattern.Components[i],
                 actual.Components[i],
@@ -382,7 +380,7 @@ public sealed partial class Binding
                 structural,
                 evidence,
                 relateLater,
-                below))
+                this.ComponentPolarity(pattern, i, polarity, default)))
             {
                 return false;
             }

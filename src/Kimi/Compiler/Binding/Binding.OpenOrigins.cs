@@ -348,23 +348,11 @@ public sealed partial class Binding
     private BoundOrigin OpenSlotOrigin(BoundOrigin bound, BoundOrigin region, OriginInference opened) => this.Meet(opened.Open(region, bound), region);
 
     // J2: the polarity of component `index` of `type` at `polarity` (1 covariant, -1 contravariant, 0 invariant), as an Origin solve
-    // collects it (CollectOriginInference: an invariant layer 0, a Constructed Type's slot by its schema), except that inside a Function
-    // Type it is ContractPolarity: a fit compares its Origins as a contract (SPEC 15.3.7: the required Origins are rigid), never by
-    // 15.3.6's rows. Shared by the solution's walk (OpenSlotOrigins) and the positions' (CollectPositionNames).
+    // collects it (ComponentPolarity), except that inside a Function Type it is ContractPolarity: a fit compares its Origins as a
+    // contract (SPEC 15.3.7: the required Origins are rigid), never by 15.3.6's rows. Shared by the solution's walk (OpenSlotOrigins)
+    // and the positions' (CollectPositionNames).
     private int SlotComponentPolarity(BoundType type, int index, int polarity)
-    {
-        if (polarity == ContractPolarity || type.Kind == BoundTypeKind.Function)
-        {
-            return ContractPolarity;
-        }
-
-        if (IsInvariantLayer(type, this, null, default))
-        {
-            return 0;
-        }
-
-        return type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } schema ? ComposePolarity(polarity, schema.GenericSlots[index].OriginVariance) : polarity;
-    }
+        => polarity == ContractPolarity || type.Kind == BoundTypeKind.Function ? ContractPolarity : this.ComponentPolarity(type, index, polarity, default);
 
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)
     {

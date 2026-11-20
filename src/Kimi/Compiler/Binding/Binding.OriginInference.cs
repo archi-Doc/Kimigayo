@@ -61,6 +61,13 @@ public sealed partial class Binding
         return inference;
     }
 
+    // SPEC 15.3.5: the polarity (1, -1 or 0) of component `index` of `type` at `polarity`, the one composition of the walks over an
+    // Origin solve's positions (CollectOriginInference, Infer, SlotComponentPolarity): a Constructed Type's slot by its schema's
+    // variance, a component of an invariant layer 0, a Function Type's parameters reversed.
+    private int ComponentPolarity(BoundType type, int index, int polarity, in CallableInstance comparison)
+        => type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } schema && index < schema.GenericSlots.Count ? ComposePolarity(polarity, schema.GenericSlots[index].OriginVariance)
+            : IsInvariantLayer(type, this, null, comparison) ? 0 : type.Kind == BoundTypeKind.Function && index == 0 ? -polarity : polarity;
+
     private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false, Koto? known = null)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
@@ -92,14 +99,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
-            var sign = IsInvariantLayer(pattern, this, null, inference.Comparison) ? 0 :
-                pattern.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
-            if (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema)
-            {
-                sign = ComposePolarity(polarity, schema.GenericSlots[i].OriginVariance);
-            }
-
-            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result, known);
+            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, this.ComponentPolarity(pattern, i, polarity, inference.Comparison), result, known);
         }
 
         inference.Quantifiers.RemoveRange(enclosing, inference.Quantifiers.Count - enclosing);
