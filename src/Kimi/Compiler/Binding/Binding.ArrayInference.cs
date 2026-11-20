@@ -8,7 +8,6 @@ public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundLength> inferredArrayLengths = new();
     private readonly Dictionary<Koto, Koto> arrayInferenceShapes = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, ArrayInferenceFailure>? arrayInferenceFailures;
 
     private enum ArrayInferenceProblem : byte
     {
@@ -17,8 +16,6 @@ public sealed partial class Binding
         LengthConflict,
         FixedArrayRequired,
     }
-
-    private readonly record struct ArrayInferenceFailure(ArrayInferenceProblem Problem, Koto Related, BoundLength? Expected = null, BoundLength? Actual = null, BoundType? Type = null);
 
     // A negative length exists only in an initializer expectation, never in a completed Type. There is no inference
     // variable or inverse length solver: literal counts and complete result Types supply each written length hole.
@@ -44,6 +41,16 @@ public sealed partial class Binding
                 return syntax;
             }
         }
+    }
+
+    // SPEC 4.3.1: a hole or dimension the initializer leaves undetermined or contradicts, with its closed reason, the syntax that supplies or
+    // requires the evidence (Related) and, for a conflict, the sides it compared: a dimension's two lengths, or the Type found where the
+    // annotation requires a fixed array.
+    private void RecordArrayInference(Koto node, ArrayInferenceProblem reason, Koto related, ReadOnlySpan<ProblemFact> sides)
+    {
+        Span<ProblemFact> facts = [new(ProblemFactKind.Reason, SourceRef.Of(node), (long)reason), new(ProblemFactKind.Related, this.FactSite(related), 0), default, default];
+        sides.CopyTo(facts[2..]);
+        this.Record(node, BindingFailure.ArrayAnnotationInference, facts[..(2 + sides.Length)]);
     }
 
     private Koto? MissingArrayElementCause(ArrayLiteralKoto literal)
@@ -165,7 +172,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.FailExplained(ref this.arrayInferenceFailures, hole, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Element, initializer));
+                    this.RecordArrayInference(hole, ArrayInferenceProblem.Element, initializer, []);
                 }
             }
         }
@@ -180,7 +187,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.FailExplained(ref this.arrayInferenceFailures, array.Length, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Length, initializer));
+                    this.RecordArrayInference(array.Length, ArrayInferenceProblem.Length, initializer, []);
                 }
             }
         }
@@ -219,7 +226,8 @@ public sealed partial class Binding
 
         if (this.inferredArrayLengths.TryGetValue(array.Length, out var previous) && !ReferenceEquals(previous, length))
         {
-            this.FailExplained(ref this.arrayInferenceFailures, source, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.LengthConflict, array.Length, previous, length));
+            var site = SourceRef.Of(source);
+            this.RecordArrayInference(source, ArrayInferenceProblem.LengthConflict, array.Length, [new(ProblemFactKind.Actual, site, this.report.Keep(length)), new(ProblemFactKind.Expected, site, this.report.Keep(previous))]);
             return false;
         }
 
@@ -410,7 +418,8 @@ public sealed partial class Binding
         {
             if (actual.Kind != BoundTypeKind.FixedArray)
             {
-                this.FailExplained(ref this.arrayInferenceFailures, source, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.FixedArrayRequired, nested, Type: actual));
+                var site = SourceRef.Of(source);
+                this.RecordArrayInference(source, ArrayInferenceProblem.FixedArrayRequired, nested, [new(ProblemFactKind.Actual, site, this.report.Keep(actual)), new(ProblemFactKind.ExpectedForm, site, (long)MismatchForm.FixedArray)]);
                 failed = source;
                 return false;
             }

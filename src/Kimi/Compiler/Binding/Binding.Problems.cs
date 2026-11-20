@@ -266,6 +266,9 @@ public sealed partial class Binding
             case BindingFailure.NoInit when this.FactOf(index, ProblemFactKind.Reason) is { } reason:
                 ReportNoInit(node, store, problem, (NoInitProblem)reason.Value);
                 break;
+            case BindingFailure.ArrayAnnotationInference:
+                this.ReportArrayInference(node, store, index, problem);
+                break;
             case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
                 break;

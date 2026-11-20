@@ -70,7 +70,6 @@ public sealed partial class Binding
         this.receiverOperations.Clear();
         this.inferredArrayLengths.Clear();
         this.arrayInferenceShapes.Clear();
-        this.arrayInferenceFailures?.Clear();
         this.ResetSyntheticCalls();
         foreach (var construction in this.enumConstructions.Values.In(this.pass))
         {

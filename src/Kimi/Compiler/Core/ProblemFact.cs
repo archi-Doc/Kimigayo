@@ -18,7 +18,7 @@
 // and a Cause fact (SPEC 15.6.5, 23.1.2; rule W, R4-M132) the subject of a problem this one is caused only by and as its Value that
 // problem's index in MirReport.All, in MirReport.Merged's facts its merged problem's index in Merged (R6-check H3-2), -1 a Binding cause at
 // the site (A3's guessed sites, R5-M186; 2g-1's), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
-// in BindingReport's kept Types, an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
+// in BindingReport's kept sides, a Type, or a length where its requirement compares lengths (SPEC 4.3.1), an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
 // start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept Types,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
@@ -56,8 +56,8 @@ internal enum ProblemFactKind : byte
     Limit, // A storage limit's body: the analyses' byte limit (Value), its limitBytes; a height record's subject: IMPL A.4's height (R7-T1).
     Table, // A storage limit's body: the arena (Value, a MirStorageTable), its table.
     Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value, -1 Binding's); facts' tail.
-    Actual, // Binding: the syntax that shows a mismatch, the Type found (Value, an index in BindingReport's kept Types; SPEC 23.3).
-    Expected, // Binding: the syntax that shows a mismatch, the Type required (Value, the same).
+    Actual, // Binding: the syntax that shows a mismatch, the side found (Value, an index in BindingReport's kept sides, a Type or length; SPEC 23.3).
+    Expected, // Binding: the syntax that shows a mismatch, the side required (Value, the same).
     Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).
     ActualForm, // Binding: as Actual, for a side that is no Type (Value, a MismatchForm row and its count).
     ExpectedForm, // Binding: as Expected, the same.

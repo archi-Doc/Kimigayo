@@ -85,6 +85,23 @@ public sealed partial class Binding
         directive.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")]);
     }
 
+    // SPEC 4.3.1: a local fixed-array annotation's closed reason, with the syntax that supplies or requires the evidence and the sides a
+    // conflict compared (RecordArrayInference).
+    private void ReportArrayInference(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var reason = (ArrayInferenceProblem)facts[0].Value;
+        var text = reason switch
+        {
+            ArrayInferenceProblem.Element => "the initializer supplies no element Type for this hole",
+            ArrayInferenceProblem.Length => "the initializer supplies no fixed-array length for this hole",
+            ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(this.report.Length(facts[2]))} but earlier initializer evidence established {DiagnosticLengthName(this.report.Length(facts[3]))}",
+            _ => $"the annotation requires {this.SideOf(facts[3])} here, but the initializer has {DiagnosticTypeName(this.report.Value(facts[2]))}",
+        };
+        var label = reason is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation";
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("context", this.compilation.SyntaxOf(facts[1].Site), label)]);
+    }
+
     // SPEC 23.2.2's fallback site: the first node whose recorded state is not Resolved, the program part's nodes first, then the library
     // layer's.
     private Koto? FirstIncompleteNode()
@@ -147,23 +164,6 @@ public sealed partial class Binding
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
             this.ReportQualification(issue.Node, store, requirement);
-        }
-        else if (issue.Failure == BindingFailure.ArrayAnnotationInference)
-        {
-            var fact = this.arrayInferenceFailures![issue.Node];
-            var reason = fact.Problem switch
-            {
-                ArrayInferenceProblem.Element => "the initializer supplies no element Type for this hole",
-                ArrayInferenceProblem.Length => "the initializer supplies no fixed-array length for this hole",
-                ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(fact.Actual!)} but earlier initializer evidence established {DiagnosticLengthName(fact.Expected!)}",
-                _ => $"the annotation requires a fixed array here, but the initializer has {DiagnosticTypeName(fact.Type!)}",
-            };
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                evidence: [reason],
-                related: [("context", fact.Related, fact.Problem is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation")]);
         }
         else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
         {
