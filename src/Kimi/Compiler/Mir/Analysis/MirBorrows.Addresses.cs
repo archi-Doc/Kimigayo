@@ -119,12 +119,13 @@ internal sealed partial class MirBorrows
     // none, the value being the borrow's parents.
     private int Formation(MirPlace place, int location)
     {
-        var (count, deref, own) = (this.AddressWalk(place, location), -1, -1);
+        var (count, own) = (this.AddressWalk(place, location), -1);
         for (var i = 0; i < count; i++)
         {
-            deref = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : deref;
             own = this.walk[i].Class == MirStepClass.Own ? i : own;
         }
+
+        var deref = this.LastDeref(count);
 
         if (own > deref)
         {
@@ -181,12 +182,7 @@ internal sealed partial class MirBorrows
         }
 
         var count = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
-        var direct = true;
-        for (var i = 0; i < count; i++)
-        {
-            direct &= this.walk[i].Class is not (MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw);
-        }
-
+        var direct = this.LastDeref(count) < 0;
         var address = new Loan
         {
             Root = this.Key(place.Root),

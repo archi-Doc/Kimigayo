@@ -123,12 +123,8 @@ internal sealed partial class MirBorrows
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
         this.Storing(place); // The storing rule (MirBorrows.Storing), before the walk buffer is filled.
-        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
-        for (var i = 0; i < count; i++)
-        {
-            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
-        }
-
+        var count = this.placeSteps.Walk(place, reborrow: false, ref this.walk);
+        var last = this.LastDeref(count);
         var receiving = this.wCount == 0 ? null : cases.TypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
