@@ -16,29 +16,25 @@ public sealed partial class Binding
     /// <summary>Gets whether an Op is an operation (SPEC 3.1, 4.7, 6.2.2, 12.3, 13.2-13.6): a literal's constant, a Field, a Deref, a
     /// built-in selection, a built-in operator, <c>and</c>/<c>or</c>, a borrow, a conversion or a runtime Type test, whose building forms the
     /// node's value or Place from Binding's selection for the node, for which the node's Type stands (<see cref="HasFacts"/>); one Binding
-    /// left unresolved is an Error that keeps every operand its form evaluates (DECISIONS R4-M88). A new HirOp member decides here
-    /// whether it is one.</summary>
+    /// left unresolved is an Error, which keeps the operands its form evaluates on every path (DECISIONS R4-M88, Z16). A new HirOp member
+    /// decides here whether it is one.</summary>
     /// <param name="op">The Op a node's form calls for.</param>
     /// <returns>Whether it is an operation.</returns>
     internal static bool Operation(HirOp op) => op is HirOp.Literal or HirOp.Field or HirOp.Deref or HirOp.Index or HirOp.PrimitiveOp or
         HirOp.Logical or HirOp.Borrow or HirOp.Convert or HirOp.RuntimeTypeTest;
 
-    /// <summary>Gets whether an Op is a construct whose parts deliver its value into its destination, its bodies or its exits (SPEC 14.2,
-    /// 14.3, 14.6.3, 14.7, 14.8, 17): a block, an unsafe block, a do, an if, a match, a try or a loop, which, Binding having left it
-    /// without a Type, needs a destination of the Type its position fixes; an operation Binding left unresolved has none for its operands,
-    /// so it replaces such an operand, also a labeled one (DECISIONS R4-M88, PLAN G121). A new HirOp member decides here whether it is one.</summary>
-    /// <param name="op">The Op a node's form calls for.</param>
-    /// <returns>Whether it is such a construct.</returns>
-    internal static bool Construct(HirOp op) => op is HirOp.Block or HirOp.Unsafe or HirOp.Do or HirOp.If or HirOp.Match or HirOp.Try or
-        HirOp.Loop;
-
-    /// <summary>Gets whether an Op is an expression that runs its one body once (SPEC 14.3: "<c>do Body</c> is an expression that runs
-    /// once"), so a rejected one keeps the parts Binding resolved, evaluated in syntax order on its one path before its derived value
-    /// (DECISIONS BU-106): a do. An unsafe block and a defer are statements and a block is a body, not expressions with one body; a
-    /// selection or a loop runs a body conditionally or repeatedly (PLAN G414 (2)). A new HirOp member decides here whether it is one.</summary>
-    /// <param name="op">The Op a node's form calls for.</param>
-    /// <returns>Whether it is such an expression.</returns>
-    internal static bool RunsItsBodyOnce(HirOp op) => op is HirOp.Do;
+    /// <summary>Gets whether a published node is a failure fact, from which the MIR builder derives a value or a check (DECISIONS Z16):
+    /// an <see cref="HirOp.Error"/>; a consumed Place or a Pattern binding whose acquisition failed (<see cref="HirAcquire.Failed"/>, at
+    /// the acquired node, in its column or its plan row); or the declaration of a stored Property whose value the builder reads, not
+    /// published <see cref="HirOp.Body"/>: a static one (its uses' Place) or one with a written initializer (each constructor). Each has
+    /// its causes (<see cref="RestingCauses"/>), which the publisher checks (<see cref="HirTables.Broken"/>).</summary>
+    /// <param name="node">A published node.</param>
+    /// <param name="op">Its published Op.</param>
+    /// <returns>Whether it is a failure fact.</returns>
+    internal static bool FailureFact(Koto node, HirOp op) => op == HirOp.Error || HirTables.AdjustOf(node).Acquire == HirAcquire.Failed ||
+        HirTables.PlanOf(node).Adjust.Acquire == HirAcquire.Failed ||
+        (op != HirOp.Body && node is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var } property &&
+        (property.InitializerKoto is not null || property.Parent is DeclarationContainerKoto { HasStaticMembersOnly: true }));
 
     /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: an operation its Type (<see cref="Operation"/>),
     /// every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
@@ -48,12 +44,15 @@ public sealed partial class Binding
     /// key resolution its Evaluated argument, an assignment or update of a Property its accessors' plans (an update's setter with its
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
     /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and
-    /// its entry, step, iterator symbol and decomposition; a match its current plan; a
-    /// dictionary literal its lookup; a closure's creation its definition with a Signature (a closure's parts, which HirPublisher.Parts
-    /// publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a conversion its binding (a case adaptation its plan); a Tuple literal its
-    /// Type, an array literal a fixed-array Type or, without a fill, an Array Type, and an enum Case construction its plan; a declared
-    /// local and a name their symbols; and every slot a declared local, a definition's Body, a match, a try or a for loop declares
-    /// stated (<see cref="SlotsStated"/>, PLAN G1073).</summary>
+    /// its entry, step, iterator symbol and decomposition; a match or a try its current plan, valid (no Pattern or guard failed) and not
+    /// pending; a dictionary literal its lookup; a closure's creation its definition with a Signature (a closure's parts, which
+    /// HirPublisher.Parts publishes, its definition and its slots stated, whatever the creation, DECISIONS R5-M63 (1) as amended); a
+    /// conversion its binding (a case adaptation its plan); a Tuple literal its Type, an array literal a fixed-array Type or, without a
+    /// fill, an Array Type, and an enum Case construction its plan; a declared local its symbol; a name its symbol and, but for a
+    /// function's name Binding resolved, whose value its consumer forms from the selection, its Type (DECISIONS Z16: a name of a binding
+    /// without a Type, or of a function Binding left unresolved, is an Error, which rests on that binding's failure or on its
+    /// signature's); and every slot a declared local, a definition's Body, a match, a try or a for loop declares stated
+    /// (<see cref="SlotsStated"/>, PLAN G1073).</summary>
     /// <param name="node">An evaluated node.</param>
     /// <param name="op">The Op its form calls for.</param>
     /// <returns>Whether the node has its facts.</returns>
@@ -93,7 +92,7 @@ public sealed partial class Binding
                     CallPlan.Of(this, node, 1) is { Receiver: { } receiver } step && Complete(entry) && Complete(step) && HirTables.Symbol(receiver) is not null &&
                     this.SlotsStated(node);
             case HirOp.Match or HirOp.Try:
-                return BoundMatch.Of(this, node) is { IsCurrent: true } && this.SlotsStated(node);
+                return BoundMatch.Of(this, node) is { IsCurrent: true, Invalid: false, Pending: false } && this.SlotsStated(node);
             case HirOp.DictionaryLiteral:
                 return CallPlan.Of(this, node) is { } find && Complete(find);
             case HirOp.Closure:
@@ -117,6 +116,7 @@ public sealed partial class Binding
                 return this.SlotsStated(node);
             case HirOp.Name:
                 return HirTables.Symbol(node) is { } symbol &&
+                    (HirTables.Meaning(node) is not null || (symbol.Kind == BindingSymbolKind.Function && node.BindingState == BindingState.Resolved)) &&
                     (symbol.Kind != BindingSymbolKind.Storage || (symbol.Declaration is { } property && HirTables.Symbol(property) is not null));
             default:
                 return true;
