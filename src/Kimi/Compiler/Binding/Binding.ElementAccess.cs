@@ -66,6 +66,13 @@ public sealed partial class Binding
     private bool IsSyntax(Koto source) => source is IndexKoto index ? !this.IsUserIndex(index) && this.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto member && HirTables.Symbol(member) is { Property.IsStored: true } && AdtDef.IsStruct(HirTables.TypeOf(member.Left)));
 
+    // SPEC 3.4, 4.7.1, 15.6.2: an inline part, the one statement of a built-in step into an owned value (NextPathStep's InlinePart): a
+    // built-in selection (IsSyntax) whose receiver's owned Type has the part (TryType): a stored Field of a struct, a custom getter's
+    // result included (IsSyntax admits every stored Property, so NextPathStep steps it here where its Member case stops, DECISIONS
+    // BU-24), a Tuple element in range, or an index no user indexer or view range resolves, of a fixed array or Array whatever its key
+    // (a range included) or of a Dictionary. A reader of a narrower set states its further condition beside the call.
+    private bool IsInlinePart(BinaryKoto part) => this.IsSyntax(part) && this.TryType(part, out _, out _);
+
     // SPEC 4.7.1: receiver[key] resolved through a user Indexable conformance: the Binding synthesized its index call, and
     // its indexUniq call where the use may update or borrow exclusively. The expression designates the referent of the reference that
     // call returns, not an element projection.
@@ -104,13 +111,8 @@ public sealed partial class Binding
             return null;
         }
 
-        while (source is BinaryKoto element && this.IsSyntax(element))
+        while (source is BinaryKoto element && this.IsInlinePart(element))
         {
-            if (!this.TryType(element, out _, out _))
-            {
-                return null;
-            }
-
             source = KotoHelper.UnwrapParentheses(element.Left);
         }
 

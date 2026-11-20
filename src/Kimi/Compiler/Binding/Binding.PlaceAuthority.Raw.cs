@@ -87,12 +87,12 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 5.2, 12: a Place reached from *p or p[n] by one or more built-in steps (IsSyntax) into an owned value (TryType): a stored
+    // SPEC 5.2, 12: a Place reached from *p or p[n] by one or more built-in steps into an owned value (IsInlinePart): a stored
     // Field, a Tuple element, or an element of a fixed array, Array or Dictionary. Binding mutability does not decide its write permission.
     private bool IsPointerPath(Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64 && source is BinaryKoto element && this.IsSyntax(element) && this.TryType(element, out _, out _); depth++)
+        for (var depth = 0; depth < 64 && source is BinaryKoto element && this.IsInlinePart(element); depth++)
         {
             source = KotoHelper.UnwrapParentheses(element.Left);
             if (IsRawRoot(source))

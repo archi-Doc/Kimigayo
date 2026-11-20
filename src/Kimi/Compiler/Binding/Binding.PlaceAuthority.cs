@@ -283,7 +283,7 @@ public sealed partial class Binding
             case MemberAccessKoto member when !IsGetterResult(member):
                 next = member.Left;
                 return PathStep.Member;
-            case BinaryKoto part when this.IsSyntax(part) && this.TryType(part, out _, out _):
+            case BinaryKoto part when this.IsInlinePart(part):
                 next = part.Left;
                 return PathStep.InlinePart;
             case IdentifierNameKoto root when Receiver(root) is not null:
@@ -346,12 +346,11 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 3.4.3, 4.7, 4.7.1, 15.1.5 (PLAN G203): an element of an owned Tuple, fixed array or Array (TryType) is an
-        // inline part of its owner's path (PathAuthority) and offers Write when its owner does, as a Field does below: a mutable
-        // static's `State.pair.0` as its `State.point.x`.
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } or IndexKoto && node is BinaryKoto inline && this.IsSyntax(inline) &&
-            inline.Left.BoundType?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array &&
-            this.TryType(inline, out _, out _))
+        // SPEC 3.4.3, 4.7, 4.7.1, 15.1.5 (PLAN G203): an element of an owned Tuple, fixed array or Array (IsInlinePart, a Dictionary's
+        // entry excluded) is an inline part of its owner's path (PathAuthority) and offers Write when its owner does, as a Field does
+        // below: a mutable static's `State.pair.0` as its `State.point.x`.
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } or IndexKoto && node is BinaryKoto inline && this.IsInlinePart(inline) &&
+            inline.Left.BoundType?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array)
         {
             return this.WritableOwner(inline.Left);
         }
@@ -548,7 +547,7 @@ public sealed partial class Binding
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         var root = unwrapped;
-        while (root is BinaryKoto part && !IsGetterResult(part) && this.IsSyntax(part) && this.TryType(part, out _, out _))
+        while (root is BinaryKoto part && !IsGetterResult(part) && this.IsInlinePart(part))
         {
             root = KotoHelper.UnwrapParentheses(part.Left);
         }
@@ -715,7 +714,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (source is BinaryKoto part && this.IsSyntax(part) && this.TryType(part, out _, out _))
+        if (source is BinaryKoto part && this.IsInlinePart(part))
         {
             return this.LendsOwner(part.Left, scope, exclusive, out staticRoot);
         }
