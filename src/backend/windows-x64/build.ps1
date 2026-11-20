@@ -130,23 +130,37 @@ if ($unverified -or $archiveHash -cne $profile.artifactSha256) {
     Write-Warning 'Candidate retained in artifacts/backend/windows-x64; toolchain library was not updated. Installation requires pinned tools and the adopted archive hash.'
 }
 else {
+    # A file whose destination already has the same SHA-256 is not written: an unchanged rerun writes nothing a process holds.
+    function Test-Installed([string] $Source, [string] $Destination) {
+        return (Test-Path -LiteralPath $Destination -PathType Leaf) -and
+            (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash
+    }
     $libraryDirectory = Join-Path $ToolchainRoot 'windows_x64'
     New-Item -ItemType Directory -Force -Path $libraryDirectory | Out-Null
     $installed = Join-Path $libraryDirectory 'kimi_backend_windows_x64_v1.lib'
     $temporary = $installed + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
     try {
-        Copy-Item -LiteralPath $archive -Destination $temporary
-        if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Backend changed during toolchain installation' }
-        [IO.File]::Move($temporary, $installed, $true)
+        if (-not (Test-Installed $archive $installed)) {
+            Copy-Item -LiteralPath $archive -Destination $temporary
+            if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Backend changed during toolchain installation' }
+            [IO.File]::Move($temporary, $installed, $true)
+        }
     }
     finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
     # Reuse the import library already generated and checked for this candidate's O0/O2 tests.
     $installedKernel = Join-Path $libraryDirectory 'kernel32.lib'
-    Copy-Item -LiteralPath $kernel.path -Destination $installedKernel -Force
-    Copy-Item -LiteralPath ([IO.Path]::ChangeExtension($kernel.path, '.def')) -Destination ([IO.Path]::ChangeExtension($installedKernel, '.def')) -Force
+    foreach ($extension in @('.lib', '.def')) {
+        $file = [IO.Path]::ChangeExtension($kernel.path, $extension)
+        $destination = [IO.Path]::ChangeExtension($installedKernel, $extension)
+        if (-not (Test-Installed $file $destination)) { Copy-Item -LiteralPath $file -Destination $destination -Force }
+    }
     if ((Get-FileHash -LiteralPath $installedKernel -Algorithm SHA256).Hash.ToLowerInvariant() -cne $kernel.sha256) { throw 'Kernel32 changed during installation' }
-    @{ generator = 'llvm-dlltool'; generatorSha256 = $toolIdentities['llvm-dlltool'].sha256; target = 'x86_64-pc-windows-msvc'
+    # The generation conditions are written beside the build's other files first, so that an equal record is not written either.
+    $metadata = Join-Path $workDir 'kernel32.json'
+    [ordered]@{ generator = 'llvm-dlltool'; generatorSha256 = $toolIdentities['llvm-dlltool'].sha256; target = 'x86_64-pc-windows-msvc'
         dll = $kernel.dll; definitionSha256 = $kernel.definitionSha256; sha256 = $kernel.sha256 } |
-        ConvertTo-Json | Set-Content -LiteralPath ([IO.Path]::ChangeExtension($installedKernel, '.json')) -Encoding utf8
+        ConvertTo-Json | Set-Content -LiteralPath $metadata -Encoding utf8
+    $installedMetadata = [IO.Path]::ChangeExtension($installedKernel, '.json')
+    if (-not (Test-Installed $metadata $installedMetadata)) { Copy-Item -LiteralPath $metadata -Destination $installedMetadata -Force }
     Write-Output "Installed verified backend: $installed"
 }
