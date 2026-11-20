@@ -182,7 +182,7 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
         var sources = c.Binding.LocalRegionSources(x).ToArray();
         Assert.True(sources.Contains(borrow), $"{row}: {sources.Length} sources of x, {string.Join(", ", sources.Select(static s => s.Kind))}");
 
-        BoundOrigin Region(string name) => Assert.Single(outer.Locals.ToArray(), l => l.Name == name).Type.Origin!;
+        BoundOrigin Region(string name) => Assert.Single(outer.Locals.ToArray(), l => l.Name == name).Type!.Origin!;
     }
 
     // SPEC 15.3.6: a body variable of a local whose row has no candidate is a local region of the local, never invented as static, so each

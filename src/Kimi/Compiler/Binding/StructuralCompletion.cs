@@ -57,6 +57,43 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         }
     }
 
+    // Reaching these runs none of their contents: a function's or an accessor's body runs when called and a Scope Exit block at
+    // Scope Exit, which this does not evaluate; Type syntax and a #switch that selected no arm have nothing to run. The HIR
+    // publisher's Keeps reads it too (DECISIONS Z16).
+    internal static bool RunsNoContents(Koto node) => node switch
+    {
+        FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto => true,
+        TypeKoto or CompileTimeSwitchKoto => true,
+        _ => false,
+    };
+
+    // SPEC 12, 13.4, 14: whether a form's evaluation, where it is evaluated, reaches a part on every path through it, the one table of
+    // the paths Compose composes: not a part a form selects or repeats (a selection's bodies, SelectionRole.Body, and Patterns; an if's
+    // later conditions; a match's guards; a while's and a for's body; a require's failure body; a test's message; `and`'s and `or`'s right
+    // operand), nor any part of a form that runs none of its contents there (RunsNoContents); every other form reaches each of its parts,
+    // Compose's sequence (Evaluate, Sequence). A form Compose gives a new path adds its row here. The HIR publisher's Keeps reads it
+    // (DECISIONS Z16).
+    internal static bool OnEveryPath(Koto form, Koto part) => part.SelectionRole == SelectionRole.None && !RunsNoContents(form) && form switch
+    {
+        IfKoto conditional => ReferenceEquals(part, conditional.Branches[0].Condition),
+        MatchKoto match => ReferenceEquals(part, match.Expression),
+        WhileKoto loop => ReferenceEquals(part, loop.Condition),
+        ForKoto loop => ReferenceEquals(part, loop.Iterable),
+        RequireKoto require => ReferenceEquals(part, require.Condition),
+        TestVerificationKoto verification => ReferenceEquals(part, verification.Condition),
+        BinaryKoto { Akind: KotoKind.And or KotoKind.Or } logical => ReferenceEquals(part, logical.Left),
+        _ => true,
+    };
+
+    // The forms a jump inside them can target (Binding.TransferTarget): an exit targets an iteration or a Do (a continue an
+    // iteration), a yield a selection. Function and Scope Exit targets run no contents here. The HIR publisher's Keeps reads it too.
+    internal static bool IsTransferTarget(Koto node) => node switch
+    {
+        LoopKoto or WhileKoto or ForKoto or DoKoto => true,
+        IfKoto or MatchKoto => true,
+        _ => false,
+    };
+
     /// <summary>Gets the work since creation, which <see cref="Clear"/> keeps: the node completions composed and the Outward cells
     /// read or added, a scaling check's measure.</summary>
     internal long Work { get; private set; }
@@ -68,24 +105,6 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         this.query = Binding.NextQuery(this.query);
         this.outward.Clear();
     }
-
-    // Reaching these runs none of their contents: a function's or an accessor's body runs when called and a Scope Exit block at
-    // Scope Exit, which this does not evaluate; Type syntax and a #switch that selected no arm have nothing to run.
-    private static bool RunsNoContents(Koto node) => node switch
-    {
-        FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto => true,
-        TypeKoto or CompileTimeSwitchKoto => true,
-        _ => false,
-    };
-
-    // The forms a jump inside them can target (Binding.TransferTarget): an exit targets an iteration or a Do (a continue an
-    // iteration), a yield a selection. Function and Scope Exit targets run no contents here.
-    private static bool IsTransferTarget(Koto node) => node switch
-    {
-        LoopKoto or WhileKoto or ForKoto or DoKoto => true,
-        IfKoto or MatchKoto => true,
-        _ => false,
-    };
 
     // The target a transfer completes (SPEC 14.1): an Exit or a Yield to a form that receives it here; a Continue repeats its target,
     // a Return's and a deferred body's targets run no contents here, and an invalid transfer goes to none.
@@ -181,7 +200,8 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
 
     private void Remember(Koto node, Completion completion) => memo(ref HirTables.Of(node).Families).Ref(node.SyntaxId, binding) = (this.query, completion);
 
-    // A form's completion from its parts' completions in evaluation order; any other node evaluates its children (Evaluate).
+    // A form's completion from its parts' completions in evaluation order; any other node evaluates its children (Evaluate). The parts
+    // each case reaches on every path are OnEveryPath's rows; a case that changes them changes its row.
     private Completion Compose(Koto node)
     {
         Completion result;

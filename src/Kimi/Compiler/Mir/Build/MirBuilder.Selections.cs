@@ -84,7 +84,7 @@ internal sealed partial class MirBuilder
     // maximum there. The local is located at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
     private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
-        var type = this.TypeOf(position) ?? BoundType.ISize;
+        var type = this.TypeOf(position) ?? BoundType.ISize; // An unknown position (derived, PLAN G1073) is taken as isize's: it agrees with any.
         var local = this.Temp(BoundType.ISize, selection);
         if (ReferenceEquals(type, BoundType.ISize) || ReferenceEquals(type, BoundType.Never))
         {

@@ -76,8 +76,10 @@ public sealed partial class Binding
     // the definition's identity outside its frame.
     internal BoundType? ClosureDefinitionSignature(BoundType type)
         => BoundClosure.Of(type) is not { } closure ? null
-            : TyCtxt.NestedInstance(type) is { } context ? this.types.ReadableInstance(closure.Signature, context)
-            : TyCtxt.HeldType(type) is { } held ? this.CloseHeldNested(closure.Signature, held) : closure.Signature;
+            : closure.Signature is not { } signature ? throw new InvalidOperationException(
+                "A Closure value's definition has no Signature (InternalInvariant): one without (a failed slot) is only its own body's receiver (BoundClosure.Of).")
+            : TyCtxt.NestedInstance(type) is { } context ? this.types.ReadableInstance(signature, context)
+            : TyCtxt.HeldType(type) is { } held ? this.CloseHeldNested(signature, held) : signature;
 
     // SPEC 15.3.5: the variance of a Closure Type's Origin argument `index`: the composition of its atom's occurrences in its definition's
     // signature (a parameter contravariant, the result covariant, each layer's target as ComponentVariance composes it); equal
@@ -310,7 +312,7 @@ public sealed partial class Binding
                 switch (this.types.EnclosingDeclaration(symbol))
                 {
                     case { Declaration: FunctionKoto } function when instance is not null && ReferenceEquals(function, instance.Target):
-                        if (closure is not null && this.types.Apply(closure.Signature.Components[1], instance).Type is null)
+                        if (closure is not null && this.types.Apply((closure.Signature ?? throw new InvalidOperationException("A Closure value's definition has no Signature (InternalInvariant; BoundClosure.Of).")).Components[1], instance).Type is null)
                         {
                             return null;
                         }
