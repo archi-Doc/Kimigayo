@@ -5,52 +5,64 @@ using System.Runtime.InteropServices;
 namespace Kimi.Compiler.Mir;
 
 // A5's destructions (SPEC 15.6.4, 16.3.1–16.3.3, 16.4; DECISIONS BU-47, R4-M150): a Drop the view keeps retains as a call of each
-// `drop` its destruction runs, whose `self` is a `uniq/Self` receiver referring to the destroyed part. The receiver's value is the
-// destroyed root's plain address (MirBorrows.Addresses), formed in the pre-pass for each Drop whose destruction may run a drop (Dropping:
-// Observe), so every reader of a direct Loan reads it as a reference to that root; it is never a conflict candidate and cannot be stored
-// (BU-47: input 0 has no Value row). The drops are the destruction walk's (MirTypes.Destruction): a struct's declared drop, then its parts
-// (16.3.2, MirTypes.Parts); a Sealed handle's payload, walked on (an rc or arc release may be final; MirTypes.SealedPayload, A4's one
-// test); an erased destruction where the walk cannot see the drop (an abstract part not proven Copy, a Function value, a handle whose
-// payload is not proven Sealed, Copy or not; TyCtxt.RetainsErasedDestruction). Each drop's retention (TyCtxt.Retains over the drop and
+// `drop` its destruction runs, whose `self` is a `uniq/Self` receiver referring to the destroyed part: the value a Reborrow of the
+// destroyed Place carries, the drop's input written through, of which its store keeps only what reads through it carry (SPEC 15.6.4's
+// rule A: never the own value of the input written through; BU-47: input 0 has no Value row). Where the Place lies in its root's storage
+// (no borrow or raw Deref, Through), that value is the destroyed root's plain address (MirBorrows.Addresses), formed in the pre-pass for
+// each Drop whose destruction may run a drop (Dropping: Observe), so every reader of a direct Loan reads it as a reference to that root;
+// it is never a conflict candidate and cannot be stored. Past a Deref it is the Reborrow's parents (MirBorrows.Values' Issued: the Loans
+// of the references dereferenced to reach the part), so a read through it reads the referent's holders, never the reference's own
+// Loans, as the drop's call over that Reborrow (`r.flush()`) does (DECISIONS D-918's entry). The drops are the destruction walk's
+// (MirTypes.Destruction): a struct's declared drop, then its parts (16.3.2, MirTypes.Parts); a Sealed handle's payload, walked on (an rc
+// or arc release may be final; MirTypes.SealedPayload, A4's one test); an erased destruction where the walk cannot see the drop (an
+// abstract part not proven Copy, a Function value, a handle whose payload is not proven Sealed, Copy or not;
+// TyCtxt.RetainsErasedDestruction). Each drop's retention (TyCtxt.Retains over the drop and
 // its declaring layer) stores through its output as a Call's does (MirBorrows.Calls' Keep, W from the receiver, so an abstract part's
 // store reaches what R4-M170's reach rule lets it write, SPEC 15.6.4); a Limit retention is the depth limit at the location (R4-M153).
 // A published operation's cleanup is the destruction its row lists (SPEC 4.9.6; PublishedRow.Destroys, DECISIONS BU-70), composed at the
 // call after its own rows over the destroying argument's value (Destroying), which replaces C3's referent guard (R4-M143).
 // Input: the view's kept Drops, A2's verdicts (Dropping), Binding's drop retention, the published rows and A4's Type below a parameter
 // (MirEffects.Below).
-// Output: by block, the Drop's receiver entry (-1: none); at the Drop's or the Call's plan, the drops' stores.
+// Output: by block, the Drop's receiver entry (Reborrowed past a Deref, -1: none); at the Drop's or the Call's plan, the drops' stores.
 // Invariants: the retentions of a case Type are walked once per definition and program version (the destructions memo's key).
 // Must not derive retention (TyCtxt), compute W (MirBorrows.Reach) or record a problem (MirBorrows.Locations).
 internal sealed partial class MirBorrows
 {
+    private const int Reborrowed = -2; // receivers: a Drop past a borrow or raw Deref, whose receiver is its Place's Reborrow (Destroyed).
+
     private readonly Dictionary<BoundType, (int Start, int Count)> dropsOf = new(ReferenceEqualityComparer.Instance); // By case Type.
     private readonly List<CallRetention> dropRows = []; // The composed retentions, dropsOf's ranges.
     private (BindingSymbol? Definition, ulong Version) dropsFor; // The definition and program version dropsOf answers.
-    private int[] receivers = []; // By block: its Drop's receiver entry, -1 for none.
+    private int[] receivers = []; // By block: its Drop's receiver entry, Reborrowed past a Deref, -1 for none.
 
     // The receivers of the view's Drops (pre-pass, after the addresses and before the holders): a Drop of a local whose destruction may run
-    // a drop (Dropping: Observe) gets its root's plain address.
+    // a drop (Dropping: Observe) gets its root's plain address where its Place lies in the root's storage, else Reborrowed (Through).
     private void Receivers()
     {
         MirDataflow.Grow(ref this.receivers, this.body.Blocks.Length);
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
             ref readonly var data = ref this.body.Blocks[block];
-            this.receivers[block] = data.Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: >= 0 } place } &&
-                this.Dropping(block, place) == AccessKind.Observe
-                ? this.Address(new(place.Root), ~0, this.Location(block, data.Count)) : -1;
+            this.receivers[block] = -1;
+            if (data.Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: >= 0 } place } && this.Dropping(block, place) == AccessKind.Observe)
+            {
+                this.receivers[block] = this.Through(place) ? Reborrowed : this.Address(new(place.Root), ~0, this.Location(block, data.Count));
+            }
         }
 
         this.Work += this.body.Blocks.Length;
     }
 
-    // A Drop's stores (SPEC 15.6.4): its destruction composed over the receiver, the destroyed root's address.
+    // A Drop's stores (SPEC 15.6.4, 16.3.1): its destruction composed over the receiver, the value a Reborrow of the destroyed Place
+    // carries: the destroyed root's address, or past a Deref the Reborrow's parents.
     private void Destroyed(ulong[] state, in MirTerminator drop, int block, bool checks)
     {
-        if (this.receivers[block] >= 0)
+        var entry = this.receivers[block];
+        if (entry != -1)
         {
             var call = drop with { Operand = MirOperand.Copy(drop.Place) };
-            this.Compose(state, call, this.sets.Add(0, this.loanBase + this.receivers[block]), cases.TypeOf(drop.Place), checks);
+            var receiver = entry == Reborrowed ? this.Issued(state, drop.Place, reborrow: false, -1).Value : this.sets.Add(0, this.loanBase + entry);
+            this.Compose(state, call, receiver, cases.TypeOf(drop.Place), checks);
         }
     }
 
