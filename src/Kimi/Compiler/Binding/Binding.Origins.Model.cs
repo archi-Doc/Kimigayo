@@ -329,8 +329,10 @@ public sealed class BoundOrigin
     internal bool Open { get; init; }
 
     // An open stand-in, which later evidence or the body's solve fills (a call's region, an argument's per-call stand-in): Open and
-    // not a local input, which is fixed in its enclosing body (SPEC 15 Nested signatures). Its readers: the display of an omitted
-    // Origin (OmittedAt) and J2's opening (OpensAsSlotRegion, PLAN G1127 R1), which keeps only a stand-in.
+    // not a local input, which is fixed in its enclosing body (SPEC 15 Nested signatures). Its readers (PLAN G1127 R1): the display
+    // of an omitted Origin (OmittedAt), J2's opening (OpensAsSlotRegion), which keeps only a stand-in, and the fill of open positions
+    // by another argument's Origin (FillOpenOrigins), which fills only a stand-in. `HasOpenOrigin` and Fill's `supplied.Open` ask about
+    // any open Origin (a pre-gate, an inferred value no identity refutes, two open positions keeping the earlier region).
     internal bool IsOpenStandIn => this.Open && !this.IsLocalInput;
 
     internal BindingSymbol? BorrowCondition { get; set; }

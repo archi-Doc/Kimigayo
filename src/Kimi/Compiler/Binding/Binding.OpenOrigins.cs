@@ -534,8 +534,8 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8 ("another argument's Origin at an open position solves it"): the open regions that later evidence fills are an
-    // argument's per-call stand-in and a call's unsolved region (CallRegion); a slot region (IsSlotRegion) stands for a solved
-    // variable and is neither (J2).
+    // argument's per-call stand-in and a call's unsolved region (CallRegion), the stand-ins (BoundOrigin.IsOpenStandIn); a slot region
+    // (IsSlotRegion) stands for a solved variable and is neither (J2), and a local input is fixed in its body (PLAN G1127 R1).
     // `type` with each open region replaced by the Origin that `other` has at the same position, when that one is an ordinary Origin,
     // or also an open region of `other` (`takeOpen`), so that two open positions keep the earlier region. Unequal structure is left to
     // the caller's ordinary comparison.
@@ -574,7 +574,7 @@ public sealed partial class Binding
         }
 
         static BoundOrigin? Fill(BoundOrigin? origin, BoundOrigin? supplied, bool takeOpen)
-            => origin is { Open: true } && !IsSlotRegion(origin) && supplied is not null && (supplied.Kind != OriginKind.Inference || (takeOpen && supplied.Open)) ? supplied : origin;
+            => origin is { IsOpenStandIn: true } && !IsSlotRegion(origin) && supplied is not null && (supplied.Kind != OriginKind.Inference || (takeOpen && supplied.Open)) ? supplied : origin;
     }
 
     /// <summary>The `openOrigins` family's one accessor (DECISIONS BU-220): a kept interner, a source's open regions (Inference atoms whose

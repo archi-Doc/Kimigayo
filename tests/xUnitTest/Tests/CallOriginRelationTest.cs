@@ -695,6 +695,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func fun<T>(x: Option<T>, y: T) => ()\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let g: (ref/i32 during p) -> () = func (v) => ()\n    let h: (ref/i32 during q) -> () = func (v) => ()\n    fun(.Some(h@move), g@move)\n    return 0\n", "UnprovenOriginContract_Kd@h@move), g@move)")]
     // af2
     [InlineData("func app<T, F>(g: F, y: T) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    return app(func [a] () => a, q)\n", "UnprovenOriginRelation_Kd@a, q)")]
+    // f4i, f5i (PLAN G1127 R1's Fill, the invalid twins of ALocalInputOriginIsNeverFilledByAnotherArgument's rows): the meet returned
+    // `during b` needs `i outlives b` once, at the returned value.
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> ref/i32 during b\n        let r = pick3(q, p)\n        return r@follow\n    return 0\n", "UnprovenOriginRelation_Kd@r@follow")]
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> ref/i32 during b\n        let r = pick3(p, q)\n        return r@follow\n    return 0\n", "UnprovenOriginRelation_Kd@r@follow")]
     // j7 (PLAN G1127 R2, j1's invalid twin): the result returned `during b` needs `a outlives b` once (the region lies between b and a);
     // the call and the payload each record it, as for one leading-dot Case (G1115's S3: SPEC counts one, the Middle's R7-O1 area).
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ref/i32 during b\n    return keep(if flag => .Some(x) else => .None, y)\n", "UnprovenOriginRelation_Kd@keep(if flag => .Som|UnprovenOriginRelation_Kd@x) else => .None, y)")]
@@ -707,6 +711,21 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var source = body + Main;
         var check = DiagnosticCorpus.Check(source);
         Assert.Equal(records, string.Join("|", check.Diagnostics.Select(x => x.Code + "@" + At(source, x.Span))));
+    }
+
+    // PLAN G1127 R1's Fill (the code review's B1): an anonymous function parameter's omitted nested Origin is fixed in the Closure body
+    // (SPEC 15 Nested signatures), so another argument's Origin never fills it at an open position (FillOpenOrigins fills only a
+    // stand-in): the two covariant bindings of `pick3<T>(x: T, y: T)` meet in either order (SPEC 10.8: traversal order never chooses), as
+    // their named twin's do. f4, f5; f4i and f5i above are their invalid twins.
+    [Theory]
+    // f4
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> i32\n        let r = pick3(q, p)\n        return 0\n    return 0\n")]
+    // f5
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> i32\n        let r = pick3(p, q)\n        return 0\n    return 0\n")]
+    public void ALocalInputOriginIsNeverFilledByAnotherArgument(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
     // The source from a span's start to the end of its line, at most 20 characters.
