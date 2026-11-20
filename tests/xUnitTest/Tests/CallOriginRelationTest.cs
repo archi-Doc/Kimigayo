@@ -653,6 +653,9 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func keepr<T>(y: ref/T during c, x: Option<ref/T during c>) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = keepr(y, match flag\n        true => .Some(x)\n        false => .None\n    )\n    return 0\n")]
     // j8
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    origin a outlives b\n    let r = keep(if flag => .Some(x) else => .None, y)\n    return 0\n")]
+    // ja2 (the Middle's RP17 C2, its label): a joined payload borrowing a local beside a local's evidence, the local written after the
+    // result's last use; the base gave BU-156's located Unsupported_Kd at the payload (T unopened, the payload misfit by Origins alone).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    let k = sink(r)\n    m = 5\n    return k\n")]
     // j10
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let f = func [flag, x, y] () -> i32\n        let r = keep(if flag => .Some(x) else => .None, y)\n        return 0\n    return 0\n")]
     public void AWaitingArgumentAlsoBoundsTheVariableItsEvidenceBinds(string body)
@@ -702,6 +705,9 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // j7 (PLAN G1127 R2, j1's invalid twin): the result returned `during b` needs `a outlives b` once (the region lies between b and a);
     // the call and the payload each record it, as for one leading-dot Case (G1115's S3: SPEC counts one, the Middle's R7-O1 area).
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ref/i32 during b\n    return keep(if flag => .Some(x) else => .None, y)\n", "UnprovenOriginRelation_Kd@keep(if flag => .Som|UnprovenOriginRelation_Kd@x) else => .None, y)")]
+    // ja1 (the Middle's RP17 C2, ja2's invalid twin): `m = 5` while r, carrying the payload's Loan on m through the opened region, is
+    // used: A5's conflict at the write (the base: BU-156's located Unsupported_Kd at the payload).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    m = 5\n    return sink(r)\n", "ComparisonLoanConflict_Kd@m = 5")]
     // j13 (R2's structure twin): a waiting source of another structure is its own Type mismatch, whatever the region.
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, y: ref/(ref/i32 during b), n: ref/(i64)) -> i32\n    let r = keep(if flag => .Some(n) else => .None, y)\n    return 0\n", "TypeMismatch_Kd@.Some(n) else => .No")]
     // rv18
