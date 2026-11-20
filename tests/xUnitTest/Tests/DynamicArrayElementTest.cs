@@ -80,6 +80,22 @@ public class DynamicArrayElementTest
         Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use}: work {string.Join(", ", work)}");
     }
 
+    // D-941 (SPEC 3.4.3, 4.7.1, 15.1.5; the Front's B1): a write and an exclusive borrow through k exclusive references each stored in
+    // an Array element of a Tuple below the one before (`r: uniq/T_k`, T_j = (Array<uniq/T_(j-1) during a>, i32), `r.0[0]...[0].0`),
+    // and with an inline Tuple level below each element (T_j = ((Array<...>, i32), i32), `r.0.0[0]...[0].0.0`). Each element is read
+    // in place through a synthesized shared borrow, whose exclusive reading (ExclusiveAccessType) takes the receiver's ReferentAuthority
+    // from the fold, so binding them takes path steps linear in k; folding each such receiver again took 2^k fold steps.
+    [Theory]
+    [InlineData("write", false)]
+    [InlineData("uniq", false)]
+    [InlineData("write", true)]
+    [InlineData("uniq", true)]
+    public void AnElementStoredReferenceChainTakesWorkLinearInItsDepth(string use, bool inline)
+    {
+        long[] work = [.. new[] { 30, 60, 120 }.Select(k => Bound(ElementChain(use, inline, k)).Binding.PathFoldWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use} {inline}: work {string.Join(", ", work)}");
+    }
+
     // G1146 (D-932): a 64-deep Array element, one step past the former 64-step path walk, is written and borrowed exclusively.
     [Theory]
     [InlineData("write", "v")]
@@ -115,6 +131,20 @@ public class DynamicArrayElementTest
         }
 
         var place = "r" + string.Concat(Enumerable.Repeat(".0", k));
+        return $"func put(r: uniq/{type})\n    " + (use == "write" ? place + " = 9" : "let u = " + place + "@uniq") + "\n";
+    }
+
+    // `r.0[0]...[0].0` written or borrowed exclusively, r: uniq/T_k with T_1 = (i32, i32) and T_j = (Array<uniq/T_(j-1) during a>, i32);
+    // inline: T_1 = ((i32, i32), i32), T_j = ((Array<uniq/T_(j-1) during a>, i32), i32) and `r.0.0[0]...[0].0.0`.
+    private static string ElementChain(string use, bool inline, int k)
+    {
+        var type = inline ? "((i32, i32), i32)" : "(i32, i32)";
+        for (var j = 2; j <= k; j++)
+        {
+            type = inline ? $"((Array<uniq/{type} during a>, i32), i32)" : $"(Array<uniq/{type} during a>, i32)";
+        }
+
+        var place = "r" + string.Concat(Enumerable.Repeat(inline ? ".0.0[0]" : ".0[0]", k - 1)) + (inline ? ".0.0" : ".0");
         return $"func put(r: uniq/{type})\n    " + (use == "write" ? place + " = 9" : "let u = " + place + "@uniq") + "\n";
     }
 }

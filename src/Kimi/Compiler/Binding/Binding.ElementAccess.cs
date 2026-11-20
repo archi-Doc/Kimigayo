@@ -34,7 +34,7 @@ public sealed partial class Binding
     // An owned Array or fixed array stored below exclusive references only (`b.items[i]` with `b: uniq/Bank`) offers the same, whose
     // path authority (receiverPath, the access its receiver's path grants: PathFold) decides it rather than the stored Type (PLAN G59).
     private bool IsExclusiveArrayElement(IndexKoto element, SemanticsKind receiverPath) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
-        ((this.AccessType(element.Left, true) is { Semantics: SemanticsKind.Uniq } receiver &&
+        ((this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiverPath)) is { Semantics: SemanticsKind.Uniq } receiver &&
             receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
         (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && this.ReachesThroughBorrow(element.Left) &&
             receiverPath == SemanticsKind.Uniq));
@@ -133,23 +133,20 @@ public sealed partial class Binding
     /// that Binding recorded as the expression's adaptation.
     /// </summary>
     /// <param name="node">The expression read in place.</param>
-    /// <param name="exclusive">Whether the selected projection requires exclusive access.</param>
     /// <returns>The access Type.</returns>
-    private BoundType? AccessType(Koto node, bool exclusive = false)
-    {
-        if (!this.TryGetAdaptation(node, out var adaptation) || adaptation.Kind is not (ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow))
-        {
-            return HirTables.TypeOf(node);
-        }
+    private BoundType? AccessType(Koto node)
+        => this.TryGetAdaptation(node, out var adaptation) && adaptation.Kind is ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.SharedBorrow
+            ? adaptation.Type : HirTables.TypeOf(node);
 
-        // SPEC 3.4.3, 4.7.1: a synthesized shared access does not decide the later projection's capability; the final acquisition
-        // does. An exclusive use takes an indexer's bound exclusive entry, or a synthesized access exclusively when the real path,
-        // continued through the Place's own layers, grants exclusive access, with the same Origin; a shared layer of the Place's
-        // own Type never does (SPEC 15.6.2).
-        return exclusive && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow && !HasSharedLayer(HirTables.TypeOf(node)) &&
-            (this.IndexerCall(node, true) is not null || (this.IsSynthesizedAccess(node) && this.ReferentAuthority(node) == SemanticsKind.Uniq))
-            ? this.Types.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : adaptation.Type;
-    }
+    // SPEC 3.4.3, 4.7.1, 15.6.2: the access Type of a Place a projection requiring exclusive access selects from. A synthesized shared
+    // access does not decide the later projection's capability; the final acquisition does. An exclusive use takes an indexer's bound
+    // exclusive entry, or a synthesized access exclusively when `referent`, the access its real path continued through the Place's own
+    // layers grants (ReferentAuthority), is exclusive, with the same Origin; a shared layer of the Place's own Type never does. The
+    // caller reads `referent` from its path fold (PathFold, D-941), never by a new query on the Place's path.
+    private BoundType? ExclusiveAccessType(Koto node, SemanticsKind referent)
+        => this.TryGetAdaptation(node, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow && !HasSharedLayer(HirTables.TypeOf(node)) &&
+            (this.IndexerCall(node, true) is not null || (this.IsSynthesizedAccess(node) && referent == SemanticsKind.Uniq))
+            ? this.Types.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : this.AccessType(node);
 
     // SPEC 3.4.3: a shared borrow that Binding synthesized to read a Place in place, of the Place's own complete stored Type or of
     // the Type its safe reference layers reach (Binding.ElementRead), is a representation of the selection rather than a reference

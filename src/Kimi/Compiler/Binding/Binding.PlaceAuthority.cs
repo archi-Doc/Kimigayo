@@ -27,9 +27,9 @@ namespace Kimi.Compiler;
 // - Invariants: one path computation decides writes, Moves and borrows: a query folds the Place's path once from its root (PathFold;
 //   LendFold for a borrow in a mode from a scope), each prefix's grant, writability and lending decided from its owner prefix's, never by
 //   a new query on the path (D-941); the one reading of a receiver outside the path is a node the path stops at (a getter result, a view
-//   range), whose receiver is folded as its own query (Owner, LentOwner). One query a rule still makes: an exclusive AccessType of a
-//   receiver carrying a synthesized shared borrow reads its ReferentAuthority (PLAN G1161). A shared layer anywhere on a path bounds it
-//   to Read; a path's layer below a Place is its own Type's (LayerAuthority).
+//   range), whose receiver is folded as its own query (Owner, LentOwner); an exclusive reading of a receiver's access Type
+//   (ExclusiveAccessType) takes the receiver's ReferentAuthority from the fold, so no rule queries a path again. A shared layer anywhere
+//   on a path bounds it to Read; a path's layer below a Place is its own Type's (LayerAuthority).
 // - Prohibitions: nothing here reports a diagnostic but FailStaticBorrow, called where an implicit Borrow's operation is final (callers
 //   record the failure AccessFailure or BorrowFailure names), selects a candidate or changes a Type.
 public sealed partial class Binding
@@ -158,12 +158,15 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 15.6.2: the access a Place's path grants to what the Place's own safe reference layers reach: its path's, bounded
     // by a shared layer of the Place's Type and exclusive through an exclusive one.
-    private SemanticsKind ReferentAuthority(Koto place)
-        => (this.PathAuthority(place, []), this.LayerAuthority(place, [])) switch
+    private SemanticsKind ReferentAuthority(Koto place) => this.ReferentAuthority(place, this.PathAuthority(place, []));
+
+    // ReferentAuthority from `path`, the access the Place's path grants under the empty assignment (a fold's Access of its prefix).
+    private SemanticsKind ReferentAuthority(Koto place, SemanticsKind path)
+        => (path, this.LayerAuthority(place, [])) switch
         {
             (SemanticsKind.Ref, _) or (_, SemanticsKind.Ref) => SemanticsKind.Ref,
             (_, SemanticsKind.Uniq) => SemanticsKind.Uniq,
-            var (path, _) => path,
+            _ => path,
         };
 
     // SPEC 15.6.2: access through a shared reference cannot grant exclusive
@@ -171,9 +174,12 @@ public sealed partial class Binding
     private bool ReachedThroughShared(Koto source) => this.PathAuthority(source, []) == SemanticsKind.Ref;
 
     // SPEC 4.7.1, 15.1.5: whether a receiver can be exclusively acquired, which a selection through indexUniq or an exclusive view
-    // needs: its path is not shared (ReferentAuthority) and its binding permits it (AcquirableByBinding).
+    // needs: its path is not shared (ReferentAuthority) and its binding permits it (AcquirableByBinding), both read from one fold.
     private bool ExclusivelyAcquirable(Koto receiver)
-        => this.ReferentAuthority(receiver) != SemanticsKind.Ref && this.AcquirableByBinding(receiver, this.PathFold(receiver, []), []);
+    {
+        var path = this.PathFold(receiver, []);
+        return this.ReferentAuthority(receiver, path.Access) != SemanticsKind.Ref && this.AcquirableByBinding(receiver, path, []);
+    }
 
     // SPEC 3.4, 3.4.3, 15.1.5 (the invariant: one path computation decides writes, Moves and borrows): a Place's path folded from its
     // root to the Place, each prefix decided once from the prefix it is selected from (Then, Writes), so that a query takes one step
@@ -187,7 +193,9 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3, 15.1.5, 15.6.2 (the invariant's borrows): PathFold's prefixes read for a borrow in a mode from a scope (LendsPlace),
-    // each prefix's lending decided once from its owner prefix's (Lends), so that a borrow's query takes one step per path step.
+    // each prefix's lending decided once from its owner prefix's (Lends), so that a borrow's query takes one step per path step. The
+    // recursion is PathFold's, written again: one shared skeleton would take the reading (Writes or Lends) as a delegate or a mode
+    // parameter; the step (RootPrefix, Prefix) is shared.
     private PathLend LendFold(Koto source, BindingScope scope, bool exclusive)
     {
         source = KotoHelper.UnwrapParentheses(source);
@@ -402,12 +410,15 @@ public sealed partial class Binding
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && this.AccessType(nested.Left)?.SafeReferent is not { Kind: BoundTypeKind.Tuple } &&
             this.BorrowedPathRoot(nested) is { } root)
         {
-            return this.AccessType(root, true)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
+            // An inline Tuple level below a borrowed base: the steps from the base to this node pass the base's own layers, then
+            // stored inline parts that add none (BorrowedPathRoot), so this prefix's access is the base's ReferentAuthority.
+            return this.ExclusiveAccessType(root, access)!.Semantics == SemanticsKind.Uniq;
         }
 
         if (node is MemberAccessKoto tupleElement && this.AccessType(tupleElement.Left)?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
-            return this.AccessType(tupleElement.Left, true)!.Semantics == SemanticsKind.Uniq && this.TryBorrowedTupleElement(tupleElement, out _, out _);
+            var referent = this.ReferentAuthority(tupleElement.Left, this.Owner(owner, tupleElement.Left).Access);
+            return this.ExclusiveAccessType(tupleElement.Left, referent)!.Semantics == SemanticsKind.Uniq && this.TryBorrowedTupleElement(tupleElement, out _, out _);
         }
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
@@ -845,7 +856,8 @@ public sealed partial class Binding
     // What a Place's path grants (PathFold; SPEC 3.4.3, 13.5.5, 15.1.5): Authority, the access its layers grant (Owner, Uniq or Ref);
     // Denied, whether a selection on it (a user index or an Array element, SPEC 4.7.1) needs its receiver exclusively acquired where the
     // receiver's binding denies that, so that the selection shares the element for writes and exclusive borrows; Layers, the cases of
-    // the layers of receivers' own Types it passes (LayerCases). Each pair layer is read under the query's case assignment.
+    // the layers of receivers' own Types it passes (LayerCases), None on a shared grant (Shared: no Take reads them past a shared layer,
+    // AccessFailure). Each pair layer is read under the query's case assignment.
     private readonly record struct PathGrant(SemanticsKind Authority, bool Denied, SemanticsMask Layers)
     {
         internal static readonly PathGrant Owner = new(SemanticsKind.Owner, false, SemanticsMask.None);
