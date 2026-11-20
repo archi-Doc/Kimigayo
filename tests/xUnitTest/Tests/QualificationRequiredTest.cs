@@ -213,6 +213,32 @@ public class QualificationRequiredTest
         Assert.Equal(cause, record.Reason![3].Value);
     }
 
+    // SPEC 9.6 (R7-N1 c-b; F's N1c rulings 37, 38): a Type path's static or instance use. An instance member a Type path reaches has no
+    // receiver, so the path fails and the access records QualificationRequired_Kd (cause Receiver, no qualifying repair: the use is
+    // written qualified), whether the Type path is the sole one (`T.n`) or the value path fails beside it (`T: ref/H`, H has no `n`).
+    // The programs are invalid. Fail-before: Binding accepted the access and `kimi check`'s MIR builder met a Type as a Field's
+    // receiver: InternalInvariant_Kd at `T` (rb30i on Q-584's head too).
+    [Theory]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f() -> i32 => T.n\n")]
+    [InlineData("struct H\n    public init() => ()\nstruct T\n    public let n: i32\n    public init() => self.n = 1\nfunc f(T: ref/H) -> i32 => T.n\n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc a() -> i32 => T.n\n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc b(T: ref/H) -> i32 => T.n\n")]
+    public void AnInstanceMemberReachedByATypePathRequiresAReceiver(string source)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics);
+        Assert.Equal(("QualificationRequired_Kd", "T.n"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        Assert.Equal("Receiver", record.Reason![3].Value);
+        Assert.Empty(record.Repairs ?? []);
+    }
+
+    // SPEC 6.1, 9.6: a Type function (no receiver) through the same Type paths is a static use: valid and accepted, as the sole path and
+    // beside a value path that fails (`T: ref/H`, H has no `zero`).
+    [Theory]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc c() -> i32 => T.zero()\n")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n    public func zero() -> i32 => 0\nstruct H\n    public init() => ()\nfunc d(T: ref/H) -> i32 => T.zero()\n")]
+    public void ATypeFunctionReachedByATypePathIsAStaticUse(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics);
+
     // SPEC 9.6, 9.5, 23.1.2 (R7-N1 c-b, Q2 (b)): when no reading of a member access's left succeeds, a reading that failed at its own
     // stage keeps its record and the other's failure is not reported: an ambiguous import stage (k18i, rb42i, rb52i; rb42v its valid
     // twin) and a stopped value path (rb09i, rb11i, rb43i, rb51i: the value reading's failure published through its lookup, B3).

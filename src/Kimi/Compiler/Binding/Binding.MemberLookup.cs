@@ -372,9 +372,19 @@ public sealed partial class Binding
             Complete(member.Left, completeType);
         }
 
-        if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
+        // The Type side's verdict is TypePathFailure's, which PickReading reads too; the value side's access is checked against its receiver.
+        var failure = typeMember is not null ? this.TypePathFailure(typeSide, scope)
+            : selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: member.Left.BoundType) ? BindingFailure.Access : BindingFailure.None;
+        if (failure == BindingFailure.QualificationRequired)
         {
-            this.Fail(member, BindingFailure.Access);
+            // SPEC 9.6 (F's N1c ruling 38): an instance member a Type path reaches has no receiver: QualificationRequired_Kd at the access,
+            // its Container the Type declaring the member, with no qualifying repair (the use is written qualified).
+            this.qualificationFailures[member] = new(selected.Scope, scope, selected, selected.Name, LookupRole.Value, 0, member);
+        }
+
+        if (failure != BindingFailure.None)
+        {
+            this.Fail(member, failure);
             return null;
         }
 
@@ -387,6 +397,17 @@ public sealed partial class Binding
             ? this.PublishMemberAccess(member, selected, qualifier, LookupRole.Qualifier, typeSelection)
             : this.PublishMemberAccess(member, selected, null, LookupRole.Value, valueSide.Selection);
     }
+
+    // SPEC 9.6, 9.6.1: a Type path's verdict at a member step, the one rule PickReading (TypePathMember) and SelectMember read: the
+    // failure the path stops at, else None. An ambiguous member (Ambiguous), none (MissingName), a member that needs a receiver and is no
+    // function (its static or instance use: the path supplies no receiver, QualificationRequired; a Type-qualified instance function
+    // takes its receiver as an argument), an inaccessible member that is no function (Access).
+    private BindingFailure TypePathFailure(SideSelection side, BindingScope scope)
+        => side.Selection.Ambiguous ? BindingFailure.Ambiguous
+            : side.Member is not { } found ? BindingFailure.MissingName
+            : IsInstanceMember(found) && found.Kind != BindingSymbolKind.Function ? BindingFailure.QualificationRequired
+            : found.Kind != BindingSymbolKind.Function && !this.Accessible(found, scope) ? BindingFailure.Access
+            : BindingFailure.None;
 
     // SPEC 9.6: the layer walk of a member lookup in a role (SPEC 9.2), its namespace the role's: the first layer with accessible,
     // role-compatible declarations. Receiver/argument/accessor checks never reopen it.

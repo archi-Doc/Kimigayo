@@ -644,15 +644,13 @@ public sealed partial class Binding
         return LeftValueKind.Possible;
     }
 
-    // SPEC 9.6, 9.6.1: the Type path's verdict at a member step over `type` (a qualifier declaration's own Type, or a formed projection's,
-    // `qualifier` then none): QualifierSelection's member, or none where the path fails: an ambiguous, missing or inaccessible member,
-    // or a member that needs a receiver and is no function (its static use; a Type-qualified instance function takes its receiver as
-    // an argument). Read by PickReading and by LeftValue (a step naming a static value of its prefix's Type).
+    // SPEC 9.6, 9.6.1: the Type path's member at a member step over `type` (a qualifier declaration's own Type, or a formed projection's,
+    // `qualifier` then none): QualifierSelection's member where TypePathFailure finds none, else none (the path fails). Read by
+    // PickReading and by LeftValue (a step naming a static value of its prefix's Type).
     private BindingSymbol? TypePathMember(MemberAccessKoto step, BindingSymbol? qualifier, BoundType? type, string name, BindingScope scope)
     {
         var side = this.QualifierSelection(step, qualifier, name, scope, type);
-        return side.Selection.Ambiguous || side.Member is not { } found || (IsInstanceMember(found) && found.Kind != BindingSymbolKind.Function) ||
-            (found.Kind != BindingSymbolKind.Function && !this.Accessible(found, scope)) ? null : found;
+        return this.TypePathFailure(side, scope) == BindingFailure.None ? side.Member : null;
     }
 
     // A qualifier declaration's own Type, whose members lookup reads (arguments and Origins never change a selection): a Type's

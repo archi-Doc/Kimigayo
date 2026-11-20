@@ -34,6 +34,9 @@ public sealed partial class Binding
         Koto? BaseClause = null)
     {
         internal bool Type => !InValueNamespace(this.Role);
+
+        // A Type path's member (SPEC 9.6; F's N1c ruling 38): the use is written with its qualifier, so no qualifying repair applies.
+        internal bool Qualified => this.At is MemberAccessKoto;
     }
 
     private static bool IsInstanceMember(BindingSymbol symbol)
@@ -298,7 +301,7 @@ public sealed partial class Binding
 
         void Add(string? prefix, BindingSymbol member)
         {
-            if (prefix is null)
+            if (prefix is null || fact.Qualified)
             {
                 return;
             }
