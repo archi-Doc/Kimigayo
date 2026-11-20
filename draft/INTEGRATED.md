@@ -1649,3 +1649,8 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   revisions, an explicit contract revision with an independent review. The root holds `tatara.dll`; a native build runs no LLVM
   tool and reads no `LlvmBin`; `toolchain verify` also checks `tatara.dll`'s hash. The plan gives the decision (decision 9; §5 A4),
   not the text, so no plan text is frozen.
+- IMPL §20.3's second Ctrl+C (2026-11-21, unit A4, Q-604; T's D-981): a third stage-A IMPL revision, beyond decision 9's two,
+  authorized by the owner's O-460 (a) (「(a) as recommended」; the plan's decision 17 from revision 4), an explicit contract
+  revision with an independent review. The cancellation bullet gains the second Ctrl+C and its exception, a publication SPEC
+  §23.2.3 protects; the `tatara` row's Ctrl+C names its three states: a line, the prompt and awaited redirected input (since A4 a
+  press there cancels the session, as any command's). The wording is the unit's and its review's, so no plan text is frozen.
