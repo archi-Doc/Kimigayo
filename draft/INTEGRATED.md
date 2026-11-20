@@ -1642,8 +1642,6 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   owner and its states (the plan's "while a child runs, it goes to the child" is revised: the program's console is hidden), the
   session's ends; "terminal input to the child" leaves Done when (decision 15). Nothing frozen.
 - IMPL §20.3's `tatara` row (2026-11-21, unit A3, Q-589; T's D-955): the first of decision 9's two stage-A IMPL revisions, an
-  explicit contract revision with an independent review. The commands table gains `tatara` after `run`: it reads lines from
-  standard input and runs each as `kimi build ...` or `kimi run ...` in one process until `exit` or end of input; a line's failure
-  does not end the session, which returns 0 when every line succeeded and 1 otherwise; a fatal error of the native build ends it.
-  The plan gives the decision (decision 9; §5 A3's Documents), not the text: the row's wording is the unit's (its design, A3 §2),
-  so no plan text is frozen.
+  explicit contract revision with an independent review. The commands table gains `tatara` after `run`: a session's lines, its
+  ends, its exit code and Ctrl+C. The plan gives the decision (decision 9; §5 A3's Documents), not the text: the row's wording is
+  the unit's and its review's, so no plan text is frozen.
