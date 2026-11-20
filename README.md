@@ -205,6 +205,7 @@ toolchain/
   llvm-lib.exe
   llvm-objdump.exe
   <supporting LLVM DLLs, if required>
+  tatara.dll
   installation.json
   windows_x64/
     kimi_backend_windows_x64_v1.lib
@@ -214,15 +215,19 @@ toolchain/
 ```
 
 Setup and explicit verification use the complete tool set above. Ordinary builds
-need only the build tools and installed libraries. No Windows SDK or extra Clang headers are required.
+need only the build tools and installed libraries. No Windows SDK or extra Clang headers are required to build Kimi applications.
 The backend archive and `llvm-dlltool.exe` must match the hashes in `profile.json`.
 
-From the repository root, copy the tools and supporting DLLs from an existing LLVM
-installation, then build, test, and install the backend library with:
+From the repository root, with the LLVM 22.1.8 release archive (`clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz`) extracted,
+copy its tools and supporting DLLs, build, test, and install the backend library, and build and install `tatara.dll` with:
 
 ```powershell
-./src/backend/windows-x64/setup.ps1 -LlvmBin 'C:/path/to/LLVM/bin'
+./src/backend/windows-x64/setup.ps1 -LlvmRoot 'C:/path/to/clang+llvm-22.1.8-x86_64-pc-windows-msvc'
 ```
+
+Setup builds `tatara.dll` from the archive's `lib` and `include`, so it also needs Visual Studio's C++ x64 tools, a Windows SDK
+and the DIA SDK that Visual Studio installs ([src/Tatara](src/Tatara/README.md)). It writes no file whose installed copy already has
+the same SHA-256, so an unchanged rerun writes nothing.
 
 To rebuild the native library later, run `./src/backend/windows-x64/build.ps1`.
 Setup also installs `windows_x64/kernel32.lib` and its generation metadata. Ordinary builds reuse it without tool identity probes or regeneration; a missing library requires setup. To recheck an installation, run `kimi toolchain verify`.
@@ -313,7 +318,7 @@ The [kimi-ext](src/kimi-ext/) extension provides syntax highlighting, diagnostic
 
    ```powershell
    dotnet build src/Kimi/Kimi.csproj -c Release
-   ./src/backend/windows-x64/setup.ps1 -LlvmBin 'C:/path/to/LLVM/bin'
+   ./src/backend/windows-x64/setup.ps1 -LlvmRoot 'C:/path/to/clang+llvm-22.1.8-x86_64-pc-windows-msvc'
    ```
 
    Use `src/Kimi/bin/Release/net10.0/Kimi.exe` with its accompanying files. Diagnostics and Check need no LLVM tools. Standalone installations keep `toolchain/` beside the executable, or set `KIMI_TOOLCHAIN_ROOT` before starting VS Code.

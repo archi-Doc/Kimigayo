@@ -32,10 +32,10 @@ For bounded local verification with separate stdout/stderr logs and a JSON resul
 
 Build the selected configuration first. The default command deadline is 900 seconds and output draining is bounded to five seconds. Optional `-InputPath` records SHA-256 hashes of exact input files and verifies that they remain unchanged. Records use unique directories under ignored `artifacts/verify/commands`. On Windows, a waiting worker is assigned to a [job with kill-on-close](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) before receiving the target command. Closing the job removes descendants even after the target exits; no target process starts before containment. Other hosts use process-tree termination while the root remains alive.
 
-Set up the checkout's `toolchain/` once from an existing matching LLVM directory. This copies the required tools and adjacent DLLs, builds/tests the backend and installs the adopted archive into `toolchain/windows_x64/`:
+Set up the checkout's `toolchain/` once from the extracted LLVM 22.1.8 release archive (`clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz`). This copies the required tools and the DLLs of the archive's `bin`, builds/tests the backend and installs the adopted archive into `toolchain/windows_x64/`, then builds `tatara.dll` from the archive's `lib` and `include` ([src/Tatara](../../Tatara/README.md)) and installs it into `toolchain/`. Setup's prerequisites beyond the archive are Visual Studio's C++ x64 tools, a Windows SDK and the DIA SDK that Visual Studio installs. A file whose installed copy already has the same SHA-256 is not written, so an unchanged rerun writes nothing; a changed `tatara.dll` replaces the installed one by a move, renaming a loaded one aside (`tatara.dll.<time>.old`, deleted by a later run), and `installation.json` is written last:
 
 ```powershell
-./src/backend/windows-x64/setup.ps1 -LlvmBin 'C:/App/llvm'
+./src/backend/windows-x64/setup.ps1 -LlvmRoot 'C:/App/clang+llvm-22.1.8-x86_64-pc-windows-msvc'
 # Later backend regeneration uses the installed tools:
 ./src/backend/windows-x64/build.ps1
 ```

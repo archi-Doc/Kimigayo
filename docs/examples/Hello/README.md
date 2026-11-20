@@ -13,10 +13,10 @@ This example checks literal UTF-8 output. See [STATUS](../../STATUS.md) for the 
 Run the setup script once from the Kimigayo repository root:
 
 ```powershell
-./src/backend/windows-x64/setup.ps1 -LlvmBin 'C:/App/llvm'
+./src/backend/windows-x64/setup.ps1 -LlvmRoot 'C:/App/clang+llvm-22.1.8-x86_64-pc-windows-msvc'
 ```
 
-It validates the existing LLVM **22.1.8** installation, copies the required executables and adjacent DLLs into `toolchain/`, builds/tests the backend and installs the adopted archive into `toolchain/windows_x64/`. It does not download tools or change PATH. Later backend source changes can be rebuilt with `./src/backend/windows-x64/build.ps1`.
+It validates the extracted LLVM **22.1.8** release archive, copies the required executables and the DLLs of its `bin` into `toolchain/`, builds/tests the backend and installs the adopted archive into `toolchain/windows_x64/`, and builds and installs `tatara.dll` (which needs Visual Studio's C++ x64 tools, a Windows SDK and the DIA SDK). It does not download tools or change PATH. Later backend source changes can be rebuilt with `./src/backend/windows-x64/build.ps1`.
 
 `Hello.kimiproj` uses Tinyhand indentation syntax and needs no LLVM/backend paths. `OutputPath` defaults to `bin/<target>/Hello.ll`; `Optimization` accepts `O0` or `O2` and defaults to `O2`. Source builds find the checkout's toolchain; standalone compiler distributions use toolchain beside Kimi.exe/Kimi.dll. Use `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT` to select another root. Legacy LlvmBin and explicit kimi_backend entries remain supported as overrides.
 
