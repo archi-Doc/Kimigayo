@@ -80,15 +80,20 @@ internal sealed partial class MirValidator
         // MirValidator.SharedPaths); a PairAcquire's Place, where the view makes it Reborrow (MirCases.Reborrows; SPEC 3.5's rows, the owner
         // case's target included, DECISIONS R5-M139's (b2) line), passes none either; one finding per Adapt or PairAcquire, at the first
         // view that breaks one of them.
-        internal void Views(MirCases cases)
+        internal void Views(MirCases cases, ulong[]? reached)
         {
             var views = MirCases.Count(body);
-            foreach (var (site, source) in caseSites)
+            foreach (var (site, source, block) in caseSites)
             {
                 this.at = source;
                 for (var view = 0L; view < views; view++)
                 {
                     var assignment = cases.Select(body, view);
+                    if (reached is not null && (reached[block] & (1UL << (int)view)) == 0)
+                    {
+                        continue; // R7 plan Z23: a site on a case branch's side the view does not take (MirValidator.BlockViews).
+                    }
+
                     if (site.Kind == MirRvalueKind.Use)
                     {
                         ref readonly var acquire = ref body.Operands[site.Start];
@@ -245,13 +250,13 @@ internal sealed partial class MirValidator
                 this.Agree(second, first); // Binding's source Type, the token, is the operand's.
                 if (second is not null && this.IsValid(operands[0].Place) && this.IsValid(rvalue.Place))
                 {
-                    caseSites.Add((rvalue, this.at)); // Its case views resolve it: its Places and token are in range.
+                    caseSites.Add((rvalue, this.at, this.atBlock)); // Its case views resolve it: its Places and token are in range.
                 }
             }
             else if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0 } && operands[0] is { Kind: MirOperandKind.PairAcquire } acquire &&
                 this.IsValid(acquire.Place))
             {
-                caseSites.Add((rvalue, this.at)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
+                caseSites.Add((rvalue, this.at, this.atBlock)); // A PairAcquire's Use (A3 E13 (4)): its case views resolve it, its Place in range.
             }
 
             if (rvalue.Kind == MirRvalueKind.Aggregate)

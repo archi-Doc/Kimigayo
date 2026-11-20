@@ -203,8 +203,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Failed, expected));
         }
 
-        var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
-        return this.Acquire(adjust, place, expected, reserves, node, into);
+        return this.Take(node, adjust, expected, input, reserves, into);
     }
 
     // SPEC 3.2, 4.3.1, 4.3.3, 6.6, 12.4.1: a Tuple, a fixed array, an Array or an enum Case value from its operands in order, an enum's

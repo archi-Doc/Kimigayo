@@ -9,6 +9,8 @@ namespace Kimi.Compiler.Mir;
 // but what a call's write source stored in it, which its write slot, in the flow region, carries (WriteSlots).
 // A holder a kept Drop past the destruction walk's bound drops has a drop slot right after its own, in its region, whose state is
 // always empty: drop-liveness, the liveness that only such a Drop gives (MirBorrows.Liveness; DECISIONS R4-M153).
+// A local of no Type, a slot Binding failed or a value derived from one (PLAN G1073), holds nothing (rule W): neither Holding nor
+// Flowing makes it a holder, so no Loan reaches it, a delivery into a failed result included (the Middle's C2 ruling 291b).
 // Must not carry, end or check a Loan (MirBorrows.Solve, MirBorrows.Endings, MirBorrows.Checks).
 internal sealed partial class MirBorrows
 {
@@ -137,7 +139,7 @@ internal sealed partial class MirBorrows
 
     // The holders closed over the body's value flow (SPEC 15.6 Holders: "A value read, Copied or Moved from a part carries every Loan the
     // holder carries"; 15.6 Loans: every aggregate, Closure or storage that holds one; a read through a reference carries the Loans of what
-    // it reaches; O-230 Q1 (a), O-359 (a), O-364 (a): a Scalar part's Copy too): a local is one, whatever its Type, when a store of the body
+    // it reaches; O-230 Q1 (a), O-359 (a), O-364 (a): a Scalar part's Copy too): a local is one, whatever its Type but none, when a store of the body
     // gives it a value read from a holder: an Assign into its own Place (through no borrow or raw Deref, Through) whose rvalue's value is its
     // operands' (MirBorrows.Values' ValueOperands, val's one rule), or a returning Call's destination, whose operands are
     // the inputs its result record retains (Binding's retention, 15.6.4: decided per argument; MirBorrows.CallRows' Planned, a call
@@ -157,7 +159,8 @@ internal sealed partial class MirBorrows
             for (var s = data.Start; s < data.Start + data.Count; s++)
             {
                 ref readonly var statement = ref this.body.Statements[s];
-                if (statement is { Kind: MirStatementKind.Assign, Place.Root: >= 0 and var to } && this.slots[to] == -1 && !this.Through(statement.Place))
+                if (statement is { Kind: MirStatementKind.Assign, Place.Root: >= 0 and var to } && this.slots[to] == -1 && cases.KnownType(this.body.Locals[to].Type) is not null &&
+                    !this.Through(statement.Place))
                 {
                     var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                     for (var o = rvalue.Start; o < rvalue.Start + this.ValueOperands(rvalue); o++)
@@ -168,7 +171,7 @@ internal sealed partial class MirBorrows
             }
 
             if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place.Root: >= 0 and var into } call && this.slots[into] == -1 &&
-                !this.Through(call.Place))
+                cases.KnownType(this.body.Locals[into].Type) is not null && !this.Through(call.Place))
             {
                 _ = this.Planned(call);
                 for (var p = 0; p <= call.Count; p++)
