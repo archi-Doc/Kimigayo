@@ -201,6 +201,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--build-chain")
+        {
+            BuildChainMeasurements.Run(args[1..]);
+            return;
+        }
+
         var switcher = new BenchmarkSwitcher(new[]
         {
             typeof(CompilerPipelineBenchmark),

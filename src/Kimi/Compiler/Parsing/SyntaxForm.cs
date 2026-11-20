@@ -60,7 +60,7 @@ public enum SyntaxForm : ushort
     /// <summary>The Type annotation or the initializer a let or var declaration needs.</summary>
     TypeOrInitializer,
 
-    /// <summary>The initializer an inferred element Type needs.</summary>
+    /// <summary>The initializer a declaration needs: an inferred element Type's, or a static stored Property's.</summary>
     Initializer,
 
     /// <summary>The get accessor a computed Property or Property requirement declares.</summary>
