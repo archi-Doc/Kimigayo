@@ -554,17 +554,17 @@ public sealed partial class Binding
                 this.ChildGroup(solution, i, out var childStart, out var childEnd);
                 if (childStart != childEnd && operations[i] is { Source: { } whole, ParameterType: { } type })
                 {
-                    this.JudgePositionRows(whole, rows[i] with { Type = type }, solution); // R4: by its rows.
+                    this.JudgePositionRows(whole, rows[i] with { Type = type }, solution, solution.OriginInference); // R4: by its rows.
                 }
                 else if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
                 {
-                    this.RequireInputPremises(at, parameter, parameter, adapted, rows[i].Contribution);
+                    this.RequireInputPremises(at, parameter, parameter, adapted, rows[i].Contribution, solution.OriginInference);
                 }
             }
 
             if (conditioned is not null)
             {
-                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
+                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), origins, argumentOrigins, null, solution.OriginInference);
             }
 
             // A call with a part it did not take (failed, misfitting or not acquired) rests on that part's record and forms no result.

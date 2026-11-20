@@ -9,7 +9,7 @@ namespace XunitTest;
 // fit's walk of the Type relation. The fit walks the relation once and reads each part's answer from that walk; an invariant part that
 // the relation meets reversed is walked once more in the fit's own orientation. Every row's records are those of a walk rooted at each
 // part, which the fit made before.
-// w4L4 (valid, rejected) is here with the open issue that changes its record, and r4aL (valid) with the located limit until PLAN G960.
+// r4aL and w4L4 (valid) are accepted since the solve holds its representatives and runs its fixed point again (G1128 R1.3 (i)).
 // A Function Type at an invariant position relates both ways (PLAN G900): rq1w, rq2a, rq2av and n1f are rejected as labelled.
 public partial class LocalOriginClauseTest
 {
@@ -167,16 +167,15 @@ public partial class LocalOriginClauseTest
         { "r3M", MeetOnly + "func outer(p: ref/i64) -> i32\n    let f: (ref/i64 during p) -> i32 = m1\n    return 0\n", "Unsupported_Kd@4:40" },
         // invalid: r3M as a default argument's value, checked at its declaration (SPEC 7.2.3).
         { "w4X4", MeetOnly + "func h(g: (ref/i64 during static) -> i32 = m1) -> i32\n    return 0\n", "Unsupported_Kd@3:44" },
-        // valid: `c` is invariant without a proven equality, so it takes p, checked against q by the premise, and `a`, `b` take `c`. The
-        // solve takes the representatives of `c` and of `a`, `b` at once, so `a`, `b` reach no fixed Origin: the limit until PLAN G960.
-        { "r4aL", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", "Unsupported_Kd@9:73" },
-        // invalid: `c` lies between p and q, and p outlives q is not proven. The solve stops at its first open end, so that member's
-        // record is not reported: the limit is the one record (record selection).
-        { "r4aLn", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", "Unsupported_Kd@8:73" },
-        // valid: r4aL at a call argument (p and q are fixed in `take3`, SPEC 15.3.4). The record is dev's: applicability discards the
-        // solve's located limit and finds the one candidate inapplicable, though inference never makes a candidate inapplicable (SPEC
-        // 15.3.6; PLAN: a call argument's applicability discards a comparison's located limit).
-        { "w4L4", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    func take3(g: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32) -> i32\n        return 0\n    return take3(m3)\n", "NoApplicableOverload_Kd@11:12 none of 1 candidates applies" },
+        // valid: `c` is invariant without a proven equality, so it takes p, checked against q by the premise, and `a`, `b` take `c`: the
+        // solve holds c's representative and runs its fixed point again, so `a`, `b` read it (G1128 R1.3 (i); the located limit before).
+        { "r4aL", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", string.Empty },
+        // invalid: `c` lies between p and q, and p outlives q is not proven: that member's record, once `a`, `b` read c's held value
+        // (G1128 R1.3 (i); the located limit before, record selection).
+        { "r4aLn", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", "UnprovenOriginContract_Kd@8:73 the 2nd parameter requires p outlives q, which is not proven" },
+        // valid: r4aL at a call argument (p and q are fixed in `take3`, SPEC 15.3.4), accepted since its comparison's solve reaches no
+        // located limit (G1128 R1.3 (i)); it was PLAN G1101's record, a discarded limit that made the candidate inapplicable.
+        { "w4L4", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    func take3(g: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32) -> i32\n        return 0\n    return take3(m3)\n", string.Empty },
         // valid: w4L4 without the meet.
         { "w4L4c", "struct Sink {a}\n    public let g: (ref/i64 during a) -> i32\nfunc m3(w: ref/i64 during a, s: Sink during c, v: ref/i64 during c) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    func take3(g: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32) -> i32\n        return 0\n    return take3(m3)\n", string.Empty },
 

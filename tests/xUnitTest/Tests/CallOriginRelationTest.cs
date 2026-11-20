@@ -85,6 +85,33 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
 
     private const string Inv = "func inv<T>(x: uniq/T, y: ref/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n";
 
+    // G1128 R1.3 (i)'s callees: an Origin `o` invariant at two inputs, beside an input's inner Origin (pairk), a clause over it (pairc), a
+    // pair input with an Origin of its own (pairw) and a result over it (pairo) or over an input's per-call Origin (pairr); each `2` with
+    // its first two inputs swapped. Their callers fix `o` to x and to y.
+    private const string InvO = "func invo(x: uniq/(ref/i32 during o), y: ref/(ref/i32 during o)) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n";
+
+    private const string PairK = "func pairk(a: uniq/(ref/i32 during o), b: uniq/(ref/(ref/i32 during k) during o)) -> () => ()\n" +
+        "func pairk2(b: uniq/(ref/(ref/i32 during k) during o), a: uniq/(ref/i32 during o)) -> () => ()\n" +
+        "func caller(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/(ref/i32 during w) during y)) -> ()\n";
+
+    private const string PairC = "func pairc(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k)) -> i32\n    origin k outlives o\n    return 0\n" +
+        "func pairc2(b: uniq/(ref/i32 during o), a: uniq/(ref/i32 during o), c: uniq/(ref/i32 during k)) -> i32\n    origin k outlives o\n    return 0\n" +
+        "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), r: uniq/(ref/i32 during w)) -> i32\n";
+
+    private const string PairW = "func pairw(a: uniq/(ref/i32 during o), b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
+        "func pairw2(b: (uniq/(ref/i32 during o) during g, ref/(ref/i32 during k) during m), a: uniq/(ref/i32 during o), d: uniq/(ref/i32 during m), e: ref/i32 during k) -> () => ()\n" +
+        "func caller(x: ref/i32, y: ref/i32, z: ref/i32, p: uniq/(ref/i32 during x), q: (uniq/(ref/i32 during y) during v, ref/(ref/i32 during w) during u), s: uniq/(ref/i32 during u), t: ref/i32 during z) -> ()\n";
+
+    private const string PairO = "func pairo(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) -> ref/i32 during o => $abort(\"no\")\n" +
+        "func pairo2(b: uniq/(ref/i32 during o), a: uniq/(ref/i32 during o)) -> ref/i32 during o => $abort(\"no\")\n" +
+        "func pairr(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) -> ref/i32 during b => $abort(\"no\")\n" +
+        "func pairr2(b: uniq/(ref/i32 during o), a: uniq/(ref/i32 during o)) -> ref/i32 during b => $abort(\"no\")\n" +
+        "func caller(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> ";
+
+    // A construction: the enum's `a` is invariant at both payloads, beside its clause `k outlives a`.
+    private const string EnumTwo = "enum E {a, u, k}\n    origin k outlives a\n    origin a outlives u\n    Two(uniq/(ref/i32 during a) during u, uniq/(ref/i32 during a) during u, ref/i32 during k)\n\n" +
+        "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> i32\n    origin w outlives y\n";
+
     // PLAN G1115 (review B1): an argument whose Type stores an Origin only through an identity premise (`T is uniq/Meter during a`).
     private const string OneOf = "func iu<S>(o: uniq/One<S>, key: ref/isize) -> uniq/S during o => $abort(\"no\")\n" +
         "func ir<S>(o: ref/One<S>, key: ref/isize) -> ref/S during o => $abort(\"no\")\n" +
@@ -247,21 +274,59 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal(("relation", "origin a outlives static"), (related.Role, Text(source, related.Span)));
     }
 
-    // SPEC 15.6.1, 15.6.4 step 3, 23.1.2 (R7-O1 b1; the Middle's ruling of 2026-11-19): the fresh Origin's `==` is one record at the second
-    // input, relating the input that fixed it; the well-formedness of that input's instantiated parameter Type is an independent relation,
-    // its own record at the same input (Q13 rule 3: an independent record added to a rejected program, which HasCallRelation hid before).
+    // SPEC 15.6.1, 15.6.4 step 3, 23.1.2 (R7-O1 b1; G1128 R1.3 (i), G147 rulings 22 and 23 with the Middle's word of 2026-11-21): the
+    // fresh Origin's `==` is the one record, at the second input, relating the input that fixed it. That input's well-formedness bounds
+    // its per-call Origin by `o` in the call's solve (G1115), so it holds for every value of `o`, and it reads `o`, whose failed equality
+    // the solve publishes: it rests on that record (rule W; Q13, the dependent record pinned on 2026-11-19 removed).
     [Fact]
     public void AFreshEqualityRelatesTheInputThatFixedIt()
     {
         var source = Fresh + Main;
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Equal(2, errors.Length);
-        var error = Assert.Single(errors, static x => x.Reason![0].Value == "==");
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal("==", error.Reason![0].Value);
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "requires y == x, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
         var related = Assert.Single(error.Related!);
         Assert.Equal(("relation", "p"), (related.Role, Text(source, related.Span)));
-        var wellFormed = Assert.Single(errors, static x => x.Reason![0].Value != "==");
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "wellFormed"), (wellFormed.Code, Text(source, wellFormed.Span), wellFormed.Reason![3].Value));
+    }
+
+    // SPEC 15.3.6, 15.6.1, 23.1.2 (G1128 R1.3 (i); G147 rulings 22, 23, 26; DECISIONS Q13 rule W): an Origin invariant at two inputs whose
+    // fixed partners are not proven equal is one record, the partners' `==`. The solve holds its representative, runs its fixed point
+    // again over the other variables and publishes the failure (OriginInference.Marked), so every clause and input premise of the call
+    // that reads it, or a variable the solve formed from it, rests on that record in either argument order: o-inv's `y` and pairk's inner
+    // `w outlives o` (whatever `o` is), pairc's clause `k outlives o` (rule W: it reads `o` directly). A failure independent of `o` stays
+    // (pairw's `z outlives u`). Valid controls: `origin b outlives a`, and a construction whose partners are equal.
+    [Theory]
+    [InlineData(InvO + "    invo(x, y)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(InvO + "    origin b outlives a\n    invo(x, y)\n", "clean")]
+    [InlineData("func inv3o(x: uniq/(ref/i32 during o), z: uniq/(ref/i32 during o)) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), z: uniq/(ref/i32 during b)) -> ()\n    inv3o(x, z)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PairK + "    pairk(p, q)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PairK + "    pairk2(q, p)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PairC + "    return pairc(p, q, r)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PairC + "    return pairc2(q, p, r)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PairC + "    origin w outlives y\n    return pairc(p, q, r)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PairC + "    origin w outlives y\n    return pairc2(q, p, r)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PairW + "    pairw(p, q@move, s, t)\n", "2*UnprovenOriginRelation_Kd")]
+    [InlineData(PairW + "    pairw2(q@move, p, s, t)\n", "2*UnprovenOriginRelation_Kd")]
+    [InlineData(PairW + "    origin z outlives u\n    pairw(p, q@move, s, t)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(EnumTwo + "    origin x == y\n    let e = E.Two(p, q, w)\n    return 0\n", "clean")]
+    public void AFailedEqualityIsTheRecordItsReadersRestOn(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // SPEC 15.6.1, 23.1.2 (G1128 R1.3 (i); G147 ruling 29; PLAN: a dependent record of a failed equality outside the solve's readers):
+    // the result's fit at its destination, over `o` or over a per-call Origin the solve formed from `o`, and a construction Type's clause
+    // proof read the substituted value, not the solve's published failure, so whether their dependent record is reported depends on the
+    // argument order. Each order reports the independent `==`; the count is not pinned until that issue is decided.
+    [Theory]
+    [InlineData(PairO + "ref/i32 during y\n    return pairo(p, q)\n")]
+    [InlineData(PairO + "ref/i32 during y\n    return pairo2(q, p)\n")]
+    [InlineData(PairO + "ref/i32 during q\n    return pairr(p, q)\n")]
+    [InlineData(PairO + "ref/i32 during q\n    return pairr2(q, p)\n")]
+    [InlineData(EnumTwo + "    let e = E.Two(p, q, w)\n    return 0\n")]
+    [InlineData(EnumTwo + "    let e = E.Two(q, p, w)\n    return 0\n")]
+    public void AFailedEqualityIsReportedInEitherOrder(string source)
+    {
+        var equality = Assert.Single(DiagnosticCorpus.Check(source + Main).Diagnostics, static x => x.Reason is [{ Value: "==" }, ..]);
+        Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), equality.Code);
     }
 
     // SPEC 10.3, 15.6.1: an expected result never filters by Origins; the result's relation is one record at its destination, and a
@@ -372,8 +437,8 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal([nameof(DiagnosticCode.AmbiguousBinding_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
-    // SPEC 23.3: the console, the language server and JSON carry the call relation with its related location; Fresh's second record, its
-    // input's well-formedness (SPEC 23.1.2, R7-O1 b1), relates nothing of the call (AFreshEqualityRelatesTheInputThatFixedIt).
+    // SPEC 23.3: the console, the language server and JSON carry the call relation with its related location (Fresh's one record, its
+    // `==`: AFreshEqualityRelatesTheInputThatFixedIt).
     [Theory]
     [InlineData(Clause, "relation", "origin a outlives static")]
     [InlineData(Fresh, "relation", "p")]

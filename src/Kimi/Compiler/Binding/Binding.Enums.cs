@@ -328,11 +328,11 @@ public sealed partial class Binding
                 this.ChildGroup(solution, done, out var childStart, out var childEnd);
                 if (childStart != childEnd)
                 {
-                    this.JudgePositionRows(source, rows[done] with { Type = operations[done].ParameterType }, solution);
+                    this.JudgePositionRows(source, rows[done] with { Type = operations[done].ParameterType }, solution, solution.OriginInference);
                 }
                 else
                 {
-                    this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution);
+                    this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution, solution.OriginInference);
                 }
             }
 

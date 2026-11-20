@@ -350,14 +350,20 @@ public sealed partial class Binding
     // that carries no Origin, such as one that transfers control, supplies none; and an input Binding already failed (its fit's
     // structure, SPEC 5.7's raw-layer rules, a located limit, or its conversion's contract: a Function value's, ConvertFunctionValue,
     // whose relations are published with it, FollowsContract) is no instance of its parameter, so its well-formedness, read from its
-    // supplied Type, would rest on that failure (SPEC 23.1.2).
-    private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution)
+    // supplied Type, would rest on that failure (SPEC 23.1.2), as a premise over a variable `solved`, the call's solve, marked does
+    // (OriginInference.Marked).
+    private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution, OriginInference? solved)
     {
         if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && at.BindingFailure == BindingFailure.None)))
         {
             var actual = contribution == Contribution.Evidence ? supplied : null;
             foreach (var premise in new WellFormedPremises(this, pattern, parameter, actual, WellFormedSubject.Input, null, at, default))
             {
+                if (solved is not null && (solved.ReadsMarked(premise.Longer) || solved.ReadsMarked(premise.Outer)))
+                {
+                    continue;
+                }
+
                 if (premise.Clause is { } clause)
                 {
                     this.JudgeCallPosition(at, premise.Longer, premise.Outer, premise.Equality, null, clause, declared: true);
