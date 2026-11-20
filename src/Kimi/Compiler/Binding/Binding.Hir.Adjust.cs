@@ -448,7 +448,7 @@ public sealed partial class Binding
             var selection = parentOp == HirOp.Call && parent is IndexKoto; // A user or view index, which passes the need its selection takes.
             if (reaching.Use == PlaceUse.Shared ||
                 !(parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto || (selection && binding.SelectionMode(parent!, reaching.Use) != 0)) ||
-                ElementAccess.IsRawRooted(binding, parent!) || !ReferenceEquals(Operand(parent), node))
+                binding.IsRawRooted(parent!) || !ReferenceEquals(Operand(parent), node))
             {
                 return own;
             }

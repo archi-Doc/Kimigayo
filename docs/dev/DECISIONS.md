@@ -13093,6 +13093,10 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a raw case in each consumer (one form per site); routing implicit borrows to `BorrowRawPlace` (it decides a written
     conversion's result); the fact in `TyCtxt.RawPart` (it answers which parts a Take moves, not what is a Place); keeping the
     declared-result fit beside the anchor (two Origin rules for one borrow).
+  - Amended by R7-T2 U8 (Q-581, D-939): `IsRawRoot` and the raw walks (`IsRawPlace`, `IsRawRooted`, `IsPointerPath`) are Binding's
+    own members in `Binding.PlaceAuthority.Raw.cs` (the raw part of the Place classification, beside `PathOrigin`); `ElementAccess`
+    keeps the element-access predicates. The rule is unchanged. R4-M194's, BU-146's and BU-193's mentions of
+    `ElementAccess.IsRawPlace` and `IsRawRooted` are history this line covers.
 - **BU-155 Every Contract reference written in source is formed by one path, `BindContractReference` (PLAN G705)** (2026-11-11;
   Front, Binding; Major; the owner's O-145 (a) and O-151 (a) with its conditions; design review 3 ACCEPT with conditions 1-10,
   implementation review ACCEPT) SPEC 8.4.3, 8.5.1, 8.5.2, 8.11.1, 9.7, 9.7.1.
@@ -22999,7 +23003,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     columns (D2-1 option (i): a candidate's Origins are a slice of one `count x stride` array). **Rejected** (D2-1): one array per
     candidate (option (ii)), which keeps the consumers' two forms and adds a column of arrays. **Cost:** cold, warm (0 B) and retained
     Bind bytes unchanged (Calls32/512, Hello, Milestone26, OriginOverloads32/512); time is the landing window's RP8 slot.
-  - Commits 2b0, 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
+  - **Commit 2b0: one width, measured once after binding the candidates' headers** (D2-4 option (a); `cc8999969`, its row
+    written once in `f1510b707`; Q-554, D-894). A call's candidate set is measured (`MeasureCandidates`: whether the call solves
+    Origins, and its Origin and input-Origin widths) after the headers it reads are bound: `RentCandidates`, before the
+    measurement in `BindCallCore` and `SelectOmittedBaseConstructor`, decides each candidate's accessibility once into its row (the
+    one verdict the evaluation reads, D2-7) and binds each accessible candidate's header; the evaluation no longer binds one.
+    Before, a call bound while `BindDeclarations`' header loop had not reached a candidate (an inferred static Field calling a
+    function declared below it) measured that candidate's unbound header. **Rule (the width condition, A9):** a view of the call's
+    Origin scratch formed for a candidate (its `Solution`, the fixed re-check's solution, the winner's stored slice) covers the
+    candidate's Origins and input Origins, or the call solves none; a shortfall is a broken contract (a Release check, an
+    InternalInvariant), never a dropped slot. The three clipping bounds become one rule, `SlotSolution.InputSpan()` (empty when
+    the call solves no Origins, else the binder's inputs). **A candidate's row is written once:** `RentCandidates` stores its
+    Symbol and Accessible into the cleared row, the evaluation its other fields through a `ref`, since a whole store of a row
+    holding references is coreclr's bulk write barrier (the row written twice in full cost 1-2% of a call-heavy Bind). **Rejected:**
+    (b) proving the late measurement unreachable (reached: 16 measurements of an unbound header in the suite); (c) a
+    per-candidate width beside the late measurement (two widths of one call); the one-pass walk F (it did not remove the barrier).
+    **Left (O10, PLAN G1098):** `MatchInputOrigin`'s skip and `MatchResultOrigins`' bound stay for their callers that reserve
+    their own widths. Behaviour unchanged; Bind bytes unchanged; time is the landing window's RP8 slot.
+  - Commits 2b, 3 and 4 add their parts (design §4's DECISIONS paragraph).
 - **R7-M53 G396's remainder and G147 (2) are R7's stream Z: every no-stage producer removed, not excepted** (K for the Middle's D-872
   and the Front's D-874, 2026-11-19; the owner's order, DECISIONS Q22; R7 plan revision 102's stream Z and §10.1 item 6; censuses on
   dev 5dd6543e6, `middle\notes\g396-plan.md` and `front\notes\G147\census.md`). Under Q22, supersedes R4-M165's X-2 line ("the 25
@@ -26728,7 +26749,7 @@ R8-M* and R9-M* by the stage of the recording unit.
 ## Tatara (adopted 2026-11-19)
 
 Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
-holds the owner's decisions 1–13). Units of the Tatara lane record their entries here as T-M*.
+holds the owner's decisions 1–16). Units of the Tatara lane record their entries here as T-M*.
 
 - **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
   「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
@@ -26806,3 +26827,28 @@ holds the owner's decisions 1–13). Units of the Tatara lane record their entri
     fatal LLVM and LLD errors in stage A (they can be the user's: a malformed library, an IR `llc` cannot select from
     `build --Manifest`).
   - Rejected: three operations with the redaction in C++ (a second copy of P13's rule); a nullable inspection text kept until A4.
+  - Amended by T-M5 (unit A3, 2026-11-20): the `BuildManifest` overload goes; `NativeToolchain.Build` and `BuildManifest` have one
+    signature each, taking the factory, which every caller passes (the product's callers pass `Kimigayo.NativeExecutor`), temporary
+    until A4 as the seam.
+- **T-M5 `kimi tatara`: the session's rules and A3's temporary reader** (Tatara, 2026-11-20; the plan's unit A3, Q-589, D-955;
+  Major; design review C-425; implementation review C-426, ACCEPT WITH CONDITIONS, both rounds taken).
+  - A line is a command line: `CommandUnit.Product.Execute(commandLine, serviceProvider, cancellationToken)`, extracted from
+    `RunAsync`, parses and executes both a process's command line and a session's line. The gate reads the first word from the same
+    split. Rejected: a lexical rule of the session's own, a restricted parser (a second copy of the options).
+  - Each line runs in a new DI scope (a new command object and `Solution`); only the plan's §5 A3 list carries between lines: the
+    library per target (as in one single-shot process), Tatara's loaded DLL per path and its refusal, `Kimigayo` (the settings and
+    the executor's factory), the current directory, the runtime. Project and solution state, locks, user libraries' check results,
+    diagnostics and exit codes do not carry (reusing library checks is the plan's §8 candidate 2).
+  - Ctrl+C has one owner, `Program`'s handler, through one action (`Program.CancelKey`, default the root's termination), which a
+    session replaces while it runs and restores at its end; its state changes atomically. The second press during a cancelled line
+    is `TerminateProcess(130)` on the current process. Rejected: `Environment.Exit` (it runs `tatara.dll`'s detach, which can wait
+    on a lock the stuck thread holds).
+  - `Tatara` publishes a return of 2 (`Tatara.Refusal`, the first cause; `Tatara.FirstRefusal()` over the loaded instances); the
+    session ends on it with 1 and never decides by a message's text.
+  - The redirected reader reads without read-ahead, so a `run` program reads the script's later lines deterministically (decision
+    15). Rejected: a `run` program's own terminal input in stage A (O-454 (a), which needs a pause of SimplePrompt's key worker) and
+    empty input for it (O-454 (c)).
+  - **Temporary, removed by unit A4:** `Kimigayo.NativeExecutor` (the executor's factory, set by the session) and its
+    `ArchitectureRulesTest.BuildReaders` row for `Unit/Kimigayo.cs` (the owner's O-455 (a)); the factory arguments of
+    `NativeToolchain.Build` and `BuildManifest`; `Explicit = true` on `TataraCommandNativeTest`. `Unit/Command/TataraCommand.cs`'s
+    `BuildReaders` row is not temporary: it is a command, which COMPILER_ARCHITECTURE names among Build's readers.

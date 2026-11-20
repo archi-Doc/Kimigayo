@@ -32,9 +32,11 @@ public class ArchitectureRulesTest
         "Binding/BindingModel.cs=2;Binding/TyCtxt.Raw.cs=1;Binding/TyCtxt.cs=4";
 
     // The R7-R9 plan's unit M2 (ComponentIsReadOnlyByItsReaders): Build's readers, Project and the commands, the hosts that call it, and
-    // DependencyLock (ArtifactFiles.Replace only).
+    // DependencyLock (ArtifactFiles.Replace only). Unit/Kimigayo.cs (the native executor's factory) is a temporary row, approved by the
+    // owner (O-455 (a)); unit A4 removes it.
     private const string BuildReaders = "SolutionAndProject/DependencyLock.cs;SolutionAndProject/Project.cs;Unit/Command/BuildCommand.cs;" +
-        "Unit/Command/CommandExecution.cs;Unit/Command/RestoreCommand.cs;Unit/Command/RunCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs";
+        "Unit/Command/CommandExecution.cs;Unit/Command/RestoreCommand.cs;Unit/Command/RunCommand.cs;Unit/Command/TataraCommand.cs;Unit/Command/TestCommand.cs;Unit/Command/ToolchainCommand.cs;" +
+        "Unit/Kimigayo.cs";
 
     // The R7-R9 plan's unit M1 (ComponentIsReadOnlyByItsReaders): Documentation's readers, hover's projection in check and its rendering in
     // the LSP. The compiler reads only the association, Core's DocumentationSource, which Documentation reads in turn.
@@ -250,7 +252,7 @@ public class ArchitectureRulesTest
     // RootLocal, Diagnostics' `+` chain), a record path's length (TypeRelations.Walk) and sizes that bound no walk (Attributes' stackalloc
     // threshold, SlotSet's word count, TemporaryKotoList's inline slots). A walk across a declaration names its
     // bound, which this pattern does not read.
-    [InlineData("A walk's own count", "src/Kimi/Compiler", @"\b(?:[dD]epth|layers|count|steps|level|fields)\s*(?:<=|>=|==|<|>)\s*(?:[2-9]|\d\d+)\b", "Binding/Binding.Attributes.cs=1;Binding/Binding.Diagnostics.cs=1;Binding/Binding.FunctionTypes.cs=1;Binding/Binding.OriginDiagnostics.cs=1;Binding/Binding.PlaceAuthority.Raw.cs=1;Binding/Binding.PlaceAuthority.cs=2;Binding/Binding.PlaceOrigins.cs=1;Binding/Binding.SlotSet.cs=1;Binding/Binding.TypeRelations.Walk.cs=1;Binding/Binding.TypeRelations.cs=1;ElementAccess.cs=6;Parsing/Koto/Common/TemporaryKotoList.cs=2")]
+    [InlineData("A walk's own count", "src/Kimi/Compiler", @"\b(?:[dD]epth|layers|count|steps|level|fields)\s*(?:<=|>=|==|<|>)\s*(?:[2-9]|\d\d+)\b", "Binding/Binding.Attributes.cs=1;Binding/Binding.Diagnostics.cs=1;Binding/Binding.FunctionTypes.cs=1;Binding/Binding.OriginDiagnostics.cs=1;Binding/Binding.PlaceAuthority.Raw.cs=4;Binding/Binding.PlaceAuthority.cs=2;Binding/Binding.PlaceOrigins.cs=1;Binding/Binding.SlotSet.cs=1;Binding/Binding.TypeRelations.Walk.cs=1;Binding/Binding.TypeRelations.cs=1;ElementAccess.cs=3;Parsing/Koto/Common/TemporaryKotoList.cs=2")]
     // DECISIONS R7-C2e1: a view's state is counted where it is written, so a ConstraintEnvironment's fact sets are written only by its own
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
     [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")]
