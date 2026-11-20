@@ -150,6 +150,9 @@ public sealed partial class RetentionTest
     // A struct whose Field states no Origin for a raw-of-raw pointer (the N2 review's getSR).
     private const string Pp = "struct Pp\n    public var p: raw/(raw/u8)\n    public init(p: raw/(raw/u8)) => self.p = p\n";
 
+    // A struct holding a raw Field by value (D-933's C1 twins: held through an rc, an arc or a Field, `let n` a null pointer).
+    private const string Iq = "struct Iq\n    public var q: raw/u8\n    public init(q: raw/u8) => self.q = q\nlet n: raw/u8 = null\n";
+
     // A user stack of raw items, a user Iterator over them and a LendingIterator-only twin (the N2 designs' userPop, userIter and userLend).
     private const string RawStack = "struct RawStack\n    var items: Array<raw/u8>\n    public init(items: Array<raw/u8>) => self.items = items@move\n" +
         "    public func pop(self: uniq/Self) -> Option<raw/u8> => self.items.pop()\n";
@@ -1319,6 +1322,13 @@ public sealed partial class RetentionTest
     [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {1 Value}, reached {}")]
     [InlineData(Pp + "let s: raw/Pp = Raw.allocate(1)\nunsafe => Raw.initialize(s, Pp.init(p: null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Field's raw layer is a raw source (SPEC 15.6.4 "a Field"; fail-before: no row).
     [InlineData("enum Ep\n    A(raw/u8)\n    B\nlet s: raw/Ep = Raw.allocate(1)\nunsafe => Raw.initialize(s, .A(null))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933: a Case payload's (fail-before: no row).
+    [InlineData(Iq + "struct Vh\n    public var f: Iq\n    public init(f: Iq) => self.f = f@move\nlet s: raw/Vh = Raw.allocate(1)\nunsafe => Raw.initialize(s, Vh.init(f: Iq.init(q: n)))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: a Field's Field held by value is a raw source.
+    [InlineData(Iq + "struct Rh\n    public var f: rc/Iq\n    public init(f: rc/Iq) => self.f = f@move\nlet s: raw/Rh = Raw.allocate(1)\nunsafe => Raw.initialize(s, Rh.init(f: Kimi.Intrinsics.makeRc(Iq.init(q: n))))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: past an rc, a shared layer (SPEC 15.6), none.
+    [InlineData(Iq + "let s: raw/(rc/Iq, i32) = Raw.allocate(1)\nunsafe => Raw.initialize(s, (Kimi.Intrinsics.makeRc(Iq.init(q: n)), 1))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: the Tuple twin.
+    [InlineData(Iq + "struct Ah\n    public var f: arc/Iq\n    public init(f: arc/Iq) => self.f = f@move\nlet s: raw/Ah = Raw.allocate(1)\nunsafe => Raw.initialize(s, Ah.init(f: Kimi.Intrinsics.makeArc(Iq.init(q: n))))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: past an arc.
+    [InlineData(Iq + "let s: raw/(arc/Iq, i32) = Raw.allocate(1)\nunsafe => Raw.initialize(s, (Kimi.Intrinsics.makeArc(Iq.init(q: n)), 1))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: the Tuple twin.
+    [InlineData(Iq + "struct Bx<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\nstruct Gr<T>\n    public var f: rc/Bx<T>\n    public init(f: rc/Bx<T>) => self.f = f@move\nstruct Og\n    public var g: Gr<raw/u8>\n    public init(g: Gr<raw/u8>) => self.g = g@move\nlet s: raw/Og = Raw.allocate(1)\nunsafe => Raw.initialize(s, Og.init(g: Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: n)))))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: a Field's Type argument held past an rc.
+    [InlineData(Iq + "struct Bx<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\nstruct Gr<T>\n    public var f: rc/Bx<T>\n    public init(f: rc/Bx<T>) => self.f = f@move\nlet s: raw/(Gr<raw/u8>, i32) = Raw.allocate(1)\nunsafe => Raw.initialize(s, (Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: n))), 1))\n", "initialize", "store 0: own {1 Value}, reached {}")] // D-933 C1: the Tuple twin.
     [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]

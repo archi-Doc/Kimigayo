@@ -290,11 +290,12 @@ public sealed partial class Binding
 
     // SPEC 15.6.4 ("A raw layer that an argument holds by value through no shared layer, a Tuple element, an Option payload, a Field or a
     // Type argument included, is retained as a raw pointer argument is"; D-933): the raw layers a struct or enum holds as parts of its
-    // value, Holdings' rows that pass on (Hold.PassesOn: its Fields, Case payloads and base, the Tuples and fixed arrays within them, an
-    // owning handle's payload, a collection's elements, its Type arguments), are raw sources of the input as its components' are
-    // (RawSource), each Type once per position (retentionStored: by-value containment is acyclic, so the walk is linear in the distinct
-    // parts). Their Origins are the instance's Origin arguments, which the walk's atoms name already, so it adds no atom; at Binding's
-    // Limit the contract is the Limit, as the hold walk's.
+    // value, read by the one by-value criterion the storage walk reads for the same phrase (ByValue: its Fields, Case payloads and base,
+    // the Tuples and fixed arrays within them, an owning handle's payload, a collection's elements; never past an rc or arc payload, a
+    // shared layer, SPEC 15.6, as the atom walk stops at SharedLayer), are raw sources of the input as its components' are (RawSource),
+    // each Type once per position (retentionStored, which also ends a recursive Type's walk, e.g. `Tree { kids: Array<Tree> }`, so the walk
+    // is linear in the distinct parts). Their Origins are the instance's Origin arguments, which the walk's atoms name already, so it adds
+    // no atom; at Binding's Limit the contract is the Limit, as the hold walk's.
     private void StoredRawSources(BoundType type, BoundType? written, BoundType? holder, in RetentionAtom at)
     {
         if (!this.retentionStored.Add((type, at)))
@@ -306,7 +307,7 @@ public sealed partial class Binding
         this.retentionLimit |= !complete;
         for (var i = run.Start; i < run.End; i++)
         {
-            if (this.retentionHeld[i] is { PassesOn: true, Part: { } part } entry)
+            if (this.retentionHeld[i] is { Part: { } part } entry && this.ByValue(type, entry))
             {
                 if (part is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
                 {

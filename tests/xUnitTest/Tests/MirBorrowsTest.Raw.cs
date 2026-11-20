@@ -1070,7 +1070,8 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "tupleBad: y@follow = 5", "fieldBad: y@follow = 5", "payloadBad: y@follow = 5", "nestedBad: y@follow = 5", "genericBad: y@follow = 5",
-                "argumentBad: y@follow = 5",
+                "argumentBad: y@follow = 5", "rcFieldBad: y@follow = 5", "rcTupleBad: y@follow = 5", "arcFieldBad: y@follow = 5",
+                "arcTupleBad: y@follow = 5", "argRcFieldBad: y@follow = 5", "argRcTupleBad: y@follow = 5",
             ],
             Problems("""
                 struct Fq
@@ -1146,6 +1147,56 @@ public sealed partial class MirBorrowsTest
                     let w = y@follow@ref
                     let s: raw/G2q<raw/u8> = Raw.allocate(1)
                     unsafe => Raw.initialize(s, G2q<raw/u8>.init(v: w@raw@raw/u8))
+                    y@follow = 5
+                struct Rq
+                    public var f: rc/Inq
+                    public init(f: rc/Inq) => self.f = f@move
+                struct Aq
+                    public var f: arc/Inq
+                    public init(f: arc/Inq) => self.f = f@move
+                struct Bx<T>
+                    public var v: T
+                    public init(v: T) => self.v = v@move
+                struct Gr<T>
+                    public var f: rc/Bx<T>
+                    public init(f: rc/Bx<T>) => self.f = f@move
+                struct Og
+                    public var g: Gr<raw/u8>
+                    public init(g: Gr<raw/u8>) => self.g = g@move
+                func rcFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Rq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Rq.init(f: Kimi.Intrinsics.makeRc(Inq.init(q: w@raw@raw/u8))))
+                    y@follow = 5
+                func rcTupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(rc/Inq, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (Kimi.Intrinsics.makeRc(Inq.init(q: w@raw@raw/u8)), 1))
+                    y@follow = 5
+                func rcFieldOk(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Rq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Rq.init(f: Kimi.Intrinsics.makeRc(Inq.init(q: null))))
+                    y@follow = 5
+                func arcFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Aq = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Aq.init(f: Kimi.Intrinsics.makeArc(Inq.init(q: w@raw@raw/u8))))
+                    y@follow = 5
+                func arcTupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(arc/Inq, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (Kimi.Intrinsics.makeArc(Inq.init(q: w@raw@raw/u8)), 1))
+                    y@follow = 5
+                func argRcFieldBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/Og = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, Og.init(g: Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: w@raw@raw/u8)))))
+                    y@follow = 5
+                func argRcTupleBad(y: uniq/i32)
+                    let w = y@follow@ref
+                    let s: raw/(Gr<raw/u8>, i32) = Raw.allocate(1)
+                    unsafe => Raw.initialize(s, (Gr<raw/u8>.init(f: Kimi.Intrinsics.makeRc(Bx<raw/u8>.init(v: w@raw@raw/u8))), 1))
                     y@follow = 5
                 """));
 
