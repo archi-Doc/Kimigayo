@@ -218,12 +218,9 @@ internal sealed partial class MirBorrows
             return false;
         }
 
-        for (var i = 0; i < steps.Length; i++)
+        if (!Meets(steps, this.loanSteps.AsSpan(owner.Start, owner.Count)))
         {
-            if (!Meets(steps[i], this.loanSteps[owner.Start + i]))
-            {
-                return false;
-            }
+            return false;
         }
 
         if (kind is AccessKind.UniqueBorrow or AccessKind.Activate or AccessKind.ActivateInPlace)

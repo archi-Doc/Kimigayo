@@ -42,10 +42,11 @@ public sealed partial class Binding
     private int invalidations;
 
     // The running pass's part (PassPart.DerivedIssues), which its Check writes (EnterPass).
-    private List<Koto> derivedIssues;
+    private List<BindingIssue> derivedIssues;
 
-    /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
-    internal IReadOnlyList<Koto> DerivedIssues { get; }
+    /// <summary>Gets final problems that are explained by failed prerequisites, each by its own requirement; they are reported as derived
+    /// problems.</summary>
+    internal IReadOnlyList<BindingIssue> DerivedIssues { get; }
 
     // A recovery node, an ErrorKoto or synthesized syntax kept in place of a rejected form, stands for its syntax error.
     internal static bool IsRecovery(Koto node, out DiagnosticKey cause)
@@ -442,6 +443,16 @@ public sealed partial class Binding
         {
             this.partPrerequisites[node] = part;
         }
+    }
+
+    // SPEC 23.1.2 (rule W): an owner whose check read a failed part and fails only because of it is Invalid resting on that part, with no
+    // failure of its own, so it is derived and records nothing. That holds only where the part's own record publishes: an attribute's
+    // target on its rejected attribute (InvalidateAttributeTarget), whose record is direct, since an attribute carries no frame or part
+    // another check writes. It runs before the pass's first environment walk, so no change signal is due (Invalidated).
+    private void RestOnPart(Koto owner, Koto part)
+    {
+        this.SetRecordedState(owner, BindingState.Invalid);
+        this.AddPrerequisite(owner, part);
     }
 
     /// <summary>Records a part that a later check of the pass judges, such as a projection use, whose conformance is checked after the

@@ -199,15 +199,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.IsDerived(node, failure))
-        {
-            this.derivedIssues.Add(node);
-        }
-        else
-        {
-            this.issues.Add(new(node, this.CodeOf(node, failure)) { Failure = failure, Problem = this.SlotProblem(node) });
-        }
-
+        this.CollectProblem(node, failure, this.CodeOf(node, failure), this.SlotProblem(node));
         this.CollectProblems(node);
     }
 }

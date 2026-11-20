@@ -376,11 +376,6 @@ public sealed partial class Binding
                 {
                     this.OriginInference ??= binding.BeginOriginInference(this.Call, binder);
                     binding.CollectOriginInference(matched, actual, this.OriginInference, known: quantifier);
-                    if (part.Contribution == Contribution.Evidence)
-                    {
-                        // N2 (U2b): a completed Signature part's premises are SolveLate's, over the instantiated parameter Type, alone.
-                        binding.CollectInputPremises(matched, matched, this.OriginInference, this.Call);
-                    }
                 }
             }
 

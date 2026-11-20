@@ -234,21 +234,16 @@ public sealed partial class Binding
         // an Origin parameter is published to the solve (OriginInference.WaitingNamed), which writes a covariant one as its evidence
         // candidate met with the call's region (CallRegion). Either way the solution is `(E and region)`, SPEC 15.3.6's candidate
         // with the region for the bounds not known yet, and E is kept in the candidate's openings (OriginInference.Opened), which
-        // start empty at its first solve. A candidate without a Signature row reads nothing more.
+        // start empty at its first solve. A candidate without a position without evidence (HasWaitingPosition, the rows
+        // CollectPositionNames reads) reads nothing more.
         internal readonly void OpenWaited()
         {
-            var signature = false;
-            for (var i = 0; !signature && i < this.Rows.Length; i++)
-            {
-                signature = this.Rows[i].Contribution == Contribution.Signature;
-            }
-
-            if (!signature)
+            var binding = this.Binding;
+            if (!binding.HasWaitingPosition(this))
             {
                 return;
             }
 
-            var binding = this.Binding;
             var opened = binding.InferenceOf(this.Call, this.Function);
             if (this.FirstSolve)
             {

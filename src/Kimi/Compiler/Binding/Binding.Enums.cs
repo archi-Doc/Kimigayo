@@ -493,9 +493,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.4 steps 1, 3, 15.3.6 (Rule C): the call's solve of the construction's Origins (SolveOriginInference), which the enum's
-    // clauses and each Signature leaf row's premise over its payload's instantiated sub-Type bound (CollectPositionPremises), as
-    // SolveLate's do a candidate's. Evidence that carries an Origin began the inference (InferAdapted); without it or such a row nothing
-    // bounds them.
+    // clauses and each leaf row's premises over its payload's instantiated sub-Type bound (CollectPositionPremises; PLAN G1115), as
+    // SolveLate's do a candidate's. Evidence that carries an Origin began the inference (InferAdapted); without it or a Signature row
+    // nothing bounds them.
     private void SolveConstructionOrigins(ref SlotSolution solution)
     {
         this.CollectPositionPremises(ref solution);

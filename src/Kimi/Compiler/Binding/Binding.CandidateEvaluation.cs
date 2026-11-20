@@ -212,8 +212,7 @@ public sealed partial class Binding
 
                 var function = (FunctionKoto)candidates[candidate].Symbol!.Declaration;
                 var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
-                SemanticsKind? mode = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }
-                    ? pattern.Semantics : null;
+                SemanticsKind? mode = pattern.SafeReferent is not null ? pattern.Semantics : null;
                 // SPEC 10.5: a waiting reference, like an anonymous body, never ranks the outer candidates; once their ordinary
                 // inputs and defaults select one, its fixed call signature selects the reference, even when the signatures differ.
                 if (CallableSlotType(pattern, CallSlotOwner(function)) is null || (!first && acquisition != mode))

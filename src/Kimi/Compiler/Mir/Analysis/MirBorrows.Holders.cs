@@ -566,7 +566,7 @@ internal sealed partial class MirBorrows
             return -1;
         }
 
-        var (at, reference) = (from.Projection, ReferenceTypes.IsReference(cases.TypeOf(from)));
+        var (at, reference) = (from.Projection, cases.TypeOf(from).SafeReferent is not null);
         while (at != 0 && (this.Payload(at) || (reference && this.body.Projections[at].Kind == MirProjectionKind.Field)))
         {
             at = this.body.Projections[at].Prefix;
