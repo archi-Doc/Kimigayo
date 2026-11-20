@@ -7573,6 +7573,20 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a step's meaning). Names: `MirStepClass.Element` (`MirSteps.Element()` and the Backend's `LayoutNeed.Element` mean any sequence's
     element), `IndexCall` (Binding builds no index call for an Array's element), `Loan.Reach` (MirBorrows' reach on a state) and
     `Loan.Compared` (comparison members in MirBuilder and MirEffects): each would give a name in use a second meaning. Not temporary.
+- **R4-M228 W's read-once mark is W's own** (Middle, A5, 2026-11-21; D-914-2 part 1, Q-593 with D-914-1, the owner's O-457 (b); design
+  `middle\notes\d914-2-design.md` §2.2, accepted; D-914-1's code review N2 settled at its cause; behaviour unchanged).
+  - **Rule.** W reads each part of a reached holder's state once per walk by its own ordered mark: `MirBorrows.States`' `walkedBy`, by
+    set id, at level 2 · walk (plus 1 at Through, which covers Named), with a `long` walk counter never reset, as `stepping` is.
+    `steppedBy` and `stepping` are the reads' alone (`Content`, `Chain`). So a read inside a W walk (`WriteTargets` → `Prefix` →
+    `Content`, which D-914's Members branch will call) moves no mark of the walk's; `WriteTargets`' contract says it may be called there.
+  - **Representation.** `walkedBy` holds 8 B per set id W reads, the same length as `steppedBy`. An `int` counter would wrap after 2^31
+    walks in a Compilation's lifelong MirAnalysis and read every part as read.
+  - **D-914-1, landing with it (no entry of its own):** refs(S) (A3 5) has one enumeration, `MirBorrows.Reach.Refs` (holder, root,
+    mode), each reader filtering by the mode; the holders a write through a Place writes are one member, `WriteTargets`, read by
+    `Flow.Store` and the pun rule. `Content`'s second statement of refs(S) is PLAN G1177.
+  - **Rejected:** a `Step()` after a nested read (a repair after the fact that re-reads the walk's earlier parts); computing the covered
+    storage before the walk (the holders are found only by the walk); W's `Read` in `nodeParts` with reserved keys (a hash lookup on W's
+    hottest step); an `int` counter for an ordered level (it wraps).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
