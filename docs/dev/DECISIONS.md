@@ -11883,7 +11883,8 @@ resumed by R4-M86 (2026-10-20).
     the existing six (`NotCall`, `NoReceiver`, `NoBase`, `OutsideBody`, `NoSelfCapture`, `NotInstanceFunction`). No payload: span and
     related location stay the ones published before. Checks, their order and acceptance do not change.
   - `Binding.Diagnostics.VirtualOverrides`, the SPEC 6.4 adapter, publishes `cause:Enumeration` and moves the earlier sentences verbatim
-    into the Note. Catalog: both codes `Evidence="cause:Enumeration"` without a Label, as `MissingOverrideTarget_Kd`.
+    into the Note. Catalog: both codes `Evidence="cause:Enumeration"` without a Label, as `MissingOverrideTarget_Kd`. (Superseded
+    for `InvalidVirtualDeclaration_Kd` by R7-M62 (R7-E2 E2-3a): the sentences are the `rule` Reason value and the Label, no Note.)
   - No code, requirement, `BindingFailure`, IR form or Evidence kind is added. Rejected: EffectBound's shape (the same text formed in
     the adapter as a Text Reason), which keeps the free text and its elision; separate adapter files without a contract of their own.
   - (amended G478, R4 #23) The arithmetic selection and eligibility checks close their causes the same way (`ArithmeticSelectionCause`
@@ -12174,6 +12175,8 @@ resumed by R4-M86 (2026-10-20).
     signature's scope, so no reader's memo stays sound); row 20 at U0 (it reopens BU-91); a Dictionary's K and V as direct parts (SPEC 4.9 stores
     the entry, and S2 needs `(K, V)`).
 - **BU-123 R7-E1a The fact vocabulary moves to Core** (2026-11-07; plan RP3, RP19, §5.1 E1; C-103). `MirFact` and `MirFactKind` become `ProblemFact(ProblemFactKind Kind, SourceRef Site, long Value = -1)` and `ProblemFactKind` in `Core/ProblemFact.cs`, unchanged in shape and numbering, one component, the fact vocabulary. Reason: Binding's problem records (E1b) use the same facts, and Binding may not reference Mir. `MirProblem`, `MirReport` and the publisher's logic stay; with E1b's record, two records over one fact vocabulary, no phase payload. `Cause` stays MIR-only with its contract unchanged. Every kind is written by the MIR analyses until E1b. `ProblemFactKind` is not an ARCH-closed vocabulary (R4-M92's reading). Rejected: a recorder private to Binding (a third record shape); one type with a phase payload. Earlier entries keep the old names as history.
+  - Superseded in part by R7-M62 (R7-E2 E2-3a, 2026-11-20): "`Cause` stays MIR-only": Binding's recorder writes `Cause` with Value -1,
+    a never-shown cause a check names; the three Binding kinds follow it, appended.
 - **BU-124 A conformance proves no signature's formation** (2026-11-07; R7-V5, PLAN G556; the owner's O-44, verbatim 「(a) 有効とする」) SPEC 8.3.1, 8.3.2, 8.3.3, 8.6.3, 11.9.1, 15.6.1, 23.1.2.
   Supersedes in part BU-120 (its "Contract matching calls the compute directly", and the removal it names) and R4-M163 (its "Stays" for contract matching).
   - Rule: verifying a conformance reads no Type's formation from a function's or an accessor's signature, on the requirement's side or the implementation's. It proves 8.6.3's rows: Constraints, Inputs, Result Type, Result Origins, Access, Context and Effects.
@@ -23205,6 +23208,41 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Unsupported`; lost before and after E2-2) until the pending override rests on its original without a failure of its own (PLAN
     G1131: E2-5's override family or R7-E5), after which the branch goes; the limit derived by a node's recorded inputs (a rejected
     `#LibraryImport`, a consulted unresolved part) waits for R7-E5's per-problem inputs (PLAN G1141).
+- **R7-M62 A family-1 problem's explanation is its typed facts, in three appended Binding kinds** (Back, 2026-11-20; R7-E2 E2-3a,
+  Q-575, D-930; Major unit of a Major design, R7 plan §5.1 E2; design `back\notes\r7-e2\e2-design.md` with B's E2 rulings 7, 8, 11
+  and 14, the delta `e2-3-delta.md` §3 and §7 reviewed by the Front on C-405 (REVISE B1, ruled by ruling 8, then re-checked); the
+  Front's implementation review, ACCEPT) SPEC 23.1.2, 23.3. Supersedes in part BU-123 (`Cause` MIR-only) and BU-111 (its Note and
+  "without a Label").
+  - **Kinds.** Core's `ProblemFactKind` appends `Related` (a location the problem relates that its check chose and the record shows,
+    such as the declaration an arity names; Value the role's ordinal in its code's adapter row), `Count` (a count the requirement
+    states, such as an arity's declared and written counts; in its row's order) and `Reason` (a row of the closed Binding enumeration
+    the requirement names, `NoInitProblem`, `VirtualDeclarationCause`; its text is the adapter's), one meaning each, Binding only (a
+    MIR record carrying one is `InternalInvariant_Kd`).
+  - **Recording.** A check records them with its problem (`Record`); `ReportProblem` is the one table from a problem's requirement to
+    its adapter row, and an explanation table goes with its last site (`noInitFailures`, `arityFailures`,
+    `virtualDeclarationFailures`, `constraintDiagnosticCauses`, with their `ReportIssue` arms). A subject's own syntax is the adapter's
+    read, never a fact (ProtectedPlacement and AccessorReceiverShape record none).
+  - **`Cause` (supersedes its writer line).** A Binding check names a never-shown cause with `Cause` (its existing meaning; Value -1:
+    a Binding cause at the site): FailConstraint's and a Callable requirement's named part, whose row publishes the problem derived
+    from that part's key when the part's own record is missing information, else directly. Before, the MIR analyses were its only
+    writer (BU-123; `ProblemFact.cs`, COMPILER_ARCHITECTURE's Problem facts row), as R7-E2's E5 condition asked to change.
+  - **Catalog.** The moved codes' Notes go: `InvalidNoInit_Kd` 1, `InvalidVirtualDeclaration_Kd` 7 sentences,
+    `InvalidTypeFormation_Kd`'s arity 3 forms. `InvalidVirtualDeclaration_Kd` takes `Evidence="cause:Enumeration,rule:Text"` and
+    `Label="{1}"`: the adapter forms the rule each cause breaks, every rule within `DiagnosticLimits.ValueLength` (96;
+    OwnGenericParameters' says "own generic parameters", 86), so the CLI and LSP keep the reason ("objref/Self"). This supersedes
+    BU-111's Note clause and its "without a Label": BU-111 rejected a Text Reason for its elision at 96 characters, which no rule now
+    reaches (each asserted unelided). `InvalidTypeFormation_Kd` takes `Evidence="declared:Number,written:Number"`, present on arity
+    records only (all or none).
+  - **Temporary.** FailConstraint's first-failure guard stays `[Transitional("R7")]` until E2-5 decides each caller (ruling 7 Q1).
+    InvalidEffectBound's record (c6) moves to E2-3b: its rejection's `Symbol` has no kind of this list, and the selector's own
+    rejection as a second problem moves its publication to the further-problem walk (B's E2 ruling 14).
+  - **Rejected.** A fourth fact kind for a Binding cause (one concept, one form); a second meaning of `Related` (a never-shown cause
+    beside the related location a record shows; the Front's B1); `Span` facts copying a subject's syntax; deleting a table other
+    checks judge by (`effectBoundRejections`); a catalog phrase per Enumeration value (a new catalog mechanism; the Text rule within the
+    limit answers BU-111's reason with the existing one).
+  - **Moves (Q13).** Text only on `InvalidNoInit_Kd`, `InvalidVirtualDeclaration_Kd` (its rule as a Reason and the Label) and
+    `InvalidTypeFormation_Kd`'s arity (its counts as Reasons in `kimi.check/2`); `ProtectedPlacement_Kd` at a declaration failed
+    earlier is its own record again; no acceptance move.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
