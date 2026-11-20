@@ -183,7 +183,7 @@ public partial class PropertyBindingTest
     [InlineData(ComputedWitnessNamesItsConformance, "clean")]
     [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 6*InvalidConstraint_Kd 2*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
     [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UninitializedPlace_Kd 9*UnsatisfiedConstraint_Kd")]
-    [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd")]
+    [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd")] // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the user of the failed witness rests
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
     public void APropertyWitnessFormsNoSignature(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 

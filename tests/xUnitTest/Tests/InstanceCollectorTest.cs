@@ -358,7 +358,7 @@ public sealed partial class InstanceCollectorTest
                 },
                 {
                     "virtualClause", VirtualBase + Slot + "\n        T is Missing\n        return value@follow\n" + Create,
-                    "InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd UnresolvedBinding_Kd", string.Empty // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the virtual's record over the override's unresolved `T is Missing` goes
                 },
                 {
                     "virtualBlock", "contract Marker\n" + VirtualBase + "    Self is Marker when T is Missing\n    " + Slot + " => value@follow\n" + Create,
