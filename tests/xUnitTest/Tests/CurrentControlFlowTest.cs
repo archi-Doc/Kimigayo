@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
@@ -303,6 +304,25 @@ public class CurrentControlFlowTest
             var body = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>().Single().ElseBody;
             var nodes = c.Binding.GuessedCompletionNodes(body, body);
             Assert.True(nodes.Length == 1 && nodes[0] == body, $"query {i}: {nodes.Length} nodes");
+        }
+    }
+
+    // R7-N5 B6b (the Front's C6): a query number skips 0, the number an absent row carries (Binding.NextQuery, TypeMemo.Begin's step
+    // too), so the first query after the number's wrap reads a node no query of the pass wrote as absent and composes it, recording its
+    // guess. The guess walk's number starts two values before the wrap; each query asks a failure body no earlier query asked.
+    [Fact]
+    public void AGuessQueryAfterTheNumbersWrapComposesItsNode()
+    {
+        var c = Parse("func run(flag: bool)\n    require flag else => missing()\n    require flag else => missing()\n    require flag else => missing()\n");
+        Assert.False(c.Bind().IsComplete);
+        var bodies = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<RequireKoto>().Select(static x => x.ElseBody).ToArray();
+        Assert.Equal(1, c.Binding.GuessedCompletionNodes(bodies[0], bodies[0]).Length);
+        var guessed = typeof(Binding).GetField("guessedCompletion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        typeof(StructuralCompletion).GetField("query", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(guessed, uint.MaxValue - 1);
+        for (var i = 1; i < bodies.Length; i++)
+        {
+            var nodes = c.Binding.GuessedCompletionNodes(bodies[i], bodies[i]);
+            Assert.True(nodes.Length == 1 && nodes[0] == bodies[i], $"body {i}: {nodes.Length} nodes");
         }
     }
 

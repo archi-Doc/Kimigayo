@@ -35,8 +35,9 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
     private readonly List<Koto> children = new();
     private Collector? collector;
 
-    // The query the memo's current rows carry: 1 at creation, advanced by Clear, so 0 (an absent row's) is no query.
-    private uint query = 1;
+    // The query the memo's current rows carry: FirstQuery at creation, advanced by Clear through Binding.NextQuery, which skips 0 (an
+    // absent row's number: no query).
+    private uint query = Binding.FirstQuery;
 
     /// <summary>Selects an instance's working-state family of a module's NodeColumns: a node's completion in the query its row carries.
     /// Each of the four creators passes a static lambda naming its family, chosen once at creation (no capture, no allocation); no reader
@@ -64,7 +65,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
 
     internal void Clear()
     {
-        this.query++;
+        this.query = Binding.NextQuery(this.query);
         this.outward.Clear();
     }
 
