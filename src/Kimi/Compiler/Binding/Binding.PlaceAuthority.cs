@@ -24,8 +24,12 @@ namespace Kimi.Compiler;
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
 //   PairCapability), a named root's reassignability (Reassignable) and a special receiver's authority (Receiver).
 // - Outputs: the predicates above.
-// - Invariants: one path computation decides writes, Moves and borrows; a shared layer anywhere on a path bounds it to Read; a path's
-//   layer below a Place is its own Type's (LayerAuthority).
+// - Invariants: one path computation decides writes, Moves and borrows: a query folds the Place's path once from its root (PathFold;
+//   LendFold for a borrow in a mode from a scope), each prefix's grant, writability and lending decided from its owner prefix's, never by
+//   a new query on the path (D-941); the one reading of a receiver outside the path is a node the path stops at (a getter result, a view
+//   range), whose receiver is folded as its own query (Owner, LentOwner). One query a rule still makes: an exclusive AccessType of a
+//   receiver carrying a synthesized shared borrow reads its ReferentAuthority (PLAN G1161). A shared layer anywhere on a path bounds it
+//   to Read; a path's layer below a Place is its own Type's (LayerAuthority).
 // - Prohibitions: nothing here reports a diagnostic but FailStaticBorrow, called where an implicit Borrow's operation is final (callers
 //   record the failure AccessFailure or BorrowFailure names), selects a candidate or changes a Type.
 public sealed partial class Binding
@@ -141,6 +145,9 @@ public sealed partial class Binding
     private static bool StaticStorageAccess(BindingSymbol symbol, BindingScope scope)
         => symbol.Kind == BindingSymbolKind.Storage && IsStatic(symbol.Declaration.BoundSymbol) && scope.Function != symbol.Scope.Function;
 
+    // The steps that end a path (NextPathStep): a root or a raw dereference, a guard candidate and a special receiver.
+    private static bool IsPathRoot(PathStep step) => step is PathStep.Root or PathStep.RawFollow or PathStep.Candidate or PathStep.Receiver;
+
     // SPEC 3.4, 13.5.5, 15.1.5: the access a Place's path grants under a case assignment (SPEC 8.15.2), computed once for writes,
     // Moves and borrows. Owner is a direct path (a local, parameter or static and their inline parts), Uniq a path through an
     // exclusive reference or objuniq view or rooted at the destruction receiver (Receiver), and Ref a path through a shared layer: a
@@ -176,20 +183,38 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         this.pathFoldSteps++;
         var step = this.NextPathStep(source, out var next);
-        if (step is PathStep.Root or PathStep.RawFollow or PathStep.Candidate or PathStep.Receiver)
-        {
-            // A root or a raw dereference (no raw Origin denies an access: SPEC 5.7 Authority; condition 3 of SPEC 5.2.1), a guard
-            // candidate (SPEC 14.8.3: shared), or a special receiver, whose path grants its row's authority (SPEC 6.3.4, 16.3.1).
-            var root = step switch
-            {
-                PathStep.Candidate => PathGrant.Shared,
-                PathStep.Receiver when Receiver(source)?.Parts == SemanticsKind.Uniq => PathGrant.Owner with { Authority = SemanticsKind.Uniq },
-                _ => PathGrant.Owner,
-            };
-            return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null));
-        }
+        return IsPathRoot(step) ? this.RootPrefix(source, step) : this.Prefix(source, step, next, this.PathFold(next, assignment), assignment);
+    }
 
-        var owner = this.PathFold(next, assignment);
+    // SPEC 3.4.3, 15.1.5, 15.6.2 (the invariant's borrows): PathFold's prefixes read for a borrow in a mode from a scope (LendsPlace),
+    // each prefix's lending decided once from its owner prefix's (Lends), so that a borrow's query takes one step per path step.
+    private PathLend LendFold(Koto source, BindingScope scope, bool exclusive)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        this.pathFoldSteps++;
+        var step = this.NextPathStep(source, out var next);
+        PathLend? owner = IsPathRoot(step) ? null : this.LendFold(next, scope, exclusive);
+        var path = owner is { } lent ? this.Prefix(source, step, next, lent.Path, []) : this.RootPrefix(source, step);
+        return new(path, exclusive, this.Lends(source, path, owner, scope, exclusive, out var staticRoot), staticRoot);
+    }
+
+    // The prefix of a path's root: a root or a raw dereference (no raw Origin denies an access: SPEC 5.7 Authority; condition 3 of SPEC
+    // 5.2.1), a guard candidate (SPEC 14.8.3: shared), or a special receiver, whose path grants its row's authority (SPEC 6.3.4, 16.3.1).
+    private PathPrefix RootPrefix(Koto source, PathStep step)
+    {
+        var root = step switch
+        {
+            PathStep.Candidate => PathGrant.Shared,
+            PathStep.Receiver when Receiver(source)?.Parts == SemanticsKind.Uniq => PathGrant.Owner with { Authority = SemanticsKind.Uniq },
+            _ => PathGrant.Owner,
+        };
+        return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null));
+    }
+
+    // One prefix of a fold, from the prefix it selects from (owner): its grant under the case assignment (Then), its access under the
+    // empty one, whether it is a raw Place's inline part (SPEC 5.2), and whether it offers Write (Writes).
+    private PathPrefix Prefix(Koto source, PathStep step, Koto next, in PathPrefix owner, ReadOnlySpan<PairCase> assignment)
+    {
         var grant = this.Then(owner.Grant, step, source, next, owner, assignment);
         var access = assignment.IsEmpty ? grant.Access : this.Then(PathGrant.Owner with { Authority = owner.Access }, step, source, next, owner, []).Access;
         var raw = owner.Raw && source is BinaryKoto part && this.IsInlinePart(part);
@@ -256,6 +281,10 @@ public sealed partial class Binding
     // The prefix a part is selected from (SPEC 15.1.5): its fold beside the part's (PathFold), or, past a node the path stops at (a getter
     // result or a view range selection, NextPathStep's root), the receiver's own fold.
     private PathPrefix Owner(PathPrefix? owner, Koto receiver) => owner ?? this.PathFold(receiver, []);
+
+    // The lending of the prefix a part is selected from (SPEC 15.6.2), as Owner reads its writability: its fold beside the part's
+    // (LendFold), or past a node the path stops at the receiver's own fold.
+    private PathLend LentOwner(PathLend? owner, Koto receiver, BindingScope scope, bool exclusive) => owner ?? this.LendFold(receiver, scope, exclusive);
 
     // SPEC 3.4.3, 4.7.1, 4.8.2, 5.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's
     // forms that PathAuthority, PathOrigin and ContainedOrigin walk: what `source` selects, and next, the node it selects from (`source` itself at a
@@ -587,8 +616,12 @@ public sealed partial class Binding
     // SPEC 13.5.5, 13.5.6, 15.6.2: whether SPEC lends an owning handle's object or payload, from a Place it lends (LendsPlace, with the
     // static Field at the root of the handle Place's path) or from a Temporary Value materialized for the operation; the handle's own
     // authority (shared for rc/arc) is checked by the caller.
-    private bool LendsHandle(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
-        => this.LendsPlace(source, scope, exclusive, out staticRoot) || this.BorrowableTemporary(source, exclusive, true, false);
+    // Lent is the handle Place's lending fold in the mode (LendFold).
+    private bool LendsHandle(Koto source, in PathLend lent, out Koto? staticRoot)
+    {
+        staticRoot = lent.StaticRoot;
+        return lent.Lends || this.BorrowableTemporary(source, lent.Exclusive, true, false);
+    }
 
     // SPEC 15.6.2, PLAN P42: whether Binding lends a Place to a written Borrow: as SPEC does (LendsPlace), except a Place rooted at a
     // static Field, whose Loans no analysis models yet (BorrowFailure names the Borrow unsupported). An implicit Borrow belongs to an
@@ -626,89 +659,99 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field or static storage at the root
     // of the path that lends it (SPEC 15.6.2: through inline parts, elements and an owning handle's payload, an own step), if any; a
-    // node, not a bool, as the structure limits leave this member one bool parameter, the mode. Below a pair layer the walk asks
-    // LendsOwner (PairCapability) and drops the static root: no static's Type has one.
+    // node, not a bool, as the structure limits leave this member one bool parameter, the mode (LendFold, Lends).
     private bool LendsPlace(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
     {
+        var lent = this.LendFold(source, scope, exclusive);
+        staticRoot = lent.StaticRoot;
+        return lent.Lends;
+    }
+
+    // LendsPlace's rule for one prefix of a lending fold (LendFold): `node`, whose path is `path`, lent in the mode, with staticRoot;
+    // owner the prefix it is selected from (LentOwner). Below a pair layer it asks PairCapability and drops the static root: no
+    // static's Type has one.
+    private bool Lends(Koto node, in PathPrefix path, PathLend? owner, BindingScope scope, bool exclusive, out Koto? staticRoot)
+    {
         staticRoot = null;
-        source = KotoHelper.UnwrapParentheses(source);
-        if (exclusive && this.ReachedThroughShared(source))
+        if (exclusive && path.Access == SemanticsKind.Ref)
         {
             return false; // SPEC 15.6.2: a shared layer anywhere on the path denies an exclusive borrow.
         }
 
-        if (IsRawRoot(source))
+        if (IsRawRoot(node))
         {
             return true; // SPEC 5.2.2, 5.7: a raw Place is lent in either mode, never as static storage; only a safe shared layer inside it denies (above).
         }
 
-        if (source is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed)
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed)
         {
             // SPEC 13.5.5: the referent of uniq/T offers Read and Write, that of ref/T Read only; a shared layer
             // anywhere on the path bounds the capability to shared access.
-            return !exclusive || (followed.Left.BoundType?.Semantics == SemanticsKind.Uniq && !this.ReachedThroughShared(followed.Left));
+            return !exclusive || (followed.Left.BoundType?.Semantics == SemanticsKind.Uniq && this.LentOwner(owner, followed.Left, scope, exclusive).Path.Access != SemanticsKind.Ref);
         }
 
-        if (source is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
         {
-            return this.PairCapability(pair, scope, exclusive); // SPEC 13.5.5: the weakest admitted capability.
+            // SPEC 13.5.5: the weakest admitted capability.
+            return this.PairCapability(this.PairAdmitted(pair), pair.Left, this.LentOwner(owner, pair.Left, scope, exclusive));
         }
 
-        if (source is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
         {
             // SPEC 13.5.5, 15.6.2: an owning path inherits the root's mutability, the payload of an owning handle extending the handle
             // Place's path (lent with it, or with the Temporary Value holding it); rc/arc/objref paths are shared.
             var handle = payload.Left.BoundType!;
+            var lent = this.LentOwner(owner, payload.Left, scope, exclusive);
             return handle.Semantics switch
             {
                 SemanticsKind.ObjRef => !exclusive,
-                SemanticsKind.ObjUniq => !exclusive || !this.ReachedThroughShared(payload.Left),
-                SemanticsKind.Obj => this.LendsHandle(payload.Left, scope, exclusive, out staticRoot),
-                _ => !exclusive && this.LendsHandle(payload.Left, scope, false, out staticRoot),
+                SemanticsKind.ObjUniq => !exclusive || lent.Path.Access != SemanticsKind.Ref,
+                SemanticsKind.Obj => this.LendsHandle(payload.Left, lent, out staticRoot),
+                _ => !exclusive && this.LendsHandle(payload.Left, lent, out staticRoot),
             };
         }
 
-        if (source is IndexKoto userIndex && this.IsUserIndex(userIndex))
+        if (node is IndexKoto userIndex && this.IsUserIndex(userIndex))
         {
             return !exclusive || this.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1
         }
 
-        if (source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice })
+        if (node is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice })
         {
             return !exclusive;
         }
 
-        if (source is IndexKoto index && index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary })
+        if (node is IndexKoto index && index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary })
         {
             return !exclusive || index.Left.BoundType!.Semantics == SemanticsKind.Uniq;
         }
 
-        if (source is MemberAccessKoto element && element.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.Tuple })
+        if (node is MemberAccessKoto element && element.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
             return this.TryBorrowedTupleElement(element, out _, out _) &&
                 (!exclusive || element.Left.BoundType!.Semantics == SemanticsKind.Uniq);
         }
 
-        if (source.BoundSymbol?.Property is { } property)
+        if (node.BoundSymbol?.Property is { } property)
         {
-            if (!property.Getter.IsStandard || !this.Accessible(property.Symbol, scope, property.Getter.Access, (source as MemberAccessKoto)?.Left.BoundType))
+            if (!property.Getter.IsStandard || !this.Accessible(property.Symbol, scope, property.Getter.Access, (node as MemberAccessKoto)?.Left.BoundType))
             {
                 return false;
             }
 
-            if (exclusive && (!property.Setter.IsStandard || !this.Accessible(property.Symbol, scope, property.Setter.Access, (source as MemberAccessKoto)?.Left.BoundType)))
+            if (exclusive && (!property.Setter.IsStandard || !this.Accessible(property.Symbol, scope, property.Setter.Access, (node as MemberAccessKoto)?.Left.BoundType)))
             {
                 return false;
             }
 
             // SPEC 15.6.2: a static Field, qualified or in its group, is a root Place, lent as its accessors allow (above).
-            if (IsStaticField(source))
+            if (IsStaticField(node))
             {
-                staticRoot = source;
+                staticRoot = node;
                 return true;
             }
 
-            if (source is MemberAccessKoto access)
+            if (node is MemberAccessKoto access)
             {
                 // SPEC 15.1.5: a special receiver lends its own initialized Fields as its row says, although the receiver itself is
                 // not an assignable binding (Receiver).
@@ -720,39 +763,44 @@ public sealed partial class Binding
                 // SPEC 13.5.5, 15.6.2: a payload Field extends the handle Place's path, exclusively only through an exclusive payload.
                 if (access.Left.BoundType?.HandleMode is { } handle)
                 {
-                    return (!exclusive || handle.PayloadAuthority == LoanRequirement.Uniq) && this.LendsHandle(access.Left, scope, exclusive, out staticRoot);
+                    return (!exclusive || handle.PayloadAuthority == LoanRequirement.Uniq) &&
+                        this.LendsHandle(access.Left, this.LentOwner(owner, access.Left, scope, exclusive), out staticRoot);
                 }
 
                 // SPEC 3.4.3, 13.5.5: past an exclusive layer of the receiver's own Type, a pair layer admitting only uniq included,
                 // the Field is lent in either mode; past another reference, view or raw pointer it is shared; an owned receiver, also
                 // past a pair layer admitting owner, lends it as the receiver Place does.
                 return this.LayerAuthority(access.Left, []) == SemanticsKind.Uniq ||
-                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.LendsOwner(access.Left, scope, exclusive, out staticRoot));
+                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.LendsOwner(access.Left, this.LentOwner(owner, access.Left, scope, exclusive), out staticRoot));
             }
 
             return true;
         }
 
-        if (source is BinaryKoto part && this.IsInlinePart(part))
+        if (node is BinaryKoto part && this.IsInlinePart(part))
         {
-            return this.LendsOwner(part.Left, scope, exclusive, out staticRoot);
+            return this.LendsOwner(part.Left, this.LentOwner(owner, part.Left, scope, exclusive), out staticRoot);
         }
 
         // A closure environment binding is a Place of its own (SPEC 7.7.2), borrowable like a local; a static Property's storage outside
         // its accessor's function is a static root (StaticStorageAccess).
-        if (source is not IdentifierNameKoto || !this.IsBarePlace(source) || (exclusive && !this.Writable(source)))
+        if (node is not IdentifierNameKoto || !this.IsBarePlace(node) || (exclusive && !path.Writable))
         {
             return false;
         }
 
-        staticRoot = source.BoundSymbol is { } symbol && StaticStorageAccess(symbol, scope) ? source : null;
+        staticRoot = node.BoundSymbol is { } symbol && StaticStorageAccess(symbol, scope) ? node : null;
         return true;
     }
 
-    // SPEC 3.4.1, 3.4.2, 3.6, 15.1.5: whether the owner of a standard projection lends the part in a mode: a Place it lends (LendsPlace)
-    // or a writable temporary, in whose Temporary Place the part is a Place (WritableTemporary), as WritableOwner grants it Write.
-    private bool LendsOwner(Koto owner, BindingScope scope, bool exclusive, out Koto? staticRoot)
-        => this.LendsPlace(owner, scope, exclusive, out staticRoot) || this.WritableTemporary(owner);
+    // SPEC 3.4.1, 3.4.2, 3.6, 15.1.5: whether the owner of a standard projection lends the part in a mode: a Place it lends (lent, its
+    // lending fold, LendFold) or a writable temporary, in whose Temporary Place the part is a Place (WritableTemporary), as WritableOwner
+    // grants it Write.
+    private bool LendsOwner(Koto owner, in PathLend lent, out Koto? staticRoot)
+    {
+        staticRoot = lent.StaticRoot;
+        return lent.Lends || this.WritableTemporary(owner);
+    }
 
     // The forms of one path step (NextPathStep).
     private enum PathStep : byte
@@ -812,4 +860,8 @@ public sealed partial class Binding
     // under the empty assignment (ReachedThroughShared's reading); Raw, whether the prefix is a raw Place's root or an inline part of
     // one (SPEC 5.2); Writable, whether it offers Write (Writes).
     private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Writable);
+
+    // One prefix of a lending fold (LendFold): its path (PathFold's prefix), the query's mode, whether SPEC lends it in that mode, and
+    // the static Field or static storage at the root of the path that lends it (LendsPlace).
+    private readonly record struct PathLend(PathPrefix Path, bool Exclusive, bool Lends, Koto? StaticRoot);
 }

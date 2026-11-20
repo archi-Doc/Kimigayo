@@ -165,19 +165,17 @@ public sealed partial class Binding
     // operand's own capability (the owner case selects P itself: a borrow lends P as a Place or a writable temporary, LendsOwner, SPEC
     // 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A part of an
     // owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
-    private bool PairCapability(ConversionKoto followed, BindingScope scope, bool exclusive)
-        => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
-
-    private bool PairCapability(Koto operand, SemanticsMask admitted, BindingScope scope, bool exclusive)
+    // Lent is the operand's lending fold in the mode (LendFold).
+    private bool PairCapability(SemanticsMask admitted, Koto operand, in PathLend lent)
     {
-        if (!exclusive)
+        if (!lent.Exclusive)
         {
-            return (admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, scope, false, out _);
+            return (admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, lent, out _);
         }
 
         return (admitted & SemanticsMask.Ref) == 0 &&
-            ((admitted & SemanticsMask.Uniq) == 0 || !this.ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, scope, true, out _));
+            ((admitted & SemanticsMask.Uniq) == 0 || lent.Path.Access != SemanticsKind.Ref) &&
+            ((admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, lent, out _));
     }
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
@@ -199,7 +197,7 @@ public sealed partial class Binding
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
 
-        if (admitted == SemanticsMask.None || target is null || !this.PairCapability(source, admitted, scope, exclusive))
+        if (admitted == SemanticsMask.None || target is null || !this.PairCapability(admitted, source, this.LendFold(source, scope, exclusive)))
         {
             return false;
         }

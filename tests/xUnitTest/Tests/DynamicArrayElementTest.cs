@@ -53,16 +53,31 @@ public class DynamicArrayElementTest
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
     }
 
-    // D-941 (SPEC 4.7.1, 5.2, 15.1.5): a write of a k-deep Array element, through an owned local (v) or a raw pointer ((*p)), decides
-    // each prefix of its path once (Binding's PathFold), so binding it takes path steps linear in k; deciding a receiver prefix again
-    // from each Array step took 2^k (raw) and F(2k+2) (owned) writability decisions, which no k here finishes.
+    // D-941 (SPEC 4.7.1, 5.2, 15.1.5): a write or an exclusive borrow of a k-deep Array element, through an owned local (v) or a raw
+    // pointer ((*p)), decides each prefix of its path once (Binding's PathFold), so binding it takes path steps linear in k; deciding a
+    // receiver prefix again from each Array step took 2^k (raw) and F(2k+2) (owned) writability decisions, which no k here finishes;
+    // the borrow's lending is read from the same fold (LendFold).
     [Theory]
     [InlineData("write", "v")]
     [InlineData("write", "(*p)")]
+    [InlineData("uniq", "v")]
+    [InlineData("uniq", "(*p)")]
     public void ANestedArrayElementsPathTakesWorkLinearInItsDepth(string use, string root)
     {
         long[] work = [.. new[] { 30, 60, 120 }.Select(k => Bound(NestedElement(use, root, k)).Binding.PathFoldWork)];
         Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use} {root}: work {string.Join(", ", work)}");
+    }
+
+    // D-941 (SPEC 3.4.3, 13.5.5, 15.6.2): a write and an exclusive borrow through k exclusive references each stored in a Tuple below
+    // the one before (`r: uniq/(uniq/(...) during a, i32)`, `r.0..0`): each prefix's rules are decided once on every Place query, the
+    // receivers' exclusive access included, so binding them takes path steps linear in k (a read of the chain asks no Place query).
+    [Theory]
+    [InlineData("write")]
+    [InlineData("uniq")]
+    public void AnExclusiveReferenceChainTakesWorkLinearInItsDepth(string use)
+    {
+        long[] work = [.. new[] { 30, 60, 120 }.Select(k => Bound(ReferenceChain(use, k)).Binding.PathFoldWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use}: work {string.Join(", ", work)}");
     }
 
     // G1146 (D-932): a 64-deep Array element, one step past the former 64-step path walk, is written and borrowed exclusively.
@@ -88,5 +103,18 @@ public class DynamicArrayElementTest
         var statement = use == "write" ? place + " = 9" : "let u = " + place + "@uniq";
         return root == "v" ? $"public func main()\n    var v: {type} = {new string('[', k)}7{new string(']', k)}\n    {statement}\n"
             : $"func put(p: raw/{type})\n    unsafe\n        {statement}\npublic func main() => ()\n";
+    }
+
+    // `r.0..0` (k selections) written or borrowed exclusively, r: uniq/T_k with T_1 = (i32, i32) and T_j = (uniq/T_(j-1) during a, i32).
+    private static string ReferenceChain(string use, int k)
+    {
+        var type = "(i32, i32)";
+        for (var j = 2; j <= k; j++)
+        {
+            type = $"(uniq/{type} during a, i32)";
+        }
+
+        var place = "r" + string.Concat(Enumerable.Repeat(".0", k));
+        return $"func put(r: uniq/{type})\n    " + (use == "write" ? place + " = 9" : "let u = " + place + "@uniq") + "\n";
     }
 }

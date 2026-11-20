@@ -336,7 +336,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var unsupported = this.IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, scope, receiver == SemanticsKind.Uniq, out _));
+        var unsupported = this.IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, this.LendFold(handle, scope, receiver == SemanticsKind.Uniq), out _));
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
         {
