@@ -504,7 +504,8 @@ internal sealed partial class MirBuilder
         return temp;
     }
 
-    // A temp of a Type holding an Opaque value, which nothing lends (Unlent; DECISIONS R4-M149).
+    // A temp of the node's Type (or the one its consumer expects), or of none for a node of no Type (PLAN G1073), holding an Opaque
+    // value, which nothing lends (Unlent; DECISIONS R4-M149).
     private MirPlace OpaqueTemp(BoundType? type, Koto node)
     {
         var temp = this.Temp(type, node);
