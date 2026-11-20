@@ -55,7 +55,7 @@ public class OwnershipJoinTest
             var program = c.BuildMir();
             var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "inspect");
             var selected = Assert.Single(body.Locals.ToArray(), static x => x.Name == "selected");
-            var region = selected.Type.Origin!; // The `let` local's slot is its region, whose value is the join's meet (PLAN G492-a (ii)).
+            var region = selected.Type!.Origin!; // The `let` local's slot is its region, whose value is the join's meet (PLAN G492-a (ii)).
             Assert.Equal(OriginKind.Inference, region.Kind);
             var value = c.Binding.RegionValueAtUse(region, region.Binder!);
             Assert.Equal(OriginKind.Intersection, value.Kind);

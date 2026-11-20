@@ -30,7 +30,7 @@ public sealed partial class Binding
         // Inline element projections share the owner's lifetime. Their Loans
         // retain separate place footprints for overlap checking. A raw Place's root `p[n]` is no part of `p` (SPEC 5.3).
         source = KotoHelper.UnwrapParentheses(source);
-        while (source is MemberAccessKoto or IndexKoto && !ElementAccess.IsRawRoot(source))
+        while (source is MemberAccessKoto or IndexKoto && !IsRawRoot(source))
         {
             if (IsGetterResult(source))
             {
@@ -315,9 +315,9 @@ public sealed partial class Binding
         // parts, borrowed as a fresh anchor (RawAnchor); a reference read in place is its referent, through an exclusive one also
         // contained in its root's containment (EnvironmentContainment), and a Slice handle that is itself the Place is a Place of its root.
         // A pair layer's Origin is that of the reference it may hold, so the layer itself is its own dependency.
-        var layer = ElementAccess.AccessType(this, source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
+        var layer = this.AccessType(source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
         return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
-            ? (ElementAccess.IsRawRoot(source) ? this.RawAnchor(place, place) : this.OriginAtom(this.PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source)))
+            ? (IsRawRoot(source) ? this.RawAnchor(place, place) : this.OriginAtom(this.PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source)))
             : reachedThrough ? layer.Origin!
             : this.MeetWith(layer.Origin!, IsExclusive(layer.Semantics) ? this.EnvironmentContainment(source.BoundSymbol) : null)!;
     }

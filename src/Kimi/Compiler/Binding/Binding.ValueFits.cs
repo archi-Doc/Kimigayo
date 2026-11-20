@@ -39,6 +39,7 @@ public sealed partial class Binding
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         this.comparisonFacts.Clear();
+        this.comparisonRoot = default;
         this.fitRested = false;
         var walk = new RelationWalk(this, this, use, this.comparisonFacts); // No reader of region conjuncts: FitsValueAt's CheckTypeUse is.
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
@@ -113,6 +114,7 @@ public sealed partial class Binding
     {
         var facts = this.comparisonFacts;
         facts.Clear();
+        this.comparisonRoot = default;
         this.fitRested = false;
         var cursor = default(FitCursor);
         var fits = this.CheckTypeUseParts(actual, expected, use, OriginVariance.Covariant, ref cursor);
@@ -131,7 +133,9 @@ public sealed partial class Binding
     {
         var parts = this.fitParts;
         var start = parts.Count;
-        _ = new RelationWalk(this, this, use, this.comparisonFacts, parts) { Rows = this.comparisonRows }.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        var walk = new RelationWalk(this, this, use, this.comparisonFacts, parts) { Rows = this.comparisonRows };
+        _ = walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        (actual, expected) = walk.Root; // F's C2 ruling 315: its parts are parts of the pair it walked, which the decomposition reads.
         cursor.Next = start;
         var fits = this.CheckTypeUseCore(actual, expected, use, polarity, ref cursor);
         parts.RemoveRange(start, parts.Count - start);

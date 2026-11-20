@@ -538,7 +538,7 @@ public partial class LocalOriginClauseTest
             var c = MinimalEmissionTest.Analyze(source);
             var body = Assert.Single(c.BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "f");
             var pair = Assert.Single(body.Locals.ToArray(), static x => x.Name == "pair");
-            var region = pair.Type.Components[1].Origin!;
+            var region = pair.Type!.Components[1].Origin!;
             Assert.Equal(OriginKind.Inference, region.Kind);
             Assert.Equal(OriginKind.Intersection, c.Binding.RegionValueAtUse(region, region.Binder!).Kind);
         }

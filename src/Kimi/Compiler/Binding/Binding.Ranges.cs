@@ -176,12 +176,12 @@ public sealed partial class Binding
     {
         result = null;
         this.resolvedSlices.Remove(source);
-        var core = receiver.SafeReferent ?? receiver;
-        if (core.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
+        if (!IsSequence(receiver))
         {
             return false;
         }
 
+        var core = receiver.SafeReferent ?? receiver;
         var element = core.Components[0];
         BoundType? key;
         if (source.Right is RangeKoto range)
