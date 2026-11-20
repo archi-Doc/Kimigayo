@@ -783,15 +783,18 @@ public sealed partial class Binding
         return problem >= 0 && this.FactOf(problem, ProblemFactKind.Cause) is { } cause ? this.compilation.SyntaxOf(cause.Site) : null;
     }
 
-    private void ReportConstraint(Koto node, DiagnosticCollection? store, in BindingProblem problem, Koto cause)
+    // The adapter's InvalidConstraint row (F's C2 ruling 306): derived from a cause that is missing information, else direct; a
+    // declaration's premise error relates the premises that linked it (SPEC 8.2.3), read from their published Failed state
+    // (FailedPremiseClauses), never proved again.
+    private void ReportConstraint(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition, Koto? cause)
     {
-        if (IsMissingInformation(cause))
+        if (cause is not null && IsMissingInformation(cause))
         {
-            node.ReportDerivedIn(store, problem.Requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
+            node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
         }
         else
         {
-            node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
+            node.ReportIn(store, requirement, code, condition: condition, related: this.FailedPremiseClauses(node)?.ToArray());
         }
     }
 

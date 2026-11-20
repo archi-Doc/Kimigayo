@@ -476,10 +476,11 @@ public sealed partial class Binding
         {
             issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
-        else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd && this.FailedPremiseClauses(issue.Node) is { } premises)
+        else if (issue.Failure == BindingFailure.InvalidConstraint)
         {
-            // SPEC 8.2.3: a premise error is reported once, at its declaration, showing the premises that linked it.
-            issue.Node.Report(requirement, issue.Code, note: this.OmittedResultNote(issue.Node), related: [.. premises]);
+            // A plain Fail(node, InvalidConstraint) keeps no problem until its site records one (R7-E2 E2-5's Contract, conformance and
+            // override sites; R7-E3's call sites); it reaches the adapter's one InvalidConstraint row (F's C2 ruling 306).
+            this.ReportConstraint(issue.Node, store, requirement, issue.Code, 0, null);
         }
         else
         {
