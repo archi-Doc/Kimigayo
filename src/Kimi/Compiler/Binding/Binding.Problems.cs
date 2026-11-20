@@ -269,6 +269,9 @@ public sealed partial class Binding
             case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
                 ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
                 break;
+            case BindingFailure.InvalidConstraint when this.FactOf(index, ProblemFactKind.Cause) is { } cause:
+                this.ReportConstraint(node, store, problem, this.compilation.SyntaxOf(cause.Site));
+                break;
             case BindingFailure.InvalidTypeFormation when this.FactOf(index, ProblemFactKind.Count) is not null:
                 this.ReportArity(node, store, index, problem);
                 break;

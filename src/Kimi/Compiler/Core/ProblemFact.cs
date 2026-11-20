@@ -2,8 +2,9 @@
 
 // Owns the fact vocabulary of a problem (A6; DECISIONS R4-M3a, R4-M57, R4-M69, R4-M92, R4-M97, R4-M132; R7-E1): what a fact is and the
 // record of one. It lives in Core, over no phase's structure, so that a phase which may not reference Mir can use it.
-// Input: the kind, site and value a recording rule gives. The MIR analyses' recording rules write Anchor through Cause, and Cause stays
-// theirs; Binding's recorder writes the kinds after Cause, appended, and a MIR record carrying one is a broken contract.
+// Input: the kind, site and value a recording rule gives. The MIR analyses' recording rules write Anchor through Cause; Binding's
+// recorder writes Cause with Value -1 (a never-shown cause a check names, R7-E2 E2-3) and the kinds after Cause, appended, and a MIR
+// record carrying one of those is a broken contract.
 // Output: ProblemFact values, which MirReport keeps per problem and Core's publisher (`Compilation.Publication`) reads, beside the test MIR
 // side (`MirTargetSide.MirSide`), which reads the problems they belong to, and which BindingReport keeps for Binding's adapter.
 // Invariants: a fact is a site the problem relates and, for a kind that names one, its typed value, never a message (R4-M132): an Inlined
@@ -54,7 +55,7 @@ internal enum ProblemFactKind : byte
     Required, // A storage limit's body: the bytes its arena needs (Value), OwnershipStorageLimit_Kd's requiredBytes (MirDataflow.StorageLimit).
     Limit, // A storage limit's body: the analyses' byte limit (Value), its limitBytes; a height record's subject: IMPL A.4's height (R7-T1).
     Table, // A storage limit's body: the arena (Value, a MirStorageTable), its table.
-    Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value); facts' tail.
+    Cause, // A problem this one is caused only by (SPEC 15.6.5, 23.1.2): its subject, its index in MirReport.All (Value, -1 Binding's); facts' tail.
     Actual, // Binding: the syntax that shows a mismatch, the Type found (Value, an index in BindingReport's kept Types; SPEC 23.3).
     Expected, // Binding: the syntax that shows a mismatch, the Type required (Value, the same).
     Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).

@@ -148,12 +148,6 @@ public sealed partial class Binding
         {
             this.ReportQualification(issue.Node, store, requirement);
         }
-        else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
-            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true && IsMissingInformation(cause))
-        {
-            // The recorded missing Name of the Constraint is its prerequisite.
-            issue.Node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
-        }
         else if (issue.Failure == BindingFailure.ArrayAnnotationInference)
         {
             var fact = this.arrayInferenceFailures![issue.Node];
