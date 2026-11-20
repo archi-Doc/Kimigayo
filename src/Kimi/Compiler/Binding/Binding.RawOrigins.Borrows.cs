@@ -36,7 +36,8 @@ public sealed partial class Binding
     // The publication side of CheckBorrows (the published borrow positions), reused.
     private readonly Dictionary<BoundOrigin, BorrowList> publishedBorrows = new(ReferenceEqualityComparer.Instance);
 
-    // Whether the publication met a node Binding failed (Unresolved or Invalid), whose Borrows HIR may not publish: no extras check then.
+    // Whether the publication met a failed node (Binding's Unresolved or Invalid, or published Error), whose Borrows HIR may not publish:
+    // no extras check then.
     private bool publishedFailure;
 
     // The running pass's part of the rows (PassPart.Borrows, EnterPass).
@@ -245,10 +246,11 @@ public sealed partial class Binding
     }
 
     // The census at one published node (CheckBorrows): the one enumeration into the publication side, the node's claim mark, and whether
-    // Binding failed the node (no extras check then: a failed node's facts may stay unpublished).
-    private void PublishedNode(Koto node)
+    // the node failed (no extras check then: a failed node's facts may stay unpublished): Binding failed it, or HIR publishes it Error,
+    // which for a node Binding resolved is a broken contract the publisher records itself (Hir.Broken).
+    private void PublishedNode(Koto node, HirOp op)
     {
-        this.publishedFailure |= node.BindingState is BindingState.Unresolved or BindingState.Invalid;
+        this.publishedFailure |= op == HirOp.Error || node.BindingState is BindingState.Unresolved or BindingState.Invalid;
         this.NodeBorrows(node, this.publishedBorrows);
         this.MarkClaim(node);
     }
