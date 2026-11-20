@@ -276,6 +276,28 @@ public class UseLookupTest
     [InlineData(CaseM + "contract D0\n    associate X\n    Self.(D0).X is M\ncontract D: D0\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D0).X.A.f()\n")]
     public void AProjectionIsReadInItsClassFormAtTheMemberStep(string source) => this.AUseIsResolvedOnceInItsRow(source, string.Empty);
 
+    // SPEC 8.2.3, 8.3.2, 8.5.3 (O-441 (a)'s L1 class; F's N1c rulings 42, 43): `T.(C).Item.(D0).X` is identified only by D's clause
+    // `Self.(D0).X is M`, where C bounds Item by D and D refines D0. The programs are valid, but the use reads only D0's supply, so its
+    // member is missing over a projection still in its class form while a declared bound of the subject that strictly refines the written
+    // qualifier declares an identity for X: the located Unsupported_Kd at the access (TypePathFailure's UnreadIdentity), as dev records it
+    // for the argument forms (S5a, S5b, S5k, sh5v's D0 use), a local (S5l) and a Type function (S5c). sh11v and sh9v keep dev's
+    // UnresolvedBinding_Kd at `X.A.f`: their `X.A` is the left of `.f`, which the left's Type walk (EvaluateUse) resolves, not the member
+    // step TypePathFailure decides (an open issue: that walk's step reads no verdict of TypePathFailure). sh5v's D path, `T.(C).Item.(D).Z.A`, is accepted (a
+    // move toward SPEC; dev records Unsupported_Kd there too). Where no such bound exists the program is decidably invalid and keeps its
+    // Language record: dq12i (Item has no bound: its UnresolvedBinding_Kd beside the unproven `T.(C).Item is D`), and dq7i (D declares no
+    // identity), AProjectionInTheLeftIsEvaluatedBeforeItsReading's row.
+    [Theory]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return h(T.(C).Item.(D0).X.A, T.(C).Item.(D0).X.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A|Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return h(T.(C).Item.(D0).X.A, M.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return T.(C).Item.(D0).X.make()\n", "Unsupported_Kd T.(C).Item.(D0).X.make")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return k(T.(C).Item.(D0).X.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc k(p: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    let m = T.(C).Item.(D0).X.A\n    return m.f()\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return h(T.(C).Item.(D0).X.A, T.(C).Item.(D).Z.A)\n", "Unsupported_Kd T.(C).Item.(D0).X.A")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return T.(C).Item.(D0).X.A.f()\n", "UnresolvedBinding_Kd T.(C).Item.(D0).X.A.f")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    var s = 0\n    while c\n        s += T.(C).Item.(D0).X.A.f()\n        s += T.(C).Item.(D).Z.A.f()\n    return s\n", "UnresolvedBinding_Kd T.(C).Item.(D0).X.A.f")]
+    [InlineData(CaseM + "contract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", "UnprovenConstraint_Kd T.(C).Item.(D).X|UnprovenConstraint_Kd T.(C).Item.(D).X.A.f()|UnresolvedBinding_Kd T.(C).Item.(D).X.A.f")]
+    public void AnIdentityTheUseDoesNotReadIsUnsupported(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+
     // SPEC 9.6, 8.5.2, 14.9.2 (R7-N1 c-b, rulings 24-26): the left of a Case through a projection is bound by the decided reading alone,
     // whatever asked first: in an `if` join, where ResultSurvey asks before the access binds, every node of the left has the lookup,
     // selection and Type it has in the plain form (rb81v and rb47v; dq9v and dq7v; dq10v's join), the projection ends its path and the

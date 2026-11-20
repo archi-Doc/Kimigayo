@@ -305,6 +305,39 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 8.3.2, 8.5.3 (R7-N1 c-b, F's N1c ruling 43): UnreadIdentity reads the subject's declaring Contract's clauses and one refining
+    // bound's clauses, refinement over the bound's ancestors, so a use through the root of a Contract chain D0 <- D1 <- ... <- DN (C bounds
+    // Item by DN, DN declares the identity) reads work linear in N; each of 10 uses records the located Unsupported_Kd.
+    [Fact]
+    public void AnUnreadIdentityIsDecidedInWorkLinearInTheContractChain()
+    {
+        var (w30, w60) = (Work(30), Work(60));
+        Assert.True(w60 <= (2 * w30) + 200, $"{w30} {w60}");
+        var w120 = Work(120);
+        Assert.True(w120 - w60 <= (2 * (w60 - w30)) + 200, $"{w30} {w60} {w120}");
+
+        static int Work(int n)
+        {
+            var source = new System.Text.StringBuilder("enum M\n    A\n    public func f(self) -> i32 => 1\ncontract D0\n    associate X\n");
+            for (var i = 1; i <= n; i++)
+            {
+                source.Append($"contract D{i}: D{i - 1}\n").Append(i == n ? "    Self.(D0).X is M\n" : string.Empty);
+            }
+
+            source.Append($"contract C\n    associate Item is D{n}\nfunc g<T>() -> i32\n    T is C\n");
+            for (var k = 0; k < 10; k++)
+            {
+                source.Append($"    let x{k} = T.(C).Item.(D0).X.A\n");
+            }
+
+            source.Append("    return 0\n");
+            var c = CompilationTestHelper.Parse(source.ToString());
+            c.Bind();
+            Assert.Equal(10, c.Binding.Issues.Count(static x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd));
+            return c.Binding.UnreadIdentityWork;
+        }
+    }
+
     // SPEC 8.6.2 (PLAN G602): a reversed chain of clauses through inherited conformances (L_i: S_i.(HasBase).Parent, S_i's Parent L_(i-1),
     // declared from the far end) binds with no stack failure, and the InheritedConformances query's clause readings beyond those of the
     // same chain written nominally are linear in its length.

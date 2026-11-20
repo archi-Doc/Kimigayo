@@ -17,9 +17,13 @@ public sealed partial class Binding
 
     private readonly Dictionary<BindingSymbol, byte> inheritanceStates = new(ReferenceEqualityComparer.Instance);
     private int memberWalks;
+    private int unreadIdentityWork;
 
     /// <summary>Gets the layers LookupMember searched in the latest pass, read by the scaling tests.</summary>
     internal int MemberWalkWork => this.memberWalks;
+
+    /// <summary>Gets the clauses UnreadIdentity read in the latest pass, read by the scaling tests.</summary>
+    internal int UnreadIdentityWork => this.unreadIdentityWork;
 
     // SPEC 9.1: a generic parameter belongs to its declaration's own scope and is no member of the Type.
     private static bool IsGenericParameter(BindingSymbol symbol)
@@ -271,7 +275,7 @@ public sealed partial class Binding
         if (type is not null && (qualifier is null || qualifier.Type is not null || qualifier.Declaration is GroupKoto))
         {
             var selection = this.LookupMember(type, name, scope, LookupRole.Value);
-            return new(selection.Member ?? (qualifier is null || qualifier.Type is not null ? requirement : null), selection);
+            return new(selection.Member ?? (qualifier is null || qualifier.Type is not null ? requirement : null), selection, type);
         }
 
         var nested = qualifier is not null && qualifier.Declaration is not ContractKoto && this.scopes.TryGetValue(qualifier.Declaration, out var typeScope) &&
@@ -354,6 +358,10 @@ public sealed partial class Binding
             {
                 this.PublishHiddenMember(member, hidden);
             }
+            else if (this.TypePathFailure(typeSide, scope) == BindingFailure.Unsupported)
+            {
+                this.Fail(member, BindingFailure.Unsupported); // TypePathFailure's unread identity: the located Unsupported_Kd.
+            }
 
             return null;
         }
@@ -402,12 +410,61 @@ public sealed partial class Binding
     // failure the path stops at, else None. An ambiguous member (Ambiguous), none (MissingName), a member that needs a receiver and is no
     // function (its static or instance use: the path supplies no receiver, QualificationRequired; a Type-qualified instance function
     // takes its receiver as an argument), an inaccessible member that is no function (Access).
+    // A member missing over a projection whose identity this use does not read (UnreadIdentity) is the located Unsupported (F's N1c
+    // rulings 42, 43).
     private BindingFailure TypePathFailure(SideSelection side, BindingScope scope)
         => side.Selection.Ambiguous ? BindingFailure.Ambiguous
-            : side.Member is not { } found ? BindingFailure.MissingName
+            : side.Member is not { } found ? (this.UnreadIdentity(side.Over) ? BindingFailure.Unsupported : BindingFailure.MissingName)
             : IsInstanceMember(found) && found.Kind != BindingSymbolKind.Function ? BindingFailure.QualificationRequired
             : found.Kind != BindingSymbolKind.Function && !this.Accessible(found, scope) ? BindingFailure.Access
             : BindingFailure.None;
+
+    // SPEC 8.3.2, 8.5.3 (O-441 (a)'s L1 class; F's N1c rulings 42, 43): whether a Type path's receiver is a projection `S.(Q).X` still in
+    // its class form whose identity a declared Contract bound of its subject may give but this use's evaluation does not read: S is an
+    // associated Type whose declaring Contract bounds it by a Contract B (`associate Item is B`) that strictly refines Q, and B declares a
+    // Type identity clause on X. Reads declared facts only (the clauses' bound Constraints; an unbound or failed clause has none, so it
+    // gives nothing), never applies or proves a clause. Removal: R7-C3's order-free step, in which every use reads its subject's bounds'
+    // supply whatever the written qualifier, so the class is accepted (PLAN's L1 row).
+    private bool UnreadIdentity(BoundType? receiver)
+    {
+        if (receiver is not { Kind: BoundTypeKind.AssociatedProjection, Symbol: { } associated, Components: [{ Kind: BoundTypeKind.AssociatedProjection, Symbol: { } subject }, { Symbol: { } written }] } ||
+            subject.Scope.Owner is not ContractKoto declaring)
+        {
+            return false;
+        }
+
+        var qualifier = written.Declaration.BoundSymbol ?? written;
+        var bounds = declaring.ConstraintNodes;
+        for (var i = 0; i < bounds.Count; i++)
+        {
+            this.unreadIdentityWork++;
+            if (bounds[i].BoundConstraint is { Kind: ConstraintKind.Contract, Subject.Symbol: { } boundSubject, Contract: { } refined } && ReferenceEquals(boundSubject, subject) &&
+                refined.Declaration is ContractKoto refining && refining.BoundSymbol is { } child && !ReferenceEquals(child, qualifier) && IsRefinement(child, qualifier) &&
+                this.DeclaresIdentity(refining, associated))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a Contract declares a Type identity clause on an associated Type (UnreadIdentity's second fact), its subject or its required Type.
+    private bool DeclaresIdentity(ContractKoto contract, BindingSymbol associated)
+    {
+        var clauses = contract.ConstraintNodes;
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            this.unreadIdentityWork++;
+            if (clauses[i].BoundConstraint is { Kind: ConstraintKind.TypeIdentity } identity &&
+                (ReferenceEquals(identity.Subject?.Symbol, associated) || ReferenceEquals(identity.RequiredType?.Symbol, associated)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 9.6: the layer walk of a member lookup in a role (SPEC 9.2), its namespace the role's: the first layer with accessible,
     // role-compatible declarations. Receiver/argument/accessor checks never reopen it.
@@ -494,8 +551,9 @@ public sealed partial class Binding
     internal readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
 
     // One path of a member access (SPEC 9.6): the member it found (a requirement member or a nested declaration when its lookup found
-    // none) and its member lookup; default when the path is not formed.
-    private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection);
+    // none), its member lookup and, for a Type path's lookup over a Type, that Type in its class form (Over); default when the path is not
+    // formed.
+    private readonly record struct SideSelection(BindingSymbol? Member, MemberSelection Selection, BoundType? Over = null);
 
     // A member access's side (PLAN G724, B4): its qualifier is a Type, with no receiver, or a value, the call's receiver.
     private enum MemberSide : byte
