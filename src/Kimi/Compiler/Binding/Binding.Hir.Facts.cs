@@ -25,9 +25,11 @@ public sealed partial class Binding
 
     /// <summary>Gets whether a published node is a failure fact, from which the MIR builder derives a value or a check (DECISIONS Z16):
     /// an <see cref="HirOp.Error"/>; a consumed Place or a Pattern binding whose acquisition failed (<see cref="HirAcquire.Failed"/>, at
-    /// the acquired node, in its column or its plan row); or the declaration of a stored Property whose value the builder reads, not
-    /// published <see cref="HirOp.Body"/>: a static one (its uses' Place) or one with a written initializer (each constructor). Each has
-    /// its causes (<see cref="RestingCauses"/>), which the publisher checks (<see cref="HirTables.Broken"/>).</summary>
+    /// the acquired node, in its column or its plan row); or the declaration of a stored Property whose value the builder reads, a static
+    /// one (its uses' Place) or one with a written initializer (each constructor), not published <see cref="HirOp.Body"/>: a static with
+    /// no initializer, or a declaration whose parts are unverified or whose slots are unstated. A declaration whose own Type failed is Body
+    /// with its failed slot, which is that failure's published fact (PLAN G1073, DECISIONS D-834). Each has its causes
+    /// (<see cref="RestingCauses"/>), which the publisher checks (<see cref="HirTables.Broken"/>).</summary>
     /// <param name="node">A published node.</param>
     /// <param name="op">Its published Op.</param>
     /// <returns>Whether it is a failure fact.</returns>

@@ -414,20 +414,23 @@ public sealed partial class HirFormsTest
     }
 
     // DECISIONS Z16 (Z15 2g-D D2; B1, B4, B6): every failure fact the HIR publishes (Binding.FailureFact: an Error, a failed acquisition at
-    // the acquired node, a stored Property's declaration not published Body) rests on its causes (Binding.RestingCauses), so the
-    // publisher's one list of broken contracts (HirTables.Broken) is empty: an unreadable char literal on its own lexical record and an
-    // admitted misfit's value on its write's fit failure (the gap rows), a Place whose Move rests on an Error Copy proof on the unresolved
-    // mark, a name of a Type-less binding (an Error by HasFacts' Name row) and a match whose plan failed on Binding's causes, a static's or
-    // a Field's declaration Binding did not bind on its failure, a static without an initializer on its record (PLAN G1113), and a valid
-    // computed static has none. Fail-before: the first three facts rested on no cause.
+    // the acquired node, a stored Property's declaration not published Body: a static with no initializer, or one whose parts are
+    // unverified or whose slots are unstated) rests on its causes (Binding.RestingCauses), so the publisher's one list of broken contracts
+    // (HirTables.Broken) is empty: an unreadable char literal on its own lexical record and an admitted misfit's value on its write's fit
+    // failure (the gap rows), a Place whose Move rests on an Error Copy proof on the unresolved mark, a name of a Type-less binding (an
+    // Error by HasFacts' Name row) and a match whose plan failed on Binding's causes, a static without an initializer on its record (PLAN
+    // G1113), and a valid computed static has none. A static's or a Field's declaration whose own Type failed is Body with its failed slot,
+    // the failure's one published fact (PLAN G1073, DECISIONS D-834; G147 ruling 27): the static's use is the fact (`G.s`, an Error by the
+    // Name row), the Field gives none; a static's initializer Binding failed is its own fact. Fail-before: the first three facts rested on
+    // no cause.
     [Theory]
     [InlineData("func f() -> char\n    return 'ab'\n", "'ab'")]
     [InlineData("func f() -> i32\n    var x: i32\n    x = \"a\"\n    return x\n", "\"a\"")]
     [InlineData("struct Bad\n    Self is Copy\n    public var s: string = \"\"\n    public init() => ()\nfunc a(b: Bad) -> Bad => b\n", "b")]
     [InlineData("func use(x: string) => ()\nfunc f()\n    let q = missing\n    use(q@move)\n    use(q@move)\n", "q")]
     [InlineData("func f(v: Option<i32>) -> i32\n    return match v\n        .Some(let n) if missing(n) => 1\n        _ => 0\n", "match v")]
-    [InlineData("group G\n    public let s: Missing = 1\nfunc f() -> i32\n    return G.s\n", "public let s: Missing = 1")]
-    [InlineData("struct Q\n    public var n: Missing = 1\n    public var m: i32\n    public init(m: i32)\n        self.m = m\n", "public var n: Missing = 1")]
+    [InlineData("group G\n    public let s: Missing = 1\nfunc f() -> i32\n    return G.s\n", "G.s")]
+    [InlineData("struct Q\n    public var n: Missing = 1\n    public var m: i32\n    public init(m: i32)\n        self.m = m\n", "")]
     [InlineData("group G\n    public let s: i32 = missing\nfunc f() -> i32\n    return G.s\n", "missing")]
     [InlineData("group G\n    public let s: i32\nfunc f() -> i32\n    return G.s\n", "Error")]
     [InlineData("group G\n    public computed x: i32\n        get() -> i32 => 1\nfunc f() -> i32\n    return G.x\n", "")]
