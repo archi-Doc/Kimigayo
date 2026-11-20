@@ -2,7 +2,6 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -178,10 +177,6 @@ public sealed partial class Binding
         this.ReadIdentityPremiseError(scope, type); // R7-C3 (F's C2 ruling 276 (4)): a Type of an erroneous class is a failed input
         return this.ClassForm(type, classes);
     }
-
-    // J3's intake at a use (RelationWalk.Fits' root): the judge decides its domain (R7-C3, C-b: SPEC 8.2.3's abstract Types,
-    // HasAbstractPart) before it reads the use's scope.
-    private BoundType ClassForm(BoundType type, Koto use) => type.HasAbstractPart ? this.ClassForm(type, this.ConstraintScope(use), out _) : type;
 
     // Terminates on every table (design R4.1): from a Type of a class ClassForm descends only into its Member's components, each a class
     // graph edge the cycle marking marks, so a descent that met its class again would be a marked class, which has no Member; a class
