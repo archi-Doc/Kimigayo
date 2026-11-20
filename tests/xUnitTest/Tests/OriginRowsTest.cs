@@ -548,7 +548,7 @@ public sealed partial class OriginRowsTest
     private static (int Region, int Value) Slot(Compilation c, MirBody body, Binding.OriginRowSet slice, string name)
     {
         var local = body.Locals.ToArray().Single(x => x.Name == name);
-        var value = c.Types.OriginAtom(body.Key.Body, local.Type.Origin!, body.Subject(local.Source));
+        var value = c.Types.OriginAtom(body.Key.Body, local.Type!.Origin!, body.Subject(local.Source));
         var region = Enumerable.Range(0, slice.Atoms.Count).Where(i => ReferenceEquals(slice.Atoms[i].Atom, local.Type.Origin)).DefaultIfEmpty(-1).Single();
         var table = string.Join(" ", slice.Atoms.Select(static (x, i) => $"{i}:{x.Kind}:{x.Atom.Kind}")) + "; " +
             string.Join(" ", slice.Rows.Select(static x => $"{x.Longer}>{x.Shorter}{(x.Equality ? "=" : string.Empty)}:{x.Source}"));

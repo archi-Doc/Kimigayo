@@ -311,7 +311,7 @@ public partial class OriginPremiseCatalogTest
     {
         var c = MirBuildTest.Compile(source + Main);
         var closure = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Body.Definition?.Declaration is FunctionKoto { IsAnonymous: true });
-        var local = closure.Locals[1].Type;
+        var local = closure.Locals[1].Type!;
         var environment = local.Kind == BoundTypeKind.Closure ? local : local.Components[0];
         return (c, closure.Key.Body, c.Binding.ClosureReceiver((FunctionKoto)closure.Key.Body.Definition!.Declaration, environment));
     }

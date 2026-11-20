@@ -872,7 +872,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var lengths = body.Consts.ToArray().Where(static x => x.Kind == MirConstKind.Length).ToArray();
         Assert.Equal([LengthOperation.InterpolationBound, LengthOperation.InterpolationHint], lengths.Select(static x => ((BoundLength)x.Value!).Operation));
         var length = lengths[0];
-        var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type;
+        var region = Assert.Single(body.Locals.ToArray(), static x => x.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: not null }).Type!;
         Assert.Equal((LengthOperation.InterpolationBound, (object)region.LengthExpression!), (region.LengthExpression!.Operation, length.Value!));
         Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Len });
         var findings = new List<MirFinding>();
@@ -1532,7 +1532,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
-        Assert.Equal(BoundTypeKind.Parameter, f.Locals[1].Type.Kind);
+        Assert.Equal(BoundTypeKind.Parameter, f.Locals[1].Type!.Kind);
         Assert.Contains(f.Consts.ToArray(), x => x.Kind == MirConstKind.Integer && ReferenceEquals(x.Type, BoundType.Primitives[type]) && x.Bits == bits);
     }
 
@@ -1638,6 +1638,38 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var findings = Validate(body, c.Types).Select(static x => x.Rule).ToArray();
         Assert.Equal(reported, findings.Contains(MirViolation.Operation));
         Assert.True(reported || findings.Length == 0);
+    }
+
+    // R7 plan Z23 (SPEC 8.14, 4.7.1 step 3; the owner's O-446 (a)): a CaseSwitch's decider is a TypeToken constant (else Operation) of a
+    // pair layer of the body's binders or of a case-free Type (a default's copy, decided by its own Type); a pair layer of no binder of the
+    // body is a Binder finding.
+    [Theory]
+    [InlineData("binder", "")]
+    [InlineData("caseFree", "")]
+    [InlineData("foreign", "Binder")]
+    [InlineData("operand", "Operation")]
+    public void ACaseSwitchDecidesByATypeTokenOfItsBinders(string decider, string expected)
+    {
+        var binders = new List<PairBinder>();
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
+        var body = new MirBody();
+        body.Reset(new(null, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
+        var flag = MirModelTest.Local(body, BoundType.Boolean);
+        var (entry, exclusive, shared, join) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var token = decider == "caseFree" ? BoundType.ISize : Fixture.Value.Types.Pair;
+        var operand = decider == "operand" ? MirOperand.Copy(flag) : MirOperand.Const(body.Const(new(MirConstKind.TypeToken, token)));
+        body.Terminate(entry, MirTerminator.CaseSwitch(operand, body.AddCase(1, exclusive), shared, At));
+        body.Terminate(exclusive, MirTerminator.Goto(join, At));
+        body.Terminate(shared, MirTerminator.Goto(join, At));
+        body.Terminate(join, MirTerminator.Return(At));
+        if (decider != "foreign")
+        {
+            body.Binders.AddRange(binders);
+        }
+
+        Assert.Equal(expected, string.Join(", ", Validate(body).Select(static x => x.Rule)));
+        Assert.Equal(1, body.CaseSwitches); // Terminate, their one writer, counts them.
     }
 
     // SPEC 8.15, 23.1.1, 8.3.4: Binding publishes no part of a definition beyond PairBinder.CaseBound views or whose binders admit no case
@@ -1941,6 +1973,60 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         Assert.Equal(broken is null or "destructor" ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+    }
+
+    // PLAN G1073 (SPEC 23.1.2; the design's R1-2): a slot of no Type is Binding's failed slot, read by no location that judges its Type:
+    // the builder's body of a function with a parameter of unresolved Type, an Arg of no Type, is valid; _0 or a typed parameter of no
+    // Type, the failed parameter typed (the signature's slot is the fact), and a local of no Type read into a typed temp, are Local
+    // findings.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("result")]
+    [InlineData("typed")]
+    [InlineData("parameter")]
+    [InlineData("read")]
+    public void ASlotOfNoTypeIsBindingsFailedSlot(string? broken)
+    {
+        var c = MirBuildTest.Compile("func f(n: Missing, m: i32) -> i32\n    let k = m\n    return k\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var locals = body.Locals.ToArray();
+        var at = Array.FindIndex(locals, x => x.Name == broken switch { "typed" => "n", "parameter" => "m", "read" => "k", _ => null });
+        Assert.Null(locals.Single(static x => x.Name == "n").Type);
+        if (broken == "result")
+        {
+            Unsafe.AsRef(in body.Locals[0]) = locals[0] with { Type = null };
+        }
+        else if (broken is not null)
+        {
+            Unsafe.AsRef(in body.Locals[at]) = locals[at] with { Type = broken == "typed" ? BoundType.I32 : null };
+        }
+
+        Assert.Equal(broken is null ? [] : [MirViolation.Local], Validate(body, c.Types).Select(static x => x.Rule).Distinct());
+    }
+
+    // PLAN G1073 (SPEC 23.1.2; D3): an EndBorrow ends the Loans a reference local holds. An Index over a receiver Binding rested (a use of
+    // a failed getter, D-823) lends the receiver's Opaque temp of no Type through a stand-in of no Type, which holds none and agrees with a
+    // reference: no finding (fail-before: EndBorrowLocal, InternalInvariant_Kd at the Index); the stand-in typed as no reference is one.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnEndBorrowOfALocalOfNoTypeEndsNothing(bool typed)
+    {
+        var c = MirBuildTest.Compile(
+            "struct P\n    public var x: i32 = 0\n    public var items: Array<i32> = []\n    public init() => ()\nstruct W\n" +
+            "    public var fa: [2 of P] = [P.init(), P.init()]\n        get() -> [2 of P] => storage\n    public init() => ()\n" +
+            "func run(w: uniq/W) -> i32\n    return match (w.fa[0])\n        _ => 1\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "run");
+        var ended = body.Statements.ToArray().Single(static x => x.Kind == MirStatementKind.EndBorrow).Place.Root;
+        Assert.Null(body.Locals[ended].Type);
+        if (typed)
+        {
+            Unsafe.AsRef(in body.Locals[ended]) = body.Locals[ended] with { Type = BoundType.I32 };
+        }
+
+        var rules = Validate(body, c.Types).Select(static x => x.Rule).ToArray();
+        Assert.Equal(typed, rules.Contains(MirViolation.EndBorrowLocal));
+        Assert.True(typed || rules.Length == 0, string.Join(", ", rules));
     }
 
     // DECISIONS BU-46: Unstated marks only a kept part's raw layer its declaration writes without `during`, so a local whose Type states it,

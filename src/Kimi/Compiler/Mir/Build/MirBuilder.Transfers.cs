@@ -99,10 +99,10 @@ internal sealed partial class MirBuilder
             // result temp in the target's scope, with no storage of its own, and its Break the block that delivers that temp to the old
             // Destination, which every later transfer to it takes, as they share its drop tree (DECISIONS R5-M50); delivered into _0, it
             // is the body's result in transit (MirLocalRole.Result, DECISIONS R4-M132). The temp and its delivery are the target's,
-            // at its source, not the first transfer's.
+            // at its source, not the first transfer's. The temp has the Destination's Type: none for a failed result's _0 (PLAN G1073).
             var at = new SourceInfo(SourceRef.Of(target.Node), target.At.Scope, StatementStart: false);
             var role = target.Destination is { Root: 0, Projection: 0 } ? MirLocalRole.Result : MirLocalRole.None;
-            var result = new MirPlace(this.body.AddLocal(new(this.body.TypeOf(target.Destination)!, MirLocalKind.Temp, at, Role: role)));
+            var result = new MirPlace(this.body.AddLocal(new(this.body.TypeOf(target.Destination), MirLocalKind.Temp, at, Role: role)));
             var deliver = this.body.AddBlock();
             this.body.Push(deliver, MirStatement.Assign(target.Destination, MirRvalue.Use(this.body.AddOperand(MirOperand.Move(result))), at));
             this.body.Terminate(deliver, MirTerminator.Goto(target.Break, at));
@@ -174,7 +174,8 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 16.2.2, 12.2: a value secured where it is evaluated, a transfer's result before it branches and an operand before a later
-    // operand of its operation builds code (Builds): a constant or a temp as it is, else acquired into a temp.
+    // operand of its operation builds code (Builds): a constant or a temp as it is, else acquired into a temp of its Type (none for a value
+    // of no Type, PLAN G1073).
     private MirOperand Secure(in MirOperand value, Koto node)
     {
         if (value.Kind == MirOperandKind.Const || (value.Kind == MirOperandKind.Move && this.IsTemp(value.Place)))
@@ -182,7 +183,7 @@ internal sealed partial class MirBuilder
             return value;
         }
 
-        var temp = this.Temp(this.TypeOf(value) ?? BoundType.Unit, node);
+        var temp = this.Temp(this.TypeOf(value), node);
         this.Use(temp, value, node);
         return MirOperand.Move(temp);
     }

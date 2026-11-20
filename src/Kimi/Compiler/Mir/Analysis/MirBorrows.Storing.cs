@@ -144,7 +144,7 @@ internal sealed partial class MirBorrows
 
         for (var i = 1; complete && i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
-            if (MirTypes.HoldsRaw(types, cases.Type(this.body.Locals[i].Type), this.seen))
+            if (MirTypes.HoldsRaw(types, cases.KnownType(this.body.Locals[i].Type), this.seen))
             {
                 return true;
             }
@@ -257,8 +257,9 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included).
-    private bool PointerType(MirPlace place) => this.Holds(cases.TypeOf(place), out _);
+    // Whether a value of a Place's case Type may hold a pointer (MirTypes.HoldsLoans, a raw layer included); none of no Type, a whole
+    // write's destination (MirCases.KnownTypeOf, PLAN G1073).
+    private bool PointerType(MirPlace place) => this.Holds(cases.KnownTypeOf(place), out _);
 
     // A chain head of the checks replay: every M is ∅ but each input's, Own(i, 0).
     private void EnterStoring()

@@ -120,7 +120,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // The representation of a Type of the body in the item's instance (I7): Laid of its instance Type.
-    private ValueLowering? Representation(BoundType type) => this.Laid(this.collector.TypeOf(this.item, type));
+    private ValueLowering? Representation(BoundType? type) => this.Laid(this.collector.TypeOf(this.item, type));
 
     // The layout a form needs past the item's by-value set (LayoutNeeds; DECISIONS R5-M149), the one path code generation reads such a Type
     // by: the Type the form's row names (LayoutNeeds.TypeOf: a projection step's, a raw pointer displacement's, a call's

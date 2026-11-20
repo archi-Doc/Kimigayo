@@ -2899,7 +2899,7 @@ public sealed partial class InstanceCollectorTest
     // K 4.3: a representative is closed and makes every local Type of its body closed.
     private static bool Closes(TyCtxt types, MirBody body, Subst representative)
         => representative.Types.ToArray().Append(representative.Declaring).Append(representative.Self).All(static x => x is not { ContainsParameter: true }) &&
-            body.Locals.ToArray().All(x => types.Apply(x.Type, representative).Type is { ContainsParameter: false });
+            body.Locals.ToArray().All(x => types.Apply(x.Type!, representative).Type is { ContainsParameter: false });
 
     private static (MirProgram Program, CheckedSet Set) Collect(string source)
     {

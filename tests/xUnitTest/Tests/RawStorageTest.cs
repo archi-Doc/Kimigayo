@@ -37,6 +37,11 @@ public class RawStorageTest
         "struct Outer\n    internal var inner: Block\n    public init(fresh: raw/u8)\n        self.inner = Block.init()\n        {0}\n" +
         "func reset(fresh: raw/u8, shared: raw/u8 during static)\n    var b = Block.init()\n    {1}\n";
 
+    // Block's construction line ({0}) closed, then a struct holding Block inline beside its own `during self` layer, its constructor's
+    // last lines or a drop following (SPEC 5.7: in its bodies the nested layer's holding value is `self.inner`, not the receiver).
+    private const string Nested = "()\nstruct Nest\n    internal var own: raw/u8 during self\n    internal var inner: Block\n    public init(fresh: raw/u8)\n" +
+        "        self.own = null\n        self.inner = Block.init()\n";
+
     // A view whose raw Field states the slot a shared Loan keeps (bu23 S1), and a remainder whose raw Field states the slot an exclusive
     // Loan keeps (S2, S3).
     private const string View = "struct View<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
@@ -271,8 +276,15 @@ public class RawStorageTest
     [InlineData("()", "let w = b.pair.0@uniq", "Unsupported_Kd: b.pair.0@uniq | UnsatisfiedOriginRelation_Kd: b.pair.0@uniq")]
     [InlineData("()", "let c = Cell.Some(fresh)", "UnsatisfiedOriginRelation_Kd: fresh")]
     [InlineData("()", "let c = Cell.Two((fresh, 1))", "UnsatisfiedOriginRelation_Kd: (fresh, 1)")]
-    // The write's value fit adds a record at `fresh` (its destination read through the special receiver; counted, DECISIONS Q13).
-    [InlineData("self.inner.data = fresh", "()", "UnsatisfiedOriginRelation_Kd: self.inner.data = fresh | UnsatisfiedOriginRelation_Kd: fresh")]
+    [InlineData("self.inner.data = fresh", "()", "UnsatisfiedOriginRelation_Kd: self.inner.data = fresh")]
+    // SPEC 5.7 (DECISIONS R4-M105, BU-24; PLAN G1119): only `self` of the layer's own holding Type is exempt, so in an outer Type's
+    // constructor or drop a nested layer, at any depth, reads with no Origin, which fits no `during self` position of the outer Type;
+    // in the holder's own constructor the read keeps the receiver's Origin, which an unstated pointer does not fit.
+    // R7-O1 H (B4: the write stays Resolved, so A6 reaches the constructor): its own-step Warning beside the record (counted, Q13).
+    [InlineData(Nested + "        self.own = self.inner.data", "()", "OwnStepDeparture_Kd: self.own = null\n        self.inner = Block.init()\n        self.own = self.inner.data | UnsatisfiedOriginRelation_Kd: self.inner.data")]
+    [InlineData(Nested + "    drop\n        self.own = self.inner.data", "()", "UnsatisfiedOriginRelation_Kd: self.inner.data")]
+    [InlineData(Nested + "        ()\nstruct Top\n    internal var own: raw/u8 during self\n    internal var mid: Nest\n    public init()\n        self.own = null\n        self.mid = Nest.init(null)\n        self.own = self.mid.inner.data", "()", "OwnStepDeparture_Kd: self.own = null\n        self.mid = Nest.init(null)\n        self.own = self.mid.inner.data | UnsatisfiedOriginRelation_Kd: self.mid.inner.data")]
+    [InlineData("()\nstruct Own\n    internal var data: raw/u8 during self\n    public init(fresh: raw/u8)\n        self.data = null\n        var p = self.data\n        p = fresh\n        _ = p", "()", "UnsatisfiedOriginRelation_Kd: fresh")]
     [InlineData("()", "let w = b.pair@uniq", "Unsupported_Kd: b.pair@uniq | UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "_ = Kimi.Intrinsics.exchange(b.pair@uniq, with: (fresh, 1))", "Unsupported_Kd: b.pair@uniq | UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "_ = Kimi.Intrinsics.exchange(b.pair@uniq, with: (null, 1))", "Unsupported_Kd: b.pair@uniq | UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
@@ -326,6 +338,11 @@ public class RawStorageTest
     [InlineData("()", "let t = b.pair.0@move\n    b.pair.0 = null")]
     [InlineData("()", "let t = b.arr[0]@move\n    b.arr[0] = null")]
     [InlineData("()", "let r = b@uniq\n    unsafe => r.pair = (fresh@(raw/u8 during r), 1)")]
+    // SPEC 5.7, 15.4.4 (PLAN G1119): a nested layer read in an outer Type's constructor or drop states no Origin, so the `var` it
+    // initializes is a raw/u8 that any pointer is written to.
+    [InlineData(Nested + "        let p = self.inner.data\n        _ = p", "()")]
+    [InlineData(Nested + "        var p = self.inner.data\n        p = fresh\n        _ = p", "()")]
+    [InlineData(Nested + "    drop\n        var p = self.inner.data\n        let f: raw/u8 = Raw.allocate<u8>(1)\n        p = f\n        unsafe => Raw.release(p)", "()")]
     public void ASelfLayerAdmitsReadsSharedBorrowsAndNull(string construction, string use)
         => Assert.Empty(RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
 

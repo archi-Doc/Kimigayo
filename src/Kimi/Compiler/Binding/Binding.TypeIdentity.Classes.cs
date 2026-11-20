@@ -146,10 +146,11 @@ public sealed partial class Binding
         }
 
         // The worst final error class this table holds that the parent's table does not hold with the same state for the same member (the
-        // premises that first form it are this scope's), and whether an own error class is still waiting for its Origin declarations.
-        internal (byte Worst, bool Waiting) OwnError(IdentityClasses? parent)
+        // premises that first form it are this scope's), whether an own error class is still waiting for its Origin declarations, and
+        // whether an own final class is at the closure limit, which a worse class hides from Worst.
+        internal (byte Worst, bool Waiting, bool Limited) OwnError(IdentityClasses? parent)
         {
-            var (worst, waiting) = (One, false);
+            var (worst, waiting, limited) = (One, false, false);
             for (var root = 0; root < this.types.Count; root++)
             {
                 if (this.head[root] < 0 || this.state[root] == One)
@@ -165,9 +166,10 @@ public sealed partial class Binding
 
                 waiting |= this.incompleteClass[root];
                 worst = this.incompleteClass[root] ? worst : Math.Max(worst, this.state[root]);
+                limited |= !this.incompleteClass[root] && this.state[root] == Limit;
             }
 
-            return (worst, waiting);
+            return (worst, waiting, limited);
         }
 
         // Verdict's Proven: one final class in state One, or one head and agreeing attributes over Proven parts.

@@ -270,6 +270,37 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             public func get(self: ref/Self) -> Box<S> => $abort("x")
         """;
 
+    // The inferred binding's cycle beside a Resolved body that makes a Box<S> value, and the written binding with S's method returning
+    // Box<S> (the inferred row's shape): ruling 261's rows (PLAN G1071 gate 1 publishes S.get's body; F's C2 ruling 261 (2)).
+    private const string InlineCycleInferredWithAValue = """
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+            public init() => self.next = .None
+        struct S
+            Self is C
+            public func get(self: ref/Self) -> Box<S> => $abort("x")
+        func h() -> i32
+            let b = Box<S>.init()
+            return 0
+        """;
+
+    private const string InlineCycleWrittenWithAMethod = """
+        contract C
+            associate Item
+            func get(self: ref/Self) -> Self.Item
+        struct Box<T>
+            T is C
+            public var next: Option<T.(C).Item>
+        struct S
+            Self is C
+            associate C.Item is Box<S>
+            public func get(self: ref/Self) -> Box<S> => $abort("x")
+        """;
+
     private const string InlineCycleInTupleAndArray = """
         contract C
             associate Item
@@ -788,7 +819,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
 
     // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-128): a binding-only inline cycle is invalid at the binding, a Language record, never a
     // Resource one, used or not. These rows assert their records: each fails if S3 (VerifyConformance's formation of a binding, R7-C2 (b))
-    // goes without that judge, which leaves them clean or Resource records.
+    // goes without that judge, which leaves them clean or Resource records. A binding on the cycle names no Type after the failed Binding,
+    // inferred as written (F's C2 ruling 261), so a published body using the cyclic Type by value adds no generation limit: an inferred
+    // one's S.get (InlineCycleInferred, InlineCycleInferredWithAValue) gave GenerationResourceLimit_Kd once PLAN G1071's gate published it.
     [Theory]
     [InlineData(InlineCycleDirect, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughOption, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
@@ -798,6 +831,8 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData(InlineCycleThroughTwoTypes, "Library", "2*InvalidConstraint_Kd 2*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleThroughAnotherContract, "Library", "2*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     [InlineData(InlineCycleGrowing, "Library", "1*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleInferredWithAValue, "Library", "4*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
+    [InlineData(InlineCycleWrittenWithAMethod, "Library", "4*InvalidConstraint_Kd 1*InvalidInlineLayout_Kd")]
     public void ABindingOnlyInlineCycleIsItsBindingsError(string source, string outputKind, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source, outputKind));
 

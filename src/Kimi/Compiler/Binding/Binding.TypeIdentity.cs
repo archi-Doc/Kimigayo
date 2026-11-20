@@ -42,7 +42,8 @@ public sealed partial class Binding
     private readonly HashSet<BoundType> identityExpansions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BindingScope, (int Serial, IdentityClasses Classes)> identityClasses = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingScope> identityBuilding = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BindingScope, bool> identityRecorded = new(ReferenceEqualityComparer.Instance); // whether it is the owner's failure
+    // A scope's recorded premise error: whether it is the owner's failure, and whether an own class reached the closure limit.
+    private readonly Dictionary<BindingScope, (bool Own, bool Limited)> identityRecorded = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<IdentityClasses> identityPool = new();
     private readonly List<IdentityClasses> identityLent = new();
     private IdentityClasses? identityExtended; // R7-C2c2 c2-2: ExtendedClassesOf's one request-local table
@@ -277,7 +278,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var (worst, waiting) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, out _) : null);
+        var (worst, waiting, limited) = own.OwnError(scope.Parent is { } parent ? this.ClassesOf(parent, out _) : null);
         var failure = worst switch
         {
             IdentityClasses.One when waiting && mode == BindingMode.Final => BindingFailure.Unsupported,
@@ -293,7 +294,7 @@ public sealed partial class Binding
             return false;
         }
 
-        this.identityRecorded.Add(scope, scope.Owner.BindingFailure == BindingFailure.None);
+        this.identityRecorded.Add(scope, (scope.Owner.BindingFailure == BindingFailure.None, limited));
         this.Fail(scope.Owner, failure);
         return true;
     }
@@ -301,8 +302,24 @@ public sealed partial class Binding
     // SPEC 8.2.3, 23.1.2: a declaration whose own failure is its premise error keeps its context, as a shape violation keeps its signature:
     // the error is reported once, at it, and its other checks are judged as in a valid view.
     private bool KeepsPremiseErrorContext(Koto declaration)
-        => this.scopes.TryGetValue(declaration, out var scope) && this.identityRecorded.TryGetValue(scope, out var own) && own &&
+        => this.scopes.TryGetValue(declaration, out var scope) && this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Own &&
             scope.Constraints is { Invalid: false };
+
+    // SPEC 8.3.3 Limits: whether a declaration's premise closure (its own premises or an enclosing declaration's) reached the limit,
+    // whatever its first failure: a class past it is cut, so a judgment through it depends on the limited analysis. Binding.CaseLimits'
+    // PartsVerified reads it until a cut class gives Binding's typing no member (the PLAN open issue on cut classes), which removes the read.
+    private bool PremiseClosureLimited(Koto declaration)
+    {
+        for (var scope = this.scopes.GetValueOrDefault(declaration); scope is not null; scope = scope.Parent)
+        {
+            if (this.identityRecorded.TryGetValue(scope, out var recorded) && recorded.Limited)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 8.2.3, 23.1.2 (the producer channel): the declaration whose recorded premise error a check at `node` read, when one of the
     // Types it compared has a part in a final erroneous class of the node's view; the outermost scope whose own classes hold it is the
@@ -312,7 +329,7 @@ public sealed partial class Binding
         Koto? producer = null;
         for (var current = this.ConstraintScope(node); current is not null && this.identityRecorded.Count != 0; current = current.Parent)
         {
-            if (this.identityRecorded.TryGetValue(current, out var own) && own && this.ClassesOf(current, out _) is { } classes &&
+            if (this.identityRecorded.TryGetValue(current, out var recorded) && recorded.Own && this.ClassesOf(current, out _) is { } classes &&
                 (classes.Holds(actual) || classes.Holds(expected)))
             {
                 producer = current.Owner;

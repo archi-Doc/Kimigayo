@@ -255,12 +255,13 @@ internal sealed partial class MirBorrows
         return -1;
     }
 
-    // Whether a Tuple or fixed-array Place inside a stored part encloses a `during self` layer inline (PQ-10, S4).
+    // Whether a Tuple or fixed-array Place inside a stored part encloses a `during self` layer inline (PQ-10, S4); an operand of no Type, a
+    // whole slot or derived temp read (PLAN G1073, MirCases.KnownTypeOf), encloses none (rule W).
     private bool Encloses(MirPlace place)
     {
-        var type = cases.TypeOf(place);
+        var type = cases.KnownTypeOf(place);
         this.visited.Clear();
-        return type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray && this.Owner(place, out var part, out var length) is var owner and >= 0 &&
+        return type is { Kind: BoundTypeKind.Tuple or BoundTypeKind.FixedArray } && this.Owner(place, out var part, out var length) is var owner and >= 0 &&
             this.Encloses(cases.TypeOf(place with { Projection = owner }), part, length, type);
     }
 

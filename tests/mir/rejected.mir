@@ -2,10 +2,9 @@ fn init @12
   _0: Grid<Never> return (Receiver) @12
   _1: () temp @13
   _2: () temp @13
-  opaque 0 @9:
   bb0:
       StorageLive(_1) @13
-    * _0.0 = opaque 0: [N of i32] @9
+    * _0.0 = Fill(const 7_i32): [N of i32] @9
       StorageLive(_2) @13
     * _2 = const () @13
       StorageDead(_2) @13
@@ -22,11 +21,11 @@ fn top-level#0 @14
 fn fill @16
   _0: i32 return @18
   _1: i32 arg a @17
-  _2: () temp @20 s1
-  _3: () temp @23 s1
-  _4: () temp @26 s1
-  _5: () temp @28 s1
-  _6: () temp @29 s1
+  _2: ? temp @20 s1
+  _3: ? temp @23 s1
+  _4: ? temp @26 s1
+  _5: ? temp @28 s1
+  _6: ? temp @29 s1
   _7: i32 temp @33 s1
   _8: i32 temp (Result) @16
   s1: lexical in s0 @19
@@ -38,19 +37,19 @@ fn fill @16
   opaque 5 @33:
   bb0:
       StorageLive(_2) @20 s1
-    * _2 = opaque 0: () @20 s1
+    * _2 = opaque 0: ? @20 s1
       StorageDead(_2) @20 s1
       StorageLive(_3) @23 s1
-    * _3 = opaque 1: () @23 s1
+    * _3 = opaque 1: ? @23 s1
       StorageDead(_3) @23 s1
       StorageLive(_4) @26 s1
       StorageLive(_5) @28 s1
-    * _5 = opaque 2: () @28 s1
-      _4 = opaque 3: () @26 s1
+    * _5 = opaque 2: ? @28 s1
+      _4 = opaque 3: ? @26 s1
       StorageDead(_5) @28 s1
       StorageDead(_4) @26 s1
       StorageLive(_6) @29 s1
-    * _6 = opaque 4: () @29 s1
+    * _6 = opaque 4: ? @29 s1
       StorageDead(_6) @29 s1
       StorageLive(_7) @33 s1
     * _7 = opaque 5: i32 @33 s1
