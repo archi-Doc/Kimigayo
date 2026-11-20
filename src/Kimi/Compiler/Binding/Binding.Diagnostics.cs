@@ -17,9 +17,6 @@ public sealed partial class Binding
     // check appends its rows with no other append to this list between its first row and RecordRejected.
     private readonly List<RejectedCandidate> rejectedRows = [];
 
-    // Keep proof failures intact. Only diagnostic publication follows these recorded
-    // missing-name causes; later validators must still see an invalid declaration.
-    private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
     private Dictionary<Koto, BindingSymbol>? objectPayloadCauses;
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
 
@@ -54,10 +51,6 @@ public sealed partial class Binding
     // SPEC 15.1.5, 23.1.3: the bare Place whose acquisition a failed node needs spelled, and whether an exclusive borrow of it is of an
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
-
-    // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
-    // the generic container that declares it (Outer), with the declared and the written counts.
-    private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
 
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1, bool ErasureIncomparable = false, ReferenceConstraintFailure? ConstraintFailure = null);
 
@@ -318,34 +311,26 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 9.7.1: outside constructor-own inference, required Type arguments are written in full; an outer container never takes call
-    // arguments or an expected Type; outside a generic container, a nested declaration is named through that container.
-    private static void ReportArity(Koto node, (BindingSymbol Declaration, int Declared, int Written, bool Outer) arity, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var name = arity.Declaration.Name;
-        var parameters = arity.Declaration.Declaration is DeclarationContainerKoto container ? string.Join(", ", container.GenericParameterNodes) : string.Empty;
-        var declared = $"{name}<{parameters}>";
-        var member = node.Parent is MemberAccessKoto access && ReferenceEquals(KotoHelper.UnwrapParentheses(access.Left), node) ? access.Right.ToString() : null;
-        string note;
-        if (arity.Outer)
-        {
-            note = $"{node} is declared in {declared}; outside it, the Type arguments of {name} are written on the qualifier and are never inferred (SPEC 9.7.1)";
-        }
-        else if (arity.Written == 0 && member is not null)
-        {
-            note = $"{declared} is named without its Type arguments; this qualifier requires explicit Type arguments; only the construction target itself can infer its own slots (SPEC 9.7.1, 10.8)";
-        }
-        else
-        {
-            note = $"{declared} declares {arity.Declared} Type parameter{(arity.Declared == 1 ? string.Empty : "s")}, and {arity.Written} Type argument{(arity.Written == 1 ? " is" : "s are")} written (SPEC 9.7.1)";
-        }
-
-        node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
-    }
-
     // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
     private static bool IsMissingInformation(Koto? node)
         => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
+
+    // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of the generic
+    // container that declares it: that declaration (Related) and its declared and written counts (Count, in that order).
+    private BoundType? RecordArity(Koto node, BindingSymbol declaration, int declared, int written)
+    {
+        var subject = SourceRef.Of(node);
+        return this.Record(
+            node,
+            BindingFailure.InvalidTypeFormation,
+            [new(ProblemFactKind.Related, this.FactSite(declaration.Declaration), 0), new(ProblemFactKind.Count, subject, declared), new(ProblemFactKind.Count, subject, written)]);
+    }
+
+    private void ReportArity(Koto node, DiagnosticCollection? store, int problem, in BindingProblem record)
+    {
+        var facts = this.report.Facts(problem);
+        node.ReportIn(store, record.Requirement, record.Code, evidence: [(int)facts[1].Value, (int)facts[2].Value], related: [("declaration", this.compilation.SyntaxOf(facts[0].Site), null)]);
+    }
 
     // ReportIssue's one helper that takes no store (PLAN G949 Stage 2 U3-3; B's U3 ruling 33): the store would be its seventh parameter, so it
     // reads Core's store decision for its subject itself, the same decision ReportIssue passes its siblings for the same node.
@@ -673,7 +658,6 @@ public sealed partial class Binding
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();
-        this.arityFailures?.Clear();
         this.constructorAbsences?.Clear();
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
@@ -771,6 +755,7 @@ public sealed partial class Binding
         return this.Fail(use, BindingFailure.NotObjectPayload);
     }
 
+    [Transitional("R7", Reason = "Records only at a node without a failure (Q1: a cause-less failure resting on the node's own record), until R7-E2 E2-5 with its callers.")]
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {
         if (this.RecordedFailure(use) != BindingFailure.None)
@@ -778,21 +763,41 @@ public sealed partial class Binding
             return;
         }
 
-        this.Fail(use, BindingFailure.InvalidConstraint);
         if (!IsMissingInformation(diagnosticCause) && use is IsKoto clause && this.FindMissingConformanceName(clause) is { } missing)
         {
             diagnosticCause = missing; // What the outcome rests on is consulted; the record explains itself by missing information.
         }
 
-        if (diagnosticCause is not null)
+        this.RecordConstraint(use, diagnosticCause);
+    }
+
+    // SPEC 8.3, 23.1.2: an invalid Constraint, with the part its check named as the cause it rests on (a Cause fact, Value -1: a Binding
+    // cause at the site, never shown); a cause whose own record is missing information makes this record derived from that one
+    // (ReportConstraint). Later validators still see an invalid node.
+    private void RecordConstraint(Koto use, Koto? cause)
+        => this.Record(use, BindingFailure.InvalidConstraint, cause is null ? [] : [new(ProblemFactKind.Cause, this.FactSite(cause), -1)]);
+
+    // The part a node's InvalidConstraint problem names as its cause, or null.
+    private Koto? ConstraintCause(Koto node)
+    {
+        var problem = this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(BindingFailure.InvalidConstraint), 0);
+        return problem >= 0 && this.FactOf(problem, ProblemFactKind.Cause) is { } cause ? this.compilation.SyntaxOf(cause.Site) : null;
+    }
+
+    private void ReportConstraint(Koto node, DiagnosticCollection? store, in BindingProblem problem, Koto cause)
+    {
+        if (IsMissingInformation(cause))
         {
-            (this.constraintDiagnosticCauses ??= new(ReferenceEqualityComparer.Instance))[use] = diagnosticCause;
+            node.ReportDerivedIn(store, problem.Requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
+        }
+        else
+        {
+            node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
         }
     }
 
     private Koto? ConformanceDiagnosticCause(Koto owner)
-        => owner is StructKoto or EnumKoto && this.RecordedFailure(owner) == BindingFailure.InvalidConstraint ?
-            this.constraintDiagnosticCauses?.GetValueOrDefault(owner) : null;
+        => owner is StructKoto or EnumKoto && this.RecordedFailure(owner) == BindingFailure.InvalidConstraint ? this.ConstraintCause(owner) : null;
 
     private Koto? FindConformanceDiagnosticCause(Koto owner, BoundConstraint fact)
     {
@@ -802,7 +807,7 @@ public sealed partial class Binding
             for (var i = 0; i < function.TypeConstraints.Count; i++)
             {
                 if (function.TypeConstraints[i] is IsKoto { Right: { } requirement } clause && ReferenceEquals(clause.BoundConstraint, fact) &&
-                    this.constraintDiagnosticCauses?.TryGetValue(KotoHelper.UnwrapParentheses(requirement), out var part) == true)
+                    this.ConstraintCause(KotoHelper.UnwrapParentheses(requirement)) is { } part)
                 {
                     return part;
                 }
@@ -855,7 +860,7 @@ public sealed partial class Binding
             for (var i = 0; i < function.TypeConstraints.Count; i++)
             {
                 if (function.TypeConstraints[i] is IsKoto { Left: { } subject, Right: { } requirement } clause && clause.BoundConstraint?.Kind == ConstraintKind.Error &&
-                    ReferenceEquals(subject.BoundType, owner) && this.constraintDiagnosticCauses?.ContainsKey(KotoHelper.UnwrapParentheses(requirement)) == true)
+                    ReferenceEquals(subject.BoundType, owner) && this.ConstraintCause(KotoHelper.UnwrapParentheses(requirement)) is not null)
                 {
                     return KotoHelper.UnwrapParentheses(requirement);
                 }

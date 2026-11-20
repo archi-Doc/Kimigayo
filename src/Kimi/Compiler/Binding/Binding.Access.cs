@@ -62,7 +62,7 @@ public sealed partial class Binding
     }
 
     // SPEC 9.4: protected forms apply only to struct members; the record names what declares this one instead.
-    private static void ReportProtectedPlacement(Koto declaration, DiagnosticRequirement requirement)
+    private static void ReportProtectedPlacement(Koto declaration, DiagnosticCollection? store, DiagnosticRequirement requirement)
     {
         var container = DeclaringContainer(declaration) switch
         {
@@ -79,7 +79,7 @@ public sealed partial class Binding
             VariableKoto variable => variable.NameKoto.Span,
             _ => null,
         };
-        declaration.Report(requirement, DiagnosticCode.ProtectedPlacement_Kd, container, span: span);
+        declaration.ReportIn(store, requirement, DiagnosticCode.ProtectedPlacement_Kd, container, span: span);
     }
 
     private static FunctionKoto? FunctionSignatureOwner(Koto use)
@@ -396,7 +396,7 @@ public sealed partial class Binding
                 WrittenAccess(this.nodes[i]) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal &&
                 DeclaringContainer(this.nodes[i]) is not StructKoto)
             {
-                this.Fail(this.nodes[i], BindingFailure.ProtectedPlacement);
+                this.Record(this.nodes[i], BindingFailure.ProtectedPlacement, []);
             }
 
             if (this.nodes[i] is FunctionKoto or PropertyKoto && this.nodes[i].BoundSymbol is { ConditionalDeclaration: { } conditional } member)
