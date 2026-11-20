@@ -94,21 +94,11 @@ public sealed partial class Binding
         => operation.Kind == ArgumentOperationKind.Reborrow || HirAdjust.Of(operation) is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow or
             HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection or HirAdaptation.ReferenceRead;
 
-    // The one enumeration of the borrow facts Binding commits for `node` (the facts HIR publishes, BU-27's HIR contract), into `rows`, in
-    // three parts by their writer (G147 rulings 19, 25): the node's own facts (OwnBorrows, formed at BindNode's end), the adaptation a
-    // consumer records at it (AdaptationBorrow, formed by the adaptations column's setter) and a match's or for's by-reference bindings
-    // (BindingBorrows, formed by Check's acquisitions). Formation reads each part once, at its commit; the census (PublishedNode) reads
-    // the three. An address is none (SPEC 5.4).
-    private void NodeBorrows(Koto node, Dictionary<BoundOrigin, BorrowList> rows)
-    {
-        this.OwnBorrows(node, rows);
-        if (this.adaptations.TryGetValue(node, out var recorded))
-        {
-            this.AdaptationBorrow(recorded, rows);
-        }
-
-        this.BindingBorrows(this.MatchPlan(node), rows);
-    }
+    // Formation: the one enumeration of the borrow facts Binding commits for a node (the facts HIR publishes, BU-27's HIR contract), in
+    // three parts by their writer (G147 rulings 19, 25), each read once at its commit into the running part: the node's own facts
+    // (OwnBorrows, at BindNode's end), the adaptation a consumer records at it (AdaptationBorrow, by the adaptations column's setter) and a
+    // match's or for's by-reference bindings (BindingBorrows, by Check's acquisitions). An address is none (SPEC 5.4). The census reads
+    // none of them: it reads the publication itself (ruling 28; Published*).
 
     // A match's or a for loop's Pattern plan; null for any other node.
     private BoundMatch? MatchPlan(Koto node) => node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
@@ -264,14 +254,84 @@ public sealed partial class Binding
         return row;
     }
 
-    // The census at one published node (CheckBorrows): the one enumeration into the publication side, the node's claim mark, and whether
-    // the node failed (no extras check then: a failed node's facts may stay unpublished): Binding failed it, or HIR publishes it Error,
-    // which for a node Binding resolved is a broken contract the publisher records itself (Hir.Broken).
+    // The census's input (G147 ruling 28): the borrows the HIR publisher itself writes, at its own write positions, into the publication
+    // side, which CheckBorrows compares with the formed rows: two independent producers. At a visited node (HirPublisher.Visit): whether it
+    // failed (no extras check then: a failed node's facts may stay unpublished; Binding failed it, or HIR publishes it Error, which for a
+    // node Binding resolved is a broken contract the publisher records itself, Hir.Broken), a Borrow node's Type or a Slice view's (a
+    // slicing index has no Borrow node; an address's Op is no Borrow, SPEC 5.4), an object upcast's view borrow (ViewBorrow), a Closure's
+    // capture entries whose Adjust borrows or Reborrows, a match's Subject borrow and the Pattern bindings whose published Adjust borrows;
+    // and its claim mark.
     private void PublishedNode(Koto node, HirOp op)
     {
         this.publishedFailure |= op == HirOp.Error || node.BindingState is BindingState.Unresolved or BindingState.Invalid;
-        this.NodeBorrows(node, this.publishedBorrows);
+        if (op == HirOp.Borrow || (node is IndexKoto && ElementAccess.IsSlicing(this, node)))
+        {
+            this.RecordBorrow(this.publishedBorrows, node.BoundType);
+        }
+
+        if (ViewBorrow(node) != HirAdaptation.None && node is ConversionKoto { BoundType: { Origin: { } origin } view, Left.BoundType.Components: [var payload, ..] })
+        {
+            this.RecordEntry(this.publishedBorrows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
+        }
+
+        if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
+        {
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
+                {
+                    this.RecordBorrow(this.publishedBorrows, capture.Environment.Type);
+                }
+            }
+        }
+
+        var plan = this.MatchPlan(node);
+        if (node is MatchKoto)
+        {
+            this.RecordBorrow(this.publishedBorrows, plan?.SubjectBorrow);
+        }
+
+        for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
+        {
+            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, BodySymbol.Type: { } bound } position &&
+                HirAdjust.Of(position.Acquisition, position.AccessMode).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow)
+            {
+                this.RecordBorrow(this.publishedBorrows, bound);
+            }
+        }
+
         this.MarkClaim(node);
+    }
+
+    // The census's input at the publisher's record of the uses (RowUses.Use): a call input, receiver, payload or writer whose operation HIR
+    // publishes as a Borrow (PublishesBorrow), its adapted Type; a user index's call the selection does not take (SelectionMode) counts
+    // with its inputs, since Binding committed it.
+    private void PublishedOperation(in BoundArgumentOperation operation)
+    {
+        if (PublishesBorrow(operation))
+        {
+            this.RecordBorrow(this.publishedBorrows, operation.AdaptedType);
+        }
+    }
+
+    // The census's input at a child the publisher completes by its own facts (RowUses.Use): its recorded adaptation, any but a referent
+    // read.
+    private void PublishedAdaptation(Koto child)
+    {
+        if (this.adaptations.TryGetValue(child, out var recorded))
+        {
+            this.AdaptationBorrow(recorded, this.publishedBorrows);
+        }
+    }
+
+    // The census's input at the publisher's call loop for a call the selection does not take: its receiver's and arguments' operations.
+    private void PublishedCall(CallPlan call)
+    {
+        this.PublishedOperation(call.ReceiverOperation);
+        foreach (ref readonly var argument in call.ArgumentOperations)
+        {
+            this.PublishedOperation(argument);
+        }
     }
 
     // A published claim: its Origin's atoms, as its Type states them (each operand of a meet), marked Claimed in the running part.

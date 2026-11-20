@@ -60,6 +60,9 @@ public sealed partial class Binding
         // The call of the consumer whose inputs follow, by its CallPlan.Of ordinal; -1 after the last.
         void Call(int ordinal);
 
+        // A call of the consumer Binding committed whose inputs the selection does not take (a user index's other call, SelectionMode).
+        void Unselected(CallPlan call);
+
         // A child the consumer's operation adapts, acquired, used in place or inspected, completed by its own facts (ChildAdjust).
         void Use(Koto? child, HirAdaptation adaptation = HirAdaptation.None, UseKind kind = UseKind.Acquisition);
 
@@ -229,6 +232,7 @@ public sealed partial class Binding
             uses.Call(i);
             if (ReferenceEquals(call, unselected))
             {
+                uses.Unselected(call);
                 continue;
             }
 
@@ -361,21 +365,36 @@ public sealed partial class Binding
 
         public void Call(int ordinal) => this.callOrdinal = ordinal;
 
-        // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it.
+        // Its inputs are the census's too: Binding committed the call (Binding.RawOrigins.Borrows).
+        public readonly void Unselected(CallPlan call) => binding.PublishedCall(call);
+
+        // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it;
+        // a borrowing operation and the child's recorded adaptation, which ChildAdjust reads first, are the census's input
+        // (Binding.RawOrigins.Borrows).
         public readonly void Use(Koto? child, in BoundArgumentOperation operation)
         {
             if (child is not null)
             {
                 this.FixAdjust(child, binding.ChildAdjust(child, operation, this.Claimed(child)), default);
+                if (this.Owns(child))
+                {
+                    binding.PublishedOperation(operation);
+                    binding.PublishedAdaptation(child);
+                }
             }
         }
 
-        // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its takes claimed.
+        // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its takes claimed;
+        // its recorded adaptation is the census's input (Binding.RawOrigins.Borrows).
         public readonly void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
         {
             if (child is not null)
             {
                 this.FixAdjust(child, binding.ChildAdjust(child, adaptation, kind, this.Claimed(child)), default);
+                if (this.Owns(child))
+                {
+                    binding.PublishedAdaptation(child);
+                }
             }
         }
 
