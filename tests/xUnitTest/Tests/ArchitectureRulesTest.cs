@@ -276,12 +276,13 @@ public class ArchitectureRulesTest
     // ClassForm, read by the one intake of each judgment over identical Types: J1 a proposition's identity (Constraints.cs:
     // NormalizeProofConstraint's subject, required Type and Contract reference; Contracts.cs: ProveConformance's subject and Contract
     // reference), J3 the Type relation at a use (TypeRelations.Walk.cs: the walk root's two sides; CallableSelection.cs:
-    // CallableContractType; Diagnostics.cs: a failed fit's record reads the pair its walk compared, F's C2 ruling 307 (2)), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
+    // CallableContractType; a failed fit's record and CheckTypeUse read the pair the walk's intake published, F's C2 rulings 307 (2),
+    // 315), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
     // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
     // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
     // input (Expressions.cs: the expected and the bound Type; Variables.cs, Conversions.cs, NumericConversions.cs); Keys.cs is
     // ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Diagnostics.cs=2;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
