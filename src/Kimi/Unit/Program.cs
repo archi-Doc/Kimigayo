@@ -70,17 +70,23 @@ public partial class Program
         }
     }
 
-    /// <summary>Ends this process at once with 130: TerminateProcess, not Environment.Exit, which would run tatara.dll's detach, and that
-    /// can wait on a lock a stuck thread holds. Off Windows, where no tatara.dll is loaded, Environment.Exit.</summary>
+    /// <summary>Ends this process at once with 130, running no handler. On Windows TerminateProcess, not Environment.Exit, which would run
+    /// tatara.dll's detach (it can wait on a lock a stuck thread holds) and the process-exit handler; off Windows libc's _exit, not
+    /// Environment.Exit, which runs AppCloseHandler, and that requests the root's termination and waits up to two seconds.</summary>
     internal static void EndProcess()
     {
-        if (!OperatingSystem.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
-            Environment.Exit(130);
+            TerminateProcess(GetCurrentProcess(), 130);
         }
-
-        TerminateProcess(GetCurrentProcess(), 130);
+        else
+        {
+            Exit(130);
+        }
     }
+
+    [LibraryImport("libc", EntryPoint = "_exit")]
+    private static partial void Exit(int status);
 
     [LibraryImport("kernel32.dll")]
     private static partial nint GetCurrentProcess();
