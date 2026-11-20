@@ -62,7 +62,7 @@ public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? So
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundArgumentOperation> argumentOperationScratch = new();
-    private readonly Dictionary<Koto, BoundArgumentOperation> receiverOperations = new(ReferenceEqualityComparer.Instance);
+    private readonly ReceiverOperationRows receiverOperations;
     private readonly AdaptationRows adaptations;
 
     /// <summary>Gets whether an expression of Type <c>ref/T</c> or <c>uniq/T</c> is read as its Copy referent where a <c>T</c> is expected (SPEC 3.5.3).</summary>
@@ -82,7 +82,8 @@ public sealed partial class Binding
     /// selects no candidate no other table holds it (a resolved call's is CallPlan.ReceiverOperation).</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
     /// <param name="operation">The selected operation; an Unknown proof is not permission to execute.</param>
-    /// <returns>Whether this pass selected an operation for the use; a node of the frozen library is refused (EnsurePassNode).</returns>
+    /// <returns>Whether this pass selected an operation for the use; a node of the frozen library is refused (EnsurePassNode: the
+    /// freeze released the library pass's rows, so the refusal is the answer).</returns>
     public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation)
     {
         EnsurePassNode(use, nameof(this.TryGetReceiverOperation));
@@ -582,5 +583,21 @@ public sealed partial class Binding
 
         internal bool TryGetValue(Koto node, out BoundAdaptation adaptation)
             => (adaptation = node.SyntaxOwner is { } table ? table.Hir.Families.Adaptations.Get(node.SyntaxId, binding) : default) != default;
+    }
+
+    /// <summary>The `receiverOperations` family's one accessor (DECISIONS BU-220): a working-state family, the receiver or storage
+    /// operation selected for a call or member access, kept in its node's module's NodeColumns at its SyntaxId (a selected operation always
+    /// has its Source, so the column's default is none). The HIR publisher reads it at its pass's publication and TryGetReceiverOperation
+    /// refuses a frozen node, so no reader reads a library row after the library pass, and the freeze releases them (NodeColumns.Freeze).
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct ReceiverOperationRows(Binding binding)
+    {
+        internal BoundArgumentOperation this[Koto use]
+        {
+            set => HirTables.Of(use).Families.ReceiverOperations.Ref(use.SyntaxId, binding) = value;
+        }
+
+        internal bool TryGetValue(Koto use, out BoundArgumentOperation operation)
+            => (operation = use.SyntaxOwner is { } table ? table.Hir.Families.ReceiverOperations.Get(use.SyntaxId, binding) : default).Source is not null;
     }
 }

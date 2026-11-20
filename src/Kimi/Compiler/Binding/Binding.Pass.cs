@@ -13,13 +13,16 @@ namespace Kimi.Compiler;
 // - Invariants: the cross-pass storage ResetPass's comment lists stays. A kept family's rows are reset in place over the running
 //   pass's modules only (In, PLAN G949 S1-r2), so no pass resets another pass's rows. R7-D2 b replaces the Clears with
 //   generation-stamped tables. A reader of a per-pass table reachable outside a pass, given a node of the frozen library, refuses
-//   it (EnsurePassNode): its row was the library pass's and is gone.
+//   it (EnsurePassNode): the library keeps no row of the table, so the refusal is the reader's answer.
 // - Prohibitions: no fact is computed or recorded here; ResetPass only empties tables and resets state.
 public sealed partial class Binding
 {
-    // PLAN G949 Stage 2 (U0b-C2, design 7b.1's C2): a per-pass table holds the running pass's rows only (ResetPass empties it), so after
-    // the library's freeze (SyntaxTable.Frozen) a library node has no row in it and its reader's "none" would be a silent wrong answer:
-    // such a read is the internal-invariant form. During the library pass the table is not frozen and the reader answers.
+    // PLAN G949 Stage 2 (U0b-C2, design 7b.1's C2) and R7-N5: a per-pass table holds the running pass's rows only, and after the
+    // library's freeze (SyntaxTable.Frozen) it holds no library row: a Dictionary lost them at the program pass's ResetPass; a column
+    // follows its pass counter, and either the freeze released the library pass's rows (a working-state family's Release row in
+    // NodeColumns.Freeze: the refusal is the answer, the rows being gone) or the library pass writes none (its NotStamps row: "none" is
+    // the library's own answer, and the refusal checks the contract that no program pass asks a library node). So such a read is the
+    // internal-invariant form for good, not a staged guard. During the library pass the table is not frozen and the reader answers.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void EnsurePassNode(Koto node, string reader)
     {
@@ -66,7 +69,6 @@ public sealed partial class Binding
         this.ResetStartup();
         this.ResetSpecializations();
         this.ResetVirtualDeclarations();
-        this.receiverOperations.Clear();
         this.arrayInferenceFailures?.Clear();
         this.noInitFailures?.Clear();
         this.ResetSyntheticCalls();

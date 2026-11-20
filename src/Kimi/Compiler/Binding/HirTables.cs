@@ -323,6 +323,7 @@ internal struct NodeColumns
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
     internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
+    internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
     internal StampedColumn<Koto?, Binding.PassCounter> ArrayInferenceShapes; // Pass: the written fixed-array shape an empty literal or a result target takes its evidence from (Binding.ArrayInference.cs).
     internal StampedColumn<Binding.CallInferenceFailure, Binding.PassCounter> CallInferenceFailures; // Pass: the selection a construction's or shape contract's later check rejected (Binding.ConstructorValidation.cs).
@@ -381,6 +382,7 @@ internal struct NodeColumns
         this.InvalidStaticOriginSlots.Grow(length);
         this.CallablePremiseFailures.Grow(length);
         this.EffectBoundRejections.Grow(length);
+        this.ReceiverOperations.Grow(length);
         this.InferredArrayLengths.Grow(length);
         this.ArrayInferenceShapes.Grow(length);
         this.CallInferenceFailures.Grow(length);
@@ -390,7 +392,9 @@ internal struct NodeColumns
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
-    // which would leave the library's edit family stale with no later library pass to rewrite it).
+    // which would leave the library's edit family stale with no later library pass to rewrite it), one row each: Freeze for a fact
+    // family, whose library rows a later pass reads; Release for a working-state family ("Work:"), whose rows no reader reads after the
+    // pass that wrote them, so the library keeps none (DECISIONS BU-220 as R7-N5 B2a-2 amends it).
     internal void Freeze(Binding binding)
     {
         this.VirtualOverrides.Freeze(binding);
@@ -415,6 +419,7 @@ internal struct NodeColumns
         this.InvalidStaticOriginSlots.Freeze(binding);
         this.CallablePremiseFailures.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
+        this.ReceiverOperations.Release();
         this.InferredArrayLengths.Freeze(binding);
         this.ArrayInferenceShapes.Freeze(binding);
         this.CallInferenceFailures.Freeze(binding);
@@ -478,6 +483,7 @@ internal struct NodeColumns
             InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
             CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
+            ReceiverOperations = this.ReceiverOperations.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
             ArrayInferenceShapes = this.ArrayInferenceShapes.Renumbered(length),
             CallInferenceFailures = this.CallInferenceFailures.Renumbered(length),
