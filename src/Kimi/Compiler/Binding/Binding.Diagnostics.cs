@@ -421,11 +421,15 @@ public sealed partial class Binding
             return null;
         }
 
-        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && TyCtxt.StorageMatches(expectedType, actualType);
-        if (storage && failure.Kind != ComparisonFailureKind.Shape)
+        // SPEC 8.2.3, 15.6.1 (F's C2 rulings 307 (2), 315): the record reads the pair its walk compared, as the walk's intake formed it
+        // and published it with its facts (comparisonRoot), so identity decides the structure and an Origin difference is the Origin
+        // relation's record; a failure whose facts no recording walk published is read as written.
+        var (walkedActual, walkedExpected) = this.comparisonFacts is [var first, ..] && first.Same(failure) && this.comparisonRoot is (BoundType a, BoundType e)
+            ? (a, e) : (actual.Type, expected.Type);
+        if (TyCtxt.StorageMatches(walkedExpected, walkedActual) && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
-                : this.RecordComparisonFacts(node, at, actual.Type!, expected.Type!, failure);
+                : this.RecordComparisonFacts(node, at, walkedActual!, walkedExpected!, failure);
         }
 
         return this.RecordTypeMismatch(node, at, actual, expected);
@@ -776,15 +780,18 @@ public sealed partial class Binding
         return problem >= 0 && this.FactOf(problem, ProblemFactKind.Cause) is { } cause ? this.compilation.SyntaxOf(cause.Site) : null;
     }
 
-    private void ReportConstraint(Koto node, DiagnosticCollection? store, in BindingProblem problem, Koto cause)
+    // The adapter's InvalidConstraint row (F's C2 ruling 306): derived from a cause that is missing information, else direct; a
+    // declaration's premise error relates the premises that linked it (SPEC 8.2.3), read from their published Failed state
+    // (FailedPremiseClauses), never proved again.
+    private void ReportConstraint(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition, Koto? cause)
     {
-        if (IsMissingInformation(cause))
+        if (cause is not null && IsMissingInformation(cause))
         {
-            node.ReportDerivedIn(store, problem.Requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
+            node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
         }
         else
         {
-            node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
+            node.ReportIn(store, requirement, code, condition: condition, related: this.FailedPremiseClauses(node)?.ToArray());
         }
     }
 

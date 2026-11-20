@@ -135,7 +135,7 @@ internal sealed class MirMoveData(TyCtxt types)
         this.Constructing = body.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(body.Key.Decl);
         if (this.Constructing)
         {
-            var self = body.Locals[0].Type;
+            var self = body.Locals[0].Type!; // A constructor's object, its struct's Type (MirBuilder.Body), never of no Type.
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
                 if (AdtDef.FieldType(types, self, i) is not null)

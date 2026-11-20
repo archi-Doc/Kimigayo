@@ -5,9 +5,10 @@
 // target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
 // The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs
-// with a by-case need's decider, whether it is an unresolved operation) and passes those to the rows' rules, which read no walk state.
+// with a by-case need's decider) and passes those to the rows' rules, which read no walk state.
 // Two by-case needs meeting at one node have deciders of one pair, which decide alike (UseNeed.Meet: a discarded group's take and its
 // operand's, one pair's occurrences annotated apart); deciders of two pairs meeting is a broken contract (InternalInvariant).
+// Invariant (DECISIONS Z16): every failure fact it publishes (FailureFact) has its causes (RestingCauses); one without is on Broken.
 // Must not resolve again.
 
 using Kimi.Compiler.Parsing;
@@ -74,7 +75,6 @@ public sealed partial class Binding
         private HirPosition position;
         private UseNeed need;
         private bool? rooted; // Whether the parent is rooted at a raw Place (IsRawRooted); null until asked, passed down a rooted step (D-932).
-        private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
 
         // Binding's structural completion with its Never evidence, one per body.
         private StructuralCompletion? completion;
@@ -89,11 +89,10 @@ public sealed partial class Binding
 
         public override void Visit(Koto node)
         {
-            var (parent, parentOp, outer, need, operation, rooted) = (this.parent, this.parentOp, this.position, this.need, this.unresolvedOperation, this.rooted);
-            var position = this.PositionOf(node, parent, parentOp, outer, operation);
+            var (parent, parentOp, outer, need, rooted) = (this.parent, this.parentOp, this.position, this.need, this.rooted);
+            var position = this.PositionOf(node, parent, parentOp, outer);
             var op = this.OpOf(node, position);
             var parts = this.Parts(node, op, position);
-            var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(binding.KindOp(node));
             var claimed = this.uses.Claimed(node); // The takes' claim, which the rows of a kept or an Error node replace.
             if (parentOp == HirOp.Error && position == HirPosition.Evaluated)
             {
@@ -111,8 +110,10 @@ public sealed partial class Binding
 
             if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Completions: { } completions, Hir.Places: { } places } && node.SyntaxId < ops.Length)
             {
-                // An Error Binding resolved without rejecting it lacks the facts its Op guarantees (HasFacts): a broken HIR contract.
-                if (op == HirOp.Error && node.BindingState == BindingState.Resolved && !Rejected(node))
+                // A failure fact without its causes is a broken HIR contract, such as an Error Binding resolved without rejecting it, which
+                // lacks the facts its Op guarantees (HasFacts); so is an Error with a slot neither typed nor failed, whatever its state
+                // (SlotsStated, PLAN G1073).
+                if ((FailureFact(node, op) && !binding.HasRestingCauses(node)) || (op == HirOp.Error && !binding.SlotsStated(node)))
                 {
                     node.SyntaxOwner.Hir.Broken!.Add(node);
                 }
@@ -144,7 +145,7 @@ public sealed partial class Binding
             this.rooted = parent is ParenthesizedKoto || (parent is BinaryKoto step && ReferenceEquals(step.Left, node) && !IsRawRoot(step) && binding.IsRootedStep(step)) ? rooted : null;
             this.Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
-                (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
+                (parts != HirOp.Syntax || (node is FunctionKoto function && binding.PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
                 // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1, 8.14), and a
                 // selection by case with its decider, read through HirTables.IndexCaseDecider (R7 plan Z23).
@@ -158,14 +159,14 @@ public sealed partial class Binding
                 binding.AdjustChildren(node, parts, this.need.Use, ref this.uses);
             }
 
-            (this.parent, this.parentOp, this.position, this.unresolvedOperation) = (node, parts, parts == op ? position : HirPosition.None, unresolvedOperation);
+            (this.parent, this.parentOp, this.position) = (node, parts, parts == op ? position : HirPosition.None);
             node.VisitChildren(this);
             if (node is ForKoto { Iteration: { } iteration } && op == HirOp.For)
             {
                 this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
             }
 
-            (this.parent, this.parentOp, this.position, this.need, this.unresolvedOperation, this.rooted) = (parent, parentOp, outer, need, operation, rooted);
+            (this.parent, this.parentOp, this.position, this.need, this.rooted) = (parent, parentOp, outer, need, rooted);
         }
 
         internal void Publish(SyntaxTable table, Koto root)
@@ -194,7 +195,7 @@ public sealed partial class Binding
             (hir.Broken ??= []).Clear();
             (this.table, this.uses) = (table, new(binding, table));
             this.completion?.Clear();
-            (this.parent, this.position, this.need, this.unresolvedOperation, this.rooted) = (null, HirPosition.None, default, false, null);
+            (this.parent, this.position, this.need, this.rooted) = (null, HirPosition.None, default, null);
             this.Visit(root);
         }
 

@@ -218,7 +218,7 @@ public partial class TypeDagScalingTest
             $"struct H {{s}}\n    internal let loan: Loan<ref/i32 during s>\n    internal var x: {type}\nfunc probe(q: ref/i32, h: ref/H during q) => ()\n" +
             "public func main() => ()\n");
         Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
-        var h = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe").Locals[2].Type.Components[0];
+        var h = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe").Locals[2].Type!.Components[0];
         Assert.Equal(answer, Holding(c, h, out var seen));
         Assert.Equal(keys, seen.Keys.Count(static x => x.Stored && x.Written is not null));
     }
@@ -244,7 +244,7 @@ public partial class TypeDagScalingTest
             .Append("    return\npublic func main() => ()\n").ToString());
         Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
-        var p = body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type);
+        var p = body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type!);
         var (meetings, keys) = (new int[3], new int[3]);
         for (var i = 0; i < meetings.Length; i++)
         {
@@ -286,7 +286,7 @@ public partial class TypeDagScalingTest
         var c = MirBuildTest.Compile(text.ToString());
         Assert.True(c.Binding.Issues.Count == 0, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
-        return (c, body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type));
+        return (c, body.Locals.ToArray().Skip(1).TakeWhile(static x => x.Kind == MirLocalKind.Arg).ToDictionary(static x => x.Name!, static x => x.Type!));
     }
 
     // The holding walk's answer in Own mode, whether the value may hold a Loan and the guard, with its keys.

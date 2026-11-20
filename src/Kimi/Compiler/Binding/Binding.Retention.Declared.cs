@@ -187,7 +187,7 @@ public sealed partial class Binding
     // The declared counterparts of a run's parts by value, the one pairing (Parts, OwnParts; DECISIONS BU-113): the declared Type's entries
     // (Holdings) on retentionHeld after the run, in the run's order, where the declared Type has the instantiated one's constructor (Same)
     // and as many entries; none for a Closure's environment or any other declared Type. It reads Holdings only and sets no storage-walk
-    // state (retentionLimit): an Unsupported entry there has the instantiated Type's constructor, so that Type's own run has one too.
+    // state (retentionLimit).
     private HeldRange DeclaredRun(BoundType? declared, BoundType type, HeldRange run)
     {
         var start = this.retentionHeld.Count;

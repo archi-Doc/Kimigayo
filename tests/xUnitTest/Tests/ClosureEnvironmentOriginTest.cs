@@ -360,7 +360,7 @@ public class ClosureEnvironmentOriginTest
     [InlineData(
         Consume + "func inspectText(value: ref/string) => ()\n" + Main + "    let text = \"a\"\n    let other = \"b\"\n" +
             "    let c = func [text@move, other@move] ()\n        consumeText(other@move)\n        return text@ref\n    inspectText(c@move())\n",
-        "MovedPlace_Kd return text@ref; " + Unsatisfied + " return text@ref; " + Unsatisfied + " text@ref",
+        Unsatisfied + " return text@ref; " + Unsatisfied + " text@ref",
         "text@ref",
         "text@ref")]
     public void AResultOverCallLocalStorageIsRefuted(string source, string records, string text, string borrow)
@@ -764,10 +764,11 @@ public class ClosureEnvironmentOriginTest
     // in a failed Origin environment a dependent of that failure only when a repair of the failed clause could prove it (DECISIONS BU-69;
     // b1: `p outlives zz`'s repairs `p outlives static` and `p outlives q`, and the form with no clause, all report the Unknown at `p`).
     // They were at the whole declaration and an independent record. Since the MIR decides (R6-check H5; H3b T50/T51, class 4: records
-    // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), d3 also has A5's MovedPlace_Kd and its twin of
-    // Binding's record (H0b §5.4, until R7) at the declaration.
+    // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), d3 also has the twin of Binding's record (H0b §5.4,
+    // until R7) at the declaration; its MovedPlace_Kd, which named the environment's root that `t@move` partly moved, is false (n is
+    // never moved) and goes since the declaration keeps its initializer's Borrow (DECISIONS Z16, G147 ruling 5).
     [Theory]
-    [InlineData(LocalAnnotatedConsuming, "MovedPlace_Kd let r: ref/i32 during p = n@ref; " + Unsatisfied + " let r: ref/i32 during p = n@ref; " + Unsatisfied + " n@ref")]
+    [InlineData(LocalAnnotatedConsuming, Unsatisfied + " let r: ref/i32 during p = n@ref; " + Unsatisfied + " n@ref")]
     [InlineData(FailedClauseStore, "MissingOriginBinding_Kd zz; UnprovenOriginRelation_Kd p")]
     public void APendingRelationIsRecordedAsABindingTimeFit(string function, string records)
     {

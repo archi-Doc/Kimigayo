@@ -18,19 +18,22 @@ namespace Kimi.Compiler;
 /// the facts it guarantees (<see cref="Binding.HasFacts"/>), which the builder trusts. The operations (<see cref="Binding.Operation"/>:
 /// <see cref="Literal"/>, <see cref="Field"/>, <see cref="Deref"/>, <see cref="Index"/>, <see cref="PrimitiveOp"/>, <see cref="Logical"/>,
 /// <see cref="Borrow"/>, <see cref="Convert"/> and <see cref="RuntimeTypeTest"/>) form their value or Place from Binding's selection for
-/// the node, so their Type is one of their facts; a new member states there whether it is one, and whether it is a construct whose
-/// parts deliver its value (<see cref="Binding.Construct"/>: <see cref="Block"/>, <see cref="Unsafe"/>, <see cref="Do"/>,
-/// <see cref="If"/>, <see cref="Match"/>, <see cref="Try"/> and <see cref="Loop"/>).</summary>
+/// the node, so their Type is one of their facts; a new member states there whether it is one.</summary>
 /// <remarks><see cref="Syntax"/>: not evaluated (a declaration without a buildable body, a Type, a qualifier, the callee of a selected
 /// call or construction, a member name, a binder, a Pattern, which its match plan describes, the text a <c>$tryWrite</c> writes, an
 /// attribute, or the inside of an Error).
-/// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: Binding rejected
-/// the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type; a form no member describes that
-/// Binding left unresolved has none), which for a node Binding resolved is a broken contract the publisher lists
-/// (<see cref="HirTables.Broken"/>); its value is derived, after the operands the HIR keeps (DECISIONS R5-M63, R4-M88). A construct, a
-/// statement, a call or a name Binding left unresolved keeps its Op where it has its facts, and so does a plain write Binding rejected
-/// for its value's fit after admitting its destination (<c>Binding.AdmittedMisfit</c>): its <see cref="Assign"/> places its value, which is
-/// the Error, a value Binding resolved included (DECISIONS R5-M195). <see cref="Name"/>: its Res says what it reads.
+/// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: the
+/// lexer, the parser or Binding rejected the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type,
+/// a name of a binding its Type, a match or a try its valid plan; a form no member describes that Binding left unresolved has none); its value is
+/// derived, after the parts the HIR keeps, those its form evaluates on every path through it (Binding's Keeps; DECISIONS Z16, which
+/// R4-M88 and R5-M63 are cases of). The contract of derived values (DECISIONS Z16): an Error, a failed acquisition
+/// (<see cref="HirAcquire.Failed"/>, at the acquired node) and the declaration of a stored Property whose value the builder reads, not
+/// published <see cref="Body"/>, are the failure facts the builder derives from (<see cref="Binding.FailureFact"/>); each has its causes
+/// (<see cref="Binding.RestingCauses"/>), and one without, such as an Error Binding resolved without rejecting it, is a broken contract
+/// the publisher lists (<see cref="HirTables.Broken"/>). A construct, a statement, a call or a name Binding left unresolved keeps its Op
+/// where it has its facts, and so does a plain write Binding rejected for its value's fit after admitting its destination
+/// (<c>Binding.AdmittedMisfit</c>): its <see cref="Assign"/> places its value, which is the Error, a value Binding resolved included
+/// (DECISIONS R5-M195). <see cref="Name"/>: its Res says what it reads.
 /// <see cref="Group"/>: evaluates its one operand (parentheses, a label, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
 /// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,

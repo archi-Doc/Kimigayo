@@ -283,15 +283,16 @@ public sealed class MirPublicationTest
         static bool IsDeclaration(DiagnosticRelated related) => related.Role == "declaration";
     }
 
-    // Design 5 (BU-2's four shapes, synthetic before 2g-1): where Binding leaves the node it reports at resolved (a rejected assignment
-    // target, a resolved recovery node, an unreadable char literal), the node has no FailureCauses, so a Binding cause there is a broken
-    // contract (2g-1 sites it at the failed node): InternalInvariant_Kd at the subject. G353's Field selection now rests on the Property's
-    // refusal (DECISIONS BU-73), so its cause names Binding's located limit and the problem is suppressed by it.
+    // Design 5 (BU-2's four shapes, synthetic before 2g-1): where Binding leaves the node it reports at resolved and nothing rejected it (a
+    // rejected assignment target, a resolved recovery node), the node has no RestingCauses, so a Binding cause there is a broken contract:
+    // InternalInvariant_Kd at the subject. An unreadable char literal rests on its own lexical record (DECISIONS Z16's gap row; fail-before:
+    // InternalInvariant_Kd), which suppresses the problem, as G353's Field selection rests on the Property's refusal (DECISIONS BU-73), so
+    // its cause names Binding's located limit and the problem is suppressed by it.
     [Theory]
     [InlineData("public func main()\n    let x = 1\n    x = 2\n", "x = 2", "x", false)]
     [InlineData(ClosureView + "    let c = view.cb\n    return 1\npublic func main() => ()\n", "return 1", "view.cb", true)]
     [InlineData("public func main()\n    let t = (1, 2\n", "let t = (1, 2", "(1, 2", false)]
-    [InlineData("public func main()\n    let c = 'ab'\n", "let c = 'ab'", "'ab'", false)]
+    [InlineData("public func main()\n    let c = 'ab'\n", "let c = 'ab'", "'ab'", true)]
     public void ABindingCauseNamesBindingsCausesAtItsSite(string source, string subject, string site, bool sited)
     {
         var c = CompilationTestHelper.Parse(source, "Hello.kimi");
@@ -300,7 +301,7 @@ public sealed class MirPublicationTest
         var before = Errors(c).Length;
         var program = new MirProgram();
         var at = Node(c, source, site);
-        Assert.Equal(sited, c.Binding.FailureCauses(at) is not null);
+        Assert.Equal(sited, c.Binding.RestingCauses(at) is not null);
         program.Problems.Add(Found(DiagnosticCode.MovedPlace_Kd, Moved, Site(c, source, subject)), [new(ProblemFactKind.Cause, SourceRef.Of(at), -1)]);
         Publish(c, program);
         var added = Errors(c).Where(static x => x.Code is nameof(DiagnosticCode.InternalInvariant_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
