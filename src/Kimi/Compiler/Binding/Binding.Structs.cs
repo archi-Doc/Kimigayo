@@ -118,7 +118,7 @@ public sealed partial class Binding
 
     // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
     private ReceiverAuthority? ReceiverOfPart(Koto place)
-        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(ElementAccess.OwnedPathRoot(this, part)) : null;
+        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(this.OwnedPathRoot(part)) : null;
 
     // One row of the special-receiver table (Receiver).
     private readonly record struct ReceiverAuthority(SemanticsKind Parts, bool Whole, bool LendsFields);

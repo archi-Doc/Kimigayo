@@ -119,7 +119,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || ElementAccess.IsSyntax(this, projection)) ||
+            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || this.IsSyntax(projection)) ||
                 projection.Left.BoundType?.Semantics != SemanticsKind.Owner)
             {
                 break;

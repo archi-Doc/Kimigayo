@@ -30,20 +30,6 @@ namespace Kimi.Compiler;
 //   record the failure AccessFailure or BorrowFailure names), selects a candidate or changes a Type.
 public sealed partial class Binding
 {
-    // SPEC 3.4.3: whether selection through the Type's reference layers passes a shared layer.
-    internal static bool HasSharedLayer(BoundType? type)
-    {
-        for (; type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; type = type.Components[0])
-        {
-            if (SharedLayer(type.Semantics))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.1.5, 23.1.3: whether a bare Place that needs @move offers Take and is a Movable Place, judged from its path alone
     // for a repair candidate: an owned path from a local, parameter or capture root is verified; a borrowed, published or shared
     // path, a Property's storage, a Pattern candidate and an element outside a static Move Path (SPEC 15) are refuted; a raw
@@ -87,27 +73,19 @@ public sealed partial class Binding
         return AcquisitionJudgment.Required;
     }
 
-    // SPEC 3.4, 13.5.5, 15.1.5: the access a Place's path grants under a case assignment (SPEC 8.15.2), computed once for writes,
-    // Moves and borrows. Owner is a direct path (a local, parameter or static and their inline parts), Uniq a path through an
-    // exclusive reference or objuniq view or rooted at the destruction receiver (Receiver), and Ref a path through a shared layer: a
-    // ref reference, a Slice element, an objref, rc or arc view, a pair layer in a shared case or a guard candidate. A shared layer
-    // anywhere on the path bounds it to shared access; the path never changes the Type. Below a base Place, the layers are those of
-    // the base's own Type (SPEC 3.4.3); a recorded in-place read of it is representation.
-    internal SemanticsKind PathAuthority(Koto source, ReadOnlySpan<PairCase> assignment)
+    // SPEC 3.4.3: whether selection through the Type's reference layers passes a shared layer.
+    private static bool HasSharedLayer(BoundType? type)
     {
-        var path = this.PathAuthority(source, assignment, out var bindingDenies, out _);
-        return bindingDenies ? SemanticsKind.Ref : path;
-    }
-
-    // SPEC 3.4.3, 15.6.2: the access a Place's path grants to what the Place's own safe reference layers reach: its path's, bounded
-    // by a shared layer of the Place's Type and exclusive through an exclusive one.
-    internal SemanticsKind ReferentAuthority(Koto place)
-        => (this.PathAuthority(place, []), this.LayerAuthority(place, [])) switch
+        for (; type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; type = type.Components[0])
         {
-            (SemanticsKind.Ref, _) or (_, SemanticsKind.Ref) => SemanticsKind.Ref,
-            (_, SemanticsKind.Uniq) => SemanticsKind.Uniq,
-            var (path, _) => path,
-        };
+            if (SharedLayer(type.Semantics))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 3.4.3, 13.5.5: a layer step that grants shared access only: a shared reference, an objref view or an rc or arc handle.
     private static bool SharedLayer(SemanticsKind? layer) => layer is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc;
@@ -157,6 +135,28 @@ public sealed partial class Binding
     // root (LendsPlace; DECISIONS BU-25's exception binds only the accessor's own Borrow of its storage).
     private static bool StaticStorageAccess(BindingSymbol symbol, BindingScope scope)
         => symbol.Kind == BindingSymbolKind.Storage && IsStatic(symbol.Declaration.BoundSymbol) && scope.Function != symbol.Scope.Function;
+
+    // SPEC 3.4, 13.5.5, 15.1.5: the access a Place's path grants under a case assignment (SPEC 8.15.2), computed once for writes,
+    // Moves and borrows. Owner is a direct path (a local, parameter or static and their inline parts), Uniq a path through an
+    // exclusive reference or objuniq view or rooted at the destruction receiver (Receiver), and Ref a path through a shared layer: a
+    // ref reference, a Slice element, an objref, rc or arc view, a pair layer in a shared case or a guard candidate. A shared layer
+    // anywhere on the path bounds it to shared access; the path never changes the Type. Below a base Place, the layers are those of
+    // the base's own Type (SPEC 3.4.3); a recorded in-place read of it is representation.
+    private SemanticsKind PathAuthority(Koto source, ReadOnlySpan<PairCase> assignment)
+    {
+        var path = this.PathAuthority(source, assignment, out var bindingDenies, out _);
+        return bindingDenies ? SemanticsKind.Ref : path;
+    }
+
+    // SPEC 3.4.3, 15.6.2: the access a Place's path grants to what the Place's own safe reference layers reach: its path's, bounded
+    // by a shared layer of the Place's Type and exclusive through an exclusive one.
+    private SemanticsKind ReferentAuthority(Koto place)
+        => (this.PathAuthority(place, []), this.LayerAuthority(place, [])) switch
+        {
+            (SemanticsKind.Ref, _) or (_, SemanticsKind.Ref) => SemanticsKind.Ref,
+            (_, SemanticsKind.Uniq) => SemanticsKind.Uniq,
+            var (path, _) => path,
+        };
 
     // SPEC 15.6.2: access through a shared reference cannot grant exclusive
     // authority, even to an exclusive reference stored below it.
@@ -267,7 +267,7 @@ public sealed partial class Binding
             case Koto when IsRawRoot(source):
                 next = source is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)source).Left;
                 return PathStep.RawFollow;
-            case IndexKoto userIndex when ElementAccess.IsUserIndex(this, userIndex):
+            case IndexKoto userIndex when this.IsUserIndex(userIndex):
                 next = userIndex.Left;
                 return PathStep.UserIndex;
             case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
@@ -277,13 +277,13 @@ public sealed partial class Binding
             case IndexKoto index when index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary }:
                 next = index.Left;
                 return PathStep.BorrowedElement;
-            case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Array && !ElementAccess.IsSlicing(this, element):
+            case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Array && !this.IsSlicing(element):
                 next = element.Left;
                 return PathStep.ArrayElement;
             case MemberAccessKoto member when !IsGetterResult(member):
                 next = member.Left;
                 return PathStep.Member;
-            case BinaryKoto part when ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(this, part, out _, out _):
+            case BinaryKoto part when this.IsSyntax(part) && this.TryType(part, out _, out _):
                 next = part.Left;
                 return PathStep.InlinePart;
             case IdentifierNameKoto root when Receiver(root) is not null:
@@ -336,35 +336,35 @@ public sealed partial class Binding
             };
         }
 
-        if (node is IndexKoto userIndex && ElementAccess.IsUserIndex(this, userIndex))
+        if (node is IndexKoto userIndex && this.IsUserIndex(userIndex))
         {
             return this.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1: an update selects indexUniq.
         }
 
-        if (ElementAccess.IsExclusiveArrayElement(this, node))
+        if (this.IsExclusiveArrayElement(node))
         {
             return true;
         }
 
-        // SPEC 3.4.3, 4.7, 4.7.1, 15.1.5 (PLAN G203): an element of an owned Tuple, fixed array or Array (ElementAccess.TryType) is an
+        // SPEC 3.4.3, 4.7, 4.7.1, 15.1.5 (PLAN G203): an element of an owned Tuple, fixed array or Array (TryType) is an
         // inline part of its owner's path (PathAuthority) and offers Write when its owner does, as a Field does below: a mutable
         // static's `State.pair.0` as its `State.point.x`.
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } or IndexKoto && node is BinaryKoto inline && ElementAccess.IsSyntax(this, inline) &&
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } or IndexKoto && node is BinaryKoto inline && this.IsSyntax(inline) &&
             inline.Left.BoundType?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array &&
-            ElementAccess.TryType(this, inline, out _, out _))
+            this.TryType(inline, out _, out _))
         {
             return this.WritableOwner(inline.Left);
         }
 
-        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && ElementAccess.AccessType(this, nested.Left)?.SafeReferent is not { Kind: BoundTypeKind.Tuple } &&
-            ElementAccess.BorrowedPathRoot(this, nested) is { } root)
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && this.AccessType(nested.Left)?.SafeReferent is not { Kind: BoundTypeKind.Tuple } &&
+            this.BorrowedPathRoot(nested) is { } root)
         {
-            return ElementAccess.AccessType(this, root, true)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
+            return this.AccessType(root, true)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
         }
 
-        if (node is MemberAccessKoto tupleElement && ElementAccess.AccessType(this, tupleElement.Left)?.SafeReferent is { Kind: BoundTypeKind.Tuple })
+        if (node is MemberAccessKoto tupleElement && this.AccessType(tupleElement.Left)?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
-            return ElementAccess.AccessType(this, tupleElement.Left, true)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(this, tupleElement, out _, out _);
+            return this.AccessType(tupleElement.Left, true)!.Semantics == SemanticsKind.Uniq && this.TryBorrowedTupleElement(tupleElement, out _, out _);
         }
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
@@ -403,11 +403,11 @@ public sealed partial class Binding
 
     // SPEC 13.7.1, 13.5.5, 15.1.5: whether a whole Place offers Write by its path and binding, the question of an assignment's whole
     // target and of a pair layer's owner-case operand (P itself): Writable, or an inline part of a writable root
-    // (ElementAccess.WritableRoot; the Property permissions on its path are the binding's: ValidPropertyWritePath, BindReference). A
+    // (WritableRoot; the Property permissions on its path are the binding's: ValidPropertyWritePath, BindReference). A
     // Temporary Value is none, also parenthesized: it is no Place expression (SPEC 13.7.1, the owner's O-438 (a)). Nor yet is a
     // writable temporary's whole Temporary Place (IsTemporaryPlace): SPEC grants it Write, but no lowering writes it whole, so
     // AccessFailure names the write Unsupported.
-    private bool WritablePlace(Koto place) => this.Writable(place) || ElementAccess.WritableRoot(this, place) is not null;
+    private bool WritablePlace(Koto place) => this.Writable(place) || this.WritableRoot(place) is not null;
 
     // SPEC 15.1.5, 3.4.1, 3.6: whether the owner a standard projection, a member selection or a payload selects from grants the part
     // Write by its root's permission: a whole Place offering Write (WritablePlace) or a writable temporary, in whose Temporary Place
@@ -528,10 +528,10 @@ public sealed partial class Binding
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
             ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => true, // SPEC 13.5.5: a selected referent is a Place.
-            MemberAccessKoto member => DeclaringType(ElementAccess.AccessType(this, member.Left)) is var declaring &&
+            MemberAccessKoto member => DeclaringType(this.AccessType(member.Left)) is var declaring &&
                 ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && AdtDef.IsStruct(declaring)) || declaring?.Kind == BoundTypeKind.Tuple),
             // SPEC 4.7.1: a user index publishes a Place, whatever its key; a range selection of a sequence is a value (SPEC 4.8.2).
-            IndexKoto index => ElementAccess.IsUserIndex(this, index) || (!ElementAccess.IsSlicing(this, index) &&
+            IndexKoto index => this.IsUserIndex(index) || (!this.IsSlicing(index) &&
                 (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
                 index.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary })),
             _ => false,
@@ -548,13 +548,13 @@ public sealed partial class Binding
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         var root = unwrapped;
-        while (root is BinaryKoto part && !IsGetterResult(part) && ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(this, part, out _, out _))
+        while (root is BinaryKoto part && !IsGetterResult(part) && this.IsSyntax(part) && this.TryType(part, out _, out _))
         {
             root = KotoHelper.UnwrapParentheses(part.Left);
         }
 
         // SPEC 15.6.2, 5.7: as for a Place, a shared layer on the path, a raw pointer's included, denies an exclusive borrow.
-        var inline = unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(this, stored);
+        var inline = unwrapped is BinaryKoto stored && this.IsSyntax(stored);
         return !this.IsBarePlace(root) &&
             (!exclusive || (spelled && !inline && this.WritableTemporary(root) && !this.ReachedThroughShared(unwrapped))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
@@ -650,7 +650,7 @@ public sealed partial class Binding
             };
         }
 
-        if (source is IndexKoto userIndex && ElementAccess.IsUserIndex(this, userIndex))
+        if (source is IndexKoto userIndex && this.IsUserIndex(userIndex))
         {
             return !exclusive || this.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1
         }
@@ -667,7 +667,7 @@ public sealed partial class Binding
 
         if (source is MemberAccessKoto element && element.Left.BoundType?.SafeReferent is { Kind: BoundTypeKind.Tuple })
         {
-            return ElementAccess.TryBorrowedTupleElement(this, element, out _, out _) &&
+            return this.TryBorrowedTupleElement(element, out _, out _) &&
                 (!exclusive || element.Left.BoundType!.Semantics == SemanticsKind.Uniq);
         }
 
@@ -715,7 +715,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (source is BinaryKoto part && ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(this, part, out _, out _))
+        if (source is BinaryKoto part && this.IsSyntax(part) && this.TryType(part, out _, out _))
         {
             return this.LendsOwner(part.Left, scope, exclusive, out staticRoot);
         }
