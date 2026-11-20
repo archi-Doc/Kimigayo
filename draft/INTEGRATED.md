@@ -1645,3 +1645,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   explicit contract revision with an independent review. The commands table gains `tatara` after `run`: a session's lines, its
   ends, its exit code and Ctrl+C. The plan gives the decision (decision 9; §5 A3's Documents), not the text: the row's wording is
   the unit's and its review's, so no plan text is frozen.
+- IMPL §20.3.2's Toolchain paragraph (2026-11-21, unit A4, Q-604; T's D-981): the second of decision 9's two stage-A IMPL
+  revisions, an explicit contract revision with an independent review. The root holds `tatara.dll`; a native build runs no LLVM
+  tool and reads no `LlvmBin`; `toolchain verify` also checks `tatara.dll`'s hash. The plan gives the decision (decision 9; §5 A4),
+  not the text, so no plan text is frozen.
