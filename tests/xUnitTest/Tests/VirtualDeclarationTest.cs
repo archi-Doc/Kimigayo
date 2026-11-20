@@ -50,7 +50,8 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         Assert.Equal(2, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Count(x => x.IsVirtual || x.IsOverride));
     }
 
-    // DECISIONS BU-111: the Reason is the closed cause; its explanation is the whole Note, never a bounded Reason value.
+    // R7-E2 (BU-111's Note superseded, ruling 7 Q6): the Reason is the closed cause and the rule it breaks, which the Label shows whole: no
+    // rule is elided (DiagnosticLimits.ValueLength); no Note.
     [Theory]
     [InlineData("virtual func read() => ()", "NotStructFunction", "direct struct")]
     [InlineData("group G\n    virtual func read() => ()", "NotStructFunction", "direct struct")]
@@ -75,13 +76,15 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         }
 
         Assert.Equal(expected, record.Span!.Value.Start);
-        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), Assert.Single(record.Reason!));
-        Assert.Null(record.Label);
-        Assert.Contains(fact, record.Note!, StringComparison.Ordinal);
-        Assert.DoesNotContain("effects", record.Note!, StringComparison.Ordinal); // An override's effect item is its own record (DECISIONS G223).
+        Assert.Equal(2, record.Reason!.Length);
+        Assert.Equal(new DiagnosticValue("cause", DiagnosticValueKind.Enumeration, cause), record.Reason[0]);
+        Assert.Equal(new DiagnosticValue("rule", DiagnosticValueKind.Text, record.Label!), record.Reason[1]); // Not elided.
+        Assert.Contains(fact, record.Label!, StringComparison.Ordinal);
+        Assert.Null(record.Note);
+        Assert.DoesNotContain("effects", record.Label!, StringComparison.Ordinal); // An override's effect item is its own record (DECISIONS G223).
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.False(c.Generate(TextWriter.Null));
-        output.WriteLine(record.Message + "\n" + record.Note);
+        output.WriteLine(record.Message + "\n" + record.Label);
     }
 
     // SPEC 6.4.1: an objuniq virtual or override is valid; its Exclusive dispatch is the implementation's limit, Unsupported_Kd at the

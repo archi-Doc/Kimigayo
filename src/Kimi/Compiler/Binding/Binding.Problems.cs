@@ -266,6 +266,9 @@ public sealed partial class Binding
             case BindingFailure.NoInit when this.FactOf(index, ProblemFactKind.Reason) is { } reason:
                 ReportNoInit(node, store, problem, (NoInitProblem)reason.Value);
                 break;
+            case BindingFailure.VirtualDeclaration when this.FactOf(index, ProblemFactKind.Reason) is { } cause:
+                ReportVirtualDeclarationFailure((FunctionKoto)node, store, problem, (VirtualDeclarationCause)cause.Value);
+                break;
             case var _ when this.FactOf(index, ProblemFactKind.Operand) is not null:
                 this.ReportOperatorOperand(node, store, index, problem);
                 break;

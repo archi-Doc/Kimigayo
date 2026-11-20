@@ -1022,7 +1022,8 @@
   + Name="InvalidVirtualDeclaration_Kd"
     Category="Language"
     Message="This declaration cannot introduce or implement a virtual slot"
-    Evidence="cause:Enumeration"
+    Evidence="cause:Enumeration,rule:Text"
+    Label="{1}"
 
   + Name="MissingOverrideTarget_Kd"
     Category="Language"

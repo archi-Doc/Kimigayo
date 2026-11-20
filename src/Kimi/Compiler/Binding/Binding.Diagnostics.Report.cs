@@ -346,10 +346,6 @@ public sealed partial class Binding
         {
             this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
-        {
-            this.ReportVirtualDeclarationFailure(virtualFunction, store, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
