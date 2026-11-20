@@ -14878,7 +14878,8 @@ resumed by R4-M86 (2026-10-20).
     (read by PairOrigin and SelectLayers) is unchanged. Amended by BU-213.
   - **One slot rule.** `FollowedSlot` is a pair layer's one case split (slot, restart, owner case), read by `MeetLayers` and
     `MeetStep`'s PairFollow arm. `PairSlot` keeps its own contract, read by `PairOrigin` and `SelectLayers`. One owner: `LayerBelow`
-    serves `LayersTerminal`, `SharedReferenceThroughLayers`, `IterationEntry` and `SubjectModeOf`.
+    serves `LayersTerminal`, `SharedReferenceThroughLayers`, `ReceiverThroughLayers` (PLAN G1122: member selection's recorded
+    read below several layers, in any order), `IterationEntry` and `SubjectModeOf`.
   - **Moves** (Q17 class 3): the row's forms through a qualifying pair layer below ref or uniq layers, a `ref/Self` receiver and a
     borrowing `for` through one, newly accepted; two Loan twins move from Binding's false rejection to A5's records.
   - **Rejected:** `MeetLayers`/`MeetStep` reading `PairSlot` (accepted an invalid program at a root pair layer: no outer layer
@@ -14886,7 +14887,8 @@ resumed by R4-M86 (2026-10-20).
   - **Temporary structure.** An Exclusive `for` whose layer walk crossed a pair layer below a stored layer is the loop's located
     `Unsupported_Kd` (`IterationEntry(..., out bool crossed)`, read by `BindUserIteration`), never a candidate failure. SPEC 7.3 and
     13.5.5: such an exclusive receiver has no adaptation yet (PLAN G162's remainder). Removal: once that receiver (G162) and the
-    Exclusive `for`'s entry call through stored layers (G179) adapt.
+    Exclusive `for`'s entry call through stored layers (G179) adapt. The receiver half adapts for struct and Tuple terminals since
+    PLAN G1122 (`ReceiverThroughLayers`, `TryPairReceiver`; other terminals are PLAN G1137); the `for` entry stays G179's.
   - Removes BU-181's temporary structure.
 - **BU-213 A reached-through Place is named by the one walk, whose facts the walk alone decides** (Front, 2026-11-13; PLAN G813;
   Major; design reviews 1 REVISE and 2 ACCEPT WITH NOTES, implementation review 1 ACCEPT; the Middle's RP17 consent C-291, round 2
