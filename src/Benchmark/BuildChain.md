@@ -13,11 +13,18 @@ The series builds no compiler: it takes built Release `Kimi.dll` folders (`dotne
 ```
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> [--rounds 20] [--toolchain <root>]
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> <folder B> [--rounds 20] [--toolchain <root>]
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --build-chain <name> <folder A> --tatara [--rounds 20] [--toolchain <root>]
 ```
 
 - One folder: each row runs A `rounds` times.
 - Two folders: each row runs A, B, A, ..., A (`rounds` + 1 runs of A, `rounds` of B) from one folder, under one toolchain root
   for both. The same folder given twice is the A=A pass, the variation a budget must exceed.
+- `--tatara` (Tatara A3 §4): one folder; each row runs A, B, A, ..., A, where A is `Kimi.dll` single-shot on the external tools
+  and B the same `Kimi.dll` as `dotnet Kimi.dll tatara` with standard input from a file holding the row's command as its one line
+  (`build <project> --ToolchainRoot <root>` or `build --Manifest <pair> --ToolchainRoot <root>`, paths quoted), then end of input.
+  The toolchain root must hold `tatara.dll`. After the O2 source rows of Hello and Milestone30 a session row runs B with k lines
+  of that command, k1, k10, k1, ..., k1 (Session table below).
+- With two sides the summary adds per row p50(B) / p50(A) of wall time and p95(B) - p95(A) of the job's peak committed memory.
 - `--toolchain` defaults to the checkout's `toolchain`. `<name>` is one plain path segment (no separator, not `.` or `..`, not
   rooted), unused under `artifacts/benchmarks` and `temp/build-chain`.
 - Arguments reach the child quoted as `CommandLineToArgvW` reads them (backslashes before the closing quote doubled).
@@ -63,6 +70,9 @@ job caught every tool, and is A4's evidence of zero child processes). Per row an
   (18 = 2 × (1 + 8)). Kimi starts each tool with a new hidden console, and the launcher's `CREATE_NO_WINDOW` gives the root one,
   each a `conhost` inside the job. The tools' console hosts are a cost of today's build. With this launcher, A4's expected value
   for "zero child processes" is 2: the root and its console host.
+- **Session** (`--tatara`, not a budget): first-line time = p50 wall(k1); later-line time = (p50 wall(k10) - p50 wall(k1)) / 9;
+  growth = p95 peak(k10) - p95 peak(k1), which shows a retained module or a leak. The times are wall times of the whole process; no
+  clock is read in the compiler. B's `TotalProcesses` is expected to be 2 (the root and its console host).
 - **Memory** is judged at p95 per row, not p50. The tools' allocator commits per LLD worker, so the figure depends on the
   processor count and on contention: a run below the high mode waited for a CPU. `rounds.json` also records per run
   `DiagnosticPeakProcessCommitBytes`, the largest single process's peak committed memory; it is a diagnostic only, never a budget,

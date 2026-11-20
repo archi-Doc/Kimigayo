@@ -14,7 +14,14 @@ internal static partial class NativeToolchain
     // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.4.7, 21.4.7).
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
-    internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
+    // A project's native build by the executor the factory makes. The factory argument is temporary (Tatara A3 to A4): unit A4 removes it
+    // when Tatara's executor becomes the build's.
+    internal static async Task Build(
+        Project project,
+        ArtifactPaths paths,
+        Func<NativeExecutorContext, JsonObject, NativeExecutor> createExecutor,
+        Action<DiagnosticSeverity, string> report,
+        CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
         ValidateManifest(document.RootElement);
@@ -22,18 +29,13 @@ internal static partial class NativeToolchain
         var projectBin = project.KimiOptions.LlvmBin is null && project.Directory.Length != 0; // A project's own setting is relative to the project.
         var bin = configuredBin is null ? null : ResolvePath(configuredBin, projectBin ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
         var optimization = project.ProjectFile.Optimization;
-        var build = new NativeBuild(project, paths, document.RootElement, project.Directory, optimization, ExternalToolExecutor.Create, report, cancellationToken);
+        var build = new NativeBuild(project, paths, document.RootElement, project.Directory, optimization, createExecutor, report, cancellationToken);
         await build.Run(project.KimiOptions.ToolchainRoot, bin);
     }
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
-    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed.
-    internal static Task BuildManifest(
-        string path, string? toolchainRoot, string? llvmBin, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
-        => BuildManifest(path, toolchainRoot, llvmBin, ExternalToolExecutor.Create, report, cancellationToken);
-
-    // The same build with a given executor's factory: the entry by which tests select Tatara's (TataraExecutor.Create). Temporary
-    // (Tatara A2 to A4): unit A4 removes this overload when Tatara's executor becomes the build's.
+    // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. The factory argument is
+    // temporary (Tatara A3 to A4), as Build's.
     internal static async Task BuildManifest(
         string path,
         string? toolchainRoot,

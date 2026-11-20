@@ -141,6 +141,19 @@ public class RawPlaceAccessTest
             "        _ = (*p).r@move\n        _ = (*p).s@move\npublic func main() => ()\n",
     };
 
+    // SPEC 5.2, 5.2.3; IMPL A.4, 21.3.2: a Take of the part k Tuple selections below `*p` is valid at every k (the raw storage holds each
+    // part itself); reaching an implementation limit is a Resource record at the affected selection, never a Language error or acceptance.
+    // Over a struct leaf, k = 63 is accepted and k = 64 is past the Backend's 64-level placement window: GenerationResourceLimit_Kd at the
+    // selection. The raw walks stop at 64 steps with no record, so a 0-high leaf at k = 64, or a generic body that no layout reaches, is
+    // accepted by the tracked route (an IMPL A.4 deviation, pinned until D-932's unit).
+    public static TheoryData<string, string> WalkBoundTakes => new()
+    {
+        { DeepTake("func nested", "Res", 63), string.Empty },
+        { DeepTake("func nested", "Res", 64), "GenerationResourceLimit_Kd " + Selections(64) },
+        { DeepTake("func nested", "i32", 64), string.Empty },
+        { DeepTake("func nested<T>", "T", 64), string.Empty },
+    };
+
     [Theory]
     [MemberData(nameof(NoRawPartTakes))]
     public void APartARawPlaceDoesNotHoldOffersNoTake(string source, string code)
@@ -153,6 +166,14 @@ public class RawPlaceAccessTest
         var c = MinimalEmissionTest.Analyze(Res + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    [Theory]
+    [MemberData(nameof(WalkBoundTakes))]
+    public void ATakeAtTheRawWalksBoundMeetsTheLimits(string source, string records)
+    {
+        var program = Res + source;
+        Assert.Equal(records, string.Join("|", DiagnosticCorpus.Check(program).Diagnostics.Select(x => $"{x.Code} {(x.Span is { } span ? program.Substring(span.Start, span.Length) : "-")}")));
     }
 
     [Theory]
@@ -400,4 +421,11 @@ public class RawPlaceAccessTest
             "    var n: i32 = 1\n    let lens = Lens<i32>.init(n@ref, null)\n    let ulens = ULens<i32>.init(n@uniq, null)\n";
         Assert.Equal(2, MinimalEmissionTest.GeneratedBodies(Declarations + Main, OutputKind.Library, accepted: true).Count(static x => x == "f"));
     }
+
+    // `(*p)` and k `.1` selections.
+    private static string Selections(int k) => "(*p)" + string.Concat(Enumerable.Repeat(".1", k));
+
+    // The function `head` over a pointee of k Tuples `(i32, ...)` nested around `leaf`, which takes the leaf: `_ = (*p).1...1@move`.
+    private static string DeepTake(string head, string leaf, int k)
+        => $"{head}(p: raw/{string.Concat(Enumerable.Repeat("(i32, ", k))}{leaf}{new string(')', k)})\n    unsafe => _ = {Selections(k)}@move\npublic func main() => ()\n";
 }
