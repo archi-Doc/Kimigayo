@@ -5992,6 +5992,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - **D10 moved nothing.** U0 publishes UniqSlice as a view. The Field reading differs from the view only by a `during self` layer, which is not valid (`UniqSlice<i32> during self` is
     MissingOriginBinding_Kd), and by unpublished members, which its one slot cannot leave. All four contexts agree on `UniqSlice<i32>` and `UniqSlice<ref/i32>`. So no U2b.
   - **Rejected:** mapping Holdings' false to Limit or Deep (Limit replaces OwnershipDepthLimit_Kd; Deep hides a decided part beside it). A depth weight per entry to keep the old numbers (a second copy of what a level is).
+  - Superseded in part by BU-236 (D-940): "`Unsupported` is A5's Limit wherever a mode reads the write fact, and Loan alone in a
+    LoanOnly mode" is removed with `MirTypes.Holding.Entry`'s row; an Unsupported step now meets `Entry`'s throw.
 - **R4-M182 A captured local region reaches the meet of its sources in source order at the literal (PLAN G553)** (2026-11-07; Major; C-101, C-105, hold H-10; the owner's O-51 (a), verbatim 「全部 (a)」, and O-52 (a), verbatim 「a」) SPEC 7.7.2, 7.7.3, 15.3.6, 15.6.4, 15.8.2. `BindConcreteClosure` publishes a Closure's result with local regions resolved to their sources and keeps the regions in its environment, so `TyCtxt.Retains` read one Origin in two forms. An exclusive capture's result fell from Value to Content and dropped the receiver Loan, a shared capture's was untied and dropped the capture's Loans; a use after free observed in safe code, on the base.
   - Rule. `BoundClosure.CapturedRegions`, one field, written with the environment at the literal: each local region a capture's Type names with the meet of its sources at that moment, the moment the published result resolves them. `RetentionNodes` gives each pair one premise edge, region to meet, for every Closure part `ClosureEnvironment` reads, the one site. Environment and Closure Type as they were: Holdings' row 4, `Held`, `Handed` and `AddReceiverPremises` read what they read.
   - The edge is a may-fact of the contract's rows, no relation of the Origins: a later source shrinks the solved region below that meet. No proof reads it (the environment is per computation and only rows leave); `TyCtxt.Retention.cs`' Invariant states the exception.
@@ -6470,6 +6472,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       binding.
     - Amended by BU-189 (PLAN G562-a): `Punnable`'s rows are split: the punnable set is `TyCtxt.Punnable`'s, the extent A5's
       `MirBorrows.Scalar`; behaviour unchanged.
+  - Superseded in part by BU-236 (D-940): the amendment's "On the written fold, a Holdings Unsupported entry is undecided" is
+    removed.
 - **R4-M199 A5's gather keeps the Limit tier through its closure** (2026-11-12; Middle, A5; Major; PLAN G775; design reviews 1-3 by
   one reviewer, the Middle's Q13 rulings) SPEC 5.5, 15.6; amends R4-M198's undecided class: completes "a check whose sets hold Φ_U
   gathers at `MirOutcome.Limit`" for the gather's closure; removes PLAN G775.
@@ -12271,6 +12275,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a separate `RawStep` (a second copy of five values); a capture stater flag (not dev's); `RawStepAt` inside the accessor (it would read a
     signature's scope, so no reader's memo stays sound); row 20 at U0 (it reopens BU-91); a Dictionary's K and V as direct parts (SPEC 4.9 stores
     the entry, and S2 needs `(K, V)`).
+  - Superseded in part by BU-236 (D-940): Q2 (a)'s "An `Unsupported` entry is retention's Limit for every reader (`HeldRun`)" is
+    removed; Holdings gives no Unsupported entry.
 - **BU-123 R7-E1a The fact vocabulary moves to Core** (2026-11-07; plan RP3, RP19, §5.1 E1; C-103). `MirFact` and `MirFactKind` become `ProblemFact(ProblemFactKind Kind, SourceRef Site, long Value = -1)` and `ProblemFactKind` in `Core/ProblemFact.cs`, unchanged in shape and numbering, one component, the fact vocabulary. Reason: Binding's problem records (E1b) use the same facts, and Binding may not reference Mir. `MirProblem`, `MirReport` and the publisher's logic stay; with E1b's record, two records over one fact vocabulary, no phase payload. `Cause` stays MIR-only with its contract unchanged. Every kind is written by the MIR analyses until E1b. `ProblemFactKind` is not an ARCH-closed vocabulary (R4-M92's reading). Rejected: a recorder private to Binding (a third record shape); one type with a phase payload. Earlier entries keep the old names as history.
   - Superseded in part by R7-M62 (R7-E2 E2-3a, 2026-11-20): "`Cause` stays MIR-only": Binding's recorder writes `Cause` with Value -1,
     a never-shown cause a check names; the three Binding kinds follow it, appended.
@@ -14225,6 +14231,8 @@ resumed by R4-M86 (2026-10-20).
     code comment changes with this unit). The byte-extent query `TyCtxt.Remainder` (O-224 (a)) is not this entry's: it lands with
     its first reader, G562-c's `Beside`, whose entry records it.
 
+  - Superseded in part by BU-236 (D-940): the Rule's Undecided loses "an `Unsupported` row", and the Readers lose "G792's
+    `Unstated` rows" with `PunTypes.Unstated`.
 - **BU-191 A zero-length array holds no Place; its run and its Loans stay** (2026-11-13; Front, Binding; PLAN G810; Major; the
   owner's O-234 (a), verbatim 「O-231〜O-234 は推奨どおり、(a)、(a)、(C)、(a) でよいです」, for the vocabulary entry) SPEC 4.1, 4.3.3, 4.8.1, 4.8.4,
   15.6.4. Amends BU-121 (its Holdings rows).
@@ -16064,6 +16072,8 @@ resumed by R4-M86 (2026-10-20).
     their records; ruling 32); `Kept` null for a writer; a per-key answer through `EntryType`; the Abstract-entry rows form; a
     second `KeptEntryType` (a second path; an A5-side comparison would copy the rule; ruling 36); for the write test, leaving the
     class 1, extending `HiddenWritableBelow` past rc, a writer test per form.
+  - Superseded in part by BU-236 (D-940): "Binding's Limit and an Unsupported entry make the contract the Limit" reads "Binding's
+    Limit makes the contract the Limit".
 - **BU-232 Past the holder a kept binding's hidden raw layer addresses, a declaration's `Holds Any` applies only where the declaring
   code acts (PLAN G964)** (2026-11-19; Front, Binding; Q17 class 3; Major, an acceptance mover; F's G964 rulings 1-12, the owner's
   O-398 (a); reviews in Q-517's cells; D-742; Q-517 folded into Q-539, landing with the A5 one-tree landing) SPEC 15.6.4, 5.7 Calls.
@@ -16178,6 +16188,32 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: `Classified` as the gate (the preliminary environment); re-forming an omitted list's captures in a second binding (the
     second binding was redundant for every failed declaration); a located `InternalInvariant_Kd` at the Type-route readers (no node at
     hand; BU-102's throw is the existing form there).
+- **BU-236 Holdings is total over the Types Binding forms; a form with no row is a broken contract** (Front and Middle, 2026-11-21;
+  PLAN G1153, D-940, Q-602; Major: Holdings' published contract and its readers in Binding and A5; F's G147 rulings 17, 24, 30) SPEC 3,
+  8.1.1, 8.2.3, 9.2, 9.7, 6.1.
+  - `Binding.Holdings` has a row for every Type Binding forms for a value, a stored part, a declared signature or a body's view. A Type
+    with none breaks Binding's formation contract and throws (the broken-contract form: the check ends as `CheckFaulted_Kd`, rule 9, as
+    BU-36 states it), never an entry, so Holdings never gives `HoldStep.Unsupported`. The forms that had no row are no Types Binding
+    forms: a `Semantics`, `Slice`, `Array` or `Dictionary` kind with another component count (only a library declaration's own
+    unapplied Type); a `Semantics` layer whose Semantics is a parameter (a pair layer never is); a nominal that is no `owner` struct,
+    enum, UniqSlice or Contract (only a group's environment: a group qualifier's, a construction qualifier's naming a group through a
+    member access, a nested declaration's under a group parent).
+  - Holdings' contract header names these formation sites. No Type position admits a group: Indexing gives every group a Container
+    symbol (SPEC 9.2; the library's 13 `#Lang` groups too, which as R8-G1's non-catalog declarations never reach
+    `KimiLibrary.Register`), `BindNamedType` rejects a Container, and a written argument list on a group meets `BindConstructedType`'s
+    arity check.
+  - Removes: A5's `HoldStep.Unsupported` row in the holding walk (`MirTypes.Holding.Entry`, `MirWrites.Limit`'s Holdings producer;
+    `MirWrites.Limit` stays for `RawMembers`' remaining forms until Z6b), its pin `MirTypesTest.AnUnsupportedEntryIsTheGuardsLimit`,
+    `PunTypes.Unstated`, `HeldRun`'s Limit mark, `Decided`'s undecided arm and the storage `Reach` walk's stop. `HoldStep.Unsupported`
+    stays only as `OwnLayers`' undecided step (a part Binding did not bind; a `during self` layer through a U2 path; PLAN G1158).
+  - No acceptance or record moves.
+  - Supersedes in part, each because Holdings no longer gives an Unsupported entry: BU-121 Q2 (a), BU-193's Rule and Readers, BU-231,
+    R4-M198's amendment and R4-M181 (each names the removed sentence).
+  - Rejected: rows for the three forms (no value has them; a second pair representation; a group has no instances); keeping the entry
+    as an undecided default (hides a broken contract as `Unsupported_Kd`); removing the vocabulary entry (OwnLayers still uses it); a
+    formation validator in `TyCtxt.Intern` (hot path, facts the formation sites already establish); a shared container-kind rule read
+    by `KimiLibrary.Register` (no group reaches it: a mechanism with no need); moving the access check before role filtering
+    (contradicts SPEC 9.5's order for every group).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
