@@ -213,9 +213,9 @@ public class QualificationRequiredTest
         Assert.Equal(cause, record.Reason![3].Value);
     }
 
-    // SPEC 9.6 (R7-N1 c-b; F's N1c rulings 37, 38): a Type path's static or instance use. An instance member a Type path reaches has no
-    // receiver, so the path fails and the access records QualificationRequired_Kd (cause Receiver, no qualifying repair: the use is
-    // written qualified), whether the Type path is the sole one (`T.n`) or the value path fails beside it (`T: ref/H`, H has no `n`).
+    // SPEC 9.6 (R7-N1 c-b; F's N1c rulings 37, 38, 41): a Type path's static or instance use. An instance member a Type path reaches has
+    // no receiver, so the path fails and the access records QualificationRequired_Kd with its own cause, TypePath (the member and the
+    // Type as its facts, no Label and no repair: the use is written qualified, so the 9.5 stop's qualifying text does not apply), whether the Type path is the sole one (`T.n`) or the value path fails beside it (`T: ref/H`, H has no `n`).
     // The programs are invalid. Fail-before: Binding accepted the access and `kimi check`'s MIR builder met a Type as a Field's
     // receiver: InternalInvariant_Kd at `T` (rb30i on Q-584's head too). R7-D1's p8 (the Middle's C-359 r3 N2, G812 ruling 170): `static`
     // is no modifier (SPEC 6.1: MisplacedSyntax_Kd at it), so `b` is an instance Field and `T.b` in a Field's initializer is the same
@@ -231,7 +231,7 @@ public class QualificationRequiredTest
         var diagnostics = DiagnosticCorpus.Check(source, "Library", string.Empty).Diagnostics;
         Assert.Equal(records, string.Join("; ", diagnostics.Select(x => $"{x.Code} {source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}").Order(StringComparer.Ordinal)));
         var record = Assert.Single(diagnostics, static x => x.Code == "QualificationRequired_Kd");
-        Assert.Equal("Receiver", record.Reason![3].Value);
+        Assert.Equal("TypePath", Assert.Single(record.Reason!, static x => x.Name == "cause").Value);
         Assert.Empty(record.Repairs ?? []);
     }
 

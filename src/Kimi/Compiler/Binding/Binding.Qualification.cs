@@ -21,6 +21,7 @@ public sealed partial class Binding
         Receiver,
         Inherited,
         Case,
+        TypePath, // SPEC 9.6 (F's N1c rulings 38, 41): an instance member reached through a Type path, which supplies no receiver.
     }
 
     internal readonly record struct QualificationFact(
@@ -35,7 +36,7 @@ public sealed partial class Binding
     {
         internal bool Type => !InValueNamespace(this.Role);
 
-        // A Type path's member (SPEC 9.6; F's N1c ruling 38): the use is written with its qualifier, so no qualifying repair applies.
+        // A Type path's member (SPEC 9.6; F's N1c rulings 38, 41): the use is written with its qualifier; its record is the TypePath cause's.
         internal bool Qualified => this.At is MemberAccessKoto;
     }
 
@@ -203,6 +204,23 @@ public sealed partial class Binding
     {
         var fact = this.qualificationFailures[node];
         var container = fact.Container.Owner.BoundSymbol!;
+        if (fact.Qualified)
+        {
+            // The TypePath cause's row (SPEC 9.6; F's N1c ruling 41): the member and the Type the path names, the member's declaration
+            // related; its own Note and no Label or repair (its evidence alternative is not the 9.5 stop's), since the use is qualified.
+            node.ReportIn(
+                store,
+                requirement,
+                DiagnosticCode.QualificationRequired_Kd,
+                fact.Name,
+                container.Name,
+                note: $"'{fact.Name}' is an instance member and needs a receiver; the path names the Type {container.Name}, which supplies none",
+                at: fact.At,
+                evidence: [QualificationCause.TypePath],
+                related: [("declaration", fact.Member.Declaration, "instance member")]);
+            return;
+        }
+
         var instance = false;
         for (var member = fact.Member; member is not null; member = member.Next)
         {
@@ -301,7 +319,7 @@ public sealed partial class Binding
 
         void Add(string? prefix, BindingSymbol member)
         {
-            if (prefix is null || fact.Qualified)
+            if (prefix is null)
             {
                 return;
             }
