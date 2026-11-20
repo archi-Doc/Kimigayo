@@ -294,7 +294,7 @@ public sealed class MirInitTest
     {
         var c = MirBuildTest.Compile("func f()\n    var a: [1000000 of string]\n    let taken = a[42]@move\n");
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         flow.Begin(body);
         moves.Build(body, flow);
         var array = body.Locals.ToArray().ToList().FindIndex(static x => x.Name == "a");
@@ -333,7 +333,7 @@ public sealed class MirInitTest
                 $"let leaf = Leaf.init({string.Join(", ", parameters)})\n");
             Assert.True(c.Analyze().IsVerified, $"{count} parameters");
             var body = c.BuildMir().Bodies.ToArray().Last(static x => x.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(x.Key.Decl));
-            var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+            var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
             flow.Begin(body);
             moves.Build(body, flow);
             Assert.Contains(moves.Paths.ToArray(), static x => (x.Local, x.Kind, x.Arg) == (0, MirProjectionKind.Base, 1));
@@ -357,7 +357,7 @@ public sealed class MirInitTest
         text.Append("func other(flag: bool)\n    var q = Q.init()\n    q.a = 4\n    let t = (q.b.1, flag)\n");
         var c = MirBuildTest.Compile(text.ToString());
         var bodies = c.BuildMir().Bodies.ToArray();
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         Paths(bodies.Single(static x => x.Key.Decl?.Name == "large"), moves);
         foreach (var name in new[] { "small", "other" })
         {
@@ -1581,7 +1581,7 @@ public sealed class MirInitTest
             $"    let a = [{length} of fail()]\n    let n = a[3]\n    let b: [{length} of i32] = [{length} of if c => y else => fail()]\n" +
             $"    use(b[3])\n    let t: [{length} of (i32, i32)] = [{length} of (y, if c => y else => fail())]\n");
         var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types));
+        var (flow, moves) = (new MirDataflow(new MirReach(), new MirCases(c.Types)), new MirMoveData(c.Types));
         flow.Begin(body);
         moves.Build(body, flow);
         var locals = body.Locals.ToArray();
@@ -1678,7 +1678,8 @@ public sealed class MirInitTest
                 Assert.Empty(program.Problems.All.ToArray());
                 var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
                 work[i] = body.Blocks.Length + body.Statements.Length;
-                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types), new MirCases(c.Types), new MirProgram());
+                var cases = new MirCases(c.Types);
+                var (flow, moves, sink) = (new MirDataflow(new MirReach(), cases), new MirMoveData(c.Types), new MirProgram());
                 var drops = new MirDrops(c.Types, moves, cases);
                 var init = new MirInit(flow, moves, cases, drops);
                 analyses[i] = (body, flow, moves, sink);
