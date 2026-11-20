@@ -61,7 +61,7 @@ internal sealed partial class MirEffects
     {
         (this.program, this.report, this.missed, this.excludes) = (program, report, false, false);
         report.Begin(MirProblem.NoBody);
-        (this.atomCount, this.dependentCount, this.readCount, this.Evaluations) = (0, 0, 0, 0);
+        (this.atomCount, this.dependentCount, this.readCount, this.Evaluations, this.Walked) = (0, 0, 0, 0, 0);
         var count = this.NodeCount;
         MirDataflow.Grow(ref this.classes, count);
         MirDataflow.Grow(ref this.atomStarts, count);
@@ -214,7 +214,7 @@ internal sealed partial class MirEffects
     // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
     // (P5); a read node records its reader once, in both directions: the worklist's dependents and the read graph (Read). A body A2's table
     // does not hold has no node yet: the round misses (PLAN G951). After Run a reader composes a node's row and classes with its
-    // initializations (Spread), a query that excludes some what the node reaches (Reach).
+    // initializations (Spread), a query that excludes some what the read graph reaches without their entries' edges (Without).
     private void Compose(int body, ulong views, Subst? subst)
     {
         if (views != 0 && !this.program.Drops.Holds(body))
@@ -237,8 +237,7 @@ internal sealed partial class MirEffects
 
             if (this.excludes)
             {
-                this.found |= this.classes[node];
-                this.Reach(node);
+                this.Without(node);
             }
             else
             {

@@ -497,6 +497,98 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["g1: S.writeLog()", "g1b: S.writeLog2()", "g2: G.writeLog()"], Effects(string.Empty, [], Probe));
     }
 
+    // SPEC 15.6.2, 15.6.4 (Z7 Revision 4; the review's D1, the owner's O-458 (a)): the row with the initializations of the statics a live
+    // Loan is on left out holds every body the call runs, however its callee reaches it: a destructor (h1, the owner's example), a
+    // Function Item (hItem), the witness its callee's inline default copy runs (hWitness: a requirement call on a closed Self, SPEC 7.2.3;
+    // the requirement has no default body), as a call edge (h3); an erased Closure is unknown (h2). Every reading rejects each call: it writes hlog while v, which carries the `match` Subject Loan
+    // on hlog, is used after it, and hlog's initializer writes nothing. Fail-before (090b599bb): h1, hItem and hWitness the located
+    // Unsupported_Kd.
+    [Fact]
+    public void AnExcludedRowHoldsWhatTheCallRuns()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public var hlog: Option<i32> = .Some(0)
+                public func dropsW() -> i32
+                    let w = HW.init()
+                    return 1
+                public func writesLog() -> i32
+                    hlog = .Some(2)
+                    return 2
+                public func callsItem() -> i32
+                    let f = State.writesLog
+                    return f()
+                public func callsClosure() -> i32
+                    let f: () -> () = func [] () => State.hlog = .Some(8)
+                    f()
+                    return 1
+                public func pingAll<C>(c: ref/C, seen: bool = c.ping()) -> i32
+                    C is HPinged
+                    return 1
+                public func pings() -> i32
+                    let n = HNoisy.init()
+                    return State.pingAll(n@ref)
+                public func h1() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.dropsW()
+                            return v@follow + n
+                        .None => return 0
+                public func hItem() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.callsItem()
+                            return v@follow + n
+                        .None => return 0
+                public func hWitness() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.pings()
+                            return v@follow + n
+                        .None => return 0
+                public func h2() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.callsClosure()
+                            return v@follow + n
+                        .None => return 0
+                public func h3() -> i32
+                    match State.hlog
+                        .Some(let v)
+                            let n = State.writesLog()
+                            return v@follow + n
+                        .None => return 0
+            struct HW
+                public var n: i32 = 0
+                public init() => ()
+                drop => State.hlog = .Some(9)
+            contract HPinged
+                func ping(self: ref/Self) -> bool
+            struct HNoisy
+                Self is HPinged
+                public var n: i32 = 0
+                public init() => ()
+                public func ping(self: ref/Self) -> bool
+                    State.hlog = .Some(5)
+                    return true
+
+            """);
+        var program = AnalyzeUnsupported(c, []);
+        Assert.Equal(
+            [
+                "h1: State.dropsW() EffectWrite", "hItem: State.callsItem() EffectWrite", "hWitness: State.pings() EffectWrite",
+                "h2: State.callsClosure() EffectUnknown", "h3: State.writesLog() EffectWrite",
+            ],
+            program.Problems.All.ToArray().Select((x, i) => (x, i))
+                .Where(static x => !x.x.IsRecord && x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
+                .Select(x => $"{Function(c.SyntaxOf(x.x.Subject))}: {Line(c, x.x.Subject)} {Decider(x.i, x.x.Code)}"));
+
+        // A limit record's code, a Loan problem's effect fact.
+        string Decider(int problem, DiagnosticCode code) => code == DiagnosticCode.Unsupported_Kd ? $"{code}" : string.Join(
+            ",",
+            program.Problems.Facts(problem).ToArray().Select(static f => f.Kind)
+                .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown));
+    }
+
     // SPEC 15.6.2, 15.6.4 (R4-M92; DECISIONS BU-18, BU-21): an explicit Borrow of a qualified static's part is a Place's Borrow, never a
     // Temporary Value's, so Binding reports it as the located Unsupported_Kd (P42) in a writer's function (qp1) and a reader's (qp1r)
     // alike, and no effect rule meets it (2b-D §1.5's premise). Fail-before bu15: both (they bound, and 2b-3's effect rule judged qp1).

@@ -14,8 +14,8 @@ namespace Kimi.Compiler.Mir;
 // read, MirEffects.Solve) and each view of its entries' initializers (Spread appends them, an entry's one statement). After the fixed
 // point Spread joins, once per Run, each node's own facts (Seed: its local accesses (AddKey, as Local walks the view), slot bits, and
 // its classes where entries exist) with the rows of every node it reaches. A reader composes those rows (Compose); a query that excludes
-// initializations (A5's second, MirBorrows.Effects) composes instead, from the local facts, what each node reaches through its calls and
-// the entries not excluded (Reach). Keys answers a site of one view with its key and
+// initializations (A5's second, MirBorrows.Effects) composes instead the own facts of every node the same graph reaches without the
+// excluded entries' edges (Without), so with none excluded it is Spread's row. Keys answers a site of one view with its key and
 // slot row and classes; Summary gives a body view's row and classes; Items its classes and its atoms (what holds a published operation's
 // body within its row, SPEC 4.9.6); Field numbers a Field's bits, Initialization a static's entry and Slot a static's slot bit.
 // Invariant: an entry's initializer node keeps no atom (a definition that does not instantiate names only closed Types); a broken one is
@@ -30,7 +30,7 @@ internal sealed partial class MirEffects
     private ulong[] keyScratch = []; // a word of its classes where entries exist; and the current query's row.
     private ulong[] excluding = []; // The initializations the current query leaves out (Begin), by initialization number;
     private bool excludes; // whether it leaves any out.
-    private int[] reached = []; // Reach's nodes: each node's query stamp, and the walk's stack.
+    private int[] reached = []; // Without's nodes: each node's query stamp, and the walk's stack.
     private int[] reaching = [];
     private int reachStamp;
     private int keyWords;
@@ -41,6 +41,10 @@ internal sealed partial class MirEffects
     private int[] lows = []; // its lowest open visit it reaches,
     private int[] members = []; // the open nodes,
     private (int Node, int Edge)[] frames = []; // and the walk's path, each node with its next read.
+
+    /// <summary>Gets the nodes the queries with exclusions walked since the last <see cref="Run"/>, each once per query: linear in their
+    /// reach (V16).</summary>
+    internal int Walked { get; private set; }
 
     /// <summary>Gets the key row of a Call or a Drop of a body view, from the summaries of the last <see cref="Run"/>: its terminator's
     /// inputs, as <see cref="Local"/> records them, evaluated against them in the view, with every first-access initialization they may run
@@ -163,17 +167,18 @@ internal sealed partial class MirEffects
         this.writing.AddInit(id);
     }
 
-    // Begins a reader's composition (Keys, the obligations): an empty row and, where it excludes any initialization, those excluded
-    // (excluding, read only while excludes holds) and a new stamp for Reach.
+    // Begins a reader's composition (Keys, the obligations): an empty row and, where it excludes an initialization A4 numbered, those
+    // excluded (excluding, read only while excludes holds, which needs an entry and so the class word) and a new stamp for Without.
     private void Begin(ReadOnlySpan<ulong> excluded)
     {
         this.keyScratch.AsSpan(0, this.rowWords).Clear();
+        var excluding = this.excluding.AsSpan(0, (this.initIds.Count + 63) >> 6);
+        excluded = excluded[..Math.Min(excluded.Length, excluding.Length)];
         this.excludes = excluded.ContainsAnyExcept(0UL);
         if (this.excludes)
         {
-            var excluding = this.excluding.AsSpan(0, (this.initIds.Count + 63) >> 6);
             excluding.Clear();
-            excluded[..Math.Min(excluded.Length, excluding.Length)].CopyTo(excluding);
+            excluded.CopyTo(excluding);
             this.reachStamp++;
         }
     }
@@ -184,49 +189,40 @@ internal sealed partial class MirEffects
     // Whether the current query leaves an entry's initialization out.
     private bool Excluded(int init) => this.excludes && (this.excluding[init >> 6] & (1UL << init)) != 0;
 
-    // A query with exclusions (A5's second, MirBorrows.Effects): the local keys and slot bits of every node a node reaches through its calls
-    // and through the entries not excluded, each once per query, with the classes of each initializer entered (a callee's are its caller's
-    // already, by the fixed point); Θ(reached nodes + their local facts).
-    private void Reach(int start)
+    // A query with exclusions (A5's second, MirBorrows.Effects): the own facts (Seed) of every node the read graph reaches from a node but
+    // through an edge of an entry the query excludes, each once per query, Derived for an edge to none it does not exclude (an initializer
+    // with a validator finding), the classes joining the query's; with none excluded, Spread's row. Θ(nodes reached + their reads, keys and
+    // entries).
+    private void Without(int start)
     {
+        var row = this.keyScratch.AsSpan(0, this.rowWords);
         var depth = 0;
         Enter(start);
         while (depth > 0)
         {
             var node = this.reaching[--depth];
-            var store = this.Of(node);
-            var (from, to) = (this.Start(store, node), store[node]);
-            foreach (var key in store.Keys[from.Keys..to.Keys])
+            this.Seed(node, row);
+            this.Walked++;
+            for (var r = this.readHeads[node]; r >= 0; r = this.reads[r].Next)
             {
-                this.keyScratch[key >> 6] |= 1UL << key;
-            }
-
-            foreach (var edge in store.Edges[from.Edges..to.Edges])
-            {
-                for (var mask = edge.Views; mask != 0; mask &= mask - 1)
+                var (read, init) = (this.reads[r].Node, this.reads[r].Init);
+                if (init >= 0 && this.Excluded(init))
                 {
-                    Enter(this.Base(edge.Body) + BitOperations.TrailingZeroCount(mask));
+                    continue;
                 }
-            }
 
-            foreach (var init in store.Inits[from.Inits..to.Inits])
-            {
-                if (init < 0)
+                if (read >= 0)
                 {
-                    this.keyScratch[this.keyWords + (~init >> 6)] |= 1UL << ~init;
+                    Enter(read);
                 }
-                else if (!this.Excluded(init))
+                else
                 {
-                    var initializer = this.program.Body(this.initBodies[init]);
-                    for (var mask = this.Views(initializer, null); mask != 0; mask &= mask - 1)
-                    {
-                        var entered = this.Base(initializer.Ordinal) + BitOperations.TrailingZeroCount(mask);
-                        this.found |= this.reached[entered] != this.reachStamp ? this.classes[entered] : (byte)0;
-                        Enter(entered);
-                    }
+                    row[^1] |= Derived;
                 }
             }
         }
+
+        this.found |= (byte)row[^1];
 
         void Enter(int node)
         {
@@ -273,8 +269,8 @@ internal sealed partial class MirEffects
         }
     }
 
-    // A node's own facts in a row of rowWords words (Spread's seed): its local keys, its slot bits and, where the row has a class word, its
-    // classes as the fixed point solved them, which hold every node it read's.
+    // A node's own facts in a row of rowWords words (Spread's seed, and each node a query with exclusions reaches, Without): its local keys,
+    // its slot bits and, where the row has a class word, its classes as the fixed point solved them, which hold every node it read's.
     private void Seed(int node, Span<ulong> row)
     {
         var store = this.Of(node);

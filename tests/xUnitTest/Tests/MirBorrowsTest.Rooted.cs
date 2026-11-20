@@ -383,10 +383,35 @@ public sealed partial class MirBorrowsTest
 
     // AnUnprovedEffectStillDecides on rooted bodies (SPEC 15.6.4; R4-M92's R2-B1): the first deciding effect outside a proved initializer
     // decides the Language problem: multiImm's unknown g beside the proved lim2's write of log (EffectUnknown), r3Unproved's read of w5
-    // beside the proved immutable y5's erased destruction (R3, EffectRead).
+    // beside the proved immutable y5's erased destruction (R3, EffectRead). The chain skips a kind that rests on an undecided static with
+    // several slots (Z7 Revision 4, the review's D2, the Middle's Q13 ruling): at chain1 cx's initializer, which a Loan on cx would prove and
+    // A4 cannot leave out until P42's key, writes clog, so the write rests, and readsLog's own read of clog under the unique Loan decides
+    // (EffectRead, as dev; fail-before 090b599bb: the located Unsupported_Kd, the first kind resting).
     [Fact]
     public void AnUnprovedEffectStillDecidesRooted()
     {
+        const string Cache = """
+                struct Cache<T>
+                    public group S
+                        public var cx: Counter = S.makeX()
+                        public var clog: Counter = Counter.init()
+                        public func makeX() -> Counter
+                            clog = Counter.init()
+                            return Counter.init()
+                        public func inspect<U>(value: ref/U) => ()
+                        public func readsLog() -> i32
+                            _ = cx.n
+                            return clog.n
+                        public func chain1()
+                            var sx = Root.cx()
+                            var sg = Root.clog()
+                            let lx = sx.view()
+                            let lg = sg.viewU()
+                            let v = readsLog()
+                            lg@follow = 1
+                            inspect(lx)
+
+                """;
         var c = MirBuildTest.Compile(Prelude + EffectTypes + """
                 public func multiImm(g: () -> ())
                     var sm = Root.lim2()
@@ -402,11 +427,14 @@ public sealed partial class MirBorrowsTest
                     w5 = W5.init()
                     inspect(ly)
 
-            """ + EffectRoots);
+            """ + EffectRoots + Cache);
         Assert.Empty(c.Binding.Issues);
         var program = AnalyzeRooted(c);
         Assert.Equal(
-            ["both3(g@move) ComparisonLoanConflict_Kd EffectUnknown", "w5 = W5.init() ComparisonLoanConflict_Kd EffectRead"],
+            [
+                "both3(g@move) ComparisonLoanConflict_Kd EffectUnknown", "w5 = W5.init() ComparisonLoanConflict_Kd EffectRead",
+                "readsLog() ComparisonLoanConflict_Kd EffectRead",
+            ],
             program.Problems.All.ToArray().Select((x, i) => (x, i))
                 .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
                 .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)

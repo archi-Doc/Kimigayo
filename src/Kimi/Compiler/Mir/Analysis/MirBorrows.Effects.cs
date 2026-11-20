@@ -23,9 +23,9 @@ namespace Kimi.Compiler.Mir;
 //   statics a candidate of the effect set is on, is what the literal reading proves and the clarified readings may not (liveness is a
 //   may-property: e10f), so no conflict rests on it. A conflict of the row (every initialization composed) is decided by the row with
 //   Q's initializations left out (MirEffects.Keys' excluded): a conflict there is the Language problem, its fact that row's (the first
-//   effect outside the proof decides, R4-M92's R2-B1), unless a static of Q with several slots whose initialization the site may run has
-//   that effect in its initializer's summary (an edge A4 cannot leave out until P42's key, R4-M103); that or none there is the located
-//   Unsupported_Kd. An initializer with a validator finding is A4's Derived (R5-M183): its keys never decide.
+//   effect outside the proof decides, R4-M92's R2-B1), a kind that a static of Q with several slots whose initialization the site may run
+//   has in its initializer's summary skipped (an edge A4 cannot leave out until P42's key, R4-M103); none left, or a kind that meets no
+//   Loan, is the located Unsupported_Kd. An initializer with a validator finding is A4's Derived (R5-M183): its keys never decide.
 // Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns; a
 // row is read from A5's copy, never from A4's scratch after another query.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Limit, rank outcomes, or read keys
@@ -183,13 +183,27 @@ internal sealed partial class MirBorrows
     }
 
     // What decides a conflict of the full row on the Field A4 numbers f once Q's initializations are left out: the full row's effect where
-    // Q is empty, that row's where Q leaves one (the first effect outside the proof, R4-M92's R2-B1) and no undecided initialization may
-    // make it (Rests), null where the conflict rests on Q.
-    private ProblemFactKind? Unproved(MirLocation at, int taking, int field, ProblemFactKind decided) => this.Unproven(at, taking) switch
+    // Q is empty, else the first effect outside the proof (R4-M92's R2-B1) in the row with Q left out: its write key, else Unknown, else
+    // its read key, each skipped where an undecided initialization may make it (Rests); null where none is left, so the conflict rests on Q.
+    private ProblemFactKind? Unproved(MirLocation at, int taking, int field, ProblemFactKind decided)
     {
-        1 => decided,
-        _ => Decided(this.unprovenRow, this.unprovenClasses, field) is { } fact && !this.Rests(fact, field) ? fact : null,
-    };
+        if (this.Unproven(at, taking) == 1)
+        {
+            return decided;
+        }
+
+        if (Bit(this.unprovenRow, (2 * field) + 1) && !this.Rests(ProblemFactKind.EffectWrite, field))
+        {
+            return ProblemFactKind.EffectWrite;
+        }
+
+        if ((this.unprovenClasses & MirEffects.Unknown) != 0 && !this.Rests(ProblemFactKind.EffectUnknown, field))
+        {
+            return ProblemFactKind.EffectUnknown;
+        }
+
+        return Bit(this.unprovenRow, 2 * field) && !this.Rests(ProblemFactKind.EffectRead, field) ? ProblemFactKind.EffectRead : null;
+    }
 
     // Whether an effect that decides a conflict on the Field A4 numbers f may lie in the initialization of a static of Q with several slots
     // that the site may run (undecided): its initializer's summary has the write or read key, or Unknown for an unknown effect (its classes
