@@ -180,6 +180,12 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    g(iu(one, 0)@follow)\n    return 0\n", "clean")]
     [InlineData(OneOf + "ref/T during w\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(OneOf + "uniq/T during w\n    T is uniq/Meter during a\n    return iu(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    // R7-C3 (F's C2 ruling 307 (2); SPEC 8.2.3, 15.6.1): Type identity decides the structure, the Origin relation the Origins. Under the
+    // identity premise the result's Type is T's, so an Origin difference stays the relation's record (`during a`: `(one and a)` needs
+    // `one outlives a`), it holds under `origin a outlives one`, and only a structure that differs is a Type mismatch.
+    [InlineData(OneOf + "ref/T during a\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "ref/T during one\n    T is uniq/Meter during a\n    origin a outlives one\n    return ir(one, 0)\n", "clean")]
+    [InlineData(OneOf + "ref/i32 during one\n    T is uniq/Meter during a\n    let r = ir(one, 0)\n    return r\n", "1*TypeMismatch_Kd")]
     public void AnInputsWellFormednessOverASlotsSolutionBoundsItsLayer(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 

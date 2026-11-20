@@ -428,11 +428,14 @@ public sealed partial class Binding
             return null;
         }
 
-        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && TyCtxt.StorageMatches(expectedType, actualType);
-        if (storage && failure.Kind != ComparisonFailureKind.Shape)
+        // SPEC 8.2.3, 15.6.1 (F's C2 ruling 307 (2)): the record reads the pair its walk compared, both sides in their class's form at
+        // the use (J3's intake), so identity decides the structure and an Origin difference is the Origin relation's record.
+        var formedActual = actual.Type is { } actualType ? this.ClassForm(actualType, node) : null;
+        var formedExpected = expected.Type is { } expectedType ? this.ClassForm(expectedType, node) : null;
+        if (TyCtxt.StorageMatches(formedExpected, formedActual) && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
-                : this.RecordComparisonFacts(node, at, actual.Type!, expected.Type!, failure);
+                : this.RecordComparisonFacts(node, at, formedActual!, formedExpected!, failure);
         }
 
         return this.RecordTypeMismatch(node, at, actual, expected);
