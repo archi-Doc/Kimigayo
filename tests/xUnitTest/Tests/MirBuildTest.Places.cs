@@ -467,6 +467,50 @@ public sealed partial class MirBuildTest
         }
     }
 
+    // SPEC 13.7.2, 11.3.1 (Z11, 2d-2; amends DECISIONS R4-M37's Open): an update through a setter reserves the setter's receiver once where
+    // it locates it, before the old value is read: the setter takes that reservation, a TwoPhaseUniq in a temp, as its receiver, so its
+    // call activates it, and the getter's shared Borrow or the standard get's read of the receiver coexist with it until then; for a
+    // local, a parameter's referent, a Field path and an element, in a compound assignment, an increment and a decrement. Fail-before: the
+    // setter's receiver was a TwoPhaseUniq formed at its own call, after the old value was read.
+    [Theory]
+    [InlineData("var g = WGauge.init()", "g.level += 2")]
+    [InlineData("var g = WGauge.init()", "g.level++")]
+    [InlineData("var g = WGauge.init()", "g.level--")]
+    [InlineData("var g = WGauge.init()", "g.mark *= 3")]
+    [InlineData("let k: i32 = 1", "r.level -= k")]
+    [InlineData("var h = WRack.init()", "h.gauge.level += 1")]
+    [InlineData("var gs: [2 of WGauge] = [WGauge.init(), WGauge.init()]", "gs[1].level++")]
+    [InlineData("var all: Array<WGauge> = [WGauge.init()]", "all[i].level += 1")]
+    public void ASettersReceiverIsReservedWhereItIsLocated(string declaration, string update)
+    {
+        const string Types = """
+            struct WGauge
+                var hits: i32 = 0
+                public var mark: i32 = 0
+                    set(value: i32) -> () => storage = value
+                public computed level: i32
+                    get() -> i32 => self.hits
+                    set(value: i32) -> () => self.hits = value
+                public init() => ()
+            struct WRack
+                public var gauge: WGauge = WGauge.init()
+                public init() => ()
+
+            """;
+        var body = Body($"{Types}func f(r: uniq/WGauge, i: isize)\n    {declaration}\n    {update}\n", "f");
+        var (blocks, statements) = (body.Blocks.ToArray(), body.Statements.ToArray());
+        var setter = Array.FindIndex(blocks, static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "level.Set" or "mark.Set" });
+        var reservation = body.Operands[blocks[setter].Terminator.Start];
+        Assert.Equal((MirOperandKind.Move, 0), (reservation.Kind, reservation.Place.Projection));
+        var formed = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Place == reservation.Place);
+        Assert.Equal(MirRefKind.TwoPhaseUniq, (MirRefKind)statements[formed].Rvalue.Op);
+        // The old value's read: the getter's call, or the standard get's operation on the stored Field.
+        var getter = Array.FindIndex(blocks, static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "level.Get" });
+        var read = getter >= 0 ? blocks[getter].Start + blocks[getter].Count - 1 : Array.FindIndex(
+            statements, static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.BinaryOp });
+        Assert.True(formed <= read, "The reservation is formed before the old value is read.");
+    }
+
     // SPEC 14.8.3: a guard candidate's guard-local Origin ends at the guard's cleanup on every path, a transfer out of the guard
     // included: each StorageDead of a candidate follows its EndBorrow.
     [Fact]
