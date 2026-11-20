@@ -6,6 +6,13 @@ function Resolve-KimiToolchainRoot([string] $ToolchainRoot = '') {
     return [IO.Path]::GetFullPath($ToolchainRoot, (Get-Location).ProviderPath)
 }
 
+# Whether a destination already holds the source's bytes (SHA-256). Setup and the backend builder never write such a destination, so
+# an unchanged rerun writes nothing a running process holds.
+function Test-KimiSameFile([string] $Source, [string] $Destination) {
+    return (Test-Path -LiteralPath $Destination -PathType Leaf) -and
+        (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash
+}
+
 function Resolve-KimiBackendLibrary($Entry, [string] $ToolchainRoot, [string] $ManifestDirectory) {
     if ($Entry.PSObject.Properties['resolution']) {
         if ($Entry.resolution -cne 'toolchain' -or $Entry.PSObject.Properties['input']) { throw 'Invalid backend toolchain resolution: an input path is not permitted.' }

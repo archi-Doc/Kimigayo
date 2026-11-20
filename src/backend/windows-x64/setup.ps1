@@ -29,11 +29,6 @@ foreach ($name in $names) {
 
 function Get-Sha256([string] $Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 
-# Whether the destination already holds the source's bytes; such a destination is never written.
-function Test-SameFile([string] $Source, [string] $Destination) {
-    return (Test-Path -LiteralPath $Destination -PathType Leaf) -and (Get-Sha256 $Destination) -ceq (Get-Sha256 $Source)
-}
-
 New-Item -ItemType Directory -Force -Path $ToolchainRoot | Out-Null
 # A tatara.dll an earlier run renamed aside goes once no process maps it.
 foreach ($old in Get-ChildItem -LiteralPath $ToolchainRoot -Filter 'tatara.dll.*.old' -File) {
@@ -43,7 +38,7 @@ foreach ($old in Get-ChildItem -LiteralPath $ToolchainRoot -Filter 'tatara.dll.*
 $dllFiles = @(Get-ChildItem -LiteralPath $source -Filter '*.dll' -File | ForEach-Object FullName)
 foreach ($file in @($names | ForEach-Object { Join-Path $source "$_.exe" }) + $dllFiles) {
     $destination = Join-Path $ToolchainRoot ([IO.Path]::GetFileName($file))
-    if (-not (Test-SameFile $file $destination)) {
+    if (-not (Test-KimiSameFile $file $destination)) {
         Copy-Item -LiteralPath $file -Destination $destination -Force
         Write-Output "Installed: $destination"
     }
@@ -76,7 +71,7 @@ if ((Get-TataraBuildIdentity) -cne $identity) { throw "src/Tatara changed during
 $built = Join-Path $build 'tatara.dll'
 $tatara = Join-Path $ToolchainRoot 'tatara.dll'
 $tataraSha256 = Get-Sha256 $built
-if (-not (Test-SameFile $built $tatara)) {
+if (-not (Test-KimiSameFile $built $tatara)) {
     $temporary = "$tatara.$([guid]::NewGuid().ToString('N')).tmp"
     Copy-Item -LiteralPath $built -Destination $temporary
     if (Test-Path -LiteralPath $tatara) { Move-Item -LiteralPath $tatara -Destination "$tatara.$(Get-Date -Format yyyyMMddHHmmss).old" }
@@ -90,7 +85,7 @@ $record = Join-Path $ToolchainRoot 'installation.json'
 $temporary = "$record.$([guid]::NewGuid().ToString('N')).tmp"
 [ordered]@{ schemaVersion = 1; profile = $profile.profile; tools = $identities; supportingDlls = $dlls; tatara = [ordered]@{ sha256 = $tataraSha256 } } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporary -Encoding utf8
-if (Test-SameFile $temporary $record) { Remove-Item -LiteralPath $temporary }
+if (Test-KimiSameFile $temporary $record) { Remove-Item -LiteralPath $temporary }
 else {
     Move-Item -LiteralPath $temporary -Destination $record -Force
     Write-Output "Installed: $record"

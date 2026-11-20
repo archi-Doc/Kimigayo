@@ -7,7 +7,8 @@
 // toolchain's tools, one process each, through ExecuteTool), which every command uses, or TataraExecutor (tatara.dll in process,
 // Tatara), which only tests select until unit A4; the built Application's run and the installed toolchain's verification
 // (NativeToolchain.Verification.cs); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
-// identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles).
+// identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify loads the root's tatara.dll
+// (Tatara.Load, its start check) and compares its SHA-256 with the installation record's.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the installed toolchain.
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
