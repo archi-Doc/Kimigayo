@@ -359,11 +359,11 @@ public sealed partial class InstanceCollectorTest
                 },
                 {
                     "virtualClause", VirtualBase + Slot + "\n        T is Missing\n        return value@follow\n" + Create,
-                    "InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd UnresolvedBinding_Kd TransferRequired_Kd", string.Empty // R7-C3 C3-1b (F's C2 rulings 284 (3), 294; DECISIONS Q13, dependent): the virtual's record over the override's unresolved `T is Missing` goes; with PLAN G1071 gate 1 (F's C2 ruling 308) the failed definition's body keeps TransferRequired_Kd at `value@follow`, an independent failure as in virtualBlock (ruling 301, SPEC 23.1.2)
                 },
                 {
                     "virtualBlock", "contract Marker\n" + VirtualBase + "    Self is Marker when T is Missing\n    " + Slot + " => value@follow\n" + Create,
-                    "InvalidConstraint_Kd InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd InvalidConstraint_Kd", string.Empty
+                    "InvalidConstraint_Kd InvalidConstraint_Kd UnresolvedBinding_Kd TransferRequired_Kd", string.Empty // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the two `Self` records go (dependents); TransferRequired_Kd at `value@follow` is an independent failure dev's whole-environment rest hid (a gain, SPEC 23.1.2)
                 },
                 { "limitBesideError", Inspect + Box + $"func h(b: ref/{b65}) => inspect(b)\nfunc other() -> i32 => missing\n", "UnresolvedBinding_Kd", string.Empty },
                 { "limitBesideField", Inspect + Box + $"struct Bad\n    public var m: Missing\n    public var big: {b65}\nfunc h(b: ref/Bad) => inspect(b)\n", "UnresolvedBinding_Kd", string.Empty },
@@ -2899,7 +2899,7 @@ public sealed partial class InstanceCollectorTest
     // K 4.3: a representative is closed and makes every local Type of its body closed.
     private static bool Closes(TyCtxt types, MirBody body, Subst representative)
         => representative.Types.ToArray().Append(representative.Declaring).Append(representative.Self).All(static x => x is not { ContainsParameter: true }) &&
-            body.Locals.ToArray().All(x => types.Apply(x.Type, representative).Type is { ContainsParameter: false });
+            body.Locals.ToArray().All(x => types.Apply(x.Type!, representative).Type is { ContainsParameter: false });
 
     private static (MirProgram Program, CheckedSet Set) Collect(string source)
     {

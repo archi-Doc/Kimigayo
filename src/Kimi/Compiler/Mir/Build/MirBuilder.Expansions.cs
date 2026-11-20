@@ -212,7 +212,7 @@ internal sealed partial class MirBuilder
     // through it, which the update reads and writes; the write activates it.
     private MirPlace Writeback(MirPlace destination, Koto node)
     {
-        var reference = compilation.Types.Reference(SemanticsKind.Uniq, this.body.TypeOf(destination) ?? BoundType.Unit);
+        var reference = this.Reference(SemanticsKind.Uniq, destination);
         var reservation = this.Temp(reference, node);
         this.Set(reservation, this.Ref(destination, reference, input: true), node);
         return this.body.Project(compilation.Types, reservation, MirProjectionKind.Deref, 0);

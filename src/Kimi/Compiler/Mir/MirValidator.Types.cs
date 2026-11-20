@@ -23,6 +23,11 @@ internal sealed partial class MirValidator
 {
     private bool[] unknown = [];
 
+    // Whether an rvalue takes its Type from its operands, a Use, a unary operator, an arithmetic, bit or shift operator: an unknown first
+    // operand makes it unknown (Unknown), and an unknown operand agrees with it.
+    private static bool Propagates(in MirRvalue rvalue)
+        => rvalue is { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } or { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq };
+
     // The temps an Opaque value defines, whose Type is the replaced syntax's, which Binding may not know (an Error node has none), and those a
     // Use, a unary operator or an arithmetic, bit or shift operator of such a temp defines, whose Type is that operand's: the Type tier reads
     // them as of an unknown Type.
@@ -49,9 +54,7 @@ internal sealed partial class MirValidator
 
                 if (rvalue.Kind != MirRvalueKind.Opaque)
                 {
-                    if (rvalue is not { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } and not
-                        { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq } ||
-                        (uint)rvalue.Start >= (uint)operands.Length)
+                    if (!Propagates(rvalue) || (uint)rvalue.Start >= (uint)operands.Length)
                     {
                         continue;
                     }

@@ -119,7 +119,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || ElementAccess.IsSyntax(this, projection)) ||
+            if (source is not BinaryKoto projection || !(projection is MemberAccessKoto || this.IsSyntax(projection)) ||
                 projection.Left.BoundType?.Semantics != SemanticsKind.Owner)
             {
                 break;
@@ -440,7 +440,7 @@ public sealed partial class Binding
         var target = this.BindType(conversion.Right, scope);
         if (target is not null)
         {
-            target = this.SubstituteIdentityPremises(target, scope);
+            target = this.ClassForm(target, scope, out _);
             Complete(conversion.Right, target);
         }
 
