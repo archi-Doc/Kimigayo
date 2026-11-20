@@ -4,7 +4,8 @@ namespace Kimi.Compiler.Mir;
 
 // A5's conflicts relation (A3 5's hits and conflicts, with E1, E3, E11, R4-M68 and R4-M92): what an access does (AccessKind), a Call's or
 // Drop's effect rows included; the first Loan of its check set on the access's root it conflicts with, by mode (a reservation the call
-// activates is unique at its effect rows, W6) and syntactically by Place prefix up to an Unproven index (Meets), with the route rule for a
+// activates is unique at its effect rows, W6) and syntactically by Place prefix up to an Unproven index (Meets), a Loan through an Array's
+// element on its steps up to that element's index call's receiver, the Array (Loan.ReceiverSteps, SPEC 4.7.1), with the route rule for a
 // Loan in its reservation holder, never a raw Place borrow's Loan, its fresh anchor's (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), a Loan its
 // template owns skipped (MirBorrows.Defaults' Covered, D11, R4-M97); and err(ended) (E7): at a guard candidate's EndBorrow, a value live
 // after it that keeps its guard-local Origin, but where the EndBorrow and the candidate lie in one inline default copy (D12). A candidate
@@ -42,8 +43,8 @@ internal sealed partial class MirBorrows
     // a fixed array's Index at a constant index, MirSteps), else they meet: every pair is the same step, or a pair holds an index other
     // than a constant one, which proves nothing, so the comparison stops there and no later step proves the paths disjoint (Unproven).
     // The parents' trie states the same stop in its walk (MirBorrows.Activations' Below). An Array's or Slice's element has no constant
-    // index, so a part of one meets every part of every element of that sequence; a Loan past an element's borrow Deref is not reached
-    // by a shallow write of another element (Hits), an open issue (SPEC 4.7.1's whole-Array borrow, D-910's Ruling 2).
+    // index, so a part of one meets every part of every element of that sequence; a Loan through an Array's element is met at its
+    // receiver, the whole Array (Loan.ReceiverSteps: Hits and Through compare it on the steps before the element, SPEC 4.7.1, D-920).
     private static bool Meets(ReadOnlySpan<MirStep> left, ReadOnlySpan<MirStep> right)
     {
         for (var i = 0; i < Math.Min(left.Length, right.Length); i++)
@@ -129,7 +130,9 @@ internal sealed partial class MirBorrows
     // it (SPEC 5.2.2, 15.6.2; DECISIONS R4-M156), whatever k; else within(A, X), or within(X, A) where the access is deep, or no borrow Deref
     // of X lies below A, or it writes, destroys or activates in place a prefix of a Loan that sits in its reservation holder across borrow
     // Derefs (E1, SPEC 15.6.7); err(destroy) hits what a deep access does and the write does not (E11). At a parent Loan's Place the access is
-    // every parent on the root at once, through the parents' trie (MirBorrows.Activations' Through), shallow, as no steps of its own.
+    // every parent on the root at once, through the parents' trie (MirBorrows.Activations' Through), shallow, as no steps of its own. X's
+    // steps are those up to its receiver (Loan.ReceiverSteps): a Loan through an Array's element is its index call's receiver Loan, of the
+    // Array, past the element's Deref too (SPEC 4.7.1, 15.6.2, 15.6.3; Through states the same).
     private bool Hits(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, in Candidate candidate)
     {
         ref readonly var loan = ref this.loans[candidate.Loan];
@@ -143,19 +146,19 @@ internal sealed partial class MirBorrows
             return this.Through(root, loan);
         }
 
-        if (!Meets(steps, this.loanSteps.AsSpan(loan.Start, loan.Count)))
+        if (!Meets(steps, this.loanSteps.AsSpan(loan.Start, loan.ReceiverSteps)))
         {
             return false;
         }
 
         var past = kind == AccessKind.ObservePast; // The write's hits, negated.
-        if (steps.Length >= loan.Count || Deep(kind))
+        if (steps.Length >= loan.ReceiverSteps || Deep(kind))
         {
             return !past;
         }
 
         var route = kind is AccessKind.Write or AccessKind.Destroy or AccessKind.ActivateInPlace or AccessKind.ObservePast && this.Reserved(candidate, kind);
-        for (var i = steps.Length; i < loan.Count; i++)
+        for (var i = steps.Length; i < loan.ReceiverSteps; i++)
         {
             if (!route && this.loanSteps[loan.Start + i].Class is MirStepClass.Shared or MirStepClass.Uniq)
             {

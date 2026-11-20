@@ -6,6 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 4.7: a fixed array, Slice or Array, directly or through a reference: the receivers whose keys are positions.
+    private static bool IsSequence(BoundType? type)
+        => (type?.SafeReferent ?? type)?.Kind
+            is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
+
     private BoundType? BindElement(BinaryKoto source, BindingScope scope)
     {
         var receiver = this.BindNode(source.Left, scope);
@@ -74,7 +79,7 @@ public sealed partial class Binding
             // SPEC 3.4.3, 4.7.1: a concrete sequence, through every layer, is indexed by position and never through an Indexable
             // conformance (Array states one for generic use); one these arms do not reach yet is the limit below.
             var terminal = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
-            if (!ElementAccess.IsSequence(terminal) && this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
+            if (!IsSequence(terminal) && this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
             {
                 return indexed; // SPEC 4.7.1: a user Indexable conformance.
             }
@@ -89,7 +94,7 @@ public sealed partial class Binding
 
                 // SPEC 3.4.3, 4.7.1: a sequence reached here, such as through reference or pair layers, is an implementation limit;
                 // any other receiver, including a range key on an Indexable Type, cannot be indexed by the key.
-                var sequence = ElementAccess.IsSequence(terminal) || terminal!.Kind == BoundTypeKind.Dictionary;
+                var sequence = IsSequence(terminal) || terminal!.Kind == BoundTypeKind.Dictionary;
                 return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
             }
 
@@ -113,7 +118,7 @@ public sealed partial class Binding
 
             if (receiver?.SafeReferent is { Kind: BoundTypeKind.Tuple })
             {
-                return ElementAccess.TryBorrowedTupleElement(this, source, out var borrowedElement, out _)
+                return this.TryBorrowedTupleElement(source, out var borrowedElement, out _)
                     ? Complete(source, borrowedElement) : this.Fail(source, BindingFailure.TypeMismatch);
             }
         }
@@ -125,7 +130,7 @@ public sealed partial class Binding
             return Complete(source, BoundType.Never);
         }
 
-        if (!ElementAccess.TryType(this, source, out var element, out _))
+        if (!this.TryType(source, out var element, out _))
         {
             // SPEC 3.4.3, 12.5.1: only a Tuple or a fixed array has these elements; one reached through further layers is not implemented.
             var core = receiver is null ? null : this.OperandTerminal(source.Left, receiver);

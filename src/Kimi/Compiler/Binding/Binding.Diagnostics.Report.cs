@@ -466,6 +466,12 @@ public sealed partial class Binding
         {
             issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
+        else if (issue.Failure == BindingFailure.InvalidConstraint)
+        {
+            // A plain Fail(node, InvalidConstraint) keeps no problem until its site records one (R7-E2 E2-5's Contract, conformance and
+            // override sites; R7-E3's call sites); it reaches the adapter's one InvalidConstraint row (F's C2 ruling 306).
+            this.ReportConstraint(issue.Node, store, requirement, issue.Code, 0, null);
+        }
         else
         {
             issue.Node.ReportIn(store, requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);

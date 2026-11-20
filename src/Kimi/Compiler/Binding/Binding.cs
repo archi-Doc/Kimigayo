@@ -296,7 +296,7 @@ public sealed partial class Binding
         this.ValidateConformances(mode, false);
         this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
         this.SettleVirtualOverridePremises(); // R7-C2c2 c2-4: a refuted inherited condition fails the override (SPEC 6.4.3).
-        this.ValidateConstraintEnvironments(mode);
+        this.SettlePremiseFailures(mode);
         this.PrepareSpecializations();
         this.RecordDuplicateGroups(); // After PrepareSpecializations, the pass's last pairwise duplicate check (Index declared every scope).
         this.CompleteImplicitConstructors();
