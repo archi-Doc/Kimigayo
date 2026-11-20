@@ -214,8 +214,8 @@ toolchain/
     kernel32.json
 ```
 
-Setup and explicit verification use the complete tool set above. Ordinary builds
-need only the build tools and installed libraries. No Windows SDK or extra Clang headers are required to build Kimi applications.
+Setup and explicit verification use the complete tool set above. A build needs only the root's `tatara.dll` and the installed
+libraries (`windows_x64/`) and runs no LLVM tool. No Windows SDK or extra Clang headers are required to build Kimi applications.
 The backend archive and `llvm-dlltool.exe` must match the hashes in `profile.json`.
 
 From the repository root, with the LLVM 22.1.8 release archive (`clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz`) extracted,
@@ -249,11 +249,12 @@ Relative CLI/environment paths use the current working directory. Explicit roots
 do not fall back if missing. Automatic discovery does not search the user's project,
 working directory, or `PATH`; adding LLVM to `PATH` is only for direct tool use.
 
-LLVM executables come directly from the selected root. `--LlvmBin <path>` overrides
-their location, followed by the project's `LlvmBin` setting (relative to the project).
-These overrides do not change the backend root: the default library is
-`<root>/windows_x64/kimi_backend_windows_x64_v1.lib`. Explicit backend inputs override
-that default and resolve relative to the link manifest.
+A native build loads the selected root's `tatara.dll` (LLVM and LLD in one library) and
+checks its ABI and LLVM version before generating; it starts no LLVM executable.
+`--LlvmBin <path>` names the tool directory `kimi toolchain verify` checks; a project's
+`LlvmBin` setting and a link manifest's `toolchain.llvmBin` are accepted and not read.
+The default backend library is `<root>/windows_x64/kimi_backend_windows_x64_v1.lib`.
+Explicit backend inputs override that default and resolve relative to the link manifest.
 
 ### Add toolchain to PATH
 

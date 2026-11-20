@@ -197,7 +197,7 @@ internal static partial class NativeToolchain
             }
         }
 
-        // The pair's identity: the manifest names this IR by path, hash and optimization, on a platform the tools run on.
+        // The pair's identity: the manifest names this IR by path, hash and optimization, on a platform Tatara runs on.
         private string CheckPair()
         {
             var irHash = Hash(this.paths.Ir);
