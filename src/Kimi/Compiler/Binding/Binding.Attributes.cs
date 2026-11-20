@@ -40,7 +40,7 @@ public sealed partial class Binding
     private static bool HasNoCCounterpart(BoundType type)
         => ReferenceEquals(type, BoundType.String) || type.HandleMode is not null ||
             type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem ||
-            (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && HasNoCCounterpart(referent));
+            (type.SafeReferent is { } referent && HasNoCCounterpart(referent));
 
     // SPEC 22.6: a fixed-width integer Core or f32/f64 by width (i8/u8 share '1'); '?' for any other Type, a wrapping integer included.
     private static char ScalarCode(BoundType type)
@@ -322,7 +322,7 @@ public sealed partial class Binding
     private char PhysicalCode(BoundType type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ? 'p' :
             HasNoCCounterpart(type) ? '\0' :
-            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ?
+            type.SafeReferent is { } referent ?
                 this.CExchangeable(referent, 0) switch { true => 'p', false => '?', null => '!' } :
             ScalarCode(type);
 

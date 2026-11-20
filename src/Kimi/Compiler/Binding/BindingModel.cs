@@ -766,6 +766,11 @@ public sealed class BoundType : IEquatable<BoundType?>
     /// <summary>Gets a value indicating whether this is an objref or objuniq borrow of an object.</summary>
     internal bool IsObjectBorrow => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };
 
+    /// <summary>Gets the referent of a safe value reference <c>ref/T</c> or <c>uniq/T</c> (SPEC 3.4), whatever the referent; null for
+    /// any other Type, a raw pointer, an object borrow or a pair layer among them. The one test of a safe reference layer every phase
+    /// reads; no further layer is followed.</summary>
+    internal BoundType? SafeReferent => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent : null;
+
     /// <inheritdoc/>
     public bool Equals(BoundType? other) => ReferenceEquals(this, other);
 

@@ -308,7 +308,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (pattern.Kind != BoundTypeKind.Semantics || pattern.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq))
+        if (pattern.SafeReferent is null)
         {
             if (projected)
             {
@@ -399,9 +399,9 @@ public sealed partial class Binding
             return true;
         }
 
-        if (actual.Kind == BoundTypeKind.Semantics && actual.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+        if (actual.SafeReferent is { } actualReferent)
         {
-            if (!explicitBorrow && pattern.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && ReferenceEquals(pattern.Components[0], actual))
+            if (!explicitBorrow && ReferenceEquals(pattern.Components[0], actual))
             {
                 return false; // SPEC 10.2: no implicit borrow of a reference slot.
             }
@@ -426,7 +426,7 @@ public sealed partial class Binding
                     this.RequireAcquisition(source, actual, pattern, BindingFailure.TransferRequired, @object: false, fixedExpectation, deferAcquisition);
             }
 
-            referent = actual.Components[0];
+            referent = actualReferent;
             if (actual.Semantics == SemanticsKind.Ref && !projected)
             {
                 // An explicit shared string borrow (text@ref) is prepared at the call like the implicit one (SPEC 22.1).
@@ -500,7 +500,7 @@ public sealed partial class Binding
         quality = ArgumentAdaptation.Exact;
         kind = ArgumentOperationKind.Value;
         var exclusive = pattern.Semantics == SemanticsKind.ObjUniq;
-        if (receiver && ReferenceTypes.IsStorage(actual) && actual.Components[0].HandleMode is { } stored)
+        if (receiver && actual.SafeReferent?.HandleMode is { } stored)
         {
             if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || this.ReachedThroughShared(source)))
             {

@@ -16,8 +16,8 @@ internal static class ElementAccess
     // SPEC 4.8.2, 4.7.1: an element of a Slice or of a referenced array, including a fixed array reached through a
     // borrowed receiver; no owned root holds it.
     internal static bool IsSharedElement(Binding binding, Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
-        (HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(binding, element.Left)) ||
-            ReferenceTypes.IsDynamicArray(HirTables.TypeOf(element.Left)) || ReferenceTypes.IsDictionary(HirTables.TypeOf(element.Left)) ||
+        (HirTables.TypeOf(element.Left)?.Kind == BoundTypeKind.Slice || AccessType(binding, element.Left)?.SafeReferent is { Kind: BoundTypeKind.FixedArray } ||
+            HirTables.TypeOf(element.Left)?.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.Dictionary } ||
             (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(binding, element.Left)));
 
     // SPEC 3.4.3: the referent of an exclusive array reference offers element replacement, without requiring a mutable
@@ -26,7 +26,7 @@ internal static class ElementAccess
     // path authority decides it rather than the stored Type (PLAN G59).
     internal static bool IsExclusiveArrayElement(Binding binding, Koto source) => source is IndexKoto { Right: not RangeKoto } element && !IsSlicing(binding, source) &&
         ((AccessType(binding, element.Left, true) is { Semantics: SemanticsKind.Uniq } receiver &&
-            (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver))) ||
+            receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
         (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(binding, element.Left) &&
             binding.PathAuthority(element.Left, []) == SemanticsKind.Uniq));
 
@@ -69,7 +69,7 @@ internal static class ElementAccess
 
     // SPEC 4.7: a fixed array, Slice or Array, directly or through a reference: the receivers whose keys are positions.
     internal static bool IsSequence(BoundType? type)
-        => (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? type.Components[0] : type)?.Kind
+        => (type?.SafeReferent ?? type)?.Kind
             is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array;
 
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants. A fixed-array element's Move Path: a constant
@@ -238,7 +238,7 @@ internal static class ElementAccess
     // The reference whose struct or Tuple referent `reference@follow` selects, or null.
     internal static Koto? FollowedReference(Binding binding, Koto receiver)
         => KotoHelper.UnwrapParentheses(receiver) is ConversionKoto followed && HirTables.PlanOf(followed).Conversion == ConversionBinding.Follow &&
-            AccessType(binding, followed.Left) is var type && (ReferenceTypes.IsStruct(type) || ReferenceTypes.IsTuple(type)) ? followed.Left : null;
+            AccessType(binding, followed.Left)?.SafeReferent is { } referent && (AdtDef.IsStruct(referent) || referent.Kind == BoundTypeKind.Tuple) ? followed.Left : null;
 
     // SPEC 4.7.1: an owned fixed-array element selected at a runtime index, which has no static Move Path.
     internal static bool IsRuntimeFixedElement(Binding binding, Koto selection)
@@ -255,7 +255,7 @@ internal static class ElementAccess
             }
 
             var receiver = AccessType(binding, field.Left);
-            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) ||
+            if (AdtDef.IsStruct(receiver?.SafeReferent) || receiver?.SafeReferent is { Kind: BoundTypeKind.Tuple } ||
                 (receiver is not null && binding.ObjectCases(receiver, binding.ConstraintScope(field.Left), out _) != SemanticsMask.None))
             {
                 return field.Left;
@@ -312,11 +312,11 @@ internal static class ElementAccess
         element = null;
         position = -1;
         var receiver = AccessType(binding, source.Left);
-        if (ReferenceTypes.IsTuple(receiver) && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
-            number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)receiver!.Components[0].Components.Count)
+        if (receiver?.SafeReferent is { Kind: BoundTypeKind.Tuple } tuple && source is MemberAccessKoto { Right: NumberLiteralKoto number } &&
+            number.IsInteger && number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)tuple.Components.Count)
         {
             position = (int)magnitude;
-            element = receiver.Components[0].Components[position];
+            element = tuple.Components[position];
             return true;
         }
 

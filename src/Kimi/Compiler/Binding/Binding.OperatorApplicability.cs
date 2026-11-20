@@ -34,12 +34,12 @@ public sealed partial class Binding
     private static OperatorApplicability ArithmeticPairApplicability(
         BoundType? left, BoundType? leftCore, BoundType? right, BoundType? rightCore)
     {
-        if (ReferenceTypes.EndsInString(leftCore))
+        if (ReferenceEquals(ComparisonReferent(leftCore), BoundType.String))
         {
             return new(null, null, BindingFailure.NonNumericOperand, null, null, left, leftCore);
         }
 
-        return ReferenceTypes.EndsInString(rightCore)
+        return ReferenceEquals(ComparisonReferent(rightCore), BoundType.String)
             ? new(null, null, BindingFailure.NonNumericOperand, null, null, right, rightCore) : default;
     }
 
@@ -290,7 +290,7 @@ public sealed partial class Binding
     private OperatorApplicability ComparisonApplicability(BoundType type, KotoKind kind, BindingScope scope)
     {
         var equality = kind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
-        var ordered = type.IsNumeric || ReferenceEquals(type, BoundType.Char) || ReferenceTypes.EndsInString(type);
+        var ordered = type.IsNumeric || ReferenceEquals(type, BoundType.Char) || ReferenceEquals(ComparisonReferent(type), BoundType.String);
         if (ReferenceEquals(type, BoundType.Never) || ordered)
         {
             return default;

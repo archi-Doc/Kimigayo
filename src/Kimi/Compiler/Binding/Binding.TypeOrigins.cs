@@ -178,7 +178,7 @@ public sealed partial class Binding
                 // well-formedness (RequireInputPremises), whether its argument is a Borrow formed there or an existing reference.
                 var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
-                    (ReferenceTypes.IsStruct(type) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
+                    (AdtDef.IsStruct(type.SafeReferent) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
                 // A written Type's own layer at its use, in no comparison (default), as its retention below.
                 var formation = new UseScope(use);
                 this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation, default)));

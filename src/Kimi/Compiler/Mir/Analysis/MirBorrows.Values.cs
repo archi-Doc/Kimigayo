@@ -258,7 +258,7 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return ReferenceTypes.IsReference(cases.TypeOf(place));
+        return cases.TypeOf(place).SafeReferent is not null;
     }
 
     // Whether a projection is a Case payload step: a Downcast, the payload Tuple of a Case, or the Field of that Tuple, a payload.
