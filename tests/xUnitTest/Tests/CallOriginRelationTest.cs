@@ -188,6 +188,12 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(OneOf + "ref/T during a\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(OneOf + "ref/T during one\n    T is uniq/Meter during a\n    origin a outlives one\n    return ir(one, 0)\n", "clean")]
     [InlineData(OneOf + "ref/i32 during one\n    T is uniq/Meter during a\n    let r = ir(one, 0)\n    return r\n", "1*TypeMismatch_Kd 1*UnprovenOriginRelation_Kd")]
+    // R7-C3 (F's C2 ruling 315; SPEC 8.2.3, 15.6.1): the walk's root pair is formed once, at its intake, and published with its parts,
+    // so CheckTypeUse's decomposition reads the pair the walk walked: a Closure's input under the identity premise fits the argument's
+    // structure and keeps only the Origin relation's record (fail-before: CheckFaulted_Kd; dev a585b50a5 adds NoApplicableOverload_Kd at
+    // the call), as the twin without the premise does on every side.
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    let k = func (x: ref/T during w) -> i32 => 0\n    return k(ir(one, 0))\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "i32\n    let k = func (x: ref/T during w) -> i32 => 0\n    return k(ir(one, 0))\n", "1*UnprovenOriginRelation_Kd")]
     public void AnInputsWellFormednessOverASlotsSolutionBoundsItsLayer(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
