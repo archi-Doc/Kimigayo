@@ -316,10 +316,11 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.7, 15.6.4 step 3: an input's well-formedness, its parameter pattern beside the Type `instantiated` that a call collects
-    // for that input, shortens the call's solution where the arguments alone would leave an instantiated input ill formed
-    // (SolveOriginInference). Only a call collects it: a whole-contract comparison proves it instead (ProvesInputPremises), since the
-    // required contract's input premises are no premises at its use.
+    // SPEC 15.3.7, 15.6.4 step 3, 15.3.6: an input's well-formedness, its parameter pattern beside the Type `instantiated` that a call
+    // collects for that input, a slot's solution included (PLAN G1115), shortens the call's solution where the arguments alone would leave
+    // an instantiated input ill formed (SolveOriginInference): every premise is an upper bound of its layer's Origin, and the selected
+    // call requires those the argument's own Type does not satisfy (RequireInputPremises). Only a call collects it: a whole-contract
+    // comparison proves it instead (ProvesInputPremises), since the required contract's input premises are no premises at its use.
     private void CollectInputPremises(BoundType pattern, BoundType instantiated, OriginInference inference, Koto use)
     {
         if (!instantiated.StoresOrigin)

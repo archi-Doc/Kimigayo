@@ -186,7 +186,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 67)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 61)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -277,13 +277,13 @@ public class ArchitectureRulesTest
     // ClassForm, read by the one intake of each judgment over identical Types: J1 a proposition's identity (Constraints.cs:
     // NormalizeProofConstraint's subject, required Type and Contract reference; Contracts.cs: ProveConformance's subject and Contract
     // reference), J3 the Type relation at a use (TypeRelations.Walk.cs: the walk root's two sides; CallableSelection.cs:
-    // CallableContractType), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
+    // CallableContractType; Diagnostics.cs: a failed fit's record reads the pair its walk compared, F's C2 ruling 307 (2)), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
     // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
     // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
     // input (Expressions.cs: the expected and the bound Type; Variables.cs, Conversions.cs, NumericConversions.cs), and (iii) a member
     // step's receiver (R7-N1 c-b: MemberLookup.cs, QualifierSelection's receiver Type; ResolvePath.cs, EvaluateProjection's normal
     // form); Keys.cs is ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.MemberLookup.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Diagnostics.cs=2;Binding/Binding.Expressions.cs=2;Binding/Binding.InlineLayouts.cs=1;Binding/Binding.MemberLookup.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a

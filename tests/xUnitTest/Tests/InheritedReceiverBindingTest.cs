@@ -273,6 +273,20 @@ public class InheritedReceiverBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
+    // R7-E2 E2-1 (SPEC 6.1, 7.3, 23.1.2): a constructor's parameter named `self` repeats its implicit receiver's Name, and as a receiver of
+    // Type i32 it is no receiver of S: two independent requirements of one function, both reported; with the receiver's Type fixed the
+    // duplicate alone stays, and a named function's invalid receiver alone is its own record.
+    [Theory]
+    [InlineData("init(self: i32) => ()", "DuplicateBinding_Kd|InvalidTypeFormation_Kd")]
+    [InlineData("init(self: ref/Self) => ()", "DuplicateBinding_Kd")]
+    [InlineData("func f(self: i32) => ()", "InvalidTypeFormation_Kd")]
+    public void AConstructorsSelfParameterIsADuplicateAndItsOwnReceiver(string member, string records)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"struct S\n    {member}");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(records.Split('|'), CompilationTestHelper.BindingErrors(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public void UnqualifiedInstanceCallsCannotPretendToBeUnboundCalls()
     {

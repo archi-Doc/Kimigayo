@@ -5,7 +5,8 @@ namespace Kimi.Compiler.Mir;
 // A body's tables and the Places that index them (plan 5.4).
 // - Responsibility: the locals (local 0 the Return local, the Arg locals directly after it, each of a known kind and typed, a Result
 //   local a Temp of local 0's Type), the MustNotComplete rows, the scopes, the Opaque sites and the projection table, each in range and
-//   each projection step admitted by the Type of the step it extends (Tables, Admits); each Place a location names (Names): in range
+//   each projection step admitted by the Type of the step it extends, a constant index only on an Index of a fixed array (Tables,
+//   Admits); each Place a location names (Names): in range
 //   (IsValid) and its first step admitted by its root's Type, each Place MirUses reports (Place) and a diverging Call's destination,
 //   which it does not (MirValidator.Calls); and a Result local read only by the whole Move that delivers it into _0 (DECISIONS R4-M132).
 // - Inputs: the body's tables; each location's Places with their access, and a diverging Call's destination without one. Outputs:
@@ -162,6 +163,7 @@ internal sealed partial class MirValidator
 
         private readonly bool Admits(BoundType? type, in MirProjection row) => row.Type is not null && ReferenceEquals(
             row.Type,
-            body.ProjectedType(types, type, row.Kind, row.Arg));
+            body.ProjectedType(types, type, row.Kind, row.Arg)) &&
+            (row.Position == -1 || (row.Position >= 0 && row.Kind == MirProjectionKind.Index && type?.Kind == BoundTypeKind.FixedArray));
     }
 }
