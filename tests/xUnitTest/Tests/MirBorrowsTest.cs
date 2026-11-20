@@ -719,6 +719,373 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(["r05i: fs[5].b += 1 PlacementActivationConflict_Kd"], Problems(c, program, LoanCodes));
     }
 
+    // SPEC 4.7.1, 15.6.2, 15.6.3 (D-920): an Array's element is the referent of its `index` or `indexUniq` call, which borrows the whole
+    // Array, so a Borrow through it carries that call's receiver Loan of the Array, past the element's Deref too. With r =
+    // hs[0]@follow.a@ref live (hs: Array<uniq/Pair>), a write, `replace` or destruction of any element or of the Array conflicts (e01-e05),
+    // through a local reference (e10), a parameter (w01), inside a fixed array (e11) or an Array (e12, w20), and of a fixed array's element
+    // inside an Array (w09); with q = hs[0]@follow@uniq live, a read or write of the Array that selects no element conflicts too (w15, w16),
+    // and a write of another element meets q at the selection's guard and at the write (e07, e08, as a14 and a15 above). A fixed array's
+    // element stays a built-in projection (v01-v05, w10: not reached past its Deref, the Move Path's destruction ends the Loan); valid stay
+    // shared beside shared (v07-v09, w04, w08, w19), a reservation's shared reads (w12, w13), a Deref above the Array (v10, w17), distinct
+    // Fields before the element (v12, w18), Slices (v13), index calls (UniqSlice, Dictionary: v14, v15, w05, w07) and Loans that ended
+    // (v06, v16, w02, w11); the other controls keep their records (e06, e09, e13-e17, w03, w06, w14, w21).
+    [Fact]
+    public void AnArrayElementLoanIsMetAtItsReceiver()
+        => Assert.Equal(
+            [
+                "e01: hs[1] = rs[2]@uniq", "e02: hs[0] = rs[2]@uniq",
+                "e03: Kimi.Intrinsics.replace(hs[1]@uniq, with: rs[2]@uniq) CallActivationConflict_Kd", "e04: hs = [rs[2]@uniq]",
+                "e05: Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq]) CallActivationConflict_Kd", "e06: hs[1]@follow.b = 5", "e07: hs[1]",
+                "e07: hs[1] = rs[2]@uniq", "e08: hs[1]", "e08: hs[1] = rs[2]@uniq", "e09: ts[1].1 += 1 PlacementActivationConflict_Kd", "e10: hs[1] = rs[2]@uniq", "e11: g[0][1] = rs[4]@uniq",
+                "e12: m[1] = [rs[2]@uniq]", "e13: u[1] CallActivationConflict_Kd", "e14: u = qs.sliceUniq()", "e15: d[2] CallActivationConflict_Kd",
+                "e16: ps[1].b = 3", "e17: ps = [Pair.init()]", "w01: hs[1] = x@move", "w03: hs[1] = rs[2]@uniq", "w06: d[1] CallActivationConflict_Kd",
+                "w09: vs[0][1] = rs[2]@uniq", "w14: cs[0].setR(cs[1].b@ref) CallActivationConflict_Kd", "w15: hs.length", "w16: hs = [rs[2]@uniq]",
+                "w20: m[0][0] = rs[2]@uniq", "w21: hs@ref",
+            ],
+            Problems("""
+                func touchP(value: uniq/Pair) => ()
+                struct HP
+                    public var hs: Array<Pair> = []
+                    public var n: i32 = 0
+                    public init() => ()
+                struct Cell
+                    public var a: i32 = 1
+                    public var b: i32 = 2
+                    public init() => ()
+                    public func setA(self: uniq/Self, v: i32) => self.a = v
+                    public func setR(self: uniq/Self, v: ref/i32) => ()
+                    public func setN(self: uniq/Self, v: isize) => ()
+                func e01()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func e02()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[0] = rs[2]@uniq
+                    inspect(r)
+                func e03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs[1]@uniq, with: rs[2]@uniq)
+                    inspect(r)
+                func e04()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs = [rs[2]@uniq]
+                    inspect(r)
+                func e05()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq])
+                    inspect(r)
+                func e06()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[1]@follow.b = 5
+                    inspect(r)
+                func e07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    hs[1] = rs[2]@uniq
+                    inspect(q)
+                func e08()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]
+                    hs[1] = rs[2]@uniq
+                    inspect(q)
+                func e09()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var ts: Array<(uniq/Pair, i32)> = [(rs[0]@uniq, 1), (rs[1]@uniq, 2)]
+                    let r = ts[0].0@follow.a@ref
+                    ts[1].1 += 1
+                    inspect(r)
+                func e10()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs0: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var hs = hs0@uniq
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func e11()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var g: [2 of Array<uniq/Pair>] = [[rs[0]@uniq, rs[1]@uniq], [rs[2]@uniq, rs[3]@uniq]]
+                    let r = g[0][0]@follow.a@ref
+                    g[0][1] = rs[4]@uniq
+                    inspect(r)
+                func e12()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var m: Array<Array<uniq/Pair>> = [[rs[0]@uniq], [rs[1]@uniq]]
+                    let r = m[0][0]@follow.a@ref
+                    m[1] = [rs[2]@uniq]
+                    inspect(r)
+                func e13()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var u = hs.sliceUniq()
+                    let r = u[0]@follow.a@ref
+                    u[1] = rs[2]@uniq
+                    inspect(r)
+                func e14()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    var qs: Array<Pair> = [Pair.init()]
+                    var u = ps.sliceUniq()
+                    let r = u[0].a@ref
+                    u = qs.sliceUniq()
+                    inspect(r)
+                func e15()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, uniq/Pair> = [1: rs[0]@uniq, 2: rs[1]@uniq]
+                    let r = d[1]@follow.a@ref
+                    d[2] = rs[2]@uniq
+                    inspect(r)
+                func e16()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let s = ps[0..2]
+                    let r = s[0].a@ref
+                    ps[1].b = 3
+                    inspect(r)
+                func e17()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    ps = [Pair.init()]
+                    inspect(r)
+                func v01()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func v02()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs[0] = rs[2]@uniq
+                    inspect(r)
+                func v03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs[1]@uniq, with: rs[2]@uniq)
+                    inspect(r)
+                func v04()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    hs = [rs[2]@uniq, rs[3]@uniq]
+                    inspect(r)
+                func v05()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: [2 of uniq/Pair] = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    Kimi.Intrinsics.replace(hs@uniq, with: [rs[2]@uniq, rs[3]@uniq])
+                    inspect(r)
+                func v06()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs[1] = rs[2]@uniq
+                func v07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    let q = hs[1]@follow.b@ref
+                    inspect(r)
+                    inspect(q)
+                func v08()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    let x = hs[1]@follow.b
+                    inspect(r)
+                    inspect(x@ref)
+                func v09()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    let n = hs.length
+                    inspect(r)
+                    inspect(n@ref)
+                func v10()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var hs2: Array<uniq/Pair> = [rs[2]@uniq]
+                    var p = hs@uniq
+                    let r = p[0]@follow.a@ref
+                    p = hs2@uniq
+                    inspect(r)
+                func v11()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var g: [2 of Array<uniq/Pair>] = [[rs[0]@uniq, rs[1]@uniq], [rs[2]@uniq, rs[3]@uniq]]
+                    let r = g[0][0]@follow.a@ref
+                    g[1][0] = rs[4]@uniq
+                    inspect(r)
+                func v12()
+                    var h = HP.init()
+                    h.hs.append(Pair.init())
+                    let r = h.hs[0].a@ref
+                    h.n = 3
+                    inspect(r)
+                func v13()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    var s = ps[0..2]
+                    let r = s[0].a@ref
+                    s = ps[1..2]
+                    inspect(r)
+                func v14()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var u = hs.sliceUniq()
+                    let r = u[0]@follow.a@ref
+                    inspect(r)
+                    u[1] = rs[2]@uniq
+                func v15()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, uniq/Pair> = [1: rs[0]@uniq, 2: rs[1]@uniq]
+                    let r = d[1]@follow.a@ref
+                    inspect(r)
+                    d[2] = rs[2]@uniq
+                func v16()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs = [rs[2]@uniq]
+                func w01(hs: uniq/Array<uniq/Pair during a>, x: uniq/Pair during a)
+                    let r = hs[0]@follow.a@ref
+                    hs[1] = x@move
+                    inspect(r)
+                func w02(hs: uniq/Array<uniq/Pair during a>, x: uniq/Pair during a)
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs[1] = x@move
+                func w03()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let s = hs[0..2]
+                    let r = s[0]@follow.a@ref
+                    hs[1] = rs[2]@uniq
+                    inspect(r)
+                func w04()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    let q = hs[1]@follow.b@ref
+                    inspect(r)
+                    inspect(q)
+                func w05()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var u = hs.sliceUniq()
+                    let r = u[0]@follow.a@ref
+                    let q = u[1]@follow.b@ref
+                    inspect(r)
+                    inspect(q)
+                func w06()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, Array<uniq/Pair>> = [1: [rs[0]@uniq, rs[1]@uniq]]
+                    let r = d[1][0]@follow.a@ref
+                    d[1][1] = rs[2]@uniq
+                    inspect(r)
+                func w07()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var d: Dictionary<i32, Array<uniq/Pair>> = [1: [rs[0]@uniq, rs[1]@uniq]]
+                    let r = d[1][0]@follow.a@ref
+                    let q = d[1][1]@follow.b@ref
+                    inspect(r)
+                    inspect(q)
+                func w08()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let x = ps[1].b
+                    let q = ps[0].b@ref
+                    inspect(r)
+                    inspect(q)
+                    inspect(x@ref)
+                func w09()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var vs: Array<[2 of uniq/Pair]> = [[rs[0]@uniq, rs[1]@uniq]]
+                    let r = vs[0][0]@follow.a@ref
+                    vs[0][1] = rs[2]@uniq
+                    inspect(r)
+                func w10()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var f: [2 of [2 of uniq/Pair]] = [[rs[0]@uniq, rs[1]@uniq], [rs[2]@uniq, rs[3]@uniq]]
+                    let r = f[0][0]@follow.a@ref
+                    f[0][1] = rs[4]@uniq
+                    inspect(r)
+                func w11()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let r = hs[0]@follow.a@ref
+                    inspect(r)
+                    hs[0] = rs[2]@uniq
+                    let q = hs[0]@follow.b@ref
+                    inspect(q)
+                func w12()
+                    var cs: Array<Cell> = [Cell.init(), Cell.init()]
+                    cs[0].setA(cs[1].b)
+                func w13()
+                    var cs: Array<Cell> = [Cell.init(), Cell.init()]
+                    cs[0].setN(cs.length)
+                func w14()
+                    var cs: Array<Cell> = [Cell.init(), Cell.init()]
+                    cs[0].setR(cs[1].b@ref)
+                func w15()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    let n = hs.length
+                    touchP(q)
+                    inspect(n@ref)
+                func w16()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    hs = [rs[2]@uniq]
+                    touchP(q)
+                func w17()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    var hs2: Array<uniq/Pair> = [rs[2]@uniq]
+                    var p = hs@uniq
+                    let q = p[0]@follow@uniq
+                    p = hs2@uniq
+                    touchP(q)
+                func w18(h: uniq/HP)
+                    let r = h.hs[0].a@ref
+                    h.n = 3
+                    inspect(r)
+                func w19()
+                    var ps: Array<Pair> = [Pair.init(), Pair.init()]
+                    let r = ps[0].a@ref
+                    let s = ps[0..2]
+                    inspect(s)
+                    inspect(r)
+                func w20()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var m: Array<Array<uniq/Pair>> = [[rs[0]@uniq, rs[1]@uniq]]
+                    let r = m[0][1]@follow.a@ref
+                    m[0][0] = rs[2]@uniq
+                    inspect(r)
+                func w21()
+                    var rs: [5 of Pair] = [Pair.init(), Pair.init(), Pair.init(), Pair.init(), Pair.init()]
+                    var hs: Array<uniq/Pair> = [rs[0]@uniq, rs[1]@uniq]
+                    let q = hs[0]@follow@uniq
+                    inspect(hs@ref)
+                    touchP(q)
+                """));
+
     // SPEC 15.6, 15.6.1, 15.2.3 (PLAN G405): a Loan is live while a value that carries it may be used, and the carriers are the borrow,
     // its Copies, references derived from it and the aggregates, Closures or storage holding one of these; Origin regions and `outlives`
     // relations never keep a Loan live (15.6), so 15.6.1's Liveness puts a later use of a value whose Type names `y` only in y's Origin's

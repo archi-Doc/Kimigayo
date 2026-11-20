@@ -3,13 +3,14 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps and whether it is a raw Place borrow's (Anchored: its Place passes a raw Deref, so its fresh
-// anchor's, which no access reaches, R4-M156), in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer
-// (D5, R4-M98): a Loan, a guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or
-// a write rooted at a default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots, the mutable
-// statics its Loans are on, and each static's A4 Field number; whether the view has a raw Ref, whose address MirBorrows.Addresses
-// forms; and by local, whether a direct Loan or address names it (a flow holder), whether it is an exposed holder (Exposed) and the
-// stores that give its reference the Places it refers to (Referring: wherever it is read, Referred).
+// location, each with its Place's steps, those an access is compared with (Compared: before an Array element, its index call's receiver,
+// SPEC 4.7.1) and whether it is a raw Place borrow's (Anchored: its Place passes a raw Deref, so its fresh anchor's, which no access
+// reaches, R4-M156), in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum producer (D5, R4-M98): a Loan,
+// a guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or a write rooted at a
+// default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are
+// on, and each static's A4 Field number; whether the view has a raw Ref, whose address MirBorrows.Addresses forms; and by local, whether a
+// direct Loan or address names it (a flow holder), whether it is an exposed holder (Exposed) and the stores that give its reference the
+// Places it refers to (Referring: wherever it is read, Referred).
 internal sealed partial class MirBorrows
 {
     private const byte NamedHolder = 1; // named: a direct Loan or address names the local, so it is a flow holder (MirBorrows.Holders).
@@ -177,11 +178,12 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3).
+    // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3); compared on its steps before
+    // its first IndexCall step, else on all of them (Loan.Compared).
     private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
         var count = this.placeSteps.Walk(place, reborrow, ref this.walk);
-        var (direct, anchored) = (true, false);
+        var (direct, anchored, compared) = (true, false, count);
         for (var i = 0; i < count; i++)
         {
             if (this.walk[i].Class == MirStepClass.Shared)
@@ -191,6 +193,7 @@ internal sealed partial class MirBorrows
 
             direct &= this.walk[i].Class is not (MirStepClass.Uniq or MirStepClass.Raw);
             anchored |= this.walk[i].Class == MirStepClass.Raw;
+            compared = this.walk[i].Class == MirStepClass.IndexCall ? Math.Min(compared, i) : compared;
         }
 
         var (key, root) = (this.Key(place.Root), direct ? place.Root : -1);
@@ -215,6 +218,7 @@ internal sealed partial class MirBorrows
             Named = root,
             Direct = direct,
             Anchored = anchored,
+            Compared = compared,
             Location = location,
         };
         return this.Record(this.loanCount++, loan, count);
@@ -249,6 +253,11 @@ internal sealed partial class MirBorrows
 
         /// <summary>Gets or sets the number of its Place's steps.</summary>
         internal int Count { get; set; }
+
+        /// <summary>Gets or sets the number of its Place's steps an access is compared with (the conflicts relation, MirBorrows.Checks'
+        /// Hits and its trie form Through): those before its first IndexCall step, the Array whose element's index call borrows it whole,
+        /// so the Loan is met as that call's receiver Loan (SPEC 4.7.1, 15.6.3), else Count, also an address entry's.</summary>
+        internal int Compared { get; set; }
 
         /// <summary>Gets or sets its mode.</summary>
         internal MirRefKind Mode { get; set; }
