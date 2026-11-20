@@ -326,10 +326,6 @@ public sealed partial class Binding
             // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
             issue.Node.ReportIn(store, requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
         }
-        else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
-        {
-            this.ReportParameterShapes(issue.Node, store, requirement, shapes);
-        }
         else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
             this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);

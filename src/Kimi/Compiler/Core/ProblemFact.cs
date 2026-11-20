@@ -20,11 +20,14 @@
 // the site (A3's guessed sites, R5-M186; 2g-1's), and an Actual or Expected fact the syntax that shows a mismatch and as its Value an index
 // in BindingReport's kept sides, a Type, or a length where its requirement compares lengths (SPEC 4.3.1), an ActualForm or ExpectedForm fact the same syntax and as its Value a Binding MismatchForm row and, above its
 // byte, an anonymous function's parameter count plus one, 0 for none, a Span fact its subject and as its Value the located part,
-// start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept Types,
+// start << 32 | length, an Operand or Terminal fact the syntax an operator failed at and as its Value an index in BindingReport's kept sides,
 // a Constraint fact the same syntax and as its Value an index in the kept propositions, one not proven or refuted, and an OriginRecord fact
-// the subject and as its Value an index in the kept Origin records, a Related fact a location the problem relates and as its Value the
+// the subject and as its Value an index in the kept Origin records, a Related fact a location the record shows (its own or a related one) and as its Value the
 // role's ordinal in its code's adapter row, a Count fact the subject and as its Value a count the requirement states, in the row's order,
-// and a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names (R7-E2); a kind that names
+// a Reason fact the subject and as its Value a row of the closed Binding enumeration its requirement names (ParameterShapeMismatch_Kd's packs
+// its mode, the other mode and the matching key, a byte each), and a Key fact the conflicting
+// parameter and as its Value an index in BindingReport's kept sides, the Type at which two parameter shapes' matching keys overlap (SPEC
+// 7.4), neither side of a mismatch (R7-E2); a kind that names
 // no value has -1; a problem has at most one fact of each kind but its witness's, its causes, which come last, and its Related and Count
 // facts, in their row's order.
 // Must not carry message text or a phase's structure, or decide which problem a fact belongs to or whether it is kept (MirReport's).
@@ -39,7 +42,8 @@ namespace Kimi.Compiler;
 /// (R4-M97), the declaration of the static Field a Call's or Drop's effects met, by what decided it (R4-M92), an Origin problem's last
 /// edge (D18), the body of a storage limit with one of its arguments (G213, R4-M132), a problem this one is caused only by (rule W,
 /// R4-M132), or, for Binding, the syntax that shows a mismatch with one of its two sides, the subject with its located part, a failed operator's
-/// operand, judged Type or proposition, a further Origin record (R7-E1), a related location, a stated count or a closed reason (R7-E2).</summary>
+/// operand, judged Type or proposition, a further Origin record (R7-E1), a related location, a stated count, a closed reason or the Type two
+/// parameter shapes overlap at (R7-E2).</summary>
 internal enum ProblemFactKind : byte
 {
     Anchor,
@@ -59,15 +63,16 @@ internal enum ProblemFactKind : byte
     Actual, // Binding: the syntax that shows a mismatch, the side found (Value, an index in BindingReport's kept sides, a Type or length; SPEC 23.3).
     Expected, // Binding: the syntax that shows a mismatch, the side required (Value, the same).
     Span, // Binding: the subject of a located record, its part (Value, start << 32 | length; SPEC 23.1.1).
-    ActualForm, // Binding: as Actual, for a side that is no Type (Value, a MismatchForm row and its count).
+    ActualForm, // Binding: as Actual, for a side with no kept value, a form (Value, a MismatchForm row and its count).
     ExpectedForm, // Binding: as Expected, the same.
-    Operand, // Binding: the syntax an operator failed at, its operand's Type (Value, an index in BindingReport's kept Types; SPEC 13).
+    Operand, // Binding: the syntax an operator failed at, its operand's Type (Value, an index in BindingReport's kept sides; SPEC 13).
     Terminal, // Binding: the same syntax, the Type the operator judged (Value, the same).
     Constraint, // Binding: the same syntax, the proposition a failed operator needs (Value, an index in the kept propositions).
     OriginRecord, // Binding: the subject, one of its Origin records beyond the first (Value, an index in the kept Origin records; SPEC 15.6.1).
-    Related, // Binding: a location the problem relates, such as a declaration it names (Value, the role's ordinal in its code's row; SPEC 23.3).
+    Related, // Binding: a location the record shows, its own or a related one, by role (Value, the role's ordinal in its code's row; SPEC 23.3).
     Count, // Binding: the subject, a count its requirement states, such as an arity (Value, the count; in its code's row order).
-    Reason, // Binding: the subject, a row of the closed enumeration its requirement names (Value; its text is Binding's adapter's).
+    Reason, // Binding: the subject, a row of the closed enumeration its requirement names, or its code's packed rows (Value; text the adapter's).
+    Key, // Binding: the conflicting parameter, the Type at which its matching key overlaps an earlier one's (Value, a kept side's index; SPEC 7.4).
 }
 
 /// <summary>A fact of a problem (R4-M3a, R4-M132): a site it relates and, for a kind that names one, its typed value.</summary>
