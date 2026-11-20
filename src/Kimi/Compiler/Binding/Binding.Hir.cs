@@ -4,8 +4,10 @@
 // Input: that pass's decisions and syntax slots. Output: Op, Completion, Adjust and Place columns (the jump binding writes the jump
 // target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
-// The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs,
-// whether it is an unresolved operation) and passes those to the rows' rules, which read no walk state.
+// The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs
+// with a by-case need's decider, whether it is an unresolved operation) and passes those to the rows' rules, which read no walk state.
+// Two by-case needs meeting at one node have deciders of one pair, which decide alike (UseNeed.Meet: a discarded group's take and its
+// operand's, one pair's occurrences annotated apart); deciders of two pairs meeting is a broken contract (InternalInvariant).
 // Must not resolve again.
 
 using Kimi.Compiler.Parsing;
@@ -70,7 +72,7 @@ public sealed partial class Binding
         private Koto? parent;
         private HirOp parentOp;
         private HirPosition position;
-        private bool exclusive;
+        private UseNeed need;
         private bool unresolvedOperation; // The parent is an operation Binding left unresolved (Keeps).
 
         // Binding's structural completion with its Never evidence, one per body.
@@ -86,7 +88,7 @@ public sealed partial class Binding
 
         public override void Visit(Koto node)
         {
-            var (parent, parentOp, outer, exclusive, operation) = (this.parent, this.parentOp, this.position, this.exclusive, this.unresolvedOperation);
+            var (parent, parentOp, outer, need, operation) = (this.parent, this.parentOp, this.position, this.need, this.unresolvedOperation);
             var position = this.PositionOf(node, parent, parentOp, outer, operation);
             var op = this.OpOf(node, position);
             var parts = this.Parts(node, op, position);
@@ -137,19 +139,21 @@ public sealed partial class Binding
             }
 
             // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).
-            this.exclusive = claimed || this.ExclusiveUse(node, parent, parentOp, exclusive);
+            this.need = this.NeedOf(node, parent, parentOp, claimed, need);
             this.Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
-                // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1).
+                // The selection by which AdjustChildren uses a user index's inputs, recorded for its ExpansionPlan (SPEC 4.7.1, 8.14), and a
+                // selection by case with its decider, read through HirTables.IndexCaseDecider (R7 plan Z23).
                 if (node is IndexKoto)
                 {
-                    var uniq = binding.SelectsUniq(node, this.exclusive);
-                    HirTables.PlanFor(node, uniq).Mode = uniq ? (byte)1 : (byte)0;
+                    var mode = binding.SelectionMode(node, this.need.Use);
+                    ref var row = ref HirTables.PlanFor(node, mode != 0);
+                    (row.Mode, row.Plan) = (mode, mode == 2 ? this.need.Decider : null);
                 }
 
-                binding.AdjustChildren(node, parts, this.exclusive, ref this.uses);
+                binding.AdjustChildren(node, parts, this.need.Use, ref this.uses);
             }
 
             (this.parent, this.parentOp, this.position, this.unresolvedOperation) = (node, parts, parts == op ? position : HirPosition.None, unresolvedOperation);
@@ -159,7 +163,7 @@ public sealed partial class Binding
                 this.Visit(iteration.Receiver); // The step's receiver, the iterator local the loop declares (SPEC 14.6.2).
             }
 
-            (this.parent, this.parentOp, this.position, this.exclusive, this.unresolvedOperation) = (parent, parentOp, outer, exclusive, operation);
+            (this.parent, this.parentOp, this.position, this.need, this.unresolvedOperation) = (parent, parentOp, outer, need, operation);
         }
 
         internal void Publish(SyntaxTable table, Koto root)
@@ -188,7 +192,7 @@ public sealed partial class Binding
             (hir.Broken ??= []).Clear();
             (this.table, this.uses) = (table, new(binding, table));
             this.completion?.Clear();
-            (this.parent, this.position, this.exclusive, this.unresolvedOperation) = (null, HirPosition.None, false, false);
+            (this.parent, this.position, this.need, this.unresolvedOperation) = (null, HirPosition.None, default, false);
             this.Visit(root);
         }
 
