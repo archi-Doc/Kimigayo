@@ -39,7 +39,7 @@ public sealed partial class Binding
             return false;
         }
 
-        result = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [view], origin: this.PlaceOrigin(source));
+        result = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [view], origin: this.PlaceOrigin(source)));
         return true;
     }
 }

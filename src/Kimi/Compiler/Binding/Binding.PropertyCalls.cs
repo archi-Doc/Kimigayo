@@ -144,7 +144,7 @@ public sealed partial class Binding
         Complete(this.propertyUpdateInputs[node], destination);
         var owner = node.Left.BoundType!;
         var referent = this.LayerBelow(owner, scope) ?? owner;
-        var type = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
+        var type = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left)));
         if (!this.AdaptInput(node.Left, FixedPattern.Open(type), owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
             this.FailWrite(node, node);

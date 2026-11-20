@@ -207,7 +207,7 @@ public sealed partial class Binding
 
         if (this.ReceiverTarget(target, pattern.Components[0], scope))
         {
-            adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
+            adapted = this.FormBorrow(this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted)));
             kind = ArgumentOperationKind.Borrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
@@ -255,7 +255,7 @@ public sealed partial class Binding
         }
 
         this.implicitPairFollows[node] = admitted;
-        return this.types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted));
+        return this.FormBorrow(this.types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, target, this.PairOrigin(node, type, admitted)));
     }
 
     // SPEC 13.5.5: the Type below every further qualifying pair layer of a pair target. Following for Write needs Write

@@ -287,7 +287,7 @@ public sealed partial class Binding
         if (mode == SubjectMode.Exclusive)
         {
             // SPEC 15.1.6, 15.6.3: the stored exclusive reference's Reborrow, contained in it and in the layers reaching the Subject.
-            borrow = this.types.Rebuild(type, [type.Components[0]], this.ReferentOrigin(expression, type), []);
+            borrow = this.FormBorrow(this.types.Rebuild(type, [type.Components[0]], this.ReferentOrigin(expression, type), []));
             return borrow;
         }
 
@@ -304,13 +304,13 @@ public sealed partial class Binding
             // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
             var origin = this.ReferentOrigin(expression, type);
             var semantics = type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef;
-            borrow = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
+            borrow = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin));
             return borrow;
         }
 
         if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
         {
-            borrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
+            borrow = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression)));
             return borrow;
         }
 

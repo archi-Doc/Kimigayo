@@ -64,7 +64,7 @@ public sealed partial class Binding
         if (ElementAccess.IsUserIndex(this, left) && element is not null)
         {
             var origin = this.PlaceOrigin(left);
-            var read = this.ElementRead(left, element, origin) ?? this.types.Reference(SemanticsKind.Ref, element, origin);
+            var read = this.FormBorrow(this.ElementRead(left, element, origin) ?? this.types.Reference(SemanticsKind.Ref, element, origin));
             this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, read);
             return;
         }
@@ -91,7 +91,7 @@ public sealed partial class Binding
             // SPEC 4.7.1, 13.4: a Non-Copy element of receiver[key] on a user Type is compared in place through the reference
             // its selected call returns, continued through the layers it stores as any in-place read of it (ElementRead).
             var origin = this.PlaceOrigin(operand);
-            var read = this.ElementRead(operand, published, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: origin);
+            var read = this.FormBorrow(this.ElementRead(operand, published, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: origin));
             this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, read);
             return;
         }
@@ -116,7 +116,7 @@ public sealed partial class Binding
     {
         if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(this, element))
         {
-            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element)));
+            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element))));
         }
     }
 
@@ -128,7 +128,7 @@ public sealed partial class Binding
             var origin = this.PlaceOrigin(node);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
             var dependency = element.Semantics == SemanticsKind.Owner ? origin : this.ReferentOrigin(node, element) ?? origin;
-            var read = this.ElementRead(node, element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
+            var read = this.FormBorrow(this.ElementRead(node, element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency));
             this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, read);
         }
     }

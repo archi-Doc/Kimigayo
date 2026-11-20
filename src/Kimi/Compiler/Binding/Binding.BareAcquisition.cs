@@ -89,7 +89,7 @@ public sealed partial class Binding
     // which no verdict of it needs longer (SPEC 8.15.2). The stored Type itself when `reach` shortens nothing (the original `s/T` states its
     // `o` implicitly, OuterOrigin).
     private BoundType ReborrowedType(BoundType stored, BoundOrigin layer, BoundOrigin reach)
-        => this.Meet(layer, reach) is var met && ReferenceEquals(met, layer) ? stored : this.WithOrigins(stored, met, (BoundOrigin[])stored.OriginArguments);
+        => this.FormBorrow(this.Meet(layer, reach) is var met && ReferenceEquals(met, layer) ? stored : this.WithOrigins(stored, met, (BoundOrigin[])stored.OriginArguments));
 
     // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference Reborrows it in its own Semantics, exactly as an
     // annotation of the same complete Type would; the Reborrow's Type is Binding's name for it (DECISIONS BU-27), which a join's common

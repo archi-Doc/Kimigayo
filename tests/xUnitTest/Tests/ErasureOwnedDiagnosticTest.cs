@@ -34,6 +34,23 @@ public class ErasureOwnedDiagnosticTest
 
     private const string Two = "UnsatisfiedConstraint_Kd func [r] () -> i32 => 0; UnsatisfiedConstraint_Kd func [r] () -> i32 => 1";
 
+    // SPEC 7.7.4, 15.2.3 (PLAN G148 (1), the Origin-atom borrows read mid-binding): a Closure erased while its body binds reads its
+    // contract's raw layers by the Borrows formed so far. A capture over a body atom is not Owned: Refuted where the atom is the body's own
+    // (o1, a conversion; o2, an argument), Unknown in a nested body where it is the enclosing body's (s2, s2r), whose argument keeps its
+    // Unproven record rather than the located limit. Labels: originpub labels.txt o1, labels-r1.txt o2, labels-s.txt s2 and s2r (I).
+    [Theory]
+    [InlineData("    let f: () -> () = func [h@move] () => ()\n    f()\n", "UnsatisfiedConstraint_Kd func [h@move] () => ()")]
+    [InlineData("    takes(func [h@move] () => ())\n", "UnsatisfiedConstraint_Kd func [h@move] () => ()")]
+    [InlineData("    let outer = func [h@move] () => g(func [h@move] () => ())\n", "UnprovenConstraint_Kd func [h@move] () => ()")]
+    [InlineData("    let outer = func [h@move] () => g(func [h@ref] () => ())\n", "UnprovenConstraint_Kd func [h@ref] () => ()")]
+    public void AnErasureReadsTheBorrowsFormedSoFar(string tail, string expected)
+    {
+        var source = "struct Wrap<E>\n    var value: E\n    public init(value: E) => self.value = value@move\nfunc takes(f: () -> ()) => ()\n" +
+            "func g(f: () -> ()) => ()\n" + Main + "    var x = 1\n    var w = (0, x@ref)\n    var r = w.0@uniq\n    var h = Wrap.init(r@follow@raw@raw/u8)\n" + tail;
+        var output = DiagnosticCorpus.Check(source);
+        Assert.Equal(expected, string.Join("; ", output.Diagnostics.Select(x => $"{x.Code} {Text(source, x.Span)}")));
+    }
+
     // A let annotation, a default, a call argument, a Case payload (PLAN G381: was the construction's TypeMismatch_Kd), a captured
     // reference value and a join's arm give the same record at the converted value;
     // of two failing captures the body-local borrow is named, whatever their order, and in a nested closure the enclosing body's borrow

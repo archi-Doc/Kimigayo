@@ -253,7 +253,7 @@ public sealed partial class Binding
             {
                 var origin = pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq
                     ? this.SlotOrigin(conversion.Left) : this.PlaceOrigin(conversion.Left);
-                var borrowed = this.types.Reference(pattern.Semantics, pattern.Components[0], pattern.Origin ?? origin);
+                var borrowed = this.FormBorrow(this.types.Reference(pattern.Semantics, pattern.Components[0], pattern.Origin ?? origin));
                 return this.BindCaseAdaptation(conversion, scope, actual, borrowed);
             }
 
@@ -283,7 +283,7 @@ public sealed partial class Binding
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
-                var storage = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
+                var storage = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left)));
                 Complete(conversion.Right, storage);
                 conversion.ConversionBinding = ConversionBinding.Borrow;
                 return Complete(conversion, storage);
