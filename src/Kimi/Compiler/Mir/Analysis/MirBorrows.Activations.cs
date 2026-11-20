@@ -192,10 +192,11 @@ internal sealed partial class MirBorrows
     }
 
     // hits(A, X, ActivateThrough) for the parents A on a shared Loan X's root (MirBorrows.Checks' Hits, its shallow rows): X's steps walked
-    // down the root's trie, a parent ending past X's last borrow Deref hits, as does any parent at or below X's Place.
+    // down the root's trie, a parent ending past X's last borrow Deref hits, as does any parent at or below X's Place. X's steps are those
+    // up to its receiver, the Array for a Loan through an Array's element (Loan.ReceiverSteps; Hits states the same).
     private bool Through(int root, in Loan loan)
     {
-        var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
+        var steps = this.loanSteps.AsSpan(loan.Start, loan.ReceiverSteps);
         var deref = -1;
         for (var i = 0; i < steps.Length; i++)
         {
