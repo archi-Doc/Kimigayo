@@ -69,6 +69,10 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.BaseCallFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.ObjectErasureFailures"] = "never written: the library erases no object view",
         ["NodeColumns.ReceiverOperations"] = "released at the freeze: its library rows are read only by the HIR publisher at the library's publication, before the freeze, and TryGetReceiverOperation refuses a library node (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
+        ["NodeColumns.ResultCompletions"] = "released at the freeze: the library pass's result checks' query memo, its working state, no reader reads after it (R7-N5 B6b)",
+        ["NodeColumns.GuessedCompletions"] = "released at the freeze: the guess rule's query memo, its working state; the guess rule answers none at a frozen node (R7-N5 B6b)",
+        ["NodeColumns.PublishedCompletions"] = "released at the freeze: the HIR publisher's query memo, read only at the library's publication, before the freeze (R7-N5 B6b)",
+        ["NodeColumns.LintCompletions"] = "released at the freeze: the lint walk's query memo; the library is not linted (R7-N5 B6b)",
         ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
     };
 

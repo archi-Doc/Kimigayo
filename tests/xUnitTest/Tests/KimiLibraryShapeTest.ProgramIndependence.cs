@@ -124,7 +124,10 @@ public partial class KimiLibraryShapeTest
 
     // M-N4, R2-N5: the library declares no parameter default, for a function or an `init`, so after its Final Bind its published HIR holds
     // no default and its MIR no default template. Temporary: a frozen library would have to freeze a template's omission facts (Recursive,
-    // Failed, Reads), which the builder's omission graph reads; removal: U5b or a later unit freezes them, and this pin goes.
+    // Failed, Reads), which the builder's omission graph reads; removal: U5b or a later unit freezes them, and this pin goes. It is also
+    // R7-N5 B6b's first premise: a query reaches another module's node only through an omitted default argument, and StructuralCompletion's
+    // query memos are working-state families the frozen library refuses, so the unit that removes this pin keeps such a query off the
+    // library's columns first (TheGuessRuleAnswersNoneAtAFrozenNode is the second).
     [Fact]
     public void TheLibraryDeclaresNoParameterDefault()
     {
