@@ -53,7 +53,7 @@ public sealed partial class Binding
     // SPEC 13.5.6: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores, Never too.
     private static bool BorrowsWrittenSlot(BoundType type)
         => AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
-            TyCtxt.IsStoredReference(type) || ReferenceTypes.IsPointer(type) || type.IsScalar || IsRuntimeRecordType(type) ||
+            TyCtxt.IsStoredReference(type) || type.IsPointer || type.IsScalar || IsRuntimeRecordType(type) ||
             IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
 
     // Unit, string and Never: the intrinsic Types the runtime's records lay out (IMPL 21.1.3), which are no Scalar (BoundType.IsScalar).
@@ -501,7 +501,7 @@ public sealed partial class Binding
             return this.BindObjectAdaptation(conversion, scope, source, target);
         }
 
-        if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
+        if (source.IsPointer || target.IsPointer)
         {
             return this.CompletePointerConversion(conversion, source, target);
         }

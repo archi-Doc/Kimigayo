@@ -54,7 +54,7 @@ public sealed partial class Binding
                 }
                 else if (part is null)
                 {
-                    failure = ReferenceTypes.StorageMatches(l, r) ? Unmet(null, null) : ComparisonFailure.Shape;
+                    failure = TyCtxt.StorageMatches(l, r) ? Unmet(null, null) : ComparisonFailure.Shape;
                 }
 
                 if (part is null)

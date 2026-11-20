@@ -1,9 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), an Integer
-// constant's one encoding (Normalize, DECISIONS BU-133) and a safe reference's stored representation (IsStoredReference), and the
-// lifetime of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values
-// of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
+// constant's one encoding (Normalize, DECISIONS BU-133), a safe reference's stored representation (IsStoredReference) and two Types'
+// storage agreement with their Origins erased (StorageMatches), and the lifetime of TyCtxt's views (ResetViews); substitutions are
+// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's,
 // and R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
 // TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
@@ -63,7 +63,40 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             referent.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Closure or
                 BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or
                 BoundTypeKind.SemanticsApplication ||
-            referent.IsScalar || ReferenceTypes.IsPointer(referent));
+            referent.IsScalar || referent.IsPointer);
+
+    // Physical agreement of a call's formal and actual Types: Kind, Symbol, Semantics, lengths and components. Origins are erased:
+    // Binding and ownership analysis verified them, and lowering never distinguishes two storages by Origin (SPEC 21.3.1).
+    internal static bool StorageMatches(BoundType? formal, BoundType? actual)
+    {
+        if (formal is null || actual is null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(formal, actual))
+        {
+            return true;
+        }
+
+        // Primitive Types are singletons distinguished by name only, so two different instances never share storage.
+        if (formal.Kind == BoundTypeKind.Primitive || formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
+            formal.Length != actual.Length || !ReferenceEquals(formal.LengthExpression, actual.LengthExpression) ||
+            !formal.LengthArguments.AsSpan().SequenceEqual(actual.LengthArguments) || formal.Components.Count != actual.Components.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < formal.Components.Count; i++)
+        {
+            if (!StorageMatches(formal.Components[i], actual.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     // SPEC 13.5.5, 8.15.2: the pair binder whose Semantics case decides a Type's case Type at its outer layer (its SemanticsTarget, the
     // PairBinder.Target): the original `s/T`, an application `s/U` and an adaptation family `p@s` (Binding.TryAdaptationSelector); null for

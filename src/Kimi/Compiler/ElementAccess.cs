@@ -119,7 +119,7 @@ internal static class ElementAccess
     // walks (IsRawPlace, IsRawRooted, IsPointerPath), Binding's Place classification (IsBarePlace, LendsPlace, PlaceOrigin,
     // PlaceOriginSource, Writable, TakeJudgment), its path step (NextPathStep) and the unsafe-context rule (RequiresUnsafe) read it.
     internal static bool IsRawRoot(Koto source)
-        => source is DereferenceKoto || (source is IndexKoto index && ReferenceTypes.IsPointer(HirTables.TypeOf(index.Left)));
+        => source is DereferenceKoto || (source is IndexKoto index && HirTables.TypeOf(index.Left) is { IsPointer: true });
 
     // SPEC 5.2, 4.7.1, 15.1.5: a raw Place, the Place a Take moves without state tracking: *p, p[n], and each part of one the raw
     // storage holds itself (TyCtxt.RawPart: a stored Field, a Tuple element, a fixed-array element at an integer or from-end position).

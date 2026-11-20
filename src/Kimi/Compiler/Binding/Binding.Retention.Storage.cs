@@ -408,7 +408,7 @@ public sealed partial class Binding
         this.retentionHeld.RemoveRange(declared.Start, declared.End - declared.Start);
         for (var i = run.Start; at.Storage == NoStorage && i < run.End; i++)
         {
-            if (this.retentionHeld[i] is { Part: { } stored, Holder: { } owner } part && ReferenceEquals(owner, type) && ReferenceTypes.IsPointer(part.Written))
+            if (this.retentionHeld[i] is { Part: { } stored, Holder: { } owner } part && ReferenceEquals(owner, type) && part.Written is { IsPointer: true })
             {
                 var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured, Signature = null };
                 this.SelfContent(environment, stored, part.Written, owner, below);

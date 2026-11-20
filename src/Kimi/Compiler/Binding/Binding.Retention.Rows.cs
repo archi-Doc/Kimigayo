@@ -561,7 +561,7 @@ public sealed partial class Binding
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
-        if (ReferenceTypes.IsPointer(declared) && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
+        if (declared.IsPointer && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
         {
             var first = this.rawMembers.Count;
             this.retentionLimit |= !this.RawMembers(OwnedOrigin(declared)!, CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1], this.rawMembers);

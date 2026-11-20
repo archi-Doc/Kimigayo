@@ -771,6 +771,11 @@ public sealed class BoundType : IEquatable<BoundType?>
     /// reads; no further layer is followed.</summary>
     internal BoundType? SafeReferent => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent : null;
 
+    /// <summary>Gets a value indicating whether this is a raw pointer <c>raw/T</c> (SPEC 5.1: a Copy address value; null is its only
+    /// literal), whatever the pointee; false for any other Type, a safe reference or an object borrow among them. The one test of a raw
+    /// layer every phase reads; no further layer is followed.</summary>
+    internal bool IsPointer => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
+
     /// <inheritdoc/>
     public bool Equals(BoundType? other) => ReferenceEquals(this, other);
 

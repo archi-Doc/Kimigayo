@@ -5,7 +5,7 @@
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes, a body's identity premises (the compilation's TyCtxt.Premised, read through Premised), Binding's Copy and
 // Sealed proofs and the Type statements the operator domain composes (ArithmeticContracts.Supports, TyCtxt.OperatorCompares,
-// ReferenceTypes.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
+// BoundType.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
 // (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
 // operator-domain facts (Operates, the operator table's domain, which the Backend's operator columns read too), and the pairing of the
 // arithmetic Contracts with MIR's operators (ArithmeticOperations, read by Contract through ArithmeticOperation).
@@ -195,7 +195,7 @@ internal static partial class MirTypes
         }
         : InstanceDecides(type) || (MirBinaryOp)op switch
         {
-            MirBinaryOp.Add or MirBinaryOp.Sub => Conforms(kind, op, type) || ReferenceTypes.IsPointer(type),
+            MirBinaryOp.Add or MirBinaryOp.Sub => Conforms(kind, op, type) || type.IsPointer,
             MirBinaryOp.Mul or MirBinaryOp.Div or MirBinaryOp.Rem => Conforms(kind, op, type),
             var bitwise when IsBitwiseOrShift(bitwise) => type.HasIntegerArithmetic,
             MirBinaryOp.Eq or MirBinaryOp.Ne => TyCtxt.OperatorCompares(type, KimiDeclarationId.Equatable),

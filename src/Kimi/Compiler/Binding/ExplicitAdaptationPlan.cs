@@ -59,7 +59,7 @@ internal sealed class ExplicitAdaptationPlan
             return ConversionBinding.Identity;
         }
 
-        return (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
-            (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) ? ConversionBinding.Pointer : ConversionBinding.None;
+        return (source.IsPointer && (target.IsPointer || ReferenceEquals(target, BoundType.USize))) ||
+            (ReferenceEquals(source, BoundType.USize) && target.IsPointer) ? ConversionBinding.Pointer : ConversionBinding.None;
     }
 }

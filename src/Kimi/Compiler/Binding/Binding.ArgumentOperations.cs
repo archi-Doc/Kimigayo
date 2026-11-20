@@ -282,7 +282,7 @@ public sealed partial class Binding
         }
 
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&
-            ((pattern.Kind == BoundTypeKind.Semantics && !ReferenceTypes.StorageMatches(actual, pattern)) || pattern.Kind == BoundTypeKind.Primitive))
+            ((pattern.Kind == BoundTypeKind.Semantics && !TyCtxt.StorageMatches(actual, pattern)) || pattern.Kind == BoundTypeKind.Primitive))
         {
             // SPEC 10.2: an explicit @move runs first and is not corrected by a later adaptation, so a transferred
             // reference is passed only to an expectation of its own Type.
