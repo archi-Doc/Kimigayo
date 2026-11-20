@@ -303,11 +303,6 @@ public sealed partial class Binding
         this.CompleteImplicitConstructors();
         this.MakeLibraryAccessorFunctions(); // The library's facts a program may demand, complete before any body (PLAN G949 S1-e).
         this.FormLibrarySignatures();
-        if (this.CaptureOmittedBaseQueries)
-        {
-            this.CaptureOmittedBases();
-        }
-
         return true;
     }
 
