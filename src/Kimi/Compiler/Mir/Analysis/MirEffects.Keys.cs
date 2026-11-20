@@ -13,7 +13,9 @@ namespace Kimi.Compiler.Mir;
 // initialization entry is no edge: the fixed point composes no initializer of an entry, and a reader composes it (Expand) unless it
 // excludes the static. A static with several slots keeps its ensure's edge into the initializer, whose atoms each call's substitution
 // resolves, until P42's per-access key (R4-M103) gives the entry the key's Type arguments; its bit is information only (Initializes),
-// which Expand never reads, since the edge already composed the initializer. Keys answers a site of one view with its key row and
+// which Expand never reads, since the edge already composed the initializer. The memo (Spread, once per Run): each node's row and classes
+// with every initialization composed, what Expand gives with nothing excluded, spread over the read graph with the initialization edges;
+// a reader composes a node's memo unless an excluded initialization lies in it. Keys answers a site of one view with its key row and
 // classes from the summaries and keys of the last Run, the initializations it excludes left out; Items gives a body view's solved
 // classes, its initializations composed, and its atoms (what holds a published operation's body within its row, SPEC 4.9.6); Field
 // numbers a Field's bits, Initialization a static's initialization bit, and Initializes tells whether the last query's site may run the
@@ -28,7 +30,10 @@ internal sealed partial class MirEffects
     private int[] initBodies = []; // By initialization number: the ordinal of the static's initializer.
     private ulong[] keys = []; // Each node's row, rowWords words: keyWords of key bits (P5: of Fields, never substituted), then its
     private ulong[] keyScratch = []; // initialization bits, after Spread, and those of the current query.
-    private ulong[] expanded = []; // Expand's initializations composed in the current query.
+    private ulong[] expanded = []; // The initializations the current query composed (Expand, the memo).
+    private ulong[] excluding = []; // The initializations the current query leaves out.
+    private ulong[] fullRows = []; // The memo: each node's row with its initializations composed, then a word of its classes,
+    private int[] fullHeads = []; // over the read graph with the initialization edges: each node's ensuring readers, then dependentHeads'.
     private int keyWords;
     private int initWords;
     private int rowWords;
@@ -57,11 +62,11 @@ internal sealed partial class MirEffects
         var (items, edges, inits) = (this.writing.ItemCount, this.writing.EdgeCount, this.writing.InitCount);
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, -1, 0, 0);
         this.glued.Clear();
-        this.keyScratch.AsSpan(0, this.rowWords).Clear();
+        this.Begin(excluded);
         this.Terminator(this.program, body, block, view, body.Blocks[block].Terminator);
         this.Inputs(this.writing, items, this.writing.ItemCount, edges, this.writing.EdgeCount, inits, this.writing.InitCount);
         this.writing.Truncate(items, edges, inits); // The site's inputs are not the body's.
-        this.Expand(excluded);
+        this.Expand();
         classes = (byte)(this.Found & (Unknown | Limit | Derived | Deep)); // With no reader an atom left abstract is Unknown (AddAtom).
         return this.keyScratch.AsSpan(0, this.keyWords);
     }
@@ -76,7 +81,7 @@ internal sealed partial class MirEffects
     internal ReadOnlySpan<Atom> Items(MirBody body, long view, out byte classes)
     {
         var node = this.Base(body.Ordinal) + (int)view;
-        classes = this.Expanded(node);
+        classes = this.initWords > 0 ? (byte)this.fullRows[(node * (this.rowWords + 1)) + this.rowWords] : this.classes[node];
         return this.atoms.AsSpan(this.atomStarts[node], this.atomCounts[node]);
     }
 
@@ -141,77 +146,146 @@ internal sealed partial class MirEffects
         this.writing.AddInit(id);
     }
 
-    // SPEC 15.6.4: the first-access initializations in the current composition's row, each not excluded composed once through its
-    // initializer's views, whose own initializations join it (R5-M183: one with a validator finding is Derived, Views). An entry's
-    // initializer keeps no atom (the invariant above).
-    private void Expand(ReadOnlySpan<ulong> excluded)
+    // Begins a reader's composition (Keys, the obligations): an empty row, no initialization composed yet, those excluded left out.
+    private void Begin(ReadOnlySpan<ulong> excluded)
+    {
+        this.keyScratch.AsSpan(0, this.rowWords).Clear();
+        this.expanded.AsSpan(0, this.initWords).Clear();
+        var excluding = this.excluding.AsSpan(0, this.initWords);
+        excluding.Clear();
+        excluded[..Math.Min(excluded.Length, excluding.Length)].CopyTo(excluding);
+    }
+
+    // SPEC 15.6.4: the first-access initializations in the current composition's row that it has not composed, each not excluded composed
+    // once through its initializer's views (Compose, its memo where none excluded lies in it), whose own initializations join it (R5-M183:
+    // one with a validator finding is Derived, Views).
+    private void Expand()
     {
         var words = this.initWords;
         var done = this.expanded.AsSpan(0, words);
-        done.Clear();
         for (var grew = words > 0; grew;)
         {
             grew = false;
             for (var w = 0; w < words; w++)
             {
-                for (var next = this.keyScratch[this.keyWords + w] & ~done[w] & ~(w < excluded.Length ? excluded[w] : 0); next != 0; next &= next - 1)
+                for (var next = this.keyScratch[this.keyWords + w] & ~done[w] & ~this.excluding[w]; next != 0; next &= next - 1)
                 {
                     var id = (w << 6) + BitOperations.TrailingZeroCount(next);
-                    done[w] |= 1UL << id;
-                    var initializer = this.program.Body(this.initBodies[id]);
-                    var views = this.Views(initializer, null);
-                    this.Compose(initializer.Ordinal, views, null);
-                    for (var mask = this.program.Drops.Holds(initializer.Ordinal) ? views : 0; mask != 0; mask &= mask - 1)
+                    if ((done[w] & (1UL << id)) == 0)
                     {
-                        if (this.atomCounts[this.Base(initializer.Ordinal) + BitOperations.TrailingZeroCount(mask)] != 0)
-                        {
-                            throw new InvalidOperationException($"The initializer of {initializer.Key.Decl!.Name} keeps an atom (InternalInvariant).");
-                        }
+                        done[w] |= 1UL << id;
+                        var initializer = this.program.Body(this.initBodies[id]);
+                        this.Compose(initializer.Ordinal, this.Views(initializer, null), null);
+                        grew = true;
                     }
-
-                    grew = true;
                 }
             }
         }
     }
 
-    // A node's classes with its initializations composed (Expand), its row in the scratch.
-    private byte Expanded(int node)
+    // Whether a node's memo leaves out no initialization the current query excludes.
+    private bool Memo(int node)
     {
-        this.keyScratch.AsSpan(0, this.rowWords).Clear();
-        this.keys.AsSpan(node * this.rowWords, this.rowWords).CopyTo(this.keyScratch);
-        (this.definition, this.reader, this.found, this.scratchCount) = (this.program.Body(this.Of(node)[node].Owner).Key.Decl, -1, this.classes[node], 0);
-        this.Expand(default);
-        return this.found;
+        var row = this.fullRows.AsSpan((node * (this.rowWords + 1)) + this.keyWords, this.initWords);
+        for (var w = 0; w < row.Length; w++)
+        {
+            if ((row[w] & this.excluding[w]) != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // P5's keys and the initialization entries after the fixed point (R4-M38), which neither classes nor atoms read: a node's local keys
     // and entries joined with those of every node
     // it read, as its dependencies record them (read sets only grow), once per strongly connected component of the read graph (Tarjan's,
     // iterative), the components whose nodes others read first, so Θ((nodes + dependencies) × rowWords).
+    // Then the memo (fullRows): each node's local facts and classes spread over the read graph with an edge from each entry's initializer's
+    // views to the node that ensures it (fullHeads, prepended to dependentHeads' lists; one with a validator finding adds Derived instead,
+    // Views), so Θ((nodes + dependencies + entries) × rowWords) more; it checks the invariant that an entry's initializer keeps no atom.
     private void Spread(int count)
     {
-        MirDataflow.Grow(ref this.visits, count);
-        MirDataflow.Grow(ref this.lows, count);
-        MirDataflow.Grow(ref this.members, count);
-        MirDataflow.Grow(ref this.frames, count);
-        this.visits.AsSpan(0, count).Fill(-1);
+        var (row, full) = (this.rowWords, this.rowWords + 1);
+        MirDataflow.Grow(ref this.fullRows, count * full);
+        this.fullRows.AsSpan(0, count * full).Clear();
         for (var node = 0; node < count; node++)
         {
             var store = this.Of(node);
             var own = store.Keys;
             for (var k = this.Start(store, node).Keys; k < store[node].Keys; k++)
             {
-                this.keys[(node * this.rowWords) + (own[k] >> 6)] |= 1UL << own[k];
+                this.keys[(node * row) + (own[k] >> 6)] |= 1UL << own[k];
             }
 
             var inits = store.Inits;
             for (var k = this.Start(store, node).Inits; k < store[node].Inits; k++)
             {
                 var bit = inits[k] >= 0 ? (64 * this.keyWords) + inits[k] : (64 * (this.keyWords + this.initWords)) + ~inits[k];
-                this.keys[(node * this.rowWords) + (bit >> 6)] |= 1UL << bit;
+                this.keys[(node * row) + (bit >> 6)] |= 1UL << bit;
+            }
+
+            this.keys.AsSpan(node * row, row).CopyTo(this.fullRows.AsSpan(node * full));
+            this.fullRows[(node * full) + row] = this.classes[node];
+        }
+
+        this.Components(count, this.dependentHeads, this.keys, row);
+        if (this.initWords == 0)
+        {
+            return;
+        }
+
+        MirDataflow.Grow(ref this.fullHeads, count);
+        this.dependentHeads.AsSpan(0, count).CopyTo(this.fullHeads);
+        for (var node = 0; node < count; node++)
+        {
+            var store = this.Of(node);
+            var inits = store.Inits;
+            for (var k = this.Start(store, node).Inits; k < store[node].Inits; k++)
+            {
+                if (inits[k] >= 0)
+                {
+                    this.Initializer(node, this.program.Body(this.initBodies[inits[k]])); // A static with several slots has its edge.
+                }
             }
         }
+
+        this.Components(count, this.fullHeads, this.fullRows, full);
+    }
+
+    // An initialization edge of the memo: from each view of an entry's initializer to the node that ensures it.
+    private void Initializer(int node, MirBody initializer)
+    {
+        if (initializer.HasFinding)
+        {
+            this.fullRows[(node * (this.rowWords + 1)) + this.rowWords] |= Derived; // R5-M183, Views.
+            return;
+        }
+
+        for (var mask = this.program.Drops.Holds(initializer.Ordinal) ? cases.Views(initializer, null) : 0; mask != 0; mask &= mask - 1)
+        {
+            var source = this.Base(initializer.Ordinal) + BitOperations.TrailingZeroCount(mask);
+            if (this.atomCounts[source] != 0)
+            {
+                throw new InvalidOperationException($"The initializer of {initializer.Key.Decl!.Name} keeps an atom (InternalInvariant).");
+            }
+
+            MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
+            this.dependents[this.dependentCount] = (node, this.fullHeads[source]);
+            this.fullHeads[source] = this.dependentCount++;
+        }
+    }
+
+    // The rows of a graph's components (Tarjan's, iterative), the components whose nodes others read first: a component's rows joined, then
+    // each reader's (heads: each node's readers in dependents).
+    private void Components(int count, int[] heads, ulong[] rows, int words)
+    {
+        MirDataflow.Grow(ref this.visits, count);
+        MirDataflow.Grow(ref this.lows, count);
+        MirDataflow.Grow(ref this.members, count);
+        MirDataflow.Grow(ref this.frames, count);
+        this.visits.AsSpan(0, count).Fill(-1);
 
         // members holds the open nodes from its start and the finished components from its end, the last finished first.
         var (visited, open, finished) = (0, 0, count);
@@ -219,42 +293,41 @@ internal sealed partial class MirEffects
         {
             if (this.visits[root] < 0)
             {
-                this.Walk(root, ref visited, ref open, ref finished);
+                this.Walk(heads, root, ref visited, ref open, ref finished);
             }
         }
 
-        // A component after every component it reads: its keys, then each reader's.
-        var words = this.rowWords;
+        // A component after every component it reads: its rows, then each reader's.
         for (var start = 0; start < count; start = this.lows[this.members[start]])
         {
             var union = this.keyScratch.AsSpan(0, words);
             union.Clear();
             for (var i = start; i < this.lows[this.members[start]]; i++)
             {
-                _ = MirDataflow.Union(union, this.keys.AsSpan(this.members[i] * words, words));
+                _ = MirDataflow.Union(union, rows.AsSpan(this.members[i] * words, words));
             }
 
             for (var i = start; i < this.lows[this.members[start]]; i++)
             {
-                union.CopyTo(this.keys.AsSpan(this.members[i] * words, words));
-                for (var d = this.dependentHeads[this.members[i]]; d >= 0; d = this.dependents[d].Next)
+                union.CopyTo(rows.AsSpan(this.members[i] * words, words));
+                for (var d = heads[this.members[i]]; d >= 0; d = this.dependents[d].Next)
                 {
-                    _ = MirDataflow.Union(this.keys.AsSpan(this.dependents[d].Node * words, words), union);
+                    _ = MirDataflow.Union(rows.AsSpan(this.dependents[d].Node * words, words), union);
                 }
             }
         }
     }
 
-    // The depth-first walk of Spread from an unvisited root along the dependencies (each node to its readers), finishing each component
-    // once every component it reaches is finished.
-    private void Walk(int root, ref int visited, ref int open, ref int finished)
+    // The depth-first walk of Components from an unvisited root along a graph's dependencies (each node to its readers), finishing each
+    // component once every component it reaches is finished.
+    private void Walk(int[] heads, int root, ref int visited, ref int open, ref int finished)
     {
         var depth = 0;
         for (var next = root; next >= 0;)
         {
             this.visits[next] = this.lows[next] = visited++;
             this.members[open++] = next;
-            this.frames[depth++] = (next, this.dependentHeads[next]);
+            this.frames[depth++] = (next, heads[next]);
             next = -1;
             while (depth > 0 && next < 0)
             {
@@ -279,7 +352,7 @@ internal sealed partial class MirEffects
         }
     }
 
-    // A node whose readers are all walked: its parent's low lowered to its own and, at its component's root, the component finished.
+    // A node whose readers are all walked (Walk): its parent's low lowered to its own and, at its component's root, the component finished.
     private void Finish(int node, int depth, ref int open, ref int finished)
     {
         if (depth > 0)

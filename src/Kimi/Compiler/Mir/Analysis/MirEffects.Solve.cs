@@ -70,8 +70,9 @@ internal sealed partial class MirEffects
         var (words, initWords) = (((2 * this.fieldIds.Count) + 63) >> 6, (this.initIds.Count + 63) >> 6);
         var row = words + initWords + ((this.fixedIds.Count + 63) >> 6);
         MirDataflow.Grow(ref this.keys, count * row);
-        MirDataflow.Grow(ref this.keyScratch, row);
+        MirDataflow.Grow(ref this.keyScratch, row + 1); // The memo's row and classes (Spread).
         MirDataflow.Grow(ref this.expanded, initWords);
+        MirDataflow.Grow(ref this.excluding, initWords);
         this.keys.AsSpan(0, count * row).Clear();
         (this.keyWords, this.initWords, this.rowWords) = (0, 0, 0); // No key or entry is composed before Spread solves them.
         this.classes.AsSpan(0, count).Clear();
@@ -205,7 +206,8 @@ internal sealed partial class MirEffects
     }
 
     // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
-    // (P5); read nodes record the reader. A body A2's table does not hold has no node yet: the round misses (PLAN G951).
+    // (P5); read nodes record the reader. A body A2's table does not hold has no node yet: the round misses (PLAN G951). After Run a reader
+    // composes a node's memo, its initializations composed (Spread), where no initialization it excludes lies in it.
     private void Compose(int body, ulong views, Subst? subst)
     {
         if (views != 0 && !this.program.Drops.Holds(body))
@@ -225,8 +227,19 @@ internal sealed partial class MirEffects
                 this.dependentHeads[node] = this.dependentCount++;
             }
 
-            this.found |= this.classes[node];
-            _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.rowWords), this.keys.AsSpan(node * this.rowWords, this.rowWords));
+            if (this.initWords > 0 && this.Memo(node))
+            {
+                var full = this.fullRows.AsSpan(node * (this.rowWords + 1), this.rowWords + 1);
+                this.found |= (byte)full[this.rowWords];
+                _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.rowWords), full[..this.rowWords]);
+                _ = MirDataflow.Union(this.expanded.AsSpan(0, this.initWords), full.Slice(this.keyWords, this.initWords)); // Composed.
+            }
+            else
+            {
+                this.found |= this.classes[node];
+                _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.rowWords), this.keys.AsSpan(node * this.rowWords, this.rowWords));
+            }
+
             for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
             {
                 var atom = this.atoms[a];
@@ -447,14 +460,14 @@ internal sealed partial class MirEffects
             this.glued.Clear();
             if (row.Callable is { } callable)
             {
-                this.keyScratch.AsSpan(0, this.rowWords).Clear();
+                this.Begin(default);
                 this.Process(callable, (byte)(1 + (int)row.Receiver));
                 if (row.Owner)
                 {
                     this.Process(callable, Drop);
                 }
 
-                this.Expand(default); // SPEC 15.6.4: its first-access initializations are its effects.
+                this.Expand(); // SPEC 15.6.4: its first-access initializations are its effects.
                 this.Verdict(row, this.Found, ulong.MaxValue);
             }
             else if (row.Definition is not { } target)
@@ -478,7 +491,7 @@ internal sealed partial class MirEffects
             var view = body is null ? ulong.MaxValue : 1UL << BitOperations.TrailingZeroCount(mask);
             (this.found, this.scratchCount) = (0, 0);
             this.glued.Clear();
-            this.keyScratch.AsSpan(0, this.rowWords).Clear();
+            this.Begin(default);
             if (body is null)
             {
                 this.Enter(null, null, definition);
@@ -488,7 +501,7 @@ internal sealed partial class MirEffects
                 this.Compose(body.Ordinal, view, null);
             }
 
-            this.Expand(default); // SPEC 15.6.4: its first-access initializations are its effects.
+            this.Expand(); // SPEC 15.6.4: its first-access initializations are its effects.
             this.Verdict(row, this.Found, view);
         }
     }
