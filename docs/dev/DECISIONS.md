@@ -15305,7 +15305,8 @@ resumed by R4-M86 (2026-10-20).
     - A dense array for every family: several times the keyed tables' bytes per compilation.
     - One row index per module with per-family arrays over its rows, or the plan row index as that index: holes in every family, or
       rows most library facts' nodes lack.
-    - A per-row stamp: a second read per access; every family's validity unit is the pass.
+    - A per-row stamp: a second read per access; every family's validity unit is the pass. Superseded in part by the R7-N5
+      B6b line (below): a working-state family whose validity unit is narrower than the pass carries its unit's number.
     - One table holding `Frozen` and program rows: Stage 2 would split every table again.
     - A Type-indexed column whose library prefix each compilation fills or copies: L1's option B, R8-M28's cause.
     - Library Type ids renumbered per compilation, or a library Type made lazily by a program pass: the prefix would not hold.
@@ -15475,6 +15476,37 @@ resumed by R4-M86 (2026-10-20).
       its conversion) "none" is the library's own answer, and `EnsurePassNode` is the contract check that no program pass asks a
       library node. No N5 batch removes it; a family whose library rows a reader after the freeze reads is a fact family and keeps
       `Freeze`. The comment of `EnsurePassNode` and Binding.Pass.cs' header state it.
+  - **R7-N5 B6a** (the Back's batch, Q-599, D-970; design `b6-design.md` §3.1, B's rulings in §10; the Front's C1-C5 on C-403,
+    2026-11-21): a completion of `StructuralCompletion` is `Completion(bool Normal, int Outward)`: `Outward` is a chain of the
+    SyntaxIds of the targets its Exit and Yield transfers reach outward (SPEC 14.1, 14.9.3), cells `(Target, Next)` in the instance's
+    one list, which `Clear` empties; a chain grows only at its head and never changes once a completion holds it, so completions
+    share tails. It replaces the pooled jump sets: `transferPool`, `Transfers(...)`, `UnionTransfers` and their `HashSet<JumpKoto>`
+    values go (ratchet "Node-keyed table members in Binding" -2). `With` adds the target a transfer completes (`Completes`), `Join`
+    merges two chains, and `Without` (at a receiving target) re-adds the cells above the closed target, one `Add` each (ids are
+    unique in a chain), linear in its position. `StructuralCompletion.Work` (node completions composed and Outward cells read or
+    added) is the one scaling measure. A transfer's target stays `Binding.TransferTarget`'s (BU-101); no member outside the class
+    reads a completion's `Outward`.
+  - **R7-N5 B6b** (the Back's batch, Q-599, D-970; design `b6-design.md` §3.2, B's ruling 2; the Front's agreement on C-403,
+    2026-11-21 02:04, and its `Memo` conditions, 02:41): `StructuralCompletion`'s query memo becomes one working-state family per
+    instance (`ResultCompletions`, `GuessedCompletions`, `PublishedCompletions`, `LintCompletions`): a pass column,
+    `StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter>`, released at the freeze, whose row
+    carries the query that wrote it; `Clear` advances the instance's query by `Binding.NextQuery`, the one query-number step
+    (`TypeMemo.Begin` takes it too), which skips 0, an absent row's number. Each creator hands its instance its family as a `static`
+    lambda (`StructuralCompletion.Memo`); no reader tests which family an instance holds. It replaces `cache`, a Koto-keyed
+    `Dictionary` per instance cleared per query, body or walk, with no Hover reader or bound (`MakeRoom` and `ForgetRenderings` are
+    Lsp's own `HoverState`; R7-N5's census row 77 read otherwise). A working-state family whose validity unit is narrower than the
+    pass (a query, a body, a walk) carries its unit's number in its row and treats a row of another number as absent; a pass family
+    keeps one stamp per pass; no other per-row stamp. A family read by one class with several instances may be handed to each
+    instance as a static ref-returning accessor. Supersedes in part the rejection "a per-row stamp" (its reason, every family's
+    validity unit is the pass, does not hold for a memo cleared per query: its Never evidence changes inside a pass). Premises, both
+    tripwires: the library declares no parameter default (`TheLibraryDeclaresNoParameterDefault`), and `GuessedCompletionNodes`
+    answers none at a frozen node (`TheGuessRuleAnswersNoneAtAFrozenNode`: the complete-and-no-recovery rule read at the node's own
+    pass, the frozen library's being complete and without recoveries), so no program query composes a library node, which the frozen
+    library's columns refuse. Rejected: one pass stamp per family (an earlier query's Never evidence would answer); a counter per
+    instance (four new counters, and a stale column's first write empties its directory per query, quadratic over a module's
+    queries); a Binding-owned store keyed by `(module, SyntaxId)` (the B2a-2 line's rejection); the memo kept reference-keyed as an
+    owner exception (COMPILER_ARCHITECTURE migrates Binding's uses by R7's exit). Ratchet ("Node-keyed table members in Binding") -1;
+    its limit is the count, 52.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
