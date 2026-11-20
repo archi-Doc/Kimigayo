@@ -2209,6 +2209,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     operand's parts for effect (G121's kept-construct design, owner-reserved).
   - R4-M109 amends Rule 2 (an Error node a consumer takes is its derived value, `(Temporary, None)`, in the column and a plan row)
     and Part 3 (an Error node's value at its consumer's Type; a located one evaluated once, each consumer its own derived value).
+  - Amended by R7-M65 (Z16): an operation keeps what it evaluates on every path (`and`'s right operand stays replaced), as a case
+    of the one `Keeps` rule.
 - **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, verbatim 「推奨どおり承認 (推奨)」 to the package with OQ-F5-1 to OQ-F5-6
   at their recommendations; R4-M74 OQ2) The package is `draft/Sketches/A5 Step 2/2b-D-package.md`. In short:
   - err(effect) is an access in `MirBorrows` (`AccessKind` rows `EffectRead`, `EffectWrite`; three effect fact kinds); the Call's
@@ -11874,6 +11876,7 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: StructuralCompletion's transfer set (it omits a transfer after a diverging item); a new target fact on the jump's
     row; Block and Unsafe as members (not expressions with one body); counting failed jumps in the exclusion (loses the failed
     exit's independent record).
+  - Amended by R7-M65 (Z16): the `do` rule is a case of the one `Keeps` rule (a part holding a jump to the Error is not kept).
 - **BU-107 An erasure's failed Owned part is the converted value's own failure; before the capability engine judges, it is the
   located limit** (2026-11-06; PLAN G381, unit bu159; Major, Revision 1's design review) SPEC 11.6, 7.7.4, 6.5.2, 10.2, 14.9.2,
   15.2.3, 23.1.2. Amends R4-M161.
@@ -17649,6 +17652,7 @@ structure is recorded here by the unit that first implements it.
   - Amended by BU-235 (D-865): (1)'s definition is the Closure's once its latest binding bound its header and body, classified its
     receiver and published it (`Published`); its `Signature` is null exactly at a failed parameter or result slot, so "`Signature`
     set" no longer gates the definition.
+  - Amended by R7-M65 (Z16): (2)'s kept operands are a case of the one `Keeps` rule; its compound-Place form list goes.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19; plan K6b, R5-M30; under
   R5-M18, R5-M61, R5-M67 and R5-M68; DEC Q6 form 1) What a compiler function, a requirement's function item or a shim runs on a user
   Type is `TyCtxt.Witness` of the requirement there, acted on by R5-M67's kind table, one function (`InstanceCollector.Requirement`,
@@ -23516,6 +23520,44 @@ R8-M* and R9-M* by the stage of the recording unit.
     prints `?`.
   - Rejected: a placeholder Type with a marker role; per-delivery resting rows; a `BoundType.Error` sentinel; `MirCases.Type`/`TypeOf`
     nullable for every case reader (a 46-reader family in A4 and A5); builder-side checks at each borrow site.
+- **R7-M65 The cause contract of derived values and the one `Keeps` rule** (Front with the Middle's builder half, 2026-11-21; R7
+  plan stream Z, Z16 (PLAN G396 (4)), Q-583; Major; Z15 2g-D Revision 2 D1-D3; the owner's O-447 (a) and (i); F's G147 rulings 2, 5
+  and 27) SPEC 3.4, 12, 13.4, 14, 23.1.2. Amends R4-M88, R5-M63 and BU-106 (their keep rules become cases of `Keeps`); supersedes the
+  A5 Step 2 plan's 2g-1 line, PD17's cause site and AR-7, and H0a-8's probe.
+  - A derived value or check follows one of three failure facts (`Binding.FailureFact`): `HirOp.Error` at the failed node,
+    `HirAcquire.Failed` at the acquired node, or the declaration of a stored Property whose value the builder reads, not published
+    `Body` (a static one; one with a written initializer): a static with no initializer, or a declaration whose parts are unverified or
+    whose slots are unstated. A declaration whose own Type failed is `Body` with its failed slot, that failure's one published fact
+    (BU-234; ruling 27). Each fact has its causes, `Binding.RestingCauses`, the one cause query, beside `FailureCauses`, with one rule
+    (`RestingSource`) read by it and the non-allocating `HasRestingCauses`. The HIR publisher puts a fact without causes on
+    `HirTables.Broken`, the one list the builder reports as `InternalInvariant_Kd` (R4-M61).
+  - `RestingCauses` answers every node `Binding.Rejected` names: Binding's causes, a recovery's syntax Error, a failure Binding
+    recorded, a malformed char literal's lexical record (`CharLiteralKoto.Cause`, as `ErrorKoto.Cause`), an admitted misfit's value by
+    its write's fit failure (`MisfitWrite`), and a resolved Place whose Move rests on an Error Copy proof (BU-103) by the unresolved
+    mark, since Binding records that proof's failure at the Type's declaration.
+  - `HasFacts` publishes a name of a binding without a Type, and a match or a try without a valid, settled plan, as Error. A function's
+    name Binding resolved needs no Type at the node (its consumer forms its value from the selection); one Binding left unresolved is an
+    Error resting on its signature's causes.
+  - The MIR builder's derived producers of Z15 §2.2's table read these facts: `HirOp.Error` at the value, at a variable and at the
+    Place a write's, update's or increment's target designates through its groups (`Designated`, SPEC 3.4; the one DerivedWrite arm);
+    `HirAcquire.Failed` at the acquired node; the declaration fact (a static's use, a Field initializer's constructor step). The
+    builder's second copies go: `Rejected` with G103's "a value without a Type" term, Match's Invalid/Pending plan test, `Unsupported`'s
+    `derived` bool (now `Opaque(node, type?)`) and `Initialize`'s `rejected` bool. Derived producers outside the table (a Field without
+    a stored Type, a jump without a target row, Leave) are Z17's.
+  - **`Keeps`, one rule:** a node Binding rejected or left unresolved keeps, evaluated in place, every child its form evaluates as a
+    value on every path (`Unconditional`) that the builder can form, judged at the part under groups and a label: a part Binding
+    resolved with its Op's facts and a Type, or an Error whose form is a value and which rests on causes, keeping its own by the same
+    rule. The paths are structural completion's: `StructuralCompletion.OnEveryPath`, beside `Compose`, is the one table.
+  - Not kept: a selected body or arm, a guard, a later condition, a loop's or failure body, `and`'s or `or`'s right operand, a write's,
+    update's or increment's target (located, not a value; Z17), a block's statements, a defer's or `#switch`'s contents, a part without
+    a Type (a construct, PLAN G121; a noinit), a function's name Binding resolved, an unresolved part without causes (it rests on the
+    parent's failure), a part holding a jump to the Error (BU-106), and an unresolved call's callee with its receiver: a failed
+    selection's receiver is part of the callee it did not select and stays replaced, a departure from Z15 §2.3's "a call's receiver"
+    (PLAN G1172). R4-M88, R5-M63's compound Place and BU-106's `do` are its cases; `CompoundPlace`, `RunsItsBodyOnce`, `Construct`
+    and the label-only jump walk go.
+  - Records (Q13): the kept parts' own checks run; A1's locations move to the kept part's site; no acceptance move.
+  - Rejected: (α), a Cause on each problem; a `Keeps` row per form; recomputing the Copy proof at the use to find its clause (a second
+    copy of the proof, and a check re-running a proof to explain a failure).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
