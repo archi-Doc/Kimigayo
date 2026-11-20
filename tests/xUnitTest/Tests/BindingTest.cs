@@ -623,6 +623,54 @@ public class BindingTest
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
     }
 
+    // R7-E2 E2-1 (PLAN G1083, D-850): a fact-less family-1 problem a program pass records at a frozen library node goes through Core's one
+    // store decision (Compilation.StoreOf; ReportProblem's Koto.ReportIn), so it is the program's record, published once, and another
+    // compilation over the same library holds none. No program records one today, so the row records one through the recorder after a
+    // Final Bind, as a check of the program pass would (ALibraryNodeTheProgramPassFailsIsRecordedOnce).
+    [Fact]
+    public void ALibraryNodesFactlessProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.InvalidInlineLayout, [], 0, false);
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.InvalidInlineLayout && x.Problem >= 0);
+        c.Binding.ReportDiagnostics();
+        Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd));
+        var other = CompilationTestHelper.Parse("let y = 1\n");
+        Assert.True(other.Bind().IsComplete);
+        Assert.DoesNotContain(other.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd));
+    }
+
+    // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).
+    // A Type's member whose qualifier is missing (`Missing.Inner`) is derived from that unresolved input; a further missing Name there
+    // rests on the same recorded input, so it is a derived issue under its own requirement, suppressed while its cause publishes, and a
+    // further problem that no recorded input explains stays direct. No check records either today, so the row records them through the
+    // recorder after a Final Bind.
+    [Fact]
+    public void ADerivedNodesFurtherProblemFollowsItsOwnRequirement()
+    {
+        var c = CompilationTestHelper.Parse("func f(x: Missing.Inner) -> i32 => 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var node = Assert.Single(c.Binding.DerivedIssues, static x => x.Failure == BindingFailure.MissingType).Node;
+        var unresolved = CompilationTestHelper.BindingErrors(c).Count(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd));
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.MissingName, [], 0, false);
+        record(node, BindingFailure.InvalidInlineLayout, [], 0, false);
+        c.Binding.CheckBound();
+        Assert.Contains(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.MissingName && x.Problem >= 0);
+        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure == BindingFailure.InvalidInlineLayout && x.Problem >= 0);
+        Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, node) && x.Failure != BindingFailure.InvalidInlineLayout);
+        var errors = CompilationTestHelper.BindingErrors(c);
+        Assert.Equal(unresolved, errors.Count(static x => x.Code == nameof(DiagnosticCode.UnresolvedBinding_Kd)));
+        Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.InvalidInlineLayout_Kd));
+    }
+
     // PLAN G949 S1-r1b (v4; s1r1-design 1.3): CheckBound reruns the program pass's Check only, on Binding's own part, and composes the
     // Result again: after a Final Bind it equals the Bind's Result and issues, and the library layer's counts stay the library pass's.
     [Fact]

@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 
 // Binding's recorder (R7-E1; DIAGNOSTICS 4.1): a check records its failure as a problem with typed facts in BindingReport.
 // - Responsibility: Record, a check's problem; ClearFailure, how a failure leaves a node inside a pass; the one table from a failure to its
-//   code (CodeOf); the summary's walk of a node's problems beyond its slot's issue (CollectProblems); the adapter's reads of a problem's
-//   facts (ReportProblem, Mismatch, LocatedPart, FactOf).
+//   code (CodeOf); the summary's walk of a failed node's problems, each direct or derived by its own requirement (CollectProblem,
+//   CollectProblems); the adapter's reads of a problem's facts (ReportProblem, Mismatch, LocatedPart, FactOf).
 // - Inputs: a node, its failure and the facts its check read.
 // - Outputs: a problem and its facts in the report; the node's state and failure, through Fail, as its first failure; a node's further
 //   issues, each by its own code and condition. Record is a check's way in; RecordFurtherOriginRecord and a report's defect add a problem
@@ -205,9 +205,14 @@ public sealed partial class Binding
         return SourceRef.Of(at);
     }
 
+    // A failed node's problem, the slot's (index -1 for a slot without one) or a further one: derived when its own requirement rests on the
+    // node's recorded inputs (IsDerived, rule W), else direct (SPEC 23.1.2).
+    private void CollectProblem(Koto node, BindingFailure failure, DiagnosticCode code, int problem)
+        => (this.IsDerived(node, failure) ? this.derivedIssues : this.issues).Add(new(node, code) { Failure = failure, Problem = problem });
+
     // The summary's walk (DIAGNOSTICS 4.3, several problems of one node): each problem of a failed node but its slot's own issue is an issue of
-    // its own, however the slot's failure stands. An Origin record beyond the first is published with the node's first record, since
-    // Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
+    // its own, direct or derived by its own requirement (CollectProblem). An Origin record beyond the first is published with the node's first
+    // record, since Binding.Issues has one row per relation node, which the test MIR side compares, until it is the problem list (R7-E5).
     private void CollectProblems(Koto node)
     {
         if (this.report.Count == 0)
@@ -221,7 +226,7 @@ public sealed partial class Binding
             if (i != slot && this.FactOf(i, ProblemFactKind.OriginRecord) is null)
             {
                 var problem = this.report.Problem(i);
-                this.issues.Add(new(node, problem.Code) { Failure = (BindingFailure)problem.Requirement.Kind, Problem = i });
+                this.CollectProblem(node, (BindingFailure)problem.Requirement.Kind, problem.Code, i);
             }
         }
     }
