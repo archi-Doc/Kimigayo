@@ -2939,6 +2939,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the value and has no row.
   - Superseded for call positions by R7-M51 (R7-O1 b1): A5 alone judges a body's call positions and Binding forms their rows, so
     "Binding's until R7" no longer holds there.
+  - Superseded by R7-M66 (R7-O1 H, D-944) for every body relation: Binding judges none and keeps no twin; A5's record is the one
+    record.
 - **R4-M109 An Error node is each consumer's derived value** (2026-10-22; amends R4-M88's Rule 2 and Part 3, consistent with R5-M63;
   amended by R4-M149 and BU-103) SPEC 23.1.2, 13.7.2, 11.3.
   - Cause: the publisher kept a consumer's Adjust on an input it published Error (an Error has no Place, PlaceShape Value, and no value
@@ -3015,35 +3017,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Process (superseded by R4-M119): R4 runs at most one implementer and one reviewer at a time; reviewers of R4's Binding-touching
     units stay BU's (the handoff's 2 + 1 applies again only on the owner's word). Rejected: 2 + 1; 2 + 1 with non-BU reviewers for
     Binding-touching units.
-- **R4-M111 The ledger compares Binding's Origin relation records only where they are twins** (2026-10-22; under R4-M94's package)
-  - Rule (R4-M4 and R4-M17 as R4-M108 narrows A5's old records): Binding's `Binding.OriginRelation` records are A5's only where they are
-    twins, the records of a relation that is also a row A5 judges: at a non-call fit every record of a node any of whose recorded chains
-    is a body chain, at a local's clause its body-chain record. Binding records the twin nodes where it forms their rows
-    (`RecordOriginFitFailure`, `JudgeLocalClause`) in a per-pass set reset with the Origin relation records (`ResetOriginRecords`),
-    read through `Binding.IsTwinRecord` (Transitional R6: H11 deletes it with the twins; R4-M23's `IsEffectRecord` shape). The ledger's
-    compared set gains a subset column, `IsEffectRecord` for Binding's IncompatibleImplementation and Unsupported rows and `IsTwinRecord`
-    for its two OriginRelation rows (`effectOnly` deleted). Every other Binding Origin relation record passes through: an
-    all-fixed-fixed node's (Binding's until R7, D8) and the Closure result over call-local storage (Binding's until A5-F7's 2c-6, R4-M108
-    M2-(i); 2c-6 adds its fill site with its row). `VerifiedSpecExampleTest`'s MIR side (`common` and the MIR's, R4-M45) gains them.
-  - Supersedes 2a0-D §5.3's first two bullets and D11 (R4-M108: twins keep `Binding.OriginRelation`); `Same(Ownership(UnprovenOrigin),
-    UnprovenConstraint_Kd)` goes with 2a0-3b (§5.3's permitted order). R5's Q17 shape is unchanged.
-  - Input to 2a-1a (R4-M108's Site condition, not decided here): a twin's ledger subject is Binding's issue node, the failed node or the
-    clause, which is its rows' Site; Binding's diagnostic is at the record's `At`. Reporting at the row's Site pairs twins `both` with no
-    ledger change; reporting at Binding's diagnostic location gives `location` differences unless the old side reads the record's `At`;
-    a second A5 problem at one node is a `new` row unless the old side lists the node's other chains.
-  - An input to H11: the clause site adds its node even where `FailExplained` stores no record because the node had already failed,
-    which the reviewer's reading finds unreachable (an `OriginRelationKoto` is failed only by this judgment, once per pass) and which
-    the ledger ignores (it asks only about `Binding.OriginRelation` records). If H11 takes the set as its census, it reads it as "a
-    clause with a body-chain row" or gates the add on the stored record.
-  - Rejected: the twin set in the C1-F4 view (verdict data for Mir, which no MIR reader uses); `OriginRelationFact.Twin` (R4-M108's "no
-    Twin field"); `BodyChain` over published records (it marks the Closure result and re-runs the formation test); rows at the record's
-    node (a call argument's fixed-fixed record shares its node with that position's rows); the code (Closure results are Unsatisfied,
-    and a mixed twin is Unproven); one more `twinOnly` branch (a second special case where the canonical table takes a column).
-  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): with the ledger gone, the twin subset is the test MIR side's
-    filter (`Binding.IsTwinRecord`), until H11.
-  - Superseded in part by R5-M192's amendment (H15, 2026-11-06; the owner, verbatim 「Cで決定します」): `Binding.IsTwinRecord`
-    (`[Transitional("R7")]`) and MirSide's filter stay until R7's Problem records unit deletes them with the twins.
-  - Superseded in part by BU-127 (PLAN G572): 'an all-fixed-fixed node's (Binding's until R7, D8)' no longer holds for a region chain, which is a body chain: its record is a twin (`RecordOriginFitFailure`) or A5's alone (`JudgeCallPosition`, `FailedDeclaredRelation`, whose gate returns before `JudgeLocalClause`, and `RoutePendingRelation`).
+- **R4-M111** (2026-10-22) The ledger compares Binding's Origin relation records only where they are twins: superseded by R7-M66
+  (2026-11-21; no twin remains: `Binding.IsTwinRecord` and the test MIR side's filter go); full text: c17bd1792.
 - **R4-M112 Every no-candidate body variable of a local is its local's region** (2026-10-22; under R4-M94's package, 2a0-D §5.2 and
   D10, OQ12 (a), OQ7 (a); redone after BU's review blocked round 1 (B1, B2), under redo rulings R1–R3; round 1 never landed, so this
   entry supersedes nothing on dev)
@@ -3148,6 +3123,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`let m: ref/i32 during (p and x) = local@ref`) reaches it. PD31's facts are asserted on `bad`, j-region and a chain through
     containment edges; void: a Relation of -1, since no program was found whose chain ends at a containment edge (a Ref's own Origin is
     Binding's name for the borrow, and every probed chain ends at a fit row).
+  - Superseded in part by R7-M66 (D-944): "Must not judge a relation Binding judged directly" reads "Binding judges no body relation;
+    a relation the premises prove forms no row".
 - **R4-M114 MirOrigins: Unknown, the oracle's masks, `Work` and the arena's limit; the view's part of a MIR atom** (2026-10-23; unit
   2a-1b, under R4-M94's package §6.3's Unknown, §6.4, D17 and D20)
   - Rule (SPEC 15.6.5): a chain or edge between fixed Origins is Proven only when the body's premises derive it, else Unknown:
@@ -3367,6 +3344,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     this entry.
   - Unverified: path d and the `OriginAtUse` case above are closed only by (F); (F) itself is reached by no source program (a finding
     needs a Binding defect).
+  - Amended by R7-M66 (F-H1-4): the Dependent meet class covers only the operands resting on the failed input. A meet outlives a
+    region only when every operand does (SPEC 15.3), so an operand not resting on the failed input is a conjunct of its own and, when
+    unproven, A5's independent record (SPEC 23.1.2). With R4-M152's P9 image gone, Unbound has one source, `PendingOrigin`.
 - **R4-M119 R4's concurrency by lane, and heavy runs capped across sessions** (owner, 2026-10-24, verbatim 「先ほどの推奨の制約に変更してください。」,
   adopting the recommended rule; supersedes R4-M110's process bullet and the owner's 「1+1 のまま続けてください。」 of the same day;
   amended by Q11; superseded in part by R7-M2: the session names)
@@ -3676,6 +3656,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     GXS, not 2c-4.
   - Superseded in part by R4-M152 (2c-5): §2.7's F1 route through the closure context (the owner's 「2c-5 F1: (c')」: a located
     Unsupported_Kd at a returned Closure's call until F1's representation unit); D-13's receiver well-formedness premise is built (G270).
+  - Superseded in part by R7-M66 (D-944): §2.5's pending list (a pending relation is a row like any other) and 2c-3's "CallResult
+    becomes Unbound at a call" (a value call publishes its Closure's call result atom as it is).
 - **R4-M127 A default's copy is decided before it is written** (2026-10-25; PLAN G245's unit U1) SPEC 7.2.3, 23.1.1, 23.1.2.
   - Cause: `MirBuilder.Inline` wrote a copy before it knew whether the call's substitution instantiates it. A null `TyCtxt.Apply` or
     `Compose` kept the template's own Type or callee substitution (`applied ?? type`, `composed ?? Subst`), then a trailing
@@ -4192,6 +4174,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     depends on the bound's row (`Compared`), which the graph does not keep. Reasons that hold: the receiver resolution stays with the
     reader (a Closure is classified after its body's bounds are stored), and the stored parent is the atom before it, BorrowSource's
     supplier.
+  - Superseded in part by R7-M66 (D-944): `SuppliedBy` goes; the supplier is the row's column `OriginRow.Supplier`, the longer end
+    as formed, which `Binding.RowSupplier` resolves for the record.
 - **R4-M136 OldRule's ledger key and the MIR target side (2x-T5), refining R4-M50 and R4-M60** (2026-10-25; unit 2x-T5 under the A5
   step 2 plan's PD19 and its 2x-T5 row (R4-M74))
   - Rule: a test that asserts an old rule keeps its default-pipeline assertion under `[Trait("OldRule", …)]` with a comment naming the
@@ -4872,6 +4856,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: (a) for F1 (a Subst field with composition, erasure and identity-relation changes, R5-visible), (b) inside 2c-5 (a second
     shared representation in one unit, R4-M119); a fit of the raw sources (an enclosing region is fixed in the Closure, so arr1 and
     arr2 were falsely Unknown); a per-call gate.
+  - Superseded in part by R7-M66 (D-944): P9's "its call result atom the call's Unbound atom, R4-M118's second source". P9 images
+    only the call receiver ρ, and the G280 cascade at the argument (h1's and d3's Owned `UnprovenConstraint_Kd`) is gone.
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
   (superseded in part by R4-M157: the holding walk's key, and R4-M57) (2026-10-28; G272's design-first candidate, design 2; the owner's
   「G272: (1)」 and 「G272 要件: (a)」) SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis
@@ -5602,6 +5588,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       only a body-local Projection or Anchor at the longer end (`RefutesOriginRelation`) and returns Unknown for the open initializer
       Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
       Unproven until G392.
+  - Superseded in part by R7-M66 (D-944): the record of a call's fixed-fixed input; Binding records no body relation.
 - **R4-M165 R4's exit under the owner's 90% rule** (2026-11-03; the owner, R4's dialog, verbatim
   「根本的な解決は後回しにする。90%の状態で良いので、R4を完成させて下さい。」, then 「先ほどの手順通りでなくても良いので、現在までの成果を活用し、早期にR4を完成させて下さい。細かい不具合は、後で修正します。」, and 「「U2j
   まで待つ」の撤回と、O4（一般 SPEC 規則を R4 exit 時に Unsupported で残す）はオーナー承認事項です。」; the exit and its exceptions below, verbatim 「これでexit」) For R4's
@@ -10819,6 +10806,8 @@ resumed by R4-M86 (2026-10-20).
     every Origin (an enclosing contract's clause cannot name a nested signature's own Origins).
   - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): the dependence query's reads of a failed contract's bound clauses
     (`RejectedRelations`), since they are premises already. Its repairs stay.
+  - Superseded in part by R7-M66 (D-944): the dependence query is deleted (no reader left); H11b-0 U3 rebuilds the dependence as a
+    view fact if it still needs it.
 
 - **BU-71 Binding publishes each interned Type's height, `BoundType.Height`, and each substitution's, `Subst.Height`** (2026-10-31;
   PLAN G332, unit bu91; the owner approved G332 and this entry together, verbatim 「まとめて承認します」) SPEC-neutral: a measure of the Type
@@ -11868,6 +11857,7 @@ resumed by R4-M86 (2026-10-20).
     Type (a constructor's construction Type included) has its declared relations over the call's region formed as rows of the call
     by step 3's clause judge (`VisitTypeClause`), as an input's are; a Type derived from it rests on that row. Every other class of
     a result Type's declared relation stays the formation proof's.
+  - Superseded in part by R7-M66 (D-944): the record of a call's fixed-fixed input; Binding records no body relation.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and
@@ -23637,6 +23627,51 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Records (Q13): the kept parts' own checks run; A1's locations move to the kept part's site; no acceptance move.
   - Rejected: (α), a Cause on each problem; a `Keeps` row per form; recomputing the Copy proof at the use to find its clause (a second
     copy of the proof, and a check re-running a proof to explain a failure).
+- **R7-M66 A body's Origin relations are judged by A5 alone; Binding forms their rows** (Middle, 2026-11-21; R7-O1 H, H1 and H2 as
+  one unit, Q-588, D-944; Major, an acceptance mover by record class; R7-M51 extended from call positions to every body relation; the
+  owner's H11b §11 approval with R5-M192's amendment, R7 plan revision 99) SPEC 15.6.1, 15.6.4, 15.6.5, 23.1.2, 8.13.2.
+  - **Rule.** In an executable body Binding judges no Origin relation. Every relation it forms there goes through `FormBodyRelation`:
+    a fixed-fixed relation the fit's answer proves both ways forms nothing; every other one, a body chain and a relation with an
+    Unbound end included, is a row of the C1-F4 view, never fails a node and is never a Binding record. A5's Origin stratum is the one
+    judge. This covers calls (R7-M51), non-call fits (`AddOriginFit`, `FitsValueAt` and the joins), local clauses (the clause's own
+    pure proof, SPEC 15.3.3, then a row) and pending relations (a row like any other; the pending list and `RoutePendingRelation` go).
+  - **Published.** `FixedBy` (R7-M51). `BindingObligation.Site`, read as `OriginRow.Site = Site ?? Use` (H11b D5): a local
+    annotation's fit at its initializer, a local clause at the initializer that supplies one of its ends, and a join's fit at each
+    source's value, the value that supplies the fit's longer end (`DecideResult`). `OriginRow.Supplier`: the row's longer end as
+    formed; `Binding.RowSupplier` gives R4-M133's supplier to the record. A closure end's header relation is part of
+    `OriginRelationFacts`, read by both reporters (F-H-10). A5's records name the failing position's Type as a fit's destination
+    (F-H-7 (a)).
+  - **A body chain's meet stays one row (F-H-13).** `FormBodyRelation` splits a meet at the longer end into one row per operand only
+    when every operand is fixed (not a `BodyChain`); a meet with an operand not fixed stays one row, whose node and per-operand edges
+    A5's `MeetNode` forms (2a0-D D15), so the chains through it are not cut.
+  - **A verified specialization's contract** (SPEC 8.13.2): its view classes its original's binders as its own contract.
+  - **P9's call result image.** A value call publishes its Closure's call result atom as it is; P9 images only the call receiver ρ.
+    Why: the Refuted relation behind the call is A5's record, so Binding is complete there and an Unbound image would rest on no
+    Binding failure, which R4-M118 forbids (BU-102 threw at a use outside the call's subtree). R4-M118's Unbound then has one source,
+    `PendingOrigin`. In a calling body the atom is another body's root (the view's row 9): a row naming it is A5's located
+    `Unsupported_Kd`. P8's arm for an Unbound operand (the call result atom) stays.
+  - **Records** (Q13). MIR problems with typed facts; the partition Binding → Ownership; twins are one record (`Binding.IsTwinRecord`
+    goes, with the test MIR side's twin filter); independent records restored. An Unbound end is a row whose failure is the record
+    (PLAN G739's dependent record goes). An enclosing body's call region at a moved row is the nested-body limit. V6 Unstated and V7 holder place record a problem that leaves
+    the node Resolved; such a program has a complete Binding and is rejected by its published record, as A5's errors are: every
+    code-generation entry gates on the published diagnostics, not on `IsComplete` (F-H1-5). R6-check H5's location of a local
+    annotation's fit (the whole declaration) gives way to D5 (F-H-8). A Consuming Closure's two `MovedPlace_Kd` go as false records
+    (SPEC 7.7.2). Named moves: F-H1-1 (an aggregate's `ComparisonLoanConflict_Kd` that SPEC 15.6.5 derives from the Refuted relation
+    is shown, PLAN G1176) and F-H1-6 (a fixed-fixed fit only a failed clause's repair could prove is A5's `UnprovenOriginRelation_Kd`,
+    BU-159's counted dependent until H11b-0 U3). H11b's G1 programs and a write into a temporary's Field (`mkG(y@ref).r = y@ref`)
+    are newly accepted.
+  - **Supersedes:** H11b's design D3 (D1, D2 and D4-D8 carried); 2a0-D D1's fixed-fixed clause and A3 §7's "until R7"; R4-M108's
+    "Binding's until R7" and its twins; R4-M111; R4-M113's MirOrigins clause, restated; R4-M126 §2.5's pending list and 2c-3's
+    "CallResult becomes Unbound at a call"; R4-M133's `SuppliedBy`; R4-M152's P9 Unbound image; BU-104's and R4-M164's record of a
+    call's fixed-fixed input; BU-69 in part. Amends R4-M118 (F-H1-4). Each names its line. Stays: V5-V7 and OJ1-OJ7.
+  - **Rejected:** Binding judging fixed-fixed body relations with A5 judging chains (two judges of one SPEC rule; the lost Loans); a
+    row for every position, proven ones included (A5 work on valid programs for no record); `JudgeCallPosition` with a frame mode;
+    keeping `HasCallRelation`; Binding's record for an Unbound end where no cause is found (PLAN G739); Binding judging
+    enclosing-call-region ends; V6 failing its node (its Loans lost); BU-69's query routed to A5 now (no reader before H11b-0 U3). For
+    P9: restating the view contract (it weakens the check that caught an Unbound atom with no cause); a `FormBodyRelation` case for
+    `X outlives (X and ...)` (a symptom fix that leaves the hole).
+  - **Open:** P8's `BodyLocalIn` Anchor arm leaves out a raw Place's Borrow that SPEC 5.2.2 fits to its destination, so a use of such
+    a Closure (r01, valid) is A5's located `Unsupported_Kd` (the Front's).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
