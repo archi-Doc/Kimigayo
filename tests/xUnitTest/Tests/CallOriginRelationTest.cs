@@ -640,6 +640,24 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func app4<T, F>(g: ref/F, y: T, x: Option<T>) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc use(q: ref/i32) -> i32\n    return app4(func [q] () => q, q, .Some(q))\n")]
     // rv34
     [InlineData("func app4<T, F>(g: ref/F, y: T, x: Option<T>) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use() -> i32\n    return app4(one, one(), .Some(one()))\n")]
+    // k3d (PLAN G1127 R1; D-882's cw_k3d): the evidence `q`'s inner Origin is an anonymous function parameter's omitted nested Origin,
+    // fixed in the Closure body (SPEC 15 Nested signatures), so it opens as rc3v's capture does: T = `ref/i32 during (i and region)`.
+    // k3i below is its invalid twin, the result returned `during q`.
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    let f = func [a] (q: ref/(ref/i32)) -> i32\n        let r = keep(.Some(a@ref), q)\n        return 0\n    return 0\n")]
+    // A join argument whose sources wait (PLAN G1127 R2; SPEC 10.5.1: each source is classified as it would be as that argument): its
+    // Evidence root is read through its Signature leaves, so T and c open as for one leading-dot Case. j1, j5 (a match), j8 (`a
+    // outlives b` stated: valid under either reading, it failed on the per-call c alone) and j10 (in a Closure); j7, j13 below.
+    // j1
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = keep(if flag => .Some(x) else => .None, y)\n    return 0\n")]
+    // j5
+    [InlineData("func keepr<T>(y: ref/T during c, x: Option<ref/T during c>) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = keepr(y, match flag\n        true => .Some(x)\n        false => .None\n    )\n    return 0\n")]
+    // j8
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    origin a outlives b\n    let r = keep(if flag => .Some(x) else => .None, y)\n    return 0\n")]
+    // ja2 (the Middle's RP17 C2, its label): a joined payload borrowing a local beside a local's evidence, the local written after the
+    // result's last use; the base gave BU-156's located Unsupported_Kd at the payload (T unopened, the payload misfit by Origins alone).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    let k = sink(r)\n    m = 5\n    return k\n")]
+    // j10
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let f = func [flag, x, y] () -> i32\n        let r = keep(if flag => .Some(x) else => .None, y)\n        return 0\n    return 0\n")]
     public void AWaitingArgumentAlsoBoundsTheVariableItsEvidenceBinds(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
@@ -680,6 +698,18 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func fun<T>(x: Option<T>, y: T) => ()\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let g: (ref/i32 during p) -> () = func (v) => ()\n    let h: (ref/i32 during q) -> () = func (v) => ()\n    fun(.Some(h@move), g@move)\n    return 0\n", "UnprovenOriginContract_Kd@h@move), g@move)")]
     // af2
     [InlineData("func app<T, F>(g: F, y: T) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    return app(func [a] () => a, q)\n", "UnprovenOriginRelation_Kd@a, q)")]
+    // f4i, f5i (PLAN G1127 R1's Fill, the invalid twins of ALocalInputOriginIsNeverFilledByAnotherArgument's rows): the meet returned
+    // `during b` needs `i outlives b` once, at the returned value.
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> ref/i32 during b\n        let r = pick3(q, p)\n        return r@follow\n    return 0\n", "UnprovenOriginRelation_Kd@r@follow")]
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> ref/i32 during b\n        let r = pick3(p, q)\n        return r@follow\n    return 0\n", "UnprovenOriginRelation_Kd@r@follow")]
+    // j7 (PLAN G1127 R2, j1's invalid twin): the result returned `during b` needs `a outlives b` once (the region lies between b and a);
+    // the call and the payload each record it, as for one leading-dot Case (G1115's S3: SPEC counts one, the Middle's R7-O1 area).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ref/i32 during b\n    return keep(if flag => .Some(x) else => .None, y)\n", "UnprovenOriginRelation_Kd@keep(if flag => .Som|UnprovenOriginRelation_Kd@x) else => .None, y)")]
+    // ja1 (the Middle's RP17 C2, ja2's invalid twin): `m = 5` while r, carrying the payload's Loan on m through the opened region, is
+    // used: A5's conflict at the write (the base: BU-156's located Unsupported_Kd at the payload).
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc sink(v: ref/i32) -> i32 => 0\nfunc run(flag: bool) -> i32\n    var m: i32 = 1\n    var n: i32 = 2\n    let pm = m@ref\n    let pn = n@ref\n    let r = keep(if flag => .Some(pm@ref) else => .None, pn@ref)\n    m = 5\n    return sink(r)\n", "ComparisonLoanConflict_Kd@m = 5")]
+    // j13 (R2's structure twin): a waiting source of another structure is its own Type mismatch, whatever the region.
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc two(flag: bool, y: ref/(ref/i32 during b), n: ref/(i64)) -> i32\n    let r = keep(if flag => .Some(n) else => .None, y)\n    return 0\n", "TypeMismatch_Kd@.Some(n) else => .No")]
     // rv18
     [InlineData("func keepO<T>(x: Option<T>, y: T) -> i32\n    T is Owned\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    return keepO(.Some(p), one())\n", "UnprovenOriginRelation_Kd@p), one())")]
     public void AWaitedVariableKeepsItsOtherBounds(string body, string records)
@@ -687,6 +717,21 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var source = body + Main;
         var check = DiagnosticCorpus.Check(source);
         Assert.Equal(records, string.Join("|", check.Diagnostics.Select(x => x.Code + "@" + At(source, x.Span))));
+    }
+
+    // PLAN G1127 R1's Fill (the code review's B1): an anonymous function parameter's omitted nested Origin is fixed in the Closure body
+    // (SPEC 15 Nested signatures), so another argument's Origin never fills it at an open position (FillOpenOrigins fills only a
+    // stand-in): the two covariant bindings of `pick3<T>(x: T, y: T)` meet in either order (SPEC 10.8: traversal order never chooses), as
+    // their named twin's do. f4, f5; f4i and f5i above are their invalid twins.
+    [Theory]
+    // f4
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> i32\n        let r = pick3(q, p)\n        return 0\n    return 0\n")]
+    // f5
+    [InlineData("func pick3<T>(x: T, y: T) -> T => $abort(\"no\")\nfunc use(p: ref/(ref/i32 during b)) -> i32\n    let f = func [p] (q: ref/(ref/i32)) -> i32\n        let r = pick3(p, q)\n        return 0\n    return 0\n")]
+    public void ALocalInputOriginIsNeverFilledByAnotherArgument(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
     }
 
     // The source from a span's start to the end of its line, at most 20 characters.
