@@ -19,8 +19,9 @@ namespace Benchmark;
 // analyzed with the source modules as roots, as Compilation built and analyzed it before U2's switch. Unlike BuildMir's, the program is
 // not Sealed, so a lookup of a bodyless key in the timed Run takes MirBuilder.Demand's early return instead of the Sealed table's null:
 // equal results, a few checks per miss more than before U2-T.
-// "--static-keys" reports each phase's allocation (three fresh instances), the managed heap a fresh instance retains and a warm re-run's
-// allocation; "--static-keys timing" reports pinned times per phase, the F programs of one shape and size interleaved.
+// The "init" shape (Z7, N4) times the reader's composition of first-access initializations (MirEffects.Expand): N sites, each reaching the
+// same F initializers. "--static-keys" reports each phase's allocation (three fresh instances), the managed heap a fresh instance retains
+// and a warm re-run's allocation; "--static-keys timing" reports pinned times per phase, the F programs of one shape and size interleaved.
 internal static class StaticKeyMeasurements
 {
     private const int Fresh = 3;
@@ -29,7 +30,7 @@ internal static class StaticKeyMeasurements
     private const int Cpu = 2;
     private static readonly int[] Sizes = [256, 512, 1024, 2048];
     private static readonly int[] FieldCounts = [0, 16, 64, 256, 1024];
-    private static readonly string[] Shapes = ["chain", "ring", "star"];
+    private static readonly string[] Shapes = ["chain", "ring", "star", "init"];
 
     internal static void Run(bool timing)
     {
@@ -78,9 +79,16 @@ internal static class StaticKeyMeasurements
 
     // The workload: group G holds an immutable flag and the F Fields; member n of group H touches the Fields n mod F, then every N-th
     // (each Field touched), written by even members and read by odd ones. chain: each member calls the next and chainHead the first; ring:
-    // the last member also calls the first under G.flag, so every member reaches every Field; star: chainHead calls each member.
+    // the last member also calls the first under G.flag, so every member reaches every Field; star: chainHead calls each member. init:
+    // G's F immutable statics each have an initializer that writes G.log, G.all reads them all, each member calls G.all and chainHead
+    // calls each member, so each member's call site reaches the same F first-access initializations.
     internal static string Source(string shape, int size, int fields)
     {
+        if (shape == "init")
+        {
+            return Initializations(size, fields);
+        }
+
         var text = new StringBuilder("group G\n    public let flag: bool = false\n");
         for (var j = 0; j < fields; j++)
         {
@@ -111,6 +119,28 @@ internal static class StaticKeyMeasurements
             }
 
             text.Append(CultureInfo.InvariantCulture, $"    public func step{n}(){(body.Length == 0 ? " => ()" : string.Empty)}\n").Append(body);
+        }
+
+        return text.Append(head).ToString();
+    }
+
+    // The init shape's source (Source).
+    private static string Initializations(int size, int fields)
+    {
+        var (text, all) = (new StringBuilder("group G\n    public var log: i32 = 0\n"), new StringBuilder());
+        for (var j = 0; j < fields; j++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"    public let e{j}: i32 = G.make{j}()\n    public func make{j}() -> i32\n        G.log = {j}\n");
+            text.Append(CultureInfo.InvariantCulture, $"        return {j}\n");
+            all.Append(CultureInfo.InvariantCulture, $"        s = s + G.e{j}\n");
+        }
+
+        text.Append("    public func all() -> i32\n        var s = 0\n").Append(all).Append("        return s\ngroup H\n");
+        var head = new StringBuilder("func chainHead()\n");
+        for (var n = 0; n < size; n++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"    public func step{n}() => _ = G.all()\n");
+            head.Append(CultureInfo.InvariantCulture, $"    H.step{n}()\n");
         }
 
         return text.Append(head).ToString();
