@@ -34,13 +34,15 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 14.5, 16.2.2, 15.6.7: a transfer evaluates and secures its operand, then branches: at run time it ends the borrows of the calls
-    // it abandons (its operands pending since its target began), places its result and goes on through its target's drop tree to the
-    // target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code after it,
-    // where those calls continue with their reservations. SPEC 14.10.3: an explicit source counts in unreachable code, so an operand that
-    // does not complete leaves an assumed delivery, secured by none, through the drop tree to the target's join (Join), which places the
-    // operand's value as Set places it; into a target that takes its value-less paths apart (Target.Wants), a delivery of an operand
-    // with no value path (TakeLeft) places nothing and goes on at the target's Apart, and an operand whose form left value-less paths
-    // (Splits, AssignApart) delivers them there too, through the drop tree, and they go on after the transfer as its value paths do.
+    // and comparisons it abandons (its operands pending since its target began), places its result and goes on through its target's drop
+    // tree to the target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code
+    // after it, where those calls continue with their reservations and the comparisons it abandons have ended their Inspection Loans (SPEC
+    // 14.10.3, 13.4: the pending left operand of each opened since its target began). SPEC 14.10.3: an explicit source counts in
+    // unreachable code, so an operand that does not complete leaves an assumed delivery, secured by none, through the drop tree to the
+    // target's join (Join), which places the operand's value as Set places it; into a target that takes its value-less paths apart
+    // (Target.Wants), a delivery of an operand with no value path (TakeLeft) places nothing and goes on at the target's Apart, and an
+    // operand whose form left value-less paths (Splits, AssignApart) delivers them there too, through the drop tree, and they go on after
+    // the transfer as its value paths do.
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
@@ -145,6 +147,17 @@ internal sealed partial class MirBuilder
         var next = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(entry, info, next));
         this.current = next;
+        foreach (var at in this.inspections)
+        {
+            // The assumed continuation, which this transfer's check edges alone enter (the operand's value-less paths' too), begins after
+            // the abandoned comparisons' Loans end: A5's flow clears each operand's root, so the comparison still built there reads it
+            // carrying no Loan (SPEC 14.10.3, 13.4).
+            if (at >= mark && this.Lent(this.arguments[at]))
+            {
+                this.body.Push(next, MirStatement.Of(MirStatementKind.EndBorrow, this.arguments[at].Place, inner));
+            }
+        }
+
         if (rest.Block >= 0)
         {
             // The operand's value-less paths: an assumed delivery of nothing, which abandons the same calls, through the drop tree to the
@@ -186,22 +199,26 @@ internal sealed partial class MirBuilder
         return MirOperand.Move(temp);
     }
 
-    // SPEC 16.2.2, 15.6.7: on its way to its target a transfer ends the borrows of the calls it abandons, the reference temps among the
-    // operands pending since its target began (mark), in a block, which is built at the first of them where none is given (-1).
+    // SPEC 16.2.2, 15.6.7: on its way to its target (its runtime edge) a transfer ends the borrows of the calls and comparisons it
+    // abandons, the reference temps among the operands pending since its target began (mark), in a block, which is built at the first of
+    // them where none is given (-1).
     private int Abandon(int block, int mark, in SourceInfo info)
     {
         for (var i = mark; i < this.arguments.Count; i++)
         {
-            var pending = this.arguments[i].Place;
-            if (this.arguments[i].Kind == MirOperandKind.Move && this.IsTemp(pending) && MirTypes.IsReference(this.body.TypeOf(pending)))
+            if (this.Lent(this.arguments[i]))
             {
                 block = block < 0 ? this.body.AddBlock() : block;
-                this.body.Push(block, MirStatement.Of(MirStatementKind.EndBorrow, pending, info));
+                this.body.Push(block, MirStatement.Of(MirStatementKind.EndBorrow, this.arguments[i].Place, info));
             }
         }
 
         return block;
     }
+
+    // A pending operand whose Loans a transfer ends: a reference temp the invocation takes (MirValidator's EndBorrowLocal).
+    private bool Lent(in MirOperand pending)
+        => pending.Kind == MirOperandKind.Move && this.IsTemp(pending.Place) && MirTypes.IsReference(this.body.TypeOf(pending.Place));
 
     private bool IsTemp(MirPlace place) => place is { Projection: 0, Root: >= 0 } && this.body.Locals[place.Root].Kind == MirLocalKind.Temp;
 
