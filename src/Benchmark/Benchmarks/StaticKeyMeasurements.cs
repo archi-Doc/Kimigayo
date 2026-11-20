@@ -19,9 +19,10 @@ namespace Benchmark;
 // analyzed with the source modules as roots, as Compilation built and analyzed it before U2's switch. Unlike BuildMir's, the program is
 // not Sealed, so a lookup of a bodyless key in the timed Run takes MirBuilder.Demand's early return instead of the Sealed table's null:
 // equal results, a few checks per miss more than before U2-T.
-// The "init" shape (Z7, N4) times the reader's composition of first-access initializations (MirEffects.Expand): N sites, each reaching the
-// same F initializers. "--static-keys" reports each phase's allocation (three fresh instances), the managed heap a fresh instance retains
-// and a warm re-run's allocation; "--static-keys timing" reports pinned times per phase, the F programs of one shape and size interleaved.
+// The "init" shape (Z7, N4) has N sites, each reaching the same F first-access initializations. The excluded phase (Z7 Revision 4, D3)
+// repeats the queries with initialization 0 left out, as A5's second query at a conflicting location: each walks the read graph it
+// reaches. "--static-keys" reports each phase's allocation (three fresh instances), the managed heap a fresh instance retains and a warm
+// re-run's allocation; "--static-keys timing" reports pinned times per phase, the F programs of one shape and size interleaved.
 internal static class StaticKeyMeasurements
 {
     private const int Fresh = 3;
@@ -31,6 +32,7 @@ internal static class StaticKeyMeasurements
     private static readonly int[] Sizes = [256, 512, 1024, 2048];
     private static readonly int[] FieldCounts = [0, 16, 64, 256, 1024];
     private static readonly string[] Shapes = ["chain", "ring", "star", "init"];
+    private static readonly ulong[] Excluded = [1UL]; // The excluded phase's exclusion: A4's initialization 0, the first it numbered.
 
     internal static void Run(bool timing)
     {
@@ -198,7 +200,8 @@ internal static class StaticKeyMeasurements
             localBytes = MinMax(cold, static x => x.LocalBytes),
             runBytes = MinMax(cold, static x => x.RunBytes),
             queryBytes = MinMax(cold, static x => x.QueryBytes),
-            warmBytes = warm.LocalBytes + warm.RunBytes + warm.QueryBytes,
+            excludedBytes = MinMax(cold, static x => x.ExcludedBytes),
+            warmBytes = warm.LocalBytes + warm.RunBytes + warm.QueryBytes + warm.ExcludedBytes,
             retainedBytes = retained,
         };
     }
@@ -234,12 +237,13 @@ internal static class StaticKeyMeasurements
             localMilliseconds = Milliseconds(passes[k], static x => x.LocalTicks),
             runMilliseconds = Milliseconds(passes[k], static x => x.RunTicks),
             queryMilliseconds = Milliseconds(passes[k], static x => x.QueryTicks),
+            excludedMilliseconds = Milliseconds(passes[k], static x => x.ExcludedTicks),
         }).ToArray();
     }
 
     // One pass of an instance, the driver's A4 rows as MirEffectsTest.Analyze runs them: each body's views' Local, then Run, then a Keys
-    // query at every Call and Drop of every view A5 analyzes (A2's table), counting the Fields its row names and the sites with a class;
-    // the dataflow is begun with each body outside the phases.
+    // query at every Call and Drop of every view A5 analyzes (A2's table), counting the Fields its row names and the sites with a class,
+    // then the excluded phase's query at each of them; the dataflow is begun with each body outside the phases.
     private static Pass Measure(MirEffects effects, Workload w)
     {
         var (localBytes, localTicks) = (0L, 0L);
@@ -251,18 +255,36 @@ internal static class StaticKeyMeasurements
         var (runBytes, runTicks) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
         _ = effects.Run(w.Program, w.Report, Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1);
         (runBytes, runTicks) = (GC.GetAllocatedBytesForCurrentThread() - runBytes, Stopwatch.GetTimestamp() - runTicks);
-        var (queryBytes, queryTicks, sites, unknowns, keys) = (0L, 0L, 0, 0, 0);
+        var (queryBytes, queryTicks, excludedBytes, excludedTicks, sites, unknowns, keys) = (0L, 0L, 0L, 0L, 0, 0, 0);
         foreach (var body in w.Program.Bodies)
         {
             w.Flow.Begin(body);
             var (bytes, start) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
+            Queries(body, default, count: true);
+            (queryBytes, queryTicks) = (queryBytes + GC.GetAllocatedBytesForCurrentThread() - bytes, queryTicks + Stopwatch.GetTimestamp() - start);
+            (bytes, start) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
+            Queries(body, Excluded, count: false);
+            (excludedBytes, excludedTicks) = (excludedBytes + GC.GetAllocatedBytesForCurrentThread() - bytes, excludedTicks + Stopwatch.GetTimestamp() - start);
+        }
+
+        return new(localBytes, localTicks, runBytes, runTicks, queryBytes, queryTicks, excludedBytes, excludedTicks, sites, unknowns, keys);
+
+        // A Keys query at every Call and Drop of a body's views A5 analyzes, with the given initializations left out; the plain phase
+        // counts the Fields its rows name and the sites with a class.
+        void Queries(MirBody body, ulong[]? excluded, bool count)
+        {
             for (var view = 0L; view < w.Program.Drops.ViewsOf(body.Ordinal); view++)
             {
                 for (var block = 0; block < body.Blocks.Length; block++)
                 {
                     if (body.Blocks[block].Terminator.Kind is MirTerminatorKind.Call or MirTerminatorKind.Drop)
                     {
-                        var row = effects.Keys(body, view, block, default, out var classes);
+                        var row = effects.Keys(body, view, block, excluded, out var classes);
+                        if (!count)
+                        {
+                            continue;
+                        }
+
                         foreach (var word in row)
                         {
                             keys += BitOperations.PopCount((word | (word >> 1)) & 0x5555555555555555UL); // Each Field's read or write bit.
@@ -272,11 +294,7 @@ internal static class StaticKeyMeasurements
                     }
                 }
             }
-
-            (queryBytes, queryTicks) = (queryBytes + GC.GetAllocatedBytesForCurrentThread() - bytes, queryTicks + Stopwatch.GetTimestamp() - start);
         }
-
-        return new(localBytes, localTicks, runBytes, runTicks, queryBytes, queryTicks, sites, unknowns, keys);
 
         // A segment's bodies' Local, begun with each body's dataflow.
         void Local(ReadOnlySpan<MirBody> bodies)
@@ -313,8 +331,10 @@ internal static class StaticKeyMeasurements
         }
     }
 
-    // A pass's phases (allocated bytes and ticks of Local, Run and the queries) and its queries' sites, unknown sites and keys.
-    private readonly record struct Pass(long LocalBytes, long LocalTicks, long RunBytes, long RunTicks, long QueryBytes, long QueryTicks, int Sites, int Unknown, int Keys);
+    // A pass's phases (allocated bytes and ticks of Local, Run, the queries and the excluded queries) and its queries' sites, unknown sites
+    // and keys.
+    private readonly record struct Pass(
+        long LocalBytes, long LocalTicks, long RunBytes, long RunTicks, long QueryBytes, long QueryTicks, long ExcludedBytes, long ExcludedTicks, int Sites, int Unknown, int Keys);
 
     // A built program of the workload with the case views and the dataflow A4 reads, warmed by one pass; its compilation stays alive.
     private sealed record Workload(int Fields, Compilation Compilation, MirProgram Program, MirCases Cases, MirDataflow Flow, MirReport Report)
