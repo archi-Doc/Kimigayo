@@ -471,6 +471,24 @@ public sealed partial class MirBuildTest
         Assert.Equal(["kept"], templates);
     }
 
+    // PLAN G1073 (SPEC 23.1.2; F's C2 ruling 308 (4)): an accessor whose written receiver's Type failed executes with no self input, and
+    // its body's `storage` reads its self, the failed slot: the write is derived from the slot's record (an Opaque, no construction
+    // record; fail-before: InternalInvariant_Kd at `storage`, Z1's no-receiver arm). The twin with a valid self writes its self's Field.
+    [Theory]
+    [InlineData("uniq/Missing")]
+    [InlineData("uniq/Self")]
+    public void AStorageWriteThroughAFailedSelfIsDerived(string receiver)
+    {
+        var c = Compile($"struct HW\n    public var x: i32\n        set(self: {receiver}, value: i32) -> ()\n            storage = 1\n    public init(x: i32) => self.x = x\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "x.Set");
+        var writes = body.Statements.ToArray().Count(x => x.Kind == MirStatementKind.Assign && x.Place.Projection != 0 && body.Projections[x.Place.Projection].Kind == MirProjectionKind.Field);
+        Assert.Equal(receiver == "uniq/Self" ? 1 : 0, writes);
+        Assert.Equal(receiver != "uniq/Self", body.HasOpaque);
+    }
+
     // PLAN G396 (3) Z1 (DECISIONS R4-M61; consumers trust validated IR): an arm of a closed HIR vocabulary, or of a fact a published Op
     // guarantees, that no published form takes is a broken contract, InternalInvariant_Kd at the node with an Opaque value in its place,
     // which the validator accepts. Each row publishes one node so by hand after the publish (fail-before: Unsupported_Kd at the same node):
