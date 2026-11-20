@@ -38,6 +38,8 @@ tatara> exit
 | 12 | The T lane is added to AGENTS, WORKFLOW and COMPILER_ARCHITECTURE in the commit that adopts this plan. |
 | 13 | C++ is a thin layer only. Steps and verdicts stay in C# (P13). |
 | 14 | Unit A4 is judged on the `BuildChain` series run as an interleaved paired A/B (the base on the external tools against the candidate): on every row the candidate's p50 wall time is at most 1.03 times the base's, and its p95 peak committed memory is at most 64 MiB above the base's (the owner, 2026-11-20, board O-452, verbatim 「(b) と (m2)」). |
+| 15 | In stage A a `run` program inside `kimi tatara` shares the session's input: it gets no terminal input of its own (a STATUS limit and a PLAN open issue; the redirected reader reads without read-ahead) (the owner, 2026-11-20, board O-454, 「推奨どおり」 and 「質問1は (b)」). |
+| 16 | `Kimigayo.NativeExecutor`, the native executor's factory, is an approved temporary reader of Build until unit A4 (one `ArchitectureRulesTest.BuildReaders` row and one COMPILER_ARCHITECTURE sentence, both removed by A4) (the owner, 2026-11-20, board O-455, 「推奨どおり」 and 「質問2は (a)」). |
 
 Assumed without a question: agents run Opus 5.5; branches are `claude/t-*`; the usage-stop rule and the heavy-run rules apply as to
 every lane.
@@ -161,16 +163,26 @@ An input that still differs is investigated; a difference that cannot be removed
 
 ### A3 `kimi tatara`
 
-- **Command:** `TataraCommand`. It reads a line with SimplePrompt, splits it into arguments and hands it to the existing command
-  processing. Only `build`, `run` and `exit` are allowed. The executor is Tatara.
-- **Lexical rule:** split at whitespace; `"…"` keeps whitespace. An empty line does nothing. An unknown command is that line's error.
-- **Execution:** one command at a time. Nothing carries from one command to the next. Inputs are read from disk every time.
-- **Ctrl+C:** while a child runs, it goes to the child. During a build, the build stops at a step boundary (between check, generation
-  and link). A second Ctrl+C ends the process.
+- **Command:** `TataraCommand` (`kimi tatara`). A line is a command line: the member that parses and executes the text after `kimi `
+  runs it (SimpleCommandLine's split; no lexical rule of its own). Only `build`, `run` and `exit` are allowed (compared as command
+  names are, case-insensitively); an empty line does nothing; anything else, `exit` with arguments and a line with an unenclosed `|`
+  are that line's error. A line holds at most 32,767 code units (a command line's limit), on both reading paths. The executor is
+  Tatara.
+- **Reading:** at a terminal SimplePrompt (single line, no multi-line delimiter, empty input allowed); redirected, one line at a time
+  without read-ahead (a carriage return before the line end dropped; a byte order mark at the start skipped).
+- **Execution:** one command at a time, each line in a new DI scope (a new command object and `Solution`). Carries between lines: the
+  library per target, Tatara's loaded DLL per path and its refusal, `Kimigayo`, the current directory, the runtime. Inputs are read
+  from disk every time.
+- **Ctrl+C:** one owner, `Program`'s handler, through one replaceable action. At the prompt it cancels the read; during a line it
+  cancels that line (a build stops at its next check, after an LLVM or LLD call in progress; a running program is ended as `run` ends
+  it, since the program has a hidden console of its own and Kimi's Ctrl+C cannot reach it); during a line already cancelled it ends
+  the process at once with 130. Every other command's Ctrl+C is unchanged.
+- **Ends:** `exit`, end of input, the root's termination (the window closing), and Tatara's refusal after a fatal error (one sentence;
+  a new session starts clean). At a terminal SimplePrompt has no end-of-input key.
 - **Documents:** a `tatara` row in IMPL §20.3 (the Coordinator edits; independent review).
 
-**Done when:** in one process, edit → failure → fix, terminal input to the child, EOF and Ctrl+C work; products and diagnostics equal
-single-shot `kimi build`'s; interactive time (first command, later commands) is measured.
+**Done when:** in one process, edit → failure → fix, end of input and Ctrl+C work; products and diagnostics equal single-shot
+`kimi build`'s; interactive time (first command, later commands) and the session's memory are measured on `BuildChain`.
 
 ### A4 The single-shot switch
 
