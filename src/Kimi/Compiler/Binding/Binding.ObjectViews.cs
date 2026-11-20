@@ -22,7 +22,7 @@ public sealed partial class Binding
 
     // SPEC 3.4.3: a field access lends the handle's payload in the access mode already checked by Binding.
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
-        => this.FormBorrow(this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source)));
+        => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
     private bool RequireObjectErasure(Koto use, Koto operand, BoundType source, BoundType target)
     {

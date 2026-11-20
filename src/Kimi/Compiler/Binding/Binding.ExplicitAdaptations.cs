@@ -152,7 +152,7 @@ public sealed partial class Binding
         plan.Operations = operations;
         plan.IsShorthand = shorthand;
         plan.AddressBorrow = (operations & (1U << (int)ConversionBinding.Address)) == 0 ? null
-            : this.FormBorrow(this.types.Reference(SemanticsKind.Ref, source, this.SlotOrigin(conversion.Left)));
+            : this.types.Reference(SemanticsKind.Ref, source, this.SlotOrigin(conversion.Left));
         if (plan.Creates)
         {
             Complete(conversion.CreationStorage!, target);

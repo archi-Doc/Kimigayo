@@ -66,7 +66,6 @@ public sealed partial class Binding
     {
         var selected = solution.Function;
         this.RecordOpenings(call, solution);
-        this.RecordSelectedBorrows(operations);
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
         if (receiver.Source is not null)

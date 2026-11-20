@@ -189,7 +189,6 @@ public sealed partial class Binding
             case MatchKoto match:
                 var plan = BoundMatch.Of(this, match);
                 Subject(match.Expression, plan?.SubjectBorrow, ref uses);
-                this.PublishedSubject(plan?.SubjectBorrow);
                 Bindings(plan, ref uses);
                 for (var i = 0; i < match.Arms.Count; i++)
                 {
@@ -230,7 +229,6 @@ public sealed partial class Binding
             uses.Call(i);
             if (ReferenceEquals(call, unselected))
             {
-                this.PublishedCall(call); // Its Borrows were formed with the call's selection (Binding.RawOrigins.Borrows).
                 continue;
             }
 
@@ -369,10 +367,6 @@ public sealed partial class Binding
             if (child is not null)
             {
                 this.FixAdjust(child, binding.ChildAdjust(child, operation, this.Claimed(child)), default);
-                if (this.Owns(child))
-                {
-                    binding.PublishedOperation(operation);
-                }
             }
         }
 
@@ -382,10 +376,6 @@ public sealed partial class Binding
             if (child is not null)
             {
                 this.FixAdjust(child, binding.ChildAdjust(child, adaptation, kind, this.Claimed(child)), default);
-                if (this.Owns(child))
-                {
-                    binding.PublishedAdaptation(child);
-                }
             }
         }
 

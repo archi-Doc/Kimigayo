@@ -89,7 +89,7 @@ public sealed partial class Binding
             return this.Fail(conversion, this.AccessFailure(conversion.Left, out _));
         }
 
-        var borrowed = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: this.RawAnchor(conversion, conversion.Left)));
+        var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: this.RawAnchor(conversion, conversion.Left));
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Borrow;
         return Complete(conversion, borrowed);

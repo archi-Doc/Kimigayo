@@ -347,7 +347,7 @@ public sealed partial class Binding
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
         {
-            adapted = this.FormBorrow(this.types.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(handle)));
+            adapted = this.types.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(handle));
         }
         else if (!unsupported && !this.TryPayloadProjection(handle, this.types.Reference(receiver, payload), handleType, scope, out adapted))
         {
@@ -422,7 +422,7 @@ public sealed partial class Binding
         // the MIR builder types the Reborrow by the operation's AdaptedType.
         if (receiver == SemanticsKind.Uniq && receiverType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var target] })
         {
-            var reborrow = this.FormBorrow(this.types.Rebuild(receiverType, [target], this.ReferentOrigin(call.Method, receiverType), []));
+            var reborrow = this.types.Rebuild(receiverType, [target], this.ReferentOrigin(call.Method, receiverType), []);
             receiverOperation = new(null, receiverType, null, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow, AdaptedType: reborrow);
         }
 

@@ -94,7 +94,7 @@ public sealed partial class Binding
             var (parent, parentOp, outer, need, operation) = (this.parent, this.parentOp, this.position, this.need, this.unresolvedOperation);
             var position = this.PositionOf(node, parent, parentOp, outer, operation);
             var op = this.OpOf(node, position);
-            binding.PublishedNode(node, op);
+            binding.PublishedNode(node);
             var parts = this.Parts(node, op, position);
             var unresolvedOperation = node.BindingState != BindingState.Resolved && op == HirOp.Error && !Rejected(node) && Operation(binding.KindOp(node));
             var claimed = this.uses.Claimed(node); // The takes' claim, which the rows of a kept or an Error node replace.

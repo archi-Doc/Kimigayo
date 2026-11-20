@@ -5,23 +5,27 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The Origin-atom borrows (SPEC 5.7 Origins: "the outer Origin of a borrow value (an input's or, in a body, a local's) [belongs] to that
-// borrow"; 15.6.5: a finite Origin local to a body, a Borrow's; contract of Binding.RawOrigins.cs; DECISIONS draft of PLAN G148 (1), Z6).
-// - Responsibility: for each Projection or Anchor atom, the Borrows Binding forms with it as their outer Origin (each such operand of a
-//   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in formation
-//   order; and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
-// - Inputs: the Types FormBorrow receives at BU-27's naming sites outside candidate trials and collected fits (FitConjunct's rule), a
-//   selected call's operations and position operations after selection (RecordSelectedBorrows, beside RecordOpenings), and the claims the
-//   HIR publisher publishes (MarkClaims).
+// borrow"; 15.6.5: a finite Origin local to a body, a Borrow's; contract of Binding.RawOrigins.cs; originpub design Revision 3, G147
+// ruling 18; DECISIONS draft of PLAN G148 (1), Z6).
+// - Responsibility: for each Projection or Anchor atom, the Borrows Binding commits with it as their outer Origin (each such operand of a
+//   meet), each as RawMember(-1, referent, exclusive) by BorrowReferent of its Type, equal referents joining their modes, in commit order;
+//   and for any atom a published claim's Type states, its Claimed mark (5.7 Fits and claims).
+// - Inputs: the borrow facts Binding commits for a node, read by the one enumeration NodeBorrows (its written Borrow, Slice view or object
+//   view, its recorded adaptation, its receiver operation, its calls' operations, its payload operations, its Subject and by-reference
+//   bindings, its capture entries), when Binding finishes binding the node (BindNode) and when it records an adaptation at it, outside
+//   candidate trials and collected fits (FitConjunct's rule); and the claims the HIR publisher publishes (MarkClaim).
 // - Outputs: Borrows(atom, members, out claimed), read by the borrows' readers through OriginMembers, and RetentionState, the key field of
 //   TyCtxt's retention memo: the region and borrow versions while the pass's bodies bind, Complete once they are bound.
-// - Invariants: an atom's forming Borrow is recorded before any Type stating the atom can be read (a Borrow's Type is formed before any
-//   node, adaptation or Type carries it; a typed path, a Field read or a substitution states the atom only from a Type that carries it);
-//   the rows only grow within a pass, each new entry or changed mode moving borrowVersion (a mark does not: no versioned reader reads
-//   marks); a library body's rows are the layer's part, written only by the library pass; at the publication the rows equal the
-//   published borrow positions (CheckBorrows): misses always, extras and modes exactly in a body without a Binding failure, a difference
-//   the internal-invariant form.
-// - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry;
-//   RegionVersion is not moved; no reader but OriginMembers, the validator and tests.
+// - Invariants: an atom's forming Borrow is committed, so formed, before any Type stating the atom can be read (a typed path, a Field
+//   read or a substitution states the atom only from a Type that carries it); the rows only grow within a pass, each new entry or changed
+//   mode moving borrowVersion (a mark does not: no versioned reader reads marks); a library body's rows are the layer's part, written only
+//   by the library pass, an identical re-record by another pass writing nothing; at the publication the census (CheckBorrows) reads the
+//   same enumeration over every published node: misses always, extras and modes exactly where the publication met no failed node, a
+//   difference the internal-invariant form.
+// - Rule (SPEC 5.4): an address `P@raw` is no Borrow ("checks like an immediately ending @ref ... and leaves no Loan"): NodeBorrows reads
+//   no borrow fact of it.
+// - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
+//   second list of borrow facts; RegionVersion is not moved; no reader but OriginMembers, the validator and tests.
 public sealed partial class Binding
 {
     // RetentionState's value once the pass's bodies are bound: outside every sum of the two versions within a run.
@@ -77,32 +81,99 @@ public sealed partial class Binding
     private static string Describe(BoundOrigin atom) => $"{atom.Kind} {atom.Slot} at {atom.Binder?.CodeContext.SourceDocument?.Path}:{atom.Binder?.Span}";
 
     // Whether HIR publishes a call input's operation as a Borrow (HirAdjust.Of's borrow adaptations, or a same-mode Reborrow, which it
-    // publishes as an acquisition): the one test of both sides, formation (RecordSelectedBorrows) and publication (CheckBorrows).
+    // publishes as an acquisition): NodeBorrows' one test of an operation.
     private static bool PublishesBorrow(in BoundArgumentOperation operation)
         => operation.Kind == ArgumentOperationKind.Reborrow || HirAdjust.Of(operation) is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow or
             HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection or HirAdaptation.ReferenceRead;
 
-    // A naming site's Borrow Type, recorded under the atoms its outer Origin names unless a candidate trial or a collected fit forms it
-    // (their Borrows are the selected candidate's, RecordSelectedBorrows).
-    private BoundType FormBorrow(BoundType formed)
+    // Revision 3's formation: a node's committed borrow facts into the running part, outside candidate trials and collected fits (their
+    // facts are the selected candidate's, read when its node is bound), at the two commits: BindNode's end and an adaptation's record.
+    private void FormNodeBorrows(Koto node)
     {
         if (this.candidateTrials == 0 && !this.collectingFits)
         {
-            this.RecordBorrow(this.borrows, formed);
+            this.NodeBorrows(node, this.borrows);
         }
-
-        return formed;
     }
 
-    // SPEC 10.1, 15.6.1: the selected candidate's Borrows, formed in its trial: each operation's adapted Type, and each position's.
-    private void RecordSelectedBorrows(ReadOnlySpan<BoundArgumentOperation> operations)
+    // The one enumeration of the borrow facts Binding commits for `node` (the facts HIR publishes, BU-27's HIR contract), into `rows`:
+    // formation (FormNodeBorrows) and the census (PublishedNode) read it alike. An address is none (SPEC 5.4).
+    private void NodeBorrows(Koto node, Dictionary<BoundOrigin, BorrowList> rows)
     {
-        foreach (var operation in operations)
+        // A written Borrow (`@ref`, `@uniq`, `@objref`, `@objuniq`, a raw Place's) and a Slice view (a slicing index): the node's own Type.
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } || (node is IndexKoto && ElementAccess.IsSlicing(this, node)))
         {
-            if (PublishesBorrow(operation) && operation.AdaptedType is { } adapted)
+            this.RecordBorrow(rows, node.BoundType);
+        }
+
+        // SPEC 13.6.1: an object upcast to a view of an operand of another Semantics borrows the operand's payload in the view's mode,
+        // under the view's Origin (MirBuilder.Operators.Convert's Borrow; Hir.Adjust's ViewBorrow).
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true, Origin: { } origin } view } upcast &&
+            upcast.Left.BoundType is { Components: [var payload, ..] } operand && operand.Semantics != view.Semantics)
+        {
+            this.RecordEntry(rows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
+        }
+
+        // The adaptation recorded at the node (any but a referent read) and its receiver operation.
+        if (this.adaptations.TryGetValue(node, out var recorded) && recorded.Kind != ExpectedAdaptationKind.ReferentRead)
+        {
+            this.RecordBorrow(rows, recorded.Type);
+        }
+
+        if (this.receiverOperations.TryGetValue(node, out var receiver))
+        {
+            this.OperationBorrow(rows, receiver);
+        }
+
+        // Each call of the node, a user index's two included (the publication's SelectionMode takes one), and an enum construction's
+        // payload operations.
+        for (var i = 0; CallPlan.Of(this, node, i) is { } call; i++)
+        {
+            this.OperationBorrow(rows, call.ReceiverOperation);
+            foreach (ref readonly var argument in call.ArgumentOperations)
             {
-                _ = this.FormBorrow(adapted);
+                this.OperationBorrow(rows, argument);
             }
+        }
+
+        if (this.TryGetEnumConstruction(node, out var construction))
+        {
+            foreach (ref readonly var operation in construction!.PayloadOperations)
+            {
+                this.OperationBorrow(rows, operation);
+            }
+        }
+
+        // A match's Subject borrow, and a match's or for's by-reference bindings.
+        var plan = node switch { MatchKoto match => BoundMatch.Of(this, match), ForKoto loop => BoundMatch.Of(this, loop), _ => null };
+        this.RecordBorrow(rows, plan?.SubjectBorrow);
+        for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
+        {
+            if (plan.Positions[i] is { Kind: BoundPatternKind.Binding, Acquisition: PatternAcquisition.Borrow, BodySymbol.Type: { } bound })
+            {
+                this.RecordBorrow(rows, bound);
+            }
+        }
+
+        // A Closure's capture entries that borrow or Reborrow (their Adjust).
+        if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
+        {
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
+                {
+                    this.RecordBorrow(rows, capture.Environment.Type);
+                }
+            }
+        }
+    }
+
+    // A call input's, receiver's or payload's operation that HIR publishes as a Borrow (PublishesBorrow): its adapted Type.
+    private void OperationBorrow(Dictionary<BoundOrigin, BorrowList> rows, in BoundArgumentOperation operation)
+    {
+        if (PublishesBorrow(operation))
+        {
+            this.RecordBorrow(rows, operation.AdaptedType);
         }
     }
 
@@ -169,72 +240,14 @@ public sealed partial class Binding
         return row;
     }
 
-    // The publication side's positions at a node (CheckBorrows): a Borrow node's Type, a Slice view's (a slicing index has no Borrow node),
-    // a Closure's capture borrows (its entries' Types where their Adjust borrows or Reborrows); and a claim's mark.
-    private void PublishedNode(Koto node, HirOp op)
+    // The census at one published node (CheckBorrows): the one enumeration into the publication side, the node's claim mark, and whether
+    // Binding failed the node (no extras check then: a failed node's facts may stay unpublished).
+    private void PublishedNode(Koto node)
     {
         this.publishedFailure |= node.BindingState is BindingState.Unresolved or BindingState.Invalid;
-        if (op == HirOp.Borrow || (node is IndexKoto && ElementAccess.IsSlicing(this, node)))
-        {
-            this.PublishedBorrow(node.BoundType); // An address's Type is a pointer: no Borrow (SPEC 5.4: it leaves no Loan).
-        }
-
-        // SPEC 13.6.1 (DECISIONS BU-27's HIR contract): an object upcast to a view of an operand of another Semantics borrows the operand's
-        // payload in the view's mode, under the view's Origin (the Borrow MirBuilder.Operators.Convert forms; Hir.Adjust's ViewBorrow).
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true, Origin: { } origin } view } upcast &&
-            upcast.Left.BoundType is { Components: [var payload, ..] } operand && operand.Semantics != view.Semantics)
-        {
-            this.RecordEntry(this.publishedBorrows, origin, payload, view.Semantics == SemanticsKind.ObjUniq);
-        }
-
-        if (node is FunctionKoto { IsAnonymous: true, ClosureAsCreated: { } closure })
-        {
-            for (var i = 0; i < closure.Captures.Count; i++)
-            {
-                if (closure.Captures[i] is var capture && capture.Adjust is { Acquire: HirAcquire.Reborrow } or { Adaptation: HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow })
-                {
-                    this.PublishedBorrow(capture.Environment.Type);
-                }
-            }
-        }
-
+        this.NodeBorrows(node, this.publishedBorrows);
         this.MarkClaim(node);
     }
-
-    // A call input's operation that HIR publishes as a Borrow (PublishesBorrow): its adapted Type.
-    private void PublishedOperation(in BoundArgumentOperation operation)
-    {
-        if (PublishesBorrow(operation))
-        {
-            this.PublishedBorrow(operation.AdaptedType);
-        }
-    }
-
-    // A child's recorded adaptation that borrows (any but a referent read): its Type.
-    private void PublishedAdaptation(Koto child)
-    {
-        if (this.adaptations.TryGetValue(child, out var recorded) && recorded.Kind != ExpectedAdaptationKind.ReferentRead)
-        {
-            this.PublishedBorrow(recorded.Type);
-        }
-    }
-
-    // A call Binding selected that the publication does not take (a user index's other indexer call, SelectionMode): its operations, as
-    // the formation side records every selected call's (RecordSelectedBorrows).
-    private void PublishedCall(CallPlan call)
-    {
-        this.PublishedOperation(call.ReceiverOperation);
-        foreach (ref readonly var argument in call.ArgumentOperations)
-        {
-            this.PublishedOperation(argument);
-        }
-    }
-
-    // A match's Subject borrow.
-    private void PublishedSubject(BoundType? borrow) => this.PublishedBorrow(borrow);
-
-    // The publication side: one published borrow position's Type (CheckBorrows).
-    private void PublishedBorrow(BoundType? type) => this.RecordBorrow(this.publishedBorrows, type);
 
     // A published claim: its Origin's atoms, as its Type states them (each operand of a meet), marked Claimed in the running part.
     private void MarkClaim(Koto node)
@@ -266,8 +279,8 @@ public sealed partial class Binding
         }
     }
 
-    // I4 at the publication's end: every published borrow position is in the rows with at least its mode (a miss), and, where the pass
-    // published no Binding failure, every row's entry is published with exactly its mode (an extra).
+    // The census at the publication's end: every published node's borrow fact is in the rows with at least its mode (a miss), and, where
+    // the publication met no failed node, every row's entry is a published node's with exactly its mode (an extra).
     private void CheckBorrows()
     {
         foreach (var (atom, published) in this.publishedBorrows)

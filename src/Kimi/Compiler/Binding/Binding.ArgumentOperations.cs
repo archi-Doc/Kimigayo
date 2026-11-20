@@ -114,7 +114,7 @@ public sealed partial class Binding
             {
                 var walk = default(ContainmentWalk);
                 this.MeetLayers(actual, layers, ref walk); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
-                return this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: this.WalkOrigin(walk)));
+                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: this.WalkOrigin(walk));
             }
         }
 
@@ -346,7 +346,7 @@ public sealed partial class Binding
         if (!projected && pattern.Semantics == SemanticsKind.Ref && this.ReadsReferent(source) &&
             ScalarReferent(actual) is { } snapshot && this.FitsTypeAt(snapshot, pattern.Components[0], source, out _))
         {
-            adapted = this.FormBorrow(this.PreparedBorrowType(source, pattern));
+            adapted = this.PreparedBorrowType(source, pattern);
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
             return true;
@@ -367,7 +367,7 @@ public sealed partial class Binding
             (projected || ReferenceEquals(view, declaringType)) &&
             ((objects & SemanticsMask.Object) == 0 || this.LendsHandle(source, scope, false, out _)))
         {
-            adapted = this.FormBorrow(this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source)));
+            adapted = this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = projected ? ArgumentOperationKind.BaseBorrow : ArgumentOperationKind.PayloadProjection;
             return true;
@@ -395,7 +395,7 @@ public sealed partial class Binding
             referent = actual;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
-            adapted = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, target, [referent], origin: this.SlotOrigin(source)));
+            adapted = this.types.Intern(BoundTypeKind.Semantics, null, target, [referent], origin: this.SlotOrigin(source));
             return true;
         }
 
@@ -412,7 +412,7 @@ public sealed partial class Binding
                 // SPEC 10.2, 15.6.3: several reference layers yield one shared reference to the parameter's referent, contained in the
                 // layers and, unless one is shared, in those that reach the source.
                 adapted = this.ReferentOrigin(source, actual, layers) is { } origin
-                    ? this.FormBorrow(this.types.Reference(SemanticsKind.Ref, pattern.Components[0], origin)) : shared;
+                    ? this.types.Reference(SemanticsKind.Ref, pattern.Components[0], origin) : shared;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = layers > 1 ? ArgumentOperationKind.ReferenceRead : ArgumentOperationKind.Reborrow;
                 return true;
@@ -490,7 +490,7 @@ public sealed partial class Binding
         }
 
         var dependency = !projected && kind == ArgumentOperationKind.Reborrow ? this.PathReborrowOrigin(source, actual.Origin) : this.PlaceOrigin(source);
-        adapted = this.FormBorrow(this.types.Reference(target, referent, dependency));
+        adapted = this.types.Reference(target, referent, dependency);
         return true;
     }
 
@@ -508,7 +508,7 @@ public sealed partial class Binding
             }
 
             // Inspect the protected handle slot, retaining its Loan; acquiring the owner is unnecessary.
-            adapted = this.FormBorrow(this.types.Reference(pattern.Semantics, actual.Components[0].Components[0], this.PlaceOrigin(source)));
+            adapted = this.types.Reference(pattern.Semantics, actual.Components[0].Components[0], this.PlaceOrigin(source));
             kind = ArgumentOperationKind.Borrow;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             return true;
@@ -556,7 +556,7 @@ public sealed partial class Binding
 
         // SPEC 15.6.3: a Reborrow of an object view is contained in the view and the layers reaching it; a handle lends its object from its Place.
         var origin = actual.IsObjectBorrow ? this.ReferentOrigin(source, actual)! : this.PlaceOrigin(source);
-        adapted = this.FormBorrow(this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: origin));
+        adapted = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: origin);
         return true;
     }
 
@@ -567,7 +567,11 @@ public sealed partial class Binding
     {
         internal BoundAdaptation this[Koto node]
         {
-            set => HirTables.Of(node).Families.Adaptations.Ref(node.SyntaxId, binding) = value;
+            set
+            {
+                HirTables.Of(node).Families.Adaptations.Ref(node.SyntaxId, binding) = value;
+                binding.FormNodeBorrows(node); // An adaptation is a borrow fact of its node (Binding.RawOrigins.Borrows).
+            }
         }
 
         internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
