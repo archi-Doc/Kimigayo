@@ -125,7 +125,8 @@ public sealed partial class Binding
     // - Readers (closed; ArchitectureRulesTest "Readers of a class's form"): the one intake of each judgment SPEC states over identical
     //   Types. J1, a proposition's identity (8.3.1): NormalizeProofConstraint (subject, required Type, Contract reference) and the
     //   Contract judge's entry ProveConformance (subject after MemberOf, Contract reference). J3, the Type relation at a use: the relation
-    //   walk's root with a use (RelationWalk.Fits) and CallableContractType. J4, a slot's bindings agree (10.8 Solving): Infer's
+    //   walk's root with a use (RelationWalk.Fits), CallableContractType, and a failed fit's record (RecordMismatch: its structure
+    //   gate and Origin search read the pair the walk compared, F's C2 ruling 307 (2)). J4, a slot's bindings agree (10.8 Solving): Infer's
     //   bound-slot branch, in SlotFrame.View. (ii), a use's binding input: BindAndAdaptNode (the expected and the bound Type, BU-72),
     //   BindVariableCore, BindConversion and BindWrapConversion. The inline walk (VisitInlineProjection, SPEC 6.2) reads a by-value
     //   projection's form in the walking node's scope, a judgment of that scope's storage (F's C2 ruling 304). J2, the identity
