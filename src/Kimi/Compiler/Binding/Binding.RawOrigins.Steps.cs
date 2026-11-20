@@ -67,7 +67,7 @@ public sealed partial class Binding
     // does not bound the call's write (M's v2).
     internal HoldStep RawStepAt(BoundType layer, BoundType? written, BoundType? holder, BoundType? signature)
     {
-        if (ReferenceTypes.IsPointer(written))
+        if (written is { IsPointer: true })
         {
             return this.DeclaredStep(layer, written, holder);
         }
@@ -77,7 +77,7 @@ public sealed partial class Binding
             return StepOf(OwnedOrigin(layer));
         }
 
-        return ReferenceTypes.IsPointer(signature) && this.retentionDeclared.Count > 0
+        return signature is { IsPointer: true } && this.retentionDeclared.Count > 0
             ? this.SignatureStep(SlotArgument(OwnedOrigin(signature!)), CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1])
             : this.BinderStep(OwnedOrigin(layer));
     }
@@ -110,7 +110,7 @@ public sealed partial class Binding
     // the borrows of the scope that wrote the Type (an input's, a body local's), not to the instance's, and a call may store through it.
     internal bool StoredMembers(BoundType layer, BoundType? written, BoundType holder, List<RawMember> members)
         => layer.RawOrigin is not { } origin || StepOf(origin) != HoldStep.Exclusive ||
-            (ReferenceTypes.IsPointer(written) && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in holder), members));
+            (written is { IsPointer: true } && this.RawMembers(origin, new ReadOnlySpan<BoundType>(in holder), members));
 
     // A raw Origin as its signature writes it (DECISIONS BU-113): `x.s` denotes the slot argument of x's declared Type (the declaration's
     // own slot for `self.s`, the projection itself for an input whose Type omits it); any other Origin is itself.
@@ -141,7 +141,7 @@ public sealed partial class Binding
     // BU-35's `written` (DECISIONS BU-58): a Type a declaration writes while it is a Tuple, a fixed array or a raw layer, the one form
     // WrittenAt and the hold walk (Held) read; null for any other.
     private static BoundType? Written(BoundType? written)
-        => ReferenceTypes.IsPointer(written) || written?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray ? written : null;
+        => written is { IsPointer: true } || written?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray ? written : null;
 
     // Whether an Origin is `origin` or a meet with it as an operand.
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
@@ -244,8 +244,8 @@ public sealed partial class Binding
             stored = InlinePart(stored, positions[i]);
         }
 
-        declared = ReferenceTypes.IsPointer(written) ? written : null;
-        return ReferenceTypes.IsPointer(stored) && (declared is not null || this.DeclaredStep(stored!, null, instance) != HoldStep.Own) ? stored!
+        declared = written is { IsPointer: true } ? written : null;
+        return stored is { IsPointer: true } && (declared is not null || this.DeclaredStep(stored!, null, instance) != HoldStep.Own) ? stored!
             : throw new InvalidOperationException($"No raw layer, or an unstated `self` one, is stored at part {part} of `{instance}` (InternalInvariant).");
     }
 }

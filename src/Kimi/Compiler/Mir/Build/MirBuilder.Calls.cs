@@ -22,14 +22,6 @@ internal sealed partial class MirBuilder
         return null;
     }
 
-    // SPEC 7.3: the parameters a function's signature declares, an accessor's self and value included (TyCtxt.Signature's count; a slot
-    // past them asks for no Type).
-    private int Arity(BindingSymbol function)
-    {
-        _ = compilation.Types.Signature(function, null, int.MaxValue, out var count);
-        return count;
-    }
-
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.7.1); a constructor's builds its
     // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1); a direct line's is Line's (SPEC 22.7).
     private void Call(MirPlace destination, Koto node)
@@ -66,12 +58,11 @@ internal sealed partial class MirBuilder
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
-        var count = function is null ? call.Signature.Components[0].Components.Count : this.Arity(function);
+        var count = call.Arity();
         var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
-        if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
-            (receiver is not null && function!.ReceiverIndex < 0))
+        if (!call.Covers())
         {
-            this.Unsupported(node, destination); // A plan whose operations do not cover the parameters (an expansion supplies them).
+            this.Invariant(node, destination); // CallPlan.Covers: HasFacts states it for a plain call, an expansion's plan holds it.
             return;
         }
 

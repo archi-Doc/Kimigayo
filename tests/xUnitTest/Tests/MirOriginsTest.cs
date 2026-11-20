@@ -472,7 +472,19 @@ public sealed partial class MirOriginsTest
         var (origins, body, _) = Judged(Source, "f");
         var z = body.Locals.ToArray().Single(static x => x.Name == "z");
         var (b, c, site) = (z.Type.Origin!, z.Type.Components[0].Origin!, body.Subject(z.Source));
-        Assert.Equal((true, false), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
+        Assert.Equal((MirRelation.Holds, MirRelation.Fails), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
+    }
+
+    // The Z2 DECISIONS draft (M3c (i)): Judge classifies every view it is given and the Loan stratum queries only those, so a query of a
+    // view Judge did not classify is a broken contract and throws, as one of another body does (before Z2: an undecided pair, the call's
+    // located Unsupported_Kd).
+    [Fact]
+    public void AnOutlivesQueryOfAnUnclassifiedViewIsABrokenContract()
+    {
+        var (origins, body, _) = Judged("func f(x: ref/i32 during a, y: ref/i32 during b) -> i32 => 0\n", "f");
+        var (x, y) = (body.Locals.ToArray().Single(static l => l.Name == "x"), body.Locals.ToArray().Single(static l => l.Name == "y"));
+        var thrown = Assert.Throws<InvalidOperationException>(() => origins.Outlives(body, MirCases.Count(body), x.Type.Origin!, y.Type.Origin!, body.Subject(x.Source)));
+        Assert.Contains("(InternalInvariant)", thrown.Message, StringComparison.Ordinal);
     }
 
     // PLAN G824 (SPEC 15.6.1, 15.6.5; MirOrigins.Fixed's contract): an Inferred Origin is Fixed under a run's views where its class's

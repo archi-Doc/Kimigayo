@@ -26,8 +26,7 @@ public sealed partial class Binding
     // The slot F of a position `F`, `ref/F` or `uniq/F` of the owner; null for any other position.
     private static BoundType? CallableSlotType(BoundType pattern, Koto owner)
     {
-        var slot = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var target] }
-            ? target : pattern;
+        var slot = pattern.SafeReferent ?? pattern;
         return slot.Kind == BoundTypeKind.Parameter && ContainerSlot(owner, slot.Symbol!) >= 0 ? slot : null;
     }
 

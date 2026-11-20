@@ -25,7 +25,7 @@ public class ConditionalMemberBindingTest
         {
             Assert.False(c.Bind().IsComplete);
             Assert.Equal(BindingFailure.CaseLimit, function.FailureOf());
-            Assert.DoesNotContain(function, c.Binding.DerivedIssues);
+            Assert.DoesNotContain(c.Binding.DerivedIssues, x => ReferenceEquals(x.Node, function));
             Assert.Equal(!rejected, call.CallOf() is not null);
             Assert.Equal(
                 rejected ? ["UnresolvedBinding_Kd", "OwnershipCaseLimit_Kd"] : ["OwnershipCaseLimit_Kd"],
