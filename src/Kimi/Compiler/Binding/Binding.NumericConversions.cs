@@ -142,7 +142,7 @@ public sealed partial class Binding
     // or generic, without a check. A direct integer literal is wrapped at compile time from its exact value; it never fails.
     private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
     {
-        var target = this.BindType(argument, scope) is { } bound ? this.SubstituteIdentityPremises(bound, scope) : null; // SPEC 8.2.3, as @Type's.
+        var target = this.BindType(argument, scope) is { } bound ? this.ClassForm(bound, scope, out _) : null; // SPEC 8.2.3, as @Type's.
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
         var number = KotoHelper.SignedNumber(operand, out var negative);
         if (operation != Constants.WrapOperation)

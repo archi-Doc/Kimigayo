@@ -68,13 +68,14 @@ public sealed partial class Binding
         return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
     }
 
-    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent); a candidate's trial and re-trials write only its own.
-    private SlotFrame[] RentFrames(int count, int capacity)
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent) and judged in the use's `view`; a candidate's trial
+    // and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity, BindingScope view)
     {
         var frames = this.frameScratch.Rent(count);
         for (var i = 0; i < count; i++)
         {
-            frames[i] = this.infer.Rent(Math.Max(1, capacity));
+            frames[i] = this.infer.Rent(Math.Max(1, capacity), view);
         }
 
         return frames;
