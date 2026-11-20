@@ -215,8 +215,8 @@ public sealed partial class Binding
             // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
             // The Unknown's comparison failure joins the proof as its U fact (design-r2 Amendment 4).
             var failure = default(ComparisonFailure);
-            if (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, proposition.RequiredType!, scope.Owner, out failure)
-                : this.CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject), scope.Owner, out failure))
+            if (subject.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure ? this.DefinitionContractFits(subject, proposition.RequiredType!, scope.Owner, null, out failure)
+                : this.CallableSignatureFits(signature, proposition.RequiredType!, scope.Owner, out failure))
             {
                 return ConstraintProof.Proven;
             }
@@ -517,6 +517,13 @@ public sealed partial class Binding
             requirement = this.CanonicalAssociatedOrigins(requirement, clause, this.AssociatedParameters(associated.Declaration));
         }
 
+        if (requirement is { Kind: ConstraintKind.Error, Subject: null } && subject is not null && !unresolvedSubject && !failedSubject)
+        {
+            // R7-C3 (F's C2 rulings 272-273): an unbound requirement keeps its bound subject, so the clause's failed fact is a premise of
+            // that subject, which every judgment of it consults (the rows, RowKinds).
+            requirement = this.InternConstraint(new(ConstraintKind.Error, subject));
+        }
+
         if (unresolvedSubject && requirement.Kind != ConstraintKind.Error)
         {
             // Validate the available requirement syntax without inventing a subject identity.
@@ -596,43 +603,26 @@ public sealed partial class Binding
     // as the environment's failed node. The witness scope (ContractMatching), an inherited path's scope (InheritedConformances) and a Contract's premises
     // (ContractSolver) can add one too, a failed clause's Error passed through or a null substitution, and name no node, so such an
     // environment stays valid (PLAN G651's open item).
-    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+    private bool AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null, IsKoto? origin = null)
     {
         if (fact.HasUnresolved)
         {
             return false;
         }
 
-        environment.Add(fact, source);
+        environment.Add(fact, source, origin);
         if (fact.Kind == ConstraintKind.And)
         {
-            return this.AddConstraintFact(environment, fact.Left!, source) | this.AddConstraintFact(environment, fact.Right!, source);
+            return this.AddConstraintFact(environment, fact.Left!, source, origin) | this.AddConstraintFact(environment, fact.Right!, source, origin);
         }
 
         return fact.Kind == ConstraintKind.Error;
     }
 
-    // R7-C3 gate 2 (SPEC 8.7.1, 23.1.2; F's C2 rulings 255, 264): an intrinsic capability of a closed Type is decided by the Type alone
-    // (TryLeafCapability), so its proof reads no premise and never rests on a failed one: `i32 is Copy` under a failed `T.(K<U>).E is
-    // i32` is the remainder's own (sc.conf+W's W), while `i32 is Mark` reads the identity class a failed `T is i32` forms (d09z).
-    private bool ReadsNoPremise(BoundConstraint proposition)
-        => proposition is { Kind: ConstraintKind.Contract, Subject: { HasAbstractPart: false } subject, Contract.Intrinsic: not IntrinsicKind.None and var kind } &&
-            this.TryLeafCapability(subject, kind, out _);
-
     private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
         var normalized = this.NormalizeProofConstraint(proposition, scope, out _);
-        if (!this.ReadsNoPremise(normalized) && (this.FailedPremiseRead(proposition.Subject, scope) ?? this.FailedPremiseRead(normalized.Subject, scope)) is { } failed)
-        {
-            return this.RestOnFailure(failed); // R7-C3 (B1'): the proof reads a failed premise and rests on its declaration's record
-        }
-
         var evidence = this.Supply(normalized, this.ViewOf(scope));
-        if (evidence.Invalid is { } invalid)
-        {
-            return this.InvalidEnvironment(invalid);
-        }
-
         var positive = evidence.Positive;
         var negative = evidence.Negative;
 
@@ -662,7 +652,8 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+        var verdict = structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+        return this.SpokenVerdict(normalized, scope, verdict); // R7-C3 (F's C2 ruling 278): the Failed premises that speak to it
     }
 
     // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required

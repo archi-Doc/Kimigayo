@@ -501,7 +501,7 @@ public sealed partial class Binding
             return symbolic;
         }
 
-        if (!ScalarTypes.TryLiteral(BoundType.ISize, value, false, out _))
+        if (!TryLiteral(BoundType.ISize, value, false, out _))
         {
             this.Fail(syntax, BindingFailure.InvalidTypeFormation);
             return null;
@@ -590,7 +590,7 @@ public sealed partial class Binding
         else if (KotoHelper.SignedNumber(syntax, out var negative) is { } literal)
         {
             if (!literal.IsInteger || !literal.TryGetIntegerMagnitude(out var magnitude) ||
-                !ScalarTypes.TryLiteral(type, magnitude, negative, out _))
+                !TryLiteral(type, magnitude, negative, out _))
             {
                 return false;
             }

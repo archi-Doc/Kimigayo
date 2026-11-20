@@ -53,7 +53,7 @@ public sealed partial class Binding
         var symbol = this.Lookup(node.IdentifierName, scope, node);
         if (symbol is null)
         {
-            return this.Fail(node, BindingFailure.MissingName, true);
+            return this.FailUnselected(node, BindingFailure.MissingName);
         }
 
         return this.BindReference(node, symbol, scope);

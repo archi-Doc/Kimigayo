@@ -286,6 +286,20 @@ public class QualificationRequiredTest
     public void AValuePathStoppedAtAnImportStageLeavesTheTypePath(string source, string settings)
         => Assert.Empty(DiagnosticCorpus.Check(source, "Library", settings).Diagnostics);
 
+    // SPEC 9.5, 9.6, 9.7, 6.5.2 (R7-E2 E2-0, the Front's B1 on Q-545): a stop fails only its own path. When the Type path selects the
+    // enum and its Case, the sole success, a later failure of the construction is the construction's own record, at the construction.
+    // Before E2-0 the recorder applied the discarded Value path's stop to it: QualificationRequired_Kd at `Opt` with a `self.` repair after
+    // which `self.Opt.None` (the i32 field has no member `None`) still fails.
+    [Theory]
+    [InlineData("enum Opt<T>\n    Some(T)\n    None\nstruct Holder\n    var Opt: i32 = 0\n    func make(self) -> i32\n        let x = Opt.None\n        return 0")] // INVALID: 9.5 stops the Value path at the field `Opt`, so it fails; the Type path selects `Opt<T>` (9.7) and `None` (9.6); no expected Type or payload leaves T unbound (6.5.2 step 2).
+    [InlineData("enum Opt<T>\n    Some(T)\n    None\nstruct Holder\n    var Other: i32 = 0\n    func make(self) -> i32\n        let x = Opt.None\n        return 0")] // INVALID, the twin with no stop: the same unbound T at `Opt.None`.
+    public void AStoppedValuePathLeavesTheTypePathItsConstructionsRecord(string declarations)
+    {
+        var source = declarations + "\npublic func main() => ()";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("UnresolvedBinding_Kd", "Opt.None"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+    }
+
     // SPEC 9.5, 8.6.4 (PLAN G656): an opened Type-function requirement needs no receiver and is no Case, so 9.5 does not stop it; its
     // call is rejected after selection, by the requirement call's record (G656's unit).
     [Fact]

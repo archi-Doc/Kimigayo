@@ -1020,17 +1020,6 @@ public sealed partial class Binding
             negative |= cases == ConstraintProof.Refuted;
         }
 
-        // R7-C3 (merge of dev 8a1d8cff6): the premise loop keeps only a failed environment's Error. Its other evidence went with both
-        // sides: the identity premise's (`T is U`: the work's Type is its class's Member, RequestCapability's MemberOf) and dev's
-        // Semantics facts (a pair layer's admitted cases, above).
-        for (var scope = work.Scope; scope is not null; scope = scope.Parent)
-        {
-            if (scope.Constraints is { Invalid: true } environment)
-            {
-                return this.InvalidEnvironment(environment);
-            }
-        }
-
         return positive && negative ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
 }

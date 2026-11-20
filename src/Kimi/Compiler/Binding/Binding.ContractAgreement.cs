@@ -54,7 +54,7 @@ public sealed partial class Binding
 
         for (var scope = original; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } environment)
+            if (scope.Constraints is not { } environment)
             {
                 continue;
             }
@@ -94,7 +94,7 @@ public sealed partial class Binding
 
         for (var current = original; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } inputs)
+            if (current.Constraints is not { } inputs)
             {
                 continue;
             }
@@ -117,7 +117,7 @@ public sealed partial class Binding
         var environment = target.Constraints ??= new();
         for (var scope = source; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } other)
+            if (scope.Constraints is not { } other)
             {
                 continue;
             }
@@ -130,14 +130,14 @@ public sealed partial class Binding
             for (var i = 0; i < other.DerivedFacts.Count; i++)
             {
                 var derived = other.DerivedFacts[i];
-                this.AddConstraintFact(environment, derived.Fact, derived.Source);
+                this.AddConstraintFact(environment, derived.Fact, derived.Source, derived.Origin);
             }
         }
     }
 
     private void ValidateAssociatedOverlapAgreement(BindingScope scope)
     {
-        if (scope.Constraints is not { Invalid: false } environment)
+        if (scope.Constraints is not { } environment)
         {
             return;
         }

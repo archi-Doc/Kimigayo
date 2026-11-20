@@ -169,7 +169,7 @@ public sealed partial class Binding
         var from = this.chainNodes[longer];
         var to = this.chainNodes[shorter];
         var records = this.callRelationScratch.Count;
-        this.JudgeCallPosition(obligation.Use, from, to, equality: false, null, null, wellFormed: obligation.WellFormed, condition: condition);
+        this.JudgeDeclarationPosition(obligation.Use, from, to, equality: false, obligation.WellFormed, condition);
         return this.callRelationScratch.Count != records;
     }
 

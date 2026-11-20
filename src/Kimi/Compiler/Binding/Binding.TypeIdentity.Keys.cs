@@ -98,7 +98,18 @@ public sealed partial class Binding
             return type;
         }
 
-        return this.ClassesOf(scope, out completion)?.Member(type) is { } member && !this.OperandContexts(member).Unresolved ? member : type;
+        if (this.ClassesOf(scope, out completion) is not { } classes)
+        {
+            return type;
+        }
+
+        if (classes.Member(type) is { } member && !this.OperandContexts(member).Unresolved)
+        {
+            return member;
+        }
+
+        this.ReadIdentityPremiseError(scope, type); // R7-C3 (F's C2 ruling 276 (4)): a Type of an erroneous class is a failed input
+        return type;
     }
 
     // ClassForm (R7-C2c2 c2-4b; design R4.12, R4.12b, R4.12c with F's ruling 211; SPEC 8.2.3: "all Type checking in the scope treats
@@ -154,7 +165,13 @@ public sealed partial class Binding
             return type;
         }
 
-        return this.ClassesOf(scope, out completion) is { } classes ? this.ClassForm(type, classes) : type;
+        if (this.ClassesOf(scope, out completion) is not { } classes)
+        {
+            return type;
+        }
+
+        this.ReadIdentityPremiseError(scope, type); // R7-C3 (F's C2 ruling 276 (4)): a Type of an erroneous class is a failed input
+        return this.ClassForm(type, classes);
     }
 
     // J3's intake at a use (RelationWalk.Fits' root): the judge decides its domain (R7-C3, C-b: SPEC 8.2.3's abstract Types,

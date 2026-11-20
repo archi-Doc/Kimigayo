@@ -287,7 +287,8 @@ internal sealed partial class MirValidator
             }
 
             var blocks = (uint)body.Blocks.Length;
-            var valid = (terminator.Kind != MirTerminatorKind.SwitchInt || InRange(terminator.Start, terminator.Count, body.Cases.Length)) &&
+            var valid = (terminator.Kind is not (MirTerminatorKind.SwitchInt or MirTerminatorKind.CaseSwitch) ||
+                    InRange(terminator.Start, terminator.Count, body.Cases.Length)) &&
                 (terminator.Kind != MirTerminatorKind.Call || terminator.Target >= -1) && (terminator.CheckTarget == -1 ||
                     (uint)terminator.CheckTarget < blocks);
             for (var i = 0; valid && i < MirUses.Successors(terminator); i++)
@@ -321,6 +322,10 @@ internal sealed partial class MirValidator
             {
                 this.Agree(this.Result(body.Key), body.Locals[0].Type);
             }
+            else if (terminator.Kind == MirTerminatorKind.CaseSwitch)
+            {
+                valid &= this.Decider(terminator); // No view walks a branch without its decider.
+            }
 
             if (terminator.Kind == MirTerminatorKind.Call && !this.Call(terminator))
             {
@@ -336,6 +341,46 @@ internal sealed partial class MirValidator
             MirUses.ForEach(body, location, ref this);
             this.calling = false;
             return valid;
+        }
+
+        // SPEC 8.14, 4.7.1 step 3 (R7 plan Z23): a CaseSwitch's decider is one whose decision MirCases.Branch defines: a TypeToken
+        // constant (else Operation) whose pair layers, at every depth, name binders of the body, or a case-free Type, a default's copy
+        // (else Binder); its one entry of the case table is its exclusive side.
+        private readonly bool Decider(in MirTerminator branch)
+        {
+            if (branch is not { Count: 1, Operand.Kind: MirOperandKind.Const } || (uint)branch.Operand.Arg >= (uint)body.Consts.Length ||
+                body.Consts[branch.Operand.Arg].Kind != MirConstKind.TypeToken)
+            {
+                this.Report(MirViolation.Operation);
+                return false;
+            }
+
+            if (!Binds(body, body.Consts[branch.Operand.Arg].Type))
+            {
+                this.Report(MirViolation.Binder);
+                return false;
+            }
+
+            return true;
+
+            // Whether every pair layer of a Type, its parts' included, names a binder of the body (a case-free Type has none).
+            static bool Binds(MirBody body, BoundType type)
+            {
+                if (TyCtxt.PairBinder(type) is not null && MirCases.Binder(body, type) < 0)
+                {
+                    return false;
+                }
+
+                for (var i = 0; i < type.Components.Count; i++)
+                {
+                    if (!Binds(body, type.Components[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
     }
 }

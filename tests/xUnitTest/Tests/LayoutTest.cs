@@ -178,7 +178,7 @@ public partial class LayoutTest
         var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "func f<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = f(())\nlet s = f(1)");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x is { Target.Name: "f" }).ToArray();
         var declared = Variable(c, "x");
-        var instances = calls.Select(x => c.Types.Apply(declared, c.Types.SubstOf(x!)!)!).ToArray();
+        var instances = calls.Select(x => c.Types.Apply(declared, c.Types.SubstOf(x!)!).Type!).ToArray();
         Assert.Equal([BoundType.Unit, BoundType.I32], instances.Select(static x => x.Components[0].Components[0]));
         Assert.Same(instances[0].Components[0], c.Layout.Of(instances[0]).Instance);
         Assert.Equal(("{ i32, { [0 x i32], [8 x i8] } }", 12), (c.Layout.Of(instances[1]).Value!.Layout.StorageType, c.Layout.Of(instances[1]).Value!.Layout.Size));

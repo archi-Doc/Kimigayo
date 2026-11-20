@@ -493,7 +493,7 @@ public sealed partial class Binding
     {
         for (var scope = view.Premises; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } environment)
+            if (scope.Constraints is not { } environment)
             {
                 continue;
             }
@@ -583,7 +583,7 @@ public sealed partial class Binding
             var start = this.enumerateNormalized.Count;
             for (var scope = view.Premises; scope is not null; scope = scope.Parent)
             {
-                if (scope.Constraints is not { Invalid: false } environment)
+                if (scope.Constraints is not { } environment)
                 {
                     continue;
                 }

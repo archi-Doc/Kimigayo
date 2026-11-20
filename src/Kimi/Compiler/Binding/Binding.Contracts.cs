@@ -419,7 +419,7 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        if ((this.FailedPremiseRead(type, scope) ?? this.UnprovenInputRead(type, contract, scope)) is { } failed)
+        if (this.UnprovenInputRead(type, contract, scope) is { } failed)
         {
             return this.RestOnFailure(failed); // R7-C3 (B1'): as ProveProposition's intake; the direct callers read the failed premises too
         }
@@ -444,8 +444,10 @@ public sealed partial class Binding
         // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
         premise = premise || this.PremiseRefines(type, contract, scope);
 
-        // Definition evidence is still resolved so that its errors are never hidden by an assumption (PremiseJoin, by polarity).
-        return PremiseJoin(premise, this.ResolveConformance(type, contract, scope, out _));
+        // Definition evidence is still resolved so that its errors are never hidden by an assumption (PremiseJoin, by polarity). The
+        // closed world hides no Failed premise that speaks to the proposition (R7-C3, F's C2 ruling 278: the one rule at this exit too).
+        var verdict = PremiseJoin(premise, this.ResolveConformance(type, contract, scope, out _));
+        return this.SpokenConformance(type, contract, scope, verdict);
     }
 
     private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true, BindingSymbol? reference = null)

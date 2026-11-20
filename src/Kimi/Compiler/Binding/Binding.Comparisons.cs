@@ -46,8 +46,8 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4.3, 13.5.5: the referent below one safe value-reference layer (ref, uniq, or a pair layer whose admitted set in `scope` lies
-    // in value or valueborrow), or null for any other Type. A layer admitting no case ends the walk (stopped: it has no node to rest; its
-    // operand's consumer would; PLAN G750).
+    // in value or valueborrow), or null for any other Type: also the referent an update locates its receiver at (BindPropertyUpdate). A
+    // layer admitting no case ends the walk (stopped: it has no node to rest; its operand's consumer would; PLAN G750).
     private BoundType? LayerBelow(BoundType type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent
             : this.FollowablePair(type, scope, out var target) is { } admitted && admitted != SemanticsMask.None ? target : null;
@@ -82,7 +82,8 @@ public sealed partial class Binding
 
         // SPEC 13.4, 3.8: the terminal Types are equal under the Type relation, which relates Never only to itself, or one operand is Never:
         // the right one's own Type here, as applicability fitted a Never left one to the right; a Never terminal below a layer is ordinary.
-        if (!ReferenceEquals(operand, BoundType.Never) && !this.IsSubtype(right, left, out var failure))
+        if (!ReferenceEquals(operand, BoundType.Never) &&
+            !this.IsSubtype(this.RegionValuesAt(right, binary.Right), this.RegionValuesAt(left, binary.Left), out var failure))
         {
             if (this.CommonOriginType(left, right, out _) is not { } common)
             {

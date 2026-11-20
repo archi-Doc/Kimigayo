@@ -322,7 +322,6 @@ public sealed partial class Binding
 
             // SPEC 15.6.4 step 3: the call's walk over the instantiated inputs, each payload by its rows (JudgePositionRows) where it has
             // child rows, else by its contribution (RequireInputPremises; R4, DECISIONS BU-104).
-            this.callRelationScratch.Clear();
             var done = 0;
             for (; done < count && operations[done].Source is { } source; done++)
             {
@@ -336,8 +335,6 @@ public sealed partial class Binding
                     this.RequireInputPremises(source, payload[done].BoundType!, operations[done].ParameterType!, adapted[done], rows[done].Contribution);
                 }
             }
-
-            this.PublishCallRelations();
 
             // A construction that holds its own record (a payload's Type mismatch or acquisition) has no second one: R7-E1's one record
             // per node, whose removal removes this gate (PLAN G418).
@@ -417,7 +414,7 @@ public sealed partial class Binding
 
             // Before any evidence the frame holds exactly the fixed bindings, an open slot unbound: a payload is settled when they complete it.
             if (this.SubstituteType(payload[i].BoundType!, solution.SlotOwner, solution.Types, solution.Lengths) is { } fixedType &&
-                !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.AsSpan(0, solution.OriginCount)))
+                !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.Slice(0, solution.OriginCount)))
             {
                 settled.Add(i);
                 _ = this.RecordsWaitingForm(solution.Call.ArgumentNodes[i]); // Recorded as a named call's argument is (P1), unbound.

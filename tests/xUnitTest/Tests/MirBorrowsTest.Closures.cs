@@ -19,7 +19,13 @@ public sealed partial class MirBorrowsTest
     // Semantics layer) keep the argument's Loan in the environment, as a direct call storing a captured value through a captured exclusive
     // referent keeps that value's Loan in the referent (directStoreBad, directStoreTypedBad: PLAN G269's class B), where the dev MIR
     // accepted them all; a store past a captured exclusive reference also stores the receiver's own content (rule G's self-store, OQ-F7-3
-    // (a)), so the read of `holder` or `slot` after the call errs.
+    // (a)), so the read of `holder` or `slot` after the call errs. That read, `holder@follow` or `slot@follow`, carries what it reaches,
+    // the capture's exclusive Loan on holder or slot itself included (SPEC 15.6: a read through a reference carries the Loans of what it
+    // reaches), with what that local carries (slot's shared Loan on long), and the result it is returned in holds them whatever its Type
+    // (15.6 Holders; the value-flow rule H), so it also outlives their storage (`var holder`, `var slot`, `let long`: records added on
+    // rejected programs under DECISIONS Q13 rule W). blockBad's captured `let start` is written `during r`: unwritten, its slot is its
+    // own region (PLAN G492-a (ii)), fixed in the Closure body, whose store is then Unknown before any Loan is followed
+    // (InputDependentValueCallTest.AFixedInputIsNoPerCallInput).
     // A Closure captured into another Closure is read as its body sees it too (nestedVarStoreBad: the `var` local's own Type names the
     // Origins its initializer infers, so its store into `last` was lost on the dev MIR and at 5c5d47ff2; BU's review B1).
     // A `let` binding (letOk, updateOk), a read before the write (exchangeOk), a referent no later use reads (directStoreOk,
@@ -30,11 +36,14 @@ public sealed partial class MirBorrowsTest
     public void AClosureCallStoresIntoItsReceiver()
         => Assert.Equal(
             ["exchangeBad: z@follow = 42", "blockBad: let y: i32 = 5", "holderBad: z@follow = 42", "holderBad: holder@follow",
-                "holderMovedBad: z@follow = 42", "holderMovedBad: holder@follow", "slotBad: z@follow = 42", "slotMovedBad: z@follow = 42",
+                "holderBad: var holder: ref/i32 during x = x", "holderMovedBad: z@follow = 42", "holderMovedBad: holder@follow",
+                "holderMovedBad: var holder: ref/i32 during x = x", "slotBad: z@follow = 42", "slotMovedBad: z@follow = 42",
                 "varBad: z@follow = 42", "updateBad: z@follow = 43", "refStoreBad: z@follow = 42", "refStoreBad: holder@follow",
-                "refExchangeBad: z@follow = 42", "refTwiceBad: z@follow = 42", "refTwiceBad: holder@follow",
-                "directStoreBad: let short = 2", "directStoreBad: slot@follow", "directStoreTypedBad: let short = 2",
-                "directStoreTypedBad: slot@follow", "nestedVarStoreBad: z@follow = 42"],
+                "refStoreBad: var holder: ref/i32 during x = x", "refExchangeBad: z@follow = 42", "refTwiceBad: z@follow = 42",
+                "refTwiceBad: holder@follow", "refTwiceBad: var holder: ref/i32 during x = x",
+                "directStoreBad: let short = 2", "directStoreBad: slot@follow", "directStoreBad: var slot = long@ref",
+                "directStoreBad: let long = 1", "directStoreTypedBad: let short = 2", "directStoreTypedBad: slot@follow",
+                "directStoreTypedBad: var slot = long@ref", "directStoreTypedBad: let long = 1", "nestedVarStoreBad: z@follow = 42"],
             Problems("""
                 func exchangeBad(z: uniq/i32, x: ref/i32) -> i32
                     origin z outlives x
@@ -62,7 +71,7 @@ public sealed partial class MirBorrowsTest
                 func blockBad() -> i32
                     let x: i32 = 4
                     let r = x@ref
-                    let start = r
+                    let start: ref/i32 during r = r
                     var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r
                         let old = start
                         start = n
@@ -707,25 +716,37 @@ public sealed partial class MirBorrowsTest
 
     // Rule G's self-store reaches a Closure receiver as a method's `self` (OQ-F7-3 (a); DECISIONS R4-M148): a call through a receiver whose
     // content is exclusively borrowed storage stores that content, the capture's own Loan, past it, so a read of the captured binding after
-    // the call errs (holderReadBad, by SPEC 15.6.4's per-argument letter; PLAN G148 (2)'s GXS would recover it), also where the stored part
+    // the call errs (holderReadBad, by SPEC 15.6.4's per-argument letter; PLAN G148 (2)'s GXS would recover it; the read, returned, also
+    // outlives holder's storage: the value-flow rule H, a record added under DECISIONS Q13 rule W), also where the stored part
     // is abstract and so may be an exclusive reference (R4-M147's Q1 (a)): in every case view (selfPair, selfPairChild), as for the method
     // analog (methodAbstract, unchanged), and beside the argument's true store into the environment (pairStoreBad, pairCellBad: `v@follow
     // = x` in the uniq view) and the argument's store into the environment given one kind for every holder W reaches, E past the written
     // capture included (pairStoreRead, pairCellRead: PLAN G276, WK), with the receiver's Content rows. A concrete referent with no
     // Loan-capable part stores nothing (selfScalarOk, selfAbstractOk read `slot` itself). The pair rows' `v@follow = x` conflicts in the
-    // uniq view (2) go since a `var` pair local's slot is a region (PLAN G758): those independent records are lost (G758's design R1.7,
-    // the owner's O-174 (a)), while A5's limit record at the Closure's store, PLAN G572's (DECISIONS BU-127), is reported in that view, as
-    // for the concrete twin; it is not listed here.
+    // uniq view (2), lost when a `var` pair local's slot became a region (PLAN G758, the owner's O-174 (a)), are back: a Closure's
+    // retention reads an enclosing local region as its solved value (PLAN G492-a (ii), N6), so the Exclusive call keeps child, a Reborrow
+    // of v's referent, in f's own local holder (SPEC 15.8.2). In the *Bad rows and t3letrefBad (a `let` holder of `slot@uniq`) the holder
+    // is used after `v@follow = x`, an independent failure (23.1.2); so in t6, whose Closure writes past the local holder into the caller's
+    // storage, which the body does not own (15.6), though its holder's last use precedes it. In the *Read twins (the corpus's
+    // A3-closure-ok) and t3letref the record rests on rule G's letter, as the holder's records above do: the storage past the holder keeps
+    // the capture's Loan (SPEC 15.6.4's per-argument letter), which reaches what the holder keeps (15.6), so child's Loan stays live; PLAN
+    // G148 (2) (GXS) with E's record past a holder (its G492-a (ii) amendment) removes them together. Each of these rows is invalid in the
+    // uniq view by its own record at the Closure's store, the call's input `y` stored into the captured reference's referent, whose Type
+    // names an atom the enclosing body formed (`UnprovenOriginRelation_Kd`; SPEC 15.6.5, 15.3.4, DECISIONS BU-28); it is not listed here.
     [Fact]
     public void RuleGsSelfStoreReachesAClosureReceiver()
         => Assert.Equal(
-            ["holderReadBad: holder@follow 1", "methodAbstract: slot 1", "methodAbstract: var slot = other 1",
-                "pairCellBad: cell.item@follow 3", "pairCellBad: var cell = Cell2c3.init(item: other@move) 3",
-                "pairCellRead: cell.item@follow 3", "pairCellRead: var cell = Cell2c3.init(item: other@move) 3",
-                "pairStoreBad: slot@follow 3", "pairStoreBad: var slot = other@move 3",
-                "pairStoreRead: slot@follow 3", "pairStoreRead: var slot = other@move 3",
+            ["holderReadBad: holder@follow 1", "holderReadBad: var holder: ref/i32 during x = x 1", "methodAbstract: slot 1",
+                "methodAbstract: var slot = other 1",
+                "pairCellBad: cell.item@follow 3", "pairCellBad: v@follow = x 2", "pairCellBad: var cell = Cell2c3.init(item: other@move) 3",
+                "pairCellRead: cell.item@follow 3", "pairCellRead: v@follow = x 2", "pairCellRead: var cell = Cell2c3.init(item: other@move) 3",
+                "pairStoreBad: slot@follow 3", "pairStoreBad: v@follow = x 2", "pairStoreBad: var slot = other@move 3",
+                "pairStoreRead: slot@follow 3", "pairStoreRead: v@follow = x 2", "pairStoreRead: var slot = other@move 3",
                 "selfPair: slot@follow 3", "selfPair: var slot = other@move 3",
-                "selfPairChild: slot@follow 3", "selfPairChild: var slot = other@move 3"],
+                "selfPairChild: slot@follow 3", "selfPairChild: var slot = other@move 3",
+                "t3letref: slot@follow 3", "t3letref: v@follow = x 2", "t3letref: var slot = other@move 3",
+                "t3letrefBad: slot@follow 3", "t3letrefBad: v@follow = x 2", "t3letrefBad: var slot = other@move 3",
+                "t6: slot@follow 3", "t6: v@follow = x 2", "t6: var slot = other 3"],
             ViewProblems("""
                 struct Cell2c3<T>
                     public var item: T
@@ -824,6 +845,41 @@ public sealed partial class MirBorrowsTest
                     var h = Keep2c3.init(slot@uniq)
                     h.set()
                     _ = slot
+                func t3letref<s/T>(value: s/T, other: s/T, x: T) -> ()
+                    s is owner or uniq
+                    T is Copy
+                    var v = value@move
+                    var slot = other@move
+                    let sref = slot@uniq
+                    var set = func [sref] (y: s/T) -> ()
+                        sref@follow = y@move
+                    let child = v
+                    set(child@move)
+                    _ = slot@follow
+                    v@follow = x
+                func t3letrefBad<s/T>(value: s/T, other: s/T, x: T) -> ()
+                    s is owner or uniq
+                    T is Copy
+                    var v = value@move
+                    var slot = other@move
+                    let sref = slot@uniq
+                    var set = func [sref] (y: s/T) -> ()
+                        sref@follow = y@move
+                    let child = v
+                    set(child@move)
+                    v@follow = x
+                    _ = slot@follow
+                func t6<s/T>(value: s/T, other: uniq/(s/T), x: T) -> ()
+                    s is owner or uniq
+                    T is Copy
+                    var v = value@move
+                    var slot = other
+                    var set = func [slot@uniq] (y: s/T) -> ()
+                        slot@follow@follow = y@move
+                    let child = v
+                    set(child@move)
+                    _ = slot@follow
+                    v@follow = x
                 """).Select(static x => x.Replace(" ComparisonLoanConflict_Kd views", string.Empty, StringComparison.Ordinal)).ToArray());
 
     // SPEC 15.6.4, 8.1.2 (PLAN G147 (8i); A5 step 2 plan 2c-4, unit 0c; DECISIONS BU-49): a by-value owner-or-uniq pair carrier has no
@@ -1088,8 +1144,9 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        // stores' two Language problems and held's uniq view's; held's owner view and limited record located Unsupported_Kd.
-        Assert.Equal(3, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0));
+        // stores' three Language problems (its returned read outlives holder: rule H, DECISIONS Q13 rule W) and held's uniq view's; held's
+        // owner view and limited record located Unsupported_Kd.
+        Assert.Equal(4, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0));
     }
 
     // A program's Loan problems and located Unsupported_Kd in its own bodies, each with its function, subject, code and views (bit i for view

@@ -60,19 +60,9 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact, out _))
+                if (SemanticsPremise(fact, whole) && (this.AvailableConstraintFact(environment, fact, out _) || environment.IsFailed(fact)))
                 {
                     admitted &= SemanticsSet(fact);
-                }
-            }
-
-            // R7-C3 gate 2 (SPEC 8.3.4; F's C2 ruling 253): the premises give the set, a failed one included: contradictory Semantics
-            // premises leave the evidence (FailPremise) and still empty the set, which is their Error.
-            for (var i = 0; i < (environment.FailedPremises?.Count ?? 0); i++)
-            {
-                if (SemanticsPremise(environment.FailedPremises![i], whole))
-                {
-                    admitted &= SemanticsSet(environment.FailedPremises[i]);
                 }
             }
         }
@@ -250,36 +240,63 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
+            if (!this.ValidateArithmeticDirections(scope, environment))
             {
                 changed = true; // ValidateArithmeticDirections failed the owner and the pair's facts (R7-C3 gate 2); the rest is judged.
             }
 
             changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
-            foreach (var fact in environment.Facts)
+            if (this.JudgeFacts(scope, environment, environment, mode, ref changed))
             {
-                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
-                this.failedCause = null;
-                var frame = this.BeginConsultation(scope.Owner);
-                var proof = this.ProveConstraint(fact, scope);
-                if (proof != ConstraintProof.Error)
-                {
-                    this.DropConsultation(frame);
-                    continue;
-                }
+                continue;
+            }
 
-                var previous = scope.Owner.BindingState;
-                changed = true;
-                this.FailPremise(environment, fact, scope.Owner); // R7-C3 (B1'): the premise fails itself; the environment stays valid
-                // Other input facts can have independent contradictions. Record a
-                // sole missing-name cause only when this is the entire environment.
-                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                changed |= previous != scope.Owner.BindingState;
-                break;
+            // SPEC 8.2.3 (F's C2 ruling 282, the owner's O-296 (a)): a premise error is reported where the premises causing it first
+            // meet. A scope's own premises meet its enclosing scopes' there, so their premises are judged in this view too: a
+            // conditional conformance's conditions against its Type's premises (l2). The enclosing premise stays valid in its own scope.
+            for (var enclosing = scope.Parent; enclosing is not null; enclosing = enclosing.Parent)
+            {
+                if (enclosing.Constraints is { } inherited && this.JudgeFacts(scope, environment, inherited, mode, ref changed))
+                {
+                    break;
+                }
             }
         }
 
         return changed;
+    }
+
+    // The judgment of `facts`' premises in `scope`'s view, in its owner's frame; the first Error is the owner's record, and a premise of
+    // the scope's own environment fails with it (FailPremise). Whether one failed.
+    private bool JudgeFacts(BindingScope scope, ConstraintEnvironment environment, ConstraintEnvironment facts, BindingMode mode, ref bool changed)
+    {
+        foreach (var fact in facts.Facts)
+        {
+            if (facts.IsFailed(fact) || this.DerivedFailure(facts, fact) is not null)
+            {
+                continue; // The premise's own judgment ran once; its state is Failed (here, or at its origin: ruling 282).
+            }
+
+            // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+            this.failedCause = null;
+            var frame = this.BeginConsultation(scope.Owner);
+            var proof = this.ProveConstraint(fact, scope);
+            if (proof != ConstraintProof.Error)
+            {
+                this.DropConsultation(frame);
+                continue;
+            }
+
+            var previous = scope.Owner.BindingState;
+            changed |= this.FailPremise(environment, fact, scope.Owner); // R7-C3: the premise's own judgment writes its state Failed
+            // Other input facts can have independent contradictions. Record a
+            // sole missing-name cause only when this is the entire environment.
+            this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, facts.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+            changed |= previous != scope.Owner.BindingState;
+            return true;
+        }
+
+        return false;
     }
 
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
@@ -513,9 +530,11 @@ public sealed partial class Binding
                     // Invalid type formation in a clause must not remain available as evidence.
                     for (var parent = node.Parent; parent is not null; parent = parent.Parent)
                     {
-                        if (parent is IsKoto { BoundConstraint: not null })
+                        if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
                         {
-                            this.FailEnvironment(scope.Constraints ??= new(), node);
+                            // R7-C3: the clause's own judgment fails its premise; a conformance binding's clause is no premise (not in Facts:
+                            // FailPremise does nothing), its failure being its path's state (design-c31b §3 (c)).
+                            this.FailPremise(environment, fact, scope.Owner);
                             break;
                         }
 
@@ -552,8 +571,7 @@ public sealed partial class Binding
     private void FailTypeRole(BindingObligation obligation)
     {
         var causes = this.TypeRoleCauses(obligation);
-        if ((causes & TypeRoleCause.Role) != 0 && (this.InvalidDeclarationContextCause(obligation.Use) ??
-            (obligation.Type is { } type ? this.FailedPremiseRead(type, this.ConstraintScope(obligation.Use))?.Use : null)) is { } failed)
+        if ((causes & TypeRoleCause.Role) != 0 && this.InvalidDeclarationContextCause(obligation.Use) is { } failed)
         {
             causes &= ~TypeRoleCause.Role;
             if (causes == TypeRoleCause.None)
@@ -859,7 +877,7 @@ public sealed partial class Binding
 
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }

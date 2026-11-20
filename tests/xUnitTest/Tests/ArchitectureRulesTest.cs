@@ -169,7 +169,6 @@ public class ArchitectureRulesTest
     // The root helpers, each by its file (SourceFiles recurses), and the other areas outside Binding.
     [InlineData("ElementAccess reads of Koto semantic slots", "src/Kimi/Compiler", "ElementAccess.cs", SemanticSlotReads, 0)]
     [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
-    [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
     [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
     [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Documentation", "*.cs", SemanticSlotReads, 0)]
     [InlineData("Core reads of Koto semantic slots", "src/Kimi/Compiler/Core", "*.cs", SemanticSlotReads, 0)]
@@ -187,7 +186,7 @@ public class ArchitectureRulesTest
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
     // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
     // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
-    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 76)]
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 67)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -255,8 +254,8 @@ public class ArchitectureRulesTest
     [InlineData("A walk's own count", "src/Kimi/Compiler", @"\b(?:[dD]epth|layers|count|steps|level|fields)\s*(?:<=|>=|==|<|>)\s*(?:[2-9]|\d\d+)\b", "Binding/Binding.Attributes.cs=1;Binding/Binding.Diagnostics.cs=1;Binding/Binding.FunctionTypes.cs=1;Binding/Binding.OriginDiagnostics.cs=1;Binding/Binding.PlaceAuthority.Raw.cs=1;Binding/Binding.PlaceAuthority.cs=2;Binding/Binding.PlaceOrigins.cs=1;Binding/Binding.SlotSet.cs=1;Binding/Binding.TypeRelations.Walk.cs=1;Binding/Binding.TypeRelations.cs=1;ElementAccess.cs=6;Parsing/Koto/Common/TemporaryKotoList.cs=2")]
     // DECISIONS R7-C2e1: a view's state is counted where it is written, so a ConstraintEnvironment's fact sets are written only by its own
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
-    [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=9")] // R7-C3 B1': FailPremise moves a failed premise out of the three sets
-    [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=4;BindingModel.cs=1")] // R7-C3 B1': FailPremise counts a change
+    [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")] // R7-C3 (F's C2 rulings 272-273): a failed premise stays in the sets (its state)
+    [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")] // R7-C3: FailPremise's change replaces Fail(Koto)'s (rulings 272-273)
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W8 and an outermost walk, the
     // ContractSolver header) give Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
     // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
@@ -278,15 +277,19 @@ public class ArchitectureRulesTest
     // ClassForm, read by the one intake of each judgment over identical Types: J1 a proposition's identity (Constraints.cs:
     // NormalizeProofConstraint's subject, required Type and Contract reference; Contracts.cs: ProveConformance's subject and Contract
     // reference), J3 the Type relation at a use (TypeRelations.Walk.cs: the walk root's two sides; CallableSelection.cs:
-    // CallableContractType), J4 a slot's bindings agree (CallSlots.cs: Infer's bound-slot branch, both sides), and (ii) a use's binding
+    // CallableContractType), J4 a slot's bindings agree (CallSlots.cs: the evidence at Infer's head and the kept binding in its
+    // bound-slot branch; J4's parameter side, a pattern's Type parameter that is no slot of the solve, a nested callee's enclosing
+    // parameter: R7-C3, F's C2 rulings 276 (1), 278), and (ii) a use's binding
     // input (Expressions.cs: the expected and the bound Type; Variables.cs, Conversions.cs, NumericConversions.cs), and (iii) a member
     // step's receiver (R7-N1 c-b: MemberLookup.cs, QualifierSelection's receiver Type; ResolvePath.cs, EvaluateProjection's normal
     // form); Keys.cs is ClassForm's own recursion. J2 reads the classes, no form. A further reader fails here until its row is reviewed.
-    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=2;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.MemberLookup.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
+    [InlineData("Readers of a class's form", "src/Kimi/Compiler", @"\bClassForm\(", "Binding/Binding.CallSlots.cs=3;Binding/Binding.CallableContracts.cs=4;Binding/Binding.CallableSelection.cs=1;Binding/Binding.Constraints.cs=3;Binding/Binding.Contracts.cs=2;Binding/Binding.Conversions.cs=1;Binding/Binding.Expressions.cs=2;Binding/Binding.MemberLookup.cs=1;Binding/Binding.NumericConversions.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.ResolvePath.cs=1;Binding/Binding.Structs.cs=1;Binding/Binding.TypeIdentity.Keys.cs=7;Binding/Binding.TypeRelations.Walk.cs=2;Binding/Binding.Variables.cs=1")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
-    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
-    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers. PLAN G492-a
+    // (ii): three of `Binding.LocalOrigins.cs`'s are InferLocalOrigins' `let` branch, which reads the replacements, publishes each
+    // region's value and replaces the replacement with the region before it sets the declaration's state: formation, as the rule names.
+    [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=30;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
     // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
     // number is reached, its holder and a member returning it included:
@@ -539,9 +542,9 @@ public class ArchitectureRulesTest
         string[] allowed =
         [
             "Add", "AddRow", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact",
-            "AvailableContractPremise", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
-            "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
-            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "Meet",
+            "AvailableContractPremise", "ChecksOwnSite", "ClassKey", "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint",
+            "DerivedFailure", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads", "HoldsOpenLink",
+            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "IsFailed", "KeyOf", "Max", "Meet",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return",
             "RowContract", "RowKind", "RowWeight", "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
             "WalkAvailable",

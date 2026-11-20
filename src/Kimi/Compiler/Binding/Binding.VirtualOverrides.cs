@@ -122,7 +122,7 @@ public sealed partial class Binding
 
         void Collect(BindingScope source)
         {
-            if (source.Constraints is not { Invalid: false } environment)
+            if (source.Constraints is not { } environment)
             {
                 return;
             }
@@ -485,7 +485,7 @@ public sealed partial class Binding
             var proof = this.ProveConstraint(bound, premises);
             if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
-                this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
+                this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact)); // R7-C3 (F's C2 ruling 278): no premise of the body
                 continue;
             }
 

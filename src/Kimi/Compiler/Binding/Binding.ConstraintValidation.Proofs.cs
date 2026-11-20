@@ -357,11 +357,7 @@ public sealed partial class Binding
         return proof;
     }
 
-    // The answer of a proof that read an Invalid environment (the one proof read of it): Error resting on the environment, whose Use is
-    // the node that made it Invalid; inside a combined proof it joins the proof in progress (ReadVerdict), else the channel.
-    private ConstraintProof InvalidEnvironment(ConstraintEnvironment environment) => this.RestOnFailure(environment);
-
-    // The one channel of an Error resting on a failed node's record: an Invalid environment's, or a failed premise's (R7-C3 B1').
+    // The one channel of an Error resting on a failed node's record (a failed premise's, a named input's: R7-C3).
     private ConstraintProof RestOnFailure(ICheckCause cause)
     {
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
@@ -380,7 +376,7 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { FailedPremise: { } failure, UnprovenInputs: { Count: > 0 } inputs } || ReferenceEquals(current.Owner, this.consultationNode))
+            if (current.Constraints is not { FailedPremise: { } failure, UnprovenInputs: { Count: > 0 } inputs } || this.ChecksOwnSite(current.Owner))
             {
                 continue;
             }
@@ -395,96 +391,6 @@ public sealed partial class Binding
         }
 
         return null;
-    }
-
-    // Whether the running check is the declaration's own: its frame, or a use in one of its premise clauses.
-    private bool OwnCheck(Koto declaration)
-        => this.consultationNode is { } node && (ReferenceEquals(node, declaration) || this.PremiseClause(node, declaration) is not null);
-
-    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the failed premise a judgment of `subject` reads, when the subject is a side of a failed premise of
-    // the view (FailPremise), or identical with one in the view; every other judgment is in the valid remainder. Both judge intakes ask
-    // it (ProveProposition: the subject as written and in its form; ProveConformance, whose direct callers bypass ProveProposition).
-    // R7-C3 gate 2 (SPEC 8.2.3): a recorded identity premise error is the identity case of a failed premise: a subject with a part in a
-    // final erroneous class of the view reads it (the producer channel's question, IdentityPremiseErrorRead's); the declaration's own
-    // checks (its frame and its premise clauses' uses, OwnCheck) are the error's sites, never its readers (SPEC 8.2.3: once, at the
-    // declaration; F's C2 ruling 245 (i)).
-    private PremiseFailure? FailedPremiseRead(BoundType? subject, BindingScope scope)
-    {
-        for (var current = scope; current is not null && subject is not null; current = current.Parent)
-        {
-            if (this.identityRecorded.Count != 0 && !this.OwnCheck(current.Owner) && this.identityRecorded.TryGetValue(current, out var own) &&
-                own && current.Constraints is { } identities && this.ClassesOf(current, out _) is { } classes && classes.Holds(subject))
-            {
-                return identities.PremiseError(current.Owner);
-            }
-
-            if (current.Constraints is not { FailedPremise: { } failure, FailedPremises: { } premises })
-            {
-                continue;
-            }
-
-            foreach (var premise in premises)
-            {
-                if (Reads(premise))
-                {
-                    return failure;
-                }
-            }
-        }
-
-        return null;
-
-        // A projection's binding is its subject's conformance's (8.2.3 Projections), so judging `V.(D).W` reads what judging `V` reads:
-        // the subject and each projection subject under it.
-        bool Reads(BoundConstraint premise)
-        {
-            if (premise.Kind is ConstraintKind.Not or ConstraintKind.And or ConstraintKind.Or)
-            {
-                return (premise.Left is { } left && Reads(left)) || (premise.Right is { } right && Reads(right));
-            }
-
-            // R7-C3 gate 2 (SPEC 8.3.4, 8.15.2): a failed Semantics premise empties its pair's set, which every judgment of a Type with
-            // that layer as a part reads (ea9-posq: `(s/A) -> i32 is (obj/Leaf) -> i32` compares s/A).
-            if (premise.Kind == ConstraintKind.Semantics)
-            {
-                return premise.Subject is { } layer && HasPart(subject, layer);
-            }
-
-            for (var read = subject; read is not null; read = read is { Kind: BoundTypeKind.AssociatedProjection, Components: [var under, ..] } ? under : null)
-            {
-                if (Side(read, premise.Subject) || Side(read, premise.RequiredType))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        static bool HasPart(BoundType type, BoundType part)
-        {
-            if (ReferenceEquals(type, part))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (HasPart(type.Components[i], part))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        // A side is read as the judge identifies it in the view (8.2.3: a fact about a Type is evidence for an identical one): one Type,
-        // identical by the view's classes, or one form (a side only the failed premise held in the table, `T.(Holder).Item` under
-        // `T is PH`, still completes to P).
-        bool Side(BoundType read, BoundType? side)
-            => side is not null && (ReferenceEquals(read, side) || this.IdentityProven(read, side, scope) ||
-                ReferenceEquals(this.CallableContractType(read, scope), this.CallableContractType(side, scope)));
     }
 
     // R7-C3 (B1'; SPEC 10.1, 23.1.2): an obligation of a clause list whose Error rests on a failed, reported node (the Error cause its
@@ -602,7 +508,8 @@ public sealed partial class Binding
     }
 
     // What a proof scope read, of which it keeps what its own answer rests on (EndProof): the first limit (L, an Unknown resting on a
-    // located Unsupported_Kd or on a refusal's Resource record) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
+    // located Unsupported_Kd, on a refusal's Resource record or on a consulted failed premise's record: R7-C3, F's C2 ruling 276's
+    // exit order, so valid facts that prove or refute decide first) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
     // Unknown rests on (design-r2 Amendment 4); the clause fact, the clause a clause list's combined verdict rests on, handed one step
     // outward (G351a); and the first Origin not proven `static` an Owned answer rests on, kept only when the answer is not Proven
     // (R4-M161, r2-1b; CapabilityWork.Origin). All but the causes are diagnostic payload only.

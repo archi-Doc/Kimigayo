@@ -120,6 +120,18 @@ internal struct HirTables
     [Transitional("R7", Reason = "DECISIONS BU-72: removed when G170's identity query lands (C3), when TyCtxt answers the identical Type under premises.")]
     internal static BoundConstraint? IdentityPremise(Koto node) => PlanOf(node).Second as BoundConstraint;
 
+    /// <summary>Gets the decider of a published user index whose selection is by case (SPEC 4.7.1 step 3, 8.14, 13.5.5; R7 plan Z23):
+    /// its plan row's Mode 2, which the HIR publisher writes where the element's use needs exclusive capability only in the admitted cases
+    /// where a standing take Reborrows and <c>indexUniq</c> is bound, with the Type of the Place whose take is by case (the element's, or a
+    /// Field's or Tuple element's below it) in the row's Plan. In each admitted case the selection is <c>indexUniq</c> where that Type's
+    /// case Type is an exclusive reference or object view (the case in which the take Reborrows) and <c>index</c> otherwise; the index's
+    /// ExpansionPlan names both calls, and both calls' inputs are published, a receiver's two takes in its two rows (DECISIONS R4-M145).
+    /// Null for a selection that is one call in every case (Mode 0 <c>index</c>, Mode 1 <c>indexUniq</c>) and for any other node; no
+    /// reader reads Mode 2 or the decider otherwise.</summary>
+    /// <param name="index">The index expression.</param>
+    /// <returns>The decider, or null.</returns>
+    internal static BoundType? IndexCaseDecider(Koto index) => index is IndexKoto && PlanOf(index) is { Mode: 2, Plan: BoundType decider } ? decider : null;
+
     /// <summary>Gets whether an explicit discard destroys its operand's Place in place, transferring nothing (SPEC 14.2.4, 5.2.3): its
     /// operand is a Transfer whose Take OffersTake allowed through its raw branch (ElementAccess.IsRawPlace; Binding.DestroysInPlace),
     /// the discard's plan row Flag.</summary>
@@ -257,6 +269,13 @@ internal struct HirTables
     }
 }
 
+/// <summary>A pass family's column in a <see cref="NodeColumns"/>: a fact family's accessor names its column so the recorder can choose
+/// the columns that hold the fact (Binding.RecordedFact, Binding.SetRecordedFact; DECISIONS G949 S1 as R7-N5 B4 amends it).</summary>
+/// <typeparam name="T">The family's row.</typeparam>
+/// <param name="columns">The columns.</param>
+/// <returns>The family's column.</returns>
+internal delegate ref StampedColumn<T, Binding.PassCounter> FactFamily<T>(ref NodeColumns columns);
+
 /// <summary>
 /// Binding's private node families of one module (DECISIONS BU-220): one column per family, indexed by the SyntaxId of the node that keys
 /// it. A kept family's <see cref="PagedColumn{T}"/> keeps its rows across passes, and a renumbering moves each row with its node
@@ -308,6 +327,14 @@ internal struct NodeColumns
     internal StampedColumn<(bool Started, BindingScope? Scope), Binding.PassCounter> AliasTargets; // Pass: an alias's container scope (Binding.Aliases.cs).
     internal StampedColumn<Binding.AliasImport, Binding.PassCounter> ImportedContainers; // Pass: the alias import a qualifier's head selected (Binding.Aliases.cs).
     internal StampedColumn<Binding.QualificationFact, Binding.PassCounter> QualificationFailures; // Pass: the qualification a failed Name or Type required (Binding.Qualification.cs).
+    internal StampedColumn<Binding.PerCallOriginFact, Binding.PassCounter> PerCallOrigins; // Pass: a selected call's slot only an argument's own per-call Origin would satisfy (Binding.OpenOrigins.cs).
+    internal StampedColumn<bool, Binding.PassCounter> OriginTwins; // Pass: whether a node's Origin relation records are twins (Binding.OriginFits.cs).
+    internal StampedColumn<SemanticsMask, Binding.PassCounter> PairFollows; // Pass: the admitted set of the pair layer a @follow node follows (Binding.PairLayers.cs).
+    internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
+    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
+    internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
+    internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
+    internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
 
     internal void Resize(int length)
     {
@@ -352,6 +379,14 @@ internal struct NodeColumns
         this.AliasTargets.Grow(length);
         this.ImportedContainers.Grow(length);
         this.QualificationFailures.Grow(length);
+        this.PerCallOrigins.Grow(length);
+        this.OriginTwins.Grow(length);
+        this.PairFollows.Grow(length);
+        this.ImplicitPairFollows.Grow(length);
+        this.PhantomRawOrigins.Grow(length);
+        this.InvalidStaticOriginSlots.Grow(length);
+        this.CallablePremiseFailures.Grow(length);
+        this.EffectBoundRejections.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -372,6 +407,14 @@ internal struct NodeColumns
         this.AliasTargets.Freeze(binding);
         this.ImportedContainers.Freeze(binding);
         this.QualificationFailures.Freeze(binding);
+        this.PerCallOrigins.Freeze(binding);
+        this.OriginTwins.Freeze(binding);
+        this.PairFollows.Freeze(binding);
+        this.ImplicitPairFollows.Freeze(binding);
+        this.PhantomRawOrigins.Freeze(binding);
+        this.InvalidStaticOriginSlots.Freeze(binding);
+        this.CallablePremiseFailures.Freeze(binding);
+        this.EffectBoundRejections.Freeze(binding);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -421,6 +464,14 @@ internal struct NodeColumns
             AliasTargets = this.AliasTargets.Renumbered(length),
             ImportedContainers = this.ImportedContainers.Renumbered(length),
             QualificationFailures = this.QualificationFailures.Renumbered(length),
+            PerCallOrigins = this.PerCallOrigins.Renumbered(length),
+            OriginTwins = this.OriginTwins.Renumbered(length),
+            PairFollows = this.PairFollows.Renumbered(length),
+            ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
+            PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
+            InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
+            CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
+            EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
         };
         return columns;
     }

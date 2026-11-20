@@ -182,8 +182,8 @@ public sealed partial class Binding
         ReadOnlySpan<BoundType?> arguments,
         BindingScope scope,
         BoundType? self,
-        BoundOrigin[] origins,
-        BoundOrigin[] inputs,
+        Span<BoundOrigin> origins,
+        Span<BoundOrigin> inputs,
         BoundType? declaringType = null,
         ReadOnlySpan<BoundLength?> lengths = default)
     {

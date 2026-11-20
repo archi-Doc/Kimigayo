@@ -123,10 +123,10 @@ public sealed partial class Binding
     {
         if (type.IsFloatingPoint)
         {
-            return ScalarTypes.TryFloatLiteral(literal, type, negative, out _);
+            return TryFloatLiteral(literal, type, negative, out _);
         }
 
-        return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
+        return literal.TryGetIntegerMagnitude(out var magnitude) && TryLiteral(type, magnitude, negative, out _);
     }
 
     private static BoundType? Complete(Koto node, BoundType? type)
@@ -166,7 +166,7 @@ public sealed partial class Binding
             return FitsGenericInteger(number, negative);
         }
 
-        return ScalarTypes.TryLiteral(type, magnitude, negative, out bits);
+        return TryLiteral(type, magnitude, negative, out bits);
     }
 
     // SPEC 12.3: the default Type of an unfitted literal or literal-only expression, or null for null and other syntax.
@@ -298,9 +298,13 @@ public sealed partial class Binding
             return expected;
         }
 
-        if (expected is not null && actual is not null && this.FailsFunctionConversion(node, actual, expected))
+        if (expected is not null && actual is not null)
         {
-            return null;
+            actual = this.ConvertFunctionValue(node, actual, expected);
+            if (actual is null)
+            {
+                return null;
+            }
         }
 
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive

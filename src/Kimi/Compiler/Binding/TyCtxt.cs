@@ -1,10 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
-// of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the
-// interpolation terms (SPEC 22.10.5's bounds and rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's, and
-// R4-M118's chain judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains),
-// TyCtxt.OriginChains.cs's.
+// Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent) and an Integer
+// constant's one encoding (Normalize, DECISIONS BU-133), and the lifetime of TyCtxt's views (ResetViews); substitutions are
+// TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, the values of the interpolation terms (SPEC 22.10.5's bounds and
+// rule L's stack limit: FormatBound, StackBound, HintBound) TyCtxt.Formatting.cs's, and R4-M118's chain judgment of one Origin graph, a
+// pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
 // Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
 // Interned identity is equality, over two levels (PLAN G949 Stage 2 U4; Binding.PassPart.Levels): the library layer's frozen level, filled
 // until the library's seal, and the compilation's, filled after it; values live with the compilation and survive warm rebinds. A
@@ -43,6 +43,13 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // publishes to retention's walks (Binding.Holdings, read for the positions and the sources alike): a `string`'s value holds its text's
     // bytes, elements of Type `u8`, by value, as a fixed array holds its elements; every other Core holds none (null). Never "holds any".
     internal static BoundType? CoreContent(BoundType type) => ReferenceEquals(type, BoundType.String) ? BoundType.Primitives["u8"] : null;
+
+    // DECISIONS BU-133: an Integer constant's one encoding, its Type's N-bit payload sign-extended, also for an unsigned language Type,
+    // which Binding writes (a literal's fit, a folded conversion) and MirValidator checks. Width 0 is for an integer or wrapping integer
+    // Type whose instance decides its width (a proven-PrimitiveInteger parameter or projection, Wrapping<T> over one; SPEC 8.7.4), and
+    // for no other widthless Type: it keeps the 128-bit payload, the widest instance's, whose low N bits are each instance's.
+    internal static Int128 Normalize(Int128 bits, int width) => width is > 0 and <= 64
+        ? (unchecked((long)bits) << (64 - width)) >> (64 - width) : bits;
 
     // SPEC 13.5.5, 8.15.2: the pair binder whose Semantics case decides a Type's case Type at its outer layer (its SemanticsTarget, the
     // PairBinder.Target): the original `s/T`, an application `s/U` and an adaptation family `p@s` (Binding.TryAdaptationSelector); null for
@@ -91,14 +98,15 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         => binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
 
     // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
-    // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
-    // not instantiate it. The MIR validator checks calls and bodies by it.
+    // its call gives (a constructor's: its object), under a call's substitution, by the substitution alone (Apply: its storage unread);
+    // null past its parameters or where the substitution does not form it. The MIR validator checks calls and bodies by it; the MIR
+    // builder, code generation and the instance collector's property-witness agreement read it.
     internal BoundType? Signature(BindingSymbol function, Subst? subst, int slot, out int count)
     {
         var declaration = (FunctionKoto)function.Declaration;
         count = declaration.Parameters.Count;
         var type = slot >= count ? null : slot >= 0 ? CallPlan.Parameter(binding, function, slot)!.Type : declaration.IsConstructor ? AdtDef.ReceiverType(binding, declaration) : function.Type;
-        return type is null || subst is null ? type : this.Apply(type, subst);
+        return type is null || subst is null ? type : this.Apply(type, subst).Type;
     }
 
     // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key: the root key of `input` (the slot's instantiated Type
@@ -331,6 +339,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         this.ResetInstances();
         this.ResetDispatch();
         this.copies.Clear();
+        this.topLevelCopies = null;
     }
 
     // Intern's guard of PairBindings: whether a Component's subtree states a raw Origin (BoundType.CarriesRawOrigin), so any other instance

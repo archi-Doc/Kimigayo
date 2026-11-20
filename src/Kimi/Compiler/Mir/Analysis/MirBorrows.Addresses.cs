@@ -13,8 +13,7 @@ namespace Kimi.Compiler.Mir;
 // address is no whole-value reference, and a call's write past a holder takes the Reached entry of the Place's Type), and it is never
 // a conflict candidate (MirBorrows.Candidates). A raw Ref issues its entry (loanAt); `ownAt` gives a layer Place's own-step entry.
 // A `during self` layer is decided from the MIR Place path, by the stored step Binding publishes (TyCtxt.StoredStep: Own), never by an
-// Origin. The untracked rule (PQ-2): a raw value formed with a direct address or exclusive Loan naming a local that is no holder also
-// carries Φ_E. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
+// Origin. A non-raw Borrow of a layer's Place or of a Tuple or fixed-array Place enclosing one inline, and a Copy or Move of such an
 // enclosing Place, mark its location for a located Unsupported_Kd and make the view a producer (PQ-10; registered for X-2, PD28; removal
 // stage: the Loan records the layer's own-step entry and positions). An own-step entry makes its root borrowed, so the root's accesses are
 // listed for its departures (MirBorrows.OwnSteps), and the view a producer where an access may depart it (OwnSteps' MayDepart, D5,
@@ -291,27 +290,6 @@ internal sealed partial class MirBorrows
 
         return false;
     }
-
-    // The untracked rule (B′ §4.2, PQ-2): whether a set has a direct element naming a local that is no holder and granting a write there
-    // (an address or an exclusive Loan; a pointer formed through a shared borrow writes nothing, SPEC 5.2.1 condition 3), through which a
-    // raw pointer may place a Loan-carrying value where A5 tracks none.
-    private bool Untracked(int set)
-    {
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
-        {
-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: < 0, Mode: not MirRefKind.Shared } entry &&
-                entry.Root < this.body.Locals.Length)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // A raw value formed (a raw Ref, a layer's read, a call result that may hold a raw pointer): Φ_E with it where it is untracked.
-    private int Formed(int value) => this.Untracked(value) ? this.sets.Union(value, this.escapedSet) : value;
 
     // The addresses' uses of one location: its Places with their accesses, an operand's Place read by a Copy, Move or PairAcquire.
     private struct Addressing(MirBorrows owner) : IMirUses

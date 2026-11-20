@@ -241,12 +241,18 @@ public sealed partial class Binding
     }
 
     // Walks a Type's parts in order (a struct's or enum's base, Fields and Case payload Tuples, then its components): 0, or the limit that
-    // ends the walk. A Field or Case that did not substitute (null) is rejected and walked past, its siblings walked (DECISIONS BU-37).
+    // ends the walk. A Field or Case that did not substitute (null) is rejected and walked past, its siblings walked (DECISIONS BU-37); an
+    // instance whose stored Type passes IMPL A.4's height (its HeightLimit, R7-T1) is refused, a limit.
     private int StorageParts(BoundType type, int path, ref int height, ref int lowest, ref bool rejected)
     {
         if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
         {
             var instance = this.Instance(type);
+            if (instance.HeightLimit)
+            {
+                return StorageRefused;
+            }
+
             var failure = instance.Base is { } parent ? this.StorageEach([parent], path, ref height, ref lowest, ref rejected) : 0;
             failure = failure != 0 ? failure : this.StorageEach(instance.Fields, path, ref height, ref lowest, ref rejected);
             failure = failure != 0 ? failure : this.StorageEach(instance.Cases, path, ref height, ref lowest, ref rejected);

@@ -243,7 +243,7 @@ public sealed partial class Binding
     // The kinds whose constraints give a row, the one list the index and the walk's two sources read (RowKind; each kind its own row
     // of Closure(view), R7-C2e2-2): Contract, and each kind with a reader of its own, a leaf row (R7-C2c2 c2-3b: Callable). A later
     // kind with a reader joins the list here alone.
-    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable];
+    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable, ConstraintKind.Error]; // Error: an unbound clause's failed fact (R7-C3)
 
     // The closure's kept readings (Reading), emptied at each publication's start in the capability phase (ForgetKeptTables) and each
     // pass (ResetCapabilities), capacity kept.
@@ -273,16 +273,12 @@ public sealed partial class Binding
         internal BindingScope? Stated { get; init; }
     }
 
-    // Supply's answer: whether the premises supply the proposition (Positive) and its negation (Negative). Invalid (temporary, BU-29;
-    // removed at C3 when B 3.10's declaration validation answers a request reaching a premise error): the chain's Invalid environment,
-    // which ProveProposition answers Error resting on (InvalidEnvironment).
+    // Supply's answer: whether the valid premises supply the proposition (Positive) and its negation (Negative).
     private readonly struct Evidence
     {
         internal bool Positive { get; init; }
 
         internal bool Negative { get; init; }
-
-        internal ConstraintEnvironment? Invalid { get; init; }
     }
 
     // C1 §5: whether an answer rests only on what is final in the pass (Complete) or not (Provisional, the zero).
@@ -449,25 +445,20 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (environment.Invalid)
-            {
-                return new() { Invalid = environment };
-            }
-
             positive |= this.AvailableConstraintFact(environment, proposition, out _);
             negative |= this.AvailableConstraintFact(environment, negation, out _);
             if (environment.HasAssociatedProjection || typeIdentity || proposition.Kind == ConstraintKind.Callable || proposition is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
             {
                 foreach (var fact in environment.Facts)
                 {
-                    if (!this.AvailableConstraintFact(environment, fact, out _))
-                    {
-                        continue;
-                    }
-
+                    // The consult follows the relevance test (F's C2 ruling 273): only a fact read as the proposition or its negation.
                     var identity = this.Reading(fact, view.Premises, ref serial);
-                    positive |= this.SameProofPremise(identity, proposition);
-                    negative |= this.SameProofPremise(identity, negation);
+                    var (states, refutes) = (this.SameProofPremise(identity, proposition), this.SameProofPremise(identity, negation));
+                    if ((states || refutes) && this.AvailableConstraintFact(environment, fact, out _))
+                    {
+                        positive |= states;
+                        negative |= refutes;
+                    }
                 }
             }
         }
@@ -478,6 +469,87 @@ public sealed partial class Binding
         positive = positive || (proposition is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(proposition, view.Premises));
         negative = negative || (negation is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(negation, view.Premises));
         return new() { Positive = positive, Negative = negative };
+    }
+
+    // R7-C3 (F's C2 ruling 278; SPEC 8.3.2 "evidence for both polarities ... is contradictory evidence", 8.2.3 "never again at uses"):
+    // the one rule at the judges' exits (ProveProposition, ProveConformance) for a normalized proposition and the verdict of its valid
+    // facts. A Failed premise of the view speaks to the proposition it would decide: read in the view, the proposition or its negation
+    // (its polarity); an identity premise of the same subject (identical through the classes, a constructed Type included), which
+    // would decide every proposition about it; or an admitted-set premise on the binder of a pair layer of the subject (SPEC 8.3.4,
+    // F's C2 ruling 281: `s is obj` decides `s/A`). The last two give no verdict of their own. Unless the valid facts give the verdict
+    // the speaking premises give, the answer is Error resting on the declaration's record; where none speaks, the valid facts decide.
+    // The Contract judge's exit: the proposition is interned only in a view that holds a Failed premise.
+    private ConstraintProof SpokenConformance(BoundType type, BindingSymbol contract, BindingScope scope, ConstraintProof verdict)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is { FailedPremise: not null })
+            {
+                return this.SpokenVerdict(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope, verdict);
+            }
+        }
+
+        return verdict;
+    }
+
+    private ConstraintProof SpokenVerdict(BoundConstraint proposition, BindingScope scope, ConstraintProof verdict)
+    {
+        if (verdict == ConstraintProof.Error)
+        {
+            return verdict;
+        }
+
+        var view = this.ViewOf(scope).Premises;
+        var (positive, negative, subject) = (false, false, ClauseSubject(proposition));
+        BoundConstraint? negation = null;
+        PremiseFailure? failure = null;
+        int? serial = null;
+        for (var current = view; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { FailedPremise: not null } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (!environment.IsFailed(fact))
+                {
+                    continue;
+                }
+
+                var reading = this.Reading(fact, view, ref serial);
+                var states = this.SameProofPremise(reading, proposition);
+                var refutes = this.SameProofPremise(reading, negation ??= this.NegateConstraint(proposition));
+                if (states || refutes || (subject is not null && ((reading.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(reading.Subject, subject)) || DecidesPairLayer(reading, subject))))
+                {
+                    (positive, negative) = (positive | states | !refutes, negative | refutes | !states);
+                    failure ??= environment.FailedPremise;
+                }
+            }
+        }
+
+        var spoken = positive ? (negative ? ConstraintProof.Error : ConstraintProof.Proven) : ConstraintProof.Refuted;
+        return failure is not null && verdict != spoken ? this.RestOnFailure(failure) : verdict;
+
+        // An admitted-set premise (SemanticsPremise) on the binder of a pair layer of `type` or of one of its parts.
+        static bool DecidesPairLayer(BoundConstraint premise, BoundType type)
+        {
+            if (TryPairLayer(type, out var whole, out _) && SemanticsPremise(premise, whole))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (DecidesPairLayer(premise, type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     // The walk's stacks: the chain of the subject being walked, its active prefixes and its links' class mates (Enumerate).
@@ -567,7 +639,7 @@ public sealed partial class Binding
 
         for (var current = view.Premises; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
@@ -620,7 +692,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                foreach (var (_, _, premise) in new ContractSupply(this, shape, root, view.Premises))
+                foreach (var (_, _, premise, _) in new ContractSupply(this, shape, root, view.Premises))
                 {
                     // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
                     // deferred mate's walk keeps none (EnumerateClosed; the class header's Extension).
@@ -829,11 +901,35 @@ public sealed partial class Binding
             completion = Meet(completion, read);
             if (state != ConstraintProof.Proven)
             {
+                // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.3.1, 23.1.2): a Refuted source is an invalid declaration, read outside its
+                // own check as a failed input: the proof's limit, on the cause SourceStates published (ReadVerdict joins none for
+                // Refuted; an Error's it joins itself). The source's own checks are the failure's sites (ChecksOwnSite).
+                if (state == ConstraintProof.Refuted && !this.ChecksOwnSite(source.Declaration))
+                {
+                    this.ScopeReads.Limit ??= ((DeclarationContainerKoto)source.Declaration).BoundSymbol!.SourceCause; // Published (RefutedCause).
+                }
+
                 return false;
             }
         }
 
         return true;
+    }
+
+    // R7-C3 (F's C2 rulings 273, 282): a premise derived from a Failed premise is Failed: it is that premise, its origin clause, whose
+    // state the origin's environment holds (FailedClauseRead), so its cause is the origin declaration's record. No state is copied.
+    private PremiseFailure? DerivedFailure(ConstraintEnvironment environment, BoundConstraint fact)
+    {
+        for (var i = 0; i < environment.DerivedFacts.Count; i++)
+        {
+            if (environment.DerivedFacts[i] is { Origin: { BoundConstraint: { } origin } clause } derived && ReferenceEquals(derived.Fact, fact) &&
+                this.FailedClauseRead(clause, origin) is { } failure)
+            {
+                return failure;
+            }
+        }
+
+        return null;
     }
 
     // An availability read of the outermost walk: its Completion joins the walk's (the class header's Kept rows).
@@ -845,6 +941,9 @@ public sealed partial class Binding
 
     // W6: Complete when the fact is not in the environment or is direct; a derived fact found available is the meet of every source it
     // read (R7-M20's composite rule), and one not found is Provisional (a Pending source may still supply it).
+    // R7-C3 (F's C2 rulings 272-273, 276): the environment's one premise consult. A failed premise is no evidence, and the read is the
+    // proof's limit (ScopeReads.Limit, its PremiseFailure; SPEC 23.1.2): an answer the valid facts leave open (Unknown) rests on it where
+    // it is no longer combined (EndProof), and one they prove or refute holds or keeps its own record.
     private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, out Completion completion)
     {
         completion = Completion.Complete;
@@ -853,9 +952,21 @@ public sealed partial class Binding
             return false;
         }
 
+        if (environment.IsFailed(fact))
+        {
+            this.ScopeReads.Limit ??= environment.FailedPremise;
+            return false;
+        }
+
         if (environment.DirectFacts.Contains(fact))
         {
             return true;
+        }
+
+        if (this.DerivedFailure(environment, fact) is { } failure)
+        {
+            this.ScopeReads.Limit ??= failure;
+            return false;
         }
 
         var read = Completion.Complete;
@@ -935,11 +1046,11 @@ public sealed partial class Binding
     private void AddContractPremises(BoundContract shape, BoundType self, BindingScope scope)
     {
         var environment = scope.Constraints ??= new();
-        foreach (var (ancestor, declaration, premise) in new ContractSupply(this, shape, self, scope))
+        foreach (var (ancestor, declaration, premise, clause) in new ContractSupply(this, shape, self, scope))
         {
             if (premise is not null)
             {
-                this.AddConstraintFact(environment, premise, shape.Symbol);
+                this.AddConstraintFact(environment, premise, shape.Symbol, clause);
                 continue;
             }
 
@@ -964,7 +1075,8 @@ public sealed partial class Binding
         private int ancestor = -1;
         private int next; // The declaration's next item: 0 the declaration itself, i + 1 its clause i.
 
-        public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise) Current { get; private set; }
+        // Clause: the clause Premise instantiates (its origin, a premise of the declaration's environment; R7-C3, ruling 282).
+        public (int Ancestor, BoundContract Declaration, BoundConstraint? Premise, IsKoto? Clause) Current { get; private set; }
 
         // The number of the declaration's ancestors (Enumerate's ancestor row reads them alone).
         public readonly int AncestorCount => this.Origin.Ancestors.Count;
@@ -985,7 +1097,7 @@ public sealed partial class Binding
                 if (this.next == 0)
                 {
                     var instantiated = this.ancestor < 0 ? shape : this.InstantiatedAncestor(this.ancestor);
-                    (this.next, this.Current) = (1, (this.ancestor, instantiated, null));
+                    (this.next, this.Current) = (1, (this.ancestor, instantiated, null, null));
                     return true;
                 }
 
@@ -995,7 +1107,7 @@ public sealed partial class Binding
                     if (declaration.ClauseStorage[this.next - 1].BoundConstraint is { } constraint &&
                         binding.DependentConstraint(constraint, contractSelf: true))
                     {
-                        this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol));
+                        this.Current = (this.ancestor, declaration, binding.ContractConstraint(constraint, scope, self, false, declaration.Symbol), declaration.ClauseStorage[this.next - 1]);
                         this.next++;
                         return true;
                     }

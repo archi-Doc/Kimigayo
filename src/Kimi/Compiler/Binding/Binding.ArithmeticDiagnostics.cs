@@ -87,7 +87,7 @@ public sealed partial class Binding
             var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
             for (var current = scope; current is not null; current = current.Parent)
             {
-                if (current.Constraints is not { Invalid: false } other)
+                if (current.Constraints is not { } other)
                 {
                     continue;
                 }

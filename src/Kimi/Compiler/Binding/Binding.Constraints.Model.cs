@@ -102,7 +102,7 @@ internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject =
 // Reset; ArchitectureRulesTest), each counting a change in Version, which the view's serial reads (ContractSolver.ViewOf); the mark of
 // the declaration's own supply (Declared) only by MarkDeclared and Reset. An Invalid
 // environment is the node whose failure made it Invalid (Failed; PLAN G651 U1): each writer fails that node in the same step and names
-// it here; the first one is kept. As an ICheckCause it is what a proof that reads the environment rests on (Binding.InvalidEnvironment,
+// it here; the first one is kept. Its failed premises' cause is what a proof that consults one rests on (PremiseFailure,
 // the one proof read), so a use derives from a Resource record or a recovery (RestsOnRecoveryOrLimit) and keeps an independent record
 // otherwise.
 // R7-C3 (B1'): what a proof that reads a failed premise rests on: the declaration whose record the premise's failure is.
@@ -119,32 +119,23 @@ internal sealed class PremiseFailure(Koto owner) : ICheckCause
     }
 }
 
-internal sealed class ConstraintEnvironment : ICheckCause
+internal sealed class ConstraintEnvironment
 {
     private PremiseFailure? premiseFailure; // R7-C3 B1': FailedPremise's cause, made once
-
-    public Koto Use => this.Failed!;
-
-    public ICheckCause? Next => null;
-
-    public ICheckCause? ReentrySite => null;
 
     internal HashSet<BoundConstraint> Facts { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal HashSet<BoundConstraint> DirectFacts { get; } = new(ReferenceEqualityComparer.Instance);
 
-    internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
+    // A derived fact's Origin is the source declaration's clause it instantiates (R7-C3, F's C2 ruling 282: it is that premise, Failed
+    // where the origin is; Binding.DerivedFailure reads it); none for a supply that instantiates no clause.
+    internal List<(BoundConstraint Fact, BindingSymbol Source, IsKoto? Origin)> DerivedFacts { get; } = new();
 
     // R7-C2c2 c2-4b (DECISIONS R4.13): the first Declared of DerivedFacts are the declaration's own supply (Declares).
     internal int Declared { get; private set; }
 
-    /// <summary>Gets the node whose failure made the environment Invalid; null while it is valid.</summary>
-    internal Koto? Failed { get; private set; }
-
-    internal bool Invalid => this.Failed is not null;
-
-    // R7-C3 (B1'; SPEC 8.2.3, 23.1.2): the premises whose proof is Error (FailPremise), out of the evidence; and what a proof that reads
-    // one rests on (PremiseFailure, Use = the declaration that holds the record).
+    // R7-C3 (SPEC 8.2.3, 23.1.2; F's C2 rulings 272-273): the premises whose own judgment is Error (FailPremise), their state Failed in
+    // the evidence; and what a proof that consults one rests on (PremiseFailure, Use = the declaration that holds the record).
     internal List<BoundConstraint>? FailedPremises { get; private set; } // allocated at the first failed premise
 
     // R7-C3 (F's C2 ruling 255): the declaration's own unproven projection inputs (NameUnprovenInput): no premise fails, and a proof that
@@ -160,18 +151,14 @@ internal sealed class ConstraintEnvironment : ICheckCause
     // The number of changes of this environment's state.
     internal int Version { get; private set; }
 
-    public void Rest()
+    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise, the instance of its clause `origin`; an
+    // Error fact's writer names the failed node (Fail).
+    internal void Add(BoundConstraint fact, BindingSymbol? source, IsKoto? origin)
     {
-    }
-
-    // Adds `fact` itself (not an And's parts), direct, or derived from `source`'s premise; an Error fact's writer names the failed node
-    // (Fail).
-    internal void Add(BoundConstraint fact, BindingSymbol? source)
-    {
-        var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFacts.Contains((fact, source));
+        var availability = source is null ? this.DirectFacts.Add(fact) : !this.DerivedFrom(fact, source);
         if (source is not null && availability)
         {
-            this.DerivedFacts.Add((fact, source));
+            this.DerivedFacts.Add((fact, source, origin));
         }
 
         var added = this.Facts.Add(fact);
@@ -217,29 +204,26 @@ internal sealed class ConstraintEnvironment : ICheckCause
         return false;
     }
 
-    /// <summary>Fails a premise whose proof is Error (R7-C3 B1', SPEC 8.2.3's kept premise-error context extended to any failed premise):
-    /// it leaves the evidence, the environment stays valid, and a proof that reads it rests on its declaration's record.</summary>
+    /// <summary>Gets a value indicating whether a premise of this environment failed (R7-C3, F's C2 rulings 272-273): its one state, read
+    /// by the one consult (Binding.AvailableConstraintFact).</summary>
+    /// <param name="fact">The premise.</param>
+    /// <returns>Whether it failed.</returns>
+    internal bool IsFailed(BoundConstraint fact) => this.FailedPremises is { } failed && failed.Contains(fact);
+
+    /// <summary>Fails a premise whose own judgment is Error, whatever the cause (R7-C3, F's C2 rulings 272-273): it stays in the
+    /// environment with the state Failed, the environment stays valid, and a proof that consults it rests on its declaration's record.</summary>
     /// <param name="fact">The failed premise.</param>
     /// <param name="owner">The declaration whose record it is.</param>
     /// <returns>Whether the premise newly failed (the failed set only grows, so the premise failures reach a fixpoint).</returns>
     internal bool FailPremise(BoundConstraint fact, Koto owner)
     {
-        if (!this.Facts.Remove(fact))
+        if (!this.Facts.Contains(fact) || this.IsFailed(fact))
         {
             return false;
         }
 
-        this.DirectFacts.Remove(fact);
-        for (var i = this.DerivedFacts.Count - 1; i >= 0; i--)
-        {
-            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact))
-            {
-                this.DerivedFacts.RemoveAt(i);
-            }
-        }
-
         (this.FailedPremises ??= new()).Add(fact);
-        this.premiseFailure ??= new(owner);
+        _ = this.Cause(owner);
         this.Version++;
         return true;
     }
@@ -262,25 +246,15 @@ internal sealed class ConstraintEnvironment : ICheckCause
         }
 
         this.UnprovenInputs.Add((subject, contract));
-        this.premiseFailure ??= new(owner);
+        _ = this.Cause(owner);
     }
 
-    /// <summary>Gets the environment's premise-failure cause for its declaration's recorded identity premise error (R7-C3 gate 2): the one
-    /// cause a proof that reads a failed premise rests on.</summary>
+    /// <summary>The cause a proof that reads one of this environment's failures rests on (PremiseFailure): its failed premises, its
+    /// named inputs and its identity premise error (Binding.IdentityPremiseErrorRead; F's C2 ruling 276 (4)). Made once and kept across
+    /// passes (warm Bind allocates nothing, BU-64); not state: no view-keyed table reads it.</summary>
     /// <param name="owner">The declaration whose record it is.</param>
-    /// <returns>The cause.</returns>
-    internal PremiseFailure PremiseError(Koto owner) => this.premiseFailure ??= new(owner);
-
-    /// <summary>Makes the environment Invalid by the failure of <paramref name="node"/>, which its writer fails in the same step.</summary>
-    /// <param name="node">The failed node.</param>
-    internal void Fail(Koto node)
-    {
-        if (this.Failed is null)
-        {
-            this.Failed = node;
-            this.Version++;
-        }
-    }
+    /// <returns>The environment's one cause.</returns>
+    internal PremiseFailure Cause(Koto owner) => this.premiseFailure ??= new(owner);
 
     /// <summary>Gets or sets a value indicating whether a fact is a Type-identity premise `X is U` of any subject (SPEC 8.2.3), a ground
     /// of the identity relation and the identity classes' input (Binding.TypeIdentity); G721's interim reads it until G170's identity
@@ -289,7 +263,7 @@ internal sealed class ConstraintEnvironment : ICheckCause
 
     internal void Reset()
     {
-        if (this.Facts.Count != 0 || this.Invalid)
+        if (this.Facts.Count != 0)
         {
             this.Version++;
         }
@@ -298,10 +272,22 @@ internal sealed class ConstraintEnvironment : ICheckCause
         this.DirectFacts.Clear();
         this.DerivedFacts.Clear();
         this.Declared = 0;
-        this.Failed = null;
         this.FailedPremises?.Clear();
         this.UnprovenInputs?.Clear();
         this.HasAssociatedProjection = false;
         this.HasTypeIdentity = false;
+    }
+
+    private bool DerivedFrom(BoundConstraint fact, BindingSymbol source)
+    {
+        for (var i = 0; i < this.DerivedFacts.Count; i++)
+        {
+            if (ReferenceEquals(this.DerivedFacts[i].Fact, fact) && ReferenceEquals(this.DerivedFacts[i].Source, source))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

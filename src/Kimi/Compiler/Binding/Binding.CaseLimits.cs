@@ -96,7 +96,7 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is { } environment && (environment.Failed ?? environment.FailedPremise?.Use) is { } failed)
+            if (current.Constraints is { } environment && environment.FailedPremise?.Use is { } failed)
             {
                 return failed;
             }

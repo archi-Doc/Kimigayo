@@ -79,15 +79,15 @@ internal sealed partial class TyCtxt
     // its source); false for every other callee and slot: a function with a body, a foreign import, a missing row. Static; allocates nothing.
     internal static bool NoStore(BindingSymbol? callee, int input) => KimiLibraryCatalog.NoStore(callee, input);
 
-    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (ScalarTypes'
-    // one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
+    // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (BoundType.IsScalar,
+    // the one definition), raw pointer Types, and Tuples and fixed arrays of punnable Types, an `owner` layer as its component. An abstract
     // part is a binding's (SPEC 8.15.1: every binding, a Scalar of any size among them; PLAN G792), so it is punnable. Any other Type is
     // not. Readers: A5's pun rule (MirBorrows.PunTypes, whose own fact is how much of a Scalar a punnable Type holds). A function of the
     // interned Type, each composite one decided once (`punnable`, kept like the interning: a Type's answer never changes); a walk that
     // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
     internal bool Punnable(BoundType type)
     {
-        if (ScalarTypes.Supports(type) || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        if (type.IsScalar || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
         {
             return true;
         }
@@ -180,8 +180,11 @@ internal sealed partial class TyCtxt
     // its path from its root. At its own address means the storage walk's by-value relation (Binding.ByValue) applied recursively at any
     // holder: Tuple and fixed-array elements, a struct's Fields and base, an enum's Case payloads (a Case key: its payload's components with
     // the Case's written Types), a Closure's environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`,
-    // Array, Dictionary, `string`) and a `Loan<T>`'s argument; any other Type argument adds nothing. Each part is read once per call through
-    // Holdings as the contract's body sees it (a Closure part by ClosureEnvironment, DECISIONS R4-M148). Output, appended to `into` in walk
+    // Array, Dictionary, `string`) and a `Loan<T>`'s argument (each part listed past it marked OwnLayer.Loan: a Type argument has no address,
+    // SPEC 15.3.5, so a reader takes no write Type or key past it; until G416 U3a); any other Type argument adds nothing. Each part is
+    // read once per call and walked key (its Type, Written, Holder, Signature and whether it lies past a Loan's Type argument: a part
+    // reached both through a Loan's Type argument and directly is listed both ways) through Holdings as the contract's body sees it (a
+    // Closure part by ClosureEnvironment, DECISIONS R4-M148). Output, appended to `into` in walk
     // order: (layer, step, Past) for each raw layer met there, not gone past, its step that at the Place: DeclaredStep under its holding
     // instance, except that a `during self` layer, where the key's path dereferences, has the step of the Origin reading it gives (SPEC 5.7
     // Writing a Field), and Unsupported through a U2 path; (null, step, Past) for each other part that reaches storage (a borrow or pair
@@ -193,11 +196,25 @@ internal sealed partial class TyCtxt
     // step (review N12). Named limit (review N13): a path rooted at a constructor's or `drop`'s receiver starts as PlaceKey.Root (no
     // dereference), where PathOrigin gives the receiver's Origin, so past a `self` layer of the receiver the answer is Address, never a
     // dropped Φ; where a valid program reaches it A5 gives a located Unsupported_Kd. Removal: a ReceiverRoot(type, receiver) key, the
-    // Origin PathOrigin's Receiver step gives, when a reader keys such a Place. The key holds Types only (PlaceKey.Through, a layer Type as
+    // Origin PathOrigin's Receiver step gives, when a reader keys such a Place, read for a `during self` layer only where the receiver
+    // holds it (Binding.ReceiverHolds, PLAN G1119), as ReadHolder reads it. The key holds Types only (PlaceKey.Through, a layer Type as
     // every MIR Type is), so MIR reads no Origin from it but through the readers the raw Origin role ratchet covers (review N14). False at
     // Binding's Limit. Total over what Binding accepts, a function of the key, allocating nothing warm. Must not decide a covering or a pun
     // (A5's), read a call's arguments or solved Origins, or test a Type's Kind or Semantics to restrict a form.
     internal bool OwnLayers(PlaceKey at, List<OwnLayer> into) => binding.OwnLayers(at, into);
+
+    // SPEC 15.6.4 (PLAN G935, C-370): the Type that names the Reached entry of the storage past a layer of `output`, at `key`, its
+    // Place on the called function's parameter path (TyCtxt.ParameterKey and the keys Select, Base, Leading and OwnLayers give past
+    // it), and whether that Type is the kept one: where the output was read in the callee's terms (OutputRetention.Kept) and the key
+    // lies in the binding of an abstract Type of the callee's own declaration (a Type parameter, or a pair target or projection rooted
+    // at one; kept below the binding's root up to a raw layer the binding holds, a Scalar included), that kept Type, Kept; else the
+    // storage's instantiated Type (the key's), not Kept; Origins erased either way; (null, false) where the key has no Type. Both
+    // halves are one answer of the one rule (Binding.KeptType), so a reader that must tell a kept storage's entry from an instantiated
+    // one (A5's E past a reading layer) reads Kept and copies nothing. The one reading of OutputRetention.Reached's names (Binding's
+    // Written names each entry by its storage's erased Type, the kept Type's inside a kept binding), so no reader copies the rule; the
+    // root's rows are `output.Own`, whatever this names. A function of the output and the key; allocates nothing warm.
+    internal (BoundType? Type, bool Kept) EntryType(OutputRetention output, in PlaceKey key)
+        => key.Type is null ? (null, false) : binding.KeptType(output.Kept, key) is { } kept ? (this.Erase(kept), true) : (this.Erase(key.Type), false);
 
     // SPEC 5.7 Origins, Reading a Field, Writing a Field (C-189): the key of the Place `part` selects from `at`'s Place, one step of a
     // Place's path from its root (PlaceKey.Root), `part` numbered as MIR numbers it: a struct's Field, an enum's Case (then that payload's

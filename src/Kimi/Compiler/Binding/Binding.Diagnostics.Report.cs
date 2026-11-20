@@ -397,7 +397,7 @@ public sealed partial class Binding
         {
             ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins?.TryGetValue(issue.Node, out var perCallOrigin) == true)
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins.TryGetValue(issue.Node, out var perCallOrigin))
         {
             ReportPerCallOrigin(issue.Node, perCallOrigin, requirement, issue.Code);
         }

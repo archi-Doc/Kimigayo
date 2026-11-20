@@ -56,7 +56,7 @@ internal sealed partial class MirBuilder
             if (block.Terminator.Callee.Subst is { } inner && !this.compositions.ContainsKey(inner))
             {
                 // A composition's verdict is its parts' (TyCtxt.Compose); the guard reads the part deciding it, none when Prepared.
-                if (compilation.Types.Compose(inner, subst) is not ({ } composed, var storage, var part) ||
+                if (compilation.Types.Compose(inner, subst) is not ({ } composed, _, var storage, var part) ||
                     (part is not null && !compilation.Types.Readable(part, storage)))
                 {
                     return false;
@@ -195,8 +195,8 @@ internal sealed partial class MirBuilder
 
             var terminator = block.Terminator;
             var call = terminator.Kind == MirTerminatorKind.Call;
-            var operand = terminator.Kind == MirTerminatorKind.SwitchInt || terminator.Callee.Kind == MirCalleeKind.Value
-                ? FoldOperand(terminator.Operand) : default;
+            var switches = terminator.Kind is MirTerminatorKind.SwitchInt or MirTerminatorKind.CaseSwitch; // A CaseSwitch's decider folds as a constant.
+            var operand = switches || terminator.Callee.Kind == MirCalleeKind.Value ? FoldOperand(terminator.Operand) : default;
             for (var i = 0; call && i < terminator.Count; i++)
             {
                 var argument = template.Operands[terminator.Start + i]; // staticEnsure's operand is a static's index in its body.
@@ -211,7 +211,7 @@ internal sealed partial class MirBuilder
             }
 
             var first = call ? this.Flush(start) : this.body.Cases.Length;
-            for (var i = 0; terminator.Kind == MirTerminatorKind.SwitchInt && i < terminator.Count; i++)
+            for (var i = 0; switches && i < terminator.Count; i++)
             {
                 this.body.AddCase(template.Cases[terminator.Start + i].Value, Target(template.Cases[terminator.Start + i].Target));
             }

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Verification;
 using Xunit;
 
@@ -98,6 +99,29 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(rows[2].WrittenEdges <= (4 * rows[1].WrittenEdges) + (4 * rows[2].Layers) && rows[2].Environments <= 2 * rows[1].Environments, string.Join(' ', rows));
     }
 
+    // PLAN G492-a (ii), the owner's O-426 (a): a diamond chain of 40 `var` definitions (x{i} and y{i} each bounded by x{i-1} and y{i-1},
+    // so each solved value is a meet of the two regions one level up) read through a Closure: A5's split of a failed source (df, invalid:
+    // `p outlives q` is Unknown, one record; SPEC 15.6.5) and the retention of a Closure call whose contract names x{N} (dr, valid) read
+    // each region once per judgement and per retention computation, and a region's value once per pass, so the check ends at once. Without
+    // the visited sets every path through the diamond was walked again (24 levels: 8.5 s -> 83 s). df's split is A5's, so its
+    // MirOrigins.Work (each operand Split judges counted) grows linearly from 10 to 40 levels; retention (dr) has no counter.
+    [Theory(Timeout = 120000)]
+    [InlineData("dr", false)]
+    [InlineData("df", true)]
+    public async Task ADiamondChainOfVarDefinitionsIsReadOnce(string form, bool invalid)
+    {
+        var records = await Task.Run(() => CompilationTestHelper.RecordsAtLines(DiamondChain(form, 40)), TestContext.Current.CancellationToken);
+        Assert.True(
+            invalid ? records.Length == 1 && records[0].StartsWith("UnprovenOriginRelation_Kd", StringComparison.Ordinal) : records.Length == 0,
+            $"{form}: [{string.Join(" | ", records)}]");
+        if (invalid)
+        {
+            long[] work = [.. new[] { 10, 20, 40 }.Select(n => OriginWork(DiamondChain(form, n)))];
+            output.WriteLine($"{form} N 10, 20, 40: origins {string.Join(", ", work)}");
+            Assert.True(MirBorrowsTest.Grows(work, 2.5), $"{form}: origins {string.Join(", ", work)}");
+        }
+    }
+
     [Fact]
     public void AFixedReadWalksEachRegionOnce()
     {
@@ -152,6 +176,20 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         output.WriteLine($"P {string.Join(", ", fixedCounts)}, K {string.Join(", ", chains)}: origins {string.Join(", ", work)}");
         Assert.All(rows, static x => Assert.Equal((1, true, 1), (x.Classes, x.OneRun, x.Derived)));
         Assert.True(MirBorrowsTest.Grows(work[..3], 2.5) && MirBorrowsTest.Grows(work[1..], 2.5), $"origins {string.Join(", ", work)}");
+    }
+
+    // SPEC 15.3.7, 15.6.4 step 3 (R7-O1 d; its design review's C2): a signature part's well-formedness premises over a Type that shares
+    // its parts. n locals each pair the one before, a Tuple DAG of 2^n paths over `ref/i32 during t`; `see` takes the last by reference
+    // (its instantiated input: the selection's bounds and the selected call's obligations) and `pick` returns it again (a result that
+    // carries premises: the inference's bounds and the call's obligations). Each walk visits a distinct part once per query beside the
+    // same argument and substituted parts (DECISIONS BU-132), so its visits grow linearly in n (32, 64, 128); a walk per path meets 2^128.
+    // Binding is the walk's phase, so the row binds only: the Tuple's 2^n leaves are past every generation limit.
+    [Fact]
+    public void WellFormedPremisesVisitEachSharedPartOnce()
+    {
+        var visits = new[] { 32, 64, 128 }.Select(static n => WellFormedParts(n)).ToArray();
+        output.WriteLine($"n 32, 64, 128: well-formed parts {string.Join(", ", visits)}");
+        Assert.True(visits[1] > visits[0] && MirBorrowsTest.Grows(visits, 2), $"well-formed parts {string.Join(", ", visits)}");
     }
 
     // P Fixed Origins a{i}, equal by the premises z{i} (SPEC 15.3.3), each with an in- and an out-edge: all joined through one covariant
@@ -213,6 +251,36 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         return metrics.ChainWork;
     }
 
+    // A5's Origin work over a program's bodies, each body's Judge summed (MirOriginsTest.AShorterMeetsOperandEdgesFormOncePerClass).
+    private static long OriginWork(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var origins = new MirOrigins(c.Types, new MirCases(c.Types));
+        var total = 0L;
+        foreach (var body in c.BuildMir().Bodies.ToArray())
+        {
+            origins.Judge(body, MirCases.Count(body), new MirReport());
+            total += origins.Work;
+        }
+
+        return total;
+    }
+
+    // The reviewer's diamond (`rev5\dc2\gen_diamond.py`): dr returns x{n} through a Closure's call (retention), df relates it to q (A5).
+    private static string DiamondChain(string form, int n)
+    {
+        var source = new StringBuilder(form == "dr" ? "func see(p: ref/i32) => ()\nfunc t(k: bool, p: ref/i32, q: ref/i32)\n" : "func t(k: bool, p: ref/i32, q: ref/i32) -> i32\n");
+        source.Append("    var x0 = p\n    var y0 = q\n");
+        for (var i = 1; i <= n; i++)
+        {
+            source.Append($"    var x{i} = x{i - 1}\n    if k\n        x{i} = y{i - 1}\n    var y{i} = y{i - 1}\n    if k\n        y{i} = x{i - 1}\n");
+        }
+
+        return source.Append(form == "dr"
+            ? $"    let c = func [x{n}] () -> ref/i32 during x{n} => x{n}\n    let v = c()\n    see(v)\n"
+            : $"    let c = func [x{n}] () -> ref/i32 during q => x{n}\n    return 0\n").Append("public func main() => ()\n").ToString();
+    }
+
     private static long RegionReads(int depth)
     {
         var source = new StringBuilder("func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    var a0 = p\n    var b0 = p\n");
@@ -242,6 +310,25 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.Empty(c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
         Assert.NotEqual(0, metrics.RegionReads);
         return metrics.RegionReads;
+    }
+
+    private static long WellFormedParts(int locals)
+    {
+        var source = new StringBuilder("func see<T>(x: ref/T) -> () => ()\nfunc pick<T>(x: ref/T) -> ref/T => x\nfunc f(t: ref/i32) -> ()\n    let a0 = (t, t)\n");
+        for (var i = 1; i < locals; i++)
+        {
+            source.Append(CultureInfo.InvariantCulture, $"    let a{i} = (a{i - 1}, a{i - 1})\n");
+        }
+
+        source.Append(CultureInfo.InvariantCulture, $"    see(a{locals - 1}@ref)\n    let r = pick(a{locals - 1}@ref)\n    return\n");
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("shared.kimi", source.Append("public func main() -> ()\n    let x = 1\n    f(x@ref)\n    return\n").ToString()));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.NotEqual(0, metrics.WellFormedParts);
+        return metrics.WellFormedParts;
     }
 
     private static OriginProofMetrics Measure(string family, int size, string? code)
