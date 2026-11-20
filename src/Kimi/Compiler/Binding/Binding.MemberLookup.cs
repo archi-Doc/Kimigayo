@@ -358,9 +358,13 @@ public sealed partial class Binding
             {
                 this.PublishHiddenMember(member, hidden);
             }
-            else if (this.TypePathFailure(typeSide, scope) == BindingFailure.Unsupported)
+            else if (this.TypePathFailure(typeSide, scope, out var restsOn) == BindingFailure.Unsupported)
             {
                 this.Fail(member, BindingFailure.Unsupported); // TypePathFailure's unread identity: the located Unsupported_Kd.
+            }
+            else if (restsOn is not null)
+            {
+                this.CompleteDependent(member, restsOn); // A failed clause of the bound's supply might give it: the use rests on it.
             }
 
             return null;
@@ -381,13 +385,13 @@ public sealed partial class Binding
         }
 
         // The Type side's verdict is TypePathFailure's, which PickReading reads too; the value side's access is checked against its receiver.
-        var failure = typeMember is not null ? this.TypePathFailure(typeSide, scope)
+        var failure = typeMember is not null ? this.TypePathFailure(typeSide, scope, out _)
             : selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: member.Left.BoundType) ? BindingFailure.Access : BindingFailure.None;
         if (failure == BindingFailure.QualificationRequired)
         {
-            // SPEC 9.6 (F's N1c ruling 38): an instance member a Type path reaches has no receiver: QualificationRequired_Kd at the access,
-            // its Container the Type declaring the member, with no qualifying repair (the use is written qualified).
-            this.qualificationFailures[member] = new(selected.Scope, scope, selected, selected.Name, LookupRole.Value, 0, member);
+            // SPEC 9.6 (F's N1c rulings 38, 41, 44): an instance member a Type path reaches has no receiver: QualificationRequired_Kd at the
+            // access with its own cause, TypePath, its Container the Type declaring the member, with no qualifying repair (the use is qualified).
+            this.qualificationFailures[member] = new(selected.Scope, scope, selected, selected.Name, LookupRole.Value, 0, member, Cause: QualificationCause.TypePath);
         }
 
         if (failure != BindingFailure.None)
@@ -411,23 +415,28 @@ public sealed partial class Binding
     // function (its static or instance use: the path supplies no receiver, QualificationRequired; a Type-qualified instance function
     // takes its receiver as an argument), an inaccessible member that is no function (Access).
     // A member missing over a projection whose identity this use does not read (UnreadIdentity) is the located Unsupported (F's N1c
-    // rulings 42, 43).
-    private BindingFailure TypePathFailure(SideSelection side, BindingScope scope)
-        => side.Selection.Ambiguous ? BindingFailure.Ambiguous
-            : side.Member is not { } found ? (this.UnreadIdentity(side.Over) ? BindingFailure.Unsupported : BindingFailure.MissingName)
+    // rulings 42-44); where only a failed clause of the bound's supply might give it, the use rests on that clause (`restsOn`).
+    private BindingFailure TypePathFailure(SideSelection side, BindingScope scope, out Koto? restsOn)
+    {
+        restsOn = null;
+        return side.Selection.Ambiguous ? BindingFailure.Ambiguous
+            : side.Member is not { } found ? (this.UnreadIdentity(side.Over, scope, out restsOn) ? BindingFailure.Unsupported : BindingFailure.MissingName)
             : IsInstanceMember(found) && found.Kind != BindingSymbolKind.Function ? BindingFailure.QualificationRequired
             : found.Kind != BindingSymbolKind.Function && !this.Accessible(found, scope) ? BindingFailure.Access
             : BindingFailure.None;
+    }
 
-    // SPEC 8.3.2, 8.5.3 (O-441 (a)'s L1 class; F's N1c rulings 42, 43): whether a Type path's receiver is a projection `S.(Q).X` still in
-    // its class form whose identity a declared Contract bound of its subject may give but this use's evaluation does not read: S is an
-    // associated Type whose declaring Contract bounds it by a Contract B (`associate Item is B`) that strictly refines Q, and B declares a
-    // Type identity clause on X. Reads declared facts only (the clauses' bound Constraints; an unbound or failed clause has none, so it
-    // gives nothing), never applies or proves a clause. Removal: R7-C3's order-free step, in which every use reads its subject's bounds'
-    // supply whatever the written qualifier, so the class is accepted (PLAN's L1 row).
-    private bool UnreadIdentity(BoundType? receiver)
+    // SPEC 8.3.2, 8.4, 8.5.3 (O-441 (a)'s L1 class; F's N1c rulings 42-44): whether a Type path's receiver is a projection `S.(Q).X` still
+    // in its class form whose identity a declared Contract bound of its subject may give but this use's evaluation does not read: S is an
+    // associated Type whose declaring Contract bounds it by a Contract B (`associate Item is B`) that strictly refines Q, and B's supply
+    // (ContractSupply: B and every Contract it inherits, each Self-dependent clause as S makes it) holds a Type identity of S's X. Reads
+    // declared facts only, applying and proving nothing. A Contract of that supply whose declaration failed (its clause set's published
+    // failure, InvalidConstraint) gives no identity; the use rests on the first one (`restsOn`, SPEC 23.1.2) when no identity is found. Removal: R7-C3's order-free
+    // step, in which every use reads its subject's bounds' supply whatever the written qualifier, so the class is accepted (PLAN's L1 row).
+    private bool UnreadIdentity(BoundType? receiver, BindingScope scope, out Koto? restsOn)
     {
-        if (receiver is not { Kind: BoundTypeKind.AssociatedProjection, Symbol: { } associated, Components: [{ Kind: BoundTypeKind.AssociatedProjection, Symbol: { } subject }, { Symbol: { } written }] } ||
+        restsOn = null;
+        if (receiver is not { Kind: BoundTypeKind.AssociatedProjection, Symbol: { } associated, Components: [{ Kind: BoundTypeKind.AssociatedProjection, Symbol: { } subject } self, { Symbol: { } written }] } ||
             subject.Scope.Owner is not ContractKoto declaring)
         {
             return false;
@@ -438,10 +447,11 @@ public sealed partial class Binding
         for (var i = 0; i < bounds.Count; i++)
         {
             this.unreadIdentityWork++;
-            if (bounds[i].BoundConstraint is { Kind: ConstraintKind.Contract, Subject.Symbol: { } boundSubject, Contract: { } refined } && ReferenceEquals(boundSubject, subject) &&
-                refined.Declaration is ContractKoto refining && refining.BoundSymbol is { } child && !ReferenceEquals(child, qualifier) && IsRefinement(child, qualifier) &&
-                this.DeclaresIdentity(refining, associated))
+            if (bounds[i].BoundConstraint is { Kind: ConstraintKind.Contract, Subject.Symbol: { } boundSubject, Contract: { Contract: { } shape } refined } &&
+                ReferenceEquals(boundSubject, subject) && refined.Declaration.BoundSymbol is { } child && !ReferenceEquals(child, qualifier) &&
+                IsRefinement(child, qualifier) && this.SuppliesIdentity(shape, self, associated, scope, ref restsOn))
             {
+                restsOn = null;
                 return true;
             }
         }
@@ -449,21 +459,27 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether a Contract declares a Type identity clause on an associated Type (UnreadIdentity's second fact), its subject or its required Type.
-    private bool DeclaresIdentity(ContractKoto contract, BindingSymbol associated)
+    // Whether a Contract premise `self is shape` supplies a Type identity of self's associated Type (UnreadIdentity's second fact), read
+    // through ContractSupply, the one enumeration of the shape and its ancestors; the first failed declaration met is kept in `failed`.
+    private bool SuppliesIdentity(BoundContract shape, BoundType self, BindingSymbol associated, BindingScope scope, ref Koto? failed)
     {
-        var clauses = contract.ConstraintNodes;
-        for (var i = 0; i < clauses.Count; i++)
+        foreach (var (_, declaration, premise, _) in new ContractSupply(this, shape, self, scope))
         {
             this.unreadIdentityWork++;
-            if (clauses[i].BoundConstraint is { Kind: ConstraintKind.TypeIdentity } identity &&
-                (ReferenceEquals(identity.Subject?.Symbol, associated) || ReferenceEquals(identity.RequiredType?.Symbol, associated)))
+            if (premise is null)
+            {
+                failed ??= this.RecordedFailure(declaration.Symbol.Declaration) != BindingFailure.None ? declaration.Symbol.Declaration : null;
+            }
+            else if (premise.Kind == ConstraintKind.TypeIdentity && (OfSubject(premise.Subject) || OfSubject(premise.RequiredType)))
             {
                 return true;
             }
         }
 
         return false;
+
+        bool OfSubject(BoundType? side) => side is { Kind: BoundTypeKind.AssociatedProjection, Components: [{ } owner, ..] } && ReferenceEquals(side.Symbol, associated) &&
+            ReferenceEquals(owner, self);
     }
 
     // SPEC 9.6: the layer walk of a member lookup in a role (SPEC 9.2), its namespace the role's: the first layer with accessible,

@@ -650,7 +650,7 @@ public sealed partial class Binding
     private BindingSymbol? TypePathMember(MemberAccessKoto step, BindingSymbol? qualifier, BoundType? type, string name, BindingScope scope)
     {
         var side = this.QualifierSelection(step, qualifier, name, scope, type);
-        return this.TypePathFailure(side, scope) == BindingFailure.None ? side.Member : null;
+        return this.TypePathFailure(side, scope, out _) == BindingFailure.None ? side.Member : null;
     }
 
     // A qualifier declaration's own Type, whose members lookup reads (arguments and Origins never change a selection): a Type's

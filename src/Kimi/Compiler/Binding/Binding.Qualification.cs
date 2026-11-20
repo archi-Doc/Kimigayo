@@ -10,13 +10,7 @@ public sealed partial class Binding
     private readonly QualificationFailureRows qualificationFailures;
     private Dictionary<(Koto Use, bool Type), QualificationFact>? qualificationStops;
 
-    private enum QualificationNamespace : byte
-    {
-        Type,
-        Value,
-    }
-
-    private enum QualificationCause : byte
+    internal enum QualificationCause : byte
     {
         Receiver,
         Inherited,
@@ -24,6 +18,14 @@ public sealed partial class Binding
         TypePath, // SPEC 9.6 (F's N1c rulings 38, 41): an instance member reached through a Type path, which supplies no receiver.
     }
 
+    private enum QualificationNamespace : byte
+    {
+        Type,
+        Value,
+    }
+
+    // A qualification failure's facts. Cause: the cause the check wrote where it failed (F's N1c ruling 44's N1), TypePath for a Type path's
+    // member (SelectMember); none for an unqualified Name's stop, whose cause its member and base clause state (Receiver, Case, Inherited).
     internal readonly record struct QualificationFact(
         BindingScope Container,
         BindingScope Scope,
@@ -32,12 +34,10 @@ public sealed partial class Binding
         LookupRole Role,
         int Arity,
         Koto? At = null,
-        Koto? BaseClause = null)
+        Koto? BaseClause = null,
+        QualificationCause? Cause = null)
     {
         internal bool Type => !InValueNamespace(this.Role);
-
-        // A Type path's member (SPEC 9.6; F's N1c rulings 38, 41): the use is written with its qualifier; its record is the TypePath cause's.
-        internal bool Qualified => this.At is MemberAccessKoto;
     }
 
     private static bool IsInstanceMember(BindingSymbol symbol)
@@ -204,17 +204,17 @@ public sealed partial class Binding
     {
         var fact = this.qualificationFailures[node];
         var container = fact.Container.Owner.BoundSymbol!;
-        if (fact.Qualified)
+        if (fact.Cause == QualificationCause.TypePath)
         {
-            // The TypePath cause's row (SPEC 9.6; F's N1c ruling 41): the member and the Type the path names, the member's declaration
-            // related; its own Note and no Label or repair (its evidence alternative is not the 9.5 stop's), since the use is qualified.
+            // The TypePath cause's row (SPEC 9.6; F's N1c rulings 41, 44): the member and its declaring Type (the Container), the member's
+            // declaration related; its own Note and no Label or repair (its evidence alternative is not the 9.5 stop's), since the use is qualified.
             node.ReportIn(
                 store,
                 requirement,
                 DiagnosticCode.QualificationRequired_Kd,
                 fact.Name,
                 container.Name,
-                note: $"'{fact.Name}' is an instance member and needs a receiver; the path names the Type {container.Name}, which supplies none",
+                note: $"'{fact.Name}' is an instance member of {container.Name} and needs a receiver, which a Type path does not supply",
                 at: fact.At,
                 evidence: [QualificationCause.TypePath],
                 related: [("declaration", fact.Member.Declaration, "instance member")]);

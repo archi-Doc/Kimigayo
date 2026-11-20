@@ -305,14 +305,14 @@ public partial class TypeDagScalingTest
         }
     }
 
-    // SPEC 8.3.2, 8.5.3 (R7-N1 c-b, F's N1c ruling 43): UnreadIdentity reads the subject's declaring Contract's clauses and one refining
-    // bound's clauses, refinement over the bound's ancestors, so a use through the root of a Contract chain D0 <- D1 <- ... <- DN (C bounds
-    // Item by DN, DN declares the identity) reads work linear in N; each of 10 uses records the located Unsupported_Kd.
+    // SPEC 8.3.2, 8.5.3 (R7-N1 c-b, F's N1c rulings 43, 44): UnreadIdentity reads the subject's declaring Contract's clauses and the bound's
+    // supply (ContractSupply: the bound and each Contract it inherits), so a use through the root of a Contract chain D0 <- D1 <- ... <- DN
+    // (C bounds Item by DN, its parent D(N-1) declares the identity, the supply reading ancestors root first) reads work linear in N; each of 10 uses records the located Unsupported_Kd.
     [Fact]
     public void AnUnreadIdentityIsDecidedInWorkLinearInTheContractChain()
     {
         var (w30, w60) = (Work(30), Work(60));
-        Assert.True(w60 <= (2 * w30) + 200, $"{w30} {w60}");
+        Assert.True(w30 < w60 && w60 <= (2 * w30) + 200, $"{w30} {w60}"); // The supply walk reads the bound's ancestors (ruling 44's N2).
         var w120 = Work(120);
         Assert.True(w120 - w60 <= (2 * (w60 - w30)) + 200, $"{w30} {w60} {w120}");
 
@@ -321,7 +321,7 @@ public partial class TypeDagScalingTest
             var source = new System.Text.StringBuilder("enum M\n    A\n    public func f(self) -> i32 => 1\ncontract D0\n    associate X\n");
             for (var i = 1; i <= n; i++)
             {
-                source.Append($"contract D{i}: D{i - 1}\n").Append(i == n ? "    Self.(D0).X is M\n" : string.Empty);
+                source.Append($"contract D{i}: D{i - 1}\n").Append(i == n - 1 ? "    Self.(D0).X is M\n" : string.Empty);
             }
 
             source.Append($"contract C\n    associate Item is D{n}\nfunc g<T>() -> i32\n    T is C\n");
