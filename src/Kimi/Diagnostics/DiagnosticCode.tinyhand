@@ -166,6 +166,7 @@
   + Name="InvalidTypeFormation_Kd"
     Category="Language"
     Message="The resolved declaration or Semantics target cannot form this type"
+    Evidence="declared:Number,written:Number"
 
   + Name="InvalidConstraint_Kd"
     Category="Language"

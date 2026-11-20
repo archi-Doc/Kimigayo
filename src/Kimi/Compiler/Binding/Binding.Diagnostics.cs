@@ -55,10 +55,6 @@ public sealed partial class Binding
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
 
-    // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
-    // the generic container that declares it (Outer), with the declared and the written counts.
-    private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
-
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1, bool ErasureIncomparable = false, ReferenceConstraintFailure? ConstraintFailure = null);
 
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
@@ -318,34 +314,26 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 9.7.1: outside constructor-own inference, required Type arguments are written in full; an outer container never takes call
-    // arguments or an expected Type; outside a generic container, a nested declaration is named through that container.
-    private static void ReportArity(Koto node, (BindingSymbol Declaration, int Declared, int Written, bool Outer) arity, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var name = arity.Declaration.Name;
-        var parameters = arity.Declaration.Declaration is DeclarationContainerKoto container ? string.Join(", ", container.GenericParameterNodes) : string.Empty;
-        var declared = $"{name}<{parameters}>";
-        var member = node.Parent is MemberAccessKoto access && ReferenceEquals(KotoHelper.UnwrapParentheses(access.Left), node) ? access.Right.ToString() : null;
-        string note;
-        if (arity.Outer)
-        {
-            note = $"{node} is declared in {declared}; outside it, the Type arguments of {name} are written on the qualifier and are never inferred (SPEC 9.7.1)";
-        }
-        else if (arity.Written == 0 && member is not null)
-        {
-            note = $"{declared} is named without its Type arguments; this qualifier requires explicit Type arguments; only the construction target itself can infer its own slots (SPEC 9.7.1, 10.8)";
-        }
-        else
-        {
-            note = $"{declared} declares {arity.Declared} Type parameter{(arity.Declared == 1 ? string.Empty : "s")}, and {arity.Written} Type argument{(arity.Written == 1 ? " is" : "s are")} written (SPEC 9.7.1)";
-        }
-
-        node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
-    }
-
     // A missing-information record (a missing Name or Type, or Unsupported_Kd): the one test of a Constraint record's diagnostic cause.
     private static bool IsMissingInformation(Koto? node)
         => node?.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported;
+
+    // SPEC 9.7.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of the generic
+    // container that declares it: that declaration (Related) and its declared and written counts (Count, in that order).
+    private BoundType? RecordArity(Koto node, BindingSymbol declaration, int declared, int written)
+    {
+        var subject = SourceRef.Of(node);
+        return this.Record(
+            node,
+            BindingFailure.InvalidTypeFormation,
+            [new(ProblemFactKind.Related, this.FactSite(declaration.Declaration), 0), new(ProblemFactKind.Count, subject, declared), new(ProblemFactKind.Count, subject, written)]);
+    }
+
+    private void ReportArity(Koto node, DiagnosticCollection? store, int problem, in BindingProblem record)
+    {
+        var facts = this.report.Facts(problem);
+        node.ReportIn(store, record.Requirement, record.Code, evidence: [(int)facts[1].Value, (int)facts[2].Value], related: [("declaration", this.compilation.SyntaxOf(facts[0].Site), null)]);
+    }
 
     // ReportIssue's one helper that takes no store (PLAN G949 Stage 2 U3-3; B's U3 ruling 33): the store would be its seventh parameter, so it
     // reads Core's store decision for its subject itself, the same decision ReportIssue passes its siblings for the same node.
@@ -673,7 +661,6 @@ public sealed partial class Binding
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();
-        this.arityFailures?.Clear();
         this.constructorAbsences?.Clear();
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();

@@ -406,10 +406,6 @@ public sealed partial class Binding
         {
             // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
         }
-        else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
-        {
-            ReportArity(issue.Node, arity, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, store, requirement, issue.Code))
         {
             // SPEC 15.2.3, 5.7: an Origin slot the written binding cannot supply, at the annotation.
