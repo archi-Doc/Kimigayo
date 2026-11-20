@@ -492,7 +492,7 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        this.FailExplained(ref this.callInferenceFailures, call, BindingFailure.UnprovenAcquisitionCorrelation, new CallInferenceFailure(contract.Pair.Left, function, null, ConstructionCheck.AcquisitionCorrelation, slot, types[a], types[b]), true);
+                        this.FailExplained(CallInferenceFailureRows.Family, call, BindingFailure.UnprovenAcquisitionCorrelation, new CallInferenceFailure(contract.Pair.Left, function, null, ConstructionCheck.AcquisitionCorrelation, slot, types[a], types[b]), true);
                         return false;
                     }
                 }

@@ -22,7 +22,7 @@ public class NominalLengthRecoveryTest
             Assert.False(c.Bind().IsComplete);
 
             // The parser reports the slot (SPEC 4.4); the formation failure of the header rests on that Error and is not published again.
-            Assert.Contains(c.Binding.DerivedIssues, node => node.FailureOf() == BindingFailure.InvalidTypeFormation);
+            Assert.Contains(c.Binding.DerivedIssues, issue => issue.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
             Assert.DoesNotContain(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidTypeFormation_Kd);
             Assert.False(c.Generate(TextWriter.Null));
         }
@@ -38,7 +38,7 @@ public class NominalLengthRecoveryTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Bind().IsComplete);
-        var failed = c.Binding.Issues.Select(static issue => issue.Node).Concat(c.Binding.DerivedIssues)
+        var failed = c.Binding.Issues.Select(static issue => issue.Node).Concat(c.Binding.DerivedIssues.Select(static issue => issue.Node))
             .Where(static node => node.FailureOf() == BindingFailure.InvalidTypeFormation)
             .Select(static node => node.ToString()).ToArray();
         if (length is null)

@@ -484,6 +484,68 @@ public sealed partial class MirBorrowsTest
             f = [Writer.init(q: null), Writer.init(q: null)]
             y = 5
             usep(slot)
+        func derefBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            let r = x@uniq
+            r@follow = Writer.init(q: null)
+            y = 5
+            usep(slot)
+        func derefOk()
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            r@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func derefFieldOk()
+            var x = Writer.init(q: null)
+            var h = (x@uniq, 0)
+            h.0@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func dictIndexBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            var d: Dictionary<i32, Writer> = [:]
+            _ = d.insertOrReplace(1, x@move)
+            d[1] = Writer.init(q: null)
+            y = 5
+            usep(slot)
+        func dictIndexOk()
+            var d: Dictionary<i32, Writer> = [:]
+            _ = d.insertOrReplace(1, Writer.init(q: null))
+            d[1] = Writer.init(q: null)
+        func uniqElemOk()
+            var a: Array<Writer> = [Writer.init(q: null)]
+            match a.tryGetUniq(0)
+                .Some(let r) => r@follow = Writer.init(q: null)
+                .None => ()
+        func derefInnerOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var o = Outer.init(q: null)
+            o.inner.p = slot@raw
+            let r = o@uniq
+            r.inner = Writer.init(q: null)
+            y = 5
+            usep(slot)
+            inspect(o@ref)
+        func setDerefBad(b: bool)
+            var z: i32 = 0
+            var t: ref/i32 = z@ref
+            var t2: ref/i32 = z@ref
+            var y: i32 = 1
+            if b
+                var s = Setter.init(target: t@uniq, value: y@ref)
+                let r = s@uniq
+                r@follow = Setter.init(target: t2@uniq, value: z@ref)
+            y = 5
+            inspect(t@ref)
         func arrClearBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -637,6 +699,13 @@ public sealed partial class MirBorrowsTest
     //   otherwise decide the verdict by itself; rcCellQuietOk has no drop, rcCellNullOk never writes the cell); Array elements
     //   (arrReassignBad, also scopeDrop2Bad; litScopeBad adds the Array literal's own construction, R5-M129); Dictionary values and keys
     //   (dictReassignBad, dictKeyReassignBad); fixed-array elements (fixedReassignBad).
+    // - `=` through an exclusive reference (D-918): the destroyed part's receiver is the reference's Reborrow, the input the drop writes
+    //   through, so the drop's store keeps what reads through it carry (derefBad's q, which addresses w: `y = 5` errs) and never the
+    //   reference's own Loan (rule A, SPEC 15.6.4): derefOk, derefFieldOk (a reference a Tuple holds), uniqElemOk (tryGetUniq's) and a
+    //   Dictionary's indexed replacement through indexUniq's reference (dictIndexOk; dictIndexBad keeps its `y = 5`) are valid, as their
+    //   method twin `r.flush()` is; on dev each kept r's Loan, an error at its referent's storage end and later uses. A Field past the
+    //   reference takes the same receiver (derefInnerOk: `r.inner = ...`), and so does a drop row of the Content kind (setDerefBad:
+    //   Setter's, whose records are setterScopeBad's).
     [Theory]
     [InlineData("localBad", "localBad: y = 5")] // Drop at `=`
     [InlineData("localReachBad", "localReachBad: y = 5")] // Drop at `=`
@@ -677,6 +746,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("dictKeyReassignNullOk", "")] // Dictionary keys at `=`
     [InlineData("fixedReassignBad", "fixedReassignBad: y = 5")] // fixed-array elements at `=`
     [InlineData("fixedReassignNullOk", "")] // fixed-array elements at `=`
+    [InlineData("derefBad", "derefBad: y = 5")] // `=` through an exclusive reference: the drop's store keeps q, not r's Loan (D-918)
+    [InlineData("derefOk", "")] // `=` through an exclusive reference (D-918)
+    [InlineData("derefFieldOk", "")] // `=` through a reference a Tuple holds (D-918)
+    [InlineData("dictIndexBad", "dictIndexBad: y = 5")] // a Dictionary's indexed replacement, through indexUniq's reference (D-918)
+    [InlineData("dictIndexOk", "")] // a Dictionary's indexed replacement (D-918)
+    [InlineData("uniqElemOk", "")] // `=` through tryGetUniq's reference (D-918)
+    [InlineData("derefInnerOk", "")] // `=` of a Field past an exclusive reference (D-918)
+    [InlineData("setDerefBad", "setDerefBad: y = 5; setDerefBad: t@ref")] // a Content-kind drop row through a reference: setterScopeBad's records (D-918)
     public void ADestructionRetainsAsItsDropsCall(string form, string expected)
     {
         var c = MirBuildTest.Compile(DropShapes + Form(DropForms, form));
@@ -751,14 +828,16 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16: A5 on a program version it checked before allocates nothing at destructions: every site's composition, the published
-    // destroying calls, a drop writing through a borrow Field and one through stated raw layers.
+    // destroying calls, a drop writing through a borrow Field and one through stated raw layers, and a Drop through an exclusive
+    // reference, whose receiver is its Reborrow (D-918).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmDestructionAllocatesNothing()
     {
         string[] forms = ["localBad", "tempOnlyBad", "scopeBad", "discardBad", "escapeBad", "setterScopeBad", "statedBad", "fieldBad", "orderBad",
             "baseBad", "tupleBad", "optionBad", "holderBad", "closureBad", "sealedLateBad", "erasedLateBad", "rcCellBad", "arrReassignBad",
-            "litScopeBad", "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad"];
+            "litScopeBad", "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad", "derefOk",
+            "derefBad"];
         var c = MirBuildTest.Compile(DropShapes + string.Concat(forms.Select(static x => Form(DropForms, x))) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);

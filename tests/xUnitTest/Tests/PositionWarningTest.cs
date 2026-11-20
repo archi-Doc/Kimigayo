@@ -47,6 +47,16 @@ public class PositionWarningTest
     [InlineData("let a = values.tryGet<i8>((-128) >> 7)", "fails to resolve for every length")]
     [InlineData("let a = values.tryGet<i8>((-127) / 2)", "fails to resolve for every length")]
     [InlineData("let a = values.tryGet<i8>((-127) % 2)", "fails to resolve for every length")]
+
+    // SPEC 3.1, 12.3.2: a direct literal at its Type's range bound fits and has a known value (out-of-range twins below).
+    [InlineData("let a = values.trySlice<Range<i8, i8>>(127..126)", "The range 127..126 fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i8>(-128)", "The element position -128 fails to resolve for every length")]
+    [InlineData("let a = values.trySlice<Range<u8, u8>>(255..254)", "The range 255..254 fails to resolve for every length")]
+    [InlineData("let a = values.trySlice<Range<u8, u8>>(1..-0)", "The range 1..-0 fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i64>(9223372036854775807)", "The element position 9223372036854775807 fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<i64>(-9223372036854775808)", "The element position -9223372036854775808 fails to resolve for every length")]
+    [InlineData("let a = values.tryGet<u64>(18446744073709551615)", "The element position 18446744073709551615 fails to resolve for every length")]
+    [InlineData("let a = values.trySlice<Range<u64, u64>>(1..-0)", "The range 1..-0 fails to resolve for every length")]
     public void CertainFailuresAreWarned(string statement, string message)
     {
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
@@ -100,7 +110,6 @@ public class PositionWarningTest
     [InlineData("let a = values.tryGet<i8>(127 + 1)")]
     [InlineData("let a = values.tryGet<i8>(-(127 + 1))")]
     [InlineData("let a = values.tryGet<i8>((-16) * 9)")]
-    [InlineData("let a = values.tryGet<i128>(170141183460469231731687303715884105728)")]
     [InlineData("let a = values.tryGet<u128>(340282366920938463463374607431768211455 + 1)")]
     [InlineData("func info<length N>(items: [N of i32]) -> i32 => items[1..^1].length@i32 + items[^1] + items[1]")]
     [InlineData("func tail<length N>(items: ref/[N of i32]) -> isize => items[3..].length")]
@@ -109,6 +118,26 @@ public class PositionWarningTest
         var c = MinimalEmissionTest.Analyze(Prelude + statement);
         c.Binding.ReportDiagnostics();
         Assert.DoesNotContain(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
+    }
+
+    // SPEC 3.1, 12.3.2: a direct literal past its Type's range bound does not fit, so the call is rejected and its key has no value to warn about.
+    [Theory]
+    [InlineData("let a = values.trySlice<Range<i8, i8>>(128..126)")]
+    [InlineData("let a = values.tryGet<i8>(-129)")]
+    [InlineData("let a = values.trySlice<Range<u8, u8>>(256..254)")]
+    [InlineData("let a = values.trySlice<Range<u8, u8>>(1..-1)")]
+    [InlineData("let a = values.tryGet<i64>(9223372036854775808)")]
+    [InlineData("let a = values.tryGet<i64>(-9223372036854775809)")]
+    [InlineData("let a = values.tryGet<u64>(18446744073709551616)")]
+    [InlineData("let a = values.trySlice<Range<u64, u64>>(1..-1)")]
+    [InlineData("let a = values.tryGet<i128>(170141183460469231731687303715884105728)")]
+    public void OutOfRangeLiteralKeysAreRejected(string statement)
+    {
+        var c = MinimalEmissionTest.Analyze(Prelude + statement);
+        c.Binding.ReportDiagnostics();
+        var diagnostics = TestDiagnostics.Of(c, "Hello.kimi");
+        Assert.Contains(diagnostics, x => x.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(diagnostics, x => x.Code == nameof(DiagnosticCode.PositionAlwaysFails_Kd));
     }
 
     [Trait("Purpose", "Allocation")]

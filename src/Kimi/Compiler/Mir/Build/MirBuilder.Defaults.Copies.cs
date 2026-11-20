@@ -264,7 +264,7 @@ internal sealed partial class MirBuilder
             {
                 MirProjectionKind.PairLayer => TyCtxt.Layer(this.body.TypeOf(prefix), out _, out _) is var kind and not HirPlaceKind.Value
                     ? this.Layer(prefix, kind) : prefix,
-                MirProjectionKind.Index => this.body.Project(compilation.Types, prefix, row.Kind, map[locals + row.Arg]),
+                MirProjectionKind.Index => this.body.Project(compilation.Types, prefix, row.Kind, map[locals + row.Arg], row.Position),
                 _ => this.body.Project(compilation.Types, prefix, row.Kind, row.Arg),
             };
         }
