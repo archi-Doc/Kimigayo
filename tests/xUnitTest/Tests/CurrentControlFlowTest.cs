@@ -253,6 +253,37 @@ public class CurrentControlFlowTest
         }
     }
 
+    // SPEC 14.9.3 (R7-N5 B6a): N nested labeled loops whose innermost body exits to each label, innermost first, close every target
+    // at its Outward chain's tail, against the chain's order. Without re-adds only the cells above the target, so one composition of
+    // the body does work quadratic in N (the merges' chain reads), not cubic: each doubling of N at most five times the work.
+    [Fact]
+    public void ClosingAgainstTheChainsOrderIsQuadratic()
+    {
+        long[] work = [Work(30), Work(60), Work(120)];
+        Assert.True(work[1] <= 5 * work[0] && work[2] <= 5 * work[1], $"guess walk {string.Join(", ", work)}");
+
+        static long Work(int depth)
+        {
+            var source = new System.Text.StringBuilder("func run(flag: bool) -> i32\n");
+            for (var i = 1; i <= depth; i++)
+            {
+                source.Append(' ', 4 * i).Append("label l").Append(i).Append(": loop\n");
+            }
+
+            for (var i = depth; i >= 1; i--)
+            {
+                source.Append(' ', 4 * (depth + 1)).Append("if flag => exit to l").Append(i).Append('\n');
+            }
+
+            var c = Parse(source.Append("func other() => missing()\n").ToString());
+            Assert.False(c.Bind().IsComplete);
+            var body = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "run").Body!;
+            var before = c.Binding.GuessCompletionWork;
+            Assert.True(c.Binding.GuessedCompletionNodes(body, body).IsEmpty);
+            return c.Binding.GuessCompletionWork - before;
+        }
+    }
+
     private static Compilation Parse(string source)
     {
         var c = Compilation.CreateForTest();

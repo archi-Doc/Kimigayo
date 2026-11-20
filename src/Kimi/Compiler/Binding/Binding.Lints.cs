@@ -86,11 +86,12 @@ public sealed partial class Binding
     internal IEnumerable<(Koto Node, DiagnosticCode Code)> LintErrorRecords
         => this.lints.Where(static x => IsError(x.Row)).Select(static x => (x.Node, LintTable[(int)x.Row].Code));
 
-    /// <summary>Gets the node completions the latest lint walk composed, which a scaling check reads: each node once per walk.</summary>
+    /// <summary>Gets the latest lint walk's completion work (StructuralCompletion.Work), which a scaling check reads: each node once per
+    /// walk.</summary>
     internal long LintCompletionWork => this.lintWalk?.CompletionWork ?? 0;
 
-    /// <summary>Gets the node completions the guess queries composed since the first, which a scaling check reads.</summary>
-    internal long GuessCompletionWork => this.guessedCompletion?.Composed ?? 0;
+    /// <summary>Gets the guess queries' completion work (StructuralCompletion.Work) since the first, which a scaling check reads.</summary>
+    internal long GuessCompletionWork => this.guessedCompletion?.Work ?? 0;
 
     /// <summary>Gets the nodes a completion check rests on when the syntax from a node up to a root completes normally only through
     /// nodes whose completion StructuralCompletion cannot know from what it reads: a body the parser supplied for a missing one
@@ -629,15 +630,15 @@ public sealed partial class Binding
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;
 
-        // The completions the structural completion composed before this walk.
-        private long composedBefore;
+        // The structural completion's work before this walk.
+        private long workBefore;
 
         // SPEC 14.3: whether an operation in the innermost Unsafe Block being walked used its permission, and whether one whose need
         // is unknown, such as an unresolved operation, may have.
         private bool unsafeUsed;
         private bool unsafeUncertain;
 
-        internal long CompletionWork => this.completion.Composed - this.composedBefore;
+        internal long CompletionWork => this.completion.Work - this.workBefore;
 
         public override void Visit(Koto node)
         {
@@ -674,7 +675,7 @@ public sealed partial class Binding
         internal void Begin()
         {
             this.completion.Clear();
-            this.composedBefore = this.completion.Composed;
+            this.workBefore = this.completion.Work;
         }
 
         // SPEC 5, 7.6, 14.3: an operation that needs an unsafe context outside one records row 7; inside one, it uses the innermost
