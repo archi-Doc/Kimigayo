@@ -186,11 +186,11 @@ public sealed partial class Binding
         held = false;
         if (this.FormationRead)
         {
-            return this.ProveConformanceConditions(path, receiver, scope);
+            return this.PathEvidence(path, receiver, scope);
         }
 
         var mark = this.BeginAnswer();
-        var condition = this.ProveConformanceConditions(path, receiver, scope);
+        var condition = this.PathEvidence(path, receiver, scope);
         var evidence = condition is ConstraintProof.Proven or ConstraintProof.Unknown ? CombineProof(condition, this.InstanceFormation(receiver, scope), true) : condition;
         held = this.EndHeldAnswer(mark, evidence);
         return condition;

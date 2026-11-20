@@ -121,10 +121,16 @@ public class ArrayBindingTest
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is ref\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is uniq\n    let y: s/[2 of i32] = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
     [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: s/i32 = [1]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1]")]
-    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
-    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
-    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [1]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1]")]
-    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = []\n    return 0\nlet done = 0\n", "Unsupported_Kd []")]
+    // R7-C3 (F's C2 ruling 307 (1); SPEC 8.2.3, 4.1, 4.3.1): an identity premise makes T the fixed array or Array, so the expectation is
+    // not abstract and the literal takes its form: valid, newly accepted (PLAN G1123 narrowed). Their invalid twins keep a Language
+    // record (three elements at [2 of i32]; a bool element at Array<i32>), and T with no identity premise keeps the located limit.
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [1]\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = []\n    return 0\nlet done = 0\n", "")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    T is [2 of i32]\n    let y: T = [1, 2, 3]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd [1, 2, 3]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    T is Array<i32>\n    let y: T = [true]\n    return 0\nlet done = 0\n", "TypeMismatch_Kd [true]")]
+    [InlineData("func h<s/T>(value: s/T) -> i32\n    s is owner\n    let y: T = [1, 2]\n    return 0\nlet done = 0\n", "Unsupported_Kd [1, 2]")]
     [InlineData("let w = [[1], []]\n", "Unsupported_Kd []")]
     [InlineData("let ready = true\nlet x = if ready => [1] else => []\n", "Unsupported_Kd []")]
     [InlineData("let x = [[]]\n", "Unsupported_Kd []")]
