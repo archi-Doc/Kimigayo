@@ -305,7 +305,7 @@ public sealed partial class Binding
 
         // The solver's own failure: the first bound, a member's position or a declared clause, that no solution satisfies.
         inference.Source = default;
-        if (!this.SolveCallOriginInference(function, inference, origins, inputs, null))
+        if (!this.SolveCallOriginInference(inference, origins, inputs, null))
         {
             this.contractFailure = inference.Failure;
             return false;
