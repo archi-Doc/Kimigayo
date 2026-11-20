@@ -14,7 +14,8 @@ namespace Kimi.Command;
 // native build done by Tatara. Inputs: standard input, a terminal's (SimplePrompt; the only path that touches SimpleConsole) or a
 // redirected one (read one line at a time without read-ahead). Outputs: each line's command output, its exit code when it is not 0,
 // and the session's exit code (0 when every line succeeded; 1 when any failed, a cancelled line included, or when Tatara's refusal
-// ended the session). Invariants: a line is a command line, parsed and executed by CommandUnit.Product.Execute with a new DI scope's
+// ended the session; 130, CommandExecution's cancellation, when the root's termination ended it: a started console read observes no
+// cancellation, so the session checks its token when a read returns, before the line runs, and once more at its end). Invariants: a line is a command line, parsed and executed by CommandUnit.Product.Execute with a new DI scope's
 // provider and the line's own token, so nothing is reused between lines but the process's library per target, Tatara's loaded DLL
 // per path and its refusal, Kimigayo, the current directory and the runtime; the session owns Ctrl+C while it runs (Program.CancelKey)
 // and restores it at its end (a press with no read or line pending, the redirected reader waiting for input, calls the action the
@@ -66,6 +67,8 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
         {
             while (!cancellationToken.IsCancellationRequested && await this.ReadLine(input, cancellationToken).ConfigureAwait(false) is { } line)
             {
+                // A started console read observes no cancellation (F1): a line it returns after the root's termination does not run.
+                cancellationToken.ThrowIfCancellationRequested();
                 var words = line.Length > LineLimit ? null : SimpleParserHelper.SplitArguments(line, default); // The limit first, for every line.
                 if (words is [])
                 {
@@ -96,6 +99,7 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
             Program.CancelKey = previous;
         }
 
+        cancellationToken.ThrowIfCancellationRequested(); // The end of input or a cancelled line after the root's termination: 130.
         return failed ? 1 : 0;
     }
 

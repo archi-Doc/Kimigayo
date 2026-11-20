@@ -153,8 +153,9 @@ public sealed class TataraCommandTest : IDisposable
         Assert.Equal(2, Count(text, "Project: Lib (Lib.kimiproj)"));
     }
 
-    // The root's termination (the window's close, logoff: the token Run takes) cancels the running line and ends the session: the second
-    // line never runs.
+    // The root's termination (the window's close, logoff, a press with nothing pending: the token Run takes) cancels the running line
+    // and ends the session cancelled (IMPL 20.3: "Cancellation returns 130"): the line's "Command cancelled." and the session's, 130; the
+    // second line never runs.
     [Fact]
     public async Task TheRootsTerminationEndsTheSession()
     {
@@ -164,9 +165,37 @@ public sealed class TataraCommandTest : IDisposable
         var console = new SessionConsole { OnProject = root.Cancel };
         var (code, text, _) = await Session("build Lib/Lib.kimiproj\nbuild Lib/Lib.kimiproj\n", this.directory, console, root.Token);
         Assert.Same(previous, Program.CancelKey);
-        Assert.Equal(1, code);
-        Assert.Equal(1, Count(text, "Command cancelled."));
+        Assert.Equal(130, code);
+        Assert.Equal(2, Count(text, "Command cancelled."));
         Assert.Equal(1, Count(text, "Project: Lib (Lib.kimiproj)"));
+    }
+
+    // F1 (the Coordinator's IMPL review of A4; IMPL 20.3: "Cancellation returns 130"): a press while the redirected reader waits requests
+    // the root's termination, which cannot interrupt a console read already started; when that read returns a whole line or the end of
+    // input, the session ends cancelled ("Command cancelled.", 130) and the line does not run. The row's action cancels the root's
+    // token, standing in for the default, which no in-process test calls (r2).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task APressWhileTheReaderWaitsEndsTheSessionWith130(bool line)
+    {
+        this.Library("Lib");
+        var previous = Program.CancelKey;
+        using var root = new CancellationTokenSource();
+        Program.CancelKey = root.Cancel;
+        try
+        {
+            Action press = () => Program.CancelKey();
+            var input = line ? new LineStream([("build Lib/Lib.kimiproj", press)]) : new LineStream([], press);
+            var (code, text) = await Session(input, this.directory, new SessionConsole(), root.Token);
+            Assert.Equal(130, code);
+            Assert.Equal(1, Count(text, "Command cancelled."));
+            Assert.Equal(0, Count(text, "Project: Lib (Lib.kimiproj)"));
+        }
+        finally
+        {
+            Program.CancelKey = previous;
+        }
     }
 
     // A second press during a line already cancelled ends the process at once with 130 by Program.EndProcess: a child test process runs
@@ -247,16 +276,25 @@ public sealed class TataraCommandTest : IDisposable
     // A session over the input in the folder, with the root's token.
     internal static async Task<(int Code, string Text, MemoryStream Input)> Session(string input, string folder, SessionConsole console, CancellationToken cancellationToken)
     {
-        var command = Unit(console).Context.ServiceProvider.GetRequiredService<TataraCommand>();
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(input));
+        var (code, text) = await Session(stream, folder, console, cancellationToken);
+        return (code, text, stream);
+    }
+
+    // A session over the input in the folder, with the root's token, run as the command runs it: through CommandExecution, which ends a
+    // cancelled session with "Command cancelled." and 130.
+    internal static async Task<(int Code, string Text)> Session(Stream input, string folder, SessionConsole console, CancellationToken cancellationToken)
+    {
+        var provider = Unit(console).Context.ServiceProvider;
+        var command = provider.GetRequiredService<TataraCommand>();
         var current = Environment.CurrentDirectory;
         Environment.CurrentDirectory = folder;
         try
         {
             Environment.ExitCode = 0;
-            var code = await command.Run(stream, cancellationToken);
+            var code = await CommandExecution.Execute(provider.GetRequiredService<Kimigayo>(), () => command.Run(input, cancellationToken));
             Assert.Equal(0, Environment.ExitCode);
-            return (code, console.Text, stream);
+            return (code, console.Text);
         }
         finally
         {
@@ -337,9 +375,10 @@ public sealed class TataraCommandTest : IDisposable
         }
     }
 
-    // The session's input: each line's bytes and a line feed; a line's action runs when its first byte is read, while the reader waits
-    // (no read or line pending).
-    internal sealed class LineStream((string Line, Action? Before)[] lines) : Stream
+    // The session's input: each line's bytes and a line feed, then its end. A line's action runs in the read that returns its line feed,
+    // and the end's in the read that returns the end: while the reader waits (no read or line pending), before the session sees the
+    // line or the end.
+    internal sealed class LineStream((string Line, Action? Before)[] lines, Action? atEnd = null) : Stream
     {
         private int line = -1;
         private byte[] current = [];
@@ -361,13 +400,18 @@ public sealed class TataraCommandTest : IDisposable
             {
                 if (this.line + 1 == lines.Length)
                 {
+                    atEnd?.Invoke();
                     return 0;
                 }
 
                 this.line++;
-                lines[this.line].Before?.Invoke();
                 this.current = Encoding.UTF8.GetBytes(lines[this.line].Line + "\n");
                 this.position = 0;
+            }
+
+            if (this.position == this.current.Length - 1)
+            {
+                lines[this.line].Before?.Invoke();
             }
 
             buffer[offset] = this.current[this.position++];
