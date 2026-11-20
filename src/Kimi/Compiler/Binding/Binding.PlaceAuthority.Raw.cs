@@ -5,16 +5,16 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Place authority, raw concern (SPEC 5.2, 5.2.2, 5.7; design-final §4): what a raw Place is, its root (IsRawRoot) and the walks from a
-// Place to that root (IsRawPlace: a Take without state tracking; IsRawRooted: a borrow, an address and place-ness; IsPointerPath: a write
-// that binding mutability does not decide), which the Place classification, the conversions, the unsafe-context rule and the HIR
-// publisher read; and what a Place's path reaches (PathOrigin), in one walk over NextPathStep:
+// Place to that root (IsRawPlace: a Take without state tracking; IsRawRooted: a borrow, an address and place-ness), which the Place
+// classification, the conversions, the unsafe-context rule and the HIR publisher read; and what a Place's path reaches (PathOrigin),
+// in one walk over NextPathStep:
 // the Origin it is reached through, which a `during self` layer is read with (ReadHolder) and a typed path states (BindAddress), and
 // the stored Field it is or lies inline in, which the allowlist of a layer reached through no dereference judges (HolderPlaceFailure).
 public sealed partial class Binding
 {
     // SPEC 5, 5.2, 5.3: the root of a raw Place's path, `*p` or `p[n]` (the node itself, already unwrapped), the one test of it: the raw
-    // walks (IsRawPlace, IsRawRooted, IsPointerPath), the Place classification (IsBarePlace, LendsPlace, PlaceOrigin, PlaceOriginSource,
-    // Writable, TakeJudgment), its path step (NextPathStep) and the unsafe-context rule (RequiresUnsafe) read it.
+    // walks (IsRawPlace, IsRawRooted), the Place classification (IsBarePlace, LendsPlace, PlaceOrigin, PlaceOriginSource, TakeJudgment),
+    // its path step (NextPathStep, which PathFold reads) and the unsafe-context rule (RequiresUnsafe) read it.
     private static bool IsRawRoot(Koto source)
         => source is DereferenceKoto || (source is IndexKoto index && HirTables.TypeOf(index.Left) is { IsPointer: true });
 
@@ -82,23 +82,6 @@ public sealed partial class Binding
             }
 
             source = KotoHelper.UnwrapParentheses(element.Left);
-        }
-
-        return false;
-    }
-
-    // SPEC 5.2, 12: a Place reached from *p or p[n] by one or more built-in steps into an owned value (IsInlinePart): a stored
-    // Field, a Tuple element, or an element of a fixed array, Array or Dictionary. Binding mutability does not decide its write permission.
-    private bool IsPointerPath(Koto source)
-    {
-        source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64 && source is BinaryKoto element && this.IsInlinePart(element); depth++)
-        {
-            source = KotoHelper.UnwrapParentheses(element.Left);
-            if (IsRawRoot(source))
-            {
-                return true;
-            }
         }
 
         return false;

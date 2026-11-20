@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -50,5 +51,42 @@ public class DynamicArrayElementTest
         Assert.False(c.Generate(output));
         Assert.Empty(output.ToString());
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+    }
+
+    // D-941 (SPEC 4.7.1, 5.2, 15.1.5): a write of a k-deep Array element, through an owned local (v) or a raw pointer ((*p)), decides
+    // each prefix of its path once (Binding's PathFold), so binding it takes path steps linear in k; deciding a receiver prefix again
+    // from each Array step took 2^k (raw) and F(2k+2) (owned) writability decisions, which no k here finishes.
+    [Theory]
+    [InlineData("write", "v")]
+    [InlineData("write", "(*p)")]
+    public void ANestedArrayElementsPathTakesWorkLinearInItsDepth(string use, string root)
+    {
+        long[] work = [.. new[] { 30, 60, 120 }.Select(k => Bound(NestedElement(use, root, k)).Binding.PathFoldWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{use} {root}: work {string.Join(", ", work)}");
+    }
+
+    // G1146 (D-932): a 64-deep Array element, one step past the former 64-step path walk, is written and borrowed exclusively.
+    [Theory]
+    [InlineData("write", "v")]
+    [InlineData("write", "(*p)")]
+    [InlineData("uniq", "v")]
+    [InlineData("uniq", "(*p)")]
+    public void ASixtyFourDeepArrayElementIsWrittenAndBorrowed(string use, string root) => Bound(NestedElement(use, root, 64));
+
+    private static Compilation Bound(string source)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        return c;
+    }
+
+    // `v[0]..[0] = 9` or `let u = v[0]..[0]@uniq` over a k-deep Array of i32, v a local holding a literal or p a raw pointer.
+    private static string NestedElement(string use, string root, int k)
+    {
+        var type = string.Concat(Enumerable.Repeat("Array<", k)) + "i32" + new string('>', k);
+        var place = root + string.Concat(Enumerable.Repeat("[0]", k));
+        var statement = use == "write" ? place + " = 9" : "let u = " + place + "@uniq";
+        return root == "v" ? $"public func main()\n    var v: {type} = {new string('[', k)}7{new string(']', k)}\n    {statement}\n"
+            : $"func put(p: raw/{type})\n    unsafe\n        {statement}\npublic func main() => ()\n";
     }
 }

@@ -30,6 +30,11 @@ namespace Kimi.Compiler;
 //   record the failure AccessFailure or BorrowFailure names), selects a candidate or changes a Type.
 public sealed partial class Binding
 {
+    private long pathFoldSteps;
+
+    /// <summary>Gets the steps the Place-path folds took (PathFold, one per path step of a query), which a scaling check reads.</summary>
+    internal long PathFoldWork => this.pathFoldSteps;
+
     // SPEC 15.1.5, 23.1.3: whether a bare Place that needs @move offers Take and is a Movable Place, judged from its path alone
     // for a repair candidate: an owned path from a local, parameter or capture root is verified; a borrowed, published or shared
     // path, a Property's storage, a Pattern candidate and an element outside a static Move Path (SPEC 15) are refuted; a raw
@@ -142,11 +147,7 @@ public sealed partial class Binding
     // ref reference, a Slice element, an objref, rc or arc view, a pair layer in a shared case or a guard candidate. A shared layer
     // anywhere on the path bounds it to shared access; the path never changes the Type. Below a base Place, the layers are those of
     // the base's own Type (SPEC 3.4.3); a recorded in-place read of it is representation.
-    private SemanticsKind PathAuthority(Koto source, ReadOnlySpan<PairCase> assignment)
-    {
-        var path = this.PathAuthority(source, assignment, out var bindingDenies, out _);
-        return bindingDenies ? SemanticsKind.Ref : path;
-    }
+    private SemanticsKind PathAuthority(Koto source, ReadOnlySpan<PairCase> assignment) => this.PathFold(source, assignment).Grant.Access;
 
     // SPEC 3.4.3, 15.6.2: the access a Place's path grants to what the Place's own safe reference layers reach: its path's, bounded
     // by a shared layer of the Place's Type and exclusive through an exclusive one.
@@ -164,88 +165,97 @@ public sealed partial class Binding
 
     // SPEC 4.7.1, 15.1.5: whether a receiver can be exclusively acquired, which a selection through indexUniq or an exclusive view
     // needs: its path is not shared (ReferentAuthority) and its binding permits it (AcquirableByBinding).
-    private bool ExclusivelyAcquirable(Koto receiver) => this.ReferentAuthority(receiver) != SemanticsKind.Ref && this.AcquirableByBinding(receiver, []);
+    private bool ExclusivelyAcquirable(Koto receiver)
+        => this.ReferentAuthority(receiver) != SemanticsKind.Ref && this.AcquirableByBinding(receiver, this.PathFold(receiver, []), []);
 
-    // The path walk of PathAuthority: the access the path's layers grant, and bindingDenies, whether a selection on it (a user index
-    // or an Array element, SPEC 4.7.1) needs its receiver exclusively acquired where the receiver's binding denies that (SPEC
-    // 15.1.5), so that the selection shares the element for writes and exclusive borrows. A Take acquires nothing exclusively: it
-    // reads the layers alone (OffersTake, AccessFailure), and layers, the cases of the layers of receivers' own Types the path passes
-    // (LayerCases), past any of which no Take is offered (SPEC 15.1.5, 13.5.5); each pair layer read under the case assignment.
-    private SemanticsKind PathAuthority(Koto source, ReadOnlySpan<PairCase> assignment, out bool bindingDenies, out SemanticsMask layers)
+    // SPEC 3.4, 3.4.3, 15.1.5 (the invariant: one path computation decides writes, Moves and borrows): a Place's path folded from its
+    // root to the Place, each prefix decided once from the prefix it is selected from (Then, Writes), so that a query takes one step
+    // per path step (D-941): Grant under the case assignment, Access and Writable under the empty assignment, which writability reads.
+    private PathPrefix PathFold(Koto source, ReadOnlySpan<PairCase> assignment)
     {
-        var authority = SemanticsKind.Owner;
-        var denied = false;
-        bindingDenies = false;
-        layers = SemanticsMask.None;
         source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64; depth++)
+        this.pathFoldSteps++;
+        var step = this.NextPathStep(source, out var next);
+        if (step is PathStep.Root or PathStep.RawFollow or PathStep.Candidate or PathStep.Receiver)
         {
-            SemanticsKind? layer = null;
-            switch (this.NextPathStep(source, out var next))
+            // A root or a raw dereference (no raw Origin denies an access: SPEC 5.7 Authority; condition 3 of SPEC 5.2.1), a guard
+            // candidate (SPEC 14.8.3: shared), or a special receiver, whose path grants its row's authority (SPEC 6.3.4, 16.3.1).
+            var root = step switch
             {
-                case PathStep.Candidate:
-                    return SemanticsKind.Ref;
-                case PathStep.Follow:
-                    layer = next.BoundType?.Semantics;
-                    layers |= layer?.ToMask() ?? SemanticsMask.None;
-                    break;
-                case PathStep.PairFollow:
-                    var admitted = this.PairAdmitted(source);
-                    admitted = TryPairLayer(next.BoundType, out var followed, out _) ? CaseAdmitted(followed, admitted, assignment) : admitted;
-                    layer = PairAuthority(admitted);
-                    layers |= admitted;
-                    break;
-                case PathStep.UserIndex:
-                    // SPEC 3.4.3, 4.7.1, 15.1.5: the element Place is reached through the receiver's reference layers; indexUniq
-                    // publishes it exclusively when the receiver can be exclusively acquired, index alone shares it, and the
-                    // element never offers Take.
-                    if (!this.HasExclusiveIndexer(source))
-                    {
-                        return SemanticsKind.Ref;
-                    }
-
-                    authority = SemanticsKind.Uniq;
-                    denied |= !this.AcquirableByBinding(next, assignment);
-                    layer = this.LayerAuthority(next, assignment);
-                    break;
-                case PathStep.SliceElement:
-                    return SemanticsKind.Ref; // SPEC 4.8.2: a Slice element Place is shared.
-                case PathStep.BorrowedElement:
-                    layer = next.BoundType!.Semantics;
-                    break;
-                case PathStep.ArrayElement:
-                    // SPEC 4.7.1: an Array element is selected like a user index's, an inline part of its owner's path when
-                    // the receiver can be exclusively acquired.
-                    denied |= !this.AcquirableByBinding(next, assignment);
-                    break;
-                case PathStep.Member:
-                    layer = this.LayerAuthority(next, assignment); // SPEC 3.4.3: a member is reached through every layer of its receiver's own Type.
-                    layers |= this.LayerCases(next, assignment);
-                    break;
-                case PathStep.InlinePart:
-                    break; // An inline part shares its owner's path.
-                case PathStep.Receiver:
-                    bindingDenies = denied; // SPEC 6.3.4, 16.3.1: a special receiver's path grants its row's authority.
-                    return Receiver(source)?.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
-                default:
-                    // A root, or a raw dereference: no raw Origin denies an access (SPEC 5.7 Authority; condition 3 of SPEC 5.2.1).
-                    bindingDenies = denied;
-                    return authority;
-            }
-
-            if (SharedLayer(layer))
-            {
-                return SemanticsKind.Ref;
-            }
-
-            authority = layer is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? SemanticsKind.Uniq : authority;
-
-            source = KotoHelper.UnwrapParentheses(next);
+                PathStep.Candidate => PathGrant.Shared,
+                PathStep.Receiver when Receiver(source)?.Parts == SemanticsKind.Uniq => PathGrant.Owner with { Authority = SemanticsKind.Uniq },
+                _ => PathGrant.Owner,
+            };
+            return new(root, root.Access, step == PathStep.RawFollow, this.Writes(source, root.Access, step == PathStep.RawFollow, null));
         }
 
-        bindingDenies = denied;
-        return authority;
+        var owner = this.PathFold(next, assignment);
+        var grant = this.Then(owner.Grant, step, source, next, owner, assignment);
+        var access = assignment.IsEmpty ? grant.Access : this.Then(PathGrant.Owner with { Authority = owner.Access }, step, source, next, owner, []).Access;
+        var raw = owner.Raw && source is BinaryKoto part && this.IsInlinePart(part);
+        return new(grant, access, raw, this.Writes(source, access, raw, owner));
     }
+
+    // One step of PathFold: what `source`'s path grants under a case assignment, from what the path of `next`, the prefix it selects
+    // from, grants (path) and that prefix's fold (owner, whose binding a selection on it needs: AcquirableByBinding, SPEC 15.1.5). A
+    // shared layer anywhere on the path bounds it to Ref, which no later step changes. A Take acquires nothing exclusively: it reads
+    // the layers alone (OffersTake, AccessFailure), and Layers, past any of which no Take is offered (SPEC 15.1.5, 13.5.5).
+    private PathGrant Then(PathGrant path, PathStep step, Koto source, Koto next, in PathPrefix owner, ReadOnlySpan<PairCase> assignment)
+    {
+        if (path.Authority == SemanticsKind.Ref)
+        {
+            return path;
+        }
+
+        var (authority, denied, layers) = path;
+        SemanticsKind? layer = null;
+        switch (step)
+        {
+            case PathStep.Follow:
+                layer = next.BoundType?.Semantics;
+                layers |= layer?.ToMask() ?? SemanticsMask.None;
+                break;
+            case PathStep.PairFollow:
+                var admitted = this.PairAdmitted(source);
+                admitted = TryPairLayer(next.BoundType, out var followed, out _) ? CaseAdmitted(followed, admitted, assignment) : admitted;
+                layer = PairAuthority(admitted);
+                layers |= admitted;
+                break;
+            case PathStep.UserIndex:
+                // SPEC 3.4.3, 4.7.1, 15.1.5: the element Place is reached through the receiver's reference layers; indexUniq publishes it
+                // exclusively when the receiver can be exclusively acquired, index alone shares it, and the element never offers Take.
+                if (!this.HasExclusiveIndexer(source))
+                {
+                    return PathGrant.Shared;
+                }
+
+                authority = SemanticsKind.Uniq;
+                denied |= !this.AcquirableByBinding(next, owner, assignment);
+                layer = this.LayerAuthority(next, assignment);
+                break;
+            case PathStep.SliceElement:
+                return PathGrant.Shared; // SPEC 4.8.2: a Slice element Place is shared.
+            case PathStep.BorrowedElement:
+                layer = next.BoundType!.Semantics;
+                break;
+            case PathStep.ArrayElement:
+                // SPEC 4.7.1: an Array element is selected like a user index's, an inline part of its owner's path when the receiver can
+                // be exclusively acquired.
+                denied |= !this.AcquirableByBinding(next, owner, assignment);
+                break;
+            case PathStep.Member:
+                layer = this.LayerAuthority(next, assignment); // SPEC 3.4.3: a member is reached through every layer of its receiver's own Type.
+                layers |= this.LayerCases(next, assignment);
+                break;
+        }
+
+        // An inline part (PathStep.InlinePart) shares its owner's path.
+        return SharedLayer(layer) ? PathGrant.Shared : new(layer is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? SemanticsKind.Uniq : authority, denied, layers);
+    }
+
+    // The prefix a part is selected from (SPEC 15.1.5): its fold beside the part's (PathFold), or, past a node the path stops at (a getter
+    // result or a view range selection, NextPathStep's root), the receiver's own fold.
+    private PathPrefix Owner(PathPrefix? owner, Koto receiver) => owner ?? this.PathFold(receiver, []);
 
     // SPEC 3.4.3, 4.7.1, 4.8.2, 5.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's
     // forms that PathAuthority, PathOrigin and ContainedOrigin walk: what `source` selects, and next, the node it selects from (`source` itself at a
@@ -294,10 +304,13 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4, 5.2, 13.5.5, 15.6.2: whether a Place offers Write: a writable root or an inline part of one, an exclusive path, a raw
-    // Place, a setter or an indexUniq selection; a shared layer anywhere on the path grants Read only.
-    private bool Writable(Koto node)
+    // Place, a setter or an indexUniq selection; a shared layer anywhere on the path grants Read only (PathFold, Writes).
+    private bool Writable(Koto node) => this.PathFold(node, []).Writable;
+
+    // Writable's rule for one prefix of a folded path (PathFold): `node`, whose path grants access under the empty assignment, raw when
+    // it is a raw Place's root or an inline part of one (SPEC 5.2), owner the prefix it is selected from (Owner).
+    private bool Writes(Koto node, SemanticsKind access, bool raw, PathPrefix? owner)
     {
-        node = KotoHelper.UnwrapParentheses(node);
         if (node.BoundSymbol?.Property is { IsStored: false, Setter.IsPresent: true })
         {
             return true; // The accessor's Receiver Expression checks its own capability.
@@ -305,12 +318,12 @@ public sealed partial class Binding
 
         // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission, nor does any raw Origin (condition 3 of SPEC 5.2.1
         // bounds the access at run time); a safe shared layer inside the pointee does.
-        if (IsRawRoot(node) || this.IsPointerPath(node))
+        if (raw)
         {
-            return !this.ReachedThroughShared(node);
+            return access != SemanticsKind.Ref;
         }
 
-        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate || this.ReachedThroughShared(node))
+        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate || access == SemanticsKind.Ref)
         {
             return false; // SPEC 3.4, 15.6.2: a shared layer anywhere on the path grants Read only.
         }
@@ -318,20 +331,22 @@ public sealed partial class Binding
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.Follow } selected)
         {
             // SPEC 13.5.5: the referent of uniq/T offers Write; a shared layer on the path bounds it.
-            return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !this.ReachedThroughShared(selected.Left);
+            return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && this.Owner(owner, selected.Left).Access != SemanticsKind.Ref;
         }
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
         {
-            return this.PairCapability(pair, null, true); // SPEC 13.5.5 pair layers
+            // SPEC 13.5.5 pair layers: the weakest admitted capability. A shared case, or a shared path to the operand, makes the path
+            // shared (above); the owner case selects P itself, which a write needs to be a whole Place offering Write (WritablePlace).
+            return (this.PairAdmitted(pair) & SemanticsMask.Owner) == 0 || this.WritablePlace(pair.Left, this.Owner(owner, pair.Left));
         }
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
         {
             return payload.Left.BoundType?.Semantics switch
             {
-                SemanticsKind.ObjUniq => !this.ReachedThroughShared(payload.Left),
-                SemanticsKind.Obj => this.WritableOwner(payload.Left),
+                SemanticsKind.ObjUniq => this.Owner(owner, payload.Left).Access != SemanticsKind.Ref,
+                SemanticsKind.Obj => this.WritableOwner(payload.Left, this.Owner(owner, payload.Left)),
                 _ => false,
             };
         }
@@ -341,18 +356,18 @@ public sealed partial class Binding
             return this.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1: an update selects indexUniq.
         }
 
-        if (this.IsExclusiveArrayElement(node))
+        if (node is IndexKoto element && this.IsExclusiveArrayElement(element, this.Owner(owner, element.Left).Access))
         {
             return true;
         }
 
         // SPEC 3.4.3, 4.7, 4.7.1, 15.1.5 (PLAN G203): an element of an owned Tuple, fixed array or Array (IsInlinePart, a Dictionary's
-        // entry excluded) is an inline part of its owner's path (PathAuthority) and offers Write when its owner does, as a Field does
+        // entry excluded) is an inline part of its owner's path (PathFold) and offers Write when its owner does, as a Field does
         // below: a mutable static's `State.pair.0` as its `State.point.x`.
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } or IndexKoto && node is BinaryKoto inline && this.IsInlinePart(inline) &&
             inline.Left.BoundType?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array)
         {
-            return this.WritableOwner(inline.Left);
+            return this.WritableOwner(inline.Left, this.Owner(owner, inline.Left));
         }
 
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && this.AccessType(nested.Left)?.SafeReferent is not { Kind: BoundTypeKind.Tuple } &&
@@ -376,7 +391,7 @@ public sealed partial class Binding
         // owning handle or in the owner case of a pair layer too (no member is selected through a raw pointer).
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
             this.LayerAuthority(field.Left, []) is null && AdtDef.IsStruct(DeclaringType(field.Left.BoundType)) &&
-            Receiver(field.Left) is null && !this.WritableOwner(field.Left))
+            Receiver(field.Left) is null && !this.WritableOwner(field.Left, this.Owner(owner, field.Left)))
         {
             return false; // A mutable field still requires a mutable owning root.
         }
@@ -396,22 +411,22 @@ public sealed partial class Binding
     // SPEC 15.1.5: whether a receiver's own binding permits exclusive acquisition, which storage rooted in a let binding or an owned
     // parameter does not: an exclusive reference (also held in a let binding), or an owner granting Write (WritableOwner: a writable
     // Place, an inline part of a writable root, a writable temporary; a getter result is none, SPEC 11.5). Its path's shared layers are
-    // the caller's (ExclusivelyAcquirable, PathAuthority).
-    private bool AcquirableByBinding(Koto receiver, ReadOnlySpan<PairCase> assignment)
-        => this.LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || this.WritableOwner(receiver);
+    // the caller's (ExclusivelyAcquirable, PathFold), and path is its fold.
+    private bool AcquirableByBinding(Koto receiver, in PathPrefix path, ReadOnlySpan<PairCase> assignment)
+        => this.LayerAuthority(receiver, assignment) == SemanticsKind.Uniq || this.WritableOwner(receiver, path);
 
     // SPEC 13.7.1, 13.5.5, 15.1.5: whether a whole Place offers Write by its path and binding, the question of an assignment's whole
     // target and of a pair layer's owner-case operand (P itself): Writable, or an inline part of a writable root
     // (WritableRoot; the Property permissions on its path are the binding's: ValidPropertyWritePath, BindReference). A
     // Temporary Value is none, also parenthesized: it is no Place expression (SPEC 13.7.1, the owner's O-438 (a)). Nor yet is a
     // writable temporary's whole Temporary Place (IsTemporaryPlace): SPEC grants it Write, but no lowering writes it whole, so
-    // AccessFailure names the write Unsupported.
-    private bool WritablePlace(Koto place) => this.Writable(place) || this.WritableRoot(place) is not null;
+    // AccessFailure names the write Unsupported. Path is the Place's fold (PathFold).
+    private bool WritablePlace(Koto place, in PathPrefix path) => path.Writable || this.WritableRoot(place) is not null;
 
     // SPEC 15.1.5, 3.4.1, 3.6: whether the owner a standard projection, a member selection or a payload selects from grants the part
     // Write by its root's permission: a whole Place offering Write (WritablePlace) or a writable temporary, in whose Temporary Place
-    // the part is a Place (WritableTemporary).
-    private bool WritableOwner(Koto owner) => this.WritablePlace(owner) || this.WritableTemporary(owner);
+    // the part is a Place (WritableTemporary). Path is the owner's fold (PathFold).
+    private bool WritableOwner(Koto owner, in PathPrefix path) => this.WritablePlace(owner, path) || this.WritableTemporary(owner);
 
     // SPEC 3.6, 11.5, 15.1.5: a newly owned temporary, a writable root: a Temporary Value (no Place, IsBarePlace) that is no getter
     // result, or its whole Temporary Place as a Place expression designates it (IsTemporaryPlace). Its callers pass an owner whose own
@@ -485,17 +500,21 @@ public sealed partial class Binding
     // (Receiver, SPEC 6.3.4), as is a write of a writable temporary's whole Temporary Place, which no lowering writes yet
     // (IsTemporaryPlace, SPEC 13.5.5), and otherwise the binding itself forbids the access, also through a selection whose receiver
     // it cannot exclusively acquire, or an object payload offers no Take. `layers` are the cases of the layers the path passes
-    // (PathAuthority).
+    // (PathFold).
     private BindingFailure AccessFailure(Koto target, out SemanticsMask layers, bool take = false)
-        => this.PathAuthority(target, [], out _, out layers) switch
+    {
+        var path = this.PathFold(target, []);
+        layers = path.Grant.Layers;
+        return path.Grant.Authority switch
         {
             SemanticsKind.Ref => BindingFailure.SharedPathAccess,
             SemanticsKind.Uniq when take => BindingFailure.ExclusivePathTake,
-            _ when take && (layers & SemanticsMask.Owner) != 0 => BindingFailure.ExclusivePathTake,
-            SemanticsKind.Owner when !take && this.ReceiverOfPart(target) is { LendsFields: false } && this.Writable(target) => BindingFailure.Unsupported,
+            _ when take && (path.Grant.Layers & SemanticsMask.Owner) != 0 => BindingFailure.ExclusivePathTake,
+            SemanticsKind.Owner when !take && this.ReceiverOfPart(target) is { LendsFields: false } && path.Writable => BindingFailure.Unsupported,
             SemanticsKind.Owner when !take && this.IsTemporaryPlace(target) => BindingFailure.Unsupported,
             _ => BindingFailure.InvalidAssignment,
         };
+    }
 
     // SPEC 15.1.5, 13.5.5: only an owned root and its inline parts offer Take, whether the binding permits exclusive acquisition or
     // not: no path past a layer of a receiver's own Type (a reference, object handle or view, or pair layer) or a guard candidate does.
@@ -507,7 +526,7 @@ public sealed partial class Binding
             return !this.ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless a safe shared layer inside it denies.
         }
 
-        return !this.IsBarePlace(place) || (this.PathAuthority(place, [], out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);
+        return !this.IsBarePlace(place) || this.PathFold(place, []).Grant is { Authority: SemanticsKind.Owner, Layers: SemanticsMask.None };
     }
 
     // SPEC 14.2.4, 5.2.3: whether an explicit discard destroys its operand's Place in place: an operand `P@move`, parenthesized or not,
@@ -774,4 +793,23 @@ public sealed partial class Binding
         // Any other inline part ElementAccess selects in place (a fixed-array or Tuple element), on its owner's path.
         InlinePart,
     }
+
+    // What a Place's path grants (PathFold; SPEC 3.4.3, 13.5.5, 15.1.5): Authority, the access its layers grant (Owner, Uniq or Ref);
+    // Denied, whether a selection on it (a user index or an Array element, SPEC 4.7.1) needs its receiver exclusively acquired where the
+    // receiver's binding denies that, so that the selection shares the element for writes and exclusive borrows; Layers, the cases of
+    // the layers of receivers' own Types it passes (LayerCases). Each pair layer is read under the query's case assignment.
+    private readonly record struct PathGrant(SemanticsKind Authority, bool Denied, SemanticsMask Layers)
+    {
+        internal static readonly PathGrant Owner = new(SemanticsKind.Owner, false, SemanticsMask.None);
+
+        internal static readonly PathGrant Shared = new(SemanticsKind.Ref, false, SemanticsMask.None);
+
+        // The access the path grants (PathAuthority): Ref also where a selection's receiver binding denies the exclusive acquisition.
+        internal SemanticsKind Access => this.Denied ? SemanticsKind.Ref : this.Authority;
+    }
+
+    // One prefix of a Place's path, folded from its root (PathFold): Grant under the query's case assignment; Access, the path's access
+    // under the empty assignment (ReachedThroughShared's reading); Raw, whether the prefix is a raw Place's root or an inline part of
+    // one (SPEC 5.2); Writable, whether it offers Write (Writes).
+    private readonly record struct PathPrefix(PathGrant Grant, SemanticsKind Access, bool Raw, bool Writable);
 }

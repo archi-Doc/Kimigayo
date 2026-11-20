@@ -32,12 +32,12 @@ public sealed partial class Binding
     // SPEC 3.4.3: the referent of an exclusive array reference offers element replacement, without requiring a mutable
     // binding for the reference itself. Shared layers on its path are checked separately by Binding.
     // An owned Array or fixed array stored below exclusive references only (`b.items[i]` with `b: uniq/Bank`) offers the same, whose
-    // path authority decides it rather than the stored Type (PLAN G59).
-    private bool IsExclusiveArrayElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element && !this.IsSlicing(source) &&
+    // path authority (receiverPath, the access its receiver's path grants: PathFold) decides it rather than the stored Type (PLAN G59).
+    private bool IsExclusiveArrayElement(IndexKoto element, SemanticsKind receiverPath) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
         ((this.AccessType(element.Left, true) is { Semantics: SemanticsKind.Uniq } receiver &&
             receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
         (HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && this.ReachesThroughBorrow(element.Left) &&
-            this.PathAuthority(element.Left, []) == SemanticsKind.Uniq));
+            receiverPath == SemanticsKind.Uniq));
 
     // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
