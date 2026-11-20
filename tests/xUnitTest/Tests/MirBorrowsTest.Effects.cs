@@ -448,6 +448,55 @@ public sealed partial class MirBorrowsTest
                 .Where(static k => k is ProblemFactKind.EffectRead or ProblemFactKind.EffectWrite or ProblemFactKind.EffectUnknown));
     }
 
+    // SPEC 15.6.2, 15.6.4 (Z7, the code review's R1): a Loan on a static with several slots (Cache<T>.S.log) is in Q, but A4 cannot leave
+    // its initialization out of a row (an edge until P42's key, R4-M103), so only a conflict its initializer may make rests on it. A write
+    // that every reading reports, the call's own under the live Subject Loan, stays ComparisonLoanConflict_Kd (g1, and g1b, whose callee
+    // matches log too), as for the static with one slot (g2). Fail-before (6a24256fe): g1 and g1b the located Unsupported_Kd.
+    [Fact]
+    public void ASeveralSlotStaticsLoanKeepsADirectWritesError()
+    {
+        const string Probe = """
+                struct Cache<T>
+                    public group S
+                        public var log: Option<i32> = .Some(0)
+                        public func writeLog() -> i32
+                            log = .Some(1)
+                            return 1
+                        public func writeLog2() -> i32
+                            var a = 0
+                            match S.log
+                                .Some(let w) => a = w@follow
+                                .None => a = 1
+                            log = .Some(a)
+                            return a
+                        public func g1() -> i32
+                            match S.log
+                                .Some(let v)
+                                    let n = S.writeLog()
+                                    return v@follow + n
+                                .None => return 0
+                        public func g1b() -> i32
+                            match S.log
+                                .Some(let v)
+                                    let n = S.writeLog2()
+                                    return v@follow + n
+                                .None => return 0
+                group G
+                    public var log: Option<i32> = .Some(0)
+                    public func writeLog() -> i32
+                        log = .Some(1)
+                        return 1
+                    public func g2() -> i32
+                        match G.log
+                            .Some(let v)
+                                let n = G.writeLog()
+                                return v@follow + n
+                            .None => return 0
+
+                """;
+        Assert.Equal(["g1: S.writeLog()", "g1b: S.writeLog2()", "g2: G.writeLog()"], Effects(string.Empty, [], Probe));
+    }
+
     // SPEC 15.6.2, 15.6.4 (R4-M92; DECISIONS BU-18, BU-21): an explicit Borrow of a qualified static's part is a Place's Borrow, never a
     // Temporary Value's, so Binding reports it as the located Unsupported_Kd (P42) in a writer's function (qp1) and a reader's (qp1r)
     // alike, and no effect rule meets it (2b-D §1.5's premise). Fail-before bu15: both (they bound, and 2b-3's effect rule judged qp1).

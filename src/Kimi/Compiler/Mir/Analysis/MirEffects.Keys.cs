@@ -161,15 +161,19 @@ internal sealed partial class MirEffects
         this.writing.AddInit(id);
     }
 
-    // Begins a reader's composition (Keys, the obligations): an empty row, those excluded left out, a new stamp for Reach where any is.
+    // Begins a reader's composition (Keys, the obligations): an empty row and, where it excludes any initialization, those excluded
+    // (excluding, read only while excludes holds) and a new stamp for Reach.
     private void Begin(ReadOnlySpan<ulong> excluded)
     {
         this.keyScratch.AsSpan(0, this.rowWords).Clear();
-        var excluding = this.excluding.AsSpan(0, (this.initIds.Count + 63) >> 6);
-        excluding.Clear();
-        excluded[..Math.Min(excluded.Length, excluding.Length)].CopyTo(excluding);
-        this.excludes = excluding.ContainsAnyExcept(0UL);
-        this.reachStamp += this.excludes ? 1 : 0;
+        this.excludes = excluded.ContainsAnyExcept(0UL);
+        if (this.excludes)
+        {
+            var excluding = this.excluding.AsSpan(0, (this.initIds.Count + 63) >> 6);
+            excluding.Clear();
+            excluded[..Math.Min(excluded.Length, excluding.Length)].CopyTo(excluding);
+            this.reachStamp++;
+        }
     }
 
     // A node's classes with its initializations: its row's word where entries exist, else the fixed point's.

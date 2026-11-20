@@ -315,7 +315,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "pA: useX() Unsupported_Kd", "pA2: useX()", "pB: x2 Unsupported_Kd", "pB2: x2", "pQ: useLim() Unsupported_Kd", "direct: writeLog()",
-                "early: let r = XReader.init() Unsupported_Kd",
+                "early: let r = XReader.init() Unsupported_Kd", "pQu: useY5() Unsupported_Kd",
             ],
             RootedEffects("""
                     public func pA()
@@ -369,6 +369,15 @@ public sealed partial class MirBorrowsTest
                             let r = XReader.init()
                         inspect(lx)
                         inspect(ll)
+                    public func useY5() -> i32 => State.y5.n
+                    public func pQu()
+                        var sy = Root.y5()
+                        var sc = Root.counter()
+                        let ly = sy.view()
+                        let lc = sc.view()
+                        _ = useY5()
+                        inspect(ly)
+                        inspect(lc)
 
                 """));
 
@@ -472,8 +481,9 @@ public sealed partial class MirBorrowsTest
     // the rows the proof reads too, so no conflict rests on it, and r4's own read of x, which meets the unique Loan whatever x's
     // initializer does, is its independent error (SPEC 23.1.2), as writes() meets the counter's Loan; at r5's readDeep() the read of pair
     // meets the unique Loan, an error of its own, and Met's second block still reports A4's Deep (Lim.run) for the shared Loan a write would
-    // meet (Root.pair, pair's stand-in, ends group Root). Fail-before (R5-M183): wipe() is a conflict; until Z7 the proof rested on x's and
-    // pair's initializers, so useX() and readDeep() had no Loan problem.
+    // meet (Root.pair, pair's stand-in, ends group Root); r6's ensure of x beside log's live Loan runs only x's initializer, Derived, so no
+    // record. Fail-before (R5-M183): wipe() is a conflict; until Z7 the proof rested on x's and pair's initializers, so useX() and
+    // readDeep() had no Loan problem.
     [Fact]
     public void ABodyWithAFindingLeavesOtherBodiesProblemsRooted()
     {
@@ -504,6 +514,11 @@ public sealed partial class MirBorrowsTest
                     _ = readDeep()
                     u@follow = 1
                     inspect(s)
+                public func r6()
+                    var sg = Root.log()
+                    let ll = sg.view()
+                    let v = x.n
+                    inspect(ll)
 
             """ + EffectRoots + "    public func pair() -> (i32, i32) => (1, 2)\n");
         Assert.Empty(c.Binding.Issues);

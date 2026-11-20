@@ -98,6 +98,9 @@ public sealed partial class MirEffectsTest
         var user = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "user");
         Assert.Empty(effects.Items(user, 0, out var classes).ToArray());
         Assert.Equal(0, classes & MirEffects.Unknown);
+        var readY = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "readY");
+        _ = effects.Items(readY, 0, out var initialized);
+        Assert.NotEqual(0, initialized); // N1: its summary has the write y's initializer makes, readY's own none.
     }
 
     // R4-M11, R4-M91: a query answers the view it is given: each view of a caller selects the callee view its substitution names (SPEC
