@@ -384,7 +384,11 @@ public sealed partial class Binding
 
     // SPEC 6.7.1: the Attribute's own errors (its mode, fragments and storage fragment) and the published declaration facts: IsCLayout for
     // a valid C selection whose layout is available at the declaration, CLayoutUnavailable for one on an open, derived or empty struct,
-    // which Layout judges CLayout at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8: no declaration error).
+    // which Layout judges CLayout at each by-value use (SPEC 8.15.3; DECISIONS R4-M134 Q8: no declaration error). A split struct keeps a
+    // failure of its own beside its Field's record, since that record derives from any recovery the Field's other checks read, such as its
+    // initializer's syntax error (IsDerived's requirement-blind arms judge the node's recorded inputs, not the split check's): resting the
+    // struct on the Field (RestOnPart) would leave the split with no record (SPEC 23.1.2).
+    [Transitional("R7", Reason = "The split struct's own InvalidTypeFormation stands for its Field's record (q1a: a syntax error in the split Field's initializer), until R7-E5's per-problem inputs, when the struct rests on the Field.")]
     private void ValidateLayoutFragments()
     {
         for (var i = 0; i < this.nodes.Count; i++)
@@ -442,7 +446,7 @@ public sealed partial class Binding
                     if (storageFragment >= 0 && storageFragment != field.FragmentOrdinal)
                     {
                         this.Record(field, BindingFailure.SplitCLayoutStorage, []);
-                        this.RestOnPart(container, field); // The struct's layout is this requirement's verdict over the split Field.
+                        this.Fail(container, BindingFailure.InvalidTypeFormation);
                         valid = false;
                     }
 
