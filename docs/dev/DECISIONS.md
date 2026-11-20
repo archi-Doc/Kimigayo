@@ -1280,6 +1280,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: a builder field marking the current input (hidden state); a second copy of the Borrow row in `Operand`; a writeback
   through setters now (the receiver would have to be acquired once at locate and passed to the setter: F8's unit 2d); the validator
   accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
+  - Superseded in part by R7-M60 (2026-11-20, Z13b): G6's sentence "A transfer ends the borrows of the calls it abandons on its
+    runtime edge only, in the block that places its result"; on its check edge a transfer also ends each abandoned comparison's
+    pending left operand.
 - **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of A3 §9 item 8 on 2026-10-17; its `(Field, Write)` list and
   `bool` superseded by R4-M89 and R4-M91 (unit 2b-1: the key row per view, classes as R4-M74 OQ6)) A4's static keys for A5.
   `MirEffects.Keys(body, view, block, out unknown)`: the mutable static Fields a Call or a Drop may access through what it runs, each
@@ -23102,6 +23105,35 @@ R8-M* and R9-M* by the stage of the recording unit.
     (e1 shows A4 would read the wrong effects); an Adapt to a pair-layer receiver; a stored per-view mask; one body per view; one
     branch per body, or reuse keyed on Type identity; re-deciding the branch in a default copy; walking every body in Replay
     (InstanceCollectorTest's unreached block; the per-body count gates it).
+- **R7-M60 A transfer ends its abandoned comparisons' Inspection Loans on its check edge too** (Middle, 2026-11-20; stream Z13b,
+  PLAN G1126, G396 (1) F10 and (7) X-5 N2, Q-568, D-900, D-921; Major; design `middle\notes\z13b-design.md` with Revisions 1 and 2;
+  its independent review `z13b-review.md`, ACCEPT WITH CONDITIONS, B1-B3 and N1-N9 met; the code review ACCEPT, CN1-CN4 taken)
+  SPEC 14.10.3, 13.4, 14.5, 15.6.7, 16.2.1.
+  - **Supersedes in part** R4-M37 G6, its sentence "A transfer ends the borrows of the calls it abandons on its runtime edge only, in
+    the block that places its result".
+  - **Runtime edge, unchanged.** A transfer ends the reference temps among the operands pending since its target's mark (`Abandon`),
+    in the block that places its result.
+  - **Check edge, new.** At the head of the assumed continuation (`next`), written once in `Transfer`, it ends the pending left
+    operand of each comparison opened at or after its target's mark (a built-in, tuple or Contract comparison). The comparison is
+    still built there and reads that operand: A5's flow clears its root at the `EndBorrow`, so the live holder carries no Loan; A1
+    ignores `EndBorrow`. Both loops take one predicate, `Lent` (a Move of a temp of a reference Type, `EndBorrowLocal`'s condition).
+  - **Representation, not temporary.** The builder's `inspections`, its one record of where a comparison's left operand pends, read
+    by `Transfer`: `Operands` and `Composite` register it once the left operand is pending, and `Compare`'s Contract call at the
+    receiver's slot before `Call` evaluates the operand into it (`Call` sizes and clears its slots first, so a call in the receiver
+    pends after them: row cmplk, the review's x2).
+  - **Kept.** Every other pending reference temp (a call's receiver, callee value and arguments, a default's slot, an aggregate's
+    part) stays runtime-edge-only: those invocations continue on the assumed path with their Loans and reservations, their activation
+    checked (R4-M37 G6's continuation clause and R4-M158 stand).
+  - **Only a control transfer abandons** (SPEC 14.5, 15.6.7, 16.2.1): `$abort` and a Never call abandon nothing, so the comparison
+    continues on the assumed path with its Loans (row cmpa).
+  - **Rejected:** the Never value for the operand (not path-sensitive); ending every pending borrow (accepts SPEC-invalid programs: a
+    call's argument or reservation); an A5 edge rule (A5 lacks the fact); a local role (a vocabulary entry); one registration at
+    `Compare`'s entry (a call in the tuple operator's left operand would sit at that position: row cmpl).
+  - **Moves (Q13).** Acceptance rejected -> accepted only, the abandoned-comparison class (an exclusive borrow, Move or write of the
+    inspected root on the continuation; 29 probes); accepted -> rejected none. On still-rejected programs a witness moves (c3, c15:
+    r's Loan, `inspect(r)`) and v15's record at `y` goes (`x`'s stays). None in the suite's other expectations or the snapshot corpus.
+  - **Rows.** `MirBorrowsTest.ALoanStaysLiveIntoANeverFormsContinuation`'s cmp rows (X-5 N2's pair: cmp1 valid, cmp3 invalid) and
+    `AnAbandonedComparisonEndsOnlyItsOwnLoans`.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
