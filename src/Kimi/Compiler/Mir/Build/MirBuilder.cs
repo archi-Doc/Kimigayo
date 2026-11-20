@@ -424,6 +424,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             this.Site(declaration, slot, completes: true);
             (this.locals[failed], this.receiver) = (slot.Root, slot.Root);
         }
+
         var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
         this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.
