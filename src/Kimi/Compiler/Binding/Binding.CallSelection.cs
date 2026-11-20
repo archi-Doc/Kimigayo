@@ -504,7 +504,7 @@ public sealed partial class Binding
             return waiting;
         }
 
-        return this.OpenForm(part.Declared, state, form) is { } parameter && this.CompleteOnSplit(argument, parameter, part.Scope) ? argument : null;
+        return this.OpenForm(part.Declared, state, form) is { } parameter && this.CompleteOnSplit(argument, parameter, part.Scope, part.Call) ? argument : null;
     }
 
     // DECISIONS D3 with rule W (G812 ruling 139; temporary with it): a named call's selection judged in each combination of split

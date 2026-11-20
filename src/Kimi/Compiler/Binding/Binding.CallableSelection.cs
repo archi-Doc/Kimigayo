@@ -253,7 +253,7 @@ public sealed partial class Binding
                     this.CompleteFailedPart(waiting, part.Type!, scope);
                     failed ??= waiting;
                 }
-                else if (part is { Fails: false, Prepared: true } && this.CompletePartOnSplit(call.ArgumentNodes[i], part, item, scope, i) is { } completed)
+                else if (part is { Fails: false, Prepared: true } && this.CompletePartOnSplit(call, part, item, scope, i) is { } completed)
                 {
                     failed ??= completed;
                 }
@@ -275,31 +275,28 @@ public sealed partial class Binding
     // at the Item's parameter in the canonical case, marked open where a split binding decides it (OpenForm, as ItemPart forms the
     // parameter; none past the Item's parameters: the call fails by its count). A typed part awaits nothing; one at a parameter open as a
     // whole rests (RestsAtOpenPosition). The part that failed so, else null (CompleteOnSplit).
-    private Koto? CompletePartOnSplit(Koto argument, in SplitPart part, BoundType item, BindingScope scope, int i)
+    private Koto? CompletePartOnSplit(InvocationKoto call, in SplitPart part, BoundType item, BindingScope scope, int i)
         => (!part.Split ? part.Parameter
-            : this.KindOf(argument) != PartKind.Typed && ((FunctionKoto)item.Symbol!.Declaration).Parameters is var parameters && i < parameters.Count &&
+            : this.KindOf(call.ArgumentNodes[i]) != PartKind.Typed && ((FunctionKoto)item.Symbol!.Declaration).Parameters is var parameters && i < parameters.Count &&
                 parameters[i].Type.BoundType is { } declared
                 ? this.OpenForm(declared, (item, scope), static (binding, state, type) => binding.ItemPart(type, state.item, (FunctionKoto)state.item.Symbol!.Declaration, state.scope))
-                : null) is { } parameter && this.CompleteOnSplit(argument, parameter, scope) ? argument : null;
+                : null) is { } parameter && this.CompleteOnSplit(call.ArgumentNodes[i], parameter, scope, call) ? call.ArgumentNodes[i] : null;
 
     // DECISIONS D3 (rule W): a resting part of a split call completed at `parameter` by the unsplit completion (CompleteValueCallPart),
     // read by no check of that call but its failure (SPEC 23.1.2: the call rests on a failed part, CompleteDependent; as
     // CompleteUnselected, no frame is open): whether it failed, by its own verdict (G812 ruling 151): its own record, or the record it
     // rests on, is reported (FailureReported, the one dependence test; G812 ruling 164). An input pending with no record (a join's arm
     // waiting for the call's solve) is no failure cause. A part that rests where a split binding decides its position
-    // (RestsAtOpenPosition) or below it (RestsBelowOpenPosition) is the split's own limit and fails nothing.
-    private bool CompleteOnSplit(Koto part, BoundType parameter, BindingScope scope)
+    // (RestsAtOpenPosition) or below it (RestsBelowOpenPosition) is the split's own limit and fails nothing. Every node of the part the
+    // split leaves open rests on `call` (OpenMarkRemover, G812 ruling 165): the call cannot be formed, so its located record, or the
+    // record it rests on, is that node's cause, and a check reading the node derives from a reported record.
+    private bool CompleteOnSplit(Koto part, BoundType parameter, BindingScope scope, InvocationKoto call)
     {
-        if (RestsAtOpenPosition(part, parameter))
-        {
-            return false;
-        }
-
         var consultation = this.SuspendConsultation();
         try
         {
-            var failed = this.CompleteValueCallPart(part, parameter, scope) is null && this.FailureReported(part);
-            (this.openMarkRemover ??= new(this)).Visit(part);
+            var failed = !RestsAtOpenPosition(part, parameter) && this.CompleteValueCallPart(part, parameter, scope) is null && this.FailureReported(part);
+            (this.openMarkRemover ??= new(this)).Complete(part, call);
             return failed;
         }
         finally
@@ -308,13 +305,18 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 158): the split call's completion is the one former of marks
-    // (OpenForm), and a mark is never a node's published Type, so after completing a part it gives each node of it whose Type holds one
-    // the canonical case's Type (Unmarked), its state unchanged: a node that took its Type from its marked position (a waiting call's
-    // inferred slot, a join, a Never Tuple element, a construction target). The binder read the marked Type it returned; the HIR
-    // publisher's Broken check guards every other writer.
+    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 rulings 158, 165): the walk over a split call's completed part, the one
+    // place the split completes. The completion is the one former of marks (OpenForm), and a mark is never a node's published Type, so
+    // it gives each node of the part whose Type holds one the canonical case's Type (Unmarked), its state unchanged: a node that took its
+    // Type from its marked position (a waiting call's inferred slot, a join, a Never Tuple element, a construction target). The binder
+    // read the marked Type it returned; the HIR publisher's Broken check guards every other writer. A node the split leaves open (not
+    // resolved, and no record of its own or below it is reported: FailureReported), such as a join's waiting arm, an open-typed closure
+    // parameter's use or any argument still pending, rests on the call (CompleteDependent), whose located record (or the record it rests
+    // on) becomes its cause; inner nodes first, so an enclosing one meets them resting.
     private sealed class OpenMarkRemover(Binding binding) : KotoVisitor
     {
+        private InvocationKoto? call;
+
         public override void Visit(Koto node)
         {
             if (node.BoundType is { ContainsOpen: true } marked)
@@ -323,6 +325,17 @@ public sealed partial class Binding
             }
 
             node.VisitChildren(this);
+            if (node.BindingState == BindingState.Unresolved && !binding.FailureReported(node))
+            {
+                binding.CompleteDependent(node, this.call!);
+            }
+        }
+
+        internal void Complete(Koto part, InvocationKoto call)
+        {
+            this.call = call;
+            this.Visit(part);
+            this.call = null;
         }
     }
 
