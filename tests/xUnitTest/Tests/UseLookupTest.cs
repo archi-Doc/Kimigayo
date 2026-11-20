@@ -256,6 +256,26 @@ public class UseLookupTest
     [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nstruct R\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(c: bool) -> M\n    let m = if c => S.(C<i32>).Item.B(1) else => S.Item.A\n    return m@move\n", "")]
     public void AProjectionInTheLeftIsEvaluatedBeforeItsReading(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
+    // SPEC 8.2.3, 8.3.2, 9.6 (R7-N1 c-b with R7-C3 C3-1; F's N1c rulings 31-33, 41 C1): a projection in the left is identified by its
+    // class's one form (ClassForm, C3-1's judge), read at the member step twice: EvaluateProjection's normal form and QualifierSelection's
+    // receiver Type. So the Case is reached whichever premise or clause gives the identity and in either order of an identity premise
+    // and a Contract clause (K1: ti1v, ti2v, ti6v, ti7v and their joins), with both (ti3v), through a Contract's own clause (sh12v) and
+    // through a parent Contract's clause reached by its own name (o8v). The programs are valid. Fail-before: on 9370ac7e1 (C3-1's merge
+    // without the two ClassForm reads) each records UnresolvedBinding_Kd at the access.
+    [Theory]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is Self.(D).W\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item.(D).X is M\n    return T.(C).Item.(D).X.A.f()\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is Self.(D).W\ncontract C\n    associate Item is D\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item.(D).X is M\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item.(D).X is T.(C).Item.(D).W\n    return T.(C).Item.(D).X.A.f()\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    associate W\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item.(D).X is T.(C).Item.(D).W\n    let x = if c => T.(C).Item.(D).X.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item.(D).X is M\n    return T.(C).Item.(D).X.A.f()\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is Self.(C).W\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item is M\n    return T.(C).Item.A.f()\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is Self.(C).W\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item is M\n    let x = if c => T.(C).Item.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is M\nfunc g<T>() -> i32\n    T is C\n    T.(C).Item is T.(C).W\n    return T.(C).Item.A.f()\n")]
+    [InlineData(CaseM + "contract C\n    associate Item\n    associate W\n    Self.(C).Item is M\nfunc g<T>(c: bool) -> i32\n    T is C\n    T.(C).Item is T.(C).W\n    let x = if c => T.(C).Item.A.f() else => 0\n    return x\n")]
+    [InlineData(CaseM + "contract D0\n    associate X\ncontract D: D0\n    associate Z\n    Self.(D).Z is M\n    Self.(D0).X is M\ncontract C\n    associate Item is D\nfunc h(p: M, q: M) -> i32 => 1\nfunc g<T>(c: bool) -> i32\n    T is C\n    return T.(C).Item.(D).Z.A.f()\n")]
+    [InlineData(CaseM + "contract D0\n    associate X\n    Self.(D0).X is M\ncontract D: D0\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D0).X.A.f()\n")]
+    public void AProjectionIsReadInItsClassFormAtTheMemberStep(string source) => this.AUseIsResolvedOnceInItsRow(source, string.Empty);
+
     // SPEC 9.6, 8.5.2, 14.9.2 (R7-N1 c-b, rulings 24-26): the left of a Case through a projection is bound by the decided reading alone,
     // whatever asked first: in an `if` join, where ResultSurvey asks before the access binds, every node of the left has the lookup,
     // selection and Type it has in the plain form (rb81v and rb47v; dq9v and dq7v; dq10v's join), the projection ends its path and the
