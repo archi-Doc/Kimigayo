@@ -20,8 +20,10 @@ namespace Kimi.Compiler;
 //   read or a substitution states the atom only from a Type that carries it); the rows only grow within a pass, each new entry or changed
 //   mode moving borrowVersion (a mark does not: no versioned reader reads marks); a library body's rows are the layer's part, written only
 //   by the library pass, an identical re-record by another pass writing nothing; at the publication the census (CheckBorrows) reads the
-//   same enumeration over every published node: misses always, extras and modes exactly where the publication met no failed node, a
-//   difference the internal-invariant form.
+//   same enumeration over every published node: where the publication met no failed node, a formed entry no published fact covers is
+//   the internal-invariant form; then the published facts join the rows (the publication is the last commit: facts decided after a
+//   node's binding), so after it the rows are every published node's facts. Mid-binding, an atom's forming Borrow is formed before any
+//   Type states it (above): the rows are incomplete there, never wrong.
 // - Rule (SPEC 5.4): an address `P@raw` is no Borrow ("checks like an immediately ending @ref ... and leaves no Loan"): NodeBorrows reads
 //   no borrow fact of it.
 // - Prohibitions: no entry for another atom kind, none in a candidate trial or a collected fit, no mode from syntax, no default entry, no
@@ -279,34 +281,31 @@ public sealed partial class Binding
         }
     }
 
-    // The census at the publication's end: every published node's borrow fact is in the rows with at least its mode (a miss), and, where
-    // the publication met no failed node, every row's entry is a published node's with exactly its mode (an extra).
+    // The census at the publication's end (Revision 3): where the publication met no failed node, every formed entry is a published node's
+    // fact with at least its mode (an extra is a Borrow no published node commits: a trial's, a probe's, a check's). Then the publication
+    // is the last commit: the facts Binding decides after a node's binding (a Pattern binding's acquisition by its Copy proof, a waited
+    // join, a call the Final loop binds) join the rows, so after the publication they are every published node's facts.
     private void CheckBorrows()
     {
-        foreach (var (atom, published) in this.publishedBorrows)
+        if (!this.publishedFailure && this.issues.Count + this.derivedIssues.Count == 0)
         {
-            foreach (var member in published.Items)
+            foreach (var (atom, row) in this.borrows)
             {
-                if (this.borrows.GetValueOrDefault(atom)?.Mode(member.Referent) is not { } mode || (member.Exclusive && !mode))
+                foreach (var member in row.Items)
                 {
-                    throw new InvalidOperationException($"The published Borrow of `{member.Referent}` under `{Describe(atom)}` was not formed (InternalInvariant; PLAN G148 (1)).");
+                    if (this.publishedBorrows.GetValueOrDefault(atom)?.Mode(member.Referent) is not { } mode || (member.Exclusive && !mode))
+                    {
+                        throw new InvalidOperationException($"The formed Borrow of `{member.Referent}` under `{Describe(atom)}` was not published (InternalInvariant; PLAN G148 (1)).");
+                    }
                 }
             }
         }
 
-        if (this.publishedFailure || this.issues.Count + this.derivedIssues.Count != 0)
+        foreach (var (atom, published) in this.publishedBorrows)
         {
-            return;
-        }
-
-        foreach (var (atom, row) in this.borrows)
-        {
-            foreach (var member in row.Items)
+            foreach (var member in published.Items)
             {
-                if (this.publishedBorrows.GetValueOrDefault(atom)?.Mode(member.Referent) != member.Exclusive)
-                {
-                    throw new InvalidOperationException($"The formed Borrow of `{member.Referent}` under `{Describe(atom)}` was not published (InternalInvariant; PLAN G148 (1)).");
-                }
+                this.JoinBorrow(this.borrows, atom, member.Referent, member.Exclusive);
             }
         }
     }
