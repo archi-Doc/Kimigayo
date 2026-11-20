@@ -252,6 +252,13 @@ public sealed partial class Binding
             return; // SPEC 10.7: a Function Type is a whole contract, compared during applicability.
         }
 
+        if (ReferenceEquals(actual, expected))
+        {
+            // An interned Type is a DAG (DECISIONS BU-19): one part relates each of its Origins to itself, which forms no row
+            // (FormBodyRelation), so a shared part is never walked again along each of its paths (PLAN G1115).
+            return;
+        }
+
         this.termWalks++;
         if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { } parameter } && ContainerSlot(context.Selected, parameter) >= 0)
         {
