@@ -12,7 +12,7 @@ public sealed partial class Binding
     // grants Read only (SPEC 14.8.3).
     private static BindingFailure? ReferenceBindingAssignment(Koto target)
         => KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate } ? BindingFailure.SharedPathAccess
-            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } type } symbol } &&
+            : KotoHelper.UnwrapParentheses(target) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Type: { SafeReferent: not null } type } symbol } &&
                 (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
             ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
 
@@ -213,7 +213,7 @@ public sealed partial class Binding
             return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative);
         }
 
-        return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        return node is not NullLiteralKoto || type is { IsPointer: true };
     }
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
@@ -485,7 +485,7 @@ public sealed partial class Binding
 
                 return FitsLiteral(number, numberType, false) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
             case NullLiteralKoto:
-                return expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
+                return expected is { IsPointer: true } ? Complete(node, expected) : this.Fail(node, BindingFailure.MissingType, true);
             case BaseReferenceKoto baseReference:
                 return this.BindBaseReference(baseReference, scope);
             case IdentifierNameKoto identifier:

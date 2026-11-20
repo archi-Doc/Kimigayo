@@ -20,22 +20,17 @@ public sealed partial class Binding
     // receiver keeps its own Type; the recorded reference is what ownership loads and generation addresses.
     private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
     {
-        if (actual is not
-            {
-                Kind: BoundTypeKind.Semantics,
-                Semantics: SemanticsKind.Ref or SemanticsKind.Uniq,
-                Components: [{ Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components: [_] }],
-            })
+        if (actual?.SafeReferent is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components: [_] })
         {
             return null;
         }
 
         var terminal = actual;
         var exclusive = !this.ReachedThroughShared(left);
-        while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (terminal.SafeReferent is { } referent)
         {
             exclusive &= terminal.Semantics == SemanticsKind.Uniq;
-            terminal = terminal.Components[0];
+            terminal = referent;
         }
 
         // A stored shared object view is Copy: reading it preserves its own external Origin and header identity,

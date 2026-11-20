@@ -58,7 +58,7 @@ public sealed partial class Binding
     // over the two fixed parts, so a read outside a pass allocates nothing and sees every pass's entries.
     private readonly LayerList<Koto> nodesView;
     private readonly LayerList<BindingIssue> issuesView;
-    private readonly LayerList<Koto> derivedIssuesView;
+    private readonly LayerList<BindingIssue> derivedIssuesView;
     private readonly LayerList<BindingObligation> obligationsView;
     private readonly LayerList<LibraryImport> libraryImportsView;
     private readonly LayerList<FunctionKoto> virtualDeclarationsView;
@@ -194,7 +194,9 @@ public sealed partial class Binding
     // returned and nothing stamped; its query states are complete (LibraryQueryFault); and every conformance path it made current is
     // verified, none at its limit (ImplTable.UnsettledPath) and no verification open (the obligation table, ObligationDepth; PLAN G949
     // Stage 2 U3: no reading compilation verifies a frozen path). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns
-    // Frozen, so it reads current in every later pass; a stamp of an earlier run stays stale and reads absent, as the library pass left
+    // Frozen, so it reads current in every later pass, but a working-state family's column, which its NodeColumns.Freeze row releases
+    // instead (its rows and stamp gone, as a column the library pass never wrote; DECISIONS BU-220 as R7-N5 B2a-2 amends it), so no
+    // counter value of the freeze survives either way; a stamp of an earlier run stays stale and reads absent, as the library pass left
     // it. Publish, last: L (LibraryLayer.TypeCount, the ids of the Types the library pass made), then the seal (Syntax.Freeze():
     // KimiLibrary.Frozen, from which the library's publication version is Frozen in every compilation, HirTables.LibraryVersion, and the
     // driver skips the library pass).
@@ -361,7 +363,7 @@ public sealed partial class Binding
 
         internal List<BindingIssue> Issues { get; } = new();
 
-        internal List<Koto> DerivedIssues { get; } = new();
+        internal List<BindingIssue> DerivedIssues { get; } = new();
 
         internal List<BindingObligation> Obligations { get; } = new();
 

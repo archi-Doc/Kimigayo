@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -99,16 +98,11 @@ public class DictionaryIndexTest
         NativeAllocationAudit.WriteFixture("DictionaryIndexBorrowedKey", Source, 2, 2, 192);
     }
 
-    // SPEC 15.6.4, 16.3.3: the program is valid, but since G264 (S) S2 A5 errs at `var owned = entries@move` (the replaced abstract V's
-    // composed erased destruction, a `uniq/Self` call, stores the Loan on `owned` into `owned`'s storage, a self-row), and generation
-    // refuses it; the old analysis accepted it, and the native allocation audit ran it (fixture DictionaryIndexGeneric, 1, 1, 192). A
-    // refused program has no run to audit, so the audit and the Allocation purpose wait with it. H5's (e) list, row "S2's self-row family"
-    // (the owner's O-9, 「(a) 加えて着地」, and O-14, 「加える」): PLAN G416 restores the acceptance and re-points this test back to its audit.
-    // The self-row fails two checks at that subject, `owned`'s destruction and its storage's end. Since PLAN G792 the store
-    // `owned[key] = value@move` writes an abstract V, a Scalar for some binding (SPEC 8.15.1), through the `uniq/V` that `indexUniq`
-    // returned, an undecided write at `owned` (R4-M198, as its concrete control with `V = i32` is), so the storage end's check finds the
-    // Loan only in sets carrying Φ_U and is the located Unsupported_Kd (R4-M198's set-level named limit through R4-M199's closure, PLAN
-    // G599 (b)); the destruction's conflict stays decided. DECISIONS Q13: a record added on a program the base already rejects.
+    // SPEC 15.6.4, 16.3.3: the program is valid. The replaced abstract V's composed erased destruction runs through the `uniq/V` that
+    // `indexUniq` returned; since D-918 its receiver is that reference's Reborrow, so it no longer stores the Loan on `owned` into
+    // `owned`'s storage (G264 (S) S2's self-row, H5's (e) row "S2's self-row family", the owner's O-9 and O-14; PLAN G416), and the native
+    // allocation audit runs it again.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void GenericIndexUsesTheConcreteEqualityWitness()
     {
@@ -121,17 +115,10 @@ public class DictionaryIndexTest
             _ = entries.tryInsert((1, 2), "old")
             consume(entries@move, (1, 2), "new")
             """;
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.False(c.Accepts);
-        MirTargetSide.Check(
-            c,
-            (DiagnosticCode.ComparisonLoanConflict_Kd, new("var owned = entries@move")),
-            (DiagnosticCode.Unsupported_Kd, new("var owned = entries@move")));
-        Assert.False(c.Generate(TextWriter.Null));
+        NativeAllocationAudit.WriteFixture("DictionaryIndexGeneric", Source, 1, 1, 192);
     }
 
-    // The boundary of that (e) row (R4's triage for O-14): its twins with a concrete V, a Copy V, no index assignment, or a `tryInsert` in
+    // The boundary of the generic index row (R4's triage for O-14): its twins with a concrete V, a Copy V, no index assignment, or a `tryInsert` in
     // its place compose no erased destruction of an abstract V that stores into `owned`, so they are valid, accepted and generated.
     [Theory]
     [InlineData("func consume<K>(entries: Dictionary<K, string>, key: ref/K, value: string)\n    K is Equatable\n    var owned = entries@move\n    owned[key] = value@move\n", "string", "consume(entries@move, (1, 2), \"new\")")]

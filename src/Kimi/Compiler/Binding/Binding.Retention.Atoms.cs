@@ -75,7 +75,7 @@ public sealed partial class Binding
     // borrow's Origin addresses only storage that Origin covers (SPEC 5.7), which is no part of a value the call stores anew.
     private bool FreshPast(BoundType type, HoldStep step)
         => !IsCallable(type) && this.BorrowReferent(type, out _, out _) is null &&
-            (!ReferenceTypes.IsPointer(type) || step is HoldStep.Own or HoldStep.Address or HoldStep.Static);
+            (!type.IsPointer || step is HoldStep.Own or HoldStep.Address or HoldStep.Static);
 
     // A borrow of storage a value of the Type refers to, with its outer Origin and referent: a ref, uniq, objref or objuniq layer; a
     // pair layer whose binder admits only those, a borrow in each admitted case, its slot the outer Origin (SPEC 8.1.2) and exclusive when
@@ -145,7 +145,7 @@ public sealed partial class Binding
                 this.RetentionWalk(referent, content, variance, callable: false);
             }
         }
-        else if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        else if (input is { IsPointer: true })
         {
             this.retentionRawSources.Add((index, null));
             this.RawStated(input, index);
@@ -244,7 +244,7 @@ public sealed partial class Binding
         var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
         var inside = callable || IsCallable(type);
         var shared = SharedLayer(type);
-        var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        var raw = type is { IsPointer: true };
         if (raw && !inside && !at.Shared && at.Input >= 0)
         {
             this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));

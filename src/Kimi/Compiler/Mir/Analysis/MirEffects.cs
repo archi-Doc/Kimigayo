@@ -263,7 +263,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             var type = cases.TypeOf(terminator.Operand);
             _ = TyCtxt.Layer(type, out var callable, out _);
-            this.Item(callable, (byte)(1 + (int)(type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq ? type.Semantics : SemanticsKind.Owner)));
+            this.Item(callable, (byte)(1 + (int)(type.SafeReferent is not null ? type.Semantics : SemanticsKind.Owner)));
             if (callable is { IsAbstract: true })
             {
                 this.Given(body, terminator);
