@@ -11,13 +11,12 @@ internal sealed partial class MirBuilder
     // The one operand of a group, a borrow, a conversion or a Deref.
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
+    // The node a node stands for through its groups (SPEC 3.4: a parenthesized Place is its operand's).
+    private static Koto Designated(Koto node) => HirTables.Op(node) == HirOp.Group ? Designated(Child(node)) : node;
+
     // The written exclusive borrow a node's value is, also in parentheses; null for another node.
-    private static Koto? Lending(Koto node) => HirTables.Op(node) switch
-    {
-        HirOp.Group => Lending(Child(node)),
-        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) => node,
-        _ => null,
-    };
+    private static Koto? Lending(Koto node)
+        => Designated(node) is var lent && HirTables.Op(lent) == HirOp.Borrow && MirTypes.IsExclusive(TypeOf(lent)) ? lent : null;
 
     // The Place a node designates: one an expansion located already (Located), a parenthesized Place its operand's; a value its consumer needs
     // as a Place is held in a temp. A reserved input's path (input) is its preparation path down to a value or a call result (SPEC
@@ -183,12 +182,12 @@ internal sealed partial class MirBuilder
 
     // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
     // slot in the body's statics, which names its initializer's body; a static whose declaration Binding rejected has none, and its use is
-    // derived from that error.
+    // derived from that error (DECISIONS Z16: the failure fact at the declaration, not published Body).
     private MirPlace Static(BindingSymbol symbol, Koto node)
     {
         if (HirTables.Op(symbol.Declaration!) != HirOp.Body)
         {
-            return this.Unsupported(node, derived: true);
+            return this.Opaque(node);
         }
 
         var place = this.StaticRoot(symbol);
@@ -305,7 +304,7 @@ internal sealed partial class MirBuilder
 
     // A value held in a temp of its Type where its consumer needs a Place, or in the place given where that has its Type, unless an expansion
     // holds it already; a call's input as the call's (input). One Binding gave no Type, a construct it left unresolved or a derived value,
-    // is held at the Type its consumer expects (expected), as Unsupported holds a derived one: SPEC 14.9.2 makes a construct's Type the
+    // is held at the Type its consumer expects (expected), as Opaque holds a derived one: SPEC 14.9.2 makes a construct's Type the
     // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1). An Error node's value is
     // held there also where Binding gave the node a Type, and it is never taken from where an expansion located the node: each consumer
     // receives its own derived value, whose site names the located root (SiteRoots; DECISIONS R4-M109).

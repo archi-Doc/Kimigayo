@@ -13,11 +13,6 @@ namespace Kimi.Compiler.Mir;
 // value of a write whose target Binding rejected follows its right side, built first (DerivedWrite, PLAN G1022).
 internal sealed partial class MirBuilder
 {
-    // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error (a literal the lexer could not
-    // read among them, Binding.Rejected) or a value without a Type (a name of a local whose rejected declaration has none too). A name of
-    // a local whose rejected declaration has a Type is its local's (Let).
-    private static bool Rejected(Koto node) => HirTables.Op(node) == HirOp.Error || HirTables.Meaning(node) is null;
-
     // The one way a form without a building rule is built (plan 5.4, 6.2): an Opaque value in its place, its site naming the roots the
     // node's syntax reads, writes or borrows (SiteRoots), and its located record.
     private void Unsupported(Koto node, MirPlace destination)
@@ -28,11 +23,11 @@ internal sealed partial class MirBuilder
 
     // The one located Unsupported record with an Opaque value: the Opaque value of a value's evaluation at a node's site, naming the roots
     // its caller collected (SiteRoots, or SiteRoots(MirPlace?) for a part built already; a default its call does not instantiate names the
-    // earlier slots, Defaults), and the node's record, merged by location, unless the value is one the lexer or Binding rejected, whose
-    // error the Opaque value is derived from (SPEC 23.1.2).
+    // earlier slots, Defaults), and the node's record, merged by location, unless the value is an Error, whose error the Opaque value is
+    // derived from (SPEC 23.1.2; DECISIONS Z16: the failure fact at the value).
     private void Unsupported(Koto node, MirPlace destination, Koto value)
     {
-        if (!Rejected(value))
+        if (HirTables.Op(value) != HirOp.Error)
         {
             this.Record(node, DiagnosticCode.Unsupported_Kd);
         }
@@ -41,8 +36,8 @@ internal sealed partial class MirBuilder
     }
 
     // The one broken-HIR-contract path (DECISIONS R4-M61; consumers trust validated IR): at a node the builder reaches, an arm of a closed
-    // HIR vocabulary or of a fact a published Op guarantees that no published form takes, InternalInvariant_Kd at the node, unless the lexer
-    // or Binding rejected it, whose error its value is derived from (SPEC 23.1.2); its value an Opaque in its place, its site naming the
+    // HIR vocabulary or of a fact a published Op guarantees that no published form takes, InternalInvariant_Kd at the node, unless it is
+    // an Error, whose error its value is derived from (SPEC 23.1.2; DECISIONS Z16); its value an Opaque in its place, its site naming the
     // roots the node's syntax touches (SiteRoots), as a form without a building rule has.
     private void Invariant(Koto node, MirPlace destination)
     {
@@ -54,7 +49,7 @@ internal sealed partial class MirBuilder
     // part built already (SiteRoots(MirPlace?), R5-M63, R5-M84).
     private void Invariant(Koto node, MirPlace destination, bool completes)
     {
-        if (!Rejected(node))
+        if (HirTables.Op(node) != HirOp.Error)
         {
             this.Record(node, DiagnosticCode.InternalInvariant_Kd);
         }
@@ -79,12 +74,13 @@ internal sealed partial class MirBuilder
         this.Site(node, destination, Completes(node));
     }
 
-    // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2: an assignment or update whose target Binding rejected is derived from that error, after
-    // its right side is evaluated, as Operand evaluates it (its value where its published Acquire is Temporary, else its Place located),
-    // so its own failures are checked; the site names the result as a part located already (SiteRoots) and the target's roots. The
-    // write's own taking, securing the value at the destination Type (its acquisition and adaptation), rests on the failure (rule W) and
-    // is not built: the failed target gives no Type, and Binding decides no taking for a consumer with failure causes but a bare one
-    // (DECISIONS R4-M145 C2, BU-27), so a Closure's receiver counts none of a capture's.
+    // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2: an assignment or update whose target designates a Place Binding rejected (through its
+    // groups, SPEC 3.4: Designated) is derived from that error, after its right side is evaluated, as Operand evaluates it (its value
+    // where its published Acquire is Temporary, else its Place located), so its own failures are checked; the site names the result as a
+    // part located already (SiteRoots) and the target's roots. The write's own taking, securing the value at the destination Type (its
+    // acquisition and adaptation), rests on the failure (rule W) and is not built: the failed target gives no Type, and Binding decides no
+    // taking for a consumer with failure causes but a bare one (DECISIONS R4-M145 C2, BU-27), so a Closure's receiver counts none of a
+    // capture's.
     private void DerivedWrite(Koto node, MirPlace destination)
     {
         var mark = this.located.Count;
