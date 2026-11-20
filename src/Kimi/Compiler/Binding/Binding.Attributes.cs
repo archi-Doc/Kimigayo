@@ -320,7 +320,7 @@ public sealed partial class Binding
     // Never, Unit as a parameter, Tuples, enums (the nonnull Option of a borrow is not laid out yet), Slices, structs and fixed arrays by
     // value, object borrows and borrows of other referents.
     private char PhysicalCode(BoundType type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ? 'p' :
+        => type.IsPointer ? 'p' :
             HasNoCCounterpart(type) ? '\0' :
             type.SafeReferent is { } referent ?
                 this.CExchangeable(referent, 0) switch { true => 'p', false => '?', null => '!' } :

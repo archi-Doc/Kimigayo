@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
@@ -75,7 +74,7 @@ internal sealed partial class MirValidator
             MirConstKind.Integer => constant.Type.Width is > 0 and var width ? TyCtxt.Normalize(constant.Bits, width) == constant.Bits
                 : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
                     ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
-                    : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)),
+                    : constant.Bits >= 0 && constant.Bits <= (constant.Type.IsPointer ? 0 : 127)),
             MirConstKind.Length => ReferenceEquals(constant.Type, BoundType.ISize) && constant.Value is BoundLength { IsConstant: false } length &&
                 Scoped(length, definition),
             _ => true,

@@ -21,7 +21,7 @@ internal sealed class ExplicitAdaptationPlan
 
     internal static ConversionBinding Select(BoundType source, BoundType target, bool shorthand = false)
     {
-        if (target.Semantics == SemanticsKind.Raw && shorthand && !ReferenceEquals(source, target))
+        if (target.IsPointer && shorthand && !ReferenceEquals(source, target))
         {
             return ReferenceEquals(source, target.Components[0]) ? ConversionBinding.Address : ConversionBinding.None;
         }
@@ -59,7 +59,7 @@ internal sealed class ExplicitAdaptationPlan
             return ConversionBinding.Identity;
         }
 
-        return (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
-            (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) ? ConversionBinding.Pointer : ConversionBinding.None;
+        return (source.IsPointer && (target.IsPointer || ReferenceEquals(target, BoundType.USize))) ||
+            (ReferenceEquals(source, BoundType.USize) && target.IsPointer) ? ConversionBinding.Pointer : ConversionBinding.None;
     }
 }

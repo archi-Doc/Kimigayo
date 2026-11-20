@@ -102,7 +102,7 @@ public sealed partial class Binding
         }
 
         var integer = decision.Requirement?.Contract == this.Library.PrimitiveInteger && decision.Proof == ConstraintProof.Proven;
-        return left.Kind == BoundTypeKind.Primitive || ReferenceTypes.IsPointer(left) || integer
+        return left.Kind == BoundTypeKind.Primitive || left.IsPointer || integer
             ? Complete(binary, BoundType.Boolean) : this.BindContractComparison(binary, left, scope);
     }
 

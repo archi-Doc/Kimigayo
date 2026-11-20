@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
-
 namespace Kimi.Compiler.Mir;
 
 // A5's raw addresses of the view (SPEC 15.6 Addresses, 5.2.1, 5.7; DECISIONS R4-M116, design B′ §4.1–§4.3 on B §5.1–§5.2): entries of the
@@ -40,7 +38,7 @@ internal sealed partial class MirBorrows
         {
             this.Work++;
             var component = type.Components[i];
-            if (component.Semantics == SemanticsKind.Raw || (this.visited.Add((component, null)) && this.Inline(component)))
+            if (component.IsPointer || (this.visited.Add((component, null)) && this.Inline(component)))
             {
                 return true;
             }
@@ -86,7 +84,7 @@ internal sealed partial class MirBorrows
         this.visited.Clear();
         foreach (var row in this.body.Projections)
         {
-            if (row.Type is { } type && (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } || this.Inline(cases.Type(type))))
+            if (row.Type is { } type && (type is { IsPointer: true } || this.Inline(cases.Type(type))))
             {
                 return true;
             }
@@ -148,7 +146,7 @@ internal sealed partial class MirBorrows
     // The own-step entry of a raw Place that is a `during self` layer (B §5.2 item 2), decided once per view; -1 for another Place.
     private int Layer(MirPlace layer, int location)
     {
-        if (this.body.TypeOf(layer) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        if (this.body.TypeOf(layer) is not { IsPointer: true })
         {
             return -1;
         }
@@ -280,7 +278,7 @@ internal sealed partial class MirBorrows
             MirDataflow.Grow(ref this.positions, length + 1);
             this.positions[length] = i;
             var component = type.Components[i];
-            if (component.Semantics == SemanticsKind.Raw
+            if (component.IsPointer
                 ? types.StoredStep(instance, part, this.positions.AsSpan(0, length + 1)) == HoldStep.Own
                 : this.Encloses(instance, part, length + 1, component))
             {

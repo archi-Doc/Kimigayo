@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
-using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -110,7 +109,7 @@ internal sealed partial class FunctionCodegen
             return -1;
         }
 
-        if (type.Semantics == SemanticsKind.Raw)
+        if (type.IsPointer)
         {
             return 5;
         }

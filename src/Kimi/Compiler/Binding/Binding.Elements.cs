@@ -43,7 +43,7 @@ public sealed partial class Binding
                 return view;
             }
 
-            if (ReferenceTypes.IsPointer(receiver))
+            if (receiver is { IsPointer: true })
             {
                 // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.
                 // A key that is not an isize, including a range or `^x`, is reported at the key; the access rests on it.

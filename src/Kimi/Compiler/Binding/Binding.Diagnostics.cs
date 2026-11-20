@@ -428,7 +428,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
+        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && TyCtxt.StorageMatches(expectedType, actualType);
         if (storage && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
