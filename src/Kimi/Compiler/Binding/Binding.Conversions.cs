@@ -274,7 +274,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
-            if (pattern.SafeReferent is not null && pattern.Origin is null && ElementAccess.IsRawRooted(this, conversion.Left))
+            if (pattern.SafeReferent is not null && pattern.Origin is null && this.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
@@ -387,7 +387,7 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawRooted(this, conversion.Left))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && this.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, semantics, operandType);
             }
