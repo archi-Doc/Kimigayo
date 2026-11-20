@@ -62,33 +62,38 @@ internal static partial class NativeToolchain
             var defined = await this.Tool("llvm-nm", "--defined-only", "--extern-only", "--format=posix", obj);
             var inspection = await this.Tool("llvm-readobj", "--unwind", "--coff-directives", obj);
             return new ObjectFacts(
-                Symbols(undefined),
-                Symbols(defined),
+                PosixSymbols(undefined),
+                PosixSymbols(defined),
                 inspection.Contains("RuntimeFunction", StringComparison.Ordinal),
                 inspection.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase));
         }
 
         internal override Task Link(IReadOnlyList<string> arguments) => this.Tool("lld-link", [.. arguments]);
 
-        // llvm-nm's posix lines: the name, a separator, the kind's letter, then the value and size.
-        private static List<ObjectSymbol> Symbols(string listing)
-        {
-            var symbols = new List<ObjectSymbol>();
-            foreach (var line in listing.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-            {
-                var separator = line.AsSpan().IndexOfAny(' ', '\t');
-                if (separator < 0 || separator + 1 == line.Length)
-                {
-                    throw new InvalidDataException("Unexpected llvm-nm line: " + line);
-                }
-
-                symbols.Add(new ObjectSymbol(line[..separator], line[separator + 1]));
-            }
-
-            return symbols;
-        }
-
         private Task<string> Tool(string name, params string[] args)
             => ExecuteTool(this.tools[name], args, this.context.OutputDirectory, this.context.Report, this.context.CancellationToken);
+    }
+
+    // llvm-nm's --format=posix lines: the name, then the kind's letter, the value and the size, each after one space. The name is
+    // everything before the last three fields, so a symbol with a space or a tab (SPEC 22.6) is read exactly. The tool control
+    // comparison reads it too; unit A4 moves it there.
+    internal static List<ObjectSymbol> PosixSymbols(string listing)
+    {
+        var symbols = new List<ObjectSymbol>();
+        foreach (var line in listing.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var text = line.AsSpan().TrimEnd('\r');
+            var size = text.LastIndexOf(' ');
+            var value = size > 0 ? text[..size].LastIndexOf(' ') : -1;
+            var kind = value > 0 ? text[..value].LastIndexOf(' ') : -1;
+            if (kind < 1 || value != kind + 2)
+            {
+                throw new InvalidDataException("Unexpected llvm-nm line: " + line);
+            }
+
+            symbols.Add(new ObjectSymbol(text[..kind].ToString(), text[kind + 1]));
+        }
+
+        return symbols;
     }
 }
