@@ -71,6 +71,20 @@ public sealed partial class Binding
     private static long? ImplementationLimit(BindingFailure failure)
         => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
 
+    // SPEC 4.3.4: a noinit directive's closed reason, with the declaration it initializes.
+    private static void ReportNoInit(Koto directive, DiagnosticCollection? store, in BindingProblem problem, NoInitProblem reason)
+    {
+        var variable = (VariableKoto)directive.Parent!;
+        var text = reason switch
+        {
+            NoInitProblem.LocalVar => "the declaration is not a local var",
+            NoInitProblem.Holes => "the annotation contains a length or element Type hole",
+            NoInitProblem.Element => $"owner Scalar is not proven for element {DiagnosticTypeName(variable.TypeKoto!.BoundType!.Components[0])}",
+            _ => "the declaration requires an explicit fixed-array Type annotation",
+        };
+        directive.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")]);
+    }
+
     // SPEC 23.2.2's fallback site: the first node whose recorded state is not Resolved, the program part's nodes first, then the library
     // layer's.
     private Koto? FirstIncompleteNode()
@@ -133,30 +147,6 @@ public sealed partial class Binding
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
             this.ReportQualification(issue.Node, store, requirement);
-        }
-        else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
-            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true && IsMissingInformation(cause))
-        {
-            // The recorded missing Name of the Constraint is its prerequisite.
-            issue.Node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
-        }
-        else if (issue.Failure == BindingFailure.NoInit)
-        {
-            var variable = (VariableKoto)issue.Node.Parent!;
-            var reason = this.noInitFailures![issue.Node] switch
-            {
-                NoInitProblem.LocalVar => "the declaration is not a local var",
-                NoInitProblem.Holes => "the annotation contains a length or element Type hole",
-                NoInitProblem.Element => $"owner Scalar is not proven for element {DiagnosticTypeName(variable.TypeKoto!.BoundType!.Components[0])}",
-                _ => "the declaration requires an explicit fixed-array Type annotation",
-            };
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                evidence: [reason],
-                related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")],
-                note: "noinit skips stores but completes construction; the programmer must write a valid value before any element read, including a whole-array Copy or Move");
         }
         else if (issue.Failure == BindingFailure.ArrayAnnotationInference)
         {
@@ -342,25 +332,13 @@ public sealed partial class Binding
         {
             this.ReportParameterShapes(issue.Node, store, requirement, shapes);
         }
-        else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
-        {
-            this.ReportAccessorReceiverShape(shapedAccessor, store, writtenReceiver, requirement);
-        }
         else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
             this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
-        {
-            this.ReportVirtualDeclarationFailure(virtualFunction, store, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
-        {
-            ReportProtectedPlacement(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
         {
@@ -421,10 +399,6 @@ public sealed partial class Binding
         else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
         {
             // SPEC 15.6.1, 23.1.2: a node's Origin relation or contract record, then its records beyond the first.
-        }
-        else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
-        {
-            ReportArity(issue.Node, arity, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, store, requirement, issue.Code))
         {
@@ -513,7 +487,7 @@ public sealed partial class Binding
     // explanation tables stand (PLAN G949 Stage 2 U2a, C1). Generic, so a composed view is read without boxing.
     private void ReportFailures<TIssues, TDerived>(TIssues issues, TDerived derivedIssues)
         where TIssues : IReadOnlyList<BindingIssue>
-        where TDerived : IReadOnlyList<Koto>
+        where TDerived : IReadOnlyList<BindingIssue>
     {
         if (this.sitelessHeightRefusal)
         {
@@ -533,8 +507,9 @@ public sealed partial class Binding
 
         for (var i = 0; i < derivedIssues.Count; i++)
         {
-            var node = derivedIssues[i];
-            node.ReportDerivedIn(this.compilation.StoreOf(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
+            var issue = derivedIssues[i];
+            var condition = issue.Problem >= 0 ? this.report.Problem(issue.Problem).Condition : (ushort)0;
+            issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), condition);
         }
     }
 }

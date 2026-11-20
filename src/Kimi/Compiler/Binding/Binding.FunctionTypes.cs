@@ -147,7 +147,7 @@ public sealed partial class Binding
 
         OwnedFact owned = default;
         var independence = ConstraintProof.Proven;
-        var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
+        var shape = signature is null || !TyCtxt.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
         var part = !SharedReceiver(actual) ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
             : this.ProveErasedOwned(actual, node, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
@@ -223,7 +223,7 @@ public sealed partial class Binding
         }
 
         if (expected.Kind != BoundTypeKind.Function || actual.Kind != BoundTypeKind.Function || ReferenceEquals(actual, expected) ||
-            !ReferenceTypes.StorageMatches(expected, actual))
+            !TyCtxt.StorageMatches(expected, actual))
         {
             return actual;
         }

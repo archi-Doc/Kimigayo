@@ -11,7 +11,7 @@ public sealed partial class Binding
         var receiver = this.BindNode(source.Left, scope);
         if (source is IndexKoto)
         {
-            var dictionary = ReferenceTypes.IsDictionary(receiver) ? receiver!.Components[0] : receiver;
+            var dictionary = receiver?.SafeReferent is { Kind: BoundTypeKind.Dictionary } referent ? referent : receiver;
             if (dictionary?.Kind == BoundTypeKind.Dictionary)
             {
                 var key = dictionary.Components[0];
@@ -43,7 +43,7 @@ public sealed partial class Binding
                 return view;
             }
 
-            if (ReferenceTypes.IsPointer(receiver))
+            if (receiver is { IsPointer: true })
             {
                 // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.
                 // A key that is not an isize, including a range or `^x`, is reported at the key; the access rests on it.
@@ -60,7 +60,7 @@ public sealed partial class Binding
 
             // SPEC 4.7.1: the key of a sequence below is an integer of any Type or a written `^x`, already bound; ownership
             // converts it to an isize element position within the element access's bounds check.
-            if ((ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver)) && source.Right is not RangeKoto)
+            if (receiver?.SafeReferent is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array } && source.Right is not RangeKoto)
             {
                 // SPEC 4.7.1: the element Place keeps its stored complete Type.
                 return Complete(source, receiver!.Components[0].Components[0]);
@@ -111,7 +111,7 @@ public sealed partial class Binding
                 receiver = selection.Type;
             }
 
-            if (ReferenceTypes.IsTuple(receiver))
+            if (receiver?.SafeReferent is { Kind: BoundTypeKind.Tuple })
             {
                 return ElementAccess.TryBorrowedTupleElement(this, source, out var borrowedElement, out _)
                     ? Complete(source, borrowedElement) : this.Fail(source, BindingFailure.TypeMismatch);

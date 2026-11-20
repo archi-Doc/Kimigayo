@@ -172,7 +172,7 @@ public class SpecRevisionAnalysisTest
         Assert.True(tree.Compilation.Bind().IsComplete);
         var nulls = KotoTree.Walk(tree.GeneratedFunction!).OfType<NullLiteralKoto>().ToArray();
         Assert.NotEmpty(nulls);
-        Assert.All(nulls, x => Assert.True(ReferenceTypes.IsPointer(x.TypeOf())));
+        Assert.All(nulls, x => Assert.True(x.TypeOf() is { IsPointer: true }));
         Parse(tree.GeneratedFunction!.ToString());
     }
 
