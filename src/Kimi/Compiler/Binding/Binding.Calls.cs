@@ -30,10 +30,11 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8, 22.1: a named call's explicit Type and length arguments, bound into its evaluation; a spelling that both a Type and a
-    // length slot of an accessible candidate can take is not chosen (false). Binding an already bound argument binds nothing again.
-    private bool BindExplicitArguments(ref CallEvaluation evaluation, in FunctionGroup candidates)
+    // length slot of an accessible candidate (of its `count` candidate rows, each with its Accessible verdict: RentCandidates) can take
+    // is not chosen (false). Binding an already bound argument binds nothing again.
+    private bool BindExplicitArguments(ref CallEvaluation evaluation, int count)
     {
-        var (generic, callee, scope) = (evaluation.Generic, evaluation.Callee, evaluation.Scope);
+        var (generic, scope) = (evaluation.Generic, evaluation.Scope);
         for (var i = 0; generic is not null && i < generic.TypeArguments.Count; i++)
         {
             var syntax = generic.TypeArguments[i];
@@ -50,10 +51,9 @@ public sealed partial class Binding
             {
                 var typeSlot = false;
                 var lengthSlot = false;
-                foreach (var candidate in candidates)
+                foreach (ref readonly var candidate in evaluation.Evaluated.AsSpan(0, count))
                 {
-                    if (candidate.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count &&
-                        (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType)))
+                    if (candidate.Accessible && candidate.Symbol!.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count)
                     {
                         lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
                         typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
@@ -215,6 +215,7 @@ public sealed partial class Binding
         callee.BindingState = BindingState.Resolved;
         if (this.GatheredGroupFails(callee, candidates))
         {
+            this.candidateScratch.Return(evaluation.Evaluated, clearArray: true); // NewEvaluation's rows; RentEvaluation rented nothing yet
             return Complete(call, null);
         }
 
@@ -229,7 +230,7 @@ public sealed partial class Binding
         BoundDefaultArgument[]? defaults = null;
         try
         {
-            if (!this.BindExplicitArguments(ref evaluation, candidates))
+            if (!this.BindExplicitArguments(ref evaluation, shape.Count))
             {
                 // Both namespaces can supply a spelling. Do not silently choose a kind before candidate-local dual-namespace binding is
                 // available.
@@ -458,7 +459,10 @@ public sealed partial class Binding
                 Complete(constructedMember.Left, selectedType);
             }
 
-            var result = winner.Type is { } returnType ? this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) : null;
+            // SPEC 8.2.3 (F's C2 ruling 268): the call publishes its instantiated result in its one form in the call's view, the form its
+            // Type takes there (BindAndAdaptNode), through the normalizer a value call's signature takes (TryCallable).
+            var result = winner.Type is { } returnType && this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) is { } instantiated
+                ? this.CallableContractType(instantiated, scope) : null;
             if (result is null)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
@@ -544,6 +548,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
+            RequireOriginWidths(selected, originSlots, inputSlots);
             (call.CallStorage ??= new()).Set(this, executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
             call.CallStorage.PremiseReadsMark = evaluated[winnerIndex].PremiseReadsMark; // DECISIONS D3 (G812 ruling 159).
             if (selected.IsRequirement)

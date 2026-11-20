@@ -464,6 +464,9 @@ public sealed partial class Binding
     // SlotOwner's slots are the ones bound.
     private bool Infer(BoundType pattern, BoundType actual, SolveBinder binder, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
     {
+        // R7-C3 (design §3, J4 at the head; D-779): the evidence in its class's form in the solve's view (SlotFrame.View), once per
+        // step (the table keeps each form), so every branch below, a decomposition and a first binding included, reads formed evidence.
+        actual = this.ClassForm(actual, frame.View, out _);
         var arguments = frame.Types;
         if (pattern.Kind == BoundTypeKind.AssociatedProjection)
         {
@@ -584,6 +587,11 @@ public sealed partial class Binding
 
             if (arguments[slot] is { } previous)
             {
+                // R7-C2c2 c2-4b (design R4.12c, J4): a slot's bindings agree (SPEC 10.8 Solving: an explicit Type argument is kept; the
+                // bindings agree in structure and Semantics) over identical Types (8.2.3): the kept binding and the evidence in their
+                // class's form in the solve's view (SlotFrame.View), once, before every comparison below; the Completion unthreaded
+                // (ClassForm's contract). The evidence is formed at Infer's head (R7-C3), so a first binding and a decomposition read it formed.
+                previous = this.ClassForm(previous, frame.View, out _); // the evidence is formed at Infer's head
                 if (!ReferenceEquals(previous, actual) && (HasOpenOrigin(previous) || HasOpenOrigin(actual)))
                 {
                     // SPEC 10.8: no argument fixes a slot first by traversal order. Another argument's Origin at an open position
@@ -642,6 +650,14 @@ public sealed partial class Binding
             }
 
             return true;
+        }
+
+        // R7-C3 (F's C2 ruling 276 (1); SPEC 8.2.3): a Type parameter that is no slot of the solve (an enclosing declaration's, as a
+        // nested callee's signature names it) is a Type of the solve's view, so it meets the formed evidence in its class's form there,
+        // by the judge that formed the evidence at the head.
+        if (pattern.Kind == BoundTypeKind.Parameter)
+        {
+            pattern = this.ClassForm(pattern, frame.View, out _);
         }
 
         if (ReferenceEquals(pattern, actual))

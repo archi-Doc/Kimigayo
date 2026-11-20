@@ -34,9 +34,9 @@ public sealed partial class Binding
     // DECISIONS D3 (G812 ruling 158): the one walk that unmarks a completed split part's published Types (CompleteOnSplit), kept.
     private OpenMarkRemover? openMarkRemover;
 
-    // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
+    // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and in its identity class's form (ClassForm).
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
-        => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
+        => this.ClassForm(this.ContractType(type, scope), scope, out _);
 
     private static SemanticsKind CallableReceiver(SemanticsMask mask)
         => mask == SemanticsMask.Ref ? SemanticsKind.Ref : mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;

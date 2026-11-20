@@ -69,14 +69,14 @@ public sealed partial class Binding
         return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
     }
 
-    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent) and keyed by the solve's node; a candidate's trial
-    // and re-trials write only its own.
-    private SlotFrame[] RentFrames(int count, int capacity, Koto node)
+    // R7-I2 c: a selection's frames, one per candidate, each clean (InferCtxt.Rent), keyed by the solve's node and judged in the use's
+    // `view`; a candidate's trial and re-trials write only its own.
+    private SlotFrame[] RentFrames(int count, int capacity, Koto node, BindingScope view)
     {
         var frames = this.frameScratch.Rent(count);
         for (var i = 0; i < count; i++)
         {
-            frames[i] = this.infer.Rent(Math.Max(1, capacity), node);
+            frames[i] = this.infer.Rent(Math.Max(1, capacity), node, view);
         }
 
         return frames;
@@ -349,9 +349,10 @@ public sealed partial class Binding
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
     // HeldRefusal: the refusal its trial read and held (TakeTrialRefusal), settled only if it is selected (SettleSelected).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false, bool PremiseReadsMark = false)
+    // A call's row is written in place, each field once: RentCandidates writes Symbol and Accessible, the evaluation the rest.
+    private record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false, bool PremiseReadsMark = false)
     {
-        internal Refusal? HeldRefusal { get; init; }
+        internal Refusal? HeldRefusal { get; set; }
     }
 
     // SPEC 7.7.3, 8.10: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.

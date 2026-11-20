@@ -5,8 +5,9 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // SPEC 10.2-10.4, 8.4.8.2: candidate evaluation and selection, shared by a call and by a query that must not publish, the omitted base
-// selection of an implicit constructor (SPEC 6.3.6). Evaluation records each candidate's applicability and plan facts in the call's
-// rented scratch; classification decides the selection from them. Neither fails, completes nor records a node.
+// selection of an implicit constructor (SPEC 6.3.6). Each candidate's accessibility is decided and its header bound before the set is
+// measured (RentCandidates); evaluation records each candidate's applicability and plan facts in the call's rented scratch;
+// classification decides the selection from them. Neither fails, completes nor records a node.
 public sealed partial class Binding
 {
     private enum CallSelection : byte
@@ -21,9 +22,21 @@ public sealed partial class Binding
         Ambiguous,
     }
 
-    // The scratch sizes a candidate set needs. Origins are solved when the caller or the enclosing Type can carry them, or when a
-    // candidate declares one, returns one or takes one. Receiver: the group has a receiver shape (SPEC 7.3.2), some candidate taking a
-    // receiver (ReceiverIndex), so a value-qualified call acquires its Receiver Expression by the Name before selection.
+    // The width condition: a view of a call's Origin scratch formed for a candidate covers the candidate's Origins and input Origins, or
+    // the call solves none (both widths 0). The widths are measured after the candidates' headers are bound (RentCandidates), so a
+    // shortfall is a broken contract, never a dropped slot.
+    private static void RequireOriginWidths(FunctionKoto function, int originSlots, int inputSlots)
+    {
+        if ((originSlots | inputSlots) != 0 && (function.Origins.Count > originSlots || InputOriginCount(function) > inputSlots))
+        {
+            throw new InvalidOperationException($"`{function.BoundSymbol?.Name}` has more Origin slots than its call measured (InternalInvariant; R7-P2 A9).");
+        }
+    }
+
+    // The scratch sizes a candidate set needs, read from the bound headers of its accessible candidates (RentCandidates). Origins are
+    // solved when the caller or the enclosing Type can carry them, or when a candidate declares one, returns one or takes one. Receiver:
+    // the group has a receiver shape (SPEC 7.3.2), some candidate taking a receiver (ReceiverIndex), so a value-qualified call acquires its
+    // Receiver Expression by the Name before selection.
     private static CandidateShape MeasureCandidates(FunctionGroup candidates, bool solveOrigins)
     {
         var shape = new CandidateShape { SolveOrigins = solveOrigins };
@@ -118,7 +131,8 @@ public sealed partial class Binding
     }
 
     // A named call's evaluation at `expected` over its group's candidates (their requirements and Self; its explicit arguments are
-    // the Generics its method names), and the shape its scratch takes (RentEvaluation).
+    // the Generics its method names), with its candidate rows rented before the set is measured (RentCandidates), and the shape its
+    // other scratch takes (RentEvaluation). The rows are returned with that scratch (ReturnEvaluation), or alone before it is rented.
     private (CallEvaluation Evaluation, CandidateShape Shape) NewEvaluation(
         InvocationKoto call, Koto callee, BindingSymbol group, in FunctionGroup candidates, BindingScope scope, BoundType? expected)
     {
@@ -132,6 +146,7 @@ public sealed partial class Binding
             Expected = expected,
             Self = self,
             Requirements = candidates.Requirements,
+            Evaluated = this.RentCandidates(candidates, callee, scope),
             Winner = -1,
             PremisesOnly = true,
         };
@@ -159,7 +174,7 @@ public sealed partial class Binding
         this.RentEvaluation(ref evaluation, shape);
         try
         {
-            if (!this.BindExplicitArguments(ref evaluation, candidates))
+            if (!this.BindExplicitArguments(ref evaluation, shape.Count))
             {
                 return new(CallSelection.Selected, -1, 0, false);
             }
@@ -193,8 +208,9 @@ public sealed partial class Binding
         (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = query.Counters;
     }
 
-    // The scratch of a named call's evaluation (BindCall), sized by its candidates' shape (a frame per candidate, RentFrames), with the
-    // bases of the rows and position operations its trials retain; ReturnEvaluation returns it in the reverse order.
+    // The scratch of a named call's evaluation (BindCall) beside its candidate rows (NewEvaluation's), sized by its candidates' shape (a
+    // frame per candidate, RentFrames), with the bases of the rows and position operations its trials retain; ReturnEvaluation returns
+    // it and the candidate rows in the reverse order.
     private void RentEvaluation(ref CallEvaluation evaluation, in CandidateShape shape)
     {
         var call = evaluation.Call;
@@ -204,7 +220,7 @@ public sealed partial class Binding
         evaluation.OriginSlots = shape.SolveOrigins ? shape.Origins : 0;
         evaluation.InputSlots = shape.SolveOrigins ? shape.InputOrigins : 0;
         evaluation.SavedCandidates = saved;
-        evaluation.Frames = this.RentFrames(shape.Count, shape.Generics, call);
+        evaluation.Frames = this.RentFrames(shape.Count, shape.Generics, call, evaluation.Scope);
         evaluation.ExplicitTypes = this.typeScratch.Rent(explicitCount);
         evaluation.ExplicitLengths = this.lengthScratch.Rent(explicitCount);
         evaluation.Mapping = this.indexScratch.Rent(Math.Max(1, arguments));
@@ -214,7 +230,6 @@ public sealed partial class Binding
         evaluation.CompletedWaiting.AsSpan(0, arguments).Clear();
         evaluation.Origins = this.originScratch.Rent(evaluation.OriginSlots);
         evaluation.Inputs = this.originScratch.Rent(evaluation.InputSlots);
-        evaluation.Evaluated = this.candidateScratch.Rent(shape.Count);
         evaluation.AllMaps = this.indexScratch.Rent(saved * arguments);
         evaluation.AllOrigins = this.originScratch.Rent(saved * evaluation.OriginSlots);
         evaluation.AllInputs = this.originScratch.Rent(saved * evaluation.InputSlots);
@@ -246,6 +261,39 @@ public sealed partial class Binding
         this.flagScratch.Return(evaluation.Used);
         this.indexScratch.Return(evaluation.Mapping);
         this.ReturnFrames(evaluation.Frames, shape.Count);
+    }
+
+    // SPEC 10.1, 9.4.1: a candidate set's rows, rented before the set is measured. Each candidate's accessibility is decided once, into
+    // its row, the one verdict its evaluation reads; a synthesized range construction pins its Kimi target, which source access does not
+    // restrict (SPEC 4.6.2). Each accessible candidate's header is bound here, so the set is measured once, after every header fact
+    // MeasureCandidates reads is published, also for a call bound before BindDeclarations' header loop reaches a candidate. The caller
+    // returns the rows.
+    private EvaluatedCandidate[] RentCandidates(in FunctionGroup candidates, Koto callee, BindingScope scope)
+    {
+        var count = 0;
+        foreach (var candidate in candidates)
+        {
+            count += candidate.Declaration is FunctionKoto ? 1 : 0;
+        }
+
+        var rows = this.candidateScratch.Rent(count);
+        var index = 0;
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Declaration is FunctionKoto)
+            {
+                var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
+                ref var row = ref rows[index++]; // A returned row is cleared; the evaluation writes its other fields.
+                row.Symbol = candidate;
+                row.Accessible = accessible;
+                if (accessible)
+                {
+                    this.BindHeader(candidate);
+                }
+            }
+        }
+
+        return rows;
     }
 
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
@@ -298,11 +346,9 @@ public sealed partial class Binding
         var independentRejection = false;
         var premiseUnknown = false;
         ReferenceConstraintFailure? rejectedConstraint = null;
-        // SPEC 4.6.2: a synthesized range construction pins its Kimi target, which source access does not restrict.
-        var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
+        var accessible = evaluation.Evaluated[index].Accessible; // Decided once, and the header bound, before the set was measured.
         if (accessible)
         {
-            this.BindHeader(candidate);
             if (function.IsConstructor)
             {
                 declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, evaluation.Mapping, evaluation.Expected) : null;
@@ -331,7 +377,19 @@ public sealed partial class Binding
 
         // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
         var held = this.TakeTrialRefusal(call);
-        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown, this.premiseReadsSplit && HoldsMark(evaluation.Frames[index].Types)) { HeldRefusal = held };
+        ref var row = ref evaluation.Evaluated[index]; // Its Symbol and Accessible are RentCandidates'.
+        row.State = state;
+        row.DeclaringType = declaringType;
+        row.DefaultsUsed = defaultsUsed;
+        row.Unsolved = unsolved;
+        row.ClosureReceiver = closureReceiver;
+        row.ArgumentMap = argumentMap;
+        row.StableConstruction = function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations);
+        row.IndependentRejection = independentRejection;
+        row.ConstraintFailure = rejectedConstraint;
+        row.PremiseUnknown = premiseUnknown;
+        row.PremiseReadsMark = this.premiseReadsSplit && HoldsMark(evaluation.Frames[index].Types); // DECISIONS D3 (G812 ruling 159)
+        row.HeldRefusal = held;
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
         if (saved)

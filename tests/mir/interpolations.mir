@@ -989,7 +989,23 @@ fn early @97
       unreachable @99
 fn pair @110
   _0: string return @111
-  opaque 0 @112:
+  _1: string temp @113
+  _2: (i32, i32) temp @114
+  _3: string temp @117
+  opaque 0 @112: _1 _2 _3
   bb0:
-    * _0 = opaque 0: string @112
+      StorageLive(_1) @113
+    * _1 = const "" @113
+      StorageLive(_2) @114
+      _2 = Tuple(const 1_i32, const 2_i32): (i32, i32) @114
+      StorageLive(_3) @117
+      _3 = const "" @117
+      _0 = opaque 0: string @112
+      drop _3 -> bb1 [keep] @117
+  bb1:
+      StorageDead(_3) @117
+      StorageDead(_2) @114
+      drop _1 -> bb2 [keep] @113
+  bb2:
+      StorageDead(_1) @113
       return @112

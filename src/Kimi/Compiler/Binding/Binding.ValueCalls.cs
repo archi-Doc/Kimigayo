@@ -142,7 +142,7 @@ public sealed partial class Binding
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
             (node is not (IdentifierNameKoto or MemberAccessKoto or IndexKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow }) &&
-                !(node is BinaryKoto element && ElementAccess.IsSyntax(this, element))))
+                !(node is BinaryKoto element && this.IsSyntax(element))))
         {
             return false;
         }
@@ -254,7 +254,7 @@ public sealed partial class Binding
         var owner = this.CalledThrough(type, scope);
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
-            signature = this.ContractType(itemSignature, scope);
+            signature = this.CallableContractType(itemSignature, scope); // in the call's view, as a Callable premise's signature (ruling 268)
             receiver = SemanticsKind.Ref;
             return true;
         }

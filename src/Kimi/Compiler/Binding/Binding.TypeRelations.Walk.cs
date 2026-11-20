@@ -9,10 +9,10 @@ namespace Kimi.Compiler;
 //   (FunctionFits), two at an invariant position, one each way (SPEC 3.8, 15.3.5), whose implementation conditions it judges at every
 //   nesting when it has a Binding.
 // - Inputs: the walk's owner, the Binding whose member made it (always the maker), which decides its outer-Origin fits and Origin
-//   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads (none: the
-//   relation as written), which Origin bindings count (OriginPart), and the row sink of a reader of a comparison's region conjuncts
-//   (CallableInstance.Rows: its root comparisons take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not
-//   proven).
+//   argument variances; the query: the premises reader, the Binding and use whose premises and Origins the Origin part reads, and in
+//   whose view the root's two sides are formed (ClassForm, R7-C2c2 c2-4b's J3; none: the relation as written), which Origin bindings
+//   count (OriginPart), and the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its root comparisons
+//   take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided, with the components down to the failure that ended it
 //   and whether it is that part's own shape (ComponentPath); a recording root's walk also keeps one fact per failing position
@@ -31,6 +31,10 @@ public sealed partial class Binding
     // The facts of the last recording root's walk (FitsTypeAt, CheckTypeUse's walks), one per failing position, which the root clears
     // when it starts (warm 0 B); RecordMismatch reads them when their first is the failure it records.
     private readonly List<ComparisonFailure> comparisonFacts = new();
+
+    // The pair those facts' walk walked, as its intake formed it (RelationWalk.Root): published by the first recording walk after the
+    // reader that opens the facts clears both, so its parts and facts are parts and facts of this pair (F's C2 ruling 315).
+    private (BoundType? Actual, BoundType? Expected) comparisonRoot;
 
     // What failed where a relation does not hold (SPEC 10.7, 15.6.1); the closed rows of ComparisonFailure.Kind.
     internal enum ComparisonFailureKind : byte
@@ -203,6 +207,8 @@ public sealed partial class Binding
         private bool ended;
         private int endedAt;
         private ComponentPath components;
+        private bool formed; // whether the root's pair was formed (J3: only the root forms; its parts are parts of formed Types)
+        private (BoundType Actual, BoundType Expected) root; // the pair formed at the intake, which the walk walked
 
         internal RelationWalk(Binding owner, Binding? binding, Koto? use, OriginPart part)
         {
@@ -236,6 +242,9 @@ public sealed partial class Binding
         // past (a recording root's, outside every Callable comparison) adds no step.
         internal readonly ComponentPath FailedComponents => this.components;
 
+        // The pair the walk walked (Intake), whose parts its recorded parts and facts are: every reader of them reads this pair.
+        internal readonly (BoundType Actual, BoundType Expected) Root => this.root;
+
         // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
         internal List<BindingObligation>? Rows { get; init; }
 
@@ -245,6 +254,11 @@ public sealed partial class Binding
         internal bool Fits(
             BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default)
         {
+            if (!this.formed)
+            {
+                (actual, expected) = this.Intake(actual, expected);
+            }
+
             if (this.parts is not { } parts || instance.Expected is not null || this.Discharged(actual, expected))
             {
                 return this.Relate(actual, expected, invariant, skipOrigin, instance);
@@ -290,6 +304,24 @@ public sealed partial class Binding
                 ReferenceEquals(actual.InstanceContext, expected.InstanceContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
                 (inferredLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
+        }
+
+        // R7-C2c2 c2-4b (design R4.12b, J3), F's C2 ruling 315: the relation's one intake, the one formation of the root's pair: at a use,
+        // its two sides in their class's form in the use's view (SPEC 8.2.3: all Type checking in the scope treats identical Types as one
+        // Type), the Completion unthreaded (ClassForm's contract; R7-C3: the judge decides its domain); nested parts are parts of formed
+        // Types. Without a use (SameStructure, IsSubtype) the walk reads no premise and compares as written. The walk publishes the pair
+        // (Root), and the first recording walk after its reader opened the facts publishes it with them (comparisonRoot), so no reader of
+        // the parts or facts forms a pair of its own.
+        private (BoundType Actual, BoundType Expected) Intake(BoundType actual, BoundType expected)
+        {
+            this.formed = true;
+            this.root = this.binding is { } judge && this.use is { } at ? (judge.ClassForm(actual, at), judge.ClassForm(expected, at)) : (actual, expected);
+            if (this.facts is not null && this.owner.comparisonRoot.Actual is null)
+            {
+                this.owner.comparisonRoot = this.root;
+            }
+
+            return this.root;
         }
 
         private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance)

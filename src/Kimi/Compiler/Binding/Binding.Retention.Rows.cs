@@ -551,7 +551,7 @@ public sealed partial class Binding
 
         var found = RetentionKind.None;
         var run = this.HeldRun(declared, null, null, out var complete);
-        this.retentionLimit |= !complete; // Undecided at Binding's Limit, as at an Unsupported entry (HeldRun): the contract's Limit.
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit: the contract's Limit.
         for (var i = run.Start; i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
@@ -712,8 +712,8 @@ public sealed partial class Binding
     // a fresh handle brings a new payload, `set: (uniq/(rc/T) during u, E)`; never past a borrow, `set: (uniq/(ref/T during a) during u,
     // E)`, whose referent is never fresh, PLAN G993). `reach` is the step into the storage the walk stands in: Inline in the parameter's
     // own value, Exclusive in storage the call writes, Own in a value it stores there anew. Each (Type, reach) entered at the shallowest
-    // depth it is met at (Enters, retentionReaches). A Type's entries are HeldRun's, so a write the walk cannot decide (Binding's Limit, an
-    // Unsupported entry) makes the contract the Limit, never "writes nothing".
+    // depth it is met at (Enters, retentionReaches). A Type's entries are HeldRun's, so a write the walk cannot decide (Binding's Limit)
+    // makes the contract the Limit, never "writes nothing".
     private bool WrittenThrough(BoundType? type, BoundType position, HoldStep reach, int depth, BindingScope? view)
     {
         if (type is null || depth > StorageBound)
@@ -734,7 +734,7 @@ public sealed partial class Binding
 
         var found = false;
         var run = this.HeldRun(type, null, null, out var complete);
-        this.retentionLimit |= !complete; // Undecided at Binding's Limit, as at an Unsupported entry (HeldRun): the contract's Limit.
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit: the contract's Limit.
         for (var i = run.Start; !found && i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
