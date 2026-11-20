@@ -115,8 +115,15 @@ public sealed partial class Binding
                 {
                     field = member;
                 }
-                else if (selected < positions.Length && this.InlinePosition(step, source) is { } position)
+                else if (this.InlinePosition(step, source) is { } position)
                 {
+                    if (selected == positions.Length)
+                    {
+                        var grown = new int[2 * selected];
+                        positions.CopyTo(grown);
+                        positions = grown;
+                    }
+
                     positions[selected++] = position;
                 }
                 else
