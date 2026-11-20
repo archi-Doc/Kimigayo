@@ -338,10 +338,6 @@ public sealed partial class Binding
         {
             this.ReportParameterShapes(issue.Node, store, requirement, shapes);
         }
-        else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
-        {
-            this.ReportAccessorReceiverShape(shapedAccessor, store, writtenReceiver, requirement);
-        }
         else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
             this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);
@@ -349,10 +345,6 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
-        {
-            ReportProtectedPlacement(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
         {
