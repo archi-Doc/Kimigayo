@@ -282,11 +282,18 @@ public sealed partial class Binding
 
             // SPEC 15.6.4 steps 1, 3, 15.3.6 (F1, DECISIONS R4-M164 U4): a construction is a call. The Origins that its expected Type leaves
             // open are solved by the call's solve, which its clauses and each Signature payload's premises bound (SolveLate).
+            solution.OpenSlotVariables(); // G1128: before the rows read the slots.
             solution.ContributePayloads(payload);
             this.RetainChildRows(ref solution); // R3: the payloads' composition, before their completion.
-            if (expected is null || ReferenceEquals(expected, BoundType.Never))
+            if (expected is null || ReferenceEquals(expected, BoundType.Never) || solution.OriginInference is { SlotVariableCount: > 0 })
             {
                 this.SolveConstructionOrigins(ref solution);
+            }
+
+            // G1128: the solve's values replace the slot variables; the root rows read them.
+            if (solution.RestoreSlotValues())
+            {
+                solution.ContributePayloads(payload);
             }
 
             for (var i = 0; i < originCount; i++)

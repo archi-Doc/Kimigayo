@@ -221,6 +221,83 @@ public sealed partial class Binding
             }
         }
 
+        // G1128 (SPEC 10.8 as revised, 15.3.5, 15.3.6; design R1.3 (a), (e)): after the evidence pass, each slot not fixed that more than one
+        // binding or a non-covariant one bound (B's rent condition, 11-21 04:12) takes its skeleton (SlotSkeleton), whose slot variables
+        // each binding bounds at its composed polarity through CollectOriginInference, the one composition, and whose well-formedness bounds
+        // them as a solution's; the call's one solve gives their values (RestoreSlotValues). A slot with one covariant binding keeps it: its
+        // variables would have that binding's Origins as their one upper bounds (R1.3 (e)'s shortcut). Past MaxSlotVariables the call is
+        // the located limit, never a shared key.
+        internal void OpenSlotVariables()
+        {
+            var binding = this.Binding;
+            for (var g = 0; g < Math.Min(CallSlotCount(this.Binder), this.Types.Length); g++)
+            {
+                if (this.FixedSlot(g) || this.Frame.Bindings(g) is not { } head || (head.Next is null && head.Polarity == 1) ||
+                    this.Types[g] is not { CarriesOrigin: true } first)
+                {
+                    continue;
+                }
+
+                var inference = this.OriginInference ??= binding.BeginOriginInference(this.Call, this.Binder);
+                var skeleton = binding.SlotSkeleton(head, this.Call, inference);
+                if (ReferenceEquals(skeleton, first))
+                {
+                    continue;
+                }
+
+                binding.slotCollectMemo = binding.slotCollectTable;
+                try
+                {
+                    // Oldest first, in the arguments' order, so dev's record location is kept (R1.3 (i)).
+                    CollectOldestFirst(binding, head, skeleton, inference);
+                }
+                finally
+                {
+                    binding.slotCollectMemo = null;
+                    binding.slotCollectTable.Clear();
+                }
+
+                binding.CollectInputPremises(skeleton, skeleton, inference, this.Call); // SPEC 15.6.4 step 3: the solution is well formed.
+                this.Frame.SetType(g, skeleton);
+                if (inference.SlotVariableCount > MaxSlotVariables)
+                {
+                    binding.Fail(this.Call, BindingFailure.Unsupported);
+                    return;
+                }
+            }
+
+            static void CollectOldestFirst(Binding binding, SlotBinding? node, BoundType skeleton, OriginInference inference)
+            {
+                if (node is not null)
+                {
+                    CollectOldestFirst(binding, node.Next, skeleton, inference);
+                    binding.CollectOriginInference(skeleton, node.Type, inference, node.Polarity);
+                }
+            }
+        }
+
+        // G1128 (R1.3 (e)): after the call's solve, each skeleton takes its variables' values (SubstituteSlotVariables); false when no slot
+        // held a variable.
+        internal bool RestoreSlotValues()
+        {
+            if (this.OriginInference is not { SlotVariableCount: > 0 } inference)
+            {
+                return false;
+            }
+
+            var restored = false;
+            for (var g = 0; g < Math.Min(CallSlotCount(this.Binder), this.Types.Length); g++)
+            {
+                if (this.Types[g] is { } skeleton && this.Binding.SubstituteSlotVariables(skeleton, inference) is var solved && !ReferenceEquals(solved, skeleton))
+                {
+                    this.Frame.SetType(g, solved);
+                    restored = true;
+                }
+            }
+
+            return restored;
+        }
+
         // J2 (SPEC 10.5.1, 10.8, 15.3.6; the owner's O-358 (a), O-362 (a), F's ruling 3; PLAN G936): a callee variable that evidence
         // names only at covariant positions and a position without evidence also names, neither inside a Function Type nor read by a
         // Constraint of the callee (CollectPositionNames; O-368 (a)), is an Origin variable that the waiting part's check bounds as well as the evidence's fit, so the call
@@ -233,55 +310,68 @@ public sealed partial class Binding
         // candidate met with the call's region (CallRegion). Either way the solution is `(E and region)`, SPEC 15.3.6's candidate
         // with the region for the bounds not known yet, and E is kept in the candidate's openings (OriginInference.Opened), which
         // start empty at its first solve. A candidate without a position without evidence (HasWaitingPosition, the rows
-        // CollectPositionNames reads) reads nothing more.
+        // CollectPositionNames reads) reads nothing more. The Origin parameters' half runs before the solve (OpenWaited), the Type slots'
+        // half after it, over the slots' values once the solve's values replaced their variables (OpenWaitedSlots; G1128 R1.3 (f)): a slot
+        // opens only when every binding is covariant (SlotFrame.BindsCovariantly).
         internal readonly void OpenWaited()
         {
-            var binding = this.Binding;
-            if (!binding.HasWaitingPosition(this))
+            if (this.Waited() is not { } waited)
             {
                 return;
             }
 
-            var opened = binding.InferenceOf(this.Call, this.Function);
+            var opened = this.Binding.InferenceOf(this.Call, this.Function);
             if (this.FirstSolve)
             {
                 opened.Opened.Clear();
             }
 
-            var slots = CallSlotCount(this.Binder);
-            var waiting = binding.RentSlotSet(slots + this.OriginCount);
-            var covariant = binding.RentSlotSet(slots + this.OriginCount);
-            var blocked = binding.RentSlotSet(slots + this.OriginCount);
-            try
+            for (var k = 0; this.OriginInference is not null && k < this.OriginCount; k++)
             {
-                binding.CollectPositionNames(this, ref waiting, ref covariant, ref blocked);
-                for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
+                if (waited.Opens(CallSlotCount(this.Binder) + k))
                 {
-                    if (Opens(g, waiting, covariant, blocked) && this.Types[g] is { CarriesOrigin: true } solution &&
-                        !this.Frame.IsInvariant(g) && !this.FixedSlot(g))
-                    {
-                        var ordinal = 0;
-                        this.Frame.SetType(g, binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal, opened));
-                    }
-                }
-
-                for (var k = 0; this.OriginInference is not null && k < this.OriginCount; k++)
-                {
-                    if (Opens(slots + k, waiting, covariant, blocked))
-                    {
-                        this.OriginInference.WaitingNamed.Add(k);
-                    }
+                    this.OriginInference.WaitingNamed.Add(k);
                 }
             }
-            finally
+
+            waited.Return(this.Binding);
+        }
+
+        internal readonly void OpenWaitedSlots()
+        {
+            if (this.Waited() is not { } waited)
             {
-                binding.ReturnSlotSet(blocked);
-                binding.ReturnSlotSet(covariant);
-                binding.ReturnSlotSet(waiting);
+                return;
             }
 
-            static bool Opens(int index, in SlotSet waiting, in SlotSet covariant, in SlotSet blocked)
-                => waiting.Contains(index) && covariant.Contains(index) && !blocked.Contains(index);
+            var opened = this.Binding.InferenceOf(this.Call, this.Function);
+            for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
+            {
+                if (waited.Opens(g) && this.Types[g] is { CarriesOrigin: true } solution && this.Frame.BindsCovariantly(g) && !this.FixedSlot(g))
+                {
+                    var ordinal = 0;
+                    this.Frame.SetType(g, this.Binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal, opened));
+                }
+            }
+
+            waited.Return(this.Binding);
+        }
+
+        // J2: the positions CollectPositionNames finds waited, rented for one half of the opening; none without a waiting position.
+        internal readonly WaitedNames? Waited()
+        {
+            var binding = this.Binding;
+            if (!binding.HasWaitingPosition(this))
+            {
+                return null;
+            }
+
+            var count = CallSlotCount(this.Binder) + this.OriginCount;
+            var waiting = binding.RentSlotSet(count);
+            var covariant = binding.RentSlotSet(count);
+            var blocked = binding.RentSlotSet(count);
+            binding.CollectPositionNames(this, ref waiting, ref covariant, ref blocked);
+            return new(waiting, covariant, blocked);
         }
 
         // Each operation's parameter Type with the solution substituted, where it is complete.

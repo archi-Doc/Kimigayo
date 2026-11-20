@@ -108,6 +108,18 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         "func pairr2(b: uniq/(ref/i32 during o), a: uniq/(ref/i32 during o)) -> ref/i32 during b => $abort(\"no\")\n" +
         "func caller(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> ";
 
+    // G1128 R1.1's callees: two contravariant bindings of `T` (app2), its Tuple twin (app2t), a contravariant and a covariant binding
+    // (app, app2v), and their callers' Origins `a`, `b` (and `c`, `d`, `e0`).
+    private const string App2 = "func app2<T>(g: (T) -> i32, h: (T) -> i32) -> T => $abort(\"no\")\n" +
+        "func u(w: ref/i32 during a, x: ref/i32 during b, g: (ref/i32 during a) -> i32, h: (ref/i32 during b) -> i32) -> ";
+
+    private const string App2T = "func app2t<T>(g: (T) -> i32, h: (T) -> i32) -> T => $abort(\"no\")\n" +
+        "func u(w1: ref/i32 during a, w2: ref/i32 during b, w3: ref/i32 during c, w4: ref/i32 during d, e: ref/i32 during e0, " +
+        "g: ((ref/i32 during a, ref/i32 during c)) -> i32, h: ((ref/i32 during b, ref/i32 during d)) -> i32) -> ";
+
+    private const string AppV = "func app<T>(g: (T) -> i32, v: T) -> T => $abort(\"no\")\nfunc app2v<T>(v: T, g: (T) -> i32) -> T => $abort(\"no\")\n" +
+        "func u(w: ref/i32 during a, g: (ref/i32 during a) -> i32, v: ref/i32 during b) -> ";
+
     // A construction: the enum's `a` is invariant at both payloads, beside its clause `k outlives a`.
     private const string EnumTwo = "enum E {a, u, k}\n    origin k outlives a\n    origin a outlives u\n    Two(uniq/(ref/i32 during a) during u, uniq/(ref/i32 during a) during u, ref/i32 during k)\n\n" +
         "func caller(x: ref/i32, y: ref/i32, w: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> i32\n    origin w outlives y\n";
@@ -310,6 +322,23 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData(PairW + "    origin z outlives u\n    pairw(p, q@move, s, t)\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(EnumTwo + "    origin x == y\n    let e = E.Two(p, q, w)\n    return 0\n", "clean")]
     public void AFailedEqualityIsTheRecordItsReadersRestOn(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // SPEC 10.8 (as revised; the owner's O-450 (a), O-451 (a)), 15.3.5, 15.3.6 (G1128): a slot's Origins are variables of the call's one
+    // solve, each bounded by every binding at its composed polarity, so a slot bound at contravariant positions takes 15.3.6's lower
+    // bound that outlives the other (app2 under `a outlives b`: `a`), a Tuple slot is solved per Origin, and a slot bound at both
+    // polarities is invariant with the covariant candidate (app's `b`), whatever the argument order. Each was rejected while Infer merged
+    // the bindings' Origins into one meet; their invalid twins keep one record, the relation their labels name.
+    [Theory]
+    [InlineData(App2 + "i32\n    origin a outlives b\n    let r = app2(g@move, h@move)\n    return 0\n", "clean")]
+    [InlineData(App2 + "ref/i32 during a\n    origin a outlives b\n    return app2(g@move, h@move)\n", "clean")]
+    [InlineData(App2 + "ref/i32 during b\n    origin a outlives b\n    return app2(g@move, h@move)\n", "clean")]
+    [InlineData(App2T + "(ref/i32 during a, ref/i32 during d)\n    origin a outlives b\n    origin d outlives c\n    return app2t(g@move, h@move)\n", "clean")]
+    [InlineData(App2T + "(ref/i32 during e0, ref/i32 during d)\n    origin a outlives b\n    origin d outlives c\n    return app2t(g@move, h@move)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(AppV + "ref/i32 during b\n    origin b outlives a\n    return app(g@move, v)\n", "clean")]
+    [InlineData(AppV + "ref/i32 during b\n    origin b outlives a\n    return app2v(v, g@move)\n", "clean")]
+    [InlineData(AppV + "i32\n    let r = app(g@move, v)\n    return 0\n", "1*UnprovenOriginContract_Kd")]
+    public void ASlotsOriginsAreVariablesOfTheCallsSolve(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // SPEC 15.6.1, 23.1.2 (G1128 R1.3 (i); G147 ruling 29; PLAN: a dependent record of a failed equality outside the solve's readers):

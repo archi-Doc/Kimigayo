@@ -96,6 +96,8 @@ public class InferenceSlotScalingTest
     [InlineData("references", 512)]
     [InlineData("parts", 32)]
     [InlineData("parts", 512)]
+    [InlineData("slots", 32)]
+    [InlineData("slots", 512)]
     [Trait("Purpose", "Allocation")]
     public void AWarmRebindOfCallsAllocatesNothing(string workload, int calls)
     {
@@ -146,7 +148,8 @@ public class InferenceSlotScalingTest
     private static string CallWorkload(string workload, int calls)
     {
         var source = new System.Text.StringBuilder("func identity<T>(value: T) -> T => value@move\nfunc take(value: i64) -> i32 => 0\n" +
-            "func see(target: ref/i32, by: i32) -> i32 => by\nlet c = true\nlet x: i64 = 2\nlet a: i32 = 1\nlet b: i32 = 2\n");
+            "func see(target: ref/i32, by: i32) -> i32 => by\nlet c = true\nlet x: i64 = 2\nlet a: i32 = 1\nlet b: i32 = 2\n" +
+            (workload == "slots" ? "func pick2<T>(x: T, y: T) -> T => x@move\n" : string.Empty));
         for (var i = 0; i < calls; i++)
         {
             source.Append($"let r{i} = ").Append(workload switch
@@ -155,6 +158,7 @@ public class InferenceSlotScalingTest
                 "waiting" => $"take(identity({i}))",
                 "joins" => $"identity(if c => x else => {i})",
                 "references" => $"see(if c => a@ref else => b@ref, {i})",
+                "slots" => "pick2(a@ref, b@ref)",
                 _ => $"identity(if c => (x, {i}) else => ({i}, x))",
             }).Append('\n');
         }

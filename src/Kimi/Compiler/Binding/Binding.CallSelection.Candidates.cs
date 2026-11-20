@@ -621,6 +621,7 @@ public sealed partial class Binding
             return false;
         }
 
+        solution.OpenSlotVariables(); // G1128: before the rows read the slots.
         solution.Contribute(mapping);
         solution.FirstSolve = !solution.FixedConstruction && !solution.ChildSlice.IsEmpty && solution.ChildSlice[1] < 0; // Before the rows are composed.
         this.CollectPositionPremises(ref solution);
@@ -641,9 +642,17 @@ public sealed partial class Binding
                 }
             }
 
-            solution.OpenWaited(); // J2: after every premise of the solve, before the solve and the operations' Types.
-            return solution.OriginInference is not { } solved ||
+            solution.OpenWaited(); // J2: the Origin parameters' half, after every premise of the solve, before the solve.
+            var applicable = solution.OriginInference is not { } solved ||
                 this.SolveCallOriginInference(function, solved, solution.Origins, solution.Inputs, solution.DeclaringType, select: true);
+            // G1128: the solve's values replace the slot variables; the root rows read them, then J2 opens the waited slots over them.
+            if (solution.RestoreSlotValues())
+            {
+                solution.Contribute(mapping);
+            }
+
+            solution.OpenWaitedSlots(); // J2: the Type slots' half, before the operations' Types.
+            return applicable;
         }
         finally
         {

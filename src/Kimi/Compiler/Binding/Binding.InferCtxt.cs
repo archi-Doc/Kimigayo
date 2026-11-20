@@ -25,7 +25,20 @@ public sealed partial class Binding
 {
     private readonly InferCtxt infer = new();
 
-    private readonly record struct InferSnapshot(int Log, int Depth);
+    private readonly record struct InferSnapshot(int Log, int Depth, int Pool);
+
+    // G1128: one binding of a slot, the Type its evidence gave and the composed polarity of its position (15.3.5: 1, -1,
+    // 0); pooled nodes reused across solves (warm 0 B), newest first, the head in the marks column (logged like the other columns).
+    private sealed class SlotBinding
+    {
+        internal BoundType Type { get; set; } = null!;
+
+        internal int Polarity { get; set; }
+
+        internal int Frame { get; set; }
+
+        internal SlotBinding? Next { get; set; }
+    }
 
     // One solve's slot frame: its Type slots, length slots, invariant marks and environment judgments, read through read-only views and
     // written only through its operations (logged but the judgments', which are written with no snapshot open).
@@ -46,8 +59,8 @@ public sealed partial class Binding
 
         internal int Id => this.id;
 
-        // SPEC 10.8, 15.3.6: whether the slot's binding in this solve comes from an invariant position.
-        internal bool IsInvariant(int slot) => this.store.IsInvariant(this.id, slot);
+        // SPEC 10.8, 15.3.6 (J2, G1128 R1.3 (f)): whether every binding of the slot in this solve is at a covariant position.
+        internal bool BindsCovariantly(int slot) => this.store.BindsCovariantly(this.id, slot);
 
         // DECISIONS BU-86: the slot's environment judgment in this solve: a known call signature's result over its closure's hidden
         // environment receiver gave it no evidence (Infer); read by the candidate's trial (EnvironmentJudgment).
@@ -55,7 +68,9 @@ public sealed partial class Binding
 
         internal void SetType(int slot, BoundType? value) => this.store.SetType(this.id, slot, value);
 
-        internal void SetInvariant(int slot) => this.store.SetInvariant(this.id, slot);
+        internal SlotBinding? Bindings(int slot) => this.store.Bindings(this.id, slot);
+
+        internal void AddBinding(int slot, BoundType type, int polarity) => this.store.AddBinding(this.id, slot, type, polarity);
 
         internal void SetEnvironmentJudgment(int slot, PendingJudgment value) => this.store.SetEnvironmentJudgment(this.id, slot, value);
 
@@ -70,8 +85,9 @@ public sealed partial class Binding
 
     private sealed class InferCtxt
     {
-        // An invariant mark: an element of the marks column, an object so that the log records its writes like the other columns'.
-        private static readonly object Invariant = new();
+        private SlotBinding?[] pool = new SlotBinding?[16];
+        private int poolCount;
+        private int rented;
         private BoundType?[][] types = new BoundType?[8][];
         private BoundLength?[][] lengths = new BoundLength?[8][];
         private object?[][] marks = new object?[8][];
@@ -118,10 +134,12 @@ public sealed partial class Binding
                 this.environments[id] = new PendingJudgment?[Math.Max(capacity, 4)];
             }
 
+            this.rented++;
             return new(this, id);
         }
 
-        // Returns a frame, cleared; never under an open snapshot, whose Rollback would write it.
+        // Returns a frame, cleared; never under an open snapshot, whose Rollback would write it. The binding pool is reset when the
+        // outermost frame returns (candidate frames interleave their appends).
         internal void Return(SlotFrame frame)
         {
             Debug.Assert(this.depth == 0, "A frame is returned only with no snapshot open.");
@@ -130,13 +148,62 @@ public sealed partial class Binding
             Array.Clear(this.marks[frame.Id]);
             Array.Clear(this.environments[frame.Id]);
             this.free[this.freeCount++] = frame.Id;
+            if (--this.rented == 0)
+            {
+                for (var i = 0; i < this.poolCount; i++)
+                {
+                    this.pool[i]!.Type = null!;
+                    this.pool[i]!.Next = null;
+                }
+
+                this.poolCount = 0;
+            }
+        }
+
+        internal SlotBinding? Bindings(int id, int slot)
+        {
+            var head = this.marks[id][slot] as SlotBinding;
+            for (var node = head; node is not null; node = node.Next)
+            {
+                if (node.Frame != id)
+                {
+                    throw new InvalidOperationException("A frame's binding chain reaches only its own frame's nodes (InternalInvariant).");
+                }
+            }
+
+            return head;
+        }
+
+        internal void AddBinding(int id, int slot, BoundType type, int polarity)
+        {
+            if (this.poolCount == this.pool.Length)
+            {
+                Array.Resize(ref this.pool, this.poolCount * 2);
+            }
+
+            var node = this.pool[this.poolCount++] ??= new();
+            var frame = this.marks[id];
+            (node.Type, node.Polarity, node.Frame, node.Next) = (type, polarity, id, frame[slot] as SlotBinding);
+            this.Push(frame, slot);
+            frame[slot] = node;
         }
 
         internal ReadOnlySpan<BoundType?> Types(int id) => this.types[id];
 
         internal ReadOnlySpan<BoundLength?> Lengths(int id) => this.lengths[id];
 
-        internal bool IsInvariant(int id, int slot) => this.marks[id][slot] is not null;
+        internal bool BindsCovariantly(int id, int slot)
+        {
+            for (var node = this.marks[id][slot] as SlotBinding; node is not null; node = node.Next)
+            {
+                if (node.Polarity != 1)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         internal PendingJudgment? EnvironmentJudgment(int id, int slot) => this.environments[id][slot];
 
@@ -144,13 +211,6 @@ public sealed partial class Binding
         {
             Debug.Assert(this.depth == 0, "An environment judgment is written only with no snapshot open.");
             this.environments[id][slot] = value;
-        }
-
-        internal void SetInvariant(int id, int slot)
-        {
-            var frame = this.marks[id];
-            this.Push(frame, slot);
-            frame[slot] = Invariant;
         }
 
         internal void SetType(int id, int slot, BoundType? value)
@@ -188,7 +248,7 @@ public sealed partial class Binding
             source.CopyTo(frame);
         }
 
-        internal InferSnapshot Snapshot() => new(this.logCount, ++this.depth);
+        internal InferSnapshot Snapshot() => new(this.logCount, ++this.depth, this.poolCount);
 
         // Restores every write since `snapshot` in reverse order.
         internal void Rollback(InferSnapshot snapshot)
@@ -201,6 +261,7 @@ public sealed partial class Binding
                 undo = default;
             }
 
+            this.poolCount = snapshot.Pool; // The nodes appended since the snapshot are unreachable once the heads are restored.
             if (--this.depth == 0)
             {
                 this.logCount = 0;

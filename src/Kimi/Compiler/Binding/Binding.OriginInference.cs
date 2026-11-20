@@ -8,6 +8,13 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
 
+    // G1128 (B2; BU-55): the per-query tables of a slot's skeleton walk (SkeletonOf: the bindings' sub-Type tuples and the skeleton per
+    // tuple and polarity) and of its bindings' collection (slotCollectMemo while OpenSlotVariables collects), pooled and cleared per slot.
+    private readonly Dictionary<(int Prefix, BoundType Part), int> slotTupleIds = new();
+    private readonly Dictionary<(int Tuple, int Polarity), BoundType> slotSkeletons = new();
+    private readonly HashSet<(BoundType, BoundType, int)> slotCollectTable = new();
+    private HashSet<(BoundType, BoundType, int)>? slotCollectMemo;
+
     // SPEC 15.3.6: `value` is a covariant input bound of the callee's Origin `parameter` (CollectOriginInference's covariant row), in
     // the cases `condition` names (OriginInference.Bounds).
     private static void AddInputBound(OriginInference inference, BoundOrigin parameter, BoundOrigin value, ulong condition = 0)
@@ -59,6 +66,7 @@ public sealed partial class Binding
         inference.Conditional = false;
         inference.Source = default;
         inference.Marked.Clear();
+        inference.SlotVariableCount = 0;
         return inference;
     }
 
@@ -72,6 +80,13 @@ public sealed partial class Binding
     private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false, Koto? known = null)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
+        {
+            return;
+        }
+
+        // G1128 (B2): BU-55's per-query table while a slot's bindings are collected: a repeated (pattern, actual, polarity) adds the
+        // same bounds again. Scoped to that collection, whose queries share `result`, `known`, the comparison and the quantifiers.
+        if (this.slotCollectMemo is { } memo && !memo.Add((pattern, actual, polarity)))
         {
             return;
         }
@@ -540,14 +555,26 @@ public sealed partial class Binding
             return expression;
         }
 
+        // A call's slot variable is the solve's third kind of variable, valued in the inference's per-solve span (SlotValues).
         BoundOrigin? Get(BoundOrigin origin, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
         {
+            if (IsSlotVariable(origin))
+            {
+                return inference.SlotValues[SlotVariableIndex(origin)];
+            }
+
             var values = origin.Kind == OriginKind.Parameter ? origins : inputs;
             return (uint)origin.Slot < (uint)values.Length ? values[origin.Slot] : null;
         }
 
         void Set(BoundOrigin origin, BoundOrigin? value, Span<BoundOrigin> origins, Span<BoundOrigin> inputs)
         {
+            if (IsSlotVariable(origin))
+            {
+                inference.SlotValues[SlotVariableIndex(origin)] = value;
+                return;
+            }
+
             var values = origin.Kind == OriginKind.Parameter ? origins : inputs;
             if ((uint)origin.Slot < (uint)values.Length)
             {
@@ -562,7 +589,8 @@ public sealed partial class Binding
                 return expression;
             }
 
-            if (ReferenceEquals(expression.Binder, binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input)
+            if ((ReferenceEquals(expression.Binder, binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input) ||
+                (IsSlotVariable(expression) && ReferenceEquals(expression.Binder, use)))
             {
                 return Get(expression, origins, inputs);
             }
@@ -792,9 +820,16 @@ public sealed partial class Binding
             return false;
         }
 
+        // G1128 (R1.3 (b), (e)): the values of the call's slot variables in this solve, indexed by SlotVariableIndex, and their count,
+        // measured once at the slot step (OpenSlotVariables; reset by BeginOriginInference).
+        internal BoundOrigin?[] SlotValues { get; set; } = [];
+
+        internal int SlotVariableCount { get; set; }
+
         internal void Discover(BoundOrigin expression, int polarity)
         {
-            if (ReferenceEquals(expression.Binder, this.Binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input)
+            if ((ReferenceEquals(expression.Binder, this.Binder) && expression.Kind is OriginKind.Parameter or OriginKind.Input) ||
+                (IsSlotVariable(expression) && ReferenceEquals(expression.Binder, this.Use)))
             {
                 for (var i = 0; i < this.Variables.Count; i++)
                 {

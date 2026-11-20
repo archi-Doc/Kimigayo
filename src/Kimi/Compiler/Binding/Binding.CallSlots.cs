@@ -283,27 +283,19 @@ public sealed partial class Binding
                     actual = this.FillOpenOrigins(actual, previous, true);
                 }
 
-                if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
-                    this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))
+                if (((relateLater && !structural) || evidence is not null) && (ReferenceEquals(previous, actual) ||
+                    (this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))))
                 {
-                    // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
-                    // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
-                    // kept over covariant ones and the first invariant one over later ones, whatever the argument order, and covariant
-                    // bindings meet.
-                    if (!commonOrigins || frame.IsInvariant(slot))
+                    // SPEC 10.8 (as revised; O-450 (a), O-451 (a)), 15.3.6: Origin evidence for a slot never makes the candidate
+                    // inapplicable, and the bindings agree in structure and Semantics. The frame keeps the first binding's Type until the
+                    // late solve; each binding of a slot not fixed is recorded with its composed polarity, and its Origins bound the
+                    // slot's variables (SlotSolution.OpenSlotVariables), so Infer merges no Origins. A fixed slot keeps its Type.
+                    if (commonOrigins)
                     {
-                        frame.SetType(slot, previous);
-                    }
-                    else if (polarity == 0)
-                    {
-                        frame.SetType(slot, actual);
-                        frame.SetInvariant(slot);
-                    }
-                    else
-                    {
-                        frame.SetType(slot, this.IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous);
+                        frame.AddBinding(slot, actual, polarity);
                     }
 
+                    frame.SetType(slot, previous);
                     return true;
                 }
 
@@ -327,9 +319,9 @@ public sealed partial class Binding
             }
 
             frame.SetType(slot, actual);
-            if (relateLater && polarity == 0)
+            if ((relateLater && !structural) || evidence is not null)
             {
-                frame.SetInvariant(slot);
+                frame.AddBinding(slot, actual, polarity);
             }
 
             return true;
@@ -444,5 +436,178 @@ public sealed partial class Binding
         internal Koto Declaration { get; }
 
         internal Koto SlotOwner { get; }
+    }
+}
+
+public sealed partial class Binding
+{
+    // G1128 (B2): a skeleton's substitution table (BU-55), pooled.
+    private readonly Dictionary<BoundType, BoundType> slotSubstituted = new(ReferenceEqualityComparer.Instance);
+
+    // Whether a binding's Origin becomes a slot variable: an Origin the evidence fixed (OpensAsSlotRegion), but no nested Function Type's
+    // per-call input (bound by that Type, SPEC 15.3.4) and no pair's outer Origin (bound by its Type argument, SPEC 8.1.1).
+    private static bool BecomesSlotVariable(BoundOrigin origin)
+        => OpensAsSlotRegion(origin) && origin is not { Kind: OriginKind.Input, Binder: FunctionTypeKoto } && origin is not { Kind: OriginKind.Parameter, Slot: < 0 };
+
+    // G1128 (SPEC 10.8 as revised, 15.3.6): the skeleton of a slot's bindings: the structure they agree in, with each Origin
+    // position a slot variable of the call, one per distinct (bindings' sub-Types, polarity) query (B2), so a DAG-shaped binding gives
+    // one variable per distinct part.
+    private BoundType SlotSkeleton(SlotBinding head, Koto call, OriginInference inference)
+    {
+        var count = 0;
+        for (var node = head; node is not null; node = node.Next)
+        {
+            count++;
+        }
+
+        var parts = this.RentTypes(count);
+        try
+        {
+            var k = 0;
+            for (var node = head; node is not null; node = node.Next)
+            {
+                parts[k++] = node.Type;
+            }
+
+            return this.SkeletonOf(parts.AsSpan(0, count), 1, call, inference);
+        }
+        finally
+        {
+            this.typeScratch.Return(parts, clearArray: true);
+            this.slotTupleIds.Clear();
+            this.slotSkeletons.Clear();
+        }
+    }
+
+    private BoundType SkeletonOf(Span<BoundType> parts, int polarity, Koto call, OriginInference inference)
+    {
+        var type = parts[0];
+        if (!type.CarriesOrigin)
+        {
+            return type;
+        }
+
+        var tuple = 0;
+        foreach (var part in parts)
+        {
+            if (!this.slotTupleIds.TryGetValue((tuple, part), out var id))
+            {
+                this.slotTupleIds.Add((tuple, part), id = this.slotTupleIds.Count + 1);
+            }
+
+            tuple = id;
+        }
+
+        if (this.slotSkeletons.TryGetValue((tuple, polarity), out var known))
+        {
+            return known;
+        }
+
+        var origin = type.Origin is { } outer && BecomesSlotVariable(outer) ? this.NewSlotVariable(call, inference) : type.Origin;
+        var origins = this.originScratch.Rent(type.OriginArguments.Count);
+        var components = this.RentTypes(type.Components.Count);
+        var below = this.RentTypes(parts.Length);
+        try
+        {
+            var changed = !ReferenceEquals(origin, type.Origin);
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                origins[i] = BecomesSlotVariable(type.OriginArguments[i]) ? this.NewSlotVariable(call, inference) : type.OriginArguments[i];
+                changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                for (var j = 0; j < parts.Length; j++)
+                {
+                    below[j] = i < parts[j].Components.Count ? parts[j].Components[i] : type.Components[i];
+                }
+
+                components[i] = this.SkeletonOf(below.AsSpan(0, parts.Length), this.ComponentPolarity(type, i, polarity, default), call, inference);
+                changed |= !ReferenceEquals(components[i], type.Components[i]);
+            }
+
+            var skeleton = changed ? this.types.Rebuild(type, components.AsSpan(0, type.Components.Count), origin, origins.AsSpan(0, type.OriginArguments.Count)) : type;
+            this.slotSkeletons[(tuple, polarity)] = skeleton;
+            return skeleton;
+        }
+        finally
+        {
+            this.typeScratch.Return(below, clearArray: true);
+            this.typeScratch.Return(components, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
+        }
+    }
+
+    private BoundOrigin NewSlotVariable(Koto call, OriginInference inference)
+    {
+        var index = inference.SlotVariableCount++;
+        if (index >= inference.SlotValues.Length)
+        {
+            var values = inference.SlotValues;
+            Array.Resize(ref values, Math.Max(8, values.Length * 2));
+            inference.SlotValues = values;
+        }
+
+        inference.SlotValues[index] = null;
+        return this.SlotVariable(call, index);
+    }
+
+    // The skeleton with each of the call's slot variables replaced by its value; one without a value stays the call's region (15.3.6).
+    private BoundType SubstituteSlotVariables(BoundType type, OriginInference inference)
+    {
+        try
+        {
+            return this.SlotValuesOf(type, inference);
+        }
+        finally
+        {
+            this.slotSubstituted.Clear();
+        }
+    }
+
+    private BoundType SlotValuesOf(BoundType type, OriginInference inference)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return type;
+        }
+
+        if (this.slotSubstituted.TryGetValue(type, out var done))
+        {
+            return done;
+        }
+
+        var origin = type.Origin is { } outer ? Value(outer, inference) : null;
+        var origins = this.originScratch.Rent(type.OriginArguments.Count);
+        var components = this.RentTypes(type.Components.Count);
+        try
+        {
+            var changed = !ReferenceEquals(origin, type.Origin);
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                origins[i] = Value(type.OriginArguments[i], inference);
+                changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                components[i] = this.SlotValuesOf(type.Components[i], inference);
+                changed |= !ReferenceEquals(components[i], type.Components[i]);
+            }
+
+            var result = changed ? this.types.Rebuild(type, components.AsSpan(0, type.Components.Count), origin, origins.AsSpan(0, type.OriginArguments.Count)) : type;
+            this.slotSubstituted[type] = result;
+            return result;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
+        }
+
+        static BoundOrigin Value(BoundOrigin origin, OriginInference inference)
+            => IsSlotVariable(origin) && ReferenceEquals(origin.Binder, inference.Use) && SlotVariableIndex(origin) < inference.SlotVariableCount &&
+                inference.SlotValues[SlotVariableIndex(origin)] is { } value ? value : origin;
     }
 }

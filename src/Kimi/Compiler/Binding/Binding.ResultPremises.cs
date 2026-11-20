@@ -598,6 +598,7 @@ public sealed partial class Binding
         if (function is not null)
         {
             waited.OpenWaited();
+            waited.OpenWaitedSlots();
         }
 
         _ = function is not null
