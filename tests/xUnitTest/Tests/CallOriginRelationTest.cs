@@ -192,6 +192,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // the call), as the twin without the premise does on every side.
     [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    let k = func (x: ref/T during w) -> i32 => 0\n    return k(ir(one, 0))\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData(OneOf + "i32\n    let k = func (x: ref/T during w) -> i32 => 0\n    return k(ir(one, 0))\n", "1*UnprovenOriginRelation_Kd")]
+    // R7-C3 (F's C2 ruling 316, the Middle's C6; SPEC 8.2.3, 15.6.1): a call of a Function value whose input names a premise-identified
+    // Type is accepted where its no-premise twin is: the identity changes no structure, and `origin a outlives one` makes the input well
+    // formed (fail-before: dev a585b50a5 rejected it with a false NoApplicableOverload_Kd at the call; 23be30ee3 gave CheckFaulted_Kd).
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    origin a outlives one\n    let k = func (x: ref/T during one) -> i32 => 0\n    return k(ir(one, 0))\n", "clean")]
     public void AnInputsWellFormednessOverASlotsSolutionBoundsItsLayer(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
