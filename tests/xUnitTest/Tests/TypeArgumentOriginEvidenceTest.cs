@@ -36,17 +36,14 @@ public class TypeArgumentOriginEvidenceTest
 
     // q12: the first invariant binding is kept, so only the second argument fails, as one `==` record that relates the first; it was a
     // meet `(x and y)` reported at both arguments. Since R7-O1 b1 the second argument's instantiated parameter Type, `uniq/(ref/i32 during
-    // x)` over q's Origin, is judged well formed at q too (SPEC 15.6.4 step 3), an independent relation (SPEC 23.1.2; the Middle's ruling of
-    // 2026-11-19): its own record beside the `==` (Q13 rule 3, an independent record added to a rejected program).
+    // x)` over b's per-call Origin, is judged well formed at q too (SPEC 15.6.4 step 3), an independent relation (SPEC 23.1.2; the Middle's
+    // ruling of 2026-11-19). Since PLAN G1115 that relation, `x outlives` b's per-call Origin, is also an upper bound of that Origin in
+    // the call's solve (SPEC 15.3.6: the meet of all upper bounds, `(q and x)`), so it holds and the `==` is the program's one record.
     [Fact]
     public void TheFirstInvariantBindingIsKept()
     {
         var source = "func same<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc caller(p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y), x: ref/i32, y: ref/i32) -> ()\n    same(p, q)\n" + Main;
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.Equal(2, errors.Length);
-        var wellFormed = Assert.Single(errors, static x => x.Reason![0].Value != "==");
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "wellFormed"), (wellFormed.Code, Text(source, wellFormed.Span), wellFormed.Reason![3].Value));
-        var error = Assert.Single(errors, static x => x.Reason![0].Value == "==");
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "q", "requires y == x, which is not proven"), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal("==", error.Reason![0].Value);
         var related = Assert.Single(error.Related!);

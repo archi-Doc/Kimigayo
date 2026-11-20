@@ -76,6 +76,24 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     private const string Copying = "func put3(slot: uniq/(ref/i32 during a), v: ref/(ref/i32 during b) during c, w: ref/i32 during b = v@follow)\n" +
         "    origin b outlives a\n    slot@follow = w\n";
 
+    // PLAN G1115's callees: a slot behind a borrow layer at both inputs, and an invariant binding beside a covariant one.
+    private const string Pick = "func pick<T>(x: ref/T, y: ref/T) -> T => $abort(\"no\")\n";
+
+    private const string PickTwo = Pick + "func two(x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ";
+
+    private const string PickMethod = "struct S\n    public init() => ()\n    public func pickm<U>(self: ref/Self, x: ref/U, y: ref/U) -> U => $abort(\"no\")\n";
+
+    private const string Inv = "func inv<T>(x: uniq/T, y: ref/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n";
+
+    // PLAN G1115 (review B1): an argument whose Type stores an Origin only through an identity premise (`T is uniq/Meter during a`).
+    private const string OneOf = "func iu<S>(o: uniq/One<S>, key: ref/isize) -> uniq/S during o => $abort(\"no\")\n" +
+        "func ir<S>(o: ref/One<S>, key: ref/isize) -> ref/S during o => $abort(\"no\")\n" +
+        "struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n" +
+        "struct One<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    public init(first: T) => self.first = first@move\n" +
+        "    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq\n" +
+        "func g(m: uniq/Meter) => m.bump()\nfunc f<T>(one: uniq/One<T>, w: ref/i32 during a) -> ";
+
     [Theory]
     [InlineData(NeedsStatic + "func caller(p: ref/i32) -> i32 => needsStatic(p)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven", null)]
     [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local", "requires the borrow local outlives static, which is false", "local")]
@@ -137,6 +155,33 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal([("p", "requires p outlives static, which is not proven"), ("q", "requires q outlives static, which is not proven")], errors.Select(x => (Text(source, x.Span), x.Label)));
     }
+
+    // SPEC 15.6.4 step 3, 15.3.6, 10.8 (PLAN G1115): an input's well-formedness over a slot's solution bounds the per-call Origin of the
+    // layer above it, so `pick(x, y)` with `T = ref/i32 during (a and b)` (the covariant meet) or an invariant binding beside a longer
+    // covariant one is valid, and an invalid twin keeps only its own failure, never a well-formedness record against the argument's own
+    // outer Origin (`b outlives x`). Every premise bounds, whatever the argument's own Type keeps: `iu(one, 0)` under `T is uniq/Meter
+    // during a` takes `a` from OwnedOrigins(One<T>) into o's per-call Origin, `(one and a)`, as its receiver twin `one.indexUniq(0)` does.
+    [Theory]
+    [InlineData(PickTwo + "i32\n    let r = pick(x, y)\n    return 0\n", "clean")]
+    [InlineData(PickTwo + "i32\n    let r = pick(y, x)\n    return 0\n", "clean")]
+    [InlineData(PickTwo + "ref/i32 during (a and b)\n    return pick(x, y)\n", "clean")]
+    [InlineData(PickTwo + "ref/i32 during a\n    return pick(x, y)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(PickTwo + "ref/i32 during a\n    return pick(y, x)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func pick1<T>(x: ref/T, y: T) -> T => $abort(\"no\")\nfunc two(x: ref/(ref/i32 during a), y: ref/i32 during b) -> i32\n    let r = pick1(x, y)\n    return 0\n", "clean")]
+    [InlineData(Pick + "func two(o: Option<ref/i32 during a>, p: ref/(Option<ref/i32 during b>)) -> i32\n    let r = pick(o, p)\n    return 0\n", "clean")]
+    [InlineData(Pick + "func two(c: bool, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = pick(if c => x else => x, y)\n    return 0\n", "clean")]
+    [InlineData(PickMethod + "func two(s: ref/S, x: ref/(ref/i32 during a), y: ref/(ref/i32 during b)) -> i32\n    let r = s.pickm(x, y)\n    return 0\n", "clean")]
+    [InlineData(Inv + "    origin b outlives a\n    inv(x, y)\n", "clean")]
+    [InlineData(Inv + "    inv(x, y)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func inv2<T>(y: ref/T, x: uniq/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), y: ref/(ref/i32 during b)) -> ()\n    inv2(y, x)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("func inv3<T>(x: uniq/T, z: uniq/T) -> () => ()\nfunc h(x: uniq/(ref/i32 during a), z: uniq/(ref/i32 during b)) -> ()\n    inv3(x, z)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    let e = iu(one, 0)\n    return 0\n", "clean")]
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    let e = ir(one, 0)\n    return 0\n", "clean")]
+    [InlineData(OneOf + "i32\n    T is uniq/Meter during a\n    g(iu(one, 0)@follow)\n    return 0\n", "clean")]
+    [InlineData(OneOf + "ref/T during w\n    T is uniq/Meter during a\n    return ir(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData(OneOf + "uniq/T during w\n    T is uniq/Meter during a\n    return iu(one, 0)\n", "1*UnprovenOriginRelation_Kd")]
+    public void AnInputsWellFormednessOverASlotsSolutionBoundsItsLayer(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // SPEC 15.6.1: a contextual payload that fits its expected payload Type only structurally is an Origin relation at the payload,
     // whether the expected enum comes from a selected parameter or an annotation, never a Type mismatch. Beside Binding's record at the
