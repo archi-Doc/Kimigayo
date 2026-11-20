@@ -297,7 +297,8 @@ internal static class StaticKeyMeasurements
             Require(c.Bind().IsComplete, "Binding failed.");
             var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
             Require(program.Findings.Count == 0 && !program.Records(MirRecordClass.Construction).Any(), "The MIR build failed.");
-            var w = new Workload(fields, c, program, new(c.Types), new(new MirReach()), new());
+            var cases = new MirCases(c.Types);
+            var w = new Workload(fields, c, program, cases, new(new MirReach(), cases), new());
             _ = Measure(w.Effects(), w);
             return w;
         }
