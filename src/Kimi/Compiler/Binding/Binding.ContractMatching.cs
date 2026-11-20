@@ -421,7 +421,8 @@ public sealed partial class Binding
             // R7-C3 C3-1b (F's C2 rulings 289-290, R1; SPEC 8.2.3, 23.1.2): in the conformance's own check every check ran and its own
             // Refuted, Error or Unknown verdict keeps its record; a verdict otherwise Proven rests on the conforming scope's Failed
             // premise: the premise leaves it open, and the consult's read is its limit, so the proof scope ends resting on that premise's
-            // record (EndProof): unverified, no record of its own. Every other reader rested at the first branch.
+            // record (EndProof): unverified, and the conformance clause keeps dev's record, a kept dependent (F's C2 ruling 294, DECISIONS
+            // Q13). Every other reader rested at the first branch.
             if (proof == ConstraintProof.Proven)
             {
                 this.BeginProof();

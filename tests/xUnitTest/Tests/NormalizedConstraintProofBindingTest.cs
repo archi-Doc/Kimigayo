@@ -87,11 +87,13 @@ public class NormalizedConstraintProofBindingTest
     // ConstraintSubject). Not pinned by a row: the walk's admission and W8's Provisional for a Pending state; ContractSolver's Kept
     // rows states them as located invariants with the mutations' evidence (a row kept inside a round, stale from its source's
     // settling until the next publication's start, moves no record while the eager derivation answers the same proposition).
-    // R7-C3 (merge of dev 8a1d8cff6; SPEC 8.2.3, 23.1.2; F's C2 rulings 245, 255): dv1 is accepted (the one judge forms `T.(K).X` as
-    // i32 under `T is K`). A premise or use that reads a failed declaration (K, A, Pending, Marker, M) rests on its record: dv1n's f,
-    // m1u's caller (2), m2r's caller premise, m4's and c12c's caller premise, c12s/c12e's `T is Marker` and c12r's; the declaration's
-    // own records stay. A requirement the failure is not read by is judged in the remainder: c12s/c12r/c12e's `Self is C` holds, m4's
-    // and c12c's `take<T>()` keeps its UnprovenConstraint_Kd (`T is Copy`, no premise gives it).
+    // R7-C3 (merge of dev 8a1d8cff6; SPEC 8.2.3, 8.3.1, 23.1.2; F's C2 rulings 245, 255, 287-294, 302): dv1 is accepted (the one judge
+    // forms `T.(K).X` as i32 under `T is K`). A premise naming an invalid Contract (K, Pending, Marker) is its declaration's premise
+    // error, reported once there (dv1n's f, m4's and c12c's caller, c12s/c12e/c12r's Target; Revision 3 of design-c31b), and its uses rest
+    // (m4's and c12c's `take<T>()`); the conformance clause keeps dev's record (c12s/c12e/c12r's `Self is C`, ruling 294). m1u: caller's
+    // record goes only because its other premise `T is B` (B: Copy) proves what its judgment of `T is A` reads, so the consult's limit
+    // decides nothing (the valid facts decide, ruling 276 (2)); with `U is B` (another subject) the record stays, as m4's: a dependent
+    // record selected by the valid facts, DECISIONS Q13.
     [Theory]
     [InlineData("dv1", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    return v\n", "clean")]
     [InlineData("dv1n", "public contract Origin\npublic struct Source\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    return v\n", "1*InvalidConstraint_Kd 1*TypeMismatch_Kd 2*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")] // R7-C3 C3-1b (F's C2 rulings 287-290): dev's record back: f's premise `T is K` names K, whose closed `Source is Origin` is Refuted (SPEC 8.3.1, 8.2.3)

@@ -94,8 +94,11 @@ public class AssociatedTypeFormationBindingTest
     }
 
     [Theory]
-    // R7-C3 C3-1b (F's C2 ruling 301, DECISIONS Q13): the inherited and conditional definitions' paths stay verified after the Contract's own specification fails at the
-    // Definition deadline (PLAN issue: a path verification keeps a later Failed fact); no use is accepted through them (C3\c31b\t5 atf1.use).
+    // R7-C3 C3-1b (F's C2 rulings 301, 302, DECISIONS Q13): row 2's path (the parent Contract's fixed definition) stays verified after
+    // that specification fails its formation at the Definition deadline, unlike row 1's (C's own): PLAN issue (a path verification
+    // keeps a later Failed fact). Row 3 (S's own conditional binding) is verified as O-54 (a) has it: the binding fails where written
+    // (InvalidAssociatedDefinitionFailsWhereWritten). No use is accepted through either: the review's twins atf2.use and atf3.use keep
+    // every use record and mismatch, atf2.v and atf3.v are accepted (C3\review-code).
     [InlineData("contract C\n    associate Item is Box<string>\nstruct S\n    Self is C", false)]
     [InlineData("contract Parent\n    associate Item is Box<string>\ncontract C: Parent\nstruct S\n    Self is C", true)]
     [InlineData("contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Box<string>", true)]

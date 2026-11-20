@@ -132,14 +132,14 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var record = Assert.Single(result.Diagnostics, x => x.Code == shown.Code);
         Assert.Equal(DiagnosticCategory.Proof, record.Category);
         Assert.Equal(
-            [new("condition", DiagnosticValueKind.Text, "U is Copy"), new("cause", DiagnosticValueKind.Enumeration, "Condition"), new("proof", DiagnosticValueKind.Enumeration, refuted ? "Refuted" : "Unknown")],
+            [new("condition", DiagnosticValueKind.Text, "U is Copy"), new("cause", DiagnosticValueKind.Enumeration, "Condition"), new("proof", DiagnosticValueKind.Enumeration, "Unknown")],
             record.Reason!);
         Assert.Contains(record.Related!, x => x.Role == "declaration" && x.Label == "original virtual slot");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         Assert.Contains("original virtual slot", console.Text, StringComparison.Ordinal);
-        Assert.Contains(refuted ? "U is Copy is refuted" : "U is Copy is not implied", console.Text, StringComparison.Ordinal);
+        Assert.Contains("U is Copy is not implied", console.Text, StringComparison.Ordinal); // A Refuted override condition now meets the block's premise error first (ruling 297 (b)); no row pins its Refuted CLI/LSP record
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {

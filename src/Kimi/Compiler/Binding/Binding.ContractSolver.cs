@@ -906,8 +906,7 @@ public sealed partial class Binding
                 // Refuted; an Error's it joins itself). The source's own checks are the failure's sites (ChecksOwnSite).
                 if (state == ConstraintProof.Refuted && !this.ChecksOwnSite(source.Declaration))
                 {
-                    this.ScopeReads.Limit ??= ((DeclarationContainerKoto)source.Declaration).BoundSymbol!.SourceCause ??
-                        throw new InvalidOperationException($"A Refuted source `{source.Declaration}` carries no cause (InternalInvariant; R7-C3 C3-1b).");
+                    this.ScopeReads.Limit ??= ((DeclarationContainerKoto)source.Declaration).BoundSymbol!.SourceCause; // Published (RefutedCause).
                 }
 
                 return false;

@@ -532,7 +532,9 @@ public sealed partial class Binding
                     {
                         if (parent is IsKoto { BoundConstraint: { } fact } && scope.Constraints is { } environment)
                         {
-                            this.FailPremise(environment, fact, scope.Owner); // R7-C3: the clause's own judgment fails its premise
+                            // R7-C3: the clause's own judgment fails its premise; a conformance binding's clause is no premise (not in Facts:
+                            // FailPremise does nothing), its failure being its path's state (design-c31b §3 (c)).
+                            this.FailPremise(environment, fact, scope.Owner);
                             break;
                         }
 
