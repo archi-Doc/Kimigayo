@@ -313,7 +313,10 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal(expected, errors.Select(x => (x.Code, Text(source, x.Span), x.Label)));
         if (origin is not null)
         {
-            Assert.All(errors, x => Assert.Equal(("origin", origin), (Assert.Single(x.Related!).Role, Text(source, x.Related![0].Span))));
+            // One origin each; a record whose Borrow is the operand of the node Binding failed relates that borrow too (DECISIONS Z16, G147
+            // ruling 5), at the origin's text.
+            Assert.All(errors, x => Assert.Equal(origin, Text(source, Assert.Single(x.Related!, static r => r.Role == "origin").Span)));
+            Assert.All(errors, x => Assert.All(x.Related!, r => Assert.Equal(origin, Text(source, r.Span))));
         }
     }
 

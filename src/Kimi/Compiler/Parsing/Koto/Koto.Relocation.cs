@@ -43,6 +43,11 @@ public abstract partial class Koto
                 this.Import(context).Include(error);
             }
 
+            if (node is CharLiteralKoto { Cause: { } malformed })
+            {
+                this.Import(context).Include(malformed);
+            }
+
             node.VisitChildren(this);
         }
 
@@ -77,6 +82,11 @@ public abstract partial class Koto
                 if (node is ErrorKoto { Cause: { } cause } error)
                 {
                     error.Cause = this.Import(source).Key(cause);
+                }
+
+                if (node is CharLiteralKoto { Cause: { } own } literal)
+                {
+                    literal.Cause = this.Import(source).Key(own);
                 }
 
                 node.codeContext = target;

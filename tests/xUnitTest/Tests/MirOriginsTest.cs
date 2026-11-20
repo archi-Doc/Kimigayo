@@ -200,11 +200,12 @@ public sealed partial class MirOriginsTest
         Assert.Equal(["r: Relation r 3, Anchor l1@ref -1", "r: Relation r 3, Anchor l2@ref -1"], Facts(c));
     }
 
-    // PD31 (2a0-D D18): an Origin problem's facts are its last edge (Relation) and its Anchor, none where the source's Borrow lies inside
-    // the node Binding failed, which the MIR builds as an Opaque value (`bad`, its twin's row); j-region; and a chain through two exclusive
+    // PD31 (2a0-D D18): an Origin problem's facts are its last edge (Relation) and its Anchor, also where the source's Borrow is the
+    // operand of the node Binding failed, which the MIR builds as an Opaque value after the operand it keeps (`bad`, its twin's row;
+    // DECISIONS Z16: until Z16 the operand was replaced and the problem had no Anchor); j-region; and a chain through two exclusive
     // layers' containment edges, one problem per source, each anchored at its own Borrow.
     [Theory]
-    [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "return local@ref: Relation return local@ref 0")]
+    [InlineData("func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n", "return local@ref: Relation return local@ref 0, Anchor local@ref -1")]
     [InlineData(Region, "view: Relation view 2, Anchor local@ref -1")]
     [InlineData(
         Layers,
@@ -217,7 +218,8 @@ public sealed partial class MirOriginsTest
     // whose Ref has an Origin forms the node its rows and containment edges name, and the chain from it is Refuted, anchored at that Ref:
     // an argument's adapting Borrow, a stored exclusive reference Reborrowed into the result, a guard candidate, an explicit Borrow of a
     // Slice element (an Index, a shared layer, E6), and a Slice handle's Borrow, named by its root (`leak3`, `leak4` and the `var` form;
-    // SPEC 4.8.1), whose first two Binding fails at the return, so the MIR builds the return as an Opaque value and only its row remains.
+    // SPEC 4.8.1), whose first two Binding fails at the return, so the MIR builds the return as an Opaque value after the Borrow it keeps
+    // (DECISIONS Z16), which anchors the chain (until Z16 the Borrow was replaced and only its row remained).
     [Theory]
     [InlineData(
         "func id(r: ref/i32) -> ref/i32 during r => r\nfunc f(x: ref/i32) -> ref/i32 during x\n    var view = x\n    let local = 1\n" +
@@ -233,10 +235,10 @@ public sealed partial class MirOriginsTest
         "UnsatisfiedOriginRelation_Kd view <- s[0]@ref")]
     [InlineData(
         "func leak3(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return values@ref\n",
-        "UnsatisfiedOriginRelation_Kd return values@ref")]
+        "UnsatisfiedOriginRelation_Kd return values@ref <- values@ref")]
     [InlineData(
         "func leak4(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    let local = values\n    return local@ref\n",
-        "UnsatisfiedOriginRelation_Kd return local@ref")]
+        "UnsatisfiedOriginRelation_Kd return local@ref <- local@ref")]
     [InlineData(
         "func leak4(values: Slice<i32> during s) -> uniq/(Slice<i32> during s) during s\n    var local = values\n    return local@uniq\n",
         "UnsatisfiedOriginRelation_Kd local@uniq <- local@uniq")]
