@@ -119,4 +119,64 @@ public sealed partial class MirBorrowsTest
         output.WriteLine($"d 8, 16, 32: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
     }
+
+    // R7 plan Z23 (SPEC 8.15.2, 8.14, 4.7.1 step 3; the design's C6): a selection by case acquires per case, and A5's views follow the case
+    // branch's side: a5's take of v[0] under a live `view = v@ref` conflicts in the uniq view only (view 1: its ref view borrows the
+    // receiver shared for index; dev 5dd6543e6 recorded both views), and a12's take of the Field below v[0] is accepted in both views.
+    [Fact]
+    public void ASelectionByCaseConflictsOnlyInTheViewsThatReborrow()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public var uniqCalls: i32 = 0
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    self.uniqCalls += 1
+                    return self.first@uniq
+            struct Holder<T>
+                public var link: T
+                public init(link: T) => self.link = link@move
+            func a5<s/T>(v: uniq/Two<s/T>) -> i32
+                s is ref or uniq
+                let view = v@ref
+                let x = v[0]
+                _ = x
+                return view.uniqCalls
+            func a12<s/T>(v: uniq/Two<Holder<s/T>>) -> ()
+                s is ref or uniq
+                let y = v[0].link
+                _ = y
+            """;
+        Assert.Equal(["a5: v[0] CallActivationConflict_Kd views 2"], ViewProblems(Source));
+    }
+
+    // r1x (SPEC 8.15.2, 15.6.7, 4.7.1 step 3; the code review's N3): r1 under a live `view = u@follow@ref`, a body with a nested frame
+    // (CB(s) at w, CB(r) on each side): u's indexUniq conflicts with the view exactly in the r=uniq views (1 and 3, views 10), one
+    // record of u[0], built on each side of w's branch; its r=ref views take index, a shared borrow.
+    [Fact]
+    public void ANestedCaseBranchConflictsOnlyInItsReborrowingViews()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                public var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            func pick<X>(value: X) -> isize => 0
+            func r1x<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>) -> ()
+                s is ref or uniq
+                r is ref or uniq
+                let view = u@follow@ref
+                let x = w[0][pick(u[0])]
+                _ = x
+                _ = view
+            """;
+        Assert.Equal(["r1x: u[0] CallActivationConflict_Kd views 10"], ViewProblems(Source));
+    }
 }

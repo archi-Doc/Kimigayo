@@ -79,14 +79,14 @@ a SPEC basis and owner approval.
 | `IntrinsicId` | 27 |
 | `MirStatementKind` | 5 |
 | `MirRvalueKind` | 11 |
-| `MirTerminatorKind` | 6 |
+| `MirTerminatorKind` | 7 |
 | `MirProjectionKind` | 7 |
 | `MirOperandKind` | 4 |
 | `MirCalleeKind` | 5 |
 | `MirAggregateKind` | 6 |
 | `LayoutNeed` | 4 |
 
-These are the unchanged pre-retirement limits, except `IntrinsicId`'s 27, R8-I1's count and limit (DECISIONS R5-M137, R8-M44, R8-M52). `LayoutNeed` (`None`,
+These are the unchanged pre-retirement limits, except `IntrinsicId`'s 27, R8-I1's count and limit (DECISIONS R5-M137, R8-M44, R8-M52), and `MirTerminatorKind`'s 7, the case branch `CaseSwitch` (the owner's O-446 (a), verbatim 「O-446 a」, 2026-11-19; DECISIONS R7-M59). `LayoutNeed` (`None`,
 `Parts`, `Element`, `TypeArguments`; the owner, DECISIONS R5-M149) is the Backend's one statement of what a form's generated code reads a
 layout of besides its by-value storage: `LayoutNeeds`' rows (projection steps, operators, comparison nodes) and the intrinsic
 rows' `Need` column; a new form adds a row.

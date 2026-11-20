@@ -286,10 +286,17 @@ internal sealed partial class MirBuilder
             MirProjectionKind.Field,
             index);
 
-    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names.
+    // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names;
+    // a selection by case selects its call per side (Selected, MirBuilder.Cases.cs).
     private MirPlace Referent(Koto node)
     {
-        var call = ExpansionPlan.Of(compilation.Binding, node)!.Value.Second!;
+        var plan = ExpansionPlan.Of(compilation.Binding, node)!.Value;
+        return HirTables.IndexCaseDecider(node) is { } decider ? this.Selected(node, plan, decider) : this.Referent(node, plan.Second!);
+    }
+
+    // SPEC 4.7.1: the referent of the reference a subscript's call returns, the call into its own result temp.
+    private MirPlace Referent(Koto node, CallPlan call)
+    {
         var result = this.Hold(call.ReturnType, node);
         this.Call(result, call, node, first: null);
         return this.body.Project(compilation.Types, this.Made(result), MirProjectionKind.Deref, 0);

@@ -663,7 +663,8 @@ public sealed partial class MirDropTest
 
                 var c = MirBuildTest.Compile(text.ToString());
                 var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "work");
-                var (flow, moves, cases, sink) = (new MirDataflow(new MirReach()), new MirMoveData(c.Types), new MirCases(c.Types), new MirProgram());
+                var cases = new MirCases(c.Types);
+                var (flow, moves, sink) = (new MirDataflow(new MirReach(), cases), new MirMoveData(c.Types), new MirProgram());
                 var drops = new MirDrops(c.Types, moves, cases);
                 var init = new MirInit(flow, moves, cases, drops);
                 analyses[i] = (body, sink);
