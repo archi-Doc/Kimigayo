@@ -80,7 +80,9 @@ public sealed partial class Binding
             if (candidate.Declaration is FunctionKoto)
             {
                 var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
-                rows[index++] = new(candidate, CandidateApplicability.Inapplicable, null, 0, Accessible: accessible);
+                ref var row = ref rows[index++]; // A returned row is cleared; the evaluation writes its other fields.
+                row.Symbol = candidate;
+                row.Accessible = accessible;
                 if (accessible)
                 {
                     this.BindHeader(candidate);
@@ -171,7 +173,18 @@ public sealed partial class Binding
 
         // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
         var held = this.TakeTrialRefusal(call);
-        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown) { HeldRefusal = held };
+        ref var row = ref evaluation.Evaluated[index]; // Its Symbol and Accessible are RentCandidates'.
+        row.State = state;
+        row.DeclaringType = declaringType;
+        row.DefaultsUsed = defaultsUsed;
+        row.Unsolved = unsolved;
+        row.ClosureReceiver = closureReceiver;
+        row.ArgumentMap = argumentMap;
+        row.StableConstruction = function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations);
+        row.IndependentRejection = independentRejection;
+        row.ConstraintFailure = rejectedConstraint;
+        row.PremiseUnknown = premiseUnknown;
+        row.HeldRefusal = held;
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
         if (saved)
