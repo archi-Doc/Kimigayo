@@ -369,8 +369,7 @@ public sealed partial class Binding
         public readonly void Unselected(CallPlan call) => binding.PublishedCall(call);
 
         // A child an operation uses (a call's receiver or argument, a Case payload, a writer; SPEC 7.3, 10.2), as the operation adapts it;
-        // a borrowing operation and the child's recorded adaptation, which ChildAdjust reads first, are the census's input
-        // (Binding.RawOrigins.Borrows).
+        // a borrowing operation is the census's input (Binding.RawOrigins.Borrows).
         public readonly void Use(Koto? child, in BoundArgumentOperation operation)
         {
             if (child is not null)
@@ -379,31 +378,27 @@ public sealed partial class Binding
                 if (this.Owns(child))
                 {
                     binding.PublishedOperation(operation);
-                    binding.PublishedAdaptation(child);
                 }
             }
         }
 
-        // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its takes claimed;
-        // its recorded adaptation is the census's input (Binding.RawOrigins.Borrows).
+        // A child its consumer acquires or uses, as that use and its own facts give it (ChildAdjust), with the capability its takes claimed.
         public readonly void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
         {
             if (child is not null)
             {
                 this.FixAdjust(child, binding.ChildAdjust(child, adaptation, kind, this.Claimed(child)), default);
-                if (this.Owns(child))
-                {
-                    binding.PublishedAdaptation(child);
-                }
             }
         }
 
         // Only the nodes of the module being published. At a call input the earlier call's Adjust (EarlierAdjust) is the input's plan-row
-        // Adjust, the column keeping the later; at any other call input the row states none.
+        // Adjust, the column keeping the later; at any other call input the row states none. The child's recorded adaptation, which
+        // ChildAdjust reads first, is the census's input (Binding.RawOrigins.Borrows).
         public readonly void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place)
         {
             if (this.Owns(child))
             {
+                binding.PublishedAdaptation(child!);
                 ref var column = ref table.Hir.Adjusts![child!.SyntaxId];
                 if (this.callOrdinal >= 0)
                 {

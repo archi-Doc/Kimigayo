@@ -240,6 +240,7 @@ public sealed partial class Binding
             {
                 var discarded = binding.Discarded(node);
                 HirTables.PlanFor(node, discarded != default).Adjust = discarded;
+                binding.PublishedAdaptation(node); // The census's input (Binding.RawOrigins.Borrows): Discarded's ChildAdjust reads it first.
             }
 
             return !grouped && (unset || node.Parent is DiscardKoto) && Discards(node) ? binding.SuppliedType(node) : null;
