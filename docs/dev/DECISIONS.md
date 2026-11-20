@@ -26728,7 +26728,7 @@ R8-M* and R9-M* by the stage of the recording unit.
 ## Tatara (adopted 2026-11-19)
 
 Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
-holds the owner's decisions 1–13). Units of the Tatara lane record their entries here as T-M*.
+holds the owner's decisions 1–16). Units of the Tatara lane record their entries here as T-M*.
 
 - **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
   「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
@@ -26806,3 +26806,28 @@ holds the owner's decisions 1–13). Units of the Tatara lane record their entri
     fatal LLVM and LLD errors in stage A (they can be the user's: a malformed library, an IR `llc` cannot select from
     `build --Manifest`).
   - Rejected: three operations with the redaction in C++ (a second copy of P13's rule); a nullable inspection text kept until A4.
+  - Amended by T-M5 (unit A3, 2026-11-20): the `BuildManifest` overload goes; `NativeToolchain.Build` and `BuildManifest` have one
+    signature each, taking the factory, which every caller passes (the product's callers pass `Kimigayo.NativeExecutor`), temporary
+    until A4 as the seam.
+- **T-M5 `kimi tatara`: the session's rules and A3's temporary reader** (Tatara, 2026-11-20; the plan's unit A3, Q-589, D-955;
+  Major; design review C-425; implementation review C-426, ACCEPT WITH CONDITIONS, both rounds taken).
+  - A line is a command line: `CommandUnit.Product.Execute(commandLine, serviceProvider, cancellationToken)`, extracted from
+    `RunAsync`, parses and executes both a process's command line and a session's line. The gate reads the first word from the same
+    split. Rejected: a lexical rule of the session's own, a restricted parser (a second copy of the options).
+  - Each line runs in a new DI scope (a new command object and `Solution`); only the plan's §5 A3 list carries between lines: the
+    library per target (as in one single-shot process), Tatara's loaded DLL per path and its refusal, `Kimigayo` (the settings and
+    the executor's factory), the current directory, the runtime. Project and solution state, locks, user libraries' check results,
+    diagnostics and exit codes do not carry (reusing library checks is the plan's §8 candidate 2).
+  - Ctrl+C has one owner, `Program`'s handler, through one action (`Program.CancelKey`, default the root's termination), which a
+    session replaces while it runs and restores at its end; its state changes atomically. The second press during a cancelled line
+    is `TerminateProcess(130)` on the current process. Rejected: `Environment.Exit` (it runs `tatara.dll`'s detach, which can wait
+    on a lock the stuck thread holds).
+  - `Tatara` publishes a return of 2 (`Tatara.Refusal`, the first cause; `Tatara.FirstRefusal()` over the loaded instances); the
+    session ends on it with 1 and never decides by a message's text.
+  - The redirected reader reads without read-ahead, so a `run` program reads the script's later lines deterministically (decision
+    15). Rejected: a `run` program's own terminal input in stage A (O-454 (a), which needs a pause of SimplePrompt's key worker) and
+    empty input for it (O-454 (c)).
+  - **Temporary, removed by unit A4:** `Kimigayo.NativeExecutor` (the executor's factory, set by the session) and its
+    `ArchitectureRulesTest.BuildReaders` row for `Unit/Kimigayo.cs` (the owner's O-455 (a)); the factory arguments of
+    `NativeToolchain.Build` and `BuildManifest`; `Explicit = true` on `TataraCommandNativeTest`. `Unit/Command/TataraCommand.cs`'s
+    `BuildReaders` row is not temporary: it is a command, which COMPILER_ARCHITECTURE names among Build's readers.
