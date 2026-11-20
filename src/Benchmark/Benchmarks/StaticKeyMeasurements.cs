@@ -232,7 +232,7 @@ internal static class StaticKeyMeasurements
                 {
                     if (body.Blocks[block].Terminator.Kind is MirTerminatorKind.Call or MirTerminatorKind.Drop)
                     {
-                        var row = effects.Keys(body, view, block, out var classes);
+                        var row = effects.Keys(body, view, block, default, out var classes);
                         foreach (var word in row)
                         {
                             keys += BitOperations.PopCount((word | (word >> 1)) & 0x5555555555555555UL); // Each Field's read or write bit.

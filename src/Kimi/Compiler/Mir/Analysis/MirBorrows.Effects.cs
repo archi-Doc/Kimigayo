@@ -31,6 +31,7 @@ internal sealed partial class MirBorrows
 {
     private int[] activated = []; // By Loan: the effect rule's run whose location activates it (W6).
     private int effecting; // The effect rule's runs, the stamp of activated, never reset.
+    private ulong[] effectRow = []; // The effect rule's copy of A4's key row of the view it records.
 
     // A bit of a key row: 2f a read and 2f + 1 a write of the Field A4 numbers f.
     private static bool Bit(ReadOnlySpan<ulong> row, int bit) => (row[bit >> 6] & (1UL << bit)) != 0;
@@ -83,7 +84,11 @@ internal sealed partial class MirBorrows
         for (var mask = all; mask != 0; mask &= mask - 1)
         {
             this.views = mask & ~(mask - 1);
-            var row = effects.Keys(this.body, BitOperations.TrailingZeroCount(mask), at.Block, out var classes);
+            // A copy: the proof's summaries reuse A4's scratch (MirEffects.Summary).
+            var keys = effects.Keys(this.body, BitOperations.TrailingZeroCount(mask), at.Block, default, out var classes);
+            MirDataflow.Grow(ref this.effectRow, keys.Length);
+            keys.CopyTo(this.effectRow);
+            var row = this.effectRow.AsSpan(0, keys.Length);
             this.Work += row.Length;
             foreach (var root in this.effectRoots)
             {

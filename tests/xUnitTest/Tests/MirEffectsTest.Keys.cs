@@ -77,6 +77,29 @@ public sealed partial class MirEffectsTest
         Assert.Equal([0, 1], new[] { effects.Field(statics["x"]), effects.Field(statics["y"]) }.Order());
     }
 
+    // SPEC 15.6.4, 22.4.3, 22.4.4 (Z7, R4-M103): a staticEnsure is its static's first-access initialization. One of a static with one slot
+    // is a summary entry its reader composes: the call of readY has the write of log that y's initializer makes. A static with several
+    // slots keeps the edge into its initializer, so each call's substitution resolves the initializer's atoms: get keeps x's Drop(T),
+    // and user's call makes it Drop(i32), which does nothing, so user's summary has no Unknown (fail-before an entry form for every
+    // static: Unknown, the atom composed unsubstituted at the reader).
+    [Fact]
+    public void AStaticsInitializationComposesThroughItsSlots()
+    {
+        var c = MirBuildTest.Compile(
+            "struct Counter\n    public var n: i32 = 0\n    public init() => ()\nstruct Cache<T>\n    public group S\n" +
+            "        public let x: Counter = S.makeX()\n        public func makeX() -> Counter\n            let o: Option<T> = .None\n" +
+            "            return Counter.init()\n        public func get() -> i32 => x.n\nfunc user() -> i32 => Cache<i32>.S.get()\n" +
+            "group G\n    public var log: i32 = 0\n    public let y: i32 = G.makeY()\n    public func makeY() -> i32\n        G.log = 1\n" +
+            "        return 2\nfunc readY() -> i32 => G.y\nfunc caller() -> i32 => readY()\n");
+        var (effects, flow, program) = Analyzed(c);
+        Assert.Equal(["readY:log!"], Sites(effects, flow, program, "caller"));
+        var get = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "get");
+        Assert.Contains(effects.Items(get, 0, out _).ToArray(), static x => x.Kind == MirEffects.Drop && x.Type.Name == "T");
+        var user = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "user");
+        Assert.Empty(effects.Items(user, 0, out var classes).ToArray());
+        Assert.Equal(0, classes & MirEffects.Unknown);
+    }
+
     // R4-M11, R4-M91: a query answers the view it is given: each view of a caller selects the callee view its substitution names (SPEC
     // 8.15), so the owner case destroys the Noisy value its callee takes and the reference case does not.
     [Fact]
@@ -127,7 +150,7 @@ public sealed partial class MirEffectsTest
                     {
                         if (body.Blocks[block].Terminator.Kind is MirTerminatorKind.Call or MirTerminatorKind.Drop)
                         {
-                            _ = effects.Keys(body, view, block, out _);
+                            _ = effects.Keys(body, view, block, default, out _);
                         }
                     }
                 }
@@ -188,7 +211,7 @@ public sealed partial class MirEffectsTest
             var terminator = body.Blocks[block].Terminator;
             if (terminator.Kind == MirTerminatorKind.Drop || terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: not MirCalleeKind.Intrinsic })
             {
-                var row = effects.Keys(body, view, block, out var classes);
+                var row = effects.Keys(body, view, block, default, out var classes);
                 var keys = new List<string>();
                 foreach (var (name, symbol) in statics)
                 {
