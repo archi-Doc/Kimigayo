@@ -1004,7 +1004,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
         var witness = MirBuildTest.Compile(Sink + Loud + Witness + "        return .Ok(())\npublic func main() => ()\n");
         _ = witness.BuildMir();
-        var solve = new MirEffects(witness.Types, new MirCases(witness.Types), new MirDataflow(new MirReach()));
+        var solveCases = new MirCases(witness.Types);
+        var solve = new MirEffects(witness.Types, solveCases, new MirDataflow(new MirReach(), solveCases));
         solve.BeginLibrary();
         var thrown = Assert.Throws<InvalidOperationException>(() => solve.Run(new MirProgram(), new MirReport(), witness.SourceModules.Length));
         Assert.Contains("every callee A4 enters has one or the other (InternalInvariant)", thrown.Message, StringComparison.Ordinal);
@@ -1014,7 +1015,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         {
             var c = MirBuildTest.Compile(source + "public func main() => ()\n");
             var caller = c.BuildMir().VersionBodies.ToArray().Single(static x => x.Key.Decl?.Name == "caller");
-            var (cases, flow, held) = (new MirCases(c.Types), new MirDataflow(new MirReach()), new MirProgram());
+            var cases = new MirCases(c.Types);
+            var (flow, held) = (new MirDataflow(new MirReach(), cases), new MirProgram());
             var effects = new MirEffects(c.Types, cases, flow);
             effects.BeginLibrary();
             effects.BeginProgram();
