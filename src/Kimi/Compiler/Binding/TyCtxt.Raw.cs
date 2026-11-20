@@ -74,9 +74,10 @@ internal sealed partial class TyCtxt
     // RawMembers appends nothing. Reads the declaration only, O(|positions|), total; allocates nothing.
     internal static BoundType? WrittenAt(BoundType instance, int part, ReadOnlySpan<int> positions) => Binding.WrittenAt(instance, part, positions, out _);
 
-    // SPEC 5.2 Placement, 5.6 (C-189): whether the operation contract stores no value through its parameter slot `input`, numbered as
-    // Signature numbers it (the catalog's NoStoreRow: `slice` its storage, `initialize` its value, `release` its storage, `transferBytes`
-    // its source); false for every other callee and slot: a function with a body, a foreign import, a missing row. Static; allocates nothing.
+    // SPEC 5.2 Placement, 5.6, 15.7 (C-189): whether the operation contract stores no value through its parameter slot `input`, numbered
+    // as Signature numbers it (the catalog's NoStoreRow: `slice` its storage, `initialize` its value, `release` its storage,
+    // `transferBytes` its source, `replace` and `exchange` their value); false for every other callee and slot: another function with a
+    // body, a foreign import, a missing row. Static; allocates nothing.
     internal static bool NoStore(BindingSymbol? callee, int input) => KimiLibraryCatalog.NoStore(callee, input);
 
     // SPEC 5.2 Type-punned access (PLAN G562-a; the set's one owner): whether a Type is punnable: the `owner` Scalars of 3.1 (BoundType.IsScalar,

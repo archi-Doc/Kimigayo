@@ -1299,7 +1299,11 @@ public sealed partial class RetentionTest
     // parameter; Raw.initialize is on 15.6.4's list of operations whose writes do not compose). A raw input's pointee is its own
     // writable storage, which retains it as a read through it, except where the operation contract stores no value through the input
     // (SPEC 5.2 Placement, 5.6; KimiLibraryCatalog.NoStore, PLAN G780), e.g. Raw.slice's storage: no writable storage there, an unstated
-    // layer included (fail-before: rule A's untied store 0 and store 1).
+    // layer included (fail-before: rule A's untied store 0 and store 1). D-933 (SPEC 15.7, 15.6.4): `replace` and `exchange` write only
+    // their target and place `with`'s value there, so `with` is no output: its raw Field `p` is no layer the call writes, and rule A
+    // keeps no target's own value there (fail-before for `replace`: `store 1: own {0 Value Chain, 1 Chain}, ...` with the target's Loans
+    // stored through `with`'s raw layer); the target, storage of `replace`'s own T read in its own terms as Raw.initialize's (O-360 (a)),
+    // holds the placed value (store 0: Value, the Field raw source of D-933's c1).
     [Theory]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "result {0 Value}")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "result {0 Value}")]
@@ -1317,6 +1321,8 @@ public sealed partial class RetentionTest
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
+    [InlineData(Pp + "var x = Pp.init(p: null)\nKimi.Intrinsics.replace(x@uniq, with: Pp.init(p: null))\n", "replace", "store 0: own {1 Value}, reached {}")]
+    [InlineData(Pp + "var x = Pp.init(p: null)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: Pp.init(p: null))\n", "exchange", "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
@@ -1807,10 +1813,11 @@ public sealed partial class RetentionTest
     // `appendAll`'s Array, `appendCopies`' Slice by its chain), no index, key or predicate; construction has no receiver storage, so its
     // result keeps every argument, `repeating` and `count`, by its own value and its chain (fail-before: only `untied`). The keys are
     // declaring identities: a LendingIterator-only `next`, a user `pop` and a user `swap` keep every argument (A's cost, R4-M131 Open), and
-    // `exchange` over a borrow keeps its rows. A 4.9 operation and `exchange` form no row and untie nothing at an output they do not write
-    // (SPEC 4.9.6's complete published effect; PLAN G255's C4; DECISIONS BU-52): an added `raw/(raw/u8)`'s pointee, a struct's Field and
-    // an enum's payload added by value (`append`, `insertOrReplace`), `exchange`'s `with` (fail-before: `store 1: own {}, reached {}
-    // untied`, an untied pointer for what the added value addresses; before C4, `0 Chain store 1`).
+    // `exchange` over a borrow keeps its rows. A 4.9 operation forms no row and unties nothing at an output it does not write (SPEC
+    // 4.9.6's complete published effect; PLAN G255's C4; DECISIONS BU-52): an added `raw/(raw/u8)`'s pointee, a struct's Field and an
+    // enum's payload added by value (`append`, `insertOrReplace`) (fail-before: `store 1: own {}, reached {} untied`, an untied pointer for
+    // what the added value addresses; before C4, `0 Chain store 1`); `exchange`'s `with` is no output at all (KimiLibraryCatalog.NoStore,
+    // SPEC 15.7; IntrinsicsRetainAsTheirDeclarationsSay).
     // A 4.9 operation writes its receiver's store only in the storage the receiver refers to (`referent store 0`, DECISIONS BU-42);
     // construction, `exchange`, `swap`, an Iterator's `next` and a user `trade` or `pop` have no such store. `trade<T>(a: uniq/T, b:
     // uniq/T)`, a user twin of `swap`, follows its declared signature (PLAN G935, the owner's O-360 (a); SPEC states rows only for the
