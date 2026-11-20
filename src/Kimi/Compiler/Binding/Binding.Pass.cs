@@ -63,7 +63,6 @@ public sealed partial class Binding
         this.ResetMatches();
         this.argumentParts.Clear();
         this.argumentProbe = null;
-        this.resultContexts.Clear();
         this.resultLocalEvidence.Clear();
         this.resultCursor = 0;
         this.ResetStartup();
