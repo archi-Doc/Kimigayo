@@ -144,7 +144,7 @@ public sealed class TataraCommandNativeTest : IDisposable
         var console = new TataraCommandTest.SessionConsole { OnProject = onProject };
         var product = TataraCommandTest.Unit(console);
         var command = product.Context.ServiceProvider.GetRequiredService<TataraCommand>();
-        var code = await InFolder(folder, () => command.Run(new LineStream(lines), TestContext.Current.CancellationToken));
+        var code = await InFolder(folder, () => command.Run(new TataraCommandTest.LineStream(lines), TestContext.Current.CancellationToken));
         return (code, console.Text);
     }
 
@@ -187,52 +187,5 @@ public sealed class TataraCommandNativeTest : IDisposable
             Assert.Contains("truncated or malformed archive", text, StringComparison.Ordinal);
             Assert.DoesNotContain("Project: A", text, StringComparison.Ordinal);
         }
-    }
-
-    // The session's input: each line's bytes and a line feed; a line's action runs when its first byte is read.
-    private sealed class LineStream((string Line, Action? Before)[] lines) : Stream
-    {
-        private int line = -1;
-        private byte[] current = [];
-        private int position;
-
-        public override bool CanRead => true;
-
-        public override bool CanSeek => false;
-
-        public override bool CanWrite => false;
-
-        public override long Length => throw new NotSupportedException();
-
-        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            if (this.position == this.current.Length)
-            {
-                if (this.line + 1 == lines.Length)
-                {
-                    return 0;
-                }
-
-                this.line++;
-                lines[this.line].Before?.Invoke();
-                this.current = Encoding.UTF8.GetBytes(lines[this.line].Line + "\n");
-                this.position = 0;
-            }
-
-            buffer[offset] = this.current[this.position++];
-            return 1;
-        }
-
-        public override void Flush()
-        {
-        }
-
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-
-        public override void SetLength(long value) => throw new NotSupportedException();
-
-        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

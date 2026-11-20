@@ -169,32 +169,45 @@ public sealed class TataraCommandTest : IDisposable
         Assert.Equal(1, Count(text, "Project: Lib (Lib.kimiproj)"));
     }
 
-    // A second press during a line already cancelled ends the process at once with 130 by TerminateProcess on the current process: a
-    // child test process runs a session whose line's build presses twice.
+    // A second press during a line already cancelled ends the process at once with 130 by Program.EndProcess: a child test process runs
+    // a session whose line's build presses twice.
     [Fact]
     public async Task ASecondPressDuringALineEndsTheProcessWith130()
     {
         this.Library("Lib");
-        var start = new ProcessStartInfo(Environment.ProcessPath!)
-        {
-            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
-        };
-        start.Environment[Child.Folder] = this.directory;
-        if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-        {
-            start.ArgumentList.Add(typeof(TataraCommandTest).Assembly.Location);
-        }
+        await this.RunChildEndingWith130(nameof(Child.PressesTwiceDuringALine));
+    }
 
-        foreach (var argument in new[] { "-method", "XunitTest.TataraCommandTest+Child.PressesTwiceDuringALine", "-explicit", "only" })
-        {
-            start.ArgumentList.Add(argument);
-        }
+    // The default action (Tatara design A4 §2.2, the owner's O-460 (a)): its first press requests the root's termination and leaves the
+    // process running; its second ends the process at once with 130. Its flag is process-wide and never resets, so a child test process
+    // presses (r2); it marks the folder between the presses.
+    [Fact]
+    public async Task TheDefaultActionsSecondPressEndsTheProcessWith130()
+    {
+        await this.RunChildEndingWith130(nameof(Child.PressesTheDefaultTwice));
+        Assert.True(File.Exists(Path.Combine(this.directory, Child.FirstPress)));
+    }
 
-        using var process = Process.Start(start)!;
-        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        _ = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
-        Assert.True(process.ExitCode == 130, await output);
+    // With no read or line pending, the redirected reader waiting for input, a press is the action the session replaced (design A4
+    // §2.2, C-427 N6): the row's own action stands for the default, which no in-process test calls (r2).
+    [Fact]
+    public async Task APressWhileTheReaderWaitsCallsTheReplacedAction()
+    {
+        var previous = Program.CancelKey;
+        var pressed = 0;
+        Action action = () => pressed++;
+        Program.CancelKey = action;
+        try
+        {
+            var command = Unit(new SessionConsole()).Context.ServiceProvider.GetRequiredService<TataraCommand>();
+            Assert.Equal(0, await command.Run(new LineStream([("exit", () => Program.CancelKey())]), TestContext.Current.CancellationToken));
+            Assert.Equal(1, pressed);
+            Assert.Same(action, Program.CancelKey);
+        }
+        finally
+        {
+            Program.CancelKey = previous;
+        }
     }
 
     // A unit built as the CLI builds it, with the host's console replaced; the console counts the Solution objects it creates.
@@ -264,12 +277,50 @@ public sealed class TataraCommandTest : IDisposable
 
     private void Library(string folder) => WriteLibrary(Path.Combine(this.directory, folder));
 
-    // The child process of ASecondPressDuringALineEndsTheProcessWith130: its session's line presses twice, which ends the process with
-    // 130, so it never reports a result. Its folder is the parent's (named by Folder, removed by the parent).
+    // A Child row in a child test process with this row's folder: it ends the process with 130, so it never reports a result.
+    private async Task RunChildEndingWith130(string method)
+    {
+        var start = new ProcessStartInfo(Environment.ProcessPath!)
+        {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
+        };
+        start.Environment[Child.Folder] = this.directory;
+        if (Path.GetFileNameWithoutExtension(start.FileName).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            start.ArgumentList.Add(typeof(TataraCommandTest).Assembly.Location);
+        }
+
+        foreach (var argument in new[] { "-method", $"{typeof(Child).FullName}.{method}", "-explicit", "only" })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        _ = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.True(process.ExitCode == 130, await output);
+    }
+
+    // The child rows, each run by its parent row in a child test process: each ends the process with 130, so it never reports a result.
+    // Its folder is the parent's (named by Folder, removed by the parent).
     public sealed class Child
     {
         internal const string Folder = "KIMI_TATARA_PRESS_FOLDER";
 
+        internal const string FirstPress = "first press";
+
+        // The default action twice, the folder marked between the presses.
+        [Fact(Explicit = true)]
+        public void PressesTheDefaultTwice()
+        {
+            Program.CancelKey();
+            File.WriteAllText(Path.Combine(Environment.GetEnvironmentVariable(Folder)!, FirstPress), string.Empty);
+            Program.CancelKey();
+            Assert.Fail("The default action's second press did not end the process.");
+        }
+
+        // The session's line presses twice.
         [Fact(Explicit = true)]
         public async Task PressesTwiceDuringALine()
         {
@@ -284,6 +335,54 @@ public sealed class TataraCommandTest : IDisposable
             await Session("build Lib/Lib.kimiproj\n", Environment.GetEnvironmentVariable(Folder)!, console, TestContext.Current.CancellationToken);
             Assert.Fail("The second press did not end the process.");
         }
+    }
+
+    // The session's input: each line's bytes and a line feed; a line's action runs when its first byte is read, while the reader waits
+    // (no read or line pending).
+    internal sealed class LineStream((string Line, Action? Before)[] lines) : Stream
+    {
+        private int line = -1;
+        private byte[] current = [];
+        private int position;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (this.position == this.current.Length)
+            {
+                if (this.line + 1 == lines.Length)
+                {
+                    return 0;
+                }
+
+                this.line++;
+                lines[this.line].Before?.Invoke();
+                this.current = Encoding.UTF8.GetBytes(lines[this.line].Line + "\n");
+                this.position = 0;
+            }
+
+            buffer[offset] = this.current[this.position++];
+            return 1;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     // The host's console: its text, with a hook on a build's project line (the moment a line's build runs).
