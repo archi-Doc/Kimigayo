@@ -963,8 +963,9 @@ public partial class CallableOriginForwardingTest
     // clause relates (one1, `b outlives a`), a member and the Closure's own well-formedness each related by one of two clauses (two2), an
     // invariant member equal through two clauses (uniq2), the Closure converted at an argument after selection (arg2) and a Function
     // Type proven Callable at a Type argument (cal2) are valid. Equality by one clause (eq2) holds without premises. The invalid twins
-    // lack a clause the relation needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n; arg2_n's solution of T is `(b and a)`, which the
-    // Closure now fits, so its record is the argument `w`, whose fit needs `a outlives w`). An inferred parameter's Function Type,
+    // lack a clause the relation needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n). arg2_n is valid (G1128, SPEC 10.8 as revised: T's
+    // inner Origin is a variable of the call's solve, bounded by `a` from the Closure and by `b` from `w`; it takes `b`, whose premise
+    // `b outlives w` k's parameter gives; dev met them to `(b and a)`, whose fit needed `a outlives w`). An inferred parameter's Function Type,
     // identical to the required one, keeps its condition, its result's well-formedness at the use (pnest1, as ResultPremiseTest's n1a at
     // the root; dev: a fact-less UnprovenConstraint_Kd at the call); a `static` argument proves it (pnest1_c).
     [Theory]
@@ -977,7 +978,7 @@ public partial class CallableOriginForwardingTest
     [InlineData("uniq2", UniqHead + BothWays + UniqLet, "")]
     [InlineData("uniq2_n", UniqHead + BOutlivesA + UniqLet, "UnprovenOriginContract_Kd " + UniqClosure)]
     [InlineData("arg2", ValueRun + InnerHead + BothWays + "    return run(" + InnerClosure + ", w)\n", "")]
-    [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginRelation_Kd w")]
+    [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "")]
     [InlineData("cal2", CallableHolder + InnerHead + BothWays + InnerHolder, "")]
     [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, "UnprovenConstraint_Kd .None; " + HolderConstraint + "; " + HolderConstraint)]
     [InlineData("pnest1", NestedClauseHead + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during q>")]

@@ -276,6 +276,10 @@ public sealed partial class Binding
                 actual = this.OpenKnownOrigins(actual, signatureBinder, known.Source);
             }
 
+            // G1128 R1.3 (h): S's position at a function reference (structural, neither a value's Type nor a known signature) is a
+            // binding too: its first and every later one that differs in its Origins (the met branch below), so the reference's limit
+            // reads its distinct bindings (VariableReferenceSlot). A later one of the same normalized Type is that binding (SPEC 10.8).
+            var reference = structural && !relateLater && evidence is null;
             if (arguments[slot] is { } previous)
             {
                 // R7-C2c2 c2-4b (design R4.12c, J4): a slot's bindings agree (SPEC 10.8 Solving: an explicit Type argument is kept; the
@@ -319,6 +323,11 @@ public sealed partial class Binding
 
                 if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
+                    if (reference)
+                    {
+                        frame.AddBinding(slot, actual, polarity);
+                    }
+
                     frame.SetType(slot, common);
                     return true;
                 }
@@ -327,7 +336,7 @@ public sealed partial class Binding
             }
 
             frame.SetType(slot, actual);
-            if ((relateLater && !structural) || evidence is not null)
+            if ((relateLater && !structural) || evidence is not null || reference)
             {
                 frame.AddBinding(slot, actual, polarity);
             }
