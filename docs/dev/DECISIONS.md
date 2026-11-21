@@ -28057,7 +28057,10 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   - **A program cannot supply them:** a project's own `kimi_backend` entry (dev's legacy override) is an error, as a `kernel32` entry
     was: `NativeConfiguration.CheckReserved`, one note for both names, both record kinds and any target ("<name> is supplied by the
     compiler. Remove the <name> entry from NativeLibraries."); `EmissionArtifacts.CheckLibraryInputs` (was `ResolveBackend`) only
-    checks the inputs. A `NativeRequirements` entry for a reserved name is unchanged (PLAN G1211).
+    checks the inputs. A `NativeRequirements` entry for a reserved name is an error too (PLAN G1211, closed; Q-624, D-1016): one
+    predicate, `NativeConfiguration.Reserved`, decides the reserved names for both records, read by `CheckReserved` and by
+    `Validate`'s `NativeRequirements` loop under every target key, whose note is "<name> is supplied by the compiler. Remove the
+    <name> entry from NativeRequirements."; a requirement and a supply of one reserved name are two independent notes.
   - **Setup and an LLVM update:** setup installs the two libraries only when both reproduce the catalog's hashes, and fails otherwise;
     kernel32's candidate stays beside the backend's in `artifacts/backend/windows-x64/`. An LLVM update that changes either library
     adopts its hash in `profile.json` (`kernel32.sha256` beside `artifactSha256`) and commits the reproduced `.lib` file in the same
