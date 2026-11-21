@@ -16631,6 +16631,55 @@ resumed by R4-M86 (2026-10-20).
     Middle's Z5-M1 (PLAN G212).
   - **Rejected:** an admitting `HolderAccess.Move` (a mode that decides nothing); a Binding column of layer positions for A5 (a
     second copy of `TyCtxt.StoredStep`'s walk); an element-wise HIR lowering of the Move (a new form for one feature).
+- **BU-243 The borrows a body's Borrow atom belongs to: Binding's per-atom borrow publication** (Front, 2026-11-21; PLAN G148 (1),
+  R7 plan Z6's first commit, Q-630; Major, a new representation and a key field, no verdict moved; F's G147 rulings 18, 19, 25, 28,
+  36, 37, 50, 55, 58, 60, 65; the owner's O-476 (a)) SPEC 5.7 Origins, Fits and claims; 15.6.5; 15.1.6; 7.7.4; 5.4. Reads BU-27's HIR
+  contract.
+  - **Representation.** `Binding.RawOrigins.Borrows` (`PassPart.Borrows`): for each Projection or Anchor atom, the Borrows Binding
+    commits with it as their outer Origin, each a `RawMember` (Input -1, referent and mode by `BorrowReferent`, equal referents joining
+    their modes), and the `Claimed` mark of each atom a published claim's Type states (`ClaimedOrigin`, `MarkClaim`). The rows only
+    grow within a pass, each new entry or mode moving the borrows' version; a library body's rows are the library pass's part. An
+    address `P@raw` is no Borrow (SPEC 5.4: it leaves no Loan), so no writer forms it. Its verdict reader is Z6's; until then only the
+    census and tests read it.
+  - **Formation by writer.** Each writer forms its part once, outside candidate trials and collected fits: BindNode's end
+    (`OwnBorrows`: the node's written Borrow, Slice view or object view, its receiver operation, its calls' operations from their
+    plans, a synthesized call's at its consumer, and its capture entries); `BindMatch` (the Subject borrow, before the arms);
+    `AcquireReferenceBindings` (a match's or a user iteration's by-reference bindings, acquired where their Patterns bind, before the
+    guards and bodies: their access alone decides the acquisition, and Check acquires them again); `CompleteArguments` (a source
+    call's selected operations, before an awaiting argument binds, SPEC 10.5.1); `CompletePayloads` (each payload's operation at its
+    write, before the payloads after it; the operation now carries its AdaptedType); `BindConcreteClosure` (the written capture
+    entries, before the body); the adaptations column's setter (`AdaptationBorrow`). A writer that publishes a fact before a sub-node
+    binds forms it there, so a reader inside that sub-node finds it in the atom's row. BU-27's naming sites name Origins and form
+    nothing.
+  - **Mid-binding.** A reader while bodies bind reads the entries so far, incomplete but not wrong, except two facts not yet written
+    while a part stating their atom binds: a call's operations while its waiting Closure parts bind (`CompleteWaiting`: the part's
+    inferred return is never outer evidence, SPEC 10.5.4, so the call fails and its operations are never formed) and a payload's
+    operation while an awaiting payload before it binds (source order). Every program reaching them is invalid (SPEC 7.7.4); what
+    Z6's reader answers there is Z6's.
+  - **Census.** At the HIR publication, `CheckBorrows` compares the rows with the borrows the publisher itself writes
+    (`HirPublisher.Visit`'s `PublishedNode`, `RowUses.Use`, `FixAdjust`, `DiscardRow`, `IHirUses.Unselected`), not with a second list
+    of facts: exact both ways, misses always, extras and modes where the publication met no failed node; a difference is
+    `InternalInvariant_Kd`. The rows may hold a recorded adaptation the publisher's Adjust replaces, an over-approximation the
+    census does not see.
+  - **RetentionState** replaces RegionVersion as the key field of TyCtxt's retention memo: the region and borrow versions while the
+    pass's borrow writers run, a fixed Complete value once the pass's Check has run (`borrowsComplete`; no borrow writer runs after
+    it), so no answer computed while the rows grow is read as complete. RegionVersion keeps its meaning.
+  - **In-place reads.** A compared operand's in-place read is decided once, by `CompareInPlace` (its layers' read over its element
+    read). A receiver's read has two writers, `ReceiverElement` at its selection (`ReceiverThroughLayers` hands it its reference)
+    and `CompareInPlace` on a compared operand's path, which agree where the receiver is an element Place `ReceiverElement` reads by
+    its element (`Binding.InPlaceReads`' contract). The use deciding a selection's read is PLAN G1221.
+  - **Cost** (the owner's O-476 (a)): it lands with the cost unit's two commits (`PublishedNode` reads a visited node's rows by one
+    dispatch on its form; `JoinBorrow` finds a write's row once); the remaining Bind cost against dev (warm matches256 +3.5%,
+    Milestone24 +1.5%, Milestone10 within dev's band; cold matches256 +5.8%) is the owner's accepted cost.
+  - **Rejected:** a build at the publication only (G2's nested erasure would turn a Language record into the limit); `FormBorrow`
+    at the naming sites (they run in trials and for readers that form nothing, and know neither mode nor referent); a census join at
+    the publication (ruling 19); forming a call's operations at `BindCall`'s selection or at the plans' setters (they also bind
+    synthesized calls no plan takes); forming inside `AcquireBinding` per position (quadratic); reading the access mode in formation
+    without the acquisition (a consumer deciding what its owner publishes); a pair-layer clause for a by-reference binding (one
+    form); fitting every payload before any awaiting one binds (CompletePayloads keeps the source order); a column of `OriginRows`'
+    table; moving RegionVersion; a `HoldFlags` entry; entries for the formatting plan's synthesized borrows; forming the receiver
+    column's final value (it reopens ruling 19's writer rule); the selection owning every receiver, or the comparison's condition at
+    the selection (valid `t.0.mutate()` and `arr[i].mutate()` rejected).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
