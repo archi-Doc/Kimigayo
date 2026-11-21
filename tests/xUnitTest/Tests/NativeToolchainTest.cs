@@ -62,7 +62,7 @@ public sealed class NativeToolchainTest : IDisposable
                 "kernel32 " + catalog.RootElement.GetProperty("kernel32").GetProperty("sha256").GetString(),
                 "kimi_backend " + catalog.RootElement.GetProperty("artifactSha256").GetString(),
             ],
-            ToolchainIdentity.Supplies.Select(static x => x.Name + " " + x.Sha256));
+            ToolchainIdentity.Supplies.Select(static x => x.Supply.Name + " " + x.Sha256));
         foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", ToolchainIdentity.BackendFile }))
         {
             using var stream = supply.Open();
@@ -152,7 +152,7 @@ public sealed class NativeToolchainTest : IDisposable
         NativeToolchain.Verify(report, (severity, line) => lines.Add($"{severity}: {line}"), TestContext.Current.CancellationToken);
         var build = Tatara.Instance.Build;
         string[] expected =
-            [$"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}", .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Name}: {x.Sha256} (the catalog's)")];
+            [$"Information: Tatara: build {build}, ABI {Tatara.ExpectedAbi}, LLVM {ToolchainIdentity.LlvmVersion}", .. ToolchainIdentity.Supplies.Select(static x => $"Information: {x.Supply.Name}: {x.Sha256} (the catalog's)")];
         Assert.Equal(expected, lines);
         using var record = JsonDocument.Parse(File.ReadAllText(report));
         var root = record.RootElement;
@@ -166,7 +166,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal(Tatara.ExpectedAbi, tatara.GetProperty("abi").GetString());
         Assert.Equal(ToolchainIdentity.LlvmVersion, tatara.GetProperty("llvmVersion").GetString());
         Assert.Equal(
-            ToolchainIdentity.Supplies.Select(static x => $"{x.Name} {x.Sha256} {x.Sha256} True"),
+            ToolchainIdentity.Supplies.Select(static x => $"{x.Supply.Name} {x.Sha256} {x.Sha256} True"),
             root.GetProperty("supplies").EnumerateArray().Select(static x =>
                 $"{x.GetProperty("name").GetString()} {x.GetProperty("sha256").GetString()} {x.GetProperty("expectedSha256").GetString()} {x.GetProperty("hashMatched").GetBoolean()}"));
     }
@@ -460,7 +460,7 @@ public sealed class NativeToolchainTest : IDisposable
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
         var (project, paths, v1) = await this.BuildHello();
-        var staged = ToolchainIdentity.Supplies.Select(x => (x.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        var staged = ToolchainIdentity.Supplies.Select(x => (x.Supply.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
         using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
         {
             Assert.False(record.RootElement.TryGetProperty("kernel32", out _));
@@ -493,7 +493,7 @@ public sealed class NativeToolchainTest : IDisposable
         var paths = ArtifactPaths.Create(project);
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
         var entry = manifest["libraries"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == name)!;
-        entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Name == name)!.Sha256 : new string('0', 64);
+        entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name)!.Sha256 : new string('0', 64);
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
         var build = NativeToolchain.BuildManifest(paths.Manifest, (_, _) => { }, TestContext.Current.CancellationToken);
         if (adopted)
