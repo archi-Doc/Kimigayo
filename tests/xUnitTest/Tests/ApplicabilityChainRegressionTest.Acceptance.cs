@@ -33,6 +33,24 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string ValueCallee = "func k(h: ((i32) -> i32, i32) -> i32) -> i32\n";
 
+    private const string MethodTie =
+        "struct H\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func m(self: ref/Self, a: bool, b: i32) -> () => ()\n" +
+        "    public func m(self: ref/Self, a: bool, b: i64) -> () => ()\nfunc f(h: ref/H) -> ()\n";
+
+    private const string MethodOne =
+        "struct H\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func m(self: ref/Self, a: i32, b: i32) -> () => ()\nfunc f(h: ref/H) -> ()\n";
+
+    private const string InitTie =
+        "struct P\n    public var a: i32\n    public init(a: bool, b: i32) => self.a = b\n    public init(a: bool, b: i64) => self.a = 0\nfunc k() -> ()\n";
+
+    private const string InitOne = "struct P\n    public var a: i32\n    public init(a: i32, b: i32) => self.a = b\nfunc k() -> ()\n";
+
+    private const string ValueTwo = "func f(g: (i32, i32) -> ()) -> ()\n";
+
+    private const string CallableTie = "func both<F>(action: ref/F) -> i32\n    F is Callable<(bool, i32) -> i32>\n    F is Callable<(bool, i64) -> i32>\n";
+
+    private const string CallableOne = "func one<F>(action: ref/F) -> i32\n    F is Callable<(i32, i32) -> i32>\n";
+
     // SPEC 10.1, 10.4, 12.3.3, 23.1.2 (PLAN G377, G500): beside an unbound failed argument, a misfit or a tie that reads no Type of that
     // argument is an independent failure and keeps its record (G377: the unresolved name hid NoApplicable; w2's and w6's sources are lost,
     // these are the forms PLAN names). The pinned rows of ACallBesideAFailedPartReportsWhatReadsNoArgumentType go when these pass.
@@ -44,6 +62,29 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("P2", "g500-tie", CTie + "    c(undefinedName, 1)\n", "AmbiguousBinding_Kd: c(undefinedName, 1) | UnresolvedBinding_Kd: c(undefinedName, 1)", Explicit = true)]
     [InlineData("guard", "g500-tie1", CTie + "    c(true, 1)\n", "AmbiguousBinding_Kd: c(true, 1)")]
     public void AnIndependentFailureBesideAFailedArgumentKeepsItsRecord(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // R7-P1's call classes (R7-P0's census: P3 makes the forms one pipeline), SPEC 10.1, 10.4, 12.3.3, 23.1.2: the same two rules at each
+    // form that takes arguments, a method, a constructor, a function-typed value and a constraint-based value call (the direct form is
+    // above): a tie that only a literal could break is ambiguous, and beside an unbound failed argument a misfit or a tie that reads no
+    // Type of that argument keeps its record. On dev a763e10f7 the value calls keep a misfit's record (cf-v-mis-u, cf-f-mis-u), as the enum
+    // Case form does (`E.A(true, undefinedName)` above), while the direct, method and constructor forms lose it and every form loses a tie.
+    [Theory]
+    [InlineData("guard", "cf-m-tie", MethodTie + "    h.m(true, 1)\n", "AmbiguousBinding_Kd: h.m(true, 1)")]
+    [InlineData("P2", "cf-m-tie-u", MethodTie + "    h.m(undefinedName, 1)\n", "AmbiguousBinding_Kd: h.m(undefinedName, 1) | UnresolvedBinding_Kd: h.m(undefinedName, 1)", Explicit = true)]
+    [InlineData("guard", "cf-m-mis", MethodOne + "    h.m(true, 1)\n", "NoApplicableOverload_Kd: h.m(true, 1)")]
+    [InlineData("P3", "cf-m-mis-u", MethodOne + "    h.m(true, undefinedName)\n", "NoApplicableOverload_Kd: h.m(true, undefinedName) | UnresolvedBinding_Kd: h.m(true, undefinedName)", Explicit = true)]
+    [InlineData("guard", "cf-c-tie", InitTie + "    let p = P.init(true, 1)\n", "AmbiguousBinding_Kd: let p = P.init(true, 1)")]
+    [InlineData("P2", "cf-c-tie-u", InitTie + "    let p = P.init(undefinedName, 1)\n", "AmbiguousBinding_Kd: let p = P.init(undefinedName, 1) | UnresolvedBinding_Kd: let p = P.init(undefinedName, 1)", Explicit = true)]
+    [InlineData("guard", "cf-c-mis", InitOne + "    let p = P.init(true, 1)\n", "NoApplicableOverload_Kd: let p = P.init(true, 1)")]
+    [InlineData("P3", "cf-c-mis-u", InitOne + "    let p = P.init(true, undefinedName)\n", "NoApplicableOverload_Kd: let p = P.init(true, undefinedName) | UnresolvedBinding_Kd: let p = P.init(true, undefinedName)", Explicit = true)]
+    [InlineData("guard", "cf-v-mis", ValueTwo + "    g(true, 1)\n", "NoApplicableOverload_Kd: g(true, 1)")]
+    [InlineData("guard", "cf-v-mis-u", ValueTwo + "    g(true, undefinedName)\n", "NoApplicableOverload_Kd: g(true, undefinedName) | UnresolvedBinding_Kd: g(true, undefinedName)")]
+    [InlineData("guard", "cf-f-tie", CallableTie + "    return action(true, 1)\n", "AmbiguousBinding_Kd: return action(true, 1)")]
+    [InlineData("P2", "cf-f-tie-u", CallableTie + "    return action(undefinedName, 1)\n", "AmbiguousBinding_Kd: return action(undefinedName, 1) | UnresolvedBinding_Kd: return action(undefinedName, 1)", Explicit = true)]
+    [InlineData("guard", "cf-f-mis", CallableOne + "    return action(true, 1)\n", "NoApplicableOverload_Kd: return action(true, 1)")]
+    [InlineData("guard", "cf-f-mis-u", CallableOne + "    return action(true, undefinedName)\n", "NoApplicableOverload_Kd: return action(true, undefinedName) | UnresolvedBinding_Kd: return action(true, undefinedName)")]
+    public void EachCallFormTiesAndKeepsIndependentRecordsByOneRule(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 10.8 ("Unbound slots": Constraints needing the slot are not judged; traversal order never chooses), 10.1 step 5, 8.10 (PLAN
