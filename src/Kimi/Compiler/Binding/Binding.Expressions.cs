@@ -233,9 +233,9 @@ public sealed partial class Binding
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (expected is { ContainsParameter: true })
+        if (expected is not null)
         {
-            expected = this.SubstituteIdentityPremises(expected, scope);
+            expected = this.ClassForm(expected, scope, out _); // SPEC 8.2.3: the binding input's form (a literal at T under `T is i32` is i32)
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
@@ -267,7 +267,7 @@ public sealed partial class Binding
             expected = this.CompleteArrayExpectation(expected, actual);
         }
 
-        if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
+        if (actual is not null && this.ClassForm(actual, scope, out _) is var substituted && !ReferenceEquals(substituted, actual))
         {
             // SPEC 8.2: the expression has the one Type that the identity premises of its scope make of its Types.
             if (ReferenceEquals(node.BoundType, actual))
@@ -577,11 +577,6 @@ public sealed partial class Binding
                     resultType = BoundType.Unit;
                 }
 
-                if (resultType is { ContainsParameter: true })
-                {
-                    resultType = this.SubstituteIdentityPremises(resultType, scope); // SPEC 8.2
-                }
-
                 var actual = jump.Expression is { } operand ? this.BindExpected(operand, scope, resultType, (target as FunctionKoto)?.ReturnType) : BoundType.Unit;
                 if (jump.Parent is TryKoto propagation && actual?.Symbol != propagation.Expression.BoundType?.Symbol)
                 {
@@ -664,10 +659,23 @@ public sealed partial class Binding
         visitor.Scope = previous;
     }
 
+    // The children of a form bound without its meaning (a recovery or an unsupported form), each on its own; a name the form declares (its
+    // symbol's declaration, such as a recovered loop's binding) is no operand, so it rests on the form, whose record explains it (SPEC
+    // 23.1.2, DIAGNOSTICS 4.3).
     private sealed class ChildBinder(Binding binding) : KotoVisitor
     {
         internal BindingScope Scope { get; set; } = null!;
 
-        public override void Visit(Koto node) => binding.BindNode(node, this.Scope);
+        public override void Visit(Koto node)
+        {
+            if (node is IdentifierNameKoto { BoundSymbol: { } declared } && ReferenceEquals(declared.Declaration, node) && node.Parent is { } form)
+            {
+                binding.CompleteDependent(node, form);
+            }
+            else
+            {
+                binding.BindNode(node, this.Scope);
+            }
+        }
     }
 }

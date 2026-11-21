@@ -15,7 +15,7 @@ public class OriginObligationVerdictTest
 {
     public static TheoryData<string, string?> Families => OriginProofScalingTest.Families;
 
-    // SPEC 15.6.1: check's verdict on each family is Accepts with the family's one record, Binding's or, on a complete Binding, the
+    // SPEC 15.6.1: check's verdict on each family is Accepts with the family's records, Binding's or, on a complete Binding, the
     // MIR's (R6-check H5, DECISIONS R5-M185), and a rebind and a new analysis give the same verdict.
     [Theory]
     [MemberData(nameof(Families))]
@@ -23,7 +23,7 @@ public class OriginObligationVerdictTest
     {
         var c = Analyze(OriginProofWorkloads.Create(family, 2));
         Assert.Empty(TestDiagnostics.Of(c)); // Nothing is published before the reports, so no syntax record (Analyze checks none).
-        DiagnosticCode[] expected = code is null ? [] : [Enum.Parse<DiagnosticCode>(code)];
+        DiagnosticCode[] expected = code is null ? [] : [.. code.Split(' ').Select(static x => Enum.Parse<DiagnosticCode>(x))];
         Assert.Equal(code is null, c.Accepts);
         Assert.Equal(expected, c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
         c.ReportAnalysis();

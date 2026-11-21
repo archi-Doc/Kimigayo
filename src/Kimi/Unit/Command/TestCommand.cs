@@ -139,7 +139,7 @@ public sealed class TestCommand(Kimigayo kimigayo, Solution solution) : ISimpleC
                 // The toolchain's classification around its call only (PLAN G984): a build failure (IMPL 20.6.4: 2).
                 try
                 {
-                    await NativeToolchain.Build(project, paths, (severity, message) => kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+                    await NativeToolchain.Build(project, paths, kimigayo.NativeExecutor, (severity, message) => kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
                 {

@@ -25,6 +25,9 @@ internal sealed record TestDiagnostic(string Code, DiagnosticSeverity Severity, 
     /// and differ when a candidate changes.</summary>
     internal string? RepairSummary { get; init; }
 
+    /// <summary>Gets the record's related locations (SPEC 23.1), or <see langword="null"/> for none.</summary>
+    internal DiagnosticRelated[]? Related { get; init; }
+
     public bool Equals(TestDiagnostic? other)
         => other is not null && this.Code == other.Code && this.Severity == other.Severity && this.Message == other.Message && this.Path == other.Path && this.Span == other.Span &&
             this.Text == other.Text && this.Note == other.Note && this.Label == other.Label && this.RepairSummary == other.RepairSummary;
@@ -104,7 +107,7 @@ internal static class TestDiagnostics
             var span = diagnostic.Span ?? default;
             var text = diagnostic.Span is not { } primary || source is null ? null
                 : snapshot is not null && snapshot.Path == source ? snapshot.SourceText.Substring(primary.Start, primary.Length) : Text(owner, source, primary);
-            records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text, diagnostic.Note, diagnostic.Label, diagnostic.Repairs) { RepairSummary = TestDiagnostic.Summarize(diagnostic.Repairs, span.Start) });
+            records.Add(new(diagnostic.Code, diagnostic.Severity, diagnostic.Message, source, span, text, diagnostic.Note, diagnostic.Label, diagnostic.Repairs) { RepairSummary = TestDiagnostic.Summarize(diagnostic.Repairs, span.Start), Related = diagnostic.Related });
         }
 
         return records.ToArray();

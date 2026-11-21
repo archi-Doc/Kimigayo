@@ -51,7 +51,8 @@ internal sealed partial class InstanceCollector
 
         var locals = program.Body(this.Set.Items[root].BodyOrdinal).Locals;
         var receiver = locals is [{ Role: MirLocalRole.Receiver }, ..] ? 0 : locals is [_, { Role: MirLocalRole.Receiver }, ..] ? 1 : -1;
-        if (receiver >= 0 && this.layout.Of(locals[receiver].Type).Outcome != Layout.Outcome.Ok)
+        // A receiver is of its struct's Type, never of no Type (MirValidator).
+        if (receiver >= 0 && this.layout.Of(locals[receiver].Type!).Outcome != Layout.Outcome.Ok)
         {
             return false;
         }
