@@ -191,7 +191,7 @@ public class CompilerFunctionReferenceTest
     [InlineData(66, "ref/i32 during static", "<@written>")]
     public void AReferenceBindsASlotOfAnyHeight(int depth, string terminal, string arguments)
     {
-        string Nest(string inner) => string.Concat(Enumerable.Repeat("Option<", depth)) + inner + new string('>', depth);
+        string Nest(string inner) => new string('(', depth) + inner + string.Concat(Enumerable.Repeat(", i32)", depth)); // No generic instance a level.
         var type = Nest(terminal);
         var source = "func id<T>(v: T) -> T => v@move\nlet f: (" + type + ") -> " + type + " = id" +
             arguments.Replace("@written", Nest("ref/i32"), StringComparison.Ordinal) + "\n";

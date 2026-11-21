@@ -311,7 +311,7 @@ public partial class LocalOriginClauseTest
     [InlineData(130)]
     public void ATypesClauseIsProvenAtAnyDepthOfTheAnnotation(int depth)
     {
-        var at = string.Concat(Enumerable.Repeat("Option<", depth)) + "S{w}" + new string('>', depth);
+        var at = new string('(', depth) + "S{w}" + string.Concat(Enumerable.Repeat(", i32)", depth)); // Tuples: no generic instance a level.
         var body = "func f(p: ref/i32, q: ref/i32, r: ref/i32, s: " + at.Replace("S{w}", "S{u}", StringComparison.Ordinal) + ") -> i32\n" +
             "    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n@premise    let s2: " + at + " = s@move\n        origin w.a == r\n        origin w.b == q\n    return 0\n";
         Assert.Empty(DiagnosticCorpus.Check(Ordered + body.Replace("@premise", "    origin r outlives q\n", StringComparison.Ordinal) + Main).Diagnostics);

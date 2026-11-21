@@ -261,8 +261,10 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [InlineData(130)]
     public void AResultOnlyUniversalBesideADeepInputIsInstantiatedToTheOpenRegion(int depth)
     {
-        var input = string.Concat(Enumerable.Repeat("Option<", depth)) + "ref/i32" + new string('>', depth);
-        var source = $"func constantOf(n: {input}) -> ref/i32 during s => $abort(\"never\")\nfunc make<T>(f: ({input}) -> T) -> i32 => 7\n" +
+        // A nested borrow names its Origin (SPEC 15.4.4): `t` in the Item, `static` in the expected signature.
+        string Nest(string terminal) => new string('(', depth) + terminal + string.Concat(Enumerable.Repeat(", i32)", depth));
+        var source = $"func constantOf(n: {Nest("ref/i32 during t")}) -> ref/i32 during s => $abort(\"never\")\n" +
+            $"func make<T>(f: ({Nest("ref/i32 during static")}) -> T) -> i32 => 7\n" +
             "let r = make(constantOf)\nrequire r == 7 else => $abort(\"result only\")\n";
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
