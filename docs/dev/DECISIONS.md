@@ -15719,6 +15719,25 @@ resumed by R4-M86 (2026-10-20).
     (`CompleteImplicitConstructor`), and `RevalidateImplicitConstructors` judges it again after the bodies, failing closed at the
     base clause. Rejected: converting it to a column (the test switch would move into the canonical table, its `NotStamps` reason
     and the shared d10 theory). Ratchet ("Node-keyed table members in Binding") 52 -> 46, the count.
+  - **R7-N5 B5a with B2b-2's `resolvedSlices`** (the Back's batch, Q-614, D-1000; design `b5a-design.md`, B's rulings 1-8; the
+    Front's review `review-b5a.md`, C1-C5 and N1-N3): `earlyReads` becomes the pass family `EarlyReads` (its ResetPass Clear and
+    VerifyEarlyReads' take-and-restore go; the step walks the running pass's rows in d8's order and writes none: ReadAgain
+    publishes nothing, and PagedColumn's contract now states that an enumeration is read to its end before a Ref that carves a
+    page; the library writes none, so its Freeze row leaves stamp 0, with a "never written" NotStamps row whose premise
+    `TheLibraryDeclaresNoStructWithABase` checks); `knownBases` the kept family `KnownBases`, emptied over the latest pass's
+    modules where the dictionary was cleared (StartRuns, before the fill, Invalidate): neither counter is its lifetime (the pass
+    counter advances between the first run's fill and the second run that reads it; a Bind of the other mode within one edit
+    empties it); `specializationStorage` the kept family `SpecializationStorage` (the library's 7 specialization entries stay in
+    the frozen library's column, the objects its frozen `Specializations` rows hold; about 9.1 KB per process, the column's
+    directory and arena); `pairSymbols` goes: a generic parameter's Semantics symbol is its kept target symbol's `Pair` (the key
+    rule's listed slot), which Index already wrote; and B2b-2's `resolvedSlices` becomes the working-state pass family
+    `ResolvedSlices` (`Work:`, released at the freeze: its library rows are the library pass's range-value slices, and
+    `IsResolvedSlice`, its one reader outside the step, refuses a library node).
+    Readings: SPEC 6.2.2 and 9.5 (a base clause read before it is ready), 8.13 and 8.13.3 (explicit specializations), 8.1.1 (a
+    pair's Semantics parameter), 4.7 and 4.8.2 (a selection applying one ResolvedRange value), 22.1 (one library per process),
+    23.1.2 (no record moves); the B2a-2 line above (`Freeze` for a never-written family, `Release` for working state) and the B6b
+    line (a premise stated with its tripwire), BU-219, R7-M9. Ratchet ("Node-keyed table members in Binding") 39 -> 34, the
+    count (33 merged with R7-E2 E2-5a, which deletes `overrideFailures`: the second of the two to land sets the limit).
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
