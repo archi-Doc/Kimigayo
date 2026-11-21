@@ -6,12 +6,13 @@
 // - Responsibility: ClosureType, a definition's Type with its Origin arguments: the atoms of enclosing Closures its signature names (a receiver,
 //   an environment binding, a call result or an input, in any Origin position, raw layers included), which its own Type carries, so
 //   every walk that images a Type's Origins (a maker's call, P8's publication, an instantiation, erasure) images them with its
-//   environment; FixedAtoms, the one walk of the atoms of a binder class a Type names, its Closures' signatures included (DECISIONS
-//   BU-73); ClosureSignature, a Closure Type's call signature as its value reads it: its definition's under its closure context,
-//   each definition argument replaced by the Type's; ClosureDefinitionSignature, the definition's under the context, which a call
-//   declares (CallPlan.DeclaredSignature) and retention reads; ClosureArgumentVariance, an argument's variance by its occurrences in the
-//   definition's signature; CloseNestedTypes, the nested definitions' Types an instance makes closed, each holding that instance as
-//   its context (BoundType.InstanceContext: a function's instance, or TyCtxt.HeldContext of the enclosing Container's instance).
+//   environment; FixedAtoms, the one walk of the atoms of a binder class a Type names, its Closures' signatures included for an
+//   enclosing container's atoms (DECISIONS BU-73; R7-D3); ClosureSignature, a Closure Type's call signature as its value reads it:
+//   its definition's under its closure context, each definition argument replaced by the Type's; ClosureDefinitionSignature, the
+//   definition's under the context, which a call declares (CallPlan.DeclaredSignature) and retention reads; ClosureArgumentVariance,
+//   an argument's variance by its occurrences in the definition's signature; CloseNestedTypes, the nested definitions' Types an
+//   instance makes closed, each holding that instance as its context (BoundType.InstanceContext: a function's instance, or
+//   TyCtxt.HeldContext of the enclosing Container's instance).
 // - Inputs: the definition (BoundClosure.Of), its published signature and its Type (EnvironmentType); for the closing step, the
 //   declaration whose instance a nested definition holds (TyCtxt.EnclosingDeclaration).
 // - Outputs: interned Types and Origin arguments.
@@ -169,8 +170,10 @@ public sealed partial class Binding
     // raw layers and nested arguments included, and each Closure part's call signature as its value reads it (ClosureSignature), at any
     // depth; with no scratch, `count` grows by an upper bound, the candidate occurrences. Returns the first Closure part, outermost, through
     // which the walk met an atom. One query meets each distinct part once: a part met again adds no atom its first visit did not, so the
-    // order of first occurrence is kept (DECISIONS BU-63). For an enclosing anonymous function the descent into a signature adds nothing:
-    // a nested Closure's enclosing atoms are already its Origin arguments, and its own atoms do not enclose the subject.
+    // order of first occurrence is kept (DECISIONS BU-63). For an enclosing anonymous function the walk does not descend into a
+    // signature, which would add nothing: a nested Closure's enclosing atoms are already its Origin arguments, and its own atoms do not
+    // enclose the subject; so that walk follows only the parts BoundType.Height counts (R7-D3, PLAN G348). Only an enclosing
+    // container's atoms, which no Origin argument carries, are sought through a signature.
     private BoundType? FixedAtoms(BoundType type, Koto subject, BinderClass binders, BoundOrigin[]? scratch, ref int count, uint query)
     {
         if (!type.CarriesAnyOrigin && !type.ContainsNested)
@@ -198,7 +201,8 @@ public sealed partial class Binding
             }
         }
 
-        if (type.Kind == BoundTypeKind.Closure && this.ClosureSignature(type) is { } signature && this.FirstVisit(signature, query))
+        if (binders == BinderClass.EnclosingContainer && type.Kind == BoundTypeKind.Closure && this.ClosureSignature(type) is { } signature &&
+            this.FirstVisit(signature, query))
         {
             _ = this.FixedAtoms(signature, subject, binders, scratch, ref count, query);
         }
