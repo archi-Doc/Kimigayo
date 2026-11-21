@@ -58,7 +58,7 @@ try {
     $refused = @(foreach ($line in $listing) {
             if ($line -match '^\s*Name: (\S+)\s*$') {
                 $module = $Matches[1]
-                if ($module -match '^(api-ms-win-crt-.*|ucrtbased?|vcruntime.*|msvcp.*|concrt.*)\.dll$') { $module }
+                if ($module -match '^(api-ms-win-crt-.*|ucrtbased?|vcruntime.*|msvcp.*|msvcr.*|concrt.*)\.dll$') { $module }
             }
             elseif ($line -cmatch '^\s*Symbol: (\S*) \(\d+\)\s*$') {
                 if ($module -eq 'KERNEL32.dll') { $kernelSymbols++ }
