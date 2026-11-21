@@ -207,7 +207,8 @@ public partial class SyntaxIdTest
     // FormReads, the kept operands `s == missing`'s Error form reads (HirFormsTest's row), a failure family's program; B6b's query
     // memos written in a Bind: the result checks' of a while loop's condition, the publisher's and the lint walk's of an `if`'s
     // result; the guess rule's is written only after a Bind, by the lint report and MIR:
-    // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes).
+    // CurrentControlFlowTest.AGuessQueryAskedAgainAnswersTheSameNodes; D-932's
+    // ReachedThroughBorrow, a member read below an owned Array's element).
     // Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
@@ -240,6 +241,7 @@ public partial class SyntaxIdTest
     [InlineData("CallableSelectionFailures", "func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i32>\n    return action(true)\n", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("BaseCallFailures", "open struct Base\n    public let value: i32 = 7\n    public func read(self: ref/Self) -> i32 => 1\nstruct Derived : Base\n    func f(self: ref/Self) -> i32 => base()\n()", DiagnosticCode.InvalidBaseCall_Kd)]
     [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("ReachedThroughBorrow", "struct S1\n    internal var x: Array<i32>\nstruct S2\n    internal var x: Array<S1>\nfunc f(s: S2) -> i32 => s.x[0].x[0]\n")]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("ArithmeticConformanceFailures", "struct Bad\n    Self is Addable<string>\n    associate Output is i32\n()", DiagnosticCode.InvalidArithmeticConformance_Kd)]
     [InlineData("AssociatedAmbiguities", "contract C<E>\n    associate Item is E\ncontract Q<U>: C<i32>, C<U>\nstruct Gx<A>\n    Self is Q<A>\nfunc probe()\n    let a: Gx<i64>.Item = 7\nlet present = 1\n", DiagnosticCode.AmbiguousBinding_Kd)]

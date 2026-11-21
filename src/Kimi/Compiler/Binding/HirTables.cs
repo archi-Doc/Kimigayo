@@ -361,6 +361,7 @@ internal struct NodeColumns
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, a memo of a final fact of its syntax valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next ResetPass), released at the freeze (Binding.ElementAccess.cs).
     internal StampedColumn<uint, Binding.PassCounter> FormReads; // Work: the HIR publisher's (Binding.Hir.cs) publication in which its Error's form read a node's whole Place, a row of another publication absent, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
 
     internal void Resize(int length)
@@ -434,6 +435,7 @@ internal struct NodeColumns
         this.GuessedCompletions.Grow(length);
         this.PublishedCompletions.Grow(length);
         this.LintCompletions.Grow(length);
+        this.ReachedThroughBorrow.Grow(length);
         this.FormReads.Grow(length);
     }
 
@@ -484,6 +486,7 @@ internal struct NodeColumns
         this.GuessedCompletions.Release();
         this.PublishedCompletions.Release();
         this.LintCompletions.Release();
+        this.ReachedThroughBorrow.Release();
         this.FormReads.Release();
     }
 
@@ -562,6 +565,7 @@ internal struct NodeColumns
             GuessedCompletions = this.GuessedCompletions.Renumbered(length),
             PublishedCompletions = this.PublishedCompletions.Renumbered(length),
             LintCompletions = this.LintCompletions.Renumbered(length),
+            ReachedThroughBorrow = this.ReachedThroughBorrow.Renumbered(length),
             FormReads = this.FormReads.Renumbered(length),
         };
         return columns;
