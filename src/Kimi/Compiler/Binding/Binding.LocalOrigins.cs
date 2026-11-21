@@ -221,7 +221,7 @@ public sealed partial class Binding
 
     // SPEC 15.3.6, 15.4.4: covariant positions meet upper bounds; contravariant positions select an existing lower bound proven to
     // outlive the others (StrongestLowerBound, each clause's lower bound before the candidate held, so that an equal one keeps it, at the
-    // clause; OriginCandidate's contravariant row). Repeated passes propagate dependent slots without inventing unions. Once every lower bound is seen, a
+    // clause; RowCandidate's contravariant row). Repeated passes propagate dependent slots without inventing unions. Once every lower bound is seen, a
     // contravariant slot whose candidate is not proven to outlive each of them has no candidate and is a local region of `owner`, at
     // `slot` (DECISIONS R4-M112): one decision, whatever the clause order.
     private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred, VariableKoto owner, ref int slot)
@@ -244,7 +244,7 @@ public sealed partial class Binding
                     {
                         (lowers[0], lowers[1]) = (this.ResolveOrigin(relation.Shorter, declaration), lowerCandidate);
                         var lower = this.StrongestLowerBound(lowers.AsSpan(0, 2), relation.Syntax, default, out _);
-                        if (this.OriginCandidate(OriginVariance.Contravariant, null, lower, relation.Syntax, default) is { } selected && !ReferenceEquals(selected, lowerCandidate))
+                        if (this.RowCandidate(OriginVariance.Contravariant, null, lower, relation.Syntax, default) is { } selected && !ReferenceEquals(selected, lowerCandidate))
                         {
                             declaration.Forming.Replacements[relation.Longer] = selected;
                             this.originStateVersion++;

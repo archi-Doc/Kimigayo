@@ -28,6 +28,11 @@ namespace Kimi.Compiler;
 // - Prohibitions: no proof of the engine reads a payload; nothing here schedules or evaluates a work (Binding.Capabilities).
 public sealed partial class Binding
 {
+    // The node a judgment in `scope` is made at: its owner, or a function's body for the function's own scope (its literal is a node of the
+    // enclosing body, so a reading there would take the enclosing body's `let` regions as values).
+    private static Koto JudgedAt(BindingScope scope)
+        => scope.Owner is FunctionKoto function && ((Koto?)function.Body ?? function.ExpressionBody) is { } body ? body : scope.Owner;
+
     // The first local region of an Origin or of its meet's operands.
     private static BoundOrigin? RegionOperand(BoundOrigin origin)
     {
@@ -47,11 +52,13 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`, a `let` region read as its published
-    // value wherever the judgment is asked (LetRegionValue; B's ruling 28); a null Origin argument and an unproven Origin are Unknown.
+    // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`, each region the judgment's body reads
+    // as its value read so (ValueIn: a `let` region of that body, a region the body carries; R7-O2 A1), a region a nested signature names
+    // staying the region (SPEC 15.3.4); a null Origin argument and an unproven Origin are Unknown. A function's scope judges in its body
+    // (JudgedAt): its literal stands in the enclosing body, whose `let` regions are not its values (D-862's e-owsin).
     private ConstraintProof StaticOrigin(BoundOrigin? origin, BindingScope scope)
     {
-        if (origin is not null && (this.ProvesOriginOutlives(this.LetRegionValue(origin), BoundOrigin.Static, scope.Owner) || this.SolvedStatic(origin)))
+        if (origin is not null && (this.ProvesOriginOutlives(this.ValueIn(origin, scope.Function), BoundOrigin.Static, JudgedAt(scope)) || this.SolvedStatic(origin)))
         {
             return ConstraintProof.Proven;
         }

@@ -193,7 +193,7 @@ public sealed partial class Binding
             foreach (var variable in inference.Variables)
             {
                 var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs);
-                var candidate = this.OriginCandidate((OriginVariance)variable.Polarity, upper, lower, use, inference.Comparison);
+                var candidate = this.RowCandidate((OriginVariance)variable.Polarity, upper, lower, use, inference.Comparison);
                 if (!ReferenceEquals(Get(variable.Origin, origins, inputs), candidate))
                 {
                     Set(variable.Origin, candidate, origins, inputs);
@@ -397,7 +397,7 @@ public sealed partial class Binding
             }
 
             var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3, origins, inputs);
-            return this.OriginCandidate(OriginVariance.Covariant, upper, lower, use, inference.Comparison);
+            return this.RowCandidate(OriginVariance.Covariant, upper, lower, use, inference.Comparison);
         }
 
         // J2 (SPEC 15.3.6; the owner's O-362 (a)): a covariant variable that an evidence position and a position without evidence both
@@ -470,12 +470,12 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.6's row rule (DECISIONS BU-221; R7-O2), read by the call solve (Limits, the representative), a local's clauses
-    // (SolveLocalBounds) and a local region's value: a variable's candidate by its row from the meet of its upper bounds (`upper`) and its
+    // SPEC 15.3.6's row rule (DECISIONS BU-221; R7-O2), read by the call solve (Limits, the representative) and a local's clauses
+    // (SolveLocalBounds): a variable's candidate by its row from the meet of its upper bounds (`upper`) and its
     // strongest lower bound (`lower`, StrongestLowerBound): covariant, and a row not yet known, the meet, else the lower bound;
     // contravariant the lower bound; invariant the meet when it and the lower bound are proven equal, else none. Proofs at `use` in
     // `comparison`.
-    private BoundOrigin? OriginCandidate(OriginVariance row, BoundOrigin? upper, BoundOrigin? lower, Koto use, in CallableInstance comparison)
+    private BoundOrigin? RowCandidate(OriginVariance row, BoundOrigin? upper, BoundOrigin? lower, Koto use, in CallableInstance comparison)
         => row switch
         {
             OriginVariance.Contravariant => lower,

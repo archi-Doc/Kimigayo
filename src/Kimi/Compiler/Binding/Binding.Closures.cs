@@ -275,6 +275,7 @@ public sealed partial class Binding
         expected = expected is null ? null : this.ClosureExpectation(function, expected);
         var plan = function.ClosureStorage ??= new();
         plan.Storage.Clear();
+        plan.Carried.Clear();
         plan.Receiver = plan.CaseFreeReceiver = SemanticsKind.Ref;
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;

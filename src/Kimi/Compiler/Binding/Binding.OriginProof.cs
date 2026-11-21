@@ -413,7 +413,7 @@ public sealed partial class Binding
 
         longer = this.OriginAtUse(comparison.Instantiate(longer), use, comparison);
         shorter = this.OriginAtUse(comparison.Instantiate(shorter), use, comparison);
-        if (!RegionChain(longer, shorter, false, this.formingBody) ||
+        if (!(this.formingBody.IsBody && HasLocalRegion(longer)) ||
             (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter)))
         {
             return false;
@@ -571,7 +571,7 @@ public sealed partial class Binding
                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
                 var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax);
                 if (!ReferenceEquals(a, b) &&
-                    (BodyChain(this.OriginAtUse(a, occurrence), this.OriginAtUse(b, occurrence), relation.Equality, this.formingBody) || !this.PublishedPremise(obligation, a, b)))
+                    (BodyChain(this.OriginAtUse(a, occurrence), this.OriginAtUse(b, occurrence), this.formingBody) || !this.PublishedPremise(obligation, a, b)))
                 {
                     this.AddObligation(obligation);
                 }

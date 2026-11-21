@@ -747,13 +747,13 @@ public partial class CallOriginRelationTest(ITestOutputHelper output)
     // o4i
     [InlineData("func w4r(x: Option<ref/i32 during c>, y: ref/i32 during c) -> ref/i32 during c => $abort(\"no\")\nfunc use(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let a = q\n    let b = p\n    return w4r(.Some(a), b)\n", "UnprovenOriginRelation_Kd@w4r(.Some(a), b)|UnprovenOriginRelation_Kd@a), b)")]
     // u1i
-    [InlineData("func same3u<T>(x: Option<ref/T during c>, y: uniq/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [a, var b] () -> ()\n        same3u(.Some(a@ref), b@uniq)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@ref), b@uniq)")]
+    [InlineData("func same3u<T>(x: Option<ref/T during c>, y: uniq/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [a, var b] () -> ()\n        same3u(.Some(a@ref), b@uniq)\n    f()\n    return 0\n", "")] // R7-O2 A1: valid (a and b are carried, each read at its candidate p; D-868, O-443 (a))
     // o2u
-    [InlineData("func w2u(x: Option<ref/(ref/i32 during k) during c>, y: uniq/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [a, var b] () -> ()\n        w2u(.Some(a@ref), b@uniq)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@ref), b@uniq)")]
+    [InlineData("func w2u(x: Option<ref/(ref/i32 during k) during c>, y: uniq/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [a, var b] () -> ()\n        w2u(.Some(a@ref), b@uniq)\n    f()\n    return 0\n", "")] // R7-O2 A1: valid (a and b are carried, each read at its candidate p; D-868, O-443 (a))
     // w1i
-    [InlineData("func same3w<T>(x: Option<uniq/T during c>, y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        same3w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)|UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
+    [InlineData("func same3w<T>(x: Option<uniq/T during c>, y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        same3w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "")] // R7-O2 A1: valid (a and b are carried, each read at its candidate p; D-868, O-443 (a))
     // o2w
-    [InlineData("func w2w(x: Option<uniq/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        w2w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)|UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
+    [InlineData("func w2w(x: Option<uniq/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        w2w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "")] // R7-O2 A1: valid (a and b are carried, each read at its candidate p; D-868, O-443 (a))
     // l1i
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use() -> i32\n    var x = 5\n    var y = 6\n    let a = x@ref\n    let b = y@ref\n    let r = keep(.Some(a@ref), b@ref)\n    y = 7\n    let s = r\n    return 0\n", "ComparisonLoanConflict_Kd@y = 7")]
     // l2i

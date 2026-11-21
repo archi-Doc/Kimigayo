@@ -2,12 +2,12 @@
 
 // The published closure definition (C2; ClosureDef, plan 5.3; DECISIONS R4-M126, R4-M145).
 // - Responsibility: what a binding of an anonymous function publishes: each capture's source and environment binding (Storage), the
-//   environment Type, the signature, the evaluating body, whether the body infers the result (InfersResult), and the call receiver
-//   facts (SPEC 7.7.3): the strongest requirement over every admitted case (Receiver), the requirement every case has
-//   (CaseFreeReceiver), each capture whose acquisition by value Reborrows by case (BoundCapture.BareReborrows), the first Exclusive
-//   cause, and whether this binding has classified them (Classified).
+//   enclosing regions its environment carries (Carried), the environment Type, the signature, the evaluating body, whether the body
+//   infers the result (InfersResult), and the call receiver facts (SPEC 7.7.3): the strongest requirement over every admitted case
+//   (Receiver), the requirement every case has (CaseFreeReceiver), each capture whose acquisition by value Reborrows by case
+//   (BoundCapture.BareReborrows), the first Exclusive cause, and whether this binding has classified them (Classified).
 // - Inputs: Binding.Closures (the literal's binding: Signature, EnvironmentType, EvaluatingBody, InfersResult and the resets),
-//   Binding.Captures (Storage), Binding.ClosureReceivers (the receiver facts).
+//   Binding.Captures (Storage, Carried), Binding.ClosureReceivers (the receiver facts).
 // - Outputs: InfersResult for Binding's discard rule (Binding.DiscardsFunctionBody); Receiver for acquisition and every receiver
 //   reader (value calls, candidate selection and Callable proofs, effects and the MIR builder); the cause for the write record; for a
 //   view of one admitted case, that case's
@@ -83,6 +83,11 @@ public sealed class BoundClosure
     internal bool InfersResult { get; set; }
 
     internal List<BoundCapture> Storage { get; } = new();
+
+    // SPEC 15.6.5 (R7-O2 A1): the local regions of enclosing bodies that the entries' Types name and that the evaluating body reads as
+    // their values, its own regions or regions it carries in turn; written once per entry by Binding.Captures (CarryRegions), read by
+    // Binding.CarriedRegion. MIR never reads it.
+    internal List<BoundOrigin> Carried { get; } = new();
 
     internal List<BindingSymbol> SymbolPool { get; } = new();
 

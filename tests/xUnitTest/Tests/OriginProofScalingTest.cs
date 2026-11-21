@@ -130,6 +130,26 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         Assert.True(large <= (4 * small) + 8, $"region reads {small} at depth 8, {large} at depth 24");
     }
 
+    // SPEC 15.6.5's Closure sentence (R7-O2 A1; the Front's T4): n nested Closures, each capturing the `let` binding of the level above's
+    // capture, the innermost returning it at p. Each Closure's carried regions are formed once (BoundClosure.Carried, a list the next
+    // level's formation reads) and each body's oracle reads each region once: the region reads and the time grow linearly with n.
+    [Fact]
+    public void ACarriedRegionChainReadsEachRegionOnce()
+    {
+        var reads = new long[3];
+        var times = new long[3];
+        int[] depths = [15, 30, 60];
+        for (var i = 0; i < depths.Length; i++)
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            reads[i] = CarriedReads(depths[i]);
+            times[i] = watch.ElapsedMilliseconds;
+        }
+
+        output.WriteLine($"carried chain N 15, 30, 60: region reads {string.Join(", ", reads)}; ms {string.Join(", ", times)}");
+        Assert.True(MirBorrowsTest.Grows(reads, 2.5), $"region reads {string.Join(", ", reads)}");
+    }
+
     // SPEC 15.6.5, 23.1.2 (DECISIONS BU-62; PLAN G318): k Semantics binders and k declaration rows b >= x.s, each in one binder's borrow
     // cases, reach the last edge x.s >= a through x.s, which a failed clause leaves Unbound: the declaration judge's chain work grows with
     // the rows, never with the combinations of their conditions. Every size is invalid by the clause (15.3.3) and the chain (15.6.5).
@@ -279,6 +299,37 @@ public class OriginProofScalingTest(ITestOutputHelper output)
         return source.Append(form == "dr"
             ? $"    let c = func [x{n}] () -> ref/i32 during x{n} => x{n}\n    let v = c()\n    see(v)\n"
             : $"    let c = func [x{n}] () -> ref/i32 during q => x{n}\n    return 0\n").Append("public func main() => ()\n").ToString();
+    }
+
+    private static long CarriedReads(int depth)
+    {
+        var source = new StringBuilder("func see(p: ref/i32) => ()\nfunc f(p: ref/i32)\n    let x0 = p\n");
+        var indent = "    ";
+        for (var i = 1; i <= depth; i++)
+        {
+            source.Append($"{indent}let c{i} = func [x{i - 1}] ()\n");
+            indent += "    ";
+            source.Append($"{indent}let x{i} = x{i - 1}\n");
+        }
+
+        source.Append($"{indent}let w: ref/i32 during p = x{depth}\n{indent}see(w)\n");
+        for (var i = depth; i > 0; i--)
+        {
+            indent = indent[..^4];
+            source.Append($"{indent}c{i}()\n");
+        }
+
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("carried.kimi", source.Append("public func main() => ()\n").ToString()));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        Assert.Empty(c.Binding.Issues.Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)));
+        Assert.NotEqual(0, metrics.RegionReads);
+        return metrics.RegionReads;
     }
 
     private static long RegionReads(int depth)

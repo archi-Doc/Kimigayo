@@ -271,8 +271,10 @@ public sealed partial class Binding
         return read;
     }
 
-    // SPEC 15.3.6, 15.8.2 (DECISIONS: G570): a Closure's result with the regions of its own body resolved. An enclosing region is fixed in
-    // `body` (BU-28), so it stays: the result and the environment name one Origin, solved over all its bounds. One call is one query of
+    // SPEC 15.3.6, 15.8.2 (DECISIONS: G570): a Closure's result with the regions of its own body resolved: a local region as its value
+    // (RegionValue, R7-O2 A1), a call's open region as its sources' meet (it has no local value; retention's AddRegionMeet reads it so),
+    // each in turn until no region of the body is left. An enclosing region is fixed in `body` (BU-28), so it stays: the result and the
+    // environment name one Origin, solved over all its bounds. One call is one query of
     // rewrittenParts (DECISIONS BU-19), as PublishedResult is: a part's resolution is a function of the part and `body`, so each distinct
     // part is resolved once (PLAN G492-a (ii)).
     private BoundType ResolveLocalResultOrigins(BoundType type, ExecutableBody body)
@@ -340,6 +342,11 @@ public sealed partial class Binding
             if (!RegionIn(origin, body))
             {
                 return origin;
+            }
+
+            if (SlotRegion(origin))
+            {
+                return this.RegionValue(origin) is { } value ? Resolve(value) : origin;
             }
 
             var sources = this.LocalRegionSources(origin);

@@ -89,7 +89,7 @@ public sealed partial class Binding
             return;
         }
 
-        var chain = BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), equality, this.formingBody);
+        var chain = BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), this.formingBody);
         if (!chain && !equality && longer.Kind == OriginKind.Intersection && !this.FitConjunct(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)

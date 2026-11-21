@@ -28,6 +28,25 @@ public sealed partial class Binding
             _ => false,
         };
 
+    private static void CarryOrigin(BoundClosure plan, BoundOrigin? origin)
+    {
+        if (origin is null)
+        {
+            return;
+        }
+
+        if (SlotRegion(origin) && (origin.Body == plan.EvaluatingBody || CarriedRegion(origin, plan.EvaluatingBody.Definition?.Declaration)) &&
+            !plan.Carried.Contains(origin))
+        {
+            plan.Carried.Add(origin);
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            CarryOrigin(plan, origin.Operands[i]);
+        }
+    }
+
     // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats, as a range of captureRepeatRows;
     // empty for a valid list.
     private (int Start, int Count) RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
@@ -162,8 +181,36 @@ public sealed partial class Binding
         environment.Slot = index;
         environment.MutableCapture = false;
         plan.Storage.Add(new(source, environment));
+        this.CarryRegions(plan, type);
         scope.Values[source.Name] = environment;
         return environment;
+    }
+
+    // SPEC 15.6.5 (R7-O2 A1): the Closure's fact of the regions it carries (BoundClosure.Carried): each local region an entry's Type names
+    // (the source's: an entry's binding holds it, by value or under a borrow of its slot) that the evaluating body reads as its value, a
+    // region of that body or one it carries in turn, kept once; each distinct part of the Type once (DECISIONS BU-19).
+    private void CarryRegions(BoundClosure plan, BoundType type) => this.CarryPart(plan, type, this.visitedParts.Begin(this.storageVersion));
+
+    private void CarryPart(BoundClosure plan, BoundType type, uint query)
+    {
+        if (!type.CarriesAnyOrigin)
+        {
+            return;
+        }
+
+        CarryOrigin(plan, type.Origin);
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            CarryOrigin(plan, type.OriginArguments[i]);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query))
+            {
+                this.CarryPart(plan, type.Components[i], query);
+            }
+        }
     }
 
     // SPEC 7.7.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.

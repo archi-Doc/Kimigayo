@@ -17,7 +17,7 @@ public sealed partial class Binding
 internal sealed class OriginProofMetrics
 {
     private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter, Koto Use)> queries = new();
-    private readonly long[] edges = new long[(int)OriginPremiseRule.LocalPlace + 1];
+    private readonly long[] edges = new long[(int)OriginPremiseRule.Value + 1];
 
     /// <summary>Gets the top-level proof requests: requests made while no premise environment was active.</summary>
     internal long Requests { get; private set; }

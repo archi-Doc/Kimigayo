@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // SPEC 15.6.5's classes of an Origin in a body B, as Binding's judge and the C1-F4 view read them: fixed by the contract (FixedOrigin), fixed
-// in B (FixedIn), a region B judges through its sources (RegionIn), an Origin B judges through the sources the region graph records
+// in B (FixedIn), a region B judges through its sources (RegionIn), an enclosing body's region B reads as its value (CarriedRegion, from
+// the capture formation's fact), an Origin B judges through the sources the region graph records
 // (SourcesIn) or may bound (BoundableIn), a finite Origin local to B (BodyLocalIn), a relation A5 judges as a row (BodyChain, 2a0-D D1;
 // RegionChain), a Refuted relation (RefutesOriginRelation) and a pending atom (PendingAtom). They share one rule, the
 // view's row 6 (EnclosingAtom; 2a0-D section 3, DECISIONS R4-M101 E5, BU-28): in a Closure body the Origins of its captures, atoms an
@@ -15,8 +16,8 @@
 //   and whether a Closure is classified (BoundClosure.Classified).
 // - Outputs: the class, read by the judge (Binding.OriginProof.cs, Binding.LocalRegions.cs), the records (Binding.OriginFits.cs,
 //   Binding.OriginClauses.cs, Binding.CallRelations.cs) and the view (Binding.OriginRows.Atoms.cs, ClassifyAtom).
-// - Invariants: each class is decided here once, by one predicate that every reader shares; only SourcesIn reads state, the region graph's;
-//   a pending atom is tested before any other class.
+// - Invariants: each class is decided here once, by one predicate that every reader shares; only SourcesIn and CarriedRegion read state,
+//   the region graph's and the capture formation's; a pending atom is tested before any other class.
 // - Prohibitions: no proof, judgment, record or state; no class derived from syntax.
 
 namespace Kimi.Compiler;
@@ -104,22 +105,40 @@ public sealed partial class Binding
     // SPEC 15.3.6, 15.6.5: a local region that `body` judges through its sources; an enclosing body's region is fixed in it.
     internal static bool RegionIn(BoundOrigin origin, ExecutableBody body) => IsLocalRegion(origin) && !EnclosingAtom(origin, body);
 
+    // SPEC 15.6.5 (its Closure sentence; DECISIONS R7-O2 A1), 7.7.2: whether the body of `function`, a Closure, receives `region`, a local
+    // region of an enclosing body, through an environment: an entry's Type of that Closure or of a Closure it is evaluated in names it,
+    // formed in a body where the region is its own or carried in turn (BoundClosure.Carried, the capture formation's fact); a named
+    // function ends the chain. There the region is a fixed Origin equal to its value (RegionValue). A region a nested signature names is
+    // not carried by that name: it stays a fixed Origin with no premise (SPEC 15.3.4).
+    internal static bool CarriedRegion(BoundOrigin region, Parsing.Koto? function)
+    {
+        for (var current = function; current is Parsing.FunctionKoto { IsAnonymous: true, ClosureStorage: { } plan }; current = plan.EvaluatingBody.Definition?.Declaration)
+        {
+            if (plan.Carried.Contains(region))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 15.6.5: an Origin a relation formed in `body` may bound in the region graph: a local region, a Borrow's Origin or a meet, unless
     // it is an enclosing body's atom, fixed in `body`.
     internal static bool BoundableIn(BoundOrigin origin, ExecutableBody body)
         => (IsLocalRegion(origin) || origin.Kind is OriginKind.Projection or OriginKind.Anchor or OriginKind.Intersection) && !EnclosingAtom(origin, body);
 
-    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation (`==` when `equality`) is a body chain, a row A5 judges, when one of its ends, as the
-    // caller has it at its use, is not fixed in `body` (an Unbound end counts), or when it is a region chain; any other fixed-fixed relation
-    // is Binding's to judge (A3 §7, until R7).
-    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter, bool equality, ExecutableBody body)
-        => !FixedIn(longer, body) || !FixedIn(shorter, body) || RegionChain(longer, shorter, equality, body);
+    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation is a body chain, a row A5 judges, when one of its ends, as the caller has it at its use,
+    // is not fixed in `body` (an Unbound end counts), or when it is a region chain; any other fixed-fixed relation is Binding's to judge
+    // (A3 §7, until R7).
+    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body)
+        => !FixedIn(longer, body) || !FixedIn(shorter, body) || RegionChain(longer, shorter, body);
 
-    // SPEC 15.3.6, 15.6.5: a relation in `body` with a local region at a longer end of a direction it requires (both ends of `==`, SPEC 15.6.5
-    // "edges both ways"), an enclosing body's, fixed there, included: the region's value is known only once every body is bound, so A5
-    // alone reads it (UniversalRelations.Outlives) and Binding leaves a row; the judge answers Unknown for it (JudgeOriginAtoms).
-    internal static bool RegionChain(BoundOrigin longer, BoundOrigin shorter, bool equality, ExecutableBody body)
-        => body.IsBody && (HasLocalRegion(longer) || (equality && HasLocalRegion(shorter)));
+    // SPEC 15.3.6, 15.6.5: a relation in `body` with a local region at either end, an enclosing body's, fixed there, included: the region's
+    // value is known only once every body is bound, so A5 alone reads it (UniversalRelations: a region `body` carries equals its value)
+    // and Binding leaves a row; the judge answers Unknown for it (JudgeOriginAtoms).
+    internal static bool RegionChain(BoundOrigin longer, BoundOrigin shorter, ExecutableBody body)
+        => body.IsBody && (HasLocalRegion(longer) || HasLocalRegion(shorter));
 
     // SPEC 15.6.1: whether a relation is Refuted in `body`: its longer end is a finite Origin local to it and its shorter end fixed in it, or
     // its longer end is Unstated (UnstatedRelation).
