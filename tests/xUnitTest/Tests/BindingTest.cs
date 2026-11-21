@@ -684,6 +684,7 @@ public class BindingTest
     [InlineData((byte)BindingFailure.Ambiguous, DiagnosticCode.AmbiguousBinding_Kd)] // associated ambiguity: two candidates, their instances, a count
     [InlineData((byte)BindingFailure.InvalidAssociatedType, DiagnosticCode.InvalidAssociatedType_Kd)] // agreement: two instances, each binding the associated Type
     [InlineData((byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // agreement: two instances' mappings
+    [InlineData((byte)BindingFailure.AssociatedInference, DiagnosticCode.AssociatedTypeInferenceFailed_Kd)] // inference: its reason, the associated Type and its instance
     public void ALibraryNodesFactRecordIsTheProgramsRecord(byte failure, DiagnosticCode code)
     {
         var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
@@ -698,6 +699,7 @@ public class BindingTest
             BindingFailure.Ambiguous => [Related(associated[0]), Instance(associated[0], BoundType.Boolean), Related(associated[1]), Instance(associated[1], BoundType.Unit), new(ProblemFactKind.Count, SourceRef.Of(node), 2)],
             BindingFailure.InvalidAssociatedType => [Related(contract), Instance(contract, BoundType.Boolean), Instance(associated[0], BoundType.Unit), Related(contract), Instance(contract, BoundType.Unit), Instance(associated[0], BoundType.Boolean)],
             BindingFailure.IncompatibleImplementation => [Related(contract), Instance(contract, BoundType.Boolean), Related(contract), Instance(contract, BoundType.Unit)],
+            BindingFailure.AssociatedInference => [new(ProblemFactKind.Reason, SourceRef.Of(associated[0]), (long)Binding.InferenceProblem.Shape), Related(associated[0]), Instance(associated[0], BoundType.Boolean)],
             _ => throw new ArgumentOutOfRangeException(nameof(failure)),
         };
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!

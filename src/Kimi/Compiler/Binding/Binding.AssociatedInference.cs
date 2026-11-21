@@ -9,7 +9,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(ReferenceEqualityComparer.Instance);
 
-    private readonly InferenceFailureRows inferenceFailures;
+    private readonly List<ProblemFact> inferenceFacts = []; // An inference hole's facts, kept across passes (InferenceFacts).
 
     // The pass's inference sources, each path whose consumer list (BoundConformancePath.InferenceConsumers) this pass filled, in the order
     // first filled: InvalidateAssociatedEvidence's order, and the lists ResetAssociatedInference empties.
@@ -97,6 +97,18 @@ public sealed partial class Binding
         }
 
         return InferenceLengthInScope(length.Left, owner, out invalid) && InferenceLengthInScope(length.Right, owner, out invalid);
+    }
+
+    // The function a declaration result belongs to: the result Type's function, or the function itself (InferenceFacts' site).
+    private static FunctionKoto DeclaringFunction(Koto at)
+    {
+        for (var node = at; ; node = node.Parent!)
+        {
+            if (node is FunctionKoto function)
+            {
+                return function;
+            }
+        }
     }
 
     private void ResetAssociatedInference()
@@ -638,16 +650,43 @@ public sealed partial class Binding
         }
     }
 
-    private bool ReportAssociatedInference(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, Kimi.Diagnostics.DiagnosticRequirement requirement)
+    // SPEC 8.6.4: an inference hole's problem: its reason (Reason, an InferenceProblem row), the associated Type's declaration (Related,
+    // role 0) with the identity's Contract instance (Instance), the declaration result it read (role 1), the undetermined input or the
+    // binder outside the conformance scope (role 2) and another declaration result (role 3). The list is kept, and starts empty for each
+    // hole, so a warm pass allocates none and no earlier hole's facts stay in front.
+    private ReadOnlySpan<ProblemFact> InferenceFacts(BoundRequirement identity, AssociatedBinding binding)
     {
-        if (!this.inferenceFailures.TryGetValue(use, out var failure))
+        var facts = this.inferenceFacts;
+        facts.Clear();
+        var at = this.FactSite(identity.Symbol.Declaration);
+        facts.Add(new(ProblemFactKind.Reason, at, (long)binding.Problem));
+        facts.Add(new(ProblemFactKind.Related, at, 0));
+        facts.Add(new(ProblemFactKind.Instance, at, this.report.Keep(identity.Contract.Type!)));
+        var source = binding.ProblemSource ?? binding.InferenceSource;
+        if (source is not null)
         {
-            return false;
+            facts.Add(new(ProblemFactKind.Related, this.FactSite(source.ReturnType ?? source), 1));
         }
 
-        var binding = failure.Binding;
-        var identity = failure.Identity;
-        var reason = binding.Problem switch
+        if (binding.ProblemDetail is { } detail)
+        {
+            facts.Add(new(ProblemFactKind.Related, this.FactSite(detail), 2));
+        }
+
+        if (binding.InferenceSource is { } first && !ReferenceEquals(first, source))
+        {
+            facts.Add(new(ProblemFactKind.Related, this.FactSite(first.ReturnType ?? first), 3));
+        }
+
+        return System.Runtime.InteropServices.CollectionsMarshal.AsSpan(facts);
+    }
+
+    // An inference hole's record from its facts: the associated Type's identity and the reason as evidence, its related locations by role.
+    private void ReportAssociatedInference(Koto use, Kimi.Diagnostics.DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var kind = (InferenceProblem)facts[0].Value;
+        var reason = kind switch
         {
             InferenceProblem.Input => "the implementation input key depends on an undetermined associated Type",
             InferenceProblem.Shape => "the declared results have no permitted structural correspondence",
@@ -656,26 +695,22 @@ public sealed partial class Binding
             InferenceProblem.Conflict => "declaration results supply conflicting complete Types",
             _ => "no eligible declaration result determines this associated Type",
         };
-        var name = DiagnosticTypeName(identity.Contract.Type!) + "." + identity.Symbol.Name;
-        var source = binding.ProblemSource ?? binding.InferenceSource;
-        var related = new List<(string Role, Koto At, string? Label)> { ("associated", identity.Symbol.Declaration, name) };
-        if (source is not null)
+        var declaration = this.compilation.SyntaxOf(facts[1].Site);
+        var name = this.AssociatedIdentityText(facts[2], declaration);
+        var related = new (string Role, Koto At, string? Label)[facts.Length - 2];
+        related[0] = ("associated", declaration, name);
+        for (var f = 3; f < facts.Length; f++)
         {
-            related.Add(("result", source.ReturnType ?? source, "declared result of " + source.Name));
+            var at = this.compilation.SyntaxOf(facts[f].Site);
+            related[f - 2] = facts[f].Value switch
+            {
+                1 => ("result", at, "declared result of " + DeclaringFunction(at).Name),
+                2 => (kind == InferenceProblem.Input ? "input" : "binder", at, kind == InferenceProblem.Input ? "undetermined input Type" : "binder outside the conformance scope"),
+                _ => ("result", at, "other declaration result"),
+            };
         }
 
-        if (binding.ProblemDetail is { } detail)
-        {
-            related.Add((binding.Problem == InferenceProblem.Input ? "input" : "binder", detail, binding.Problem == InferenceProblem.Input ? "undetermined input Type" : "binder outside the conformance scope"));
-        }
-
-        if (binding.InferenceSource is { } first && !ReferenceEquals(first, source))
-        {
-            related.Add(("result", first.ReturnType ?? first, "other declaration result"));
-        }
-
-        use.ReportIn(store, requirement, DiagnosticCode.AssociatedTypeInferenceFailed_Kd, evidence: [name, reason], related: related.ToArray());
-        return true;
+        use.ReportIn(store, problem.Requirement, problem.Code, evidence: [name, reason], related: related, condition: problem.Condition);
     }
 
     // The pass's identification of a requirement in a path, kept on the path (BoundConformancePath.RequirementMatches) until the pass
@@ -830,25 +865,5 @@ public sealed partial class Binding
         internal HashSet<BoundType> CheckedTypes { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal HashSet<BoundType> ProblemTypes { get; } = new(ReferenceEqualityComparer.Instance);
-    }
-
-    /// <summary>The `inferenceFailures` family's one accessor (DECISIONS BU-220): a pass family, the associated identity and binding an inference
-    /// hole of a conformance failed with (SPEC 8.6.4), stored with the use's failure by the recorder (RecordedFact; a present row always
-    /// has its Identity's Symbol); the first failure a use records stays. Its members keep the names its readers use.</summary>
-    private readonly struct InferenceFailureRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(BoundRequirement Identity, AssociatedBinding Binding), PassCounter> Family(ref NodeColumns columns) => ref columns.InferenceFailures;
-
-        internal void TryAdd(Koto use, (BoundRequirement Identity, AssociatedBinding Binding) failure)
-        {
-            if (!this.TryGetValue(use, out _))
-            {
-                binding.SetRecordedFact(use, Family, failure);
-            }
-        }
-
-        internal bool TryGetValue(Koto use, out (BoundRequirement Identity, AssociatedBinding Binding) failure)
-            => (failure = binding.RecordedFact(use, Family)).Identity.Symbol is not null;
     }
 }

@@ -199,7 +199,7 @@ public partial class SyntaxIdTest
     // CallableSelectionFailures, a Callable value call no bound applies to; BaseCallFailures, a `base` reference that calls nothing;
     // ObjectErasureFailures, VirtualEntryErasureTest's program calling through another object, which has no Owned proof; B2a-2's
     // ReceiverOperations, a stored Field read and a method call, and ResultContexts, an `if`'s result; B3-1's
-    // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest); InferenceFailures, an inference hole no implementation fills; CallableConstraints,
+    // ArithmeticConformanceFailures, a conformance to Addable<string> (ArithmeticContractTest); CallableConstraints,
     // a callee needing `static` under an unproven Callable bound (CallableConstraintRecordTest); ClauseConstraints, a Function Item
     // reference whose Type argument's clause is refuted (ConstraintBindingTest); B2b-1's UnboundSlots, a call whose slot nothing binds,
     // and UniqIndexing, a Dictionary's user index; B3-2's RequirementGroups, a requirement call through a Type parameter; B6b's query
@@ -240,7 +240,6 @@ public partial class SyntaxIdTest
     [InlineData("ObjectErasureFailures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return other.ordinary()\n()", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ResultContexts", "func f(b: bool) -> i32\n    let x = if b => 1 else => 2\n    return x\n")]
     [InlineData("ArithmeticConformanceFailures", "struct Bad\n    Self is Addable<string>\n    associate Output is i32\n()", DiagnosticCode.InvalidArithmeticConformance_Kd)]
-    [InlineData("InferenceFailures", "contract C\n    associate Item\n    func read<T>(value: T) -> Self.Item\nstruct S\n    Self is C\n    public func read<U>(value: U) -> U => value\n", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
     [InlineData("CallableConstraints", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", DiagnosticCode.UnprovenConstraint_Kd)]
     [InlineData("ClauseConstraints", "struct K<T>\n    T is Copy\n    public let t: T\nfunc id<U>(u: U) -> i32 => 0\nfunc use() -> i32\n    let f = id<K<string>>\n    return 0\n", DiagnosticCode.UnsatisfiedConstraint_Kd)]
     [InlineData("UnboundSlots", "func make<T>() -> i32 => 1\nlet x = make()\n", DiagnosticCode.UnboundTypeArgument_Kd)]

@@ -205,7 +205,7 @@ public sealed partial class Binding
                     {
                         this.Fail(clause, BindingFailure.Access);
                         this.Fail(premises.Parent!, BindingFailure.Access);
-                        return Invalid(BindingFailure.Access);
+                        return Invalid(BindingFailure.Access, []);
                     }
                 }
             }
@@ -246,19 +246,18 @@ public sealed partial class Binding
                         var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
                         {
-                            return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);
+                            return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous, []);
                         }
 
-                        this.inferenceFailures.TryAdd(conformance.Use, (identity, binding));
-                        return Invalid(BindingFailure.AssociatedInference);
+                        return Invalid(BindingFailure.AssociatedInference, this.InferenceFacts(identity, binding));
                     }
 
-                    return Invalid(BindingFailure.InvalidAssociatedType);
+                    return Invalid(BindingFailure.InvalidAssociatedType, []);
                 }
 
                 if (!this.TypeAccessCovers(associated, conformance.Type, conformance.Contract))
                 {
-                    return Invalid(BindingFailure.Access);
+                    return Invalid(BindingFailure.Access, []);
                 }
             }
 
@@ -270,7 +269,7 @@ public sealed partial class Binding
             if (failedRequirement is not null)
             {
                 this.partPrerequisites[conformance.Use] = failedRequirement;
-                return Invalid(BindingFailure.InvalidAssociatedType);
+                return Invalid(BindingFailure.InvalidAssociatedType, []);
             }
 
             if (inheritedProof is { } inheritedResult)
@@ -374,7 +373,7 @@ public sealed partial class Binding
                     var propertyProof = this.VerifyPropertyRequirement(conformance, property, self, scope);
                     if (propertyProof is ConstraintProof.Error or ConstraintProof.Refuted)
                     {
-                        return Invalid(BindingFailure.IncompatibleImplementation);
+                        return Rejected(BindingFailure.IncompatibleImplementation);
                     }
 
                     proof = CombineProof(proof, propertyProof, true);
@@ -389,7 +388,7 @@ public sealed partial class Binding
                 var match = this.IdentifyRequirement(conformance, identity);
                 if (match.State == RequirementMatchState.Ambiguous)
                 {
-                    return Invalid(BindingFailure.Ambiguous);
+                    return Invalid(BindingFailure.Ambiguous, []);
                 }
 
                 if (match.State == RequirementMatchState.Pending)
@@ -400,7 +399,7 @@ public sealed partial class Binding
 
                 if (match.State == RequirementMatchState.Missing)
                 {
-                    return Invalid(BindingFailure.MissingImplementation);
+                    return Invalid(BindingFailure.MissingImplementation, []);
                 }
 
                 var selected = match.Member!;
@@ -408,7 +407,7 @@ public sealed partial class Binding
                 var compatibility = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope, selection);
                 if (compatibility is ConstraintProof.Error or ConstraintProof.Refuted)
                 {
-                    return Invalid(BindingFailure.IncompatibleImplementation);
+                    return Rejected(BindingFailure.IncompatibleImplementation);
                 }
 
                 proof = CombineProof(proof, compatibility, true);
@@ -440,7 +439,19 @@ public sealed partial class Binding
             this.conformanceChecks--;
         }
 
-        ConstraintProof Invalid(BindingFailure failure)
+        // The conformance's problem at its use (SPEC 8.6, 23.1.2): its own record beside any other of the use, an inference hole's with
+        // its facts (InferenceFacts), every other one fact-less.
+        ConstraintProof Invalid(BindingFailure failure, ReadOnlySpan<ProblemFact> facts)
+        {
+            conformance.Invalid = true;
+            this.Record(conformance.Use, failure, facts);
+            return ConstraintProof.Error;
+        }
+
+        // R7-E2 E2-5b: an incompatible implementation keeps the slot's record, since its explanation may still be a pass family's row
+        // (callablePremiseFailures, SPEC 8.11.4), which ReportIssue reads after ReportProblem's fact-less row would answer; removed when
+        // that family records its facts.
+        ConstraintProof Rejected(BindingFailure failure)
         {
             conformance.Invalid = true;
             this.Fail(conformance.Use, failure);
@@ -454,7 +465,7 @@ public sealed partial class Binding
         {
             this.partPrerequisites[conformance.Use] = clause;
             (this.specificationLinks ??= new()).Add(conformance.Use);
-            return Invalid(BindingFailure.InvalidAssociatedType);
+            return Invalid(BindingFailure.InvalidAssociatedType, []);
         }
     }
 

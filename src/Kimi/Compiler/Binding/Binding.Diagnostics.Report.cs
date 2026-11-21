@@ -320,10 +320,6 @@ public sealed partial class Binding
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, store, requirement))
-        {
-            // Declaration evidence is retained by the common binder, independent of the adapter.
-        }
         else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, store, requirement))
         {
             // SPEC 8.11.4: an implementation cannot add an unrequired Callable bound.
