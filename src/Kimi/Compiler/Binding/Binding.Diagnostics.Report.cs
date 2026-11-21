@@ -68,7 +68,13 @@ public sealed partial class Binding
 
     // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row.
     private static long? ImplementationLimit(BindingFailure failure)
-        => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
+        => failure switch
+        {
+            BindingFailure.TypeHeightLimit => TypeHeightLimit,
+            BindingFailure.PremiseClosureLimit => PremiseClosureLimit,
+            BindingFailure.ResolutionWorkLimit => ResolutionWorkLimit,
+            _ => null,
+        };
 
     // SPEC 4.3.4: a noinit directive's closed reason, with the declaration it initializes.
     private static void ReportNoInit(Koto directive, DiagnosticCollection? store, in BindingProblem problem, NoInitProblem reason)
@@ -266,6 +272,13 @@ public sealed partial class Binding
                         : candidate.CallableSignature ? $"The argument's known call signature is {shownActual.Text}; the candidate requires {shownExpected.Text} from the supplied Type evidence"
                         : candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
                         : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
+                }
+
+                if (candidate.CheckedPart is { } checkedPart)
+                {
+                    // SPEC 10.5.1: the argument checked against the candidate's expected Type, and its own resolution there.
+                    var outcome = checkedPart.Outcome == CallSelection.Ambiguous ? "is ambiguous" : "has no applicable candidate";
+                    label = $"{candidate.Function.Name}: at {DiagnosticText.Bound(DiagnosticTypeName(checkedPart.Expected), 48).Text}, {DiagnosticText.Bound(checkedPart.Part.ToString(), 48).Text} {outcome}";
                 }
 
                 if (candidate.ConstraintFailure is { } condition)

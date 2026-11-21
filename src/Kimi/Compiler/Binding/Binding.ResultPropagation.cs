@@ -647,12 +647,14 @@ public sealed partial class Binding
         return failed;
     }
 
-    // SPEC 10.5.1, 14.9.2 step 3 at every position (U1.6g2): the join's own position (depth 0) and each child position of its Tuple and
-    // array results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take its typed parts' common Type, with no
-    // call; at depth 0 that is DecideResult's step-2 Type, PositionType selecting over the same supplied Types; with no Type it has no
-    // part (Never or failed parts only), and a waiting part there is a broken contract. Aggregate: each child position at its element of
-    // `target`. The sources are then bound at `target` as wholes (BindWaitedSources), each aggregate adapting its bound parts to its
-    // element Type (7.7.4, per element): a typed position's value at a borrowed element is each source's own (PLAN G924 R8).
+    // SPEC 10.5.1, 14.9.2 step 3 at every position: the join's own position (depth 0) and each child position of its Tuple and array
+    // results, one row per kind (PositionKind, ChildPositions). Typed: its waiting parts take the Target Result Type at the position
+    // (`target`): a step-1 Type where an outer expectation fixed one (at a call argument the selected candidate's parameter Type, ArgFlow
+    // ruling 63, superseding U1.6g2's step-2 Type there), else DecideResult's step-2 Type, PositionType selecting over the same supplied
+    // Types, which is the typed parts' common Type; with neither it has no part (Never or failed parts only), and a waiting part there is
+    // a broken contract. Aggregate: each child position at its element of `target`. The sources are then bound at `target` as wholes
+    // (BindWaitedSources), each aggregate adapting its bound parts to its element Type (7.7.4, per element): a typed position's value at
+    // a borrowed element is each source's own (PLAN G924 R8).
     private void BindStepThree(Koto join, int start, int end, BoundType? target)
     {
         switch (this.PositionKind(start, end, out var common))
@@ -662,7 +664,7 @@ public sealed partial class Binding
                 {
                     if (this.positionParts[i] is { BoundType: null } part && this.Deferred(part))
                     {
-                        _ = common is null ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, common);
+                        _ = (target ?? common) is not { } type ? this.Fail(part, BindingFailure.Internal) : this.BindWaiting(part, type);
                     }
                 }
 
@@ -686,19 +688,24 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 14.9.2 step 3: the Type an expression that awaits takes at `target`; null when it cannot take it. Its writes are dropped.
+    // SPEC 14.9.2 step 3: the Type an expression that awaits takes at `target`; null when it cannot take it. Its writes and a part's
+    // failed check (FitChecked) are dropped: the caller judges the Type.
     private BoundType? LateTypeOf(Koto node, BoundType target)
     {
         var (writes, adaptations) = (this.lateWrites.Count, this.lateAdaptations.Count);
+        var checkedPart = this.trialChecked;
         var late = this.LateType(node, target);
         this.TruncateLate(writes, adaptations);
+        this.trialChecked = checkedPart;
         return late;
     }
 
-    // SPEC 14.9.2 step 3: an expression that awaits its position takes `target` when its late Type fits it at `use`.
+    // SPEC 14.9.2 step 3: an expression that awaits its position takes `target` when its late Type fits it at `use`. A part's failed
+    // check there (FitChecked) is its misfit, not a candidate's reason: dropped at exit.
     private bool TryPropagate(Koto node, BoundType target, Koto use)
     {
         var (writes, adaptations) = (this.lateWrites.Count, this.lateAdaptations.Count);
+        var checkedPart = this.trialChecked;
         try
         {
             if (this.LateType(node, target) is not { } late || !this.FitsTypeAt(late, target, use, out _))
@@ -722,6 +729,7 @@ public sealed partial class Binding
         finally
         {
             this.TruncateLate(writes, adaptations);
+            this.trialChecked = checkedPart;
         }
     }
 
@@ -805,9 +813,10 @@ public sealed partial class Binding
             ArrayLiteralKoto array => this.LateArrayType(array, target),
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
-            _ when kind is PartKind.Function or PartKind.Case => // One waiting for its call, fitted as an argument by its header
+            _ when kind is PartKind.Function or PartKind.Case or PartKind.Call or PartKind.Reference => // One waiting for its call, fitted as
+                // an argument part at this position's Type (SPEC 10.5.1: a header, a reference at S, a call or Case by its resolution there),
+                // and completed by its call at it.
                 this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
-            _ when kind is PartKind.Call or PartKind.Reference => target, // Completed by its call at this position's Type (SPEC 10.1).
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };
 

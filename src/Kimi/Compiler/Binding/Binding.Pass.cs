@@ -60,6 +60,7 @@ public sealed partial class Binding
         this.objectPayloadCauses?.Clear();
         this.ResetMatches();
         this.argumentParts.Clear();
+        this.dependentChecks.Clear();
         this.argumentProbe = null;
         this.resultLocalEvidence.Clear();
         this.resultCursor = 0;

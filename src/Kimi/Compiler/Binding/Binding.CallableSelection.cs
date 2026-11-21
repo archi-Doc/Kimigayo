@@ -118,6 +118,7 @@ public sealed partial class Binding
                 {
                     var map = MapValueCallArguments(call, candidates[i].Signature);
                     var state = map.Valid ? this.ProbeValueCall(call, scope, candidates[i].Signature, expected, operations.AsSpan(i * stride, stride)) : CandidateApplicability.Inapplicable;
+                    _ = this.TakeTrialChecked(call); // SPEC 10.5.1: a row's failed check is taken with the row (R2.4); its record names the rows.
                     evaluated[i] = new(null, state, null, 0, ArgumentMap: map);
                     if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                     {
@@ -171,7 +172,7 @@ public sealed partial class Binding
         var parameters = signature.Components[0].Components;
         for (var i = 0; i < parameters.Count; i++)
         {
-            // SPEC 10.5.1: each argument fits its parameter as a call argument does; a waiting nested call is checked by the selected signature.
+            // SPEC 10.5.1: each argument fits its parameter as a call argument does, a nested call or Case checked against it (FitChecked).
             var state = this.FitArgument(call.ArgumentNodes[i], parameters[i], scope, call, out var operation);
             if (state is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
             {

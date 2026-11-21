@@ -163,9 +163,10 @@ public sealed partial class Binding
 
     // SPEC 10.5.1 (DECISIONS BU-43), P2: whether an anonymous function or a contextual Case reached without an expected Type is a result
     // of a call's control-flow argument at a position its call completes (CallableTarget): it then awaits that call, its kind recorded
-    // once, and the call completes it as a waiting argument (TakeWaiting). Only under an argument probe (UnderArgumentProbe), which is
-    // asked first: BindNode asks this of every node, and outside a probe no form is classified.
-    private bool AwaitsCallAtResult(Koto node, BoundType? expected)
+    // once, and the call completes it as a waiting argument (TakeWaiting); a Case's payloads are prepared there (PreparePayloads). Only
+    // under an argument probe (UnderArgumentProbe), which is asked first: BindNode asks this of every node, and outside a probe no form
+    // is classified.
+    private bool AwaitsCallAtResult(Koto node, BindingScope scope, BoundType? expected)
     {
         if (expected is not null || this.argumentProbe is null || node.BindingState != BindingState.Unvisited)
         {
@@ -179,6 +180,7 @@ public sealed partial class Binding
         }
 
         this.RecordPart(node, kind);
+        _ = kind == PartKind.Case && this.PreparePayloads(node, scope); // A failed payload is its own record; the Case rests on it.
         return true;
     }
 
@@ -387,7 +389,7 @@ public sealed partial class Binding
     {
         if (this.RecordsWaitingForm(part))
         {
-            return true;
+            return ClassifyPart(part) != PartKind.Case || this.PreparePayloads(part, scope);
         }
 
         var kind = ClassifyPart(part);
@@ -451,6 +453,25 @@ public sealed partial class Binding
 
         this.RecordPart(part, kind);
         return true;
+    }
+
+    // SPEC 10.5.1, 6.5.2 (PLAN G924 AF-3b; design-casepath 2.3, B5): a contextual Case's payload arguments, prepared where its part is
+    // recorded, once per pass, with no expectation and outside any trial, as a named call's arguments are (PrepareCallArguments), so its
+    // check against an expected Type reads prepared parts only (FitConstructionAt); false when one failed.
+    private bool PreparePayloads(Koto part, BindingScope scope)
+    {
+        if (KotoHelper.UnwrapParentheses(part) is not InvocationKoto { Method: SyntaxFormKoto { Akind: KotoKind.InferredCase } } construction)
+        {
+            return true;
+        }
+
+        var valid = true;
+        for (var i = 0; i < construction.ArgumentNodes.Count; i++)
+        {
+            valid &= this.PrepareArgument(construction.ArgumentNodes[i], scope, default, callableContext: true);
+        }
+
+        return valid;
     }
 
     // SPEC 10.5: first obtain independent evidence. Only an inner call that would need a result expectation waits; failures of
