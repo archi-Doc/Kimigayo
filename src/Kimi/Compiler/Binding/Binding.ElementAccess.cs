@@ -12,8 +12,10 @@ namespace Kimi.Compiler;
 //   and view-range calls, resolved slices, path and referent authority, object cases and pair-layer borrows (BorrowsInEveryCase), a
 //   node's constraint scope, an operand's terminal Type (OperandTerminal) and the Binding's TyCtxt (Types.Reference,
 //   AdtDef.FindField); never a node's own compilation (DECISIONS R8-M51).
-// - Outputs: the answers, and one fact of the running pass: ReachesThroughBorrow's answer for a selection (the reachedThroughBorrow
-//   family), written at its first query from its receiver's row and its own step, so that every later query reads it in O(1).
+// - Outputs: the answers, and one memo: ReachesThroughBorrow's answer for a selection (the reachedThroughBorrow family), a final fact
+//   of the selection's syntax, filled at its first query from its receiver's row and its own step, so that every later query reads it
+//   in O(1); valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next
+//   ResetPass), released at the freeze.
 // - Invariants: the readers are Binding's own steps and the HIR publisher, which reads the Binding it publishes. A selection's answer
 //   reads only what its own binding and its receivers' bindings wrote: every adaptation writer writes the node being bound or its
 //   operand or receiver while that parent is bound, and a query at a selection runs while the selection's parent's parent is bound, so
@@ -48,11 +50,12 @@ public sealed partial class Binding
     // SPEC 3.4.3: the referent of an exclusive array reference offers element replacement, without requiring a mutable
     // binding for the reference itself. Shared layers on its path are checked separately by Binding.
     // An owned Array or fixed array stored below exclusive references only (`b.items[i]` with `b: uniq/Bank`) offers the same, whose
-    // path (receiver, the prefix it is selected from: PathFold's Access and Borrowed) decides it rather than the stored Type (PLAN G59).
-    private bool IsExclusiveArrayElement(IndexKoto element, in PathPrefix receiver) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
-        ((this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiver.Access)) is { Semantics: SemanticsKind.Uniq } access &&
-            access.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
-        (receiver.Access == SemanticsKind.Uniq && receiver.Borrowed && HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray));
+    // path authority (receiverPath, the access its receiver's path grants: PathFold) decides it rather than the stored Type (PLAN G59).
+    private bool IsExclusiveArrayElement(IndexKoto element, SemanticsKind receiverPath) => element.Right is not RangeKoto && !this.IsSlicing(element) &&
+        ((this.ExclusiveAccessType(element.Left, this.ReferentAuthority(element.Left, receiverPath)) is { Semantics: SemanticsKind.Uniq } receiver &&
+            receiver.SafeReferent is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Dictionary }) ||
+        (receiverPath == SemanticsKind.Uniq && HirTables.TypeOf(element.Left)?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray &&
+            this.ReachesThroughBorrow(element.Left)));
 
     // SPEC 4.7.1: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.
@@ -61,9 +64,8 @@ public sealed partial class Binding
             (receiver is { Kind: BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary } || this.BorrowsInEveryCase(receiver, receiverNode));
 
     // SPEC 4.8.2, 4.7.1: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it: its own step
-    // (BorrowsAt) or its receiver's answer. The answer is a fact of the selection, stored with it for the pass (reachedThroughBorrow) at
-    // its first query, so each selection is judged once per pass however the queries interleave (the Front's B1 and B1b on D-932). A
-    // fold carries the same answer per prefix (PathPrefix.Borrowed).
+    // (BorrowsAt) or its receiver's answer. The answer is a fact of the selection, memoized with it (reachedThroughBorrow) at its first
+    // query, so each selection is judged once per pass however the queries interleave (the Front's B1 and B1b on D-932).
     private bool ReachesThroughBorrow(Koto source)
     {
         if (ReachStep(source) is not { } selection)
@@ -307,10 +309,10 @@ public sealed partial class Binding
         return false;
     }
 
-    /// <summary>The `reachedThroughBorrow` family's one accessor (DECISIONS BU-220): a working-state family, ReachesThroughBorrow's
-    /// answer for a selection in the running pass, kept in its node's module's NodeColumns at its SyntaxId (null: not yet asked in this
-    /// pass). Only the running pass's queries read it, never a library row after the library pass, so the freeze releases them
-    /// (NodeColumns.Freeze).</summary>
+    /// <summary>The `reachedThroughBorrow` family's one accessor (DECISIONS BU-220): a memo of ReachesThroughBorrow's answer for a
+    /// selection, a final fact of its syntax, kept in its node's module's NodeColumns at its SyntaxId (null: not yet asked under the
+    /// pass's stamp) and valid while that stamp stands: the pass, then the queries after it, its reports included, until the next
+    /// ResetPass. No query reads a library row after the library pass, so the freeze releases them (NodeColumns.Freeze).</summary>
     private readonly struct ReachedThroughBorrowRows(Binding binding)
     {
         internal bool? this[Koto selection]

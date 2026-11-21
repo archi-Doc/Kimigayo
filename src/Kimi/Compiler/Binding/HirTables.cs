@@ -346,7 +346,7 @@ internal struct NodeColumns
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
-    internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, the running pass's working state, released at the freeze (Binding.ElementAccess.cs).
+    internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, a memo of a final fact of its syntax valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next ResetPass), released at the freeze (Binding.ElementAccess.cs).
 
     internal void Resize(int length)
     {
