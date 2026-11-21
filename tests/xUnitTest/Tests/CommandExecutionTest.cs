@@ -27,7 +27,7 @@ public sealed class CommandExecutionTest : IDisposable
     // first:
     // - The message, no code: a missing input (build, check, restore), a directory without projects, the usage errors (build, toolchain,
     //   check's format, restore's input, an unknown command), run's selection, the toolchain's calls (a missing manifest, run --no-build
-    //   without a build, a missing executable, a missing toolchain root), restore's lock write (an output failure), a malformed solution
+    //   without a build, a missing executable), restore's lock write (an output failure), a malformed solution
     //   file and two files nested deeper than the configuration reader reads (the parse of a user's file is the file's failure).
     // - CheckFaulted_Kd: the host's console throwing at the selected project's line (build with a type the toolchain's classification
     //   lists, which printed as a plain failure, and with one it does not, which escaped the command; check and emit), at the line after
@@ -52,7 +52,6 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("restore source", null, false, "Restore requires a .kimiproj input.")]
     [InlineData("restore missing", null, false, "Input not found")]
     [InlineData("missing executable", null, false, "Executable not found")]
-    [InlineData("missing toolchain", null, false, "Toolchain file not found")]
     [InlineData("selection", "Project: ", true, null)]
     [InlineData("selection, unlisted", "Project: ", true, null)]
     [InlineData("after the projects", "No projects loaded", true, null)]
@@ -181,9 +180,6 @@ public sealed class CommandExecutionTest : IDisposable
                 break;
             case "missing executable":
                 await new RunCommand(null!, kimigayo, solution).Execute(new(), [Path.Combine(this.directory, "missing.exe")], token);
-                break;
-            case "missing toolchain":
-                await new ToolchainCommand(kimigayo).Execute(new() { ToolchainRoot = Path.Combine(this.directory, "no toolchain") }, ["verify"], token);
                 break;
             case "check selection":
                 await new CheckCommand(null!, kimigayo, solution).Execute(new(), [project], token);

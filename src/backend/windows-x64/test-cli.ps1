@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
     [string] $ToolchainRoot = '', [string] $LlvmBin = '',
-    [string] $MismatchedLlvmBin = '',
     [string] $NativeCompiler = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
@@ -148,9 +147,38 @@ foreach ($level in @('O0', 'O2')) {
     if ((Get-FileHash $exe).Hash -cne $hash) { throw 'Failed build overwrote the last executable' }
     '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 }
-if ($MismatchedLlvmBin) {
-    $output = Invoke-Kimi @('toolchain', 'verify', '--LlvmBin', $MismatchedLlvmBin) 1
-    if (-not $output.Contains('mismatch')) { throw 'Explicit verification must reject a changed toolchain' }
+# toolchain verify is a self-check of what the compiler carries (Tatara B6b3): a copy of the compiler's folder outside any checkout, with
+# KIMI_TOOLCHAIN_ROOT a missing directory and PATH only dotnet's directory and System32, reads no root and runs no tool, so it passes
+# and its report says so; without tatara.dll beside it, it fails naming the load, and its report is failed with that error.
+if (-not $NativeCompiler) {
+    $alone = Join-Path ([IO.Path]::GetTempPath()) ('kimi-verify-' + [guid]::NewGuid().ToString('N'))
+    Copy-Item -LiteralPath (Split-Path $compiler) -Destination $alone -Recurse
+    $managed = $compiler
+    $root = $ToolchainRoot
+    $path = $env:Path
+    $compiler = Join-Path $alone 'Kimi.dll'
+    $ToolchainRoot = Join-Path $alone 'missing toolchain'
+    $env:Path = "$(Split-Path (Get-Command dotnet).Source);$env:SystemRoot\System32"
+    try {
+        $verifyReport = Join-Path $work 'verify-alone.json'
+        $output = Invoke-Kimi @('toolchain', 'verify', '--Report', $verifyReport)
+        $verified = Get-Content -LiteralPath $verifyReport -Raw | ConvertFrom-Json
+        if (-not $output.Contains("Tatara: build $($verified.tatara.build), ABI $($verified.tatara.abi), LLVM $($catalog.llvmVersion)") -or
+            -not $output.Contains("kernel32: $($catalog.kernel32.sha256) (the catalog's)") -or -not $output.Contains("kimi_backend: $($catalog.artifactSha256) (the catalog's)") -or
+            -not $output.Contains('Toolchain verification passed.') -or $verified.status -cne 'passed' -or
+            (@($verified.PSObject.Properties.Name) -join ',') -cne 'status,compilerVersion,llvmVersion,tatara,supplies,seconds') { throw "toolchain verify must check only what Kimi carries: $output" }
+        Remove-Item -LiteralPath (Join-Path $alone 'tatara.dll')
+        $output = Invoke-Kimi @('toolchain', 'verify', '--Report', $verifyReport) 1
+        $verified = Get-Content -LiteralPath $verifyReport -Raw | ConvertFrom-Json
+        if (-not $output.Contains('Tatara cannot be loaded: tatara.dll beside the compiler (') -or $verified.status -cne 'failed' -or
+            -not $verified.error.Contains('Tatara cannot be loaded')) { throw "A failed self-check must report the load: $output" }
+    }
+    finally {
+        $compiler = $managed
+        $ToolchainRoot = $root
+        $env:Path = $path
+        Remove-Item -LiteralPath $alone -Recurse -Force
+    }
 }
 # The command line's LlvmBin names the tools toolchain verify checks; a build accepts it and does not read it: a bin without tools builds.
 $noTools = Join-Path $work 'no tools'
