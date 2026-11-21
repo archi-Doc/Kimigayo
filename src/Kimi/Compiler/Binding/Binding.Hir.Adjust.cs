@@ -20,7 +20,8 @@
 //   (HirFormsTest.APartBelowAStoredReferenceIsAPlace). Every record takes an operation's use by ChildAdjust(child, in operation). A use
 //   in place forms no reference and states no mode: its consumer's use decides its capability.
 // - Outputs: each child's use, to an IHirUses; the HIR publisher writes them as the Adjust column and the plan rows, a discarded
-//   Place's as its plan row's (PlanRow.Adjust); ClosureEffects finds one capture use's (Binding.ClosureReceivers).
+//   Place's as its plan row's (PlanRow.Adjust), and, for an Error's form, only which kept operands it reads whole (FormReads,
+//   PlanRow.KeptRead; DECISIONS D-986); ClosureEffects finds one capture use's (Binding.ClosureReceivers).
 // - Invariants: a consumer's uses come in evaluation order, its calls' inputs last and in CallPlan.Of's order; the rule reads no other
 //   walk state.
 // - Prohibitions: the rule writes nothing; no record keeps a second copy of a use's Adjust.
@@ -410,6 +411,43 @@ public sealed partial class Binding
 
         // Whether a node is of the module being published.
         internal readonly bool Owns(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId < table.Hir.Adjusts!.Length;
+    }
+
+    // The HIR publisher's record of an Error's form (DECISIONS D-986): the children the rule's takes for the form the Error has (KindOp)
+    // read whole in a use not in place (HirAdjust.Reads), each take as RowUses completes it for a valid node of that form, with no
+    // earlier claim (a kept operand's rows are this publish's, written after). A use in place is no read of the whole Place even where
+    // the rule takes it as a Temporary (a value base) or Binding recorded a synthesized shared read of a selection's receiver (SPEC 3.4.3,
+    // 15.1.4), so it is left out. It writes no plan row, so the Error's own rule (Keeps, R4-M109) stands, and the publisher marks only
+    // the kept ones (PlanRow.KeptRead). It is the FormReads family's one accessor (DECISIONS BU-220 as R7-N5 B6b amends it): a
+    // working-state family whose row, a read child's in its module's NodeColumns at its SyntaxId, carries the publication that wrote it
+    // (the publisher's number), a row of another publication absent, since Check publishes again in its pass after H1's failures and
+    // CheckBound reruns it. The library's is released at its freeze (NodeColumns.Freeze); the library pass records no failure (one
+    // refuses it: FreezeLibrary), so it writes none.
+    private readonly struct FormReads(Binding binding, uint publication) : IHirUses
+    {
+        public void Call(int ordinal)
+        {
+        }
+
+        public void Use(Koto? child, in BoundArgumentOperation operation)
+            => this.Add(child, child is null ? default : binding.ChildAdjust(child, operation, PlaceUse.Shared));
+
+        public void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
+            => this.Add(child, child is null || kind == UseKind.InPlace ? default : binding.ChildAdjust(child, adaptation, kind, PlaceUse.Shared));
+
+        public void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place) => this.Add(child, adjust);
+
+        // Whether the form of the Error a node belongs to read its whole Place in a publication.
+        internal static bool Of(Binding binding, Koto node, uint publication)
+            => node.SyntaxOwner is { } table && table.Hir.Families.FormReads.Get(node.SyntaxId, binding) == publication;
+
+        private void Add(Koto? child, HirAdjust adjust)
+        {
+            if (child is not null && adjust.Reads)
+            {
+                HirTables.Of(child).Families.FormReads.Ref(child.SyntaxId, binding) = publication;
+            }
+        }
     }
 
     private sealed partial class HirPublisher

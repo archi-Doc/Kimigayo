@@ -15,6 +15,12 @@ public sealed partial class HirFormsTest
     // The callees of the Keeps rows (ARejectedNodeKeepsWhatItsFormEvaluatesOnEveryPath).
     private const string K = "func k(a: i32) -> i32 => a\nfunc k2(a: i32, b: i32) -> i32 => a\n";
 
+    // Z17's twin r-weak-sibling (valid; SPEC 3.2.2, 13.6.3, 15.6.2): a Weak Field's borrow beside a live `uniq` on a sibling Field, which
+    // Binding rejects only through the Weak limit (Unsupported_Kd).
+    private const string WeakSibling = "struct Node\n    public let w: Weak<rc/Node>\n    public var v: i32\n    public init(w: Weak<rc/Node>, v: i32)\n" +
+        "        self.w = w@move\n        self.v = v\nfunc f(w: Weak<rc/Node>) -> i32\n    var n: Node = Node.init(w@move, 1)\n    let r = n.v@uniq\n" +
+        "    let k = n.w@ref\n    r@follow = 2\n    return 0\n";
+
     // Declarations whose callers' inputs need an Origin relation between fixed Origins the premises do not prove, whatever the input's
     // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved. State's
     // static Places, which a call's input borrows, are the inputs Binding still rejects after selection: the located limit until P42
@@ -411,6 +417,70 @@ public sealed partial class HirFormsTest
         var keeps = node.Children().Where(static x => HirTables.AdjustOf(x) == new HirAdjust(HirAcquire.None, HirAdaptation.None) && HirTables.Op(x) != HirOp.Syntax);
         Assert.Equal(kept, string.Join(" ", keeps.Select(static x => x.ToString())));
         Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+    }
+
+    // DECISIONS D-986 (for Z17's commit 3): a kept operand is marked read (PlanRow.KeptRead) where the Adjust rule, run for its Error's
+    // form, reads its whole Place in a use not in place (HirAdjust.Reads: an acquisition or a shared borrow, SPEC 13.4, 15.1.5, 15.1.6), as
+    // it takes a valid node's child of that form: an operator's Copy operand, a non-Copy operand it inspects through a shared Loan and an
+    // Error value, a Tuple's elements, `and`'s left operand, a built-in index's index, a match's Place Subject, which its plan borrows
+    // shared, a for's Iterable, and the operand of a conversion Binding left unclassified (KindOp's Convert arm: a same-Type acquisition
+    // and G839's `h@raw/Missing`); not a selection's receiver or a built-in index's base (in place: r-weak-sibling's `n.w`, valid beside
+    // its limits, an unresolved member, and a value base, which the rule takes as a Temporary in place: `mk()[missing]`, the row that
+    // fails without FormReads' in-place guard), a borrow's operand, nor an argument of a call Binding did not resolve, whose operation it
+    // did not decide (CallPlan.Of reads only a resolved call's plan), whether it selected a callee (`k2`) or none (`k`, two arguments for
+    // one parameter). Only a kept operand is marked. Fail-before: no kept operand was marked.
+    [Theory]
+    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k2(x, missing)\n    return 1\n", "k2(x, missing)", "")]
+    [InlineData(K + "func f() -> i32\n    var x: i32\n    let z = k(x, missing)\n    return 1\n", "k(x, missing)", "")]
+    [InlineData("func f() -> i32\n    var x: i32\n    missing(x + missing2)\n    return 1\n", "x + missing2", "x missing2")]
+    [InlineData("func f(s: string) -> bool\n    return s == missing\n", "s == missing", "s missing")]
+    [InlineData("func f() -> i32\n    var x: i32\n    let t = (x, missing)\n    return 1\n", "(x, missing)", "x missing")]
+    [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", "c")]
+    [InlineData("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", "v[missing]", "missing")]
+    [InlineData(
+        "func f()\n    var y: Option<i32> = .Some(1)\n    let r = y@uniq\n    let z = match y\n        .Nope => 1\n        _ => 2\n    r@follow = .None\n",
+        "match y",
+        "y")]
+    [InlineData("func f() -> i32\n    var x: i32\n    for i in missing(x)\n        _ = i\n    return 1\n", "for i in missing(x)", "missing(x)")]
+    [InlineData("func f(s: string) -> string\n    return s@string\n", "s@string", "s")]
+    [InlineData("func f() -> i32\n    var h = 1\n    let r = h@uniq\n    let p = h@raw/Missing\n    r@follow = 2\n    return 0\n", "h@raw/Missing", "h")]
+    [InlineData(WeakSibling, "n.w", "")]
+    [InlineData(WeakSibling, "n.w@ref", "")]
+    [InlineData("func mk() -> [3 of i32] => [1, 2, 3]\nfunc f() -> i32\n    return mk()[missing]\n", "mk()[missing]", "missing")]
+    [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing\n", "p.missing", "")]
+    public void AKeptOperandIsReadWhereItsErrorsFormReadsItsPlace(string source, string text, string read)
+    {
+        var kept = new HirAdjust(HirAcquire.None, HirAdaptation.None);
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(x => x.ToString() is { } written && (written == text || written.StartsWith(text + "\n", StringComparison.Ordinal)) &&
+            HirTables.Op(x) == HirOp.Error);
+        var marked = node.Children().Where(x => HirTables.AdjustOf(x) == kept && HirTables.KeptRead(x));
+        Assert.Equal(read, string.Join(" ", marked.Select(static x => x.ToString())));
+        Assert.DoesNotContain(Reachable(c.Kotonoha), x => HirTables.KeptRead(x) && !(x.Parent is { } parent && HirTables.Op(parent) == HirOp.Error && HirTables.AdjustOf(x) == kept));
+        Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+    }
+
+    // DECISIONS D-986 (G147 ruling 53): a kept operand's read is its publication's. Check publishes again in its pass (after H1's
+    // failures; CheckBound reruns it), so a read an earlier publication of the pass recorded is not a later one's: with the recorded read
+    // of `v[missing]`'s index placed at its kept base `v`, which the form uses in place, CheckBound's republication marks the index alone,
+    // its row rewritten with the republication's number. No program's own republication drops a read today (H1's failures only add
+    // Errors), so the row places the earlier read by hand; a natural program replaces it when one exists. Fail-before (a pass-lived
+    // row): `v` was marked read too.
+    [Fact]
+    public void AKeptOperandsReadIsItsPublications()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", output: OutputKind.Library);
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(static x => x.ToString() == "v[missing]" && HirTables.Op(x) == HirOp.Error);
+        var (unread, read) = (node.Children().First(static x => x.ToString() == "v"), node.Children().First(static x => x.ToString() == "missing"));
+        ref var rows = ref HirTables.Of(read).Families.FormReads;
+        var recorded = rows.Get(read.SyntaxId, c.Binding);
+        Assert.NotEqual(default, recorded);
+        rows.Ref(unread.SyntaxId, c.Binding) = recorded;
+        c.Binding.CheckBound();
+        Assert.NotEqual(recorded, HirTables.Of(read).Families.FormReads.Get(read.SyntaxId, c.Binding)); // CheckBound republished.
+        Assert.Equal("missing", string.Join(" ", node.Children().Where(HirTables.KeptRead).Select(static x => x.ToString())));
     }
 
     // DECISIONS Z16 (Z15 2g-D D2; B1, B4, B6): every failure fact the HIR publishes (Binding.FailureFact: an Error, a failed acquisition at
