@@ -17,7 +17,8 @@
 // external declarations, each an ExternalFunction read for its Symbol and DllImport; R9-B1); the enum OutputKind, which project
 // configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
-// project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
+// project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and of Misc JobProcess,
+// Kimi's launcher for the programs it runs, in which the run's program runs (PLAN G1188).
 // Output: the pair, the build record, the staged libraries, the object and the executable, each published by
 // replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
 // failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
@@ -49,12 +50,13 @@
 // fault.
 
 using System.ComponentModel;
-using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
+using Microsoft.Win32.SafeHandles;
 using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
@@ -155,11 +157,13 @@ internal static partial class NativeToolchain
         return await RunExecutable(paths.Executable, Path.GetFullPath(project.Directory.Length == 0 ? "." : project.Directory), cancellationToken);
     }
 
-    // Runs a program and returns its exit code; its output is copied to Kimi's raw standard streams and is complete when this returns
-    // or throws: the copies take no token and are awaited after Wait, which on cancellation kills the tree first, so the pipes reach
-    // their end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome
-    // and the cancellation is rethrown. A descendant that escaped the kill's walk (its parent exited first) and holds the output keeps
-    // a cancelled run waiting until it exits or a second Ctrl+C ends the process.
+    // Runs a program and returns its exit code. The program runs in a job of its own (JobProcess), so its whole tree ends with the run:
+    // after the program's exit its remaining descendants (as a test case's do), on cancellation the program with them, and when Kimi's
+    // process ends (a second Ctrl+C included) with the job's last handle (PLAN G1188). It shares Kimi's standard input (Tatara decision
+    // 15; when Kimi has none, StandardInput, the program reads end of input); its output is copied to Kimi's raw standard streams and
+    // is complete when this returns or throws: the copies take no token and are awaited after the job's end, so the pipes reach their
+    // end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome and the
+    // cancellation is rethrown. The exit is awaited on a thread of its own.
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -168,30 +172,26 @@ internal static partial class NativeToolchain
             throw new FileNotFoundException("Executable not found: " + executable);
         }
 
-        var start = new ProcessStartInfo(executable)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var process = Process.Start(start) ?? throw new IOException("Cannot start: " + executable);
+        using var program = new JobProcess(executable, workingDirectory, null, StandardInput());
         var output = Task.WhenAll(
-            process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
-            process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+            program.Stdout.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
+            program.Stderr.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+        var exit = Task.Factory.StartNew(() => program.Wait(Timeout.Infinite), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            await Wait(process, cancellationToken);
+            await exit.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
+            program.Kill();
+            await exit;
             await output.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             throw;
         }
 
+        program.Kill(); // The descendants the program left end with the run.
         await output;
-        return process.ExitCode;
+        return (int)program.ExitCode;
     }
 
     /// <summary>Replaces checkout and user-profile roots with stable placeholders in published records.</summary>
@@ -247,31 +247,20 @@ internal static partial class NativeToolchain
         }
     }
 
-    // Waits for a launched process; on cancellation kills its tree, waits for its exit and rethrows. RunExecutable's wait, and
-    // Verification's ToolProcess's (internal for that file-scoped type).
-    internal static async Task Wait(Process process, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-
-            await process.WaitForExitAsync(CancellationToken.None);
-            throw;
-        }
-    }
-
     private static JsonObject CreateBuildRecord() => new()
     {
         ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
         ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
+
+    // Kimi's own standard input for run's program (Tatara decision 15), which the caller does not own; null when Kimi has none: no handle,
+    // or a value that is no open handle of this process (one its parent passed without letting it inherit), so the program gets
+    // JobProcess's closed input and reads end of input.
+    private static SafeFileHandle? StandardInput()
+    {
+        var input = new SafeFileHandle(GetStdHandle(-10), ownsHandle: false);
+        return !input.IsInvalid && GetHandleInformation(input.DangerousGetHandle(), out _) ? input : null;
+    }
 
     // The record's invalidation: the incomplete record a build writes first (Begin) and again after a failed move of its executable.
     private static void Invalidate(string record) => WriteRecord(record, CreateBuildRecord());
@@ -289,4 +278,11 @@ internal static partial class NativeToolchain
             File.Delete(temporary);
         }
     }
+
+    [DllImport("kernel32.dll")]
+    private static extern nint GetStdHandle(int kind);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetHandleInformation(nint handle, out uint flags);
 }
