@@ -62,11 +62,8 @@ public sealed class CommandExecutionTest : IDisposable
     [InlineData("restore lock line", "Dependency lock", true, null)]
     public async Task ACommandFailsByItsInputItsToolchainOrItsOwnFault(string origin, string? failingLine, bool faulted, string? message)
     {
-        var console = new DiagnosticContractTest.DiagnosticConsole
-        {
-            FailingLine = failingLine,
-            Failure = origin == "selection, unlisted" ? new FormatException("The host's console failed.") : null,
-        };
+        Action fail = origin == "selection, unlisted" ? () => throw new FormatException("The host's console failed.") : DiagnosticContractTest.DiagnosticConsole.Fail;
+        var console = new DiagnosticContractTest.DiagnosticConsole { LineAction = failingLine is null ? null : (failingLine, fail) };
         var kimigayo = new Kimigayo(console);
         var project = this.Write("Hello");
         var exit = await this.Execute(origin, kimigayo, project);

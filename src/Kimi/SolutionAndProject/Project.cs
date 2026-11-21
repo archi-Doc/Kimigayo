@@ -216,52 +216,59 @@ public partial class Project
 
     /// <summary>Checks product sources and records a Library build or links an Application. The toolchain boundary (R9-B2): the
     /// toolchain's classification (<see cref="NativeToolchain.IsToolchainFailure"/>) applies only around the toolchain's calls (the
-    /// artifact paths and the record's invalidation; the native build or the Library record), and such a failure fails the build with its
-    /// message (IMPL 20.3; SPEC 23.2.2). The compiler's steps run between them, outside both catches, each result with its own fault path;
-    /// any other exception under the build (the compiler's read of the checked metadata, the rendering of a toolchain failure, or one the
-    /// toolchain leaves) ends the build's own result as Faulted (DIAGNOSTICS rule 9).</summary>
-    /// <param name="cancellationToken">Cancels checking, generation and native tool processes.</param>
+    /// artifact paths and the build's beginning, which takes the output's lock and invalidates the record; the native build or the
+    /// Library record), and such a failure fails the build with its message (IMPL 20.3; SPEC 23.2.2). The compiler's steps run between
+    /// them, outside both catches, each result with its own fault path; any other exception under the build (the compiler's read of the
+    /// checked metadata, the rendering of a toolchain failure, or one the toolchain leaves) ends the build's own result as Faulted
+    /// (DIAGNOSTICS rule 9). The output's lock is held from the beginning until the native build or the Library record returns, on every
+    /// outcome.</summary>
+    /// <param name="cancellationToken">Cancels the wait for the output's lock, checking, generation and native tool processes.</param>
     /// <returns>Whether this OutputKind's checks and artifacts succeeded.</returns>
     public async Task<bool> Build(CancellationToken cancellationToken = default)
     {
         try
         {
+            Action<DiagnosticSeverity, string> report = (severity, message) => this.kimigayo.WriteLine(severity, message);
             ArtifactPaths paths;
+            FileStream output;
             try
             {
                 paths = ArtifactPaths.Create(this);
-                NativeToolchain.Invalidate(paths);
+                output = await NativeToolchain.Begin(paths.Record, report, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
             {
                 return this.ToolchainFailed(ex);
             }
 
-            var application = this.ProjectFile.OutputKind == OutputKind.Application;
-            if (!await this.BuildCore(application, cancellationToken, paths).ConfigureAwait(false))
+            using (output)
             {
-                return false;
-            }
-
-            // A Library's record restates the front end's metadata of its one checked target (BuildTargets).
-            var metadata = application ? null : this.buildMetadata.Single();
-            try
-            {
-                if (application)
+                var application = this.ProjectFile.OutputKind == OutputKind.Application;
+                if (!await this.BuildCore(application, cancellationToken, paths).ConfigureAwait(false))
                 {
-                    await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+                    return false;
                 }
-                else
-                {
-                    NativeToolchain.RecordLibrary(this, metadata!, paths, cancellationToken);
-                }
-            }
-            catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
-            {
-                return this.ToolchainFailed(ex);
-            }
 
-            return true;
+                // A Library's record restates the front end's metadata of its one checked target (BuildTargets).
+                var metadata = application ? null : this.buildMetadata.Single();
+                try
+                {
+                    if (application)
+                    {
+                        await NativeToolchain.Build(this, paths, report, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        NativeToolchain.RecordLibrary(this, metadata!, paths, cancellationToken);
+                    }
+                }
+                catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+                {
+                    return this.ToolchainFailed(ex);
+                }
+
+                return true;
+            }
         }
         catch (Exception ex) when (this.Faults(ex, null))
         {
