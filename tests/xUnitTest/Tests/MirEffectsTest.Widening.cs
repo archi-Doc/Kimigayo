@@ -9,7 +9,7 @@ namespace XunitTest;
 /// on a projection with a recursive base; it has unknown environment effects instead.</summary>
 public sealed partial class MirEffectsTest
 {
-    private const string Visited = "IncompatibleContractImplementation_Kd Self is Visit 1";
+    private const string Visited = "IncompatibleContractImplementation_Kd Self is Visit 18446744073709551615";
 
     private const string RecursiveTree = "contract Tree\n    associate Child is Tree\n    func child(self: ref/Self) -> Option<Self.Child>\n        effect confined\n";
 

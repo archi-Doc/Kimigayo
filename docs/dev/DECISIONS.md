@@ -761,8 +761,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
   `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded by R4-M69 (the Move code is A1's) and R4-M72 (the
-  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; A1 and A2
-  at 2g-6).
+  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; amended for
+  A1 and A2 by R4-M233).
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. R4-M71 keys `MirReport` by (code, subject, body) and places the merge across
   bodies at publication.
@@ -931,7 +931,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   one sweep; views above one are rare); sparse per-path or chunked sets (long-lived locals stay quadratic, more code); a second
   or third block walk beside `MirReach`.
 - **R4-M21** (2026-10-12; its lanes superseded by R4-M6a, its DefaultArgumentMove and PreparedInput rules by R4-M69, its clause "a
-  compiler temporary is never a Place of the program" by R4-M188; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
+  compiler temporary is never a Place of the program" by R4-M188; its clause "Opaque-root and Inlined rules stay MirReport's" for the Inlined rule by R4-M233; its clause "except through a raw pointer: an untracked Take" by BU-146: a Move through a raw pointer's
   Deref is untracked only into `TyCtxt.RawPart`'s parts, elsewhere it has no Move Path) Move paths and
   A1's state. `MirMoveData` keys a child path by (parent path, projection kind, argument) in a pooled table: Field, Base (one
   depth per step), ConstIndex and Downcast steps form paths; a PairLayer step is transparent (the Place itself in the owner
@@ -1826,8 +1826,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   on 38j). Conditions for 2f (superseded by R4-M106: no Φ_c remains): a Φ_c met at a receiver's formation is located at its later call
   (DIAGNOSTICS); a shared-receiver Φ_c takes the receiver's mode, or 2f reruns this rule's prototype variant with that case.
 - **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75; unit 1c-6; its Inlined rule superseded for A5 by R4-M97 under
-  R4-M90; A1/A2 at
-  2g-6, D15 staged) It supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's
+  R4-M90, for A1 and A2 by
+  R4-M233) It supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's
   rejection of "DefaultArgumentMove decided in A1", whose reason, R4-M10's placement in A6, no longer holds: R5-M23 has each recording
   rule name its requirement, and `MirReport` has no Place and must not derive a requirement from a code.
   - A1's mapping: A1 codes a Move of a PreparedInput slot (`MirLocalRole.PreparedInput`) or of its owned contents
@@ -2512,7 +2512,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     split is due before 2e-4 (the package), Solve.cs's before its next change (superseded by DEC Q9).
 - **R4-M97 A5-F9's copy disposition: a failure in an inline default copy is its template's only within one evaluation** (2026-10-21;
   under R4-M90; supersedes R4-M69's Inlined rule and R4-M10's Inlined sentence for A5, R4-M73's sub-bullet "R4-M69 governs inline
-  default copies" and R4-M92's G171 interim; closes PLAN G171's defect)
+  default copies" and R4-M92's G171 interim; closes PLAN G171's defect; its "Two ownership forms until 2g-6" superseded by
+  R4-M233)
   - Rule (D11; SPEC 7.2.3, 15.6): a failure found in an inline default copy is its template's when every event taking part lies in one
     evaluation of one copy. `MirBorrows.Covered(scope, loan, reservation)`: B, the innermost Inlined scope holding the operation's scope
     and the issue scopes of its Loan and reservation (`MirBody.Common`), moves outward (`Inlining(Outer(B))`) while the Loan or the
@@ -2715,7 +2716,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's `Definition`
     deadline in R4 (G210 is BU's); `ResultFit` windows now.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b; its PD21 due states superseded by DEC
-  Q9)
+  Q9; the mark's recorder amended by R4-M233)
   - Adopted: `MirDropTable.Incomplete(body) → (DiagnosticCode Code, SourceRef Subject)?`, first-wins per body, stored with the body's
     ends at `Close` beside `ViewsOf` (pooled, a warm rebuild 0 B). R4-M6a makes A2's verdicts exact only for a body A1 accepts, so a
     consumer reads which body's table is inexact, and with what.
@@ -7769,6 +7770,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     site, a second conflict at r-loc-index's site); a decided use with its own source node (A5's subject rule for one rvalue kind); a
     new statement kind for the read (`FakeRead` has the meaning); a per-site "has parts" bit for the landing fact (a side table for one
     reader); telling a kept part's position from syntax, or building a rejected target from syntax.
+- **R4-M233 A1 and A2 omit a copy's Language problems; one path for a problem no body describes** (Middle, 2026-11-22; Major; R7 plan
+  Z20, 2g-6, PLAN G126; Q-636; design `middle\notes\z20-design.md` Revision 1 and its two reviews) Supersedes R4-M97's "Two ownership
+  forms until 2g-6" (D15 staged) and R4-M69's Inlined fact for A1 and A2; amends R4-M10's Inlined sentence and R4-M102 (the mark's
+  recorder); supersedes R4-M21's placement clause "Opaque-root and Inlined rules stay MirReport's (R4-M10, U11)" for the Inlined rule:
+  the producers' one recorder omits a copy's problem, so no Inlined fact reaches MirReport, whose Opaque-root rule is unchanged.
+  - A1 and A2 record their Language problems through `MirDrops.Problem`, which marks the body and adds the problem to MirReport unless
+    its location lies in an inline default copy: that is its template's check, which the template reports at its declaration (SPEC
+    7.2.3), met in an instantiation and grouped with the template's record (SPEC 23.1.2's grouping clause), not a derived record, so
+    MirReport stays the one home of the derived-problem rules. A broken A1 contract is recorded wherever it lies. Deleted:
+    `ProblemFactKind.Inlined`, `MirReport.Add`'s Inlined drop, the publisher's arm. Rejected: a test per analysis (a second copy of the
+    rule); a `MirBody` ownership fact (A5's disposition differs); relocation with `Evaluated` (no A1 or A2 event of a copy lies outside
+    its evaluation).
+  - A problem no body describes is formed only by `MirProblem.WithoutBody`, with `NoBodyViews` (every bit), or by MirReport from such a
+    problem (Defect, the merge, a held round, Keep and Replay); a record gets `NoBodyViews` from `MirProgram.Report`. A4's owing body no
+    longer gives its view bits, and MirReport's merge defect no longer forms views 0. Rejected: 0; normalizing in MirReport; a constant
+    without the path.
+  - Staged: audit finding 7 (A4's readers recorded once per Run, the design's stamp) waits for its RP8 measurement under PLAN G349.
+  - Moves: none at publication (42 test expectations of internal NoBody view values).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -24054,6 +24073,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - **Conditions.** A further problem's condition is `BindingReport.Condition`'s one rule: an equal problem's condition, else the
       problem's own (its check's ordinal) or the next after its subject's last recorded one (a refining Contract's conflicts from 0;
       an Origin record beyond its node's first at 1, since that first, held in the slot outside the report, may be set after it).
+      Superseded in part by R7-M75's E3a-2 line (Q-635): "the next after its subject's last recorded one" counts only the problems of
+      its own requirement.
     - **Duplicates.** The pairwise checks fail both declarations and join their group; `RecordDuplicateGroups`, at the end of
       `BindDeclarations` after `PrepareSpecializations` (the pass's last pairwise check), records each later declaration with
       `Related` its group's first, and the first with `Cause` its earliest later (derived from that record). `IsDerived` gains one
@@ -24143,7 +24164,8 @@ R8-M* and R9-M* by the stage of the recording unit.
       `BindingReport.Condition`: ParameterShapes, the agreement, ContractMatching's `Invalid` (an ancestor path's and the child's
       requirement checks meet at one use) and the override family (`RecordOverride`, C4). Condition counts every earlier problem of
       the subject, so a conformance problem at a use that already holds another requirement's record takes a condition above 0; the
-      records and their text are unchanged (PLAN G1141).
+      records and their text are unchanged (PLAN G1141). Superseded in part by R7-M75's E3a-2 line (Q-635): Condition counts only the
+      subject's problems of the same requirement.
     - **Notes.** The absence's and the clause record's Notes stay, rendered by the adapter from the facts (B's O3/O-f (c): CLI and
       LSP rows pin them; PLAN G1223). Those of associated ambiguity, the agreement (both codes) and the undeclared Callable bound go
       (D3).
@@ -24674,10 +24696,55 @@ R8-M* and R9-M* by the stage of the recording unit.
     test's target formation) and Comparisons 119 (a library Contract without its one comparison member; unreachable with the shipped
     library). Dictionaries 58 (B1 real: a key whose fit failed is the node the duplicate check fails) and CaseLimits 79 (an owner
     over a failed part) keep `Fail` (PLAN G1141's dk2).
-  - **Later units add their lines here:** E3a-2 the mismatch family (`RecordTypeMismatch`'s guard goes, ruling 2), E3a-3 the
-    conversions' stores and `Related`'s role "entry", E3b selection and the call's constraints with the role "candidate" (the Front's
-    C2: each role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
+  - **Later units add their lines below:** E3b selection and the call's constraints with the role "candidate" (the Front's C2: each
+    role's meaning at its ReportProblem row), E3c the Front's in-flight files; each lists the stores it deletes.
   - **Moves (Q13).** None: probes base = head (prototype 27 plus C1's), the diagnostic and semantic snapshots 0 differences.
+  - **E3a-2 (Q-635, D-1039).** `RecordTypeMismatch`'s first-failure guard goes (the stage ledger's R7-E3 removal; B's ruling 2,
+    measured by the guard mutant: 37 of 43,695 rows, each a dependent duplicate at two callers, snapshot 0, no InternalInvariant_Kd);
+    the recorder records through `RecordNumbered`, so a node's further mismatch with other sides takes its own key and an equal one its
+    first's.
+    - Two callers keep their node's first failure by a read spelled at the site, each a Transitional naming R7-E5 and its input
+      (E2-5a's B2 (b) form): `ErasePart` (ArgumentKinds.Completion; the erasure's recorded Origin condition, Owned part or limit at the
+      part) and `FailClosureHeader`'s expectation that is no Function Type (Closures; the Closure's located limit at its header).
+    - The `Fail(.., TypeMismatch)` sites that hold both sides record them through `RecordTypeMismatch` at their node (Operators 95,
+      122; Conversions 274, 592; Conversions.Raw 79; ObjectViews 192; Properties 397, 445; Properties 476 joins 477's `FailMismatch`).
+      The pairless sites (ArrayInference 133, BoundContracts 121, ControlFlow 378, Elements 122, 138, Interpolation 145, Operators 79,
+      137, Ranges 319, 386, 418, 526, RuntimeTypeTests 96, Sequences 175, 393), Conversions 228 (no expected Type in scope) and Ranges
+      488 (no form row fits a boundary's Position: MismatchForm.PositionType states "Position or PositionRange"; B's ruling 10) keep
+      `Fail` until R7-E5's slot removal; no form row is added.
+    - **Numbering within a requirement (B's ruling 10; supersedes R7-M62's Conditions bullet, E2-3b, in its "the next after its
+      subject's last recorded one", and E2-5b's "Condition counts every earlier problem of the subject").** `BindingReport.Condition`
+      numbers a further problem within its requirement: an equal problem's condition, else its check's condition or, when the subject
+      holds a problem of the same requirement at or after it, the condition after that requirement's last; other requirements' problems
+      never move it. The old rule's reason no longer holds: no reader needs numbering across requirements (DIAGNOSTICS 3: the condition
+      distinguishes parts within one requirement; the key and the semantic order compare the requirement first), while `SlotProblem`
+      reads a requirement's first problem at condition 0 (a TypeMismatch beside an UnsatisfiedOriginRelation problem took condition 1
+      and was published twice: RawStorageTest's `b.pair = (fresh, 1, 2)`). Every ReportIssue arm that publishes a problem's key passes
+      its condition (`ConditionOf`).
+    - The mismatch Notes go by code (M3): WrappingConversionNote, the `conversion` Note (ClosureConversionNote, ReferenceSlotNote) with
+      `referenceSlotFacts` (its one writer, its Reset line, ReferenceSlotFact) and ErasureOutcome's SignatureFits and Receiver, which
+      only it read, and OmittedResultNote's TypeMismatch half (OriginRelation keeps it). `erasureOutcomes` stays (FunctionTypes,
+      OwnedConversions). No CLI or LSP contract row pinned them. Ratchet ("Node-keyed table members in Binding") -1, 26 on dev
+      a763e10f7.
+    - **Staged to E3c (C-439's split; B's ruling 10).** `ReferenceSlotFailure`'s four reasons (Structure, Constraint, OriginConflict,
+      InputOrigin) and its `Slot`, unread after E3a-2 (only None and SlotVariables are read), collapse when E3c migrates
+      FunctionReferences; ResultPropagation.Parts 169's R7-E5 Transitional (O6) is E3c's too.
+    - **Moves (Q13).** M3: the Notes above; content (label, evidence) at Operators 95, 122, Conversions 274, Conversions.Raw 79 and
+      Properties 397 (DiagnosticPrecisionTest's five side rows); no M1, M2 or M4; the diagnostic and semantic snapshots 0 differences.
+    - Open: PLAN G509's k1 (`let x = 1; x += 1.5`: the operand's mismatch is never judged after a failed destination; B's ruling 4);
+      G1141's R7-E5 inputs gain the two spelled reads and C3's w4 and c3.
+  - **E3a-3 (Q-634, D-1038).** NotObjectPayload records `Related` role 0 (the declaration that opts out, its own or the inherited
+    base's; shown as `declaration`); the range iteration's constraint records `Related` role 2, "entry" (the selected entry
+    declaration, SPEC 14.6.2), and `Constraint` (the kept `Subject is entry`), its role's meaning stated at its ReportProblem row (the
+    Front's C2). Deleted: `objectPayloadCauses`, `rangeIterationFailures`, their arms and Reset lines (ratchet "Node-keyed table
+    members in Binding" -2, 24 with E3a-2). Kept until R7-E5: the guards Sequences 193 and Contracts.Registration 148 (O6 (a)) and
+    FailIterationSubject's fact-less outcomes (a non-range subject, an Error proof). `Constraint`'s kind line names the range
+    iteration's entry. Moves: M4 NotObjectPayload_Kd's related declaration; M3 the two range Notes and M4 their related `entry`.
+    `objectErasureFailures` moves to E3b (B's E3a-3 ruling 3: E3b states one form of "a proof's outcome to its record" for every
+    caller of RequireConstraint and FailUnprovenConstraint); FailIterationSubject's outcome table, kept at its site and computed
+    once, is E3b's staged removal too, since it is no RequireConstraint caller and "every caller" does not cover it (the Front's
+    C-634a). E3c takes `arithmeticConformanceFailures` with ArithmeticContracts.cs, its writer, ArithmeticDiagnostics and the
+    selection and direction stores (ruling 4: E3c states the ineligible Type's reading, or B asks the owner then).
 - **R7-M76 A MIR problem is located at its failing location's subject** (Middle, 2026-11-22; R7 plan stream Z, Z18a, Q-631, D-1037
   (PLAN G396 (4): 2g-3's rest, the location part of 2g-4a and 2g-4b); Minor; Z15 2g-D Revision 2 D5; the owner's O-474 (b)) SPEC
   23.1.2, 15.1, 14.11.

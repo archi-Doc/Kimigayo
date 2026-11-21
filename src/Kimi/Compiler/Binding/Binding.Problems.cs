@@ -154,22 +154,17 @@ public sealed partial class Binding
     private BoundType? RecordNumbered(Koto node, BindingFailure failure, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
         => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
 
-    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them. Until E3 records the family's conditions, a node keeps its
-    // first failure, as a Fail does.
+    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them; a node's further mismatch with other sides takes its own
+    // key (RecordNumbered).
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
-        if (this.RecordedFailure(node) != BindingFailure.None)
-        {
-            return this.Fail(node, BindingFailure.TypeMismatch);
-        }
-
         if (this.IdentityPremiseErrorRead(this.ConstraintScope(node), actual.Type, expected.Type) is { } premise)
         {
             this.AddPrerequisite(node, premise.Use); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
         }
 
         var site = this.FactSite(at);
-        return this.Record(
+        return this.RecordNumbered(
             node,
             BindingFailure.TypeMismatch,
             [
@@ -242,6 +237,9 @@ public sealed partial class Binding
     private int SlotProblem(Koto node)
         => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), 0);
 
+    // A problem's condition, the last part of the key its record is published at; 0 for no problem (a slot without one).
+    private ushort ConditionOf(int problem) => problem >= 0 ? this.report.Problem(problem).Condition : (ushort)0;
+
     // The part of a located problem (its Span fact), or null for no problem.
     private SourceSpan? LocatedPart(int problem)
         => problem >= 0 && this.FactOf(problem, ProblemFactKind.Span) is { } fact ? new((int)(fact.Value >> 32), (int)fact.Value) : null;
@@ -307,6 +305,11 @@ public sealed partial class Binding
             case BindingFailure.AssociatedInference when this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportAssociatedInference(node, store, index, problem);
                 break;
+            case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is { } entry && entry.Value == 2:
+                // Role 2, "entry": a range iteration's selected entry declaration (IntoIterable, Iterable or UniqIterable, SPEC 14.6.2),
+                // which the range does not satisfy or is not proven to; ordinal 2 keeps the clause record's roles 0 and 1 apart.
+                this.ReportRangeIteration(node, store, index, problem);
+                break;
             case BindingFailure.UnsatisfiedConstraint or BindingFailure.UnprovenConstraint when this.FactOf(index, ProblemFactKind.Related) is not null && this.FactOf(index, ProblemFactKind.Constraint) is not null:
                 this.ReportClauseConstraint(node, store, index, problem); // No clause record carries an Instance, and no absence a Constraint.
                 break;
@@ -316,6 +319,9 @@ public sealed partial class Binding
             case BindingFailure.MissingOverrideTarget or BindingFailure.AmbiguousOverrideTarget or BindingFailure.OverrideContractMismatch or BindingFailure.DuplicateOverride or BindingFailure.UnprovenOverrideCondition
                 when node is FunctionKoto function && this.FactOf(index, ProblemFactKind.Reason) is not null:
                 this.ReportOverrideFailure(function, store, index, problem);
+                break;
+            case BindingFailure.NotObjectPayload when this.FactOf(index, ProblemFactKind.Related) is { } renouncing: // Role 0: the declaration that opts out, its own or an inherited base's.
+                ReportObjectPayload(node, store, problem, this.compilation.SyntaxOf(renouncing.Site));
                 break;
             case BindingFailure.ProtectedPlacement:
                 ReportProtectedPlacement(node, store, problem.Requirement);
