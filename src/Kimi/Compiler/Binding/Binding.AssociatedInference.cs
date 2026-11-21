@@ -18,6 +18,10 @@ public sealed partial class Binding
     private AssociatedInference? collectingAssociated;
     private bool associatedInferenceReady;
 
+    // The scaling rows' measure: the steps 8.5.5's walks of an inferred binding took past their memos in this compilation: the
+    // extraction's positions (ExtractAssociatedEvidence), an evidence's pairs (InferredEvidence) and its joins (JoinEvidence).
+    internal int InferredEvidenceWork { get; private set; }
+
     // Symbolic parameter projections are complete public Types; an unresolved projection on a nominal
     // declaration still needs a Type value. This query never searches bodies or introduces a proof. KimiLibraryShapeTest states with it
     // that no projection of the library's Type syntax is pending (PLAN G949 S1-r2, rule (c)).
@@ -81,6 +85,15 @@ public sealed partial class Binding
 
         return true;
     }
+
+    // SPEC 8.5.5 Extraction: whether the walk follows a requirement's part into an implementation's part of the same structure: same
+    // nominal constructions and Tuples (corresponding arguments), fixed arrays of equal length, concrete Semantics layers of the same
+    // layer; never a Function Type, a projection or a Semantics application. The walk's one structural test, read by the walk
+    // (ExtractAssociatedEvidence) and by an evidence's pairing below a written part (InferredEvidence).
+    private static bool ExtractionFollows(BoundType required, BoundType actual)
+        => required.Kind == actual.Kind && required.Symbol == actual.Symbol && required.Semantics == actual.Semantics && required.Components.Count == actual.Components.Count &&
+            required.Kind is BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Semantics or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice &&
+            (required.Kind != BoundTypeKind.FixedArray || (required.Length == actual.Length && ReferenceEquals(required.LengthExpression, actual.LengthExpression)));
 
     private static bool InferenceLengthInScope(BoundLength? length, BindingSymbol owner, out Koto? invalid)
     {
@@ -335,9 +348,11 @@ public sealed partial class Binding
                     }
 
                     required = this.ContractType(required, path.Scope, self);
+                    var written = this.MemberType(this.AsWritten(implementation.ReturnType, this.scopes[implementation], actual), match.Selection.DeclaringType)!;
                     actual = this.ContractType(this.MemberType(actual, match.Selection.DeclaringType)!, path.Scope);
                     batch.Pairs.Clear();
-                    this.ExtractAssociatedEvidence(batch, path, required, actual, implementation);
+                    batch.Source = implementation;
+                    this.ExtractAssociatedEvidence(batch, path, required, actual, written, null);
                 }
             }
 
@@ -449,21 +464,21 @@ public sealed partial class Binding
         }
     }
 
-    private void ExtractAssociatedEvidence(AssociatedInference batch, BoundConformancePath path, BoundType required, BoundType actual, FunctionKoto source)
+    // SPEC 8.5.5 Extraction (PLAN G1001): the one walk of an implementation's result, `actual` its normal form paired with the requirement's
+    // `required`, `written` the same part as written (AsWritten). While `written` has `actual`'s shape it follows it component by component;
+    // below a written part of another shape (a written projection normalized here to a structure) `written` stays that part and `anchor` the
+    // requirement's part there. Each hole position reached is one evidence: the hole's normal part, with what the source wrote at the
+    // position the evidence reads it from (Written) and the requirement's part there (Required: the hole itself, or the anchor's).
+    private void ExtractAssociatedEvidence(AssociatedInference batch, BoundConformancePath path, BoundType required, BoundType actual, BoundType written, BoundType? anchor)
     {
-        if (!this.ContainsInferenceHole(batch, path, required) || !batch.Pairs.Add((required, actual)))
+        if (!this.ContainsInferenceHole(batch, path, required) || !batch.Pairs.Add((required, actual, written, anchor)))
         {
             return;
         }
 
-        if (required.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(required.Components[0].Symbol, path.Type) &&
-            this.AssociatedInPath(
-                path.RootPath,
-                required.Components[0],
-                required.Symbol!,
-                required.Components.Count == 2 ? required.Components[1] : null,
-                path.Scope) is { } identity &&
-            this.InferenceHole(path, identity))
+        this.InferredEvidenceWork++;
+        var source = batch.Source!;
+        if (this.InferenceHoleOf(path, required) is { } identity)
         {
             batch.CheckedTypes.Clear();
             if (this.PendingAssociatedType(actual))
@@ -483,23 +498,121 @@ public sealed partial class Binding
                 batch.Evidence.Add(identity.Symbol, evidence = new());
             }
 
-            evidence.Add(new(path, identity, actual, source));
+            evidence.Add(new(path, identity, actual, source, written, anchor ?? required));
             return;
         }
 
-        if (required.Kind != actual.Kind || required.Symbol != actual.Symbol || required.Semantics != actual.Semantics || required.Components.Count != actual.Components.Count ||
-            required.Kind is not (BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Semantics or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) ||
-            (required.Kind == BoundTypeKind.FixedArray && (required.Length != actual.Length || !ReferenceEquals(required.LengthExpression, actual.LengthExpression))))
+        if (!ExtractionFollows(required, actual))
         {
             this.RecordInferenceProblem(path, required, InferenceProblem.Shape, source);
             return;
         }
 
+        var aligned = anchor is null && written.Kind == actual.Kind && written.Symbol == actual.Symbol && written.Components.Count == actual.Components.Count;
         for (var i = 0; i < required.Components.Count; i++)
         {
-            this.ExtractAssociatedEvidence(batch, path, required.Components[i], actual.Components[i], source);
+            this.ExtractAssociatedEvidence(batch, path, required.Components[i], actual.Components[i], aligned ? written.Components[i] : written, aligned ? null : anchor ?? required);
         }
     }
+
+    // SPEC 8.5.5, 8.6.3, 8.3.3 (PLAN G1001): an inferred binding read by a requirement's evidence is the same contract as the equal explicit
+    // specification: every extraction position of every source (EvidenceSources) gives the binding's part as that source wrote it, formed in
+    // this evidence (a projection whose route rests on a held obligation stays at its position, HeldPending): its written part formed, then
+    // the requirement's part there paired with it down to the hole (the walk's own pairing and hole test, once per pair in this answer). A
+    // position below a projection left in place gives none (pending). The image joins every position's part, identity with the binding's
+    // part first (JoinEvidence), so neither the order of sources nor of positions matters; none from every position: pending.
+    private BoundType? InferredEvidence(AssociatedBinding binding, AssociatedInference batch, out bool pending)
+    {
+        var normal = binding.Inferred!;
+        BoundType? image = null;
+        HashSet<(BoundType Required, BoundType Formed)>? read = null;
+        Dictionary<(BoundType Left, BoundType Right), BoundType>? joined = null;
+        foreach (var source in binding.EvidenceSources)
+        {
+            Read(source.Path, source.Identity, source.Required, this.ContractType(source.Written, source.Path.Scope));
+        }
+
+        pending = image is null;
+        return image;
+
+        void Read(BoundConformancePath path, BoundRequirement identity, BoundType required, BoundType formed)
+        {
+            if (!(read ??= new()).Add((required, formed)))
+            {
+                return;
+            }
+
+            this.InferredEvidenceWork++;
+            if (this.InferenceHoleOf(path, required) is { } hole)
+            {
+                if (hole == identity)
+                {
+                    image = image is null ? formed : this.JoinEvidence(image, formed, normal, joined ??= new());
+                }
+
+                return;
+            }
+
+            if (ExtractionFollows(required, formed))
+            {
+                for (var i = 0; i < required.Components.Count; i++)
+                {
+                    if (this.ContainsInferenceHole(batch, path, required.Components[i]))
+                    {
+                        Read(path, identity, required.Components[i], formed.Components[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    // SPEC 8.5.5: two positions' images of one inferred binding (`normal`, the binding) together, once per pair in an answer (`joined`):
+    // a part identical to the binding's is the binding's, from either side; only then a part not of the binding's shape (a projection left
+    // in place) is pending as a whole, and two shaped parts join by components.
+    private BoundType JoinEvidence(BoundType left, BoundType right, BoundType normal, Dictionary<(BoundType Left, BoundType Right), BoundType> joined)
+    {
+        if (ReferenceEquals(left, normal) || ReferenceEquals(right, normal) || ReferenceEquals(left, right))
+        {
+            return ReferenceEquals(right, normal) ? right : left;
+        }
+
+        if (!Shaped(left) || !Shaped(right))
+        {
+            return Shaped(left) ? left : right;
+        }
+
+        if (joined.TryGetValue((left, right), out var known))
+        {
+            return known;
+        }
+
+        this.InferredEvidenceWork++;
+        var count = normal.Components.Count;
+        var components = this.RentTypes(count);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                components[i] = this.JoinEvidence(left.Components[i], right.Components[i], normal.Components[i], joined);
+            }
+
+            return joined[(left, right)] = this.types.Rebuild(left, components.AsSpan(0, count), left.Origin, (BoundOrigin[])left.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+
+        bool Shaped(BoundType part)
+            => part.Kind == normal.Kind && part.Kind != BoundTypeKind.AssociatedProjection && part.Symbol == normal.Symbol && part.Components.Count == normal.Components.Count;
+    }
+
+    // The inference hole `type` names for `path` (SPEC 8.5.5: a missing associated Type of the definition, by its identity), or none: the
+    // walk's, ContainsInferenceHole's and the evidence's one hole test.
+    private BoundRequirement? InferenceHoleOf(BoundConformancePath path, BoundType type)
+        => type.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(type.Components[0].Symbol, path.Type) &&
+            this.AssociatedInPath(path.RootPath, type.Components[0], type.Symbol!, type.Components.Count == 2 ? type.Components[1] : null, path.Scope) is { } identity &&
+            this.InferenceHole(path, identity) ? identity : null;
 
     private bool InferenceTypeInScope(BoundType type, BindingSymbol owner, AssociatedInference batch, out Koto? invalid)
     {
@@ -562,14 +675,7 @@ public sealed partial class Binding
             return found;
         }
 
-        found = type.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(type.Components[0].Symbol, path.Type) &&
-            this.AssociatedInPath(
-                path.RootPath,
-                type.Components[0],
-                type.Symbol!,
-                type.Components.Count == 2 ? type.Components[1] : null,
-                path.Scope) is { } identity &&
-            this.InferenceHole(path, identity);
+        found = this.InferenceHoleOf(path, type) is not null;
         for (var i = 0; !found && i < type.Components.Count; i++)
         {
             found = this.ContainsInferenceHole(batch, path, type.Components[i]);
@@ -586,14 +692,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (required.Kind == BoundTypeKind.AssociatedProjection && required.Components[0].Symbol == path.Type &&
-            this.AssociatedInPath(
-                path.RootPath,
-                required.Components[0],
-                required.Symbol!,
-                required.Components.Count == 2 ? required.Components[1] : null,
-                path.Scope) is { } identity &&
-            this.InferenceHole(path, identity))
+        if (this.InferenceHoleOf(path, required) is { } identity)
         {
             var binding = this.AssociatedBindingOf(path.RootPath, identity)!;
             if (problem > binding.Problem)
@@ -802,7 +901,10 @@ public sealed partial class Binding
 
     internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
 
-    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source);
+    // An inference source, one extraction position (ExtractAssociatedEvidence): the hole's normal part (Type) of Source's result, what Source
+    // wrote at the position the evidence reads it from (Written: at the hole, or the written part of another shape the hole lies in) and
+    // the requirement's part there (Required).
+    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source, BoundType Written, BoundType Required);
 
     // The `associatedInference` family's one accessor (DECISIONS BU-220): a conforming Type's batch is kept in its Type's declaration's
     // module at the declaration's SyntaxId (SPEC 8.6.1: a conformance is declared in its Type's declaration, ImplTable's store rule),
@@ -862,7 +964,11 @@ public sealed partial class Binding
 
         internal Dictionary<(BoundConformancePath Path, BoundType Type), bool> Holes { get; } = new();
 
-        internal HashSet<(BoundType Required, BoundType Actual)> Pairs { get; } = new();
+        // The walk's visited positions (ExtractAssociatedEvidence): what each record keeps but the hole's normal part, the anchor included.
+        internal HashSet<(BoundType Required, BoundType Actual, BoundType Written, BoundType? Anchor)> Pairs { get; } = new();
+
+        // The implementation whose result the extraction in progress walks (AssociatedEvidence.Source).
+        internal FunctionKoto? Source { get; set; }
 
         internal HashSet<BoundType> CheckedTypes { get; } = new(ReferenceEqualityComparer.Instance);
 
