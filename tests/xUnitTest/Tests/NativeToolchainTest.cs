@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -295,6 +296,111 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Executable, "executable");
         File.WriteAllText(paths.Record, record);
         await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
+    }
+
+    // PLAN G1188: run's program and every descendant end with the run. Kimi is a child process, the test apphost's "run" probe
+    // (TestProcessRecoveryTest.ProcessProbe), which runs RunExecutable on the apphost in the row's probe mode; the row writes Kimi's
+    // input and reads its output and exit code, which are the run's: each output line the program's TEMP, each error line a process of
+    // the program's tree (its id and start time), which has ended when Kimi has. "escape" leaves a descendant that holds the program's
+    // output and whose parent exited first, so a kill of the program's tree misses it; once the row has read the tree's lines, the probe
+    // cancels the run or ends its process as a second Ctrl+C does. On dev 43fc18f6c the descendant keeps the run waiting, so Kimi does not end in a
+    // minute.
+    [Theory]
+    [InlineData("exit", "x", null, 123, 0)] // The program reads Kimi's input (Tatara decision 15); its exit code is the run's (a kill's is 125).
+    [InlineData("descendant", "", null, 0, 1)] // The program's output is the run's; the descendant it left ends with the run.
+    [InlineData("escape", "", "cancel", 130, 2)] // A cancelled run ends though the escaped descendant holds the program's output.
+    [InlineData("escape", "", "end", 130, 2)] // Kimi's end (Program.EndProcess) ends the program and its descendant.
+    public async Task ARunsProgramAndItsDescendantsEndWithTheRun(string program, string input, string? action, int exitCode, int lines)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The probe runs on Windows.");
+        var name = "kimi-run-" + Guid.NewGuid().ToString("N");
+        using var ready = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, name + "-ready");
+        using var go = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, name + "-go");
+        var start = new ProcessStartInfo(Path.ChangeExtension(typeof(NativeToolchainTest).Assembly.Location, ".exe"))
+        {
+            UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = this.directory,
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        start.Environment["KIMI_TEST_PROCESS_PROBE"] = "run";
+        start.Environment["KIMI_TEST_PROCESS_PROGRAM"] = program;
+        start.Environment["KIMI_TEST_PROCESS_READY"] = name + "-ready";
+        start.Environment["KIMI_TEST_PROCESS_GO"] = name + "-go";
+        if (action is not null)
+        {
+            start.Environment["KIMI_TEST_PROCESS_ACTION"] = action;
+        }
+
+        // A printed process is held from its line on when its id still names it (TestProcessRecoveryTest.Identified), so only the
+        // run's own processes are awaited and, should one outlive the row, killed; one that already ended is not held.
+        var processes = program switch { "descendant" => 1, "escape" => 3, _ => 0 };
+        var printed = new List<string>();
+        var other = new List<string>();
+        var held = new List<Process>();
+        var ids = 0;
+        var ended = false;
+        using var kimi = new Process { StartInfo = start };
+        kimi.OutputDataReceived += (_, e) => Read(e.Data, error: false);
+        kimi.ErrorDataReceived += (_, e) => Read(e.Data, error: true);
+        kimi.Start();
+        kimi.BeginOutputReadLine();
+        kimi.BeginErrorReadLine();
+        await kimi.StandardInput.WriteAsync(input);
+        kimi.StandardInput.Close();
+        try
+        {
+            await kimi.WaitForExitAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
+            Assert.Equal(exitCode, kimi.ExitCode);
+            Assert.Equal(Enumerable.Repeat(Environment.GetEnvironmentVariable("TEMP")!, lines), printed);
+            Assert.Empty(other);
+            Assert.Equal(processes, ids);
+            Assert.All(held, static x => Assert.True(x.WaitForExit(TimeSpan.FromSeconds(10)), $"Process {x.Id} is still running."));
+        }
+        finally
+        {
+            lock (held)
+            {
+                ended = true; // No later line reads the row's state.
+                foreach (var process in held.Append(kimi).Where(static x => !x.HasExited))
+                {
+                    process.Kill();
+                    process.WaitForExit(TimeSpan.FromSeconds(10)); // Before Dispose removes the processes' working directory.
+                }
+
+                held.ForEach(static x => x.Dispose());
+            }
+        }
+
+        void Read(string? line, bool error)
+        {
+            lock (held)
+            {
+                if (line is null || ended)
+                {
+                    return;
+                }
+                else if (!error)
+                {
+                    printed.Add(line);
+                }
+                else if (!TestProcessRecoveryTest.TryIdentify(line, out var process))
+                {
+                    other.Add(line);
+                }
+                else
+                {
+                    ids++;
+                    if (process is not null)
+                    {
+                        held.Add(process);
+                    }
+                }
+
+                if (ids == processes && printed.Count == lines)
+                {
+                    go.Set();
+                }
+            }
+        }
     }
 
     // PLAN G983 (form J; R9-B2's O3 for toolchain verify): an installation record that is not the JSON verification expects (a field

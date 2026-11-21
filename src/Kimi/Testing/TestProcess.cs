@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
+using System.Globalization;
+using System.IO.Pipes;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
@@ -8,9 +9,9 @@ namespace Kimi.Testing;
 
 /// <summary>A test case's process (IMPL 20.6.3): a <see cref="JobProcess"/> with the case's environment, a closed standard input and the
 /// result channel, a pipe the child finds by its handle in KIMI_TEST_PIPE.</summary>
-internal sealed unsafe class TestProcess : JobProcess
+internal sealed class TestProcess : JobProcess
 {
-    private TestProcess(string executable, string directory, string environment, SafeHandle input, nint channel, Stream result)
+    private TestProcess(string executable, string directory, string environment, SafePipeHandle input, nint channel, Stream result)
         : base(executable, directory, environment, input, channel)
         => this.Result = result;
 
@@ -24,31 +25,27 @@ internal sealed unsafe class TestProcess : JobProcess
 
     internal static TestProcess Start(string executable, string directory, SortedDictionary<string, string> environment)
     {
-        if (!OperatingSystem.IsWindows() || RuntimeInformation.OSArchitecture != Architecture.X64)
-        {
-            throw new PlatformNotSupportedException("Test execution requires Windows x64.");
-        }
-
-        using var resultWrite = Pipe(out var result);
+        using var channel = Pipe(out var result);
         try
         {
-            using var inputWrite = InputPipe(out var inputRead);
-            using var stdin = inputRead;
-            // The input read end, unlike output read ends, belongs to the child.
-            if (!SetHandleInformation(stdin.SafeFileHandle.DangerousGetHandle(), 1, 1))
+            SafePipeHandle input;
+            using (var pipe = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None))
             {
-                throw Error();
+                input = pipe.ClientSafePipeHandle; // The write end closes with the server: the case's input is closed.
             }
 
-            environment["KIMI_TEST_PIPE"] = ((ulong)resultWrite.SafePipeHandle.DangerousGetHandle()).ToString(System.Globalization.CultureInfo.InvariantCulture);
-            var block = new StringBuilder();
-            foreach (var (name, value) in environment)
+            using (input)
             {
-                block.Append(name).Append('=').Append(value).Append('\0');
-            }
+                var handle = channel.SafePipeHandle.DangerousGetHandle();
+                environment["KIMI_TEST_PIPE"] = ((ulong)handle).ToString(CultureInfo.InvariantCulture);
+                var block = new StringBuilder();
+                foreach (var (name, value) in environment)
+                {
+                    block.Append(name).Append('=').Append(value).Append('\0');
+                }
 
-            block.Append('\0');
-            return new(executable, directory, block.ToString(), stdin.SafeFileHandle, resultWrite.SafePipeHandle.DangerousGetHandle(), result);
+                return new(executable, directory, block.Append('\0').ToString(), input, handle, result);
+            }
         }
         catch
         {
@@ -56,48 +53,4 @@ internal sealed unsafe class TestProcess : JobProcess
             throw;
         }
     }
-
-    private static SafeFileHandle InputPipe(out FileStream read)
-    {
-        var security = new SecurityAttributes { Size = (uint)sizeof(SecurityAttributes), Inherit = 1 };
-        if (!CreatePipe(out var reader, out var writer, &security, 65536))
-        {
-            throw Error();
-        }
-
-        var readHandle = new SafeFileHandle(reader, true);
-        var writeHandle = new SafeFileHandle(writer, true);
-        try
-        {
-            if (!SetHandleInformation(reader, 1, 0))
-            {
-                throw Error();
-            }
-
-            read = new FileStream(readHandle, FileAccess.Read, 4096, false);
-            return writeHandle;
-        }
-        catch
-        {
-            readHandle.Dispose();
-            writeHandle.Dispose();
-            throw;
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SecurityAttributes
-    {
-        internal uint Size;
-        internal nint Descriptor;
-        internal int Inherit;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CreatePipe(out nint read, out nint write, SecurityAttributes* security, uint size);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetHandleInformation(nint handle, uint mask, uint flags);
 }

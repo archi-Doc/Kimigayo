@@ -5,15 +5,19 @@
 // their own contracts.
 // Owns: a child created inside a job of its own before its first instruction (PROC_THREAD_ATTRIBUTE_JOB_LIST), so every descendant is
 // in the job and none can leave it (no breakaway); the job ends them all at Kill and when its last handle closes
-// (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE): at Dispose, and when this process ends.
-// Readers: Testing's TestProcess (a test case, IMPL 20.6.3), which checks its host (Windows x64) before the start.
-// Input: the executable, its working directory, its environment block, its standard input and the handles it inherits besides (each
-// inheritable, the input included).
+// (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE): at Dispose, and when this process ends, by TerminateProcess too (a second Ctrl+C). The host
+// rule of the programs Kimi runs: a Windows x64 host, as WindowsProfile's target (IMPL 20.3, 20.6.1).
+// Readers: Testing's TestProcess (a test case, IMPL 20.6.3) and Build's NativeToolchain.RunExecutable (run's program, IMPL 20.3).
+// Input: the executable, its working directory, its environment block (null: this process's), its standard input (any handle, this
+// process's own among them: StandardInput; the child gets an inheritable duplicate, or none for a handle not open here) and the
+// handles it inherits besides (each inheritable).
 // Output: the child's standard output and error, each a pipe this process reads; its exit and exit code; whether the job's processes
-// have all ended (IsRecovered).
+// have all ended (IsRecovered). A failure is an exception naming the failed call, and for a start the executable, beside the system's
+// text: PlatformNotSupportedException ("Running a program requires Windows x64.") off a Windows x64 host, else Win32Exception.
 // Invariants: the child inherits exactly its standard handles and the listed ones (PROC_THREAD_ATTRIBUTE_HANDLE_LIST), so concurrent
-// launches never hold each other's pipes; it has a hidden console (CREATE_NO_WINDOW); an unhandled exception in the job ends its process
-// without the error dialog (JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION); a failed start ends the job, so nothing it started runs on.
+// launches never hold each other's pipes; it has a hidden console (CREATE_NO_WINDOW) and its quoted path as its command line; an
+// unhandled exception in the job ends its process without the error dialog (JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION); a failed
+// start ends the job, so nothing it started runs on.
 // Must not: decide what the child's streams carry or when its tree ends; its readers do.
 
 using System.ComponentModel;
@@ -33,12 +37,17 @@ internal unsafe class JobProcess : IDisposable
     /// <summary>Initializes a new instance of the <see cref="JobProcess"/> class: starts the child.</summary>
     /// <param name="executable">The executable's full path.</param>
     /// <param name="directory">The working directory.</param>
-    /// <param name="environment">The environment block.</param>
-    /// <param name="input">The child's standard input, an inheritable handle.</param>
+    /// <param name="environment">The environment block, or null for this process's environment.</param>
+    /// <param name="input">The child's standard input.</param>
     /// <param name="inherited">The inheritable handles the child inherits besides its standard ones.</param>
-    internal JobProcess(string executable, string directory, string environment, SafeHandle input, params ReadOnlySpan<nint> inherited)
+    internal JobProcess(string executable, string directory, string? environment, SafeHandle input, params ReadOnlySpan<nint> inherited)
     {
-        this.job = new SafeFileHandle(CreateJobObjectW(0, null), true);
+        if (!OperatingSystem.IsWindows() || RuntimeInformation.OSArchitecture != Architecture.X64)
+        {
+            throw new PlatformNotSupportedException("Running a program requires Windows x64.");
+        }
+
+        this.job = new SafeFileHandle(CreateJobObjectW(0, null), ownsHandle: true);
         SafeFileHandle? child = null;
         Stream? stdout = null;
         Stream? stderr = null;
@@ -48,61 +57,79 @@ internal unsafe class JobProcess : IDisposable
         {
             if (this.job.IsInvalid)
             {
-                throw Error();
+                throw StartError(executable, nameof(CreateJobObjectW));
             }
 
             var limits = new JobLimits { Flags = 0x2400 }; // KILL_ON_JOB_CLOSE | DIE_ON_UNHANDLED_EXCEPTION
             if (!SetInformationJobObject(this.job.DangerousGetHandle(), 9, &limits, (uint)sizeof(JobLimits)))
             {
-                throw Error();
+                throw StartError(executable, nameof(SetInformationJobObject));
             }
 
             using var outWrite = Pipe(out var outRead);
             stdout = outRead;
             using var errorWrite = Pipe(out var errorRead);
             stderr = errorRead;
+            using var inputCopy = Inheritable(input, executable);
             nuint bytes = 0;
             _ = InitializeProcThreadAttributeList(0, 2, 0, ref bytes);
             attributes = Marshal.AllocHGlobal(checked((nint)bytes));
             if (!InitializeProcThreadAttributeList(attributes, 2, 0, ref bytes))
             {
-                throw Error();
+                throw StartError(executable, nameof(InitializeProcThreadAttributeList));
             }
 
             initializedAttributes = true;
 
-            var count = 3 + inherited.Length;
-            var handles = stackalloc nint[count];
-            handles[0] = outWrite.SafePipeHandle.DangerousGetHandle();
-            handles[1] = errorWrite.SafePipeHandle.DangerousGetHandle();
-            handles[2] = input.DangerousGetHandle();
-            inherited.CopyTo(new Span<nint>(handles + 3, inherited.Length));
-            var jobHandle = this.job.DangerousGetHandle();
-            if (!UpdateProcThreadAttribute(attributes, 0, 0x20002, handles, (nuint)(count * sizeof(nint)), null, null) ||
-                !UpdateProcThreadAttribute(attributes, 0, 0x2000D, &jobHandle, (nuint)sizeof(nint), null, null))
+            var handles = stackalloc nint[3 + inherited.Length];
+            var count = 0;
+            handles[count++] = outWrite.SafePipeHandle.DangerousGetHandle();
+            handles[count++] = errorWrite.SafePipeHandle.DangerousGetHandle();
+            if (!inputCopy.IsInvalid)
             {
-                throw Error();
+                handles[count++] = inputCopy.DangerousGetHandle();
+            }
+
+            foreach (var handle in inherited)
+            {
+                handles[count++] = handle;
+            }
+
+            var jobHandle = this.job.DangerousGetHandle();
+            if (!UpdateProcThreadAttribute(attributes, 0, 0x20002, handles, (nuint)(count * sizeof(nint)), null, null))
+            {
+                throw StartError(executable, "UpdateProcThreadAttribute(HANDLE_LIST)");
+            }
+
+            if (!UpdateProcThreadAttribute(attributes, 0, 0x2000D, &jobHandle, (nuint)sizeof(nint), null, null))
+            {
+                throw StartError(executable, "UpdateProcThreadAttribute(JOB_LIST)");
             }
 
             var startup = new StartupInfoEx
             {
                 Size = (uint)sizeof(StartupInfoEx),
                 Flags = 0x100, // STARTF_USESTDHANDLES
-                Input = handles[2],
+                Input = inputCopy.IsInvalid ? 0 : inputCopy.DangerousGetHandle(),
                 Output = handles[0],
                 Error = handles[1],
                 Attributes = attributes,
             };
-            // The flags are EXTENDED_STARTUPINFO_PRESENT, CREATE_UNICODE_ENVIRONMENT and CREATE_NO_WINDOW.
-            fixed (char* env = environment)
+            // The command line is the quoted path, writable as CreateProcessW requires; the flags are EXTENDED_STARTUPINFO_PRESENT,
+            // CREATE_UNICODE_ENVIRONMENT and CREATE_NO_WINDOW.
+            var commandLine = ("\"" + executable + "\"\0").ToCharArray();
+            fixed (char* line = commandLine)
             {
-                if (!CreateProcessW(executable, null, 0, 0, true, 0x80400 | 0x08000000, env, directory, &startup, out var info))
+                fixed (char* env = environment)
                 {
-                    throw Error();
-                }
+                    if (!CreateProcessW(executable, line, 0, 0, inherit: true, 0x80400 | 0x08000000, env, directory, &startup, out var info))
+                    {
+                        throw StartError(executable, nameof(CreateProcessW));
+                    }
 
-                child = new(info.Process, true);
-                using var thread = new SafeFileHandle(info.Thread, true);
+                    child = new(info.Process, ownsHandle: true);
+                    using var thread = new SafeFileHandle(info.Thread, ownsHandle: true);
+                }
             }
 
             this.process = child;
@@ -146,7 +173,7 @@ internal unsafe class JobProcess : IDisposable
         {
             if (!GetExitCodeProcess(this.process.DangerousGetHandle(), out var code))
             {
-                throw Error();
+                throw Error(nameof(GetExitCodeProcess));
             }
 
             return code;
@@ -161,7 +188,7 @@ internal unsafe class JobProcess : IDisposable
             JobAccounting accounting = default;
             if (!QueryInformationJobObject(this.job.DangerousGetHandle(), 1, &accounting, (uint)sizeof(JobAccounting), null))
             {
-                throw Error();
+                throw Error(nameof(QueryInformationJobObject));
             }
 
             return accounting.Active == 0;
@@ -176,12 +203,16 @@ internal unsafe class JobProcess : IDisposable
         this.Stderr.Dispose();
     }
 
-    // Whether the child exited within the time.
+    /// <summary>Gets this process's standard input, as a handle a child can be given (invalid when this process has none).</summary>
+    /// <returns>The handle, which the caller does not own.</returns>
+    internal static SafeFileHandle StandardInput() => new(GetStdHandle(-10), ownsHandle: false);
+
+    // Whether the child exited within the time (Timeout.Infinite: waits for its exit).
     internal bool Wait(int milliseconds) => WaitForSingleObject(this.process.DangerousGetHandle(), (uint)milliseconds) switch
     {
         0 => true,
         258 => false,
-        _ => throw Error(),
+        _ => throw Error(nameof(WaitForSingleObject)),
     };
 
     // Ends every process of the job (exit code 125); those already ended keep theirs.
@@ -189,16 +220,14 @@ internal unsafe class JobProcess : IDisposable
     {
         if (!TerminateJobObject(this.job.DangerousGetHandle(), 125))
         {
-            throw Error();
+            throw Error(nameof(TerminateJobObject));
         }
     }
-
-    private protected static Win32Exception Error() => new(Marshal.GetLastPInvokeError());
 
     // A pipe: the read end this process reads asynchronously, the write end, inheritable, the child's.
     private protected static NamedPipeClientStream Pipe(out NamedPipeServerStream read)
     {
-        var name = "kimi-test-" + Guid.NewGuid().ToString("N");
+        var name = "kimi-child-" + Guid.NewGuid().ToString("N");
         read = new(name, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, 65536, 65536);
         var write = new NamedPipeClientStream(".", name, PipeDirection.Out, PipeOptions.None, TokenImpersonationLevel.Identification, HandleInheritability.Inheritable);
         try
@@ -213,6 +242,33 @@ internal unsafe class JobProcess : IDisposable
             write.Dispose();
             throw;
         }
+    }
+
+    // A failed call's exception: the call (and, by StartError, the executable it was starting) beside the system's text.
+    private static Win32Exception Error(string call)
+    {
+        var code = Marshal.GetLastPInvokeError();
+        return new(code, $"{call} failed: {new Win32Exception(code).Message}");
+    }
+
+    private static Win32Exception StartError(string executable, string call) => Error($"Cannot start {executable}: {call}");
+
+    // The child's input: an inheritable duplicate of the handle, owned by the caller; none (an invalid handle) when the handle is no open
+    // handle of this process: null, INVALID_HANDLE_VALUE, or a value its parent passed without letting it inherit (ERROR_INVALID_HANDLE).
+    // The duplicate keeps the handle's access (DUPLICATE_SAME_ACCESS).
+    private static SafeFileHandle Inheritable(SafeHandle handle, string executable)
+    {
+        var current = GetCurrentProcess();
+        if (!handle.IsInvalid && DuplicateHandle(current, handle.DangerousGetHandle(), current, out var copy, 0, inherit: true, 2))
+        {
+            return new SafeFileHandle(copy, ownsHandle: true);
+        }
+        else if (!handle.IsInvalid && Marshal.GetLastPInvokeError() != 6)
+        {
+            throw StartError(executable, nameof(DuplicateHandle));
+        }
+
+        return new SafeFileHandle(0, ownsHandle: false);
     }
 
     [StructLayout(LayoutKind.Explicit, Size = 144)]
@@ -277,6 +333,16 @@ internal unsafe class JobProcess : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool TerminateJobObject(nint job, uint exitCode);
 
+    [DllImport("kernel32.dll")]
+    private static extern nint GetStdHandle(int kind);
+
+    [DllImport("kernel32.dll")]
+    private static extern nint GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DuplicateHandle(nint sourceProcess, nint source, nint targetProcess, out nint target, uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint options);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool InitializeProcThreadAttributeList(nint list, int count, uint flags, ref nuint size);
@@ -290,7 +356,7 @@ internal unsafe class JobProcess : IDisposable
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CreateProcessW(string application, string? command, nint processSecurity, nint threadSecurity, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint flags, char* environment, string directory, StartupInfoEx* startup, out ProcessInfo process);
+    private static extern bool CreateProcessW(string application, char* command, nint processSecurity, nint threadSecurity, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint flags, char* environment, string directory, StartupInfoEx* startup, out ProcessInfo process);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WaitForSingleObject(nint handle, uint milliseconds);
