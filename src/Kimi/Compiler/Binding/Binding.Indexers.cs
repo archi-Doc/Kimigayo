@@ -16,7 +16,7 @@ public sealed partial class Binding
     // The UniqIndexable side of each user or view index expression, the fact indexUniq's binding and SharedIndexNote read: whether
     // indexUniq is available here, and the receiver's UniqIndexable conformance the check selected by declaration or by the key (none
     // for a parameter's fact or a view).
-    private readonly Dictionary<IndexKoto, UniqIndexing> uniqIndexing = new(ReferenceEqualityComparer.Instance);
+    private readonly UniqIndexingRows uniqIndexing;
 
     /// <summary>Gets the synthesized <c>index</c> (shared) or <c>indexUniq</c> (exclusive) call of a user index expression, or null.</summary>
     /// <param name="node">The index expression.</param>
@@ -238,7 +238,29 @@ public sealed partial class Binding
     }
 
     // A user or view index expression's UniqIndexable fact (uniqIndexing).
-    private readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance);
+    internal readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance);
+
+    /// <summary>The `uniqIndexing` family's one accessor (DECISIONS BU-220): a pass family, a user or view index expression's
+    /// UniqIndexable fact (SPEC 4.7.1), kept in the expression's module's NodeColumns at its SyntaxId (the column's default, neither
+    /// exclusive nor a conformance, is what any other node reads). Its members keep the names its readers use.</summary>
+    private readonly struct UniqIndexingRows(Binding binding)
+    {
+        internal UniqIndexing this[IndexKoto index]
+        {
+            set => HirTables.Of(index).Families.UniqIndexing.Ref(index.SyntaxId, binding) = value;
+        }
+
+        internal void Remove(IndexKoto index)
+        {
+            if (this.GetValueOrDefault(index) != default)
+            {
+                this[index] = default;
+            }
+        }
+
+        internal UniqIndexing GetValueOrDefault(IndexKoto index)
+            => index.SyntaxOwner is { } table ? table.Hir.Families.UniqIndexing.Get(index.SyntaxId, binding) : default;
+    }
 
     /// <summary>The `indexerCalls` family's one accessor (DECISIONS BU-220): a kept family, an index expression's synthesized `index` and
     /// `indexUniq` calls (SPEC 4.7.1), its composite key (the source node, whether it is exclusive) kept in the source's module's

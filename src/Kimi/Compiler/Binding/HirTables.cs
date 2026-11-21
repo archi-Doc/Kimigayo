@@ -342,6 +342,8 @@ internal struct NodeColumns
     internal StampedColumn<(bool Failed, Binding.BaseCallCause Cause), Binding.PassCounter> BaseCallFailures; // Pass: the cause a direct base call fails for (Binding.BaseCalls.cs).
     internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
+    internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
+    internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> ResultCompletions; // Work: Binding's result, conversion and fallthrough checks' (Binding.ResultStructure) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
@@ -405,6 +407,8 @@ internal struct NodeColumns
         this.BaseCallFailures.Grow(length);
         this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
+        this.UnboundSlots.Grow(length);
+        this.UniqIndexing.Grow(length);
         this.ResultCompletions.Grow(length);
         this.GuessedCompletions.Grow(length);
         this.PublishedCompletions.Grow(length);
@@ -446,6 +450,8 @@ internal struct NodeColumns
         this.BaseCallFailures.Freeze(binding);
         this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
+        this.UnboundSlots.Freeze(binding);
+        this.UniqIndexing.Freeze(binding);
         this.ResultCompletions.Release();
         this.GuessedCompletions.Release();
         this.PublishedCompletions.Release();
@@ -514,6 +520,8 @@ internal struct NodeColumns
             BaseCallFailures = this.BaseCallFailures.Renumbered(length),
             ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
+            UnboundSlots = this.UnboundSlots.Renumbered(length),
+            UniqIndexing = this.UniqIndexing.Renumbered(length),
             ResultCompletions = this.ResultCompletions.Renumbered(length),
             GuessedCompletions = this.GuessedCompletions.Renumbered(length),
             PublishedCompletions = this.PublishedCompletions.Renumbered(length),

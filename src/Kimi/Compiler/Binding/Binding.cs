@@ -107,6 +107,8 @@ public sealed partial class Binding
         this.baseCallFailures = new(this);
         this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
+        this.unboundSlots = new(this);
+        this.uniqIndexing = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
@@ -301,11 +303,6 @@ public sealed partial class Binding
         this.CompleteImplicitConstructors();
         this.MakeLibraryAccessorFunctions(); // The library's facts a program may demand, complete before any body (PLAN G949 S1-e).
         this.FormLibrarySignatures();
-        if (this.CaptureOmittedBaseQueries)
-        {
-            this.CaptureOmittedBases();
-        }
-
         return true;
     }
 

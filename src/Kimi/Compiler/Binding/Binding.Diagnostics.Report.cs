@@ -309,7 +309,7 @@ public sealed partial class Binding
         {
             this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
         }
-        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots?.TryGetValue(issue.Node, out var unboundSlot) == true)
+        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots.TryGetValue(issue.Node, out var unboundSlot))
         {
             // SPEC 10.6, 10.8: the selected call's slot that no evidence binds, with the waiting argument whose signature holds it.
             ReportUnboundSlots(issue.Node, unboundSlot, requirement, issue.Code);
