@@ -144,7 +144,7 @@ public sealed partial class Binding
 
             solution.Fixed = this.FixCallSlots(call, function, declaringType, solution.ExplicitTypes, solution.ExplicitLengths, frame, solution.FixedConstruction);
             origins.Slice(0, function.Origins.Count).Clear();
-            inputs.Slice(0, Math.Min(inputs.Length, InputOriginCount(function))).Clear();
+            solution.InputSpan().Clear();
 
             for (var i = 0; i < CallOwnSlots(function).Count; i++)
             {
@@ -466,7 +466,7 @@ public sealed partial class Binding
             }
 
             // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
-            this.OpenUnsolvedOrigins(call, origins.Slice(0, function.Origins.Count), inputs.Slice(0, Math.Min(inputs.Length, InputOriginCount(function))));
+            this.OpenUnsolvedOrigins(call, origins.Slice(0, function.Origins.Count), solution.InputSpan());
 
             // SPEC 10.8: required structural slots, length slots included, remain rankable. An open position closed by a later literal
             // default, or a slot an environment result left without evidence, still keeps the candidate pending.

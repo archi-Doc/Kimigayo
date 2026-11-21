@@ -55,7 +55,7 @@ public class OwnershipJoinTest
             var program = c.BuildMir();
             var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "inspect");
             var selected = Assert.Single(body.Locals.ToArray(), static x => x.Name == "selected");
-            var region = selected.Type.Origin!; // The `let` local's slot is its region, whose value is the join's meet (PLAN G492-a (ii)).
+            var region = selected.Type!.Origin!; // The `let` local's slot is its region, whose value is the join's meet (PLAN G492-a (ii)).
             Assert.Equal(OriginKind.Inference, region.Kind);
             var value = c.Binding.RegionValueAtUse(region, region.Binder!);
             Assert.Equal(OriginKind.Intersection, value.Kind);
@@ -94,7 +94,7 @@ public class OwnershipJoinTest
     public void BorrowJoinCannotChangeItsContract(string annotation, string first, string second)
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected: " + annotation + " = if c => " + first + " else => " + second + "\ninspect(true)");
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         Assert.False(c.Generate(TextWriter.Null));
     }
 

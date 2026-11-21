@@ -11,13 +11,12 @@ internal sealed partial class MirBuilder
     // The one operand of a group, a borrow, a conversion or a Deref.
     private static Koto Child(Koto node) => node switch { LabeledKoto label => label.Target, BinaryKoto binary => binary.Left, _ => ((UnaryKoto)node).Operand };
 
+    // The node a node stands for through its groups (SPEC 3.4: a parenthesized Place is its operand's).
+    private static Koto Designated(Koto node) => HirTables.Op(node) == HirOp.Group ? Designated(Child(node)) : node;
+
     // The written exclusive borrow a node's value is, also in parentheses; null for another node.
-    private static Koto? Lending(Koto node) => HirTables.Op(node) switch
-    {
-        HirOp.Group => Lending(Child(node)),
-        HirOp.Borrow when MirTypes.IsExclusive(TypeOf(node)) => node,
-        _ => null,
-    };
+    private static Koto? Lending(Koto node)
+        => Designated(node) is var lent && HirTables.Op(lent) == HirOp.Borrow && MirTypes.IsExclusive(TypeOf(lent)) ? lent : null;
 
     // The Place a node designates: one an expansion located already (Located), a parenthesized Place its operand's; a value its consumer needs
     // as a Place is held in a temp. A reserved input's path (input) is its preparation path down to a value or a call result (SPEC
@@ -183,12 +182,12 @@ internal sealed partial class MirBuilder
 
     // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
     // slot in the body's statics, which names its initializer's body; a static whose declaration Binding rejected has none, and its use is
-    // derived from that error.
+    // derived from that error (DECISIONS Z16: the failure fact at the declaration, not published Body).
     private MirPlace Static(BindingSymbol symbol, Koto node)
     {
         if (HirTables.Op(symbol.Declaration!) != HirOp.Body)
         {
-            return this.Unsupported(node, derived: true);
+            return this.Opaque(node);
         }
 
         var place = this.StaticRoot(symbol);
@@ -198,11 +197,9 @@ internal sealed partial class MirBuilder
         return place;
     }
 
+    // A static's root of its symbol's Type, none where Binding failed it (PLAN G1073): a static of no Type holds no raw authority.
     private MirPlace StaticRoot(BindingSymbol symbol)
-    {
-        var type = symbol.Type ?? BoundType.Unit;
-        return this.body.Static(new(symbol, type, Binding.Reassignable(symbol), MirTypes.HoldsRaw(compilation.Types, type, this.walked)));
-    }
+        => this.body.Static(new(symbol, symbol.Type, Binding.Reassignable(symbol), MirTypes.HoldsRaw(compilation.Types, symbol.Type, this.walked)));
 
     // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow; a Tuple element at
     // the position its own plan row keeps (Folded).
@@ -254,10 +251,12 @@ internal sealed partial class MirBuilder
     // The stored Field of a symbol in a struct Place, in the layer that stores it (AdtDef.FieldOwner); else an Opaque in an Opaque temp
     // whose site names only the receiver's root, a part built already, never the node's syntax (R5-M63, R5-M84): the located Unsupported
     // of a Place whose Type stores no such Field or has none (a Place of a Type parameter an identity premise makes a struct, SPEC 8.2.3),
-    // or the value derived from the error of a Field Binding formed no stored Type for (Stored; SPEC 23.1.2).
+    // or the value derived from the error of a Field Binding formed no stored Type for (Stored; SPEC 23.1.2) or of a receiver of no Type
+    // (a failed slot or a value derived from one, rule W, PLAN G1073: an accessor's `storage` through its failed self, Body).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
-        var owner = this.body.TypeOf(receiver) is { } type ? AdtDef.FieldOwner(compilation.Types, type, field) : null;
+        var known = this.body.TypeOf(receiver);
+        var owner = known is { } type ? AdtDef.FieldOwner(compilation.Types, type, field) : null;
         if (owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place)
         {
             return place;
@@ -266,7 +265,7 @@ internal sealed partial class MirBuilder
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
         this.SiteRoots(receiver);
-        if (owner is null)
+        if (owner is null && known is not null)
         {
             this.Unsupported(node, temp, node);
         }
@@ -305,7 +304,7 @@ internal sealed partial class MirBuilder
 
     // A value held in a temp of its Type where its consumer needs a Place, or in the place given where that has its Type, unless an expansion
     // holds it already; a call's input as the call's (input). One Binding gave no Type, a construct it left unresolved or a derived value,
-    // is held at the Type its consumer expects (expected), as Unsupported holds a derived one: SPEC 14.9.2 makes a construct's Type the
+    // is held at the Type its consumer expects (expected), as Opaque holds a derived one: SPEC 14.9.2 makes a construct's Type the
     // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1). An Error node's value is
     // held there also where Binding gave the node a Type, and it is never taken from where an expansion located the node: each consumer
     // receives its own derived value, whose site names the located root (SiteRoots; DECISIONS R4-M109).
@@ -323,11 +322,12 @@ internal sealed partial class MirBuilder
 
     // The place a node's value is held in (Value; a transfer's operand whose value-less paths it delivers apart, Transfer): the place
     // given where that has the value's Type, else a new temp of it, which its holder makes; the Type Binding gave, else the expected
-    // one, and an Error node's always the expected one, in an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149).
+    // one, and an Error node's always the expected one, in an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149); none where
+    // both are unknown (PLAN G1073).
     private MirPlace Held(Koto node, BoundType? expected, MirPlace? into)
     {
         var derived = HirTables.Op(node) == HirOp.Error;
-        var type = (derived ? expected : null) ?? HirTables.TypeOf(node) ?? expected ?? BoundType.Unit;
+        var type = (derived ? expected : null) ?? KnownType(node) ?? expected;
         if (this.Given(into, type) is { } place)
         {
             return place;

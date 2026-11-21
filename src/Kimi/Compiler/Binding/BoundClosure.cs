@@ -14,7 +14,12 @@
 //   receiver: CaseFreeReceiver unless it is Shared, else Exclusive where a capture with BareReborrows has an exclusive layer as its
 //   case Type, else Shared.
 // - Access (DECISIONS R5-M63 (1), R4-M152, R5-M193; agreed with BU, the Binding owner): two accessors with two meanings, so each
-//   reader chooses. Of is the definition, the binding's plan once its signature is bound, whatever the creation's outcome: every reader
+//   reader chooses. Of is the definition, the plan once the closure's latest binding bound its header and body, classified its
+//   receiver and published it (Published, set by Binding.PublishClosure on both of its paths), whatever the creation's outcome (DECISIONS
+//   R5-M63 (1) as amended by PLAN G1110). Its Signature is null exactly where a parameter's or the result's slot failed (the
+//   failed-slot fact, Binding.Stated); such a definition reaches the Type route only as its own body's receiver, since its creation is
+//   Error and forms no value of its Closure Type, and a reader of a Closure value's Signature that meets one throws (a broken contract
+//   that ends the check faulted, DECISIONS BU-102), never a fallback. Every reader
 //   that needs the closure's definition (its signature, parts or body) reads it, through a Closure Type, a signature or an Origin's
 //   binder (the Type route, which answers only for a Closure Type) or through the literal (the literal route: R5-M63 (1)'s HIR
 //   publisher and MIR builder, and Binding's judgments of a literal's parts, which read it as FunctionKoto.ClosureDefinition until R7).
@@ -47,11 +52,16 @@ public sealed class BoundClosure
 {
     public IReadOnlyList<BoundCapture> Captures => this.Storage;
 
-    public BoundType Signature { get; internal set; } = null!;
+    public BoundType? Signature { get; internal set; }
 
     public BoundType? EnvironmentType { get; internal set; }
 
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
+
+    // Whether this binding published the definition (Binding.PublishClosure, on both of its paths; cleared where BindClosure clears the
+    // Signature): the one gate of Of. Not Classified, which is set before JudgePendingRelations and PublishedResult, where the
+    // EnvironmentType is still the preliminary one that TyCtxt.ClosureEnvironment would read (DECISIONS R5-M63 (1) as amended).
+    internal bool Published { get; set; }
 
     // The requirement of every admitted case: Receiver without the captures' bare Reborrows by case (SPEC 7.7.3).
     internal SemanticsKind CaseFreeReceiver { get; set; } = SemanticsKind.Ref;
@@ -82,8 +92,8 @@ public sealed class BoundClosure
     internal static BoundClosure? Of(BoundType? closure)
         => closure is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } ? Of(function) : null;
 
-    // The literal route to a closure's definition (DECISIONS R5-M63 (1), R4-M152): the literal's published plan once its latest binding
-    // bound the signature, whatever the creation's outcome; null for a named function, an unbound literal and until the signature is bound.
+    // The literal route to a closure's definition (the file's Access paragraph: R5-M63 (1) as amended, R4-M152): the literal's plan once
+    // its latest binding published it (Published); null for a named function, an unbound literal and until the definition is published.
     internal static BoundClosure? Of(FunctionKoto literal)
-        => HirTables.PlanOf(literal).Plan is BoundClosure { Signature: not null } plan ? plan : null;
+        => HirTables.PlanOf(literal).Plan is BoundClosure { Published: true } plan ? plan : null;
 }

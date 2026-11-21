@@ -1451,9 +1451,9 @@ public sealed class MirInitTest
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
         const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
-        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd return n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    _ = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    let g = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1", "UnsatisfiedOriginRelation_Kd n@ref 1"], Problems(Take + "func f()\n    let g: Missing = " + Body));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
@@ -1486,7 +1486,8 @@ public sealed class MirInitTest
     // parentheses or under a unary operator, has no Type validate now (fail-before: a finding, which stops every analysis, or, for the
     // index, the whole selection derived), such an operand replaced with its parts. A construct, an assignment, a labeled do and a default
     // keep their forms elsewhere (a typed destination keeps the Loan its branch places), an assignment's derived value initializes its
-    // target, and a failed call's operands stay replaced (PLAN G121).
+    // target, and a failed call keeps its operands, which it evaluates on every path (DECISIONS Z16; until Z16 they stayed replaced, PLAN
+    // G121, and the move by `once(s@move)` was lost).
     [Theory]
     [InlineData(Take + "func f(c: bool) -> bool\n    let s = \"x\"\n    return take(s@move, s@move) == 1 and missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f()\n    let s = \"x\"\n    _ = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
@@ -1541,7 +1542,7 @@ public sealed class MirInitTest
     [InlineData(
         Take + "func two(a: i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    let s = \"x\"\n    let v: i32 = two(once(s@move), missing)\n    let t = s@move\n" +
         "    return v\n",
-        "")]
+        "MovedPlace_Kd s 1")]
     public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 

@@ -65,7 +65,8 @@ public partial class TypeDagScalingTest
     // of it, which a borrow or a Function Type of it stays under: an annotated local (AddTypeClauseObligations), calls that take one by
     // value and by reference (CollectCallRelations), a generic call that infers it and returns it (MentionsSlots, the fit's
     // FailedOriginRelation) and a function reference with it written (SameExceptOmittedOrigins, SolveOmittedOrigins, InputOrigins) are
-    // judged with no stack failure, and the counted walks went the Type's height; one doubling higher is the height record alone.
+    // judged with no stack failure, and the counted walks went the Type's height; one doubling higher is the height record at each Type
+    // over the limit, and p's body, published beside its failed result, keeps its own generation limit record.
     [Fact]
     public void TheComponentWalksReachTheHeightLimitWithoutAStackFailure()
     {
@@ -75,9 +76,18 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.TermWalkWork >= 2 * 8192, $"{c.Binding.TermWalkWork}");
 
-        var over = DiagnosticCorpus.Check(TypeHeightLimitTest.Doubling(14) + string.Format(Uses, "D14<i32>.Item", "D13<i32>.Item") + LayerMain).Diagnostics;
+        var source = TypeHeightLimitTest.Doubling(14) + string.Format(Uses, "D14<i32>.Item", "D13<i32>.Item") + LayerMain;
+        var over = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.NotEmpty(over);
-        Assert.All(over, static x => Assert.Equal(nameof(DiagnosticCode.TypeHeightLimit_Kd), x.Code));
+
+        // p's body is published beside its failed result (a failed slot, SPEC 23.1.2), so its parameter w of D13<i32>.Item reaches the
+        // generation limit, as p's w does within the limit; every other record is the height record.
+        var generation = Assert.Single(over, static x => x.Code != nameof(DiagnosticCode.TypeHeightLimit_Kd));
+        Assert.Equal(nameof(DiagnosticCode.GenerationResourceLimit_Kd), generation.Code);
+        var at = source.IndexOf("func p(x: D14<i32>.Item, w: ", StringComparison.Ordinal) + "func p(x: D14<i32>.Item, w: ".Length;
+        var span = Assert.NotNull(generation.Span);
+        Assert.Equal(at, span.Start);
+        Assert.Equal("D13<i32>.Item", source.Substring(span.Start, span.Length));
     }
 
     // SPEC 15.4.2: a borrow layer nested in an input names its Origin, so each layer below the outermost one names a_k, the innermost one

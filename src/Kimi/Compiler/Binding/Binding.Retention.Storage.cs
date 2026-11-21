@@ -214,7 +214,7 @@ public sealed partial class Binding
 
     // What a Type's entries reach, by the first: a pair layer's one reading, until U3b reads its cases (G416 D2); what a borrow, shared handle
     // or raw layer refers to (Past; a raw layer by its position's step, `during self` content as Admitted); its parts by value (Parts); an
-    // abstract part or a callable, nothing; an unlisted form, nothing past HeldRun's Limit.
+    // abstract part or a callable, nothing.
     private void Reach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
         var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Signature = null };
@@ -249,7 +249,7 @@ public sealed partial class Binding
         {
             this.Past(environment, first.Part!, targets, written: false, layer: -1, below with { Signature = this.SignaturePast(at.Signature, type, first) });
         }
-        else if (first.Step is not (HoldStep.Abstract or HoldStep.Erased or HoldStep.Unsupported))
+        else if (first.Step is not (HoldStep.Abstract or HoldStep.Erased))
         {
             this.Parts(environment, type, at, run);
         }
@@ -774,17 +774,11 @@ public sealed partial class Binding
         => this.AtomNode(environment, new(CallRetention.ResultOutput, null, Writable: false, null, carrier, null));
 
     // A Type's entries (Holdings) as a run on retentionHeld, a stack: its caller reads it and removes it. At Binding's Limit, none, and false.
-    // An Unsupported entry is retention's undecided outcome for every reader: the contract's Limit (Q2's condition 4).
     private HeldRange HeldRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
     {
         var start = this.retentionHeld.Count;
         complete = this.Holdings(type, written, holder, this.retentionHeld);
         this.retentionHeld.RemoveRange(start, complete ? 0 : this.retentionHeld.Count - start);
-        for (var i = start; i < this.retentionHeld.Count; i++)
-        {
-            this.retentionLimit |= this.retentionHeld[i].Step == HoldStep.Unsupported;
-        }
-
         return new(start, this.retentionHeld.Count);
     }
 

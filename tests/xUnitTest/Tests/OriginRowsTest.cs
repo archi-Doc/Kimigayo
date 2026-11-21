@@ -88,7 +88,7 @@ public sealed partial class OriginRowsTest
                 var slice = c.Types.OriginRows(o.Body);
                 var longer = Atom(c, o.Body, o.Longer!, o.Use);
                 var shorter = Atom(c, o.Body, o.Shorter!, o.Use);
-                var count = slice.Rows.Take(slice.LayerStart).Count(x => x.Site == SourceRef.Of(o.Use) && slice.Atoms[x.Longer] == longer &&
+                var count = slice.Rows.Take(slice.LayerStart).Count(x => x.Site == SourceRef.Of(o.Site ?? o.Use) && slice.Atoms[x.Longer] == longer &&
                     slice.Atoms[x.Shorter] == shorter && x.Equality == o.Equality && ReferenceEquals(x.Destination, o.Type));
                 Assert.True(count == (ReferenceEquals(longer.Atom, shorter.Atom) ? 0 : 1), $"{name}: {count} rows at {o.Use}");
             }
@@ -333,10 +333,10 @@ public sealed partial class OriginRowsTest
     }
 
     // SPEC 15.6.1, 23.1: a Type occurrence's relation, its inner Origin outliving the outer one, is that occurrence's well-formedness, a
-    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row.
+    // WellFormed row (published without a destination); the fit of the local's initializer stays a Fit row, at the initializer (H11b D5).
     [Theory]
     [InlineData("ref/(ref/i32 during b) during a", "WellFormed")]
-    [InlineData("let r: ref/(ref/i32 during b) during a = slot", "Fit")]
+    [InlineData("slot", "Fit")]
     public void ATypeOccurrencesRelationIsAWellFormedRow(string site, string source)
     {
         const string Program = "func f(a: ref/i32, b: ref/i32, slot: ref/(ref/i32 during a) during b) -> i32\n" +
@@ -548,7 +548,7 @@ public sealed partial class OriginRowsTest
     private static (int Region, int Value) Slot(Compilation c, MirBody body, Binding.OriginRowSet slice, string name)
     {
         var local = body.Locals.ToArray().Single(x => x.Name == name);
-        var value = c.Types.OriginAtom(body.Key.Body, local.Type.Origin!, body.Subject(local.Source));
+        var value = c.Types.OriginAtom(body.Key.Body, local.Type!.Origin!, body.Subject(local.Source));
         var region = Enumerable.Range(0, slice.Atoms.Count).Where(i => ReferenceEquals(slice.Atoms[i].Atom, local.Type.Origin)).DefaultIfEmpty(-1).Single();
         var table = string.Join(" ", slice.Atoms.Select(static (x, i) => $"{i}:{x.Kind}:{x.Atom.Kind}")) + "; " +
             string.Join(" ", slice.Rows.Select(static x => $"{x.Longer}>{x.Shorter}{(x.Equality ? "=" : string.Empty)}:{x.Source}"));

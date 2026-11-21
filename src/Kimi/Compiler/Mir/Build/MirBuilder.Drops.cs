@@ -96,7 +96,7 @@ internal sealed partial class MirBuilder
     // SPEC 3.6, 16.2.1, 7.2.3: a temp of the innermost scope of temporaries whose value its caller builds after it: its storage begins here,
     // and Made, once the value is complete, registers its Drop after the temporaries created while it was evaluated, so they are destroyed
     // after it; an exit that interrupts the build only ends its storage. Temp holds and makes a temp written from operands evaluated before.
-    private MirPlace Hold(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
+    private MirPlace Hold(BoundType? type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
         => new(this.Allocated(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, local: true), Name: name, Role: role)), this.temporaries));
 
     // A held temp's value complete (Hold), in the scope of temporaries it was held in.
@@ -221,7 +221,7 @@ internal sealed partial class MirBuilder
     // each by its own complete destruction (A2 skips a moved one).
     private void FieldCleanup(int local, in SourceInfo source)
     {
-        var type = this.body.Locals[local].Type;
+        var type = this.body.Locals[local].Type!; // A destructor's self, of its struct's Type, never of no Type.
         for (long rank = 0, count = MirTypes.LevelCount(compilation.Types, type); rank < count; rank++)
         {
             var (step, arg) = MirTypes.LevelPart(compilation.Types, type, rank);
