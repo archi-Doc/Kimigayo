@@ -195,20 +195,6 @@ public sealed partial class Binding
         else if (this.ReportCallableSelection(issue.Node, store, requirement, issue.Code))
         {
         }
-        else if (issue.Code == DiagnosticCode.AmbiguousBinding_Kd && this.associatedAmbiguities.TryGetValue(issue.Node, out var associated))
-        {
-            var first = $"{DiagnosticTypeName(this.ProjectionContract(associated.First.Symbol, associated.First.Contract))}.{associated.First.Symbol.Name}";
-            var second = $"{DiagnosticTypeName(this.ProjectionContract(associated.Second.Symbol, associated.Second.Contract))}.{associated.Second.Symbol.Name}";
-            var head = AssociatedHead(issue.Node);
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                at: head is OriginApplicationKoto application ? application.Type : head,
-                evidence: [associated.Count],
-                related: [("candidate", associated.First.Symbol.Declaration, first), ("candidate", associated.Second.Symbol.Declaration, second)],
-                note: $"{first} and {second} are distinct associated-Type identities; the declaring Contract's bindings are part of each identity (SPEC 8.4.3-3)");
-        }
         else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var range) == true)
         {
             var rejected = CollectionsMarshal.AsSpan(this.rejectedRows).Slice(range.Start, range.Count);

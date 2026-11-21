@@ -344,7 +344,6 @@ internal struct NodeColumns
     internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
     internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
-    internal StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), Binding.PassCounter> AssociatedAmbiguities; // Pass: the two candidates an ambiguous associated Type use found (Binding.AssociatedTypes.cs).
     internal StampedColumn<(BoundRequirement Identity, Binding.AssociatedBinding Binding), Binding.PassCounter> InferenceFailures; // Pass: the identity and binding a conformance's inference hole failed with (Binding.AssociatedInference.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
     internal StampedColumn<Binding.ReferenceConstraintFailure, Binding.PassCounter> ClauseConstraints; // Pass: a node's clause record (Binding.ConstraintValidation.Records.cs).
@@ -416,7 +415,6 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
         this.ArithmeticConformanceFailures.Grow(length);
-        this.AssociatedAmbiguities.Grow(length);
         this.InferenceFailures.Grow(length);
         this.CallableConstraints.Grow(length);
         this.ClauseConstraints.Grow(length);
@@ -465,7 +463,6 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
         this.ArithmeticConformanceFailures.Freeze(binding);
-        this.AssociatedAmbiguities.Freeze(binding);
         this.InferenceFailures.Freeze(binding);
         this.CallableConstraints.Freeze(binding);
         this.ClauseConstraints.Freeze(binding);
@@ -542,7 +539,6 @@ internal struct NodeColumns
             ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
             ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
-            AssociatedAmbiguities = this.AssociatedAmbiguities.Renumbered(length),
             InferenceFailures = this.InferenceFailures.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
             ClauseConstraints = this.ClauseConstraints.Renumbered(length),

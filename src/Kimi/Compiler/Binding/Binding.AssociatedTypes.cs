@@ -1,13 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
-    private readonly AssociatedAmbiguityRows associatedAmbiguities;
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
 
     // Whether the pass's declaration evidence of conformance bindings is incomplete: before PrepareAssociatedInference has collected it,
@@ -96,11 +96,59 @@ public sealed partial class Binding
         reference = search.Reference;
         if (search.Alternative is { } second)
         {
-            this.FailExplained(AssociatedAmbiguityRows.Family, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
+            this.RecordAssociatedAmbiguity(use, new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count);
             return null;
         }
 
         return search.Found;
+    }
+
+    // SPEC 8.5.2, 8.4.3-3: an ambiguous associated Type use's problem: each candidate's declaration (Related, role 0) with the declaring
+    // Contract's instance it stands for (Instance; one declaration serves both candidates of `Q<U>: C<i32>, C<U>`) and the candidate count
+    // (Count).
+    private void RecordAssociatedAmbiguity(Koto use, BoundRequirement first, BoundRequirement second, int count)
+    {
+        var a = this.FactSite(first.Symbol.Declaration);
+        var b = this.FactSite(second.Symbol.Declaration);
+        this.Record(
+            use,
+            BindingFailure.Ambiguous,
+            [
+                new(ProblemFactKind.Related, a, 0),
+                new(ProblemFactKind.Instance, a, this.report.Keep(this.ProjectionContract(first.Symbol, first.Contract))),
+                new(ProblemFactKind.Related, b, 0),
+                new(ProblemFactKind.Instance, b, this.report.Keep(this.ProjectionContract(second.Symbol, second.Contract))),
+                new(ProblemFactKind.Count, SourceRef.Of(use), count),
+            ]);
+    }
+
+    // SPEC 8.5.2: an ambiguous associated Type use's record, at its head, its candidates related by their identities (`C<i32>.Item`).
+    private void ReportAssociatedAmbiguity(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var first = this.compilation.SyntaxOf(facts[0].Site);
+        var second = this.compilation.SyntaxOf(facts[2].Site);
+        var head = AssociatedHead(use);
+        use.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            at: head is OriginApplicationKoto application ? application.Type : head,
+            evidence: [(int)facts[4].Value],
+            related: [("candidate", first, this.AssociatedIdentityText(facts[1], first)), ("candidate", second, this.AssociatedIdentityText(facts[3], second))],
+            condition: problem.Condition);
+    }
+
+    // An associated Type's identity as a record names it: the Contract instance a related party stands for (its Instance fact) and the
+    // associated Type's name.
+    private string AssociatedIdentityText(in ProblemFact instance, Koto declaration)
+        => $"{DiagnosticTypeName(this.report.Value(instance))}.{this.AssociatedName(declaration)}";
+
+    // The name an associated Type's declaration declares (DeclareAssociatedType's spelling): a read of a recorded location.
+    private string AssociatedName(Koto declaration)
+    {
+        var head = AssociatedHead(declaration);
+        return TypeSpelling(head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type)! : head!)!;
     }
 
     // The search alone, recording nothing (a walk's question, 9.7.3's evidence): the candidate Contracts are the qualifier's, else the
@@ -780,17 +828,5 @@ public sealed partial class Binding
             this.State = 0;
             this.FormationScope?.Reset();
         }
-    }
-
-    /// <summary>The `associatedAmbiguities` family's one accessor (DECISIONS BU-220): a pass family, the two associated candidates (and their
-    /// count) an ambiguous associated Type use found (SPEC 9.7.3), stored with its failure by the recorder (RecordedFact) and written by
-    /// FailExplained (a present row always has its First requirement). Its members keep the names its readers use.</summary>
-    private readonly struct AssociatedAmbiguityRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), PassCounter> Family(ref NodeColumns columns) => ref columns.AssociatedAmbiguities;
-
-        internal bool TryGetValue(Koto use, out (BoundRequirement First, BoundRequirement Second, int Count) ambiguity)
-            => (ambiguity = binding.RecordedFact(use, Family)).First.Symbol is not null;
     }
 }

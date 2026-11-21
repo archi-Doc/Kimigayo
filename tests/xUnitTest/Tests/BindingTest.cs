@@ -677,6 +677,34 @@ public class BindingTest
         AssertTheProgramsOneRecord(c, node, DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
+    // R7-E2 E2-5b (D-850): a problem whose facts are its whole record, as each converted family's ReportProblem row reads them, at a frozen
+    // library node is the program's one record, through Core's store decision (Koto.ReportIn). No library node records one, so the row
+    // records it through the recorder after a Final Bind, with facts at library declarations of the kinds the row reads.
+    [Theory]
+    [InlineData((byte)BindingFailure.Ambiguous, DiagnosticCode.AmbiguousBinding_Kd)] // associated ambiguity: two candidates, their instances, a count
+    public void ALibraryNodesFactRecordIsTheProgramsRecord(byte failure, DiagnosticCode code)
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var library = KotoTree.Walk(c.Library.Kotonoha.RootKoto).Where(x => x.StateOf(c) == BindingState.Resolved).ToArray();
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var associated = library.OfType<SyntaxFormKoto>().Where(static x => x.Akind == KotoKind.AssociatedType).Take(2).ToArray();
+        Koto node = library.OfType<GenericsKoto>().First();
+        ProblemFact[] facts = (BindingFailure)failure switch
+        {
+            BindingFailure.Ambiguous => [Related(associated[0]), Instance(associated[0], BoundType.Boolean), Related(associated[1]), Instance(associated[1], BoundType.Unit), new(ProblemFactKind.Count, SourceRef.Of(node), 2)],
+            _ => throw new ArgumentOutOfRangeException(nameof(failure)),
+        };
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, (BindingFailure)failure, facts, 0, false);
+        AssertTheProgramsOneRecord(c, node, code);
+
+        static ProblemFact Related(Koto at, long role = 0) => new(ProblemFactKind.Related, SourceRef.Of(at), role);
+
+        ProblemFact Instance(Koto at, BoundType type) => new(ProblemFactKind.Instance, SourceRef.Of(at), report.Keep(type));
+    }
+
     // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).
     // A Type's member whose qualifier is missing (`Missing.Inner`) is derived from that unresolved input; a further missing Name there
     // rests on the same recorded input, so it is a derived issue under its own requirement, suppressed while its cause publishes, and a
