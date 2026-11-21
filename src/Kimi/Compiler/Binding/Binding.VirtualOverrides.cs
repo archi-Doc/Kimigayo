@@ -23,7 +23,9 @@ public sealed partial class Binding
     private readonly ScratchBuffers<BoundConstraint> virtualHeaderScratch = new();
     // One struct's virtual and override functions in member order while its VTableDef is filled.
     private readonly List<FunctionKoto> slotMembers = new();
-    private Dictionary<FunctionKoto, OverrideFailure>? overrideFailures;
+    // An override problem's facts while its site records them (OverrideFacts, RecordOverride): emptied after each record, so a warm
+    // rebind of a rejected program reuses it.
+    private readonly List<ProblemFact> overrideFacts = [];
 
     // Header names must be independent of slot selection. Only premises common to the accessible
     // virtual group can supply an unqualified associated name; a qualified name needs no guess. The scope the header binds in: an
@@ -150,30 +152,6 @@ public sealed partial class Binding
         ResultType,
         OriginBinders,
         Condition,
-    }
-
-    // Check-time facts only (DECISIONS G89-2). ExternalName has both names, Parameter and Span; ResultType has both Types
-    // and its written result, if any; Condition has At and its Unknown/Refuted proof. First is the original or first candidate,
-    // when present; AmbiguousInputs/DuplicateSlot also have Second. Other payloads are unused, never substitute explanations.
-    private readonly record struct OverrideFailure(OverrideFailureCause Cause, FunctionKoto? First)
-    {
-        public FunctionKoto? Second { get; init; }
-
-        public Koto? At { get; init; }
-
-        public BoundType? ExpectedType { get; init; }
-
-        public BoundType? ActualType { get; init; }
-
-        public string? ExpectedName { get; init; }
-
-        public string? ActualName { get; init; }
-
-        public int Parameter { get; init; }
-
-        public ConstraintProof Proof { get; init; }
-
-        public SourceSpan? Span { get; init; }
     }
 
     // Correspondence alone is not a verified implementation or permission to execute it.
@@ -307,10 +285,10 @@ public sealed partial class Binding
                 var cause = count != 0 ? OverrideFailureCause.AmbiguousInputs
                     : baseType is null ? OverrideFailureCause.NoBase
                     : selection.Member is null ? OverrideFailureCause.NoInheritedGroup : OverrideFailureCause.NoMatchingInputs;
-                this.FailOverride(
+                this.RecordOverride(
                     function,
                     count == 0 ? BindingFailure.MissingOverrideTarget : BindingFailure.AmbiguousOverrideTarget,
-                    new(cause, first ?? selection.Member?.Declaration as FunctionKoto) { Second = second });
+                    this.OverrideFacts(function, cause, first ?? selection.Member?.Declaration as FunctionKoto, second));
                 continue;
             }
 
@@ -319,7 +297,7 @@ public sealed partial class Binding
             var key = (typeSymbol, slot.Original);
             if (OverrideEntryRows.TryGetValue(key, out var previous))
             {
-                this.FailOverride(function, BindingFailure.DuplicateOverride, new(OverrideFailureCause.DuplicateSlot, slot.Original) { Second = previous });
+                this.RecordOverride(function, BindingFailure.DuplicateOverride, this.OverrideFacts(function, OverrideFailureCause.DuplicateSlot, slot.Original, previous));
                 continue;
             }
 
@@ -444,7 +422,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.OriginBinders, slot.Original));
+                    this.RecordOverride(function, BindingFailure.OverrideContractMismatch, this.OverrideFacts(function, OverrideFailureCause.OriginBinders, slot.Original));
                 }
             }
         }
@@ -535,10 +513,9 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        this.FailOverride(
-                            function,
-                            BindingFailure.UnprovenOverrideCondition,
-                            new(OverrideFailureCause.Condition, implementation.Slot.Original) { At = condition, Proof = proof });
+                        var facts = this.OverrideFacts(function, OverrideFailureCause.Condition, implementation.Slot.Original, proof: proof);
+                        facts.Add(new(ProblemFactKind.Related, this.FactSite(condition), 0));
+                        this.RecordOverride(function, BindingFailure.UnprovenOverrideCondition, facts);
                     }
 
                     break;
@@ -594,13 +571,10 @@ public sealed partial class Binding
         {
             if (original.Parameters[i].ExternalName != implementation.Parameters[i].ExternalName)
             {
-                this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ExternalName, original)
-                {
-                    ExpectedName = original.Parameters[i].ExternalName,
-                    ActualName = implementation.Parameters[i].ExternalName,
-                    Parameter = i,
-                    Span = implementation.Parameters[i].ExternalNameSpan,
-                });
+                var facts = this.OverrideFacts(implementation, OverrideFailureCause.ExternalName, original);
+                var span = implementation.Parameters[i].ExternalNameSpan;
+                facts.Add(new(ProblemFactKind.Span, SourceRef.Of(implementation), ((long)span.Start << 32) | (uint)span.Length));
+                this.RecordOverride(implementation, BindingFailure.OverrideContractMismatch, facts);
                 return;
             }
         }
@@ -610,19 +584,42 @@ public sealed partial class Binding
         if (overridden.Result is { } required && declared.Result is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
             !this.SameOverrideType(bound, actual, overridden.Binder, declared.Binder, implementation))
         {
-            this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.ResultType, original)
-            {
-                At = implementation.ReturnType,
-                ExpectedType = bound,
-                ActualType = actual,
-            });
+            var facts = this.OverrideFacts(implementation, OverrideFailureCause.ResultType, original);
+            var site = this.FactSite(implementation.ReturnType!);
+            facts.Add(new(ProblemFactKind.Related, site, 0));
+            facts.Add(new(ProblemFactKind.Expected, site, this.report.Keep(bound)));
+            facts.Add(new(ProblemFactKind.Actual, site, this.report.Keep(actual)));
+            this.RecordOverride(implementation, BindingFailure.OverrideContractMismatch, facts);
         }
     }
 
-    private void FailOverride(FunctionKoto function, BindingFailure failure, OverrideFailure facts)
+    // SPEC 6.4.2-6.4.4: an override problem's facts (ReportOverrideFailure renders them): the closed cause and a condition's proof (its
+    // Reason row), the original or first candidate (Related, role 1) and a conflicting declaration (role 2); a site adds the record's own
+    // location (role 0), a renamed external name (Span) or a result's two Types (Expected, Actual). A failure path only.
+    private List<ProblemFact> OverrideFacts(FunctionKoto function, OverrideFailureCause cause, FunctionKoto? first, FunctionKoto? second = null, ConstraintProof proof = default)
     {
-        (this.overrideFailures ??= new(ReferenceEqualityComparer.Instance))[function] = facts;
-        this.Fail(function, failure);
+        var facts = this.overrideFacts;
+        facts.Add(new(ProblemFactKind.Reason, SourceRef.Of(function), (long)cause | ((long)proof << 8)));
+        if (first is not null)
+        {
+            facts.Add(new(ProblemFactKind.Related, this.FactSite(first), 1));
+        }
+
+        if (second is not null)
+        {
+            facts.Add(new(ProblemFactKind.Related, this.FactSite(second), 2));
+        }
+
+        return facts;
+    }
+
+    // Its own record beside the function's other failures (SPEC 23.1.2); a further failure of one requirement takes the next condition.
+    private void RecordOverride(FunctionKoto function, BindingFailure failure, List<ProblemFact> facts)
+    {
+        var recorded = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(facts);
+        var condition = this.report.Condition(new(this.CodeOf(function, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(function), 0), recorded);
+        this.Record(function, failure, recorded, condition);
+        facts.Clear();
     }
 
     /// <summary>The `virtualOverrides` family's one accessor (DECISIONS BU-220): a pass family, an override's verified slot, implementing

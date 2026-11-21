@@ -691,6 +691,25 @@ public class BindingTest
         AssertTheProgramsOneRecord(c, node, DiagnosticCode.InvalidConstraint_Kd);
     }
 
+    // R7-E2 E2-5a (D-850, Diagnostics.VirtualOverrides.cs's ReportOverrideFailure): an override problem (a Condition cause with its
+    // Unknown proof, the original and the clause as Related facts) at a frozen library function is the program's one record, through Core's
+    // store decision. No library function overrides, so the row records one through the recorder after a Final Bind.
+    [Fact]
+    public void ALibraryFunctionsOverrideProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var library = KotoTree.Walk(c.Library.Kotonoha.RootKoto);
+        var functions = library.OfType<FunctionKoto>().Where(x => x.StateOf(c) == BindingState.Resolved).Take(2).ToArray();
+        Koto node = functions[0];
+        Koto clause = library.OfType<IsKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var condition = 8L; // OverrideFailureCause.Condition
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.UnprovenOverrideCondition, [new(ProblemFactKind.Reason, SourceRef.Of(node), condition | ((long)ConstraintProof.Unknown << 8)), new(ProblemFactKind.Related, SourceRef.Of(functions[1]), 1), new(ProblemFactKind.Related, SourceRef.Of(clause), 0)], 0, false);
+        AssertTheProgramsOneRecord(c, node, DiagnosticCode.UnprovenOverrideCondition_Kd);
+    }
+
     // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).
     // A Type's member whose qualifier is missing (`Missing.Inner`) is derived from that unresolved input; a further missing Name there
     // rests on the same recorded input, so it is a derived issue under its own requirement, suppressed while its cause publishes, and a

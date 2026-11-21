@@ -71,8 +71,6 @@ public sealed partial class Binding
         {
             entries!.Clear();
         }
-
-        this.overrideFailures?.Clear();
     }
 
     // SPEC 6.4: declaration eligibility precedes slot matching and body proofs.

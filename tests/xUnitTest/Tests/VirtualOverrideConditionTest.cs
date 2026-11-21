@@ -75,6 +75,18 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         Assert.Equal([DiagnosticCode.InvalidConstraint_Kd], c.Binding.Issues.Select(static x => x.Code));
     }
 
+    // R7-E2 E2-5a (B's O8, M1; labelled from SPEC first): an override of a slot whose substituted condition is Refuted (6.4.3) that also
+    // breaks the slot's contract (6.4.2's third step, an external name or the result Type) fails two independent requirements, so each is
+    // its own record at the override (SPEC 23.1.2; dev kept the first only, the contract's facts unread). Twins: the same contract break
+    // where the condition holds (`i32 is Copy`) gives its one record; the condition alone is the row above.
+    [Theory]
+    [InlineData("x1", "string", "renamed: i32) -> i32 => renamed", "InvalidConstraint_Kd: * | OverrideContractMismatch_Kd: *")]
+    [InlineData("x2", "string", "value: i32) -> i64 => 2", "InvalidConstraint_Kd: * | OverrideContractMismatch_Kd: *")]
+    [InlineData("x1t", "i32", "renamed: i32) -> i32 => renamed", "OverrideContractMismatch_Kd: *")]
+    [InlineData("x2t", "i32", "value: i32) -> i64 => 2", "OverrideContractMismatch_Kd: *")]
+    public void AnInapplicableSlotsOverrideThatBreaksItsContractKeepsBothRecords(string form, string argument, string tail, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, $"open struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> i32\n        T is Copy\n        return value\nstruct Derived : Base<{argument}>\n    override func read(self: objref/Self, {tail}\npublic func main() => ()", records);
+
     [Fact]
     public void EditingAnOriginalPremiseRevokesTheInheritedProof()
     {
@@ -139,12 +151,16 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         Assert.Contains("original virtual slot", console.Text, StringComparison.Ordinal);
-        Assert.Contains("U is Copy is not implied", console.Text, StringComparison.Ordinal); // A Refuted override condition now meets the block's premise error first (ruling 297 (b)); no row pins its Refuted CLI/LSP record
+        // D3, Q13 M3: the removed Note restated the clause and its Unknown proof (the record's reason above); the CLI shows the clause as the
+        // label. A Refuted override condition now meets the block's premise error first (ruling 297 (b)); no row pins its Refuted CLI/LSP record.
+        Assert.Contains("^^^^^^^^^ U is Copy", console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("is not implied", console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity], x => x.Code == record.Code);
             Assert.Equal(record.Display!.Range, sent.Range);
+            Assert.Contains(record.Label!, sent.Message, StringComparison.Ordinal); // The clause, in the LSP message too.
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }
