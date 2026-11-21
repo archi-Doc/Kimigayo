@@ -19,6 +19,8 @@ namespace Kimi.Compiler;
 //   among the subject's Heads (D2-B1). The walks keep their work on the batches' lists and this owner's stack (no host recursion per
 //   definition: a chain of 10,000 definitions is 10,000 steps).
 // - Prohibitions: no read of an inferred value; no state but the batches' discovery fields and the lists below, reset here each pass.
+// Every batch present after PrepareAssociatedInference drops the inactive ones has paths (an active batch's paths include the one
+// that made it active), so a batch found by its Type infers.
 // Until R7-C4's cutover the components only count: a read the batches make outside the reader's Reach (ResolveAssociated) is counted in
 // InferenceReachMisses, which the rows assert is zero (the validator, enforced by the cutover).
 public sealed partial class Binding
@@ -152,7 +154,7 @@ public sealed partial class Binding
         var added = false;
         for (var i = 0; i < source.Heads.Count; i++)
         {
-            if (this.associatedInference.TryGetValue(source.Heads[i], out var head) && head.Paths.Count > 0 && !ReferenceEquals(head, batch) &&
+            if (this.associatedInference.TryGetValue(source.Heads[i], out var head) && !ReferenceEquals(head, batch) &&
                 !batch.Reads.Contains(head))
             {
                 batch.Reads.Add(head);
@@ -240,7 +242,7 @@ public sealed partial class Binding
     private void CountInferenceRead(BindingSymbol readType)
     {
         if (this.collectingAssociated is not { Component: >= 0 } reader || ReferenceEquals(reader.Type, readType) ||
-            !this.associatedInference.TryGetValue(readType, out var read) || read.Paths.Count == 0 || this.Reaches(reader, read))
+            !this.associatedInference.TryGetValue(readType, out var read) || this.Reaches(reader, read))
         {
             return;
         }
