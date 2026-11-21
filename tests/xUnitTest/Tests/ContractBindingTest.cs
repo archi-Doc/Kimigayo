@@ -12,6 +12,7 @@ namespace XunitTest;
 
 public class ContractBindingTest
 {
+    private const string Labels = "    func f(self: ref/Self, x: i32) -> i32\n    func f(self: ref/Self, y: i32) -> i32\n";
     private const string Projected = "Self is Iter<S.(HasItem).Item>\n    associate Tag is bool";
     private const string Uses = "func f(a: ref/B<SrcI>, b: ref/B<Src>) -> ()\n    use(a)\n    use(b)";
     private const string NameKey = "struct Name\n    Self is Copy\n    public let id: isize\n    public init(id: isize) => self.id = id\n";
@@ -180,6 +181,17 @@ public class ContractBindingTest
         var actual = string.Join(" | ", errors.Select(x => $"{x.Code}: {source.Substring(x.Span.Start, x.Span.Length)}").Order(StringComparer.Ordinal));
         Assert.True(records == actual, $"{form}: {actual}");
     }
+
+    // R7-E2 E2-5a (the Front's C-a, M1; probes k1, k1t, k2, labelled from SPEC first): two requirements of one signature that differ
+    // only by labels are a Contract's own failed requirement (SPEC 8.4.3), read from its declared requirements, so it is its own record
+    // at the Contract beside another requirement's failure there: a public Contract exposing a private parent (9.4.4, k1) or a refinement
+    // cycle (8.4.3, k2); dev kept the first only. k1t, the parent public, gives that record alone.
+    [Theory]
+    [InlineData("k1", "contract B\n    func b(self: ref/Self) -> i32\npublic contract A: B\n" + Labels, "DuplicateBinding_Kd: func f(self: ref/Self, y: i32) -> i32 | InaccessibleBinding_Kd: public contract A: B | InvalidConstraint_Kd: public contract A: B")]
+    [InlineData("k1t", "public contract B\n    func b(self: ref/Self) -> i32\npublic contract A: B\n" + Labels, "DuplicateBinding_Kd: func f(self: ref/Self, y: i32) -> i32 | InvalidConstraint_Kd: public contract A: B")]
+    [InlineData("k2", "contract A: B\n" + Labels + "contract B: A", "CyclicBinding_Kd: contract A: B | DuplicateBinding_Kd: func f(self: ref/Self, y: i32) -> i32 | InvalidConstraint_Kd: contract A: B | InvalidConstraint_Kd: contract B: A")]
+    public void AContractsLabelConflictIsItsOwnRecordBesideAnotherFailure(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
 
     // SPEC 8.5.1 Qualification, 8.5.3: in a Contract, `associate C.X is R` names an ancestor C, with its Type arguments, and one of
     // its associated Types; the Contract itself, under any path, is no ancestor.
