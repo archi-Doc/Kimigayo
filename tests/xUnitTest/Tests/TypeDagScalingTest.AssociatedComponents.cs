@@ -15,21 +15,8 @@ public partial class TypeDagScalingTest
     [Fact(Explicit = true)]
     public void AChainAndARingOfTenThousandDefinitionsStayWithinTheStack()
     {
-        CompilationTestHelper.AssertBindingRecordsAtLines("chain 10000", OneValueChain(10000), string.Empty);
-        CompilationTestHelper.AssertBindingRecordsAtLines("ring 10000", TwoValueRing(10000), "Resource: Self is RC | ...");
+        CompilationTestHelper.AssertBindingRecordsAtLines("chain 10000", Verification.AssociatedInferenceWorkloads.OneValueChain(10000), string.Empty);
+        CompilationTestHelper.AssertBindingRecordsAtLines("ring 10000", Verification.AssociatedInferenceWorkloads.TwoValueRing(10000), "Resource: Self is RC | ...");
     }
 
-    private static string OneValueChain(int n)
-        => "contract CC\n    associate X\n    func a(self: ref/Self) -> Self.X\n" +
-            string.Concat(Enumerable.Range(0, n).Select(static i => $"struct C{i}\n    Self is CC\n    public func a(self: ref/Self) -> C{i + 1}.(CC).X => $abort(\"a\")\n")) +
-            $"struct C{n}\n    Self is CC\n    public func a(self: ref/Self) -> i32 => 0\n()";
-
-    private static string TwoValueRing(int n)
-        => "contract RC\n    associate X\n    associate Y\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\n" +
-            "    func c(self: ref/Self) -> Self.Y\n    func d(self: ref/Self) -> Self.Y\n" +
-            string.Concat(Enumerable.Range(0, n).Select(i => $"struct R{i}\n    Self is RC\n" +
-                $"    public func a(self: ref/Self) -> R{(i + 1) % n}.(RC).X => $abort(\"a\")\n" +
-                $"    public func b(self: ref/Self) -> R{(i + 1) % n}.(RC).Y => $abort(\"b\")\n" +
-                "    public func c(self: ref/Self) -> i32 => 0\n" +
-                $"    public func d(self: ref/Self) -> R{(i + 1) % n}.(RC).X => $abort(\"d\")\n")) + "()";
 }

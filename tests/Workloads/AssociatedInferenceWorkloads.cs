@@ -6,6 +6,22 @@ namespace Verification;
 
 internal static class AssociatedInferenceWorkloads
 {
+    // R7-C4 (PLAN G172): a one-value chain of n definitions (valid by SPEC 8.5.5: every X is i32), n requests in sequence.
+    internal static string OneValueChain(int n)
+        => "contract CC\n    associate X\n    func a(self: ref/Self) -> Self.X\n" +
+            string.Concat(Enumerable.Range(0, n).Select(static i => $"struct C{i}\n    Self is CC\n    public func a(self: ref/Self) -> C{i + 1}.(CC).X => $abort(\"a\")\n")) +
+            $"struct C{n}\n    Self is CC\n    public func a(self: ref/Self) -> i32 => 0\n()";
+
+    // R7-C4 (PLAN G172): a two-value ring of n definitions (valid by SPEC 8.3.3 Finality: every X and Y is i32), one component.
+    internal static string TwoValueRing(int n)
+        => "contract RC\n    associate X\n    associate Y\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\n" +
+            "    func c(self: ref/Self) -> Self.Y\n    func d(self: ref/Self) -> Self.Y\n" +
+            string.Concat(Enumerable.Range(0, n).Select(i => $"struct R{i}\n    Self is RC\n" +
+                $"    public func a(self: ref/Self) -> R{(i + 1) % n}.(RC).X => $abort(\"a\")\n" +
+                $"    public func b(self: ref/Self) -> R{(i + 1) % n}.(RC).Y => $abort(\"b\")\n" +
+                "    public func c(self: ref/Self) -> i32 => 0\n" +
+                $"    public func d(self: ref/Self) -> R{(i + 1) % n}.(RC).X => $abort(\"d\")\n")) + "()";
+
     internal static string Create(string axis, int size, bool explicitBinding)
     {
         var text = new StringBuilder();

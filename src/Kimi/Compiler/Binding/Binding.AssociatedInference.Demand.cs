@@ -34,6 +34,9 @@ public sealed partial class Binding
 
     private Dictionary<HoldKey, int>? inferenceHoldIds;
 
+    // The held states the requests evaluated in this compilation (design §6, D2-C3: the cost per state is the time over this count).
+    internal int InferenceStates { get; private set; }
+
     // The component whose request is open, or -1.
     private int inferenceRequest = -1;
 
@@ -290,6 +293,7 @@ public sealed partial class Binding
 
         var answer = conflict ? new HeldAnswer(null, HeldState.Conflict) : found is null ? new HeldAnswer(null, HeldState.Missing) : new HeldAnswer(found, HeldState.Type);
         this.inferenceValues[(binding, hold)] = answer;
+        this.InferenceStates++;
         return answer;
     }
 
