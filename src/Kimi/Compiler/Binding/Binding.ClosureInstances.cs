@@ -178,6 +178,7 @@ public sealed partial class Binding
             return null;
         }
 
+        this.termWalks++;
         var before = count;
         BoundType? reached = null;
         count = Add(OwnedOrigin(type), subject, binders, scratch, count);

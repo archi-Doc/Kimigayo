@@ -90,6 +90,30 @@ public partial class TypeDagScalingTest
         Assert.Equal("D13<i32>.Item", source.Substring(span.Start, span.Length));
     }
 
+    // PLAN G348, R7-D3: a Closure's call signature is an edge BoundType.Height does not count (BU-71), so the walk of the enclosing
+    // anonymous functions' atoms at each Closure's formation (FixedAtoms) does not descend it. In a chain of closures each taking the
+    // previous (G348-d's `sclo`), the walks grow linearly in the links; descending each signature walked the whole chain at every link.
+    [Fact]
+    public void AClosureChainsFormationWalksAreLinearInTheLinks()
+    {
+        var steps = new[] { 100, 200, 400 }.Select(static n => Work(n)).ToArray();
+        Assert.True(steps[1] > steps[0] && MirBorrowsTest.Grows(steps, 2), string.Join(' ', steps));
+
+        static long Work(int links)
+        {
+            var source = new System.Text.StringBuilder("func pass<F, G>(f: ref/F, g: G) -> G\n    G is Callable<(ref/F) -> i32>\n    return g@move\n");
+            source.Append("public func main()\n    let c0 = func [] () -> i32 => 1\n");
+            for (var i = 1; i <= links; i++)
+            {
+                source.Append($"    let c{i} = pass(c{i - 1}@ref, func [] (x) -> i32 => 1)\n");
+            }
+
+            var c = MirBuildTest.Compile(source.ToString());
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.TermWalkWork;
+        }
+    }
+
     // SPEC 15.4.2: a borrow layer nested in an input names its Origin, so each layer below the outermost one names a_k, the innermost one
     // `innermost` where given.
     internal static string RefLayers(int layers, string terminal, string? innermost = null)
