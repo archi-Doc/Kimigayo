@@ -67,7 +67,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("n3w", "func fb(x: i64) -> i32 => 0\nfunc fb(x: bool) -> i32 => 1\nfunc t(c: bool) -> i32\n    let a = fb(pick2(1))\n    let b = fb(pick2(1))\n    return a + b\npublic func main() => ()\n", "")]
     [InlineData("n4", "func fq(x: i64) -> i32 => 0\nfunc fq(x: bool) -> i32 => 1\nfunc t(c: bool) -> i32\n    return fq(pick3(1))\npublic func main() => ()\n", "NoApplicableOverload_Kd: return fq(pick3(1))")]
     [InlineData("n5", "func fq1(x: i64) -> i32 => 0\nfunc t(c: bool) -> i32\n    return fq1(pick3(1))\npublic func main() => ()\n", "NoApplicableOverload_Kd: return fq1(pick3(1))")]
-    [InlineData("pc1", "func t(c: bool) -> i32\n    let o: Option<bool> = .Some(idf(1))\n    return 0\npublic func main() => ()\n", "TypeMismatch_Kd: let o: Option<bool> = .Some(idf(1))")]
+    [InlineData("pc1", "func t(c: bool) -> i32\n    let o: Option<bool> = .Some(idf(1))\n    return 0\npublic func main() => ()\n", "NoApplicableOverload_Kd: let o: Option<bool> = .Some(idf(1))")]
     [InlineData("r3", "func fo5(a: i32, x: ref/[2 of i64]) -> i32 => 0\nfunc fo5<T>(a: T, x: ref/[2 of i64]) -> i32 => 1\nfunc t(c: bool) -> i32\n    return fo5(1@i32, if c => idf([2 of 1]) else => idf([2 of 2]))\npublic func main() => ()\n", "")]
     [InlineData("r4", "func fo3(x: ref/[2 of i64]) -> i32 => 0\nfunc fo3(x: bool) -> i32 => 1\nfunc t(c: bool) -> i32\n    return fo3(idf([2 of 1]))\npublic func main() => ()\n", "")]
     [InlineData("r4-r", "func fo3(x: bool) -> i32 => 1\nfunc fo3(x: ref/[2 of i64]) -> i32 => 0\nfunc t(c: bool) -> i32\n    return fo3(idf([2 of 1]))\npublic func main() => ()\n", "")]

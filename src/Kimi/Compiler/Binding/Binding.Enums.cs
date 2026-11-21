@@ -618,12 +618,11 @@ public sealed partial class Binding
                 !this.LacksImage(fixedType, solution.SlotOwner, solution.Origins.Slice(0, solution.OriginCount)))
             {
                 settled.Add(i);
+                _ = this.RecordsWaitingForm(solution.Call.ArgumentNodes[i]); // Recorded as a named call's argument is (P1), unbound.
             }
-
-            // SPEC 10.5.1 (P-A (a)): every payload is prepared as a named call's argument is (P1), a settled one too, since its fit reads
-            // it (CompletePayloads); a payload a probe left awaiting its call is prepared already (design-casepath R4).
-            if (!this.AwaitsCall(solution.Call.ArgumentNodes[i]) && !this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, default, callableContext: true))
+            else if (!this.AwaitsCall(solution.Call.ArgumentNodes[i]) && !this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, default, callableContext: true))
             {
+                // A payload a probe left awaiting its call is prepared already (design-casepath R4).
                 Complete(use, null); // The payload's own failure, on which the construction rests.
                 return false;
             }
@@ -782,7 +781,12 @@ public sealed partial class Binding
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
             var type = this.PayloadTypeAt(payload[i], result, scope, out var stored);
-            var fit = this.FitArgument(source, type, scope, source, out var fitted); // SPEC 10.5.1: every payload, settled or not (P-A (a)).
+            // SPEC 10.5.1: a payload checked against the expected Type that a probe prepared (a nested call or Case awaiting its call) is
+            // checked at its payload Type, settled or not; any other settled payload is bound at it below (its independent binding with
+            // no expected Type would publish other Origins: Kimi's `.Ok(WriteWindow.init(..))`, AF-3b phase 2).
+            var fitted = default(BoundArgumentOperation);
+            var fit = settled.Contains(i) && this.AwaitedKind(source) is not (PartKind.Call or PartKind.Case) ? CandidateApplicability.Applicable
+                : this.FitArgument(source, type, scope, source, out fitted);
             _ = this.TakeTrialChecked(use); // A failed check is the construction's misfit below.
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
             {
