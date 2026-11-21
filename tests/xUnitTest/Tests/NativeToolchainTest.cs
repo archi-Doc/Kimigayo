@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
 using Kimi;
@@ -29,17 +30,47 @@ public sealed class NativeToolchainTest : IDisposable
     {
         var input = Path.Combine(this.directory, "input.lib");
         File.WriteAllText(input, "first");
-        var staged = NativeToolchain.StageInput(input, Path.Combine(this.directory, "output"), out var hash);
+        var staged = Stage(out var hash);
         Assert.Equal(ArtifactFiles.Hash(input), hash);
         File.WriteAllText(input, "second");
         Assert.Equal("first", File.ReadAllText(staged));
         Assert.Equal(hash, ArtifactFiles.Hash(staged));
         File.WriteAllText(input, "first");
         File.WriteAllText(staged, "damaged staged copy");
-        Assert.Equal(staged, NativeToolchain.StageInput(input, Path.Combine(this.directory, "output"), out var repairedHash));
+        Assert.Equal(staged, Stage(out var repairedHash));
         Assert.Equal(hash, repairedHash);
         Assert.Equal("first", File.ReadAllText(staged));
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(staged)!, "*.tmp"));
+
+        string Stage(out string stagedHash)
+        {
+            using var stream = File.OpenRead(input);
+            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output"), out stagedHash);
+        }
+    }
+
+    // IMPL 20.4 (Tatara B6a): the compiler carries its supplies' bytes. The rows are the two reserved names in Ordinal order, each row's
+    // SHA-256 the catalog's, and each embedded resource has that SHA-256 and is the file committed beside the catalog, so a build
+    // stages the adopted bytes.
+    [Fact]
+    public void EachCompilerSupplyIsTheCatalogsCommittedFile()
+    {
+        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64"));
+        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "profile.json")));
+        Assert.Equal(
+            [
+                "kernel32 " + catalog.RootElement.GetProperty("kernel32").GetProperty("sha256").GetString(),
+                "kimi_backend " + catalog.RootElement.GetProperty("artifactSha256").GetString(),
+            ],
+            ToolchainIdentity.Supplies.Select(static x => x.Name + " " + x.Sha256));
+        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", ToolchainIdentity.BackendFile }))
+        {
+            using var stream = supply.Open();
+            using var bytes = new MemoryStream();
+            stream.CopyTo(bytes);
+            Assert.Equal(supply.Sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
+            Assert.Equal(File.ReadAllBytes(Path.Combine(directory, file)), bytes.ToArray());
+        }
     }
 
     [Fact]
@@ -451,6 +482,64 @@ public sealed class NativeToolchainTest : IDisposable
 
         Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
         Assert.NotNull(this.console.LineAction);
+    }
+
+    // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
+    // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
+    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. On the
+    // installed toolchain.
+    [Fact]
+    public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (project, paths, v1) = await this.BuildHello();
+        var staged = ToolchainIdentity.Supplies.Select(x => (x.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        {
+            Assert.False(record.RootElement.TryGetProperty("kernel32", out _));
+            Assert.Equal(
+                staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
+                record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x =>
+                    x.GetProperty("name").GetString() + " " + x.GetProperty("path").GetString() + " " + x.GetProperty("sha256").GetString()));
+        }
+
+        Assert.All(staged, static x => Assert.Equal(x.Sha256, ArtifactFiles.Hash(x.Path)));
+        File.WriteAllText(staged[0].Path, "overwritten");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Equal(staged[0].Sha256, ArtifactFiles.Hash(staged[0].Path));
+        Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+    }
+
+    // IMPL 20.4 "its hash assertions are checked" (Tatara B6a): a compiler's supply's manifest entry may assert a SHA-256 as a program's
+    // may, and the build checks it against the staged bytes: the catalog's hash builds, another fails before the link. On the installed
+    // toolchain.
+    [Theory]
+    [InlineData("kernel32", true)]
+    [InlineData("kernel32", false)]
+    [InlineData("kimi_backend", true)]
+    [InlineData("kimi_backend", false)]
+    public async Task ACompilerSupplysHashAssertionIsChecked(string name, bool adopted)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = this.Create();
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+        var entry = manifest["libraries"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == name)!;
+        entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Name == name)!.Sha256 : new string('0', 64);
+        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        var build = NativeToolchain.BuildManifest(paths.Manifest, null, (_, _) => { }, TestContext.Current.CancellationToken);
+        if (adopted)
+        {
+            await build;
+            Assert.True(File.Exists(paths.Executable));
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<InvalidDataException>(() => build);
+            Assert.Equal($"Native library '{name}' does not match its manifest Sha256 assertion.", error.Message);
+            Assert.False(File.Exists(paths.Executable));
+        }
     }
 
     [Fact]
