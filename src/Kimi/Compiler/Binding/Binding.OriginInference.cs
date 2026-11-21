@@ -8,22 +8,6 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(Koto Use, Koto Binder), OriginInference> originInferences = new();
 
-    // G1128 (B2; BU-55): the per-query tables of a slot's skeleton walk (SkeletonOf: the bindings' sub-Type tuples and the skeleton per
-    // tuple and polarity) and of its bindings' collection (slotCollectMemo while OpenSlotVariables collects), pooled and cleared per slot.
-    private readonly Dictionary<(int Prefix, BoundType Part), int> slotTupleIds = new();
-    private readonly Dictionary<(int Tuple, int Polarity), BoundType> slotSkeletons = new();
-    private readonly HashSet<(BoundType, BoundType, int)> slotCollectTable = new();
-    private HashSet<(BoundType, BoundType, int)>? slotCollectMemo;
-    private int slotWalks;
-    private int slotVariables;
-
-    /// <summary>Gets the steps G1128's slot walks took in the latest pass: a SkeletonOf node entered past its (tuple, polarity) table, a
-    /// CollectOriginInference query under the slot collection's table and a SlotValuesOf node; read by the scaling tests (Q20).</summary>
-    internal int SlotWalkWork => this.slotWalks;
-
-    /// <summary>Gets the slot variables the latest pass's calls took (NewSlotVariable); read by the scaling tests.</summary>
-    internal int SlotVariableWork => this.slotVariables;
-
     // SPEC 15.3.6: `value` is a covariant input bound of the callee's Origin `parameter` (CollectOriginInference's covariant row), in
     // the cases `condition` names (OriginInference.Bounds).
     private static void AddInputBound(OriginInference inference, BoundOrigin parameter, BoundOrigin value, ulong condition = 0)
