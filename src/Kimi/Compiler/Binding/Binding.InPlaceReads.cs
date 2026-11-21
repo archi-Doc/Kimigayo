@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // - Outputs: the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which AccessType and IsSynthesizedAccess
 //   (Binding.ElementAccess) publish to Binding's Place classification and the HIR publisher.
 // - Invariants: a node keeps its own Type, and a recorded read only states how the node is read in place: one shared reference to the
-//   Type declaring the member, never a layer.
+//   Type declaring the member, never a layer; a receiver's read is written once, by ReceiverElement (ReceiverThroughLayers hands it its
+//   reference), once per binding of the selection (G147 ruling 50).
 // - Prohibitions: nothing here reports a diagnostic, selects a candidate or changes a Type.
 public sealed partial class Binding
 {
@@ -19,7 +20,8 @@ public sealed partial class Binding
     // layers in any order, LayerBelow; PLAN G1122) is reached through one reference to the Type that declares it: exclusive when the
     // receiver can be exclusively acquired through them (ExclusivelyAcquirable: no shared layer or case, a pair layer's weakest case),
     // shared otherwise, with the Origins of 10.2. A receiver below one layer is its acquisition's (AdaptInput, TryPairReceiver). The
-    // receiver keeps its own Type; the recorded reference is what ownership loads and generation addresses.
+    // receiver keeps its own Type; the reference, which ownership loads and generation addresses, is handed to ReceiverElement, the
+    // receiver's one writer, which records it where no element read applies; null when no such reference is read.
     private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
     {
         if (BelowLayer(BelowLayer(actual)) is null)
@@ -39,7 +41,6 @@ public sealed partial class Binding
         // without borrowing its payload from the outer reference slot or granting exclusive authority.
         if (terminal.Semantics == SemanticsKind.ObjRef)
         {
-            this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, terminal);
             return terminal;
         }
 
@@ -51,15 +52,16 @@ public sealed partial class Binding
         // SPEC 10.2, 15.6.3, 13.5.5: the Origin of the shared-reference row (AdaptInput): the layers, then the path reaching the receiver
         // unless a layer is shared (ReferentOrigin); where nothing on the path is dereferenced, the receiver Place's own.
         var origin = this.ReferentOrigin(left, actual, layers) ?? this.PlaceOrigin(left);
-        var reference = this.types.Intern(BoundTypeKind.Semantics, null, this.ExclusivelyAcquirable(left) ? SemanticsKind.Uniq : SemanticsKind.Ref, [terminal], origin: origin);
-        this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, reference);
-        return reference;
+        return this.types.Intern(BoundTypeKind.Semantics, null, this.ExclusivelyAcquirable(left) ? SemanticsKind.Uniq : SemanticsKind.Ref, [terminal], origin: origin);
     }
 
     // SPEC 3.4.3, 4.7.1, 4.8.2: a member selected below a user index's element, or below a Non-Copy element of a Slice or borrowed
-    // array, is reached through one shared read of that element Place, continued through the layers it stores (ElementRead). The
-    // element keeps its stored Type; the read is the receiver's adaptation.
-    private void ReceiverElement(Koto left, BoundType? element)
+    // array, is reached through one shared read of that element Place, continued through the layers it stores (ElementRead); any other
+    // receiver read through several layers is read through `throughLayers` (ReceiverThroughLayers' reference), if any. The element keeps
+    // its stored Type; the read is the receiver's adaptation, written once, here (G147 ruling 50: since G1122's e353c19fa the
+    // through-layers read was written first and the element read overwrote it, so Binding's borrow formation, which forms at each write of
+    // the column, kept a read HIR never publishes).
+    private void ReceiverElement(Koto left, BoundType? element, BoundType? throughLayers)
     {
         if (this.IsUserIndex(left) && element is not null)
         {
@@ -74,9 +76,15 @@ public sealed partial class Binding
         // A Non-Copy element published by a user index (SPEC 4.7.1) is likewise read through one shared borrow of its Place.
         if (KotoHelper.UnwrapParentheses(left) is IndexKoto index &&
             (this.IsSharedElement(index) || this.IsUserIndex(index) ||
-                (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
+                (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))) &&
+            this.SharedElement(left, element))
         {
-            this.SharedElement(left, element);
+            return;
+        }
+
+        if (throughLayers is not null)
+        {
+            this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, throughLayers);
         }
     }
 
@@ -106,7 +114,7 @@ public sealed partial class Binding
         this.CompareInPlace(selection.Left);
         if (this.IsBorrowedReceiver(selection.Left) || this.IsRuntimeFixedElement(selection))
         {
-            this.SharedElement(operand, selection.BoundType);
+            _ = this.SharedElement(operand, selection.BoundType);
         }
     }
 
@@ -120,17 +128,20 @@ public sealed partial class Binding
         }
     }
 
-    // Records the one shared borrow of a Non-Copy element Place that is read in place below its receiver.
-    private void SharedElement(Koto node, BoundType? element)
+    // Records the one shared borrow of a Non-Copy element Place that is read in place below its receiver; whether it recorded one.
+    private bool SharedElement(Koto node, BoundType? element)
     {
-        if (element is not null && this.ProveCopy(element, node) == ConstraintProof.Refuted && this.SharedBorrowSemantics(element, node) is { } semantics)
+        if (element is null || this.ProveCopy(element, node) != ConstraintProof.Refuted || this.SharedBorrowSemantics(element, node) is not { } semantics)
         {
-            var origin = this.PlaceOrigin(node);
-            var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
-            var dependency = element.Semantics == SemanticsKind.Owner ? origin : this.ReferentOrigin(node, element) ?? origin;
-            var read = this.ElementRead(node, element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
-            this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, read);
+            return false;
         }
+
+        var origin = this.PlaceOrigin(node);
+        var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
+        var dependency = element.Semantics == SemanticsKind.Owner ? origin : this.ReferentOrigin(node, element) ?? origin;
+        var read = this.ElementRead(node, element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
+        this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, read);
+        return true;
     }
 
     // SPEC 3.4.3, 10.2: the in-place read of an element storing safe reference layers, below which a member is selected: one shared

@@ -103,14 +103,15 @@ public sealed partial class Binding
                 this.BindNode(source.Right, scope);
             }
 
-            this.ReceiverElement(source.Left, receiver);
+            this.ReceiverElement(source.Left, receiver, null);
         }
         else
         {
             // A tuple selector is syntax, not a separately evaluated integer operand.
             Complete(source.Right, BoundType.ISize);
-            receiver = this.ReceiverThroughLayers(source.Left, receiver) ?? receiver;
-            this.ReceiverElement(source.Left, receiver);
+            var throughLayers = this.ReceiverThroughLayers(source.Left, receiver);
+            receiver = throughLayers ?? receiver;
+            this.ReceiverElement(source.Left, receiver, throughLayers);
             if (this.adaptations.TryGetValue(source.Left, out var selection) && selection.Kind == ExpectedAdaptationKind.SharedBorrow)
             {
                 receiver = selection.Type;

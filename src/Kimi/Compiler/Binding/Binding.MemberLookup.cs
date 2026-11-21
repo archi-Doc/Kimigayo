@@ -258,8 +258,7 @@ public sealed partial class Binding
         BindingSymbol? valueMember = null;
         MemberSelection valueSelection = default;
         var receiverType = this.BindNode(member.Left, scope);
-        this.ReceiverThroughLayers(member.Left, receiverType);
-        this.ReceiverElement(member.Left, receiverType);
+        this.ReceiverElement(member.Left, receiverType, this.ReceiverThroughLayers(member.Left, receiverType));
         while (true)
         {
             while (receiverType is not null && this.ViewBelow(receiverType, scope) is { } below)
