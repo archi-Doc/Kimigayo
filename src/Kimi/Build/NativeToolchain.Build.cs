@@ -114,9 +114,10 @@ internal static partial class NativeToolchain
         return declared;
     }
 
+    // The backend supply's symbols, linked directly, and each runtime declaration in its dllimport form (kernel32's __imp_ symbol).
     private static HashSet<string> CreateAllowedUndefined()
     {
-        var allowed = new HashSet<string>(WindowsProfile.ProvidedSymbols, StringComparer.Ordinal);
+        var allowed = new HashSet<string>(ToolchainIdentity.Backend.Symbols, StringComparer.Ordinal);
         foreach (var (symbol, _) in WindowsProfile.RuntimeDeclarations)
         {
             allowed.Add("__imp_" + symbol);
@@ -276,7 +277,7 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException("Invalid or duplicate native library.");
                 }
 
-                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Name == name);
+                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name);
                 if (supply is not null)
                 {
                     LinkManifest.CheckCompilerSupply(item, supply);
@@ -299,7 +300,7 @@ internal static partial class NativeToolchain
                 libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, this.directory), ["sha256"] = hash });
             }
 
-            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Name)))
+            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Supply.Name)))
             {
                 throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
             }

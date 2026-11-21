@@ -128,22 +128,22 @@ internal sealed partial class MirEffects
 
     // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer (Outcome): decided (an
     // Environment or Unknown effect) fails it; a Limit is the located Unsupported_Kd and Deep the depth limit (R4-M153).
-    private void Verdict(in EffectObligation row, byte found, ulong views)
+    private void Verdict(in EffectObligation row, byte found)
     {
         var outcome = Outcome(found);
         if (outcome.IsDecided)
         {
-            this.report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(MirProblem.WithoutBody(row.Code, row.Requirement, row.Subject));
         }
         else if (outcome.IsLimit)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-            this.report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, requirement, row.Subject));
         }
         else if (outcome.IsDeep)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
-            this.report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(MirProblem.WithoutBody(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject));
         }
     }
 
@@ -477,11 +477,11 @@ internal sealed partial class MirEffects
                     this.Process(callable, Drop);
                 }
 
-                this.Verdict(row, this.Found, ulong.MaxValue); // SPEC 15.6.4: its first-access initializations among them (Compose).
+                this.Verdict(row, this.Found); // SPEC 15.6.4: its first-access initializations among them (Compose).
             }
             else if (row.Definition is not { } target)
             {
-                this.report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
+                this.report.Add(MirProblem.WithoutBody(row.Code, row.Requirement, row.Subject));
             }
             else
             {
@@ -497,7 +497,6 @@ internal sealed partial class MirEffects
         var body = this.program.Callee(new(MirCalleeKind.Fn, definition));
         for (var mask = body is null ? 1UL : this.Views(body, null); mask != 0; mask &= mask - 1)
         {
-            var view = body is null ? ulong.MaxValue : 1UL << BitOperations.TrailingZeroCount(mask);
             (this.found, this.scratchCount) = (0, 0);
             this.glued.Clear();
             this.Begin(default);
@@ -507,10 +506,10 @@ internal sealed partial class MirEffects
             }
             else
             {
-                this.Compose(body.Ordinal, view, null);
+                this.Compose(body.Ordinal, mask & ~(mask - 1), null); // Its lowest view.
             }
 
-            this.Verdict(row, this.Found, view); // SPEC 15.6.4: its first-access initializations among them (Compose).
+            this.Verdict(row, this.Found); // SPEC 15.6.4: its first-access initializations among them (Compose).
         }
     }
 

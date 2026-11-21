@@ -240,9 +240,9 @@ internal static class NativeConfiguration
         }
     }
 
-    // IMPL 20.4: kernel32 and kimi_backend, the reserved supplies, are the compiler's, so a NativeRequirements or NativeLibraries
-    // entry of either name is an error, each record kind with its own note.
-    private static bool Reserved(string? name) => name is WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary;
+    // IMPL 20.4: the reserved supplies (the target profile's Supplies) are the compiler's, so a NativeRequirements or NativeLibraries
+    // entry of a reserved name is an error, each record kind with its own note.
+    private static bool Reserved(string? name) => WindowsProfile.Supply(name) is not null;
 
     // Whether two packaged records supply one name of one package with assertions that cannot both hold.
     private static bool Conflicts(NativeLibraryInput record, NativeLibraryInput? other)

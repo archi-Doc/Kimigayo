@@ -45,11 +45,12 @@ public class ContextualClosureTest(ITestOutputHelper output)
     }
 
     [Theory]
-    // SPEC 15.2.3: an Owned failure is a Constraint record; the receiver conditions stay Type mismatches with their Notes.
+    // SPEC 15.2.3: an Owned failure is a Constraint record whose Note names the cause; the receiver conditions stay Type mismatches,
+    // shown by their sides.
     [InlineData("let n = 7\nlet f: () -> i32 = func [n@ref] () => n + 1", "Owned environment", "UnsatisfiedConstraint_Kd")]
-    [InlineData("let n = 7\nlet f: () -> i32 = func [var n] () => ++n", "Exclusive call")]
-    [InlineData("let text = \"owned\"\nlet f: () -> string = func [text@move] () => text@move", "Consuming call")]
-    [InlineData("let n = 7\nlet outer: () -> (() -> i32) = func [n] () => func [n@move] () => n", "Consuming call")]
+    [InlineData("let n = 7\nlet f: () -> i32 = func [var n] () => ++n", "expected () -> i32, found closure () -> i32")]
+    [InlineData("let text = \"owned\"\nlet f: () -> string = func [text@move] () => text@move", "expected () -> string, found closure () -> string")]
+    [InlineData("let n = 7\nlet outer: () -> (() -> i32) = func [n] () => func [n@move] () => n", ", found closure () -> ")]
     public void ErasureFailuresExplainTheFailedContract(string source, string cause, string code = "TypeMismatch_Kd")
     {
         var path = Path.GetFullPath("contextual-closure.kimi");
@@ -60,7 +61,8 @@ public class ContextualClosureTest(ITestOutputHelper output)
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(code, error.Code);
         Assert.StartsWith("func [", source.Substring(error.Span!.Value.Start, error.Span.Value.Length), StringComparison.Ordinal);
-        Assert.Contains(cause, error.Note, StringComparison.Ordinal);
+        Assert.Contains(cause, code == "TypeMismatch_Kd" ? error.Label : error.Note, StringComparison.Ordinal);
+        Assert.Null(code == "TypeMismatch_Kd" ? error.Note : null);
         Assert.Null(error.Repairs);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
@@ -108,17 +110,17 @@ public class ContextualClosureTest(ITestOutputHelper output)
         Assert.True(valid);
     }
 
-    // SPEC 7.7.4, 23.1: a closure that fails its conversion at a call argument or a default is shown by its signature, with
-    // the conversion Note, exactly as the same closure at a let annotation (N29a; it was "found closure " without a Note). Owned
-    // failures are Constraint records (ErasureOwnedDiagnosticTest).
+    // SPEC 7.7.4, 23.1: a closure that fails its conversion at a call argument or a default is shown by its signature at the closure,
+    // exactly as the same closure at a let annotation (N29a; it was "found closure "). Owned failures are Constraint records
+    // (ErasureOwnedDiagnosticTest).
     [Theory]
-    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "expected (i32) -> i32, found closure (i32) -> i32", "This closure requires an Exclusive call; a common Function value permits Shared calls only")]
-    [InlineData("public func main() -> ()\n    let c = func [] (n: i32) -> i32 => n\n    let g: (i64) -> i32 = c\n", "expected (i64) -> i32, found closure (i32) -> i32", "The closure's parameter or result contract does not match the expected common Function signature")]
-    public void AFailedClosureConversionShowsTheClosure(string source, string label, string note)
+    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "func [var c]", "expected (i32) -> i32, found closure (i32) -> i32")]
+    [InlineData("public func main() -> ()\n    let c = func [] (n: i32) -> i32 => n\n    let g: (i64) -> i32 = c\n", "c\n", "expected (i64) -> i32, found closure (i32) -> i32")]
+    public void AFailedClosureConversionShowsTheClosure(string source, string at, string label)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
-        Assert.Equal(note, error.Note);
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), label, (string?)null), (error.Code, error.Label, error.Note));
+        Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
         var result = new Kimi.Diagnostics.DiagnosticResult([error], DiagnosticCorpus.Check(source).Sources);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
