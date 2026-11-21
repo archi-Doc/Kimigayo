@@ -7,8 +7,9 @@ namespace Kimi.Compiler;
 // The requirement-witness core (SPEC 8.6.1, 8.11.3, 11.9.2, 22.1; IMPL 21.3.1; DECISIONS R5-M22).
 // - Responsibility: the one rule from a requirement, a Self that is not abstract, the Contract reference the call selected and a premise
 //   scope to what the requirement runs.
-// - Inputs: verified conformance paths under the caller's scope; the built-in targets, which take their requirements' signatures once
-//   per pass after headers (PrepareBuiltinTargets); the library witness table (Binding.LibraryWitnesses).
+// - Inputs: verified conformance paths under the caller's scope; the built-in row of the requirement's own Contract (ImplTable.Builtin),
+//   its built-in target, which takes its requirement's signature once per pass after headers (BuiltinTarget, PrepareBuiltinTargets), or
+//   its library group (Binding.LibraryWitnesses).
 // - Outputs: Builtin; Conformance (the witness, its declaring instance and verified mapping with its base path); Property (the
 //   verified path and operation, the implementing Type's instance); LibraryWitness (a group's function and its row); Refused (a
 //   base-path witness whose requirement receiver is not `ref`, OCC-X); None.
@@ -51,17 +52,18 @@ public sealed partial class Binding
             return this.PropertyRequirementWitness(accessor, self, contract, scope);
         }
 
-        var builtin = this.CompilerRequirementTarget(requirement, self);
-        if (builtin.Definition.Kind != DispositionKind.Body)
+        // The built-in row of the requirement's own Contract (ImplTable.Builtin), keyed on it: a built-in Type's conformance has no
+        // declaration for a selected reference to name.
+        var row = ImplTable.Builtin(self, requirement.Scope.Owner.BoundSymbol);
+        if (this.BuiltinTarget(row) is { } builtin)
         {
             return new(RequirementWitnessKind.Builtin, builtin);
         }
 
-        // Keyed on the requirement's own Contract: a built-in Type's conformance has no declaration for a selected reference to name.
-        if (WitnessGroup(self, requirement.Scope.Owner.BoundSymbol?.LibraryDeclaration) is { } group)
+        if (row.Kind == ImplTable.BuiltinKind.Library)
         {
-            return this.GroupWitness(group, requirement.Name) is { Declaration: FunctionKoto } member
-                ? new(RequirementWitnessKind.LibraryWitness, member) { Group = group } : default;
+            return this.GroupWitness(row.Group, requirement.Name) is { Declaration: FunctionKoto } member
+                ? new(RequirementWitnessKind.LibraryWitness, member) { Group = row.Group } : default;
         }
 
         if (contract is null)

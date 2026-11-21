@@ -4,21 +4,21 @@
 // here, in its entry file, for all its types.
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the compiler's Tatara: linked into
-// kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run
-// and the installed toolchain's verification (NativeToolchain.Verification.cs, whose file-scoped ToolProcess is the only code here that
-// launches an LLVM tool: the tools' version banners and kernel32's inspection); the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and
-// staged as a program's input is) and, for toolchain verify, the root's resolution (ToolchainIdentity, ToolchainResolver); kernel32's
-// definition and generation conditions (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify
-// reports the compiler's Tatara (Tatara.Instance, its start check) and compares the root's tatara.dll's SHA-256 with the installation
-// record's.
+// kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run;
+// toolchain verify's self-check of what the compiler carries (NativeToolchain.Verification.cs: its Tatara, its supplies' bytes and
+// kernel32's definition against the catalog), which reads no directory and runs no tool, so no code here launches an LLVM tool; the
+// toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and staged as a program's input is;
+// ToolchainIdentity); kernel32's definition (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). The
+// development toolchain's tools and files are checked by src/backend/windows-x64/check-toolchain.ps1, which no code here reads.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
-// native build); the installed toolchain (toolchain verify).
+// native build); the compiler's Tatara and embedded supplies (toolchain verify).
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
 // Compilation.Diagnostics, and its result Compilation.Generated (GeneratedModule: the output kind, the required libraries and the
 // external declarations, each an ExternalFunction read for its Symbol and DllImport; R9-B1); the enum OutputKind, which project
 // configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
-// project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
+// project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput; and of Misc JobProcess,
+// Kimi's launcher for the programs it runs, in which the run's program runs (PLAN G1188).
 // Output: the pair, the build record, the staged libraries, the object and the executable, each published by
 // replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
 // failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
@@ -36,8 +36,8 @@
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
 // The link manifest's fixed fields (one table), the compiler's supplies' entries (their rows) and its readers are LinkManifest's: no
 // manifest read raises an accessor's exception (R9-B1).
-// The build record's, the installation's and kernel32's readers compare ArtifactFiles' total reads (Member, Text, Number) with what they
-// expect, so a malformed record fails as their InvalidDataException (PLAN G983), and IsToolchainFailure lists no JSON accessor's type
+// The build record's reader compares ArtifactFiles' total reads (Member, Text, Number) with what it expects, so a malformed record
+// fails as its InvalidDataException (PLAN G983), and IsToolchainFailure lists no JSON accessor's type
 // (KeyNotFoundException, InvalidOperationException). Known limit (R9-M10's, narrowed): inside the toolchain's calls the set still
 // classifies by type whatever raised the exception, so one of its remaining kinds (publication's, R5-M165; Win32Exception;
 // JsonException) raised by the host's report or a defect here prints as the toolchain's failure; any other type is a fault.
@@ -45,15 +45,18 @@
 // remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
 // "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
+// toolchain verify states the catalog's invariants (Tatara B6b3): a supply whose embedded bytes differ from its row's SHA-256 is the
+// toolchain's InvalidDataException; an embedded kernel32 definition that differs from the catalog's is Kernel32Imports' initializer's
+// fault.
 
 using System.ComponentModel;
-using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
+using Microsoft.Win32.SafeHandles;
 using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
@@ -65,7 +68,7 @@ internal static partial class NativeToolchain
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     // A failure of a toolchain step (the native build, a Library's record, a run or a toolchain command): publication's kinds (an output,
-    // a configuration or a supply), a tool that does not start, or a manifest, record or installation file that does not parse (JsonException)
+    // a configuration or a supply), a program that does not start (run's), or a manifest or record that does not parse (JsonException)
     // or is not what its reader expects (its InvalidDataException, PLAN G983). Its readers apply it only around the toolchain's own calls:
     // Project.Build and Project.Run (a compiler step's exception is its result's fault, R9-B2), CommandExecution.Toolchain (build
     // --Manifest, run <exe>, toolchain verify) and TestCommand around its native build (PLAN G984).
@@ -154,11 +157,13 @@ internal static partial class NativeToolchain
         return await RunExecutable(paths.Executable, Path.GetFullPath(project.Directory.Length == 0 ? "." : project.Directory), cancellationToken);
     }
 
-    // Runs a program and returns its exit code; its output is copied to Kimi's raw standard streams and is complete when this returns
-    // or throws: the copies take no token and are awaited after Wait, which on cancellation kills the tree first, so the pipes reach
-    // their end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome
-    // and the cancellation is rethrown. A descendant that escaped the kill's walk (its parent exited first) and holds the output keeps
-    // a cancelled run waiting until it exits or a second Ctrl+C ends the process.
+    // Runs a program and returns its exit code. The program runs in a job of its own (JobProcess), so its whole tree ends with the run:
+    // after the program's exit its remaining descendants (as a test case's do), on cancellation the program with them, and when Kimi's
+    // process ends (a second Ctrl+C included) with the job's last handle (PLAN G1188). It shares Kimi's standard input (Tatara decision
+    // 15; when Kimi has none, StandardInput, the program reads end of input); its output is copied to Kimi's raw standard streams and
+    // is complete when this returns or throws: the copies take no token and are awaited after the job's end, so the pipes reach their
+    // end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome and the
+    // cancellation is rethrown. The exit is awaited on a thread of its own.
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -167,48 +172,26 @@ internal static partial class NativeToolchain
             throw new FileNotFoundException("Executable not found: " + executable);
         }
 
-        var start = new ProcessStartInfo(executable)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var process = Process.Start(start) ?? throw new IOException("Cannot start: " + executable);
+        using var program = new JobProcess(executable, workingDirectory, null, StandardInput());
         var output = Task.WhenAll(
-            process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
-            process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+            program.Stdout.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
+            program.Stderr.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+        var exit = Task.Factory.StartNew(() => program.Wait(Timeout.Infinite), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
-            await Wait(process, cancellationToken);
+            await exit.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
+            program.Kill();
+            await exit;
             await output.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             throw;
         }
 
+        program.Kill(); // The descendants the program left end with the run.
         await output;
-        return process.ExitCode;
-    }
-
-    internal static string ParseVersion(string output)
-    {
-        string? version = null;
-        foreach (Match match in VersionPattern().Matches(output))
-        {
-            var value = match.Groups[1].Value;
-            if (version is not null && version != value)
-            {
-                version = null;
-                break;
-            }
-
-            version = value;
-        }
-
-        return version ?? throw new InvalidDataException("Cannot obtain unambiguous LLVM version: " + output.Trim());
+        return (int)program.ExitCode;
     }
 
     /// <summary>Replaces checkout and user-profile roots with stable placeholders in published records.</summary>
@@ -264,31 +247,20 @@ internal static partial class NativeToolchain
         }
     }
 
-    // Waits for a launched process; on cancellation kills its tree, waits for its exit and rethrows. RunExecutable's wait, and
-    // Verification's ToolProcess's (internal for that file-scoped type).
-    internal static async Task Wait(Process process, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-
-            await process.WaitForExitAsync(CancellationToken.None);
-            throw;
-        }
-    }
-
     private static JsonObject CreateBuildRecord() => new()
     {
         ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
         ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
+
+    // Kimi's own standard input for run's program (Tatara decision 15), which the caller does not own; null when Kimi has none: no handle,
+    // or a value that is no open handle of this process (one its parent passed without letting it inherit), so the program gets
+    // JobProcess's closed input and reads end of input.
+    private static SafeFileHandle? StandardInput()
+    {
+        var input = new SafeFileHandle(GetStdHandle(-10), ownsHandle: false);
+        return !input.IsInvalid && GetHandleInformation(input.DangerousGetHandle(), out _) ? input : null;
+    }
 
     // The record's invalidation: the incomplete record a build writes first (Begin) and again after a failed move of its executable.
     private static void Invalidate(string record) => WriteRecord(record, CreateBuildRecord());
@@ -307,6 +279,10 @@ internal static partial class NativeToolchain
         }
     }
 
-    [GeneratedRegex(@"(?im)^\s*(?:.*\b(?:LLVM|clang) version|LLD)\s+([0-9]+\.[0-9]+\.[0-9]+[^\s()]*)")]
-    private static partial Regex VersionPattern();
+    [DllImport("kernel32.dll")]
+    private static extern nint GetStdHandle(int kind);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetHandleInformation(nint handle, out uint flags);
 }

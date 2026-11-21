@@ -1,7 +1,9 @@
 # Installs the pinned LLVM tools, the backend and tatara.dll from the extracted LLVM release archive into a toolchain root and records
 # them in installation.json (Tatara design A4 §2.3). The tools and tatara.dll are validated and built before the root changes. A file
 # whose destination already has the same SHA-256 is not written, so an unchanged rerun writes nothing a running process holds;
-# tatara.dll and the record are replaced by a move.
+# tatara.dll and the record are replaced by a move. No archive DLL is installed (no tool imports one; PLAN G1175): the record's
+# supportingDlls is empty, kept in schema 1 for older bases' verify on a shared root, and an existing root's DLLs stay. The last step
+# checks the root (check-toolchain.ps1).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmRoot,
@@ -45,8 +47,7 @@ foreach ($old in Get-ChildItem -LiteralPath $ToolchainRoot -File | Where-Object 
     try { [IO.File]::Delete($old.FullName) }
     catch [UnauthorizedAccessException], [IO.IOException] { Write-Output "Still mapped, kept: $($old.FullName)" }
 }
-$dllFiles = @(Get-ChildItem -LiteralPath $source -Filter '*.dll' -File | ForEach-Object FullName)
-foreach ($file in @($names | ForEach-Object { Join-Path $source "$_.exe" }) + $dllFiles) {
+foreach ($file in @($names | ForEach-Object { Join-Path $source "$_.exe" })) {
     $destination = Join-Path $ToolchainRoot ([IO.Path]::GetFileName($file))
     if (-not (Test-KimiSameFile $file $destination)) {
         Copy-Item -LiteralPath $file -Destination $destination -Force
@@ -71,10 +72,6 @@ foreach ($name in $names) {
     $identities[$name] = Get-Sha256 (Join-Path $ToolchainRoot "$name.exe")
     if ($identities[$name] -cne $candidate.tools.$name.sha256) { throw "Tool changed during setup: $name" }
 }
-$dlls = [ordered]@{}
-foreach ($file in $dllFiles) {
-    $dlls[[IO.Path]::GetFileName($file)] = Get-Sha256 (Join-Path $ToolchainRoot ([IO.Path]::GetFileName($file)))
-}
 
 # tatara.dll installed beside a loaded one by renaming that aside (Windows allows renaming a loaded image).
 $tatara = Join-Path $ToolchainRoot 'tatara.dll'
@@ -91,11 +88,12 @@ Remove-Item -LiteralPath $build -Recurse -Force
 # The record last; an equal record is not written (a concurrent verify's read handle would fail the move).
 $record = Join-Path $ToolchainRoot 'installation.json'
 $temporary = "$record.$([guid]::NewGuid().ToString('N')).tmp"
-[ordered]@{ schemaVersion = 1; profile = $profile.profile; tools = $identities; supportingDlls = $dlls; tatara = [ordered]@{ sha256 = $tataraSha256 } } |
+[ordered]@{ schemaVersion = 1; profile = $profile.profile; tools = $identities; supportingDlls = [ordered]@{}; tatara = [ordered]@{ sha256 = $tataraSha256 } } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporary -Encoding utf8
 if (Test-KimiSameFile $temporary $record) { Remove-Item -LiteralPath $temporary }
 else {
     Move-KimiFile $temporary $record
     Write-Output "Installed: $record"
 }
+& (Join-Path $PSScriptRoot 'check-toolchain.ps1') -ToolchainRoot $ToolchainRoot
 Write-Output "Toolchain ready: $ToolchainRoot"
