@@ -91,7 +91,7 @@ public sealed partial class Binding
                 this.BindNode(source.Right, scope);
                 if (this.ConformanceForKey(core, indexable, source.Right, scope) is null)
                 {
-                    result = this.Fail(source, BindingFailure.Ambiguous);
+                    result = this.Record(source, BindingFailure.Ambiguous, []);
                     return true;
                 }
 
