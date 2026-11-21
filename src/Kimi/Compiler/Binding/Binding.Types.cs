@@ -122,7 +122,6 @@ public sealed partial class Binding
         {
             var owner = OriginOwner(syntax);
             var originDeclaration = owner is not null and not (FunctionKoto or PropertyAccessorKoto) ? this.BeginOriginDeclaration(owner, scope) : null;
-            var heldReads = this.inferenceHeldReads;
             var type = this.HeightChecked(syntax, this.BindTypeStructure(syntax, scope, context));
             if (IsRecovery(syntax, out _))
             {
@@ -142,7 +141,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (this.associatedInferenceReady && (this.PendingAssociatedType(type) || heldReads != this.inferenceHeldReads))
+            if (this.associatedInferenceReady && this.PendingAssociatedType(type))
             {
                 return type; // A partial header may inspect structure; syntax is not a completed Type yet.
             }

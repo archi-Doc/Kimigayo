@@ -39,10 +39,6 @@ public sealed partial class Binding
 
     private int inferenceEmptyHold;
 
-    // The held answers read in this compilation (ResolveAssociated): a Type or header whose binding read one is the run's, never
-    // published (BindType, BindFunctionHeader: design §4 Exposure, a held answer kept by no Complete cache).
-    private int inferenceHeldReads;
-
     private void PrepareAssociatedInference()
     {
         foreach (var path in this.impls.InPass.Paths)
