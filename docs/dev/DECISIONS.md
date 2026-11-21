@@ -23852,6 +23852,30 @@ R8-M* and R9-M* by the stage of the recording unit.
     folds (exponential on alternating paths); a re-fold of the receiver in the exclusive reading (exponential on exclusive
     references stored in Array elements, the Front's B1); one recursion skeleton for both folds (it would take the reading as a
     delegate or a mode parameter).
+- **R7-M69 The Failed state's census: the per-proof readers answer "nothing failed" at once** (Front, 2026-11-21; R7-C3, F's C2
+  rulings 317 (1) and 318; O-463: W-292's RP8 BEYOND on Bind; Q-609; Minor, behaviour-preserving; `claude/f-c3-cost2`).
+  - **The census.** `Binding.premiseFailures` counts every write of a ConstraintEnvironment's Failed state:
+    - each premise newly failed, through `Binding.FailPremise`, the one caller of `ConstraintEnvironment.FailPremise` (FailFacts
+      goes through it);
+    - each unproven input named, through FailInput, the one caller of `NameUnprovenInput`.
+
+    ResetPass zeroes the count where it resets the pass's environments.
+  - **The readers.** While the count is 0, the five readers on every proof answer at once: SpokenVerdict, SpokenConformance,
+    UnprovenInputRead, FailedClauseRead and DerivedFailure. Their answers are unchanged.
+  - **Why it is sound.** No environment a pass reads holds the state without a write counted in that pass:
+    - every writer writes an environment of the running pass's own scopes, never an overlap, collision or path scope;
+    - those environments are reset with the count;
+    - a mid-pass `Reset` only leaves the count high;
+    - the frozen library's environments hold none: each failure has a record, and FreezeLibrary refuses a library with records.
+  - **Where the contract is checked.** The contract sits at `ConstraintEnvironment.FailedPremises`. ArchitectureRulesTest's row
+    "Writers of the Failed state" pins the two callers, so a new writer counts the state or fails the row. FreezeLibrary's verify
+    phase throws the internal-invariant form if the census is not 0, so the library premise is checked once per freeze.
+  - It counts the existing state: no second state, side table or flag steering a function.
+  - Rejected:
+    - SpokenVerdict and UnprovenInputRead walking the scope chain first, as SpokenConformance does (still three walks per Contract
+      proof);
+    - a per-environment flag (a second state);
+    - making the environment's writers private behind a wrapper type (a wrapper without semantics for two calls).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
