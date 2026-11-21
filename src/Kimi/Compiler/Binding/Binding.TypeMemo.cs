@@ -3,7 +3,8 @@
 namespace Kimi.Compiler;
 
 // Owns the per-query answer table of Binding's walks over a Type's parts (DECISIONS BU-19), and the query number's one step (NextQuery),
-// which StructuralCompletion's query memo and the HIR publisher's publication number (DECISIONS D-986) advance by too.
+// which StructuralCompletion's query memo, the HIR publisher's publication number (DECISIONS D-986) and the prerequisite walks'
+// number (R7-N5 E) advance by too.
 // An interned Type is a DAG, so a walk reaches
 // a shared part along many paths; each walk that uses a table answers a function of the part and of its query's fixed inputs, so it
 // decides each distinct part once per query and stays linear in the distinct parts. A walk whose visit of a part also depends on a Type
@@ -44,10 +45,11 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
 
     // The query number after a query's: the one step every query-stamped memo advances by (TypeMemo.Begin, StructuralCompletion.Clear;
-    // R7-N5 B6b, the Front's C6), and the HIR publisher's publication number (FormReads, DECISIONS D-986). It skips 0, the number an
-    // absent row or entry carries, restarting at FirstQuery after uint.MaxValue, so a fresh query never reads an absent row as its own. A
-    // number repeats only after 2^32 - 1 steps: TypeMemo empties its table there, and a working-state family's rows of an earlier pass
-    // read absent by its pass stamp (no pass asks that many queries or publications).
+    // R7-N5 B6b, the Front's C6), the HIR publisher's publication number (FormReads, DECISIONS D-986) and the prerequisite walks' number
+    // (PrerequisiteVisitRows, R7-N5 E). It skips 0, the number an absent row or entry carries, restarting at FirstQuery after
+    // uint.MaxValue, so a fresh query never reads an absent row as its own. A number repeats only after 2^32 - 1 steps: TypeMemo empties
+    // its table there, and a working-state family's rows of an earlier pass read absent by its pass stamp (no pass asks that many
+    // queries, publications or walks).
     internal static uint NextQuery(uint query) => query == uint.MaxValue ? FirstQuery : query + 1;
 
     private sealed class TypeMemo<TKey, T>

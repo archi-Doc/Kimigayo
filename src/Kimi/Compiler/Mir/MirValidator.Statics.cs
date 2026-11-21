@@ -11,9 +11,9 @@ namespace Kimi.Compiler.Mir;
 //   and code generation read MirProgram.StaticInit and a body's slots without a guard, and a static's first access initializes it.
 // - Inputs: a body's terminators, its runtime edges and the Places MirUses reports. Outputs: Unensured findings; the static a staticEnsure
 //   names (Slot) for the program pass; the solve's Work.
-// - Invariants: an Opaque site's roots, the Places MirUses reports with the Opaque row's access (MirDescriptors.IsOpaqueRoot), name what
-//   its replaced syntax may access, whose static Binding may have rejected; that syntax never runs (its program has a record and is not
-//   generated), so no first access initializes through them (Accessed); a staticEnsure of another form is the walk's StaticSlot finding
+// - Invariants: an Opaque site's undecided uses, the Places MirUses reports with the Opaque row's access (MirDescriptors.IsUndecided),
+//   name what its replaced syntax may access, whose static Binding may have rejected; that syntax never runs (its program has a record
+//   and is not generated), so no first access initializes through them (Accessed); a staticEnsure of another form is the walk's StaticSlot finding
 //   (MirValidator.Calls) and names no static here. An access rule (2) rejects is its one finding, and rule (3) reads only the others; a
 //   staticEnsure is a terminator, so it precedes its successors' locations only; a block only check edges reach runs on no runtime path.
 // - Prohibitions: no MirDataflow (DECISIONS R4-M121 as amended by U-C: its input is a validated body and its storage limit the
@@ -120,16 +120,17 @@ internal sealed partial class MirValidator
 
     private partial struct Checker
     {
-        // No effect is a rule here: a static access is its Place's (Accessed), an Opaque site's root its access (MirDescriptors.IsOpaqueRoot).
+        // No effect is a rule here: a static access is its Place's (Accessed), an Opaque site's use its access
+        // (MirDescriptors.IsUndecided).
         public readonly void Effect(MirEffect effects, int site)
         {
         }
 
         // A valid Place a location accesses: a static root a staticEnsure of the body names (rule (2)), recorded with its location for
-        // rule (3) (Unensured); an Opaque site's root never runs.
+        // rule (3) (Unensured); an Opaque site's use never runs.
         private readonly void Accessed(MirPlace place, MirAccess access)
         {
-            if (!place.IsStatic || MirDescriptors.IsOpaqueRoot(access))
+            if (!place.IsStatic || MirDescriptors.IsUndecided(access))
             {
                 return;
             }
