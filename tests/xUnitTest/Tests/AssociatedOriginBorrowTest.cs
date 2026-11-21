@@ -51,7 +51,7 @@ public class AssociatedOriginBorrowTest
     public void ApplicationCannotExtendInputLifetime()
     {
         var c = MinimalEmissionTest.Analyze(SharedFamily.Replace("Item(source)", "Item(static)", StringComparison.Ordinal));
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 
     [Fact]
@@ -116,7 +116,10 @@ public class AssociatedOriginBorrowTest
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
-        Assert.False(c.Bind().IsComplete);
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         Assert.True(KotoHelper.Replace(application, replacement, original));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
     }

@@ -113,18 +113,20 @@ public sealed partial class Binding
     // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a); R4-M110): through no dereference, except through `self` in the constructors and drop of
     // the Type whose inline storage holds the layer (ReceiverHolds), a `during self` layer's Place admits reads (a Move included), shared
     // borrows and writes of null only; an enclosing Tuple or fixed-array Place is written and borrowed as the layer's Place is. Whether
-    // `access` to `place`, writing `source`, failed at `at` (HolderWriteFailure), for a write, an update, a written exclusive borrow, a
-    // receiver's implicit one (JudgeCallFit) and a Move; PathOrigin publishes the stored Field and the Place's stored Type.
+    // `access` to `place`, writing `source`, failed `at` (HolderWriteFailure: a Move's limit; any other refused access is a relation
+    // problem that leaves `at` Resolved), for a write, an update, a written exclusive borrow, a receiver's implicit one (JudgeCallFit)
+    // and a Move; PathOrigin publishes the stored Field and the Place's stored Type.
     private bool HolderPlaceFailure(Koto place, HolderAccess access, Koto? source, Koto at)
         => this.PathOrigin(place) is { Dereferences: false, Stored: { } stored } path && this.HoldsHolder(stored) && !this.ReceiverHolds(path) &&
             this.HolderWriteFailure(stored, access, source, at);
 
     // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. Admitted: a write
     // whose value puts null in every layer (NonNullAtLayers) and a Move of the layer's Place, a read whose restoring write is a write.
-    // A Move of an enclosing Place is a located Unsupported_Kd (PLAN G212: SPEC does not say what it gives). Any other write, an update
-    // and an exclusive borrow, of the layer's Place or an enclosing one, record an Origin relation failure at `at` and form no
-    // relation: the holder's storage, which no Origin expression names, outlives no Origin. Its longer end is the Origin of the value
-    // reaching the layer, none for an update or a borrow, which admit the Place's read Type.
+    // A Move of an enclosing Place is a located Unsupported_Kd (PLAN G212: SPEC does not say what it gives), which fails `at`. Any other
+    // write, an update and an exclusive borrow, of the layer's Place or an enclosing one, is an Origin relation problem of `at` that forms
+    // no relation and leaves `at` Resolved (R7-O1 B4; SPEC 15.6.1: a failed relation adds no constraint, so the access's Loans reach MIR;
+    // 23.1.2): the holder's storage, which no Origin expression names, outlives no Origin. Its longer end is the Origin of the value
+    // reaching the layer, none for an update or a borrow, which admit the Place's read Type. Whether the access failed its node.
     private bool HolderWriteFailure(BoundType stored, HolderAccess access, Koto? source, Koto at)
     {
         var written = access == HolderAccess.Write && source is not null ? this.NonNullAtLayers(stored, source) : null;
@@ -141,8 +143,8 @@ public sealed partial class Binding
 
         var longer = written?.BoundType?.RawOrigin ?? BoundOrigin.Unstated;
         var relation = new OriginRelationFact(at, longer, this.SuppliedAtUse(longer, at), BoundOrigin.Holder, Equality: false, stored, Refuted: true);
-        this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, relation);
-        return true;
+        this.RecordFurtherOriginRecord(at, new(relation, null));
+        return false;
     }
 
     // The accesses of a `during self` layer's Place the allowlist decides (HolderPlaceFailure).

@@ -24,8 +24,8 @@ public partial class LocalRegionInferenceTest
         { "lp1", "func f(p: ref/i64, q: ref/i64) -> ref/i64 during p\n    let t = (p, q)\n    return t.0\n", string.Empty },
         { "lp1n", "func f(p: ref/i64, q: ref/i64) -> ref/i64 during p\n    let t = (p, q)\n    return t.1\n", "UnprovenOriginRelation_Kd@3:12" },
         { "lp2", "func f(p: ref/i64) -> ref/i64 during p\n    let t = (p, p)\n    let u = (t, t)\n    return u.1.0\n", string.Empty },
-        { "rp1", "func f(p: ref/i64, q: ref/i64) -> i32\n    let u = (p, p)\n    let w: ((ref/i64 during q, ref/i64 during q), (ref/i64 during q, ref/i64 during q)) = (u, u)\n    return 0\n", "UnprovenOriginRelation_Kd@3:5" },
-        { "rp1v", "func f(p: ref/i64, q: ref/i64) -> i32\n    var u = (p, p)\n    let w: ((ref/i64 during q, ref/i64 during q), (ref/i64 during q, ref/i64 during q)) = (u, u)\n    return 0\n", "UnprovenOriginRelation_Kd@3:5" },
+        { "rp1", "func f(p: ref/i64, q: ref/i64) -> i32\n    let u = (p, p)\n    let w: ((ref/i64 during q, ref/i64 during q), (ref/i64 during q, ref/i64 during q)) = (u, u)\n    return 0\n", "UnprovenOriginRelation_Kd@3:91" }, // At the initializer (R7-O1 H's D5).
+        { "rp1v", "func f(p: ref/i64, q: ref/i64) -> i32\n    var u = (p, p)\n    let w: ((ref/i64 during q, ref/i64 during q), (ref/i64 during q, ref/i64 during q)) = (u, u)\n    return 0\n", "UnprovenOriginRelation_Kd@3:91" }, // At the initializer (R7-O1 H's D5).
         { "rp1q", "func f(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    let u = (p, p)\n    let w: ((ref/i64 during q, ref/i64 during q), (ref/i64 during q, ref/i64 during q)) = (u, u)\n    return 0\n", string.Empty },
         { "rcs1v", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    var t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", "UnprovenOriginRelation_Kd@5:24" },
         { "rcs1vg", "func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use<U>(p: ref/U) -> i32\n    var t = (p, p)\n    var c = func [var t] () -> ()\n        swap(t.0@uniq, t.1@uniq)\n    c()\n    return 0\n", "UnprovenOriginRelation_Kd@5:24" },

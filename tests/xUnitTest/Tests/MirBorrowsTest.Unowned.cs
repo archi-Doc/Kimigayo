@@ -111,6 +111,28 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["callBad: y@follow = 5"], Problems(c, program, LoanCodes));
     }
 
+    // SPEC 15.6 Holders, 15.6.4 (D-914's design review S1, rows pq01 and pq02, both invalid): a `for` over `rr@follow`, rr borrowing q
+    // and q holding a parameter's reference, lets `next` store rr's Loan of q in the storage p refers to, which the body does not own
+    // and whose value may be used after every point; so q's storage end conflicts with that Loan (both rows), and so does the later write
+    // through q (pq01, at the write and at its Place). The Loan of q reaches that storage through `next`'s call store: Keep's W walk over
+    // the parents of the iterator's value (MirBorrows.Values' Prefix); the records are dev's.
+    [Fact]
+    public void ALoanStoredPastTwoDerefsInUnownedStorageStaysLive()
+        => Assert.Equal(
+            ["pq01: q[0]", "pq01: q[0] = null", "pq01: var q = p@move", "pq02: var q = p@move"],
+            Problems("""
+                func pq01(p: uniq/[2 of raw/u8])
+                    var q = p@move
+                    var rr = q@uniq
+                    for _ in rr@follow => _ = 0
+                    q[0] = null
+                func pq02(p: uniq/[2 of raw/u8])
+                    var q = p@move
+                    var rr = q@uniq
+                    for _ in rr@follow => _ = 0
+
+                """));
+
     // A form's source at N, a function named by the form ({0} the index; review 1's spellings for wp*, callFirst* and twoHop*): the
     // Writer forms' slot, N iterations, then a Bad form's write and the slot's use; the holder forms' callee, holders and Tuple, then
     // the call and a Bad form's write and later use.

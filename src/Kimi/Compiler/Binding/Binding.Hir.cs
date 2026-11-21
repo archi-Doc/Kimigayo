@@ -127,7 +127,7 @@ public sealed partial class Binding
 
                 ops[node.SyntaxId] = op;
                 completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
-                    : (this.completion ??= new(binding, binding.ResultNeverEvidence)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
+                    : (this.completion ??= new(binding, binding.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.PublishedCompletions)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
                 BoundType? discardedType = null;
                 if (completions[node.SyntaxId] != HirCompletion.Unset)
                 {

@@ -46,35 +46,35 @@ public partial class OriginRelationDiagnosticTest
     {
         // The slots the failed clause does not name complete, so a valid clause beside it and a use of another slot are judged.
         {
-            PairLocal + "        origin x.t outlives a\n        origin x.s == zz\n    return a\n", [InitRecord, ClauseRecord], "x.s == zz", "x.s == a",
-            [InitRecord, ClauseRecord]
+            PairLocal + "        origin x.t outlives a\n        origin x.s == zz\n    return a\n", ["UnsatisfiedOriginRelation_Kd P.init(a, l@ref)"], "x.s == zz", "x.s == a",
+            ["UnsatisfiedOriginRelation_Kd P.init(a, l@ref)"]
         },
         {
-            PairLocal + "        origin x.s outlives zz\n    return p.q\n", [ReturnRecord, Unsatisfied + "p.q"], "x.s outlives zz", "x.s outlives a",
-            [ReturnRecord, Unsatisfied + "p.q"]
+            PairLocal + "        origin x.s outlives zz\n    return p.q\n", ["UnsatisfiedOriginRelation_Kd p.q"], "x.s outlives zz", "x.s outlives a",
+            ["UnsatisfiedOriginRelation_Kd p.q"]
         },
         {
-            PairLocal + "        origin x.zz outlives a\n    return p.q\n", [ReturnRecord, Unsatisfied + "p.q"], "x.zz", "x.t",
-            [InitRecord, ClauseRecord, ReturnRecord, Unsatisfied + "p.q"]
+            PairLocal + "        origin x.zz outlives a\n    return p.q\n", ["UnsatisfiedOriginRelation_Kd p.q"], "x.zz", "x.t",
+            ["UnsatisfiedOriginRelation_Kd P.init(a, l@ref)", "UnsatisfiedOriginRelation_Kd p.q"]
         },
 
         // The slot it names stays Unbound, resting on it, and so does the equality class of that slot: a fit over it holds (DECISIONS
         // Q13 rule W, PLAN G739), and A5 judges a chain through it between its ends.
         {
-            PairLocal + "        origin x.t outlives zz\n    return p.q\n", [ReturnRecord], "x.t outlives zz", "x.t outlives a",
-            [InitRecord, ClauseRecord, ReturnRecord, Unsatisfied + "p.q"]
+            PairLocal + "        origin x.t outlives zz\n    return p.q\n", ["UnsatisfiedOriginRelation_Kd p.q"], "x.t outlives zz", "x.t outlives a",
+            ["UnsatisfiedOriginRelation_Kd P.init(a, l@ref)", "UnsatisfiedOriginRelation_Kd p.q"]
         },
         {
-            PairLocal + "        origin x.t outlives zz\n    let k: ref/i32 during a = p.q\n    return k\n", [LetRecord], "x.t outlives zz", "x.t outlives a",
-            [InitRecord, ClauseRecord, LetRecord]
+            PairLocal + "        origin x.t outlives zz\n    let k: ref/i32 during a = p.q\n    return k\n", ["UnsatisfiedOriginRelation_Kd p.q"], "x.t outlives zz", "x.t outlives a",
+            ["UnsatisfiedOriginRelation_Kd P.init(a, l@ref)", "UnsatisfiedOriginRelation_Kd p.q"]
         },
         {
-            PairLocal + "        origin zz outlives x.t\n    return p.q\n", [ReturnRecord], "zz outlives x.t", "a outlives x.t",
-            [ReturnRecord, Unsatisfied + "p.q"]
+            PairLocal + "        origin zz outlives x.t\n    return p.q\n", ["UnsatisfiedOriginRelation_Kd p.q"], "zz outlives x.t", "a outlives x.t",
+            ["UnsatisfiedOriginRelation_Kd p.q"]
         },
         {
             PairLocal + "        origin x.t == x.s\n        origin x.s == zz\n    return a\n", [], "x.s == zz", "x.s == a",
-            [Unsatisfied + "let p: P{x} = P.init(a, l@ref)"]
+            ["UnsatisfiedOriginRelation_Kd P.init(a, l@ref)"]
         },
         { CellLocal + "        origin x.s outlives zz\n    let w = h.r@follow@ref\n    return w\n", [], "x.s outlives zz", "x.s outlives a", [] },
         {
@@ -266,7 +266,9 @@ public partial class OriginRelationDiagnosticTest
     public void AWarmRebindOfALocalsFailedClauseDoesNotAllocate()
     {
         var c = MirBuildTest.Compile(PairLocal + "        origin x.t outlives a\n        origin x.s == zz\n    return a\n" + Main);
-        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
+        // The failed clause is Binding's record, the local's other relations A5's rows (R7-O1 H: Binding records no body relation).
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.MissingOriginBinding_Kd);
+        Assert.Contains(MirTargetSide.MirSide(c), static x => x.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 

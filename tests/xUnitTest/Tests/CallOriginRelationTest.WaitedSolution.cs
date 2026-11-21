@@ -222,7 +222,7 @@ public partial class CallOriginRelationTest
     // rc2i
     [InlineData("struct T3 {a}\n    origin a outlives static\n    public let o: Option<ref/i32 during a>\n    public init(o: Option<ref/i32 during a>) => self.o = o\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    let t = T3.init(o: .Some(p))\n    return 0\n", "UnprovenOriginRelation_Kd@T3.init(o: .Some(p))")]
     // rc3i
-    [InlineData("struct T4 {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public let o: Option<ref/i32 during a>\n    public init(x: ref/i32 during a, o: Option<ref/i32 during a>)\n        self.x = x\n        self.o = o\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let t = T4.init(x: st(), o: .Some(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@v@ref))|UnsatisfiedOriginRelation_Kd@v@ref))")]
+    [InlineData("struct T4 {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public let o: Option<ref/i32 during a>\n    public init(x: ref/i32 during a, o: Option<ref/i32 during a>)\n        self.x = x\n        self.o = o\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let t = T4.init(x: st(), o: .Some(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@v@ref))")] // One record (R7-O1 H: the twin went with Binding's).
     // rf1
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k() -> i32\n    let v: i32 = 5\n    let t = T.init(x: v@ref)\n    return 0\n", "UnprovenConstraint_Kd@T.init(x: v@ref)")]
     // rf2
@@ -234,14 +234,15 @@ public partial class CallOriginRelationTest
     // ec1i
     [InlineData("enum E2 {a}\n    origin a outlives static\n    One(ref/i32 during a)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = E2.One(v@ref)\n    return 0\n", "UnprovenConstraint_Kd@E2.One(v@ref)")]
     // ec2i
-    [InlineData("enum E3 {a}\n    origin a outlives static\n    Two(Option<ref/i32 during a>)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = E3.Two(.Some(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@v@ref))|UnsatisfiedOriginRelation_Kd@v@ref))")]
+    [InlineData("enum E3 {a}\n    origin a outlives static\n    Two(Option<ref/i32 during a>)\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let e = E3.Two(.Some(v@ref))\n    return 0\n", "UnsatisfiedOriginRelation_Kd@v@ref))")] // One record (R7-O1 H: the twin went with Binding's).
     // The solve of the callee's other variables (D1's Origin half): a clause that bounds another variable through the waited one (reading RF7), an invariant end, an equality, an associate.
     // as2i
     [InlineData("func f2(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> i32\n    origin q outlives c\n    return 0\nfunc k(p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    return f2(.None, p, ud)\n", "UnprovenOriginRelation_Kd@.None, p, ud)")]
     // as3i
     [InlineData("contract C\n    associate Item(a, b)\n        origin a outlives b\nstruct S\n    Self is C\n    associate C.Item(a, b) is i32\nfunc f3(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> S.Item(q, c)\n    origin q outlives c\n    return 42\nfunc k(p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    let r = f3(.None, p, ud)\n    return 0\n", "UnprovenOriginRelation_Kd@.None, p, ud)")]
-    // t6i
-    [InlineData("func f2(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> i32\n    origin q outlives c\n    return 0\nfunc k(w: ref/i32, p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    origin p outlives d\n    return f2(.Some(w), p, ud)\n", "UnprovenOriginRelation_Kd@w), p, ud)")]
+    // t6i: b1's record at `w`; the clause row `(p and q) outlives d` at `.Some(w)` stays whole for MeetNode (R7-O1 H's F-H-13), which adds
+    // a record of the same failure there (a dependent record on a rejected program, counted: DECISIONS Q13).
+    [InlineData("func f2(x: Option<ref/i32 during q>, y: ref/i32 during q, z: uniq/(ref/i32 during c)) -> i32\n    origin q outlives c\n    return 0\nfunc k(w: ref/i32, p: ref/i32, d: ref/i32, ud: uniq/(ref/i32 during d)) -> i32\n    origin p outlives d\n    return f2(.Some(w), p, ud)\n", "UnprovenOriginRelation_Kd@.Some(w), p, ud)|UnprovenOriginRelation_Kd@w), p, ud)")]
     // t7i
     [InlineData("func f7(x: Option<ref/i32 during q>, y: ref/i32 during q, z: ref/i32 during c) -> ref/i32 during c\n    origin q outlives c\n    $abort(\"no\")\nfunc k(w: ref/i32, p: ref/i32, d: ref/i32) -> ref/i32 during (d and p)\n    return f7(.Some(w), p, d)\n", "UnprovenOriginRelation_Kd@.Some(w), p, d)|UnprovenOriginRelation_Kd@f7(.Some(w), p, d)|UnprovenOriginRelation_Kd@w), p, d)")]
     // The region keeps its recorded bounds (D1c): Owned over the result of either half, through a local and in place.
