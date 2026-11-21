@@ -463,8 +463,10 @@ public sealed partial class HirFormsTest
 
     // DECISIONS D-986 (G147 ruling 53): a kept operand's read is its publication's. Check publishes again in its pass (after H1's
     // failures; CheckBound reruns it), so a read an earlier publication of the pass recorded is not a later one's: with the recorded read
-    // of `v[missing]`'s index placed at its kept base `v`, which the form uses in place, CheckBound's republication marks the index alone.
-    // Fail-before (a pass-lived row): `v` was marked read too.
+    // of `v[missing]`'s index placed at its kept base `v`, which the form uses in place, CheckBound's republication marks the index alone,
+    // its row rewritten with the republication's number. No program's own republication drops a read today (H1's failures only add
+    // Errors), so the row places the earlier read by hand; a natural program replaces it when one exists. Fail-before (a pass-lived
+    // row): `v` was marked read too.
     [Fact]
     public void AKeptOperandsReadIsItsPublications()
     {
@@ -477,6 +479,7 @@ public sealed partial class HirFormsTest
         Assert.NotEqual(default, recorded);
         rows.Ref(unread.SyntaxId, c.Binding) = recorded;
         c.Binding.CheckBound();
+        Assert.NotEqual(recorded, HirTables.Of(read).Families.FormReads.Get(read.SyntaxId, c.Binding)); // CheckBound republished.
         Assert.Equal("missing", string.Join(" ", node.Children().Where(HirTables.KeptRead).Select(static x => x.ToString())));
     }
 
