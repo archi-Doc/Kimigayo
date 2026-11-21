@@ -28,6 +28,9 @@ public sealed partial class HirFormsTest
         "func g(a: Weak<rc/Node>, b: i32) -> i32 => b\nfunc f(w: Weak<rc/Node>, u: Weak<rc/Node>) -> i32\n" +
         "    var n: Node = Node.init(w@move, 1, 2)\n    let r = n.v@uniq\n    let k = g(u@move, n.x)\n    r@follow = 2\n    return k\n";
 
+    // The Z17c design review's cr-opt-excess rows (B6; SPEC 6.5.1, 15.6.7): an Option construction, its statement appended.
+    private const string OptionExcess = "func g(x: i32) -> i32 => x\nfunc f()\n    var y = 1\n";
+
     // Declarations whose callers' inputs need an Origin relation between fixed Origins the premises do not prove, whatever the input's
     // acquisition or adaptation: since R7-O1 b1 a row A5 judges (UnprovenOriginRelation_Kd at the input), the input itself resolved. State's
     // static Places, which a call's input borrows, are the inputs Binding still rejects after selection: the located limit until P42
@@ -444,9 +447,11 @@ public sealed partial class HirFormsTest
     // awaiting the call's Types stays replaced (Keeps), a receiver is no argument (`p.missing(p.a)`), and an argument whose own take
     // failed is not read (a Weak Field `n.w` at `g2`, valid beside its limits). PlanRow.KeptInput (SPEC 15.6.7): the form takes the kept
     // operand as an invocation's receiver or argument, read or not (`n.w` at `g2`): every argument of such an application under the form
-    // Call, whatever it resolves to; not a Case construction's payloads (`.Some(x, missing)`, `E.A(x, missing)`: the form is Aggregate by
-    // the Case Binding selected at the callee, which a failed construction keeps, KindOp; fail-before: both read as inputs), an aggregate's elements
-    // (c-tuple-later's `(y@uniq, g(y), missing)`: no reservation passes through aggregate storage), an operator's operands, a Subject, an
+    // Call, whatever it resolves to; not a Case construction's payloads, resolved or failed, written `.Case` or in full (`.Some(x,
+    // missing)`, `E.A(x, missing)`, and the Z17c design review's cr-opt-excess rows `.Some(y@uniq, g(y))` and `Option.Some(y@uniq,
+    // g(y))`, B6: the payload stores the exclusive borrow, a live Loan while `g(y)` reads `y`): the form is Aggregate by the Case Binding
+    // selected at the callee, which a failed construction keeps (KindOp; its resolved twin AResolvedCaseConstructionIsAnAggregate;
+    // fail-before: each read as inputs), an aggregate's elements (c-tuple-later's `(y@uniq, g(y), missing)`: no reservation passes through aggregate storage), an operator's operands, a Subject, an
     // Iterable or a conversion's operand. Only a kept operand carries either fact. Each row lists the kept operands that carry one: the
     // take, then "input" or "-". Fail-before: no kept operand carried a take (D-986's rows) or was an input (the facts unpublished).
     [Theory]
@@ -462,6 +467,8 @@ public sealed partial class HirFormsTest
     [InlineData("func f()\n    var y = 1\n    missing(y, func (a) => a)\n", "missing(y, func (a) => a)", "y Copy/None input")]
     [InlineData("func f(x: i32) -> Option<i32>\n    return .Some(x, missing)\n", ".Some(x, missing)", "x Copy/None -; missing Temporary/None -")]
     [InlineData("enum E\n    A(i32, i32)\nfunc f() -> i32\n    var x: i32\n    let e = E.A(x, missing)\n    return 1\n", "E.A(x, missing)", "x Copy/None -; missing Temporary/None -")]
+    [InlineData(OptionExcess + "    let e: Option<uniq/i32> = .Some(y@uniq, g(y))\n", ".Some(y@uniq, g(y))", "y@uniq Temporary/None -; g(y) Temporary/None -")]
+    [InlineData(OptionExcess + "    let e: Option<uniq/i32> = Option.Some(y@uniq, g(y))\n", "Option.Some(y@uniq, g(y))", "y@uniq Temporary/None -; g(y) Temporary/None -")]
     [InlineData("struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc f(p: P) -> i32\n    return p.missing(p.a)\n", "p.missing(p.a)", "p.a Copy/None input")]
     [InlineData(WeakSiblingArgument, "g(u@move, n.x)", "u@move Temporary/None input; n.x Copy/None input")]
     [InlineData("func f()\n    var s = \"a\"\n    let o = s@rc/Missing\n", "s@rc/Missing", "s Move/None -")]
@@ -527,6 +534,18 @@ public sealed partial class HirFormsTest
         Assert.NotEqual(recorded.Publication, HirTables.Of(read).Families.FormReads.Get(read.SyntaxId, c.Binding).Publication); // CheckBound republished.
         Assert.Equal("missing", string.Join(" ", node.Children().Where(static x => HirTables.KeptAdjust(x).Reads).Select(static x => x.ToString())));
         Assert.Equal((default(HirAdjust), false), (HirTables.KeptAdjust(unread), HirTables.KeptInput(unread)));
+    }
+
+    // The resolved twins of the cr-opt-excess rows (valid; SPEC 6.5.1, 6.5.2): a Case construction Binding resolved, written `.Case` or
+    // in full, is an Aggregate, as KindOp classifies the failed ones whose payloads are no inputs (AKeptOperandCarriesItsErrorsFormsTakeAndInput).
+    [Theory]
+    [InlineData(".Some(y@uniq)")]
+    [InlineData("Option.Some(y@uniq)")]
+    public void AResolvedCaseConstructionIsAnAggregate(string construction)
+    {
+        var c = MinimalEmissionTest.Analyze(OptionExcess + $"    let e: Option<uniq/i32> = {construction}\n", output: OutputKind.Library);
+        HirTables.Publish(c);
+        Assert.Equal(HirOp.Aggregate, HirTables.Op(Reachable(c.Kotonoha).Single(x => x.ToString() == construction)));
     }
 
     // DECISIONS Z16 (Z15 2g-D D2; B1, B4, B6): every failure fact the HIR publishes (Binding.FailureFact: an Error, a failed acquisition at
