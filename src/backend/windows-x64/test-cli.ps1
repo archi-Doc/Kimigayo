@@ -99,9 +99,15 @@ if (-not $NativeCompiler) {
         -not $output.Contains("setup.ps1 -LlvmRoot <the LLVM $($catalog.llvmVersion) archive, extracted> for a toolchain directory of this checkout's own (not a junction to the shared root)") -or
         -not $output.Contains('then build Kimi again')) { throw "A compiler without tatara.dll loaded another: $output" }
 }
-# A project's LlvmBin is accepted and not read: with a missing directory emit publishes only the LLVM inputs, and the build succeeds.
-Write-Project 'O2' 'missing LLVM directory'
+# A project's LlvmBin was removed (Tatara B6b5): check, emit and build fail at the load, naming the removal.
+Write-Project 'O2' 'C:/llvm/bin'
 '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
+foreach ($command in @('check', 'emit', 'build')) {
+    $output = Invoke-Kimi @($command, $project) 1
+    if (-not $output.Contains('LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting.')) { throw "A project's LlvmBin must fail the load: $output" }
+}
+# emit publishes only the LLVM inputs, and the build succeeds.
+Write-Project 'O2' ''
 $ir = Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.ll'
 $recordPath = [IO.Path]::ChangeExtension($ir, '.link.build.json')
 $previousRecord = [IO.File]::ReadAllBytes($recordPath)
@@ -109,9 +115,9 @@ $output = Invoke-Kimi @('emit', $project)
 if (-not (Test-Path $ir) -or -not (Test-KimiExpectedOutput $previousRecord ([IO.File]::ReadAllBytes($recordPath)))) { throw 'emit must only publish LLVM inputs' }
 $output = Invoke-Kimi @('build', $project)
 $output = Invoke-Kimi @('run', $project, '--no-build')
-if (-not $output.Contains('Hello, world!')) { throw "A project's missing LlvmBin failed the build: $output" }
+if (-not $output.Contains('Hello, world!')) { throw "The build failed: $output" }
 foreach ($level in @('O0', 'O2')) {
-    Write-Project $level 'missing LLVM directory'
+    Write-Project $level ''
     $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)
     if ($output -match '(?m)^Hello, world!') { throw 'Build executed the Application' }
     $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
@@ -397,5 +403,5 @@ Write-ForeignProject 'O0' "NativeRequirements=`n  `"x86_64-pc-windows-msvc`"=`n 
 $output = Invoke-Kimi @('emit', $foreignProject) 1
 if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler','LlvmBin accepted and not read', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'native build runs no LLVM tool', 'compiler-supplied libraries, no toolchain root read', 'tatara.dll only beside the compiler','project LlvmBin removed', 'record names Tatara', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

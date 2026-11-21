@@ -58,6 +58,10 @@ try {
     $data = $original | ConvertFrom-Json
     $data.codegen.cpu = 'native'
     Expect-Failure $data $LlvmBin "'codegen.cpu' is not this compiler's"
+    # A removed member (Tatara B6b5): a manifest an older emit wrote for a project's LlvmBin asks to re-emit.
+    $data = $original | ConvertFrom-Json
+    $data | Add-Member -NotePropertyName toolchain -NotePropertyValue @{ llvmBin = '../tools' }
+    Expect-Failure $data $LlvmBin "'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."
     $data = $original | ConvertFrom-Json
     $data.optimization = 'O3'
     Expect-Failure $data $LlvmBin 'supported Windows Application profile'

@@ -12,6 +12,8 @@ namespace XunitTest;
 
 public class DependencyConfigurationTest
 {
+    private const string LlvmBinRemoved = "LlvmBin was removed: Kimi carries its toolchain. Remove the LlvmBin setting.";
+
     [Theory]
     [InlineData("PackageId=\"Example.math\" PackageVersion=\"1\"")]
     [InlineData("PackageId=\"example..math\" PackageVersion=\"1\"")]
@@ -85,13 +87,16 @@ public class DependencyConfigurationTest
         Assert.Equal($"{name} is supplied by the compiler. Remove the {name} entry from NativeLibraries.", Assert.Single(failures));
     }
 
+    // ProjectFile's removed settings (Tatara B6b5, decision 20): each, whatever its value, fails the load with its own note, one per
+    // setting (SPEC 23.1.2: they are independent).
     [Theory]
-    [InlineData("NativeBindings={}")]
-    [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}")]
-    public void SupersededNativeBindingsRequireMigration(string source)
+    [InlineData("NativeBindings={}", new[] { NativeConfiguration.SupersededBindings })]
+    [InlineData("NativeBindings={\"x86_64-pc-windows-msvc\"={codec=\"codec.lib\"}}", new[] { NativeConfiguration.SupersededBindings })]
+    [InlineData("LlvmBin=\"C:/llvm/bin\"", new[] { LlvmBinRemoved })]
+    [InlineData("Targets={\"x86_64-pc-windows-msvc\"} LlvmBin=\"C:/llvm/bin\" NativeBindings={}", new[] { LlvmBinRemoved, NativeConfiguration.SupersededBindings })]
+    public void ARemovedSettingFailsTheLoad(string source, string[] notes)
     {
-        var failures = Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures;
-        Assert.Equal(NativeConfiguration.SupersededBindings, Assert.Single(failures));
+        Assert.Equal(notes, Assert.Throws<ProjectConfigurationException>(() => ProjectFile.Load(Encoding.UTF8.GetBytes(source))).Failures);
     }
 
     [Fact]
