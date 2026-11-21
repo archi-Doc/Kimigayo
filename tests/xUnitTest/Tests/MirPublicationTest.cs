@@ -39,7 +39,7 @@ public sealed class MirPublicationTest
             var site = SourceRef.Of(arm.Pattern);
             program.Report(site);
             program.Report(site, DiagnosticCode.OversizedLayout_Kd, MirRecordClass.Collection);
-            program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Limit, site, MirProblem.NoBody, 0b01));
+            program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Limit, site));
             program.Problems.Add(Found(DiagnosticCode.OwnershipDepthLimit_Kd, Depth, site));
             program.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), site, 0, 0b01));
         }
@@ -62,9 +62,9 @@ public sealed class MirPublicationTest
         var relation = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
         var equality = new MirReason(null, null, true);
         program.Problems.Add(Found(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, site));
-        program.Problems.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, site, MirProblem.NoBody, 0b01, equality));
+        program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.UnsatisfiedOriginRelation_Kd, relation, site) with { Reason = equality });
         program.Problems.Add(Found(DiagnosticCode.Unsupported_Kd, Limit, site));
-        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Limit, site, MirProblem.NoBody, 0b01, equality));
+        program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Limit, site) with { Reason = equality });
         Assert.Equal([0, 1, 0, 1], program.Problems.Merged.ToArray().Select(static x => x.Ordinal));
         Publish(c, program);
         Assert.Equal(
@@ -216,7 +216,7 @@ public sealed class MirPublicationTest
         var subject = Site(c, Valid, "return total");
         var limit = new ProblemFact(ProblemFactKind.Limit, subject, 8192);
         program.Problems.Add(
-            new(Enum.Parse<DiagnosticCode>(code), DiagnosticRequirement.ControlFlow, subject, body, ulong.MaxValue),
+            new(Enum.Parse<DiagnosticCode>(code), DiagnosticRequirement.ControlFlow, subject, body, MirProblem.NoBodyViews),
             required ? [new(ProblemFactKind.Required, subject, 1), limit] : [limit]);
         Publish(c, program);
         var published = Assert.Single(Records(c));
@@ -264,7 +264,7 @@ public sealed class MirPublicationTest
         Add("var v = value@move", (f, MirCases.Every(program.Body(f))));
         Add("let local = v", (f, 0b10));
         Add("_ = local@follow", (f, 0b10), (main, 0b01));
-        Add("f(n, 9)", (f, 0b10), (MirProblem.NoBody, 0b01));
+        Add("f(n, 9)", (f, 0b10), (MirProblem.NoBody, MirProblem.NoBodyViews));
         for (var i = start; i < program.Problems.Merged.Length; i++)
         {
             c.Publish(program, i);
@@ -411,5 +411,5 @@ public sealed class MirPublicationTest
 
     // An analysis problem no body describes, so it has no case text.
     private static MirProblem Found(DiagnosticCode code, DiagnosticRequirement requirement, SourceRef subject)
-        => new(code, requirement, subject, MirProblem.NoBody, 0b01);
+        => MirProblem.WithoutBody(code, requirement, subject);
 }

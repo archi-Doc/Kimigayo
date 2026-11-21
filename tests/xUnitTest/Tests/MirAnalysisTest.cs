@@ -156,14 +156,14 @@ public sealed class MirAnalysisTest
         var site = new SourceRef(0, 5);
         program.Report(site);
         program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
-        program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1));
+        program.Problems.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, site));
         program.Report(site);
         program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
         Assert.Equal(
             [
-                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue),
-                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Collection, ulong.MaxValue),
-                new MirProblem(DiagnosticCode.Unsupported_Kd, Moved, site, MirProblem.NoBody, 1),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, MirProblem.NoBodyViews),
+                new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Collection, MirProblem.NoBodyViews),
+                MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, site),
             ],
             program.Problems.All.ToArray());
         Assert.Equal([true, true, false], program.Problems.All.ToArray().Select(static x => x.IsRecord));
@@ -171,6 +171,34 @@ public sealed class MirAnalysisTest
         Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Collection));
         program.Clear();
         Assert.Equal(0, program.Problems.All.Length);
+    }
+
+    // Z20 (MirProblem's invariant; R4-M71, R4-M118, R6-check H3-1): a problem no body describes is formed only by MirProblem.WithoutBody and a
+    // record only by MirProgram.Report, both with NoBodyViews, which names no body's cases: A4's obligation rows of a one-view owner (P) and
+    // of a two-view owner (Q, whose two owning views Owe composes, so the views were 0b11 before Z20), G215's located layer limit (Pair)
+    // and the default expansion limit's construction records (f16).
+    [Fact]
+    public void EveryNoBodyProblemAndRecordCarriesNoBodyViews()
+    {
+        const string Run = "    public func run(self: ref/Self) -> i32\n        Console.writeLine(\"n\")\n        return 0\n";
+        var expansion = new StringBuilder("func f0(x: i32 = 1, s: string = \"a\", t: string = \"b\") -> i32 => x\n");
+        for (var i = 1; i <= 16; i++)
+        {
+            expansion.Append(System.Globalization.CultureInfo.InvariantCulture, $"func f{i}(x: i32 = f{i - 1}() + f{i - 1}()) -> i32 => x\n");
+        }
+
+        var c = MirBuildTest.Compile("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\nstruct P\n    Self is Work\n" + Run +
+            "struct Q<s/T>\n    s is owner or uniq\n    Self is Work\n    public var n: i32 = 0\n" + Run + "struct Pair {a, b}\n" +
+            "    public let p: ref/i32 during a\n    public var n: i32 = if true\n        let t: Option<ref/(ref/i32 during b) during a> = Option.None\n" +
+            "        yield 0\n    else => 0\n" + expansion + "let value = f16()\npublic func main() => ()\n");
+        var found = c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && (x.Body == MirProblem.NoBody || x.IsRecord)).ToArray();
+        Assert.Equal(
+            [
+                "ExpansionLimit_Kd Construction", "ExpansionLimit_Kd Construction", "ExpansionLimit_Kd Construction",
+                "IncompatibleContractImplementation_Kd NoBody", "IncompatibleContractImplementation_Kd NoBody", "Unsupported_Kd NoBody",
+            ],
+            found.Select(static x => $"{x.Code} {x.RecordClass?.ToString() ?? "NoBody"}").Order(StringComparer.Ordinal));
+        Assert.All(found, static x => Assert.Equal(MirProblem.NoBodyViews, x.Views));
     }
 
     // PLAN G951's round rule (MirReport's Rounds; the Back's review C3 and N1): while a round is open, a problem of another body value (a
@@ -183,7 +211,7 @@ public sealed class MirAnalysisTest
     {
         var (program, site) = (new MirProgram(), new SourceRef(0, 5));
         var report = program.Problems;
-        var construction = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue);
+        var construction = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, MirProblem.NoBodyViews);
         var collection = construction with { Body = (int)MirRecordClass.Collection };
         report.Begin((int)MirRecordClass.Collection);
         program.Report(site);
@@ -199,10 +227,11 @@ public sealed class MirAnalysisTest
         Assert.Equal([construction, collection], report.All.ToArray());
         Assert.Throws<InvalidOperationException>(report.Commit);
         Assert.Throws<InvalidOperationException>(report.Drop);
+        var found = MirProblem.WithoutBody(Conflict.Code, Conflict.Requirement, Conflict.Subject);
         report.Begin(MirProblem.NoBody);
-        Assert.Equal(-1, report.Add(Conflict with { Body = MirProblem.NoBody }, [new(ProblemFactKind.Anchor, site)]));
+        Assert.Equal(-1, report.Add(found, [new(ProblemFactKind.Anchor, site)]));
         report.Commit();
-        Assert.Equal(Conflict with { Body = MirProblem.NoBody }, report.All[2]);
+        Assert.Equal(found, report.All[2]);
         Assert.Equal([new ProblemFact(ProblemFactKind.Anchor, site)], report.Facts(2).ToArray());
     }
 
@@ -214,15 +243,15 @@ public sealed class MirAnalysisTest
     {
         var (first, second) = (new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4)));
         report.Add(first);
         report.Add(second, [new(ProblemFactKind.Cause, new(0, 1), 1), new(ProblemFactKind.Cause, new(0, 7), -1)]);
         report.Add(first with { Views = 0b10 });
         var kept = new MirReport.Kept();
         report.Keep(1, kept);
         var replayed = new MirReport();
-        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 3), MirProblem.NoBody, 1));
-        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        replayed.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, new(0, 3)));
+        replayed.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4)));
         replayed.Replay(kept);
         Assert.Equal(report.All[1..].ToArray(), replayed.All[2..].ToArray());
         Assert.Equal([new(ProblemFactKind.Cause, new(0, 1), 2), new(ProblemFactKind.Cause, new(0, 7), -1)], replayed.Facts(3).ToArray());
@@ -328,10 +357,10 @@ public sealed class MirAnalysisTest
     {
         var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
         var depth = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01));
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, limit, new(0, 5)));
         report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), 0, 0b10));
         report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b10));
-        report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5), MirProblem.NoBody, 0b01));
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.OwnershipDepthLimit_Kd, depth, new(0, 5)));
         Assert.Equal(
             [
                 new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), default, null, 0),
@@ -417,7 +446,7 @@ public sealed class MirAnalysisTest
     {
         var (report, limit) = (new MirReport(), DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported));
         report.Add(Conflict);
-        report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), MirProblem.NoBody, 0b01), [new(ProblemFactKind.Cause, new(0, 1), 0)]);
+        report.Add(MirProblem.WithoutBody(DiagnosticCode.Unsupported_Kd, limit, new(0, 5)), [new(ProblemFactKind.Cause, new(0, 1), 0)]);
         report.Add(new(DiagnosticCode.Unsupported_Kd, limit, new(0, 5), 0, 0b01), [new(ProblemFactKind.Cause, new(0, 5), 1)]);
         Assert.Equal([new ProblemFact(ProblemFactKind.Cause, new(0, 1), 0)], report.MergedFacts(1).ToArray());
     }

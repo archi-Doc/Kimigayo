@@ -8,7 +8,7 @@ namespace XunitTest;
 // the caller's premises (X2).
 public sealed partial class MirEffectsTest
 {
-    private const string Unconfined = "IncompatibleContractImplementation_Kd Self is Runner 1";
+    private const string Unconfined = "IncompatibleContractImplementation_Kd Self is Runner 18446744073709551615";
 
     private const string Conv = "contract Conv<E>\n    func conv() -> E\n";
 
