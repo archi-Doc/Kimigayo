@@ -105,6 +105,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.libraryLocals.Clear(0);
         this.programLocals.Clear(0);
         this.fieldIds.Clear();
+        this.initIds.Clear();
+        this.fixedIds.Clear();
         this.writing = this.libraryLocals;
     }
 
@@ -124,6 +126,12 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         foreach (var field in this.programLocals.Fields)
         {
             this.fieldIds.Remove(field);
+        }
+
+        foreach (var field in this.programLocals.Initialized)
+        {
+            this.initIds.Remove(field);
+            this.fixedIds.Remove(field);
         }
 
         this.programLocals.Clear(this.libraryLocals.End);
@@ -209,8 +217,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // comparisons (Compared). A requirement call that selects a built-in
     // target or whose Self is not abstract (an inline default copy's instance, SPEC 7.2.3) runs what its Self's witnesses run under the
     // Contract reference the call recorded (Require); one on an abstract Self or a dynamic virtual call has the bounds of the caller's
-    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure enters
-    // the static's initializer; a Drop destroys what A2's verdicts leave (Dropped).
+    // premises (X2) and may destroy what it is given by value (rule 1); a call through a value calls its Callable input; staticEnsure is
+    // the static's first-access initialization (Initialize); a Drop destroys what A2's verdicts leave (Dropped).
     private void Terminator(MirProgram program, MirBody body, int block, long view, in MirTerminator terminator)
     {
         var callee = terminator.Callee;
@@ -263,7 +271,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
         else if (callee.Arg == (int)IntrinsicId.StaticEnsure)
         {
-            this.AddEdge(program.StaticInit(body, body.Operands[terminator.Start])!, null); // The validator checks it has one (G191).
+            this.Initialize(program.StaticInit(body, body.Operands[terminator.Start])!); // The validator checks it has one (G191).
         }
         else if (callee.Arg == (int)IntrinsicId.DestroyValues)
         {
@@ -460,23 +468,24 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     internal readonly record struct Atom(BoundType Type, byte Kind, BindingSymbol? Requirement, BindingSymbol? Contract = null, Subst? Call = null);
 
     // A call of a body: the callee's ordinal, the views its substitution selects under the caller's view and the substitution: the call's;
-    // null for a body entered in every view (a static's initializer); the identity (TyCtxt.Identity) for the callee's own Types read in the
+    // null for a body entered in every view (the initializer of a static with several slots, Initialize); the identity (TyCtxt.Identity) for the callee's own Types read in the
     // caller's view (a specialization of the caller's declaration, Local).
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
 
-    // A node's entry in its store: its body (an ordinal), the classes of its local facts and the ends of its local inputs, calls and keys
-    // in the store.
-    private readonly record struct NodeFacts(int Owner, byte Classes, int Items, int Edges, int Keys);
+    // A node's entry in its store: its body (an ordinal), the classes of its local facts and the ends of its local inputs, calls, keys and
+    // initialization entries in the store.
+    private readonly record struct NodeFacts(int Owner, byte Classes, int Items, int Edges, int Keys, int Inits);
 
     // A segment's local facts in record order (PLAN G950, the Back's C-378 (1)(a)), data only, so the library segment's are kept while the
     // segment holds: its nodes' entries by node id and its bodies' first nodes by ordinal, each the id or ordinal itself (the
-    // program's after the library's, no offset), its nodes' local inputs, calls and keys, and the Fields it numbered (BeginProgram removes
-    // the program's numbers).
+    // program's after the library's, no offset), its nodes' local inputs, calls, keys and initialization entries, and the Fields and
+    // statics it numbered (BeginProgram removes the program's numbers).
     private sealed class Locals
     {
         private Atom[] items = [];
         private Edge[] edges = [];
         private int[] keys = [];
+        private int[] inits = [];
         private NodeFacts[] nodes = []; // By node id, its nodes from its first.
         private int[] bases = []; // By body ordinal, the first node of each of its bodies: a node is a body view.
 
@@ -489,13 +498,19 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
         internal int KeyCount { get; private set; }
 
+        internal int InitCount { get; private set; }
+
         internal List<BindingSymbol> Fields { get; } = [];
+
+        internal List<BindingSymbol> Initialized { get; } = [];
 
         internal ReadOnlySpan<Atom> Items => this.items.AsSpan(0, this.ItemCount);
 
         internal ReadOnlySpan<Edge> Edges => this.edges.AsSpan(0, this.EdgeCount);
 
         internal ReadOnlySpan<int> Keys => this.keys.AsSpan(0, this.KeyCount);
+
+        internal ReadOnlySpan<int> Inits => this.inits.AsSpan(0, this.InitCount);
 
         // A node's entry.
         internal NodeFacts this[int node] => this.nodes[node];
@@ -517,8 +532,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return node;
         }
 
-        // Closes a node with its body and its local classes: its inputs, calls and keys are those added since it was opened.
-        internal void Close(int node, int body, byte classes) => this.nodes[node] = new(body, classes, this.ItemCount, this.EdgeCount, this.KeyCount);
+        // Closes a node with its body and its local classes: its inputs, calls, keys and entries are those added since it was opened.
+        internal void Close(int node, int body, byte classes)
+            => this.nodes[node] = new(body, classes, this.ItemCount, this.EdgeCount, this.KeyCount, this.InitCount);
 
         internal void Add(in Atom item)
         {
@@ -538,15 +554,22 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.keys[this.KeyCount++] = key;
         }
 
-        // Drops the inputs and calls added past the given counts (a site's, which are not a node's).
-        internal void Truncate(int items, int edges) => (this.ItemCount, this.EdgeCount) = (items, edges);
+        internal void AddInit(int init)
+        {
+            MirDataflow.Grow(ref this.inits, this.InitCount + 1);
+            this.inits[this.InitCount++] = init;
+        }
+
+        // Drops the inputs, calls and entries added past the given counts (a site's, which are not a node's).
+        internal void Truncate(int items, int edges, int inits) => (this.ItemCount, this.EdgeCount, this.InitCount) = (items, edges, inits);
 
         // Removes its facts, keeping the storage: its next node has the id first.
         internal void Clear(int first)
         {
             this.End = first;
-            this.ItemCount = this.EdgeCount = this.KeyCount = 0;
+            this.ItemCount = this.EdgeCount = this.KeyCount = this.InitCount = 0;
             this.Fields.Clear();
+            this.Initialized.Clear();
         }
     }
 
