@@ -677,6 +677,20 @@ public class BindingTest
         AssertTheProgramsOneRecord(c, node, DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
+    // R7-E2 E2-5a (D-850, Diagnostics.cs's ReportConstraint): a fact-less InvalidConstraint problem, as the Contract and conformance sites
+    // record, at a frozen library clause is the program's one record, through Core's store decision.
+    [Fact]
+    public void ALibraryClausesConstraintProblemIsTheProgramsRecord()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<IsKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<Koto, BindingFailure, ReadOnlySpan<ProblemFact>, ushort, bool, BoundType?>>(c.Binding);
+        record(node, BindingFailure.InvalidConstraint, [], 0, false);
+        AssertTheProgramsOneRecord(c, node, DiagnosticCode.InvalidConstraint_Kd);
+    }
+
     // R7-E2 E2-1 (P1 (a); SPEC 23.1.2, rule W): each problem of a failed node is direct or derived by its own requirement (CollectProblem).
     // A Type's member whose qualifier is missing (`Missing.Inner`) is derived from that unresolved input; a further missing Name there
     // rests on the same recorded input, so it is a derived issue under its own requirement, suppressed while its cause publishes, and a

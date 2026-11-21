@@ -1106,6 +1106,31 @@ public class ConditionalConformanceBindingTest
         Assert.Equal(source.IndexOf(clause, StringComparison.Ordinal), diagnostic.Span.Start);
     }
 
+    // R7-E2 E2-5a (B's O8, M1; labelled from SPEC first): a Self clause whose conjunction names a closed Contract and ObjectPayload fails
+    // two independent requirements, 8.7 (a closed Contract's conforming Types are fixed) and 8.7.1 (ObjectPayload is decided by the
+    // Type's structure), so each is its own record at the clause (SPEC 23.1.2; dev kept the first only); either order is the same rule.
+    // Twins: either conjunct beside a Contract the struct may declare gives its one record.
+    [Theory]
+    [InlineData("m1r", "struct S\n    Self is PrimitiveInteger and ObjectPayload", "ClosedContractConformance_Kd: Self is PrimitiveInteger and ObjectPayload | InvalidSelfClause_Kd: Self is PrimitiveInteger and ObjectPayload")]
+    [InlineData("m1s", "struct S\n    Self is ObjectPayload and PrimitiveInteger", "ClosedContractConformance_Kd: Self is ObjectPayload and PrimitiveInteger | InvalidSelfClause_Kd: Self is ObjectPayload and PrimitiveInteger")]
+    [InlineData("m1rt", "contract Marker\nstruct S\n    Self is PrimitiveInteger and Marker", "ClosedContractConformance_Kd: Self is PrimitiveInteger and Marker")]
+    [InlineData("m1st", "contract Marker\nstruct S\n    Self is ObjectPayload and Marker", "InvalidSelfClause_Kd: Self is ObjectPayload and Marker")]
+    public void AClauseFailingTwoIntrinsicRequirementsKeepsBothRecords(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
+
+    // R7-E2 E2-5a (B's O8, the touched path's allocation row): the clause's two problems are the report's kept rows, so a warm rebind of
+    // the rejected program allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AClauseWithTwoRecordsRebindsWithoutAllocation()
+    {
+        var c = MinimalEmissionTest.Analyze("struct S\n    Self is PrimitiveInteger and ObjectPayload\npublic func main() => ()");
+        var rejected = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
+        Assert.True(rejected);
+        Assert.Equal(2, c.Binding.Issues.Count);
+    }
+
     // PLAN G949 S1-b1 (the review's N1; DECISIONS BU-220) guarded a conditional block's declaring path after an edit that keeps its
     // clause's key but registers the conformance no more: the clause's subject `Self` made `T`. Under SPEC Appendix F (normative) that
     // program is invalid syntax: F.6.2's ConditionalConformance is `"Self" "is" ContractReference "when" ConformanceConditions` and SPEC

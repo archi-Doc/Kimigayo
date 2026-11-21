@@ -239,7 +239,7 @@ public sealed partial class Binding
         {
             if (shape.State == 1)
             {
-                this.Fail(contract, BindingFailure.Cycle);
+                this.Record(contract, BindingFailure.Cycle, []);
                 return false;
             }
 
@@ -253,7 +253,7 @@ public sealed partial class Binding
             var syntax = contract.Bases[i];
             if (!IsRefinementName(syntax))
             {
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 valid = false;
                 continue;
             }
@@ -278,7 +278,7 @@ public sealed partial class Binding
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 valid = false;
                 continue;
             }
@@ -306,7 +306,7 @@ public sealed partial class Binding
 
             if (parent is null)
             {
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 valid = false;
                 continue;
             }
@@ -355,7 +355,7 @@ public sealed partial class Binding
             {
                 // An effect specification is checked with the bounds of the Contract (BindEffectBound); a misplaced specialization
                 // (SPEC F.6.2) is no member: it stands for its placement Error, so the Contract's verdict does not rest on it.
-                this.Fail(member, BindingFailure.InvalidConstraint);
+                this.Record(member, BindingFailure.InvalidConstraint, []);
                 valid = false;
             }
         }
@@ -633,7 +633,7 @@ public sealed partial class Binding
 
                         if (sameSignature && (differentLabels || !SameGenericShape(a, b)))
                         {
-                            this.Fail(contract, BindingFailure.InvalidConstraint);
+                            this.Record(contract, BindingFailure.InvalidConstraint, []);
                         }
                     }
                 }

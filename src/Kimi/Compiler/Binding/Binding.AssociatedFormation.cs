@@ -72,7 +72,7 @@ public sealed partial class Binding
 
         if (!IsAssociatedRequirement(declaration) || (declaration is IsKoto clause && AssociatedIdentityType(clause.BoundConstraint) is not null))
         {
-            this.Fail(declaration, BindingFailure.InvalidAssociatedType);
+            this.Record(declaration, BindingFailure.InvalidAssociatedType, []);
             return;
         }
 
