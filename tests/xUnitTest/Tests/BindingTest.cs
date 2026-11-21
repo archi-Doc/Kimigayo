@@ -689,6 +689,8 @@ public class BindingTest
     [InlineData("premise", (byte)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd)] // the bounded clause, the requirement
     [InlineData("clause", (byte)BindingFailure.UnsatisfiedConstraint, DiagnosticCode.UnsatisfiedConstraint_Kd)] // the clause, its proposition, a called declaration
     [InlineData("absence", (byte)BindingFailure.MissingName, DiagnosticCode.UnresolvedBinding_Kd)] // its reason, the construction and its constructed Type
+    [InlineData("access", (byte)BindingFailure.Access, DiagnosticCode.InaccessibleBinding_Kd)] // the inaccessible declaration, the part that shows it (E2-4a)
+    [InlineData("access-use", (byte)BindingFailure.Access, DiagnosticCode.InaccessibleBinding_Kd)] // the inaccessible declaration alone (E2-4a)
     public void ALibraryNodesFactRecordIsTheProgramsRecord(string family, byte failure, DiagnosticCode code)
     {
         var c = CompilationTestHelper.Parse("let x: i32 = true\n"); // A failed Bind whose own record shares no row's code.
@@ -709,6 +711,8 @@ public class BindingTest
             "premise" => [Related(clause), Related(function, 1)],
             "clause" => [Related(clause), new(ProblemFactKind.Constraint, SourceRef.Of(clause), report.Keep(c.Semantics.ConstraintOf((IsKoto)clause)!)), Related(contract, 1)], // a declaration no function
             "absence" => [new(ProblemFactKind.Reason, SourceRef.Of(node), 18), Related(node), Instance(node, BoundType.Boolean)],
+            "access" => [Related(contract), Related(node, 1)],
+            "access-use" => [Related(contract)],
             _ => throw new ArgumentOutOfRangeException(nameof(family)),
         };
         var record = typeof(Binding).GetMethod("Record", BindingFlags.Instance | BindingFlags.NonPublic)!

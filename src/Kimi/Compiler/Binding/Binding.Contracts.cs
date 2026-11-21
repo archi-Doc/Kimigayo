@@ -553,7 +553,8 @@ public sealed partial class Binding
             {
                 if (!this.AccessCovers(shape.Ancestors[i], shape.Symbol, shape.Symbol))
                 {
-                    this.Fail(contract, BindingFailure.Access);
+                    // The Contract is the location: its base references are read only where BuildContract binds them (R7-N2a).
+                    this.RecordAccess(contract, shape.Ancestors[i], null);
                 }
             }
 
@@ -568,24 +569,24 @@ public sealed partial class Binding
 
                     var declaringContract = members[i].Contract;
                     var sa = new FnSig(a);
-                    if (sa.Result is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
+                    if (sa.Result is { } result && this.InaccessibleType(result, declaringContract, declaringContract) is { } inaccessibleResult)
                     {
-                        this.Fail(a, BindingFailure.Access);
+                        this.RecordAccess(a, inaccessibleResult, a.ReturnType);
                     }
 
                     for (var p = 0; p < sa.InputCount; p++)
                     {
-                        if (sa.Input(p) is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
+                        if (sa.Input(p) is { } parameter && this.InaccessibleType(parameter, declaringContract, declaringContract) is { } inaccessible)
                         {
-                            this.Fail(a, BindingFailure.Access);
+                            this.RecordAccess(a, inaccessible, a.Parameters[p].Type);
                         }
                     }
 
                     for (var p = 0; p < a.TypeConstraints.Count; p++)
                     {
-                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && !this.ConstraintAccessCovers(constraint, declaringContract))
+                        if (((IsKoto)a.TypeConstraints[p]).BoundConstraint is { } constraint && this.InaccessibleConstraint(constraint, declaringContract) is { } inaccessible)
                         {
-                            this.Fail(a, BindingFailure.Access);
+                            this.RecordAccess(a, inaccessible, a.TypeConstraints[p]);
                         }
                     }
 
@@ -626,10 +627,11 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)
             {
-                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (!this.ConstraintAccessCovers(constraint, shape.Symbol) ||
-                    (shape.ClauseStorage[i].Left.BoundType is { } subject && !this.TypeAccessCovers(subject, shape.Symbol, shape.Symbol))))
+                if (shape.ClauseStorage[i].BoundConstraint is { } constraint && (this.InaccessibleConstraint(constraint, shape.Symbol) ??
+                    (shape.ClauseStorage[i].Left.BoundType is { } subject ? this.InaccessibleType(subject, shape.Symbol, shape.Symbol) : null)) is { } inaccessible)
                 {
-                    this.Fail(shape.ClauseStorage[i], BindingFailure.Access);
+                    // The clause's own record; the Contract keeps its failure beside it until R7-E5 (ValidateConstraintProjectionAccess' y2).
+                    this.RecordAccess(shape.ClauseStorage[i], inaccessible, null);
                     this.Fail(contract, BindingFailure.Access);
                 }
             }

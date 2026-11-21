@@ -178,9 +178,11 @@ public sealed partial class Binding
                 for (var p = 0; p < premises.Operands.Length; p++)
                 {
                     if (premises.Operands[p] is IsKoto { BoundConstraint: { } constraint } clause &&
-                        !this.ConstraintAccessCovers(constraint, conformance.Type, conformance.Contract))
+                        this.InaccessibleConstraint(constraint, conformance.Type, conformance.Contract) is { } inaccessible)
                     {
-                        this.Fail(clause, BindingFailure.Access);
+                        // The premise's own record; the conditional and the conformance use keep their failures beside it, fact-less
+                        // owners over the failed premise, until R7-E5 (ValidateConstraintProjectionAccess' y2).
+                        this.RecordAccess(clause, inaccessible, null);
                         this.Fail(premises.Parent!, BindingFailure.Access);
                         return Invalid(BindingFailure.Access, []);
                     }
@@ -232,9 +234,11 @@ public sealed partial class Binding
                     return Invalid(BindingFailure.InvalidAssociatedType, []);
                 }
 
-                if (!this.TypeAccessCovers(associated, conformance.Type, conformance.Contract))
+                if (this.InaccessibleType(associated, conformance.Type, conformance.Contract) is { } inaccessible)
                 {
-                    return Invalid(BindingFailure.Access, []);
+                    // SPEC 9.4.4 (any exposed binding), 9.4.6: the use is located, the declaration related; the binding is the Container's
+                    // specification or an inferred one, outside the use's syntax, so no part (RecordAccess' rule).
+                    return Invalid(BindingFailure.Access, [this.AccessFact(inaccessible)]);
                 }
             }
 
