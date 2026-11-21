@@ -1431,6 +1431,15 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 103 (2026-11-19, plan §14; the Back's R7-P2 design review ruling 10 and P2's commit 1, Q-544): §5.0's P3 row, §5.1's
   P2 row and §6 name the code's `CallEvaluation` and `EvaluatedCandidate`; P2's row records commit 1 (DECISIONS R7-M52).
   Nothing frozen.
+- Revision 104 (2026-11-22, plan §14; the Front's Q-632, with R7-V2c): V2's row records V2c's landing in W-306 (DECISIONS R7-M74,
+  `ImplTable.Builtin`, the built-in conformance rows keyed on the Type and the Contract declaration's identity); C9's row names the
+  Composed row's proof and the primitive refutation as Prove's and SPEC 8.7.4's supplies as one statement with it (PLAN G1235).
+  Nothing frozen.
+- Revision 105 (2026-11-22, plan §14; the Front's D-1032 and D-1033, F's P1 ruling 1, R7-P1's census on dev 43fc18f6c): P8's
+  row drops G274, P9's G51 and P10's G265, and §5.1's absorbed table all three (PLAN G51 closed as not a defect, SPEC 12.3.1 and
+  12.3.3; G274 and G265 closed, no longer reproducing; R7-P1 keeps their programs as guard rows). Nothing frozen.
+- Revision 106 (2026-11-22, plan §14; the Front's D-1034, R7-C8's state check): C8's row records U-D3 as landed in substance
+  with G647 (`2f7d4a10d`, DECISIONS BU-175) and names what is left: U-D3r's fail-first rows, G140 U3 and G309-R. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
@@ -1672,3 +1681,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   T lane's seats 1+1 (one implementer, one designer or reviewer seat) are raised to 2+1, two implementers and one designer or
   reviewer; the one-implementer-per-toolchain-root rule stands. Decision 11 changes by the owner's own instruction; no other decision
   changes. Nothing frozen.
+- Revision 7 (2026-11-21, the owner's answers O-467 (a), O-468 (a), O-469 (a) (a) (a) and O-473 (Q1 changed to (d)), and
+  the owner's approvals in T's dialog (「推奨の組み合わせで結構です」, decisions 23 and 24); T's D-1018): §2 gains decisions 18-24;
+  §7: B6's and B7's rows name the units they land as, and a new row B9 (a freestanding target, decision 22) follows B8;
+  §11: the questions before B5, B6 and B7 are answered, and one before B9 is added. No earlier decision changes. Nothing frozen.
+- Revision 8 (2026-11-22, the owner's answers O-478 (i)-(iv) (a), (ii) confirmed in T's dialog 「(a) のまま」, and O-479 (B8 a
+  future plan); T's D-1035): §2 gains decisions 25-28 (the Linux clock as a 28th intrinsic `MonotonicClock`; the musl 1.2.6
+  download; `KIMI_E_PROCESS_HEAP` removed in B7r2; decision 23's memory gate); §7: B7's row names B7b's group B7r and its
+  order, B8's row records the owner's deferral; §11: the question before B7b is answered. No earlier decision changes.
+  Nothing frozen.

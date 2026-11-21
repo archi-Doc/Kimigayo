@@ -42,6 +42,20 @@ public class PropertyApiAccessBindingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 9.4.4, 23.1.2, 23.3 (R7-E2 E2-4a, O-r2-2; probes pr454i, pr454it): each accessor's own components are checked in its domain, so
+    // a setter whose written value Type is the private Copy H fails (set, H): one record, located at that component and relating H (one
+    // problem per component, ValidateAccessor). The getter's components (`ref/Self`, i32) and the Property's Type are accessible. A
+    // Property whose own Type is H publishes only the Property's record (probes pr454, pr454c): ValidateAccessor reads the accessor's
+    // declaration context first, which that record failed, and returns before the components (unchanged by E2-4a). The twin is valid.
+    [Theory]
+    [InlineData("", "InaccessibleBinding_Kd 6:37 H, inaccessible declaration 'H'")] // pr454i
+    [InlineData("public ", "")] // pr454it
+    public void AnAccessorsExposingComponentIsItsOwnRecord(string access, string records)
+    {
+        var source = access + "struct H\n    Self is Copy\npublic struct S\n    public computed y: i32\n        get(self: ref/Self) -> i32 => 1\n        set(self: uniq/Self, value: H) -> () => ()\n";
+        Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
+    }
+
     [Theory]
     [InlineData("public", false)]
     [InlineData("internal", true)]

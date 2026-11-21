@@ -154,27 +154,42 @@ public sealed partial class Binding
             return null;
         }
 
-        expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
-        if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
+        // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
+        if (this.CaseAt(reference, scope, this.ExpectedTypeOf(expected), out var missing) is not { } member)
         {
-            this.Fail(reference, BindingFailure.MissingType, true);
+            this.Fail(reference, missing, missing == BindingFailure.MissingType);
             return null;
         }
 
-        var member = this.LookupMember(expected, name.IdentifierName, scope, LookupRole.EnumCase).Member;
-        if (member is null)
-        {
-            this.Fail(reference, BindingFailure.MissingName);
-            return null;
-        }
-
+        var name = (IdentifierNameKoto)reference.Operands[0];
         reference.BoundSymbol = name.BoundSymbol = member;
         Complete(name, BoundType.Unit);
         return member;
     }
 
-    private BoundType? BindEnumConstruction(Koto use, Koto reference, BindingSymbol symbol, InvocationKoto? call, BindingScope scope, BoundType? expected)
+    // SPEC 6.5.2: the Case that a contextual `.Name` names in the expected Type, a lookup that writes no node (InferredCase publishes
+    // it). Null with why there is none: MissingType when the expected Type is no owned enum Type, MissingName when that enum has no
+    // such Case.
+    private BindingSymbol? CaseAt(SyntaxFormKoto reference, BindingScope scope, BoundType? expected, out BindingFailure missing)
     {
+        missing = BindingFailure.MissingType;
+        if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
+        {
+            return null;
+        }
+
+        missing = BindingFailure.MissingName;
+        return this.LookupMember(expected, name.IdentifierName, scope, LookupRole.EnumCase).Member;
+    }
+
+    // SPEC 6.5.2: what a Case reference names where it is published: the Case its lookup selected, and for a qualified reference the
+    // declaring Type that lookup recorded, for a contextual one the expected Type (U at an expected `ref/U`, SPEC 10.8.1).
+    private ConstructionTarget PublishedTarget(Koto reference, BindingSymbol symbol, BoundType? expected)
+        => new(symbol, reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : this.ExpectedTypeOf(expected));
+
+    private BoundType? BindEnumConstruction(Koto use, Koto reference, in ConstructionTarget target, InvocationKoto? call, BindingScope scope, BoundType? expected)
+    {
+        var symbol = target.Case;
         var enumeration = symbol.EnumCase!;
         expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: a Case construction is an owner value; its expected result at `ref/U` is U.
         var declaration = (EnumKoto)enumeration.Owner.Declaration;
@@ -186,7 +201,7 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.TypeMismatch);
         }
 
-        var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
+        var owner = target.Owner;
         var inferred = reference is MemberAccessKoto qualified && this.inferredConstructionTargets.Contains(qualified.Left);
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
@@ -592,8 +607,7 @@ public sealed partial class Binding
         for (var i = 0; i < payload.Length; i++)
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
-            var stored = this.PartTypeIn(payload[i], result, scope)!;
-            var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
+            var type = this.PayloadTypeAt(payload[i], result, scope, out var stored);
             var fitted = default(BoundArgumentOperation);
             var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
@@ -606,13 +620,18 @@ public sealed partial class Binding
             var completed = fit == CandidateApplicability.Error ? null : this.PropagateBound(source, type) ?? this.BindNode(source, scope, type);
 
             // SPEC 5.7, 23.1.2: the layers admit what the bound payload puts in them, a failed part being no evidence (NonNullAtLayers), so
-            // the payload's own failure does not hide another layer's record.
-            var refused = this.HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source);
-            if (completed is null || this.PartFailed(source) || refused ||
+            // the payload's own failure does not hide another layer's record; a refused layer is a relation problem that leaves the
+            // construction Resolved (JudgeHolderAccess).
+            if (this.HoldsHolder(stored))
+            {
+                this.JudgeHolderAccess(stored, HolderAccess.Write, source, source);
+            }
+
+            if (completed is null || this.PartFailed(source) ||
                 (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {
-                Complete(use, null); // The payload's own failure or its layers' refusal, on which the construction rests.
+                Complete(use, null); // The payload's own failure, on which the construction rests.
                 return false;
             }
 
@@ -646,11 +665,25 @@ public sealed partial class Binding
                 return false;
             }
 
-            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i);
+            operations[i] = new(source, actual, type, kind, quality, ParameterIndex: i, AdaptedType: adaptedType);
             adapted[i] = adaptedType;
+            if (this.FormsBorrows)
+            {
+                // Its writer forms its Borrow, before the payloads after it bind: an awaiting one's header can state its atom
+                // (Binding.RawOrigins.Borrows).
+                this.OperationBorrow(this.borrows, operations[i]);
+            }
         }
 
         return true;
+    }
+
+    // SPEC 6.5.2, 5.7: a payload's Type in the constructed Type `result`: its stored Type there (`stored`), with a Case holding
+    // `during self` constructed through no dereference.
+    private BoundType PayloadTypeAt(Koto payload, BoundType result, BindingScope scope, out BoundType stored)
+    {
+        stored = this.PartTypeIn(payload, result, scope)!;
+        return this.ReplaceHolder(stored, null);
     }
 
     private void CompleteEnumAcquisitions()
@@ -771,4 +804,8 @@ public sealed partial class Binding
         internal bool TryGetValue(Koto use, [NotNullWhen(true)] out BoundEnumConstruction? plan)
             => (plan = use.SyntaxOwner is { } table ? table.Hir.Families.EnumConstructions.Get(use.SyntaxId) : null) is not null;
     }
+
+    // SPEC 6.5.2: the Case a reference names and the enum Type that its qualifier and the expected Type fix (its declaring Type for a
+    // qualified reference, the expected Type for a contextual one): what a Case construction is bound from.
+    private readonly record struct ConstructionTarget(BindingSymbol Case, BoundType? Owner);
 }
