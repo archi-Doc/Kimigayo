@@ -183,7 +183,6 @@ public sealed class SolutionInputTest : IDisposable
         }
 
         var solution = this.Load(path);
-        solution.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "missing-toolchain");
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
         Assert.False(File.Exists(Path.ChangeExtension(path, "kimi.lock.json")));
@@ -233,7 +232,6 @@ public sealed class SolutionInputTest : IDisposable
         var librarySource = this.Write("Library/Library.kimi", "public group Api\n    public func value() => ()");
         var solution = this.Load(path);
         solution.KimiOptions.Locked = locked;
-        solution.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "missing-toolchain");
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         var lockPath = DependencyLock.PathForProject(path);
         Assert.False(File.Exists(lockPath));

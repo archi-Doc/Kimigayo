@@ -16,8 +16,8 @@ namespace Kimi.Command;
 // and the session's exit code (0 when every line succeeded; 1 when any failed, a cancelled line included, or when Tatara's refusal
 // ended the session; 130, CommandExecution's cancellation, when the root's termination ended it: a started console read observes no
 // cancellation, so the session checks its token when a read returns, before the line runs, and once more at its end). Invariants: a line is a command line, parsed and executed by CommandUnit.Product.Execute with a new DI scope's
-// provider and the line's own token, so nothing is reused between lines but the process's library per target, Tatara's loaded DLL
-// per path and its refusal, Kimigayo, the current directory and the runtime; the session owns Ctrl+C while it runs (Program.CancelKey)
+// provider and the line's own token, so nothing is reused between lines but the process's library per target, Tatara's one instance
+// per process and its refusal, Kimigayo, the current directory and the runtime; the session owns Ctrl+C while it runs (Program.CancelKey)
 // and restores it at its end (a press with no read or line pending, the redirected reader waiting for input, calls the action the
 // session replaced: by default its first press requests the root's termination and its second ends the process with 130; Tatara
 // design A4 §2.2); a terminal session also sets Kimigayo.RunEnded to end a run program's last line when that output stopped mid-line

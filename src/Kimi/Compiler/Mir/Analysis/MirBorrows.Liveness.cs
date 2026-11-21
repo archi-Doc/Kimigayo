@@ -165,7 +165,7 @@ internal sealed partial class MirBorrows
         {
         }
 
-        // An Opaque site's roots, read, written and borrowed, are used.
+        // An Opaque site's uses, each undecided (read, written and borrowed), are used at their roots.
         public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var whole = place.Projection == 0;

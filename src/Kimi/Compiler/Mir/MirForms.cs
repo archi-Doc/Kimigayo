@@ -247,8 +247,10 @@ internal readonly record struct MirSwitchCase(long Value, int Target);
 /// it is mutable and whether its value holds a raw pointer, an rc handle or a Weak of one at any depth (SPEC 8.11.2).</summary>
 internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType? Type, bool Mutable, bool RawHolding);
 
-/// <summary>The site of an Opaque value: the syntax it replaces and the roots that syntax reads, writes or borrows, <see cref="Count"/>
-/// entries of <see cref="MirBody.OpaqueRoots"/> from <see cref="Start"/> (plan 5.4).</summary>
+/// <summary>The site of an Opaque value: the syntax it replaces and the uses of that syntax, <see cref="Count"/> Places of
+/// <see cref="MirBody.OpaqueUses"/> from <see cref="Start"/> (plan 5.4), each undecided (DECISIONS Z17): reported with the Opaque row's
+/// access (<see cref="MirDescriptors.IsUndecided"/>), which only A1 judges at the Place and every other reader at its root
+/// (<see cref="MirDescriptors.Judged"/>).</summary>
 internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
 
 /// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
