@@ -89,17 +89,18 @@ public sealed partial class Binding
     {
         switch (member)
         {
-            case FunctionKoto function:
+            case FunctionKoto function when this.scopes.TryGetValue(function, out var scope):
+                // The Types as written (AsWritten): a written projection's node binds the Type it resolved to, the projection is its Right.
                 if (function.ReturnType is { BoundType: { } result })
                 {
-                    this.DiscoverWritten(batch, result);
+                    this.DiscoverWritten(batch, this.AsWritten(function.ReturnType, scope, result));
                 }
 
                 for (var i = 0; i < function.Parameters.Count; i++)
                 {
-                    if (function.Parameters[i].Type is { BoundType: { } parameter })
+                    if (function.Parameters[i].Type is { BoundType: { } parameter } syntax)
                     {
-                        this.DiscoverWritten(batch, parameter);
+                        this.DiscoverWritten(batch, this.AsWritten(syntax, scope, parameter));
                     }
                 }
 
