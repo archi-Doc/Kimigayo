@@ -195,7 +195,8 @@ public class CompilerFunctionReferenceTest
         var type = Nest(terminal);
         var source = "func id<T>(v: T) -> T => v@move\nlet f: (" + type + ") -> " + type + " = id" +
             arguments.Replace("@written", Nest("ref/i32"), StringComparison.Ordinal) + "\n";
-        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        // Binding's records: the walks are Binding's; past height 64 the instance collector's own limit records the program (R5-M170).
+        CompilationTestHelper.AssertBindingRecordsAtLines($"reference-{depth}", source, string.Empty);
     }
 
     [Theory]

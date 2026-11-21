@@ -266,7 +266,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var source = $"func constantOf(n: {Nest("ref/i32 during t")}) -> ref/i32 during s => $abort(\"never\")\n" +
             $"func make<T>(f: ({Nest("ref/i32 during static")}) -> T) -> i32 => 7\n" +
             "let r = make(constantOf)\nrequire r == 7 else => $abort(\"result only\")\n";
-        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        CompilationTestHelper.AssertBindingRecordsAtLines($"result-only-{depth}", source, string.Empty); // Binding's walk; see AReferenceBindsASlotOfAnyHeight.
     }
 
     // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
