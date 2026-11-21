@@ -20,10 +20,12 @@
 // Output: the pair, the build record, the staged libraries, the object and the executable, each published by
 // replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
 // failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
-// decision 18; NativeBuild); and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
-// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception: one IsToolchainFailure classifies is
-// the toolchain's, which its host renders as a message; any other ends the result it interrupted as Faulted (CheckFaulted_Kd): under
-// Project.Build the build's (R9-B2), under a command the command's own (CommandExecution, PLAN G984).
+// decision 18; NativeBuild: in the two windows IMPL 20.3.2 states, decision 19, the attempt's success record names a hash no file at
+// the path has, and run --no-build runs only an executable whose hash the record names); and, from publication only, records in the
+// compiler's Emission partition (ArtifactPublicationFailed_Kd and InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other
+// failure is an exception: one IsToolchainFailure classifies is the toolchain's, which its host renders as a message; any other ends the
+// result it interrupted as Faulted (CheckFaulted_Kd): under Project.Build the build's (R9-B2), under a command the command's own
+// (CommandExecution, PLAN G984).
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders). A build of a record (Project.Build, build --Manifest) holds the record's lock

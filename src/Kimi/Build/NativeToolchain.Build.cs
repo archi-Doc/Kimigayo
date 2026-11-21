@@ -133,10 +133,11 @@ internal static partial class NativeToolchain
     /// cancellation point, writes the success record, which names the private file's hash, and then moves the file to the executable's
     /// path, so an Application publishes its executable only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the
     /// commit, the report included, throws and leaves the previous executable and the record at the last incomplete state written, and a
-    /// failed move writes the invalidation again and rethrows the move's failure. The private file is deleted on every outcome. An open
-    /// limit, with the owner (B5 design §2.1, C-433 B1): should the process end between the success record and the move, or the move and
-    /// the invalidation both fail (one IOException naming both, the move's as its inner exception), the attempt's success record stays,
-    /// naming a hash no file at the path has; run --no-build refuses it by the hash, and the next build invalidates it.</summary>
+    /// failed move writes the invalidation again and rethrows the move's failure. The private file is deleted on every outcome. IMPL
+    /// 20.3.2 states the two windows (the owner's decision 19, O-468 (a)): should the process end between the success record and the
+    /// move, or the move and the invalidation both fail (one IOException naming both, the move's as its inner exception), the attempt's
+    /// success record stays, naming a hash no file at the path has. run --no-build runs only an executable whose hash the record names,
+    /// so it refuses that one, and the next build invalidates the record.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -198,8 +199,9 @@ internal static partial class NativeToolchain
                 }
                 catch (Exception move) when (IsOutputFailure(move))
                 {
-                    // Both failures are kept: two output failures are one output failure naming both; any other invalidation failure,
-                    // which only a defect reaches, is a fault that no catch classifies (C-433 c5).
+                    // Two output failures are one output failure naming both. Invalidate raises only output failures (WriteRecord's
+                    // file writes and Replace), so any other failure there comes from a defect and propagates as itself, a fault no
+                    // catch classifies (C-433 c5; COMPILER_ARCHITECTURE's catch boundaries).
                     try
                     {
                         Invalidate(this.paths.Record);
@@ -207,10 +209,6 @@ internal static partial class NativeToolchain
                     catch (Exception invalidation) when (IsOutputFailure(invalidation))
                     {
                         throw new IOException($"{move.Message} The build record was not invalidated again: {invalidation.Message}", move);
-                    }
-                    catch (Exception invalidation)
-                    {
-                        throw new AggregateException(move, invalidation);
                     }
 
                     throw;
