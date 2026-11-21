@@ -11,18 +11,22 @@
 // reference (TyCtxt.SubstOf); or, for a compiler function's call of a user witness (K package 4.5 rows 2 and 6, a comparison's leaf) and a
 // requirement's function item (rows 5, 12 and 13, Witness(item)), the requirement, the Contract reference and its call on a Self
 // (Synthesized); OwnRequirement names a library Contract's requirement for such a call.
-// Output: RequirementTarget(Kind, Target, Subst, Access), one per (requirement, contract, subst), kept across passes with no edit and
+// Output: RequirementTarget(Kind, Target, Subst, Access, Cause), one per (requirement, contract, subst), kept across passes with no edit and
 // discarded at an edit (ResetViews). Body: a function with a MIR body under its instance: a conformance witness (inherited ones included)
 // under its declaring instance with the call's Types, lengths and its Origins in the call's terms (Binding.WitnessOrigin), an accessor-call
 // witness's executing accessor under its implementing Type's instance, a library group's function under its own slots.
 // Builtin: a compiler function under the call's substitution, whose bound reference instantiates the requirement's signature. Storage: a
 // standard property witness's implementing Field under the call's substitution, Access its operation (Copy, Borrow or Set; AccessorCall for
-// every other kind). Refused: OCC-X. Limit: the conforming Self's storage nests past its bound (Binding.PrepareTypeStorage's Limit); a Self whose
-// storage rests on a part Binding rejected passes through, since what the call runs does not depend on that part (DECISIONS BU-38), and
-// the instance its target needs is its reader's to admit. None: no answer, also for an abstract Self, which for a closed accepted Self is
-// a broken contract that its reader records as InternalInvariant_Kd.
-// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance
-// (InstanceCollectorTest's K 4.5 rows, TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
+// every other kind). Refused: OCC-X. None: no answer, also for an abstract Self, which for a closed accepted Self is a broken contract that
+// its reader records as InternalInvariant_Kd. What a call runs does not depend on its Self's storage, so Witness reads no storage verdict:
+// a Self whose storage rests on a part Binding rejected or nests past Binding's bound has its witness's target, and the instance the
+// target needs is its reader's to admit (DECISIONS BU-38, R7-M54 c4).
+// Cause: the resolution's formation (TyCtxt.Formation), Formed but for a resolution that formed a Type past IMPL A.4's height inside the
+// collector's answer frame (a Contract instance's other conformance, SPEC 8.6.1): HeightLimit with no target, which the caller records at
+// its requesting site (InstanceCollector.Formed).
+// Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance, but for a
+// resolution refused in the collector's frame, which the materializer, outside it, records itself (InstanceCollectorTest's K 4.5 rows,
+// TyCtxtTest's direct Witness assertions, the native fixtures); no receiver projection is returned,
 // since a base subobject is a layout prefix (Layout.Of, X1).
 // Must not: forward an abstract Self (the materializer's SPEC 8.15 rule), create a bridge or a CallPlan, write a diagnostic, HIR or pass
 // state, or prove on an erased value.
@@ -39,12 +43,14 @@ internal enum RequirementTargetKind : byte
     Builtin,
     Storage,
     Refused,
-    Limit,
 }
 
 /// <summary>What a requirement call runs: <see cref="Target"/> under <see cref="Subst"/>, the target's instance for Body and the call's own
-/// substitution, which binds the conforming Self, for Builtin and Storage; <see cref="Access"/> a Storage witness's operation.</summary>
-internal readonly record struct RequirementTarget(RequirementTargetKind Kind, BindingSymbol? Target, Subst? Subst, PropertyWitnessKind Access);
+/// substitution, which binds the conforming Self, for Builtin and Storage; <see cref="Access"/> a Storage witness's operation;
+/// <see cref="Cause"/> the resolution's formation (TyCtxt.Formation): HeightLimit, with no target, where the resolution formed a Type past
+/// IMPL A.4's height in the collector's answer frame (Witness).</summary>
+internal readonly record struct RequirementTarget(
+    RequirementTargetKind Kind, BindingSymbol? Target, Subst? Subst, PropertyWitnessKind Access, TyCtxt.Formation Cause = TyCtxt.Formation.Formed);
 
 internal sealed partial class TyCtxt
 {
@@ -72,7 +78,17 @@ internal sealed partial class TyCtxt
     {
         if (!this.witnesses.TryGetValue((requirement, contract, subst), out var target))
         {
+            // R7-T1 c4: the resolution is a formation in the collector's answer frame (Binding.OpenFormation): the Contract instance and
+            // the conformance it selects can form a Type no site formed (another bound reference of the same Contract, SPEC 8.6.1: the
+            // conformances are formed in declaration order up to the one naming the reference, the only one by 8.9.1), whose refusal is
+            // the call's HeightLimit, recorded by its reader at the requesting site; outside the frame it owns nothing.
+            var formation = binding.OpenFormation();
             target = this.Resolve(requirement, contract, subst);
+            if (binding.CloseAnswer(formation))
+            {
+                target = new(RequirementTargetKind.None, null, null, default, Formation.HeightLimit);
+            }
+
             this.witnesses.Add((requirement, contract, subst), target);
         }
 
@@ -133,11 +149,6 @@ internal sealed partial class TyCtxt
         if (subst.Self is not { HasAbstractPart: false } self)
         {
             return default;
-        }
-
-        if (binding.PrepareTypeStorage(self) == Binding.StorageOutcome.Limit)
-        {
-            return new(RequirementTargetKind.Limit, null, null, default);
         }
 
         var instance = binding.InstanceContract(contract, self, subst.Declaring);

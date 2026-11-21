@@ -52,10 +52,11 @@
 // Formation (DECISIONS BU-36, BU-38; R7-T1): a Type or substitution of an item's instance is the substitution alone, never its
 // storage verdict (Binding's bound is retention's and A4's, not the collector's: a finite Type past it is generated, its growth R5-M170's
 // rule). Each run is Binding's one answer frame (TyCtxt.OpenAnswer, closed in a finally, so no throw leaves it open), so every Type the
-// run causes Binding to form answers a refusal past IMPL A.4's height to the formation owning it, of two: a substitution at a site, and an
-// instance's stored Types. Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed
-// substitution through TyCtxt's formation query (TyCtxt.Answered), whose cause the collector reads once, at its requesting site (Formed):
-// Formed makes it; HeightLimit is TypeHeightLimit_Kd (Resource, IMPL 21.3.2) at the site (a local's at the local, the Type it writes
+// run causes Binding to form answers a refusal past IMPL A.4's height to the formation owning it, of three: a substitution at a site, an
+// instance's stored Types, and a requirement's witness resolution (TyCtxt.Witness: the Contract instance and the conformances it forms,
+// SPEC 8.6.1, its target's Cause). Every row reads a Type of an instance at its site, a local of a new key's body and a call's composed
+// substitution through TyCtxt's formation query (TyCtxt.Answered), and a witness target where it calls Witness, whose cause the collector
+// reads once, at its requesting site (Formed): Formed makes it; HeightLimit is TypeHeightLimit_Kd (Resource, IMPL 21.3.2) at the site (a local's at the local, the Type it writes
 // forming it), once per requesting declaration and forming site at its least use, as a Layout limit is (DECISIONS R5-M171); Incomplete is
 // a broken contract at the site (Report). An instance's stored Types past the height are its own cause (AdtDef.InstanceStorage.HeightLimit),
 // which every reader of the instance reads: Layout as its HeightLimit, mapped here (RecordOf) to TypeHeightLimit_Kd at the use, once per
@@ -68,9 +69,9 @@
 // key (KD3). A request of a definition generic in its context whose substitution does not carry the instance it instantiates in
 // (CarriesInstance, the instance of the declaration it holds, TyCtxt.EnclosingDeclaration: a nested function's call, DECISIONS R5-M43; a
 // Closure no instance closed, in its own identity: a held instance with an Origin position or a generic container's group static,
-// R5-M157, BU-60), a requirement call whose witness's Self is past Binding's bound (Witness's Limit, until R7-T1's c4),
-// OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the capability table's
-// gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth (DECISIONS R5-M170):
+// R5-M157, BU-60), OCC-X's refused witness and a requirement call's or requirement Item's witness without a MIR body (Called) are the
+// capability table's gaps (an access of a static of a generic container's group is none: its declaration is, X33 (a), R5-M82); growth
+// (DECISIONS R5-M170):
 // a 17th generation of an identity (a body's definition, a DropGlue's declaration) on an admission chain, its height grown
 // at each, and a 1,025th item of an identity are GenerationResourceLimit_Kd, once per key; a type-driven key whose Type is higher than
 // 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a

@@ -8,7 +8,7 @@
 // Output: a ComparisonNode tree: Composite over its parts, Builtin, Witness (a closed leaf, string's among them: Witness's Body at its
 // instance without its Origins, a library witness's at the Self's arguments), Requirement (a leaf with an abstract part: the Contract's own requirement on the leaf in every
 // instance, Synthesized on a Self) or None (no answer, a broken contract for a closed accepted Self that its reader records as
-// InternalInvariant_Kd); null for a Limit (Witness's). One node per (contract, self, operators), discarded at an edit (ResetDispatch).
+// InternalInvariant_Kd). One node per (contract, self, operators), discarded at an edit (ResetDispatch).
 // Invariants: a comparison of a closed Type has the legacy plan's leaves wherever that plan exists, which it does not for an inherited
 // witness (ComparisonCompositionTest's twin).
 // OperandTerminal: a comparison operand's node and Type to the Type it compares, a read of Binding's decision in that node's scope
@@ -40,7 +40,7 @@ internal sealed record ComparisonNode(BoundType Type, ComparisonKind Kind, Bindi
 
 internal sealed partial class TyCtxt
 {
-    private readonly Dictionary<(BindingSymbol Contract, BoundType Self, bool Operators), ComparisonNode?> comparisons = new();
+    private readonly Dictionary<(BindingSymbol Contract, BoundType Self, bool Operators), ComparisonNode> comparisons = new();
 
     internal static bool IsComposite(BoundType? type)
         => type?.Kind == BoundTypeKind.Tuple || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 };
@@ -66,7 +66,7 @@ internal sealed partial class TyCtxt
 
     // SPEC 13.4, 13.4.1, 12.4.3: how a comparison of Self under Equatable or Comparable runs, as source operators or the Contract's mapping
     // compare it.
-    internal ComparisonNode? Comparison(BindingSymbol contract, BoundType self, bool operators)
+    internal ComparisonNode Comparison(BindingSymbol contract, BoundType self, bool operators)
     {
         if (!this.comparisons.TryGetValue((contract, self, operators), out var node))
         {
@@ -83,8 +83,10 @@ internal sealed partial class TyCtxt
     internal BoundType OperandTerminal(Koto operand, BoundType type) => binding.OperandTerminal(operand, type);
 
     // Binding's composition rule over the leaves: a closed one runs what the Contract's requirement on it runs (Witness's Body), one with an
-    // abstract part that requirement on it in every instance.
-    private ComparisonNode? Compose(BindingSymbol contract, BoundType self, bool operators)
+    // abstract part that requirement on it in every instance. Any other target is None, the broken contract its reader records: Compose
+    // composes a template or a Type a site formed within IMPL A.4's height, and Equatable and Comparable take no Type arguments, so the
+    // resolution forms no Type and no HeightLimit target reaches it (R7-T1 c4).
+    private ComparisonNode Compose(BindingSymbol contract, BoundType self, bool operators)
     {
         var kind = Binding.ComparisonKindOf(self, contract.LibraryDeclaration, operators);
         if (kind == ComparisonKind.Composite)
@@ -92,12 +94,7 @@ internal sealed partial class TyCtxt
             var parts = new ComparisonNode[self.Components.Count];
             for (var i = 0; i < parts.Length; i++)
             {
-                if (this.Comparison(contract, self.Components[i], operators) is not { } part)
-                {
-                    return null;
-                }
-
-                parts[i] = part;
+                parts[i] = this.Comparison(contract, self.Components[i], operators);
             }
 
             return new(self, kind, null, null, parts);
@@ -117,7 +114,6 @@ internal sealed partial class TyCtxt
 
         return this.Witness(requirement, contract, subst) switch
         {
-            { Kind: RequirementTargetKind.Limit } => null,
             { Kind: RequirementTargetKind.Body, Target: { } witness, Subst: { } instance }
                 => new(self, kind, witness, this.Intern(witness, null, instance.Declaring, instance.Types, instance.Lengths, [], []), []),
             _ => new(self, ComparisonKind.None, null, null, []),
