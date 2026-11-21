@@ -270,6 +270,12 @@ public partial class CallableOriginForwardingTest
 
     private const string ValueRun = "func run<T>(f: (T) -> i32, s: T) -> i32\n    return f(s@move)\n";
 
+    private const string ValueRunSwapped = "func run2<T>(s: T, f: (T) -> i32) -> i32\n    return f(s@move)\n";
+
+    private const string InnerWellFormed = "the 1st parameter's well-formedness requires a outlives w, which is not proven";
+
+    private const string InnerBOutlivesA = "the 1st parameter requires b outlives a, which is not proven";
+
     private const string CallableHolder = "struct H<F, T>\n    F is Callable<(T) -> i32>\n    public init() => ()\n";
 
     private const string InnerHolder = "    let o: Option<H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>> = .None\n    return 0\n";
@@ -964,11 +970,10 @@ public partial class CallableOriginForwardingTest
     // clause relates (one1, `b outlives a`), a member and the Closure's own well-formedness each related by one of two clauses (two2), an
     // invariant member equal through two clauses (uniq2), the Closure converted at an argument after selection (arg2) and a Function
     // Type proven Callable at a Type argument (cal2) are valid. Equality by one clause (eq2) holds without premises. The invalid twins
-    // lack a clause the relation needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n). arg2_n is valid (G1128, SPEC 10.8 as revised: T's
-    // inner Origin is a variable of the call's solve, bounded by `a` from the Closure and by `b` from `w`; it takes `b`, whose premise
-    // `b outlives w` k's parameter gives; dev met them to `(b and a)`, whose fit needed `a outlives w`). An inferred parameter's Function Type,
-    // identical to the required one, keeps its condition, its result's well-formedness at the use (pnest1, as ResultPremiseTest's n1a at
-    // the root; dev: a fact-less UnprovenConstraint_Kd at the call); a `static` argument proves it (pnest1_c).
+    // lack a clause the relation needs (one1_n, two2_n, two2_none, uniq2_n, cal2_n; arg2's twins with one clause are the next theory's).
+    // An inferred parameter's Function Type, identical to the required one, keeps its condition, its result's well-formedness at the use
+    // (pnest1, as ResultPremiseTest's n1a at the root; dev: a fact-less UnprovenConstraint_Kd at the call); a `static` argument proves it
+    // (pnest1_c).
     [Theory]
     [InlineData("one1", OuterHead + BOutlivesA + OuterLet, "")]
     [InlineData("one1_n", OuterHead + "    origin a outlives b\n" + OuterLet, "UnprovenOriginContract_Kd " + OuterClosure)]
@@ -979,13 +984,29 @@ public partial class CallableOriginForwardingTest
     [InlineData("uniq2", UniqHead + BothWays + UniqLet, "")]
     [InlineData("uniq2_n", UniqHead + BOutlivesA + UniqLet, "UnprovenOriginContract_Kd " + UniqClosure)]
     [InlineData("arg2", ValueRun + InnerHead + BothWays + "    return run(" + InnerClosure + ", w)\n", "")]
-    [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "")]
     [InlineData("cal2", CallableHolder + InnerHead + BothWays + InnerHolder, "")]
     [InlineData("cal2_n", CallableHolder + InnerHead + BOutlivesA + InnerHolder, "UnprovenConstraint_Kd .None; " + HolderConstraint + "; " + HolderConstraint)]
     [InlineData("pnest1", NestedClauseHead + "func host() -> i32\n    let a = 1\n    return k(a@ref, func [] (g) => 5)\n", "UnprovenOriginContract_Kd func [] (g) => 5; UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("pnest1_c", NestedClauseHead + "func host(s: ref/i32 during static) -> i32\n    return k(s, func [] (g) => 5)\n", "UnprovenOriginRelation_Kd Option<T during q>")]
     public void AClosuresContractIsJudgedWithItsUsesPremises(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
+    // G1128 (SPEC 10.8 as revised, 15.3.5, 15.3.6; G147 ruling 52): an anonymous function's written parameter Type is a binding at the
+    // polarity of its position in the parameter Type that holds the slot, in `f: (T) -> i32` a Function Type's parameter (-1): the
+    // Closure's `a` is a lower bound of T's inner Origin and `w`'s `b` an upper bound, whichever argument comes first (run, run2). At
+    // both the variable is invariant, and without a proven equality it takes the covariant candidate `b`, checked against `a`. Without
+    // a clause that check is the one record, `b outlives a` (arg2_nn, arg2_nn-sw; with the header recorded as an upper bound it read
+    // `(b and a) outlives a` in one order). With `b outlives a` T is `ref/(ref/i32 during b) during w` (arg2_n, arg2_n-sw, valid by
+    // SPEC 15.3.7: the Closure's per-call input is bounded by its input's well-formedness), but the Closure's comparison judges that
+    // well-formedness, `a outlives w`, at its per-call input, a reader G1128 does not change (G147 ruling 52's D row; dev recorded it
+    // at the argument `w`'s fit): one record in both orders.
+    [Theory]
+    [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerWellFormed)]
+    [InlineData("arg2_n-sw", ValueRunSwapped + InnerHead + BOutlivesA + "    return run2(w, " + InnerClosure + ")\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerWellFormed)]
+    [InlineData("arg2_nn", ValueRun + InnerHead + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerBOutlivesA)]
+    [InlineData("arg2_nn-sw", ValueRunSwapped + InnerHead + "    return run2(w, " + InnerClosure + ")\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerBOutlivesA)]
+    public void AClosuresWrittenParameterBoundsTheSlotAtItsPolarity(string form, string body, string records, string label)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 
     // PLAN G404 (DECISIONS BU-93, R4-M162): a nested Function Type identical to the required one keeps its implementation's condition,
     // so the Closure records UnprovenOriginContract_Kd, a Binding-level relation record. The old ownership analysis stops beside that
