@@ -147,8 +147,9 @@ public sealed partial class Binding
     }
 
     // SPEC 3.2.1, 15.3.4, 15.6.4 (DECISIONS R4-M159): the Type of the Closure `function` with its environment and call signature: its Origin
-    // arguments are each atom or local region of an enclosing Closure the signature names (FixedAtoms), in first-occurrence order. The bound pass and the
-    // fill pass are each one query of `visitedParts`.
+    // arguments are each atom or local region of an enclosing Closure the signature names (FixedAtoms: directly or as a nested Closure's
+    // Origin argument, never through a nested Closure's signature), in first-occurrence order. The bound pass and the fill pass are each
+    // one query of `visitedParts`.
     private BoundType ClosureType(BindingSymbol symbol, FunctionKoto function, BoundType signature, ReadOnlySpan<BoundType> environment)
     {
         var bound = 0;
@@ -171,9 +172,13 @@ public sealed partial class Binding
     // depth; with no scratch, `count` grows by an upper bound, the candidate occurrences. Returns the first Closure part, outermost, through
     // which the walk met an atom. One query meets each distinct part once: a part met again adds no atom its first visit did not, so the
     // order of first occurrence is kept (DECISIONS BU-63). For an enclosing anonymous function the walk does not descend into a
-    // signature, which would add nothing: a nested Closure's enclosing atoms are already its Origin arguments, and its own atoms do not
-    // enclose the subject; so that walk follows only the parts BoundType.Height counts (R7-D3, PLAN G348). Only an enclosing
-    // container's atoms, which no Origin argument carries, are sought through a signature.
+    // signature, which would add nothing: a nested Closure's enclosing atoms are already its Origin arguments, its own atoms do not
+    // enclose the subject, and its closure context, under which ClosureSignature reads the signature and which the walk never visits,
+    // carries none: a held context erases Origins (DECISIONS BU-60), and a function's instance becomes a context only where it closes
+    // a Type naming that function's nested definition, which only the function's own frame names (no written Type names a Closure,
+    // SPEC 3.2.1; a named function's result is written, 7.1), so no Type at a formation outside it has one. That walk follows only
+    // the parts BoundType.Height counts (R7-D3, PLAN G348). Only an enclosing container's atoms, which no Origin argument carries, are
+    // sought through a signature.
     private BoundType? FixedAtoms(BoundType type, Koto subject, BinderClass binders, BoundOrigin[]? scratch, ref int count, uint query)
     {
         if (!type.CarriesAnyOrigin && !type.ContainsNested)
