@@ -653,7 +653,6 @@ public sealed partial class Binding
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
         this.duplicateDeclarations?.Clear();
-        this.partPrerequisites.Clear();
         this.specificationLinks?.Clear();
         this.derivedUses?.Clear();
         this.prerequisiteStore.Clear();

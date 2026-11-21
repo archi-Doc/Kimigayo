@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -9,8 +10,9 @@ namespace Kimi.Compiler;
 // Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys,
 // and RestingCauses, the one cause query of a node a later phase derives a value or a check from (DECISIONS Z16).
 // Checks record the parts they read; publication follows those records without binding or proving them again.
-// A node's consultation range (PrerequisiteRows, a Work pass family: DECISIONS BU-220) holds the running pass's rows by the pass stamp;
-// the other storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
+// A node's consultation range and part (PrerequisiteRows, PartPrerequisiteRows: Work pass families, DECISIONS BU-220) hold the running
+// pass's rows by the pass stamp; the other storage is reused between passes and cleared by ResetPrerequisites with the other Binding
+// facts.
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
 // BindType: BeginConsultation, EndConsultation); a judgment frame (BeginConsultation(use) before a validation check's proof,
 // RequireConstraintInFrame after it; its reads become the outcome's prerequisites only when the outcome is the use's record); a site
@@ -27,7 +29,7 @@ public sealed partial class Binding
     private readonly List<Koto> consulted = [];
     private readonly List<Koto> prerequisiteStore = [];
     private readonly PrerequisiteRows prerequisites;
-    private readonly Dictionary<Koto, Koto> partPrerequisites = new(ReferenceEqualityComparer.Instance);
+    private readonly PartPrerequisiteRows partPrerequisites;
     private readonly List<DiagnosticKey> prerequisiteKeys = [];
     private readonly HashSet<Koto> prerequisiteVisited = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<Koto> prerequisitePending = new();
@@ -232,8 +234,8 @@ public sealed partial class Binding
     }
 
     // A node's pass fact, stored by the recorder's one decision (DECISIONS G949 S1 as R7-N5 B4 and E amend it): the fact a failure
-    // carries (a failure-fact family's row, such as `qualificationFailures`' stop) and a node's dependence row (PrerequisiteRows' range,
-    // which a rest with no failure carries too). A node of a module the running pass binds keeps it in its module's column at its
+    // carries (a failure-fact family's row, such as `qualificationFailures`' stop) and a node's dependence rows (PrerequisiteRows' range
+    // and PartPrerequisiteRows' part, which a rest with no failure carries too). A node of a module the running pass binds keeps it in its module's column at its
     // SyntaxId, any other node in the part's foreign columns at its entry's index (PassPart.ForeignFacts), the row its entry names; its
     // readers read it as RecordedFailure reads the failure, so no caller chooses a store. A node of another module without the pass's
     // entry reads its own module's column: a frozen library's Work column is released (NodeColumns.Freeze), so it reads none, which is
@@ -726,6 +728,45 @@ public sealed partial class Binding
             if (this.ContainsKey(node))
             {
                 this[node] = default;
+            }
+        }
+    }
+
+    // R7-N5 E: the PartPrerequisites family's one accessor, the part a declaration-level check read outside a frame (AddPrerequisite,
+    // AddPendingPrerequisite, and the checks that name a part: ContractMatching, AssociatedInference, AssociatedOrigins, OwnedConversions,
+    // Specializations, and Check's Final-mode unformed Field read); null: none. Work, stored by the recorder's decision, as
+    // PrerequisiteRows.
+    private readonly struct PartPrerequisiteRows(Binding binding)
+    {
+        internal static ref StampedColumn<Koto?, PassCounter> Family(ref NodeColumns columns) => ref columns.PartPrerequisites;
+
+        internal Koto this[Koto node]
+        {
+            set => binding.SetRecordedFact(node, Family, value);
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out Koto? part) => (part = binding.RecordedFact(node, Family)) is not null;
+
+        internal bool ContainsKey(Koto node) => binding.RecordedFact(node, Family) is not null;
+
+        // The first part stays (AddPendingPrerequisite); a caller that writes only an absent row tests it first (OwnedConversions).
+        internal bool TryAdd(Koto node, Koto part)
+        {
+            if (this.ContainsKey(node))
+            {
+                return false;
+            }
+
+            this[node] = part;
+            return true;
+        }
+
+        // Dictionary.Add's contract: a second part at one node is a caller's broken contract (both callers test ContainsKey first).
+        internal void Add(Koto node, Koto part)
+        {
+            if (!this.TryAdd(node, part))
+            {
+                throw new InvalidOperationException($"`{node}` already has a part prerequisite in this pass (InternalInvariant; R7-N5 E).");
             }
         }
     }
