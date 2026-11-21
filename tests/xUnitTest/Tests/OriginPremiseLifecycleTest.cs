@@ -68,7 +68,8 @@ public class OriginPremiseLifecycleTest
             {
                 Reanalyze(c);
                 Assert.Equal(valid, c.Accepts);
-                Assert.Equal(valid ? [] : [DiagnosticCode.UnprovenOriginRelation_Kd], c.Binding.Issues.Select(static x => x.Code));
+                // R7-O1 H: A5's records (Binding judges no body relation), one per failing operand of the composite join (Q13 rule 3).
+                Assert.Equal(valid ? [] : [DiagnosticCode.UnprovenOriginRelation_Kd, DiagnosticCode.UnprovenOriginRelation_Kd], c.Problems.Select(static x => x.Code));
                 Assert.False(c.Binding.OriginPremiseStorage.Retains);
             }
         }

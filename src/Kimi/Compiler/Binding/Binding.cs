@@ -93,19 +93,20 @@ public sealed partial class Binding
         this.importedContainers = new(this);
         this.qualificationFailures = new(this);
         this.perCallOrigins = new(this);
-        this.originTwins = new(this);
         this.pairFollows = new(this);
         this.implicitPairFollows = new(this);
         this.phantomRawOrigins = new(this);
         this.invalidStaticOriginSlots = new(this);
         this.callablePremiseFailures = new(this);
         this.effectBoundRejections = new(this);
+        this.receiverOperations = new(this);
         this.inferredArrayLengths = new(this);
         this.arrayInferenceShapes = new(this);
         this.callInferenceFailures = new(this);
         this.callableSelectionFailures = new(this);
         this.baseCallFailures = new(this);
         this.objectErasureFailures = new(this);
+        this.resultContexts = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
@@ -294,8 +295,9 @@ public sealed partial class Binding
         this.ValidateConformances(mode, false);
         this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
         this.SettleVirtualOverridePremises(); // R7-C2c2 c2-4: a refuted inherited condition fails the override (SPEC 6.4.3).
-        this.ValidateConstraintEnvironments(mode);
+        this.SettlePremiseFailures(mode);
         this.PrepareSpecializations();
+        this.RecordDuplicateGroups(); // After PrepareSpecializations, the pass's last pairwise duplicate check (Index declared every scope).
         this.CompleteImplicitConstructors();
         this.MakeLibraryAccessorFunctions(); // The library's facts a program may demand, complete before any body (PLAN G949 S1-e).
         this.FormLibrarySignatures();

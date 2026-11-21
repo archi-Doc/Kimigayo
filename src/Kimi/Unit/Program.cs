@@ -19,6 +19,10 @@ public class Program
 {
     public static bool SuppressConsoleOutput { get; private set; }
 
+    /// <summary>Gets or sets what a Ctrl+C does: the process's one action, by default the root's termination. A session of
+    /// <c>kimi tatara</c> replaces it while it runs and restores it at its end (Tatara design A3 §2.4).</summary>
+    internal static Action CancelKey { get; set; } = static () => root?.RequestTermination();
+
     private static ExecutionRoot? root;
 
     public static async Task Main()
@@ -32,7 +36,7 @@ public class Program
         Console.CancelKeyPress += (s, e) =>
         {// Ctrl+C pressed.
             e.Cancel = true;
-            root?.RequestTermination(); // Send a termination signal to the root.
+            CancelKey();
         };
 
         var args = SimpleParserHelper.GetCommandLineArguments();

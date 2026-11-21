@@ -113,9 +113,8 @@ public sealed class BlockClosureInferenceTest
     public void AnInferredResultCannotBorrowTheCallsOwnStorage(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete);
-        c.Binding.ReportDiagnostics();
-        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(c)); // R7-O1 H: A5's published record (Binding judges no body relation).
         Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
         Assert.Equal("n@ref", error.Text);
         Assert.False(c.Generate(TextWriter.Null));
@@ -138,8 +137,7 @@ public sealed class BlockClosureInferenceTest
     {
         const string Source = "let f = func [] ()\n    let n: i32 = 1\n    return n@ref";
         var path = Path.GetFullPath("BlockResult.kimi");
-        var c = MinimalEmissionTest.Analyze(Source, path);
-        c.Binding.ReportDiagnostics();
+        var c = MinimalEmissionTest.Check(Source, path); // As the CLI and the LSP check it: Binding's and the analysis's records published.
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);

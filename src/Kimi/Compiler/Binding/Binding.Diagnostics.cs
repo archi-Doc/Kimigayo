@@ -92,8 +92,10 @@ public sealed partial class Binding
         };
 
     // SPEC 15.6.1, 23.1: the Reason facts and related locations of an Origin relation record, shared by every phase that reports
-    // one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
-    internal (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
+    // one (Binding's ReportOriginRelation, A5's through the publication's Relation row); `source` is `fit` for a fit, `declared` for a
+    // relation clause and `wellFormed` for a Type occurrence. `Spans` are the related syntax without a node of its own: a shorter end
+    // that is an anonymous function's call result is related at its header, from `func` through the parameter list (DIAGNOSTICS).
+    internal (object[] Evidence, (string Role, Koto At, string? Label)[]? Related, (string Role, Koto In, SourceSpan Span, string? Label)[]? Spans) OriginRelationFacts(OriginRelationFact relation, string source)
     {
         // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
         // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
@@ -127,18 +129,20 @@ public sealed partial class Binding
             related = related is null ? [("relation", input, null)] : [.. related, ("relation", input, null)];
         }
 
+        (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure }
+            ? [("origin", closure, SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd)), null)] : null;
         if (source != "fit")
         {
             // SPEC 23.1: only a fit names its destination Type; a declared relation relates its clause instead, and well-formedness
             // its Type occurrence, which is the primary location.
-            return ([operation, longer, shorter, source], related);
+            return ([operation, longer, shorter, source], related, spans);
         }
 
         // SPEC 23.1: the destination shows only the Origin at the failed position, also below another borrow layer; a borrow, omitted
         // or closure end is never written as an Origin expression.
         var destination = relation.Destination is not { } type ? $"during {shorter.Text}"
             : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
-        return ([operation, longer, shorter, source, destination], related);
+        return ([operation, longer, shorter, source, destination], related, spans);
     }
 
     private static Koto? Destination(Koto place)
@@ -197,14 +201,14 @@ public sealed partial class Binding
 
     private static bool DifferentRangeShapes(BoundType actual, BoundType expected)
     {
-        while (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (actual.SafeReferent is { } referent)
         {
-            actual = actual.Components[0];
+            actual = referent;
         }
 
-        while (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (expected.SafeReferent is { } referent)
         {
-            expected = expected.Components[0];
+            expected = referent;
         }
 
         return actual.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange &&
@@ -216,7 +220,7 @@ public sealed partial class Binding
         => depth < 32 && KotoHelper.UnwrapParentheses(node) is BinaryKoto { Akind: KotoKind.Plus } join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
 
     private static bool IsStringOperand(Koto node, int depth)
-        => ReferenceTypes.EndsInString(KotoHelper.UnwrapParentheses(node).BoundType) || IsStringJoin(node, depth);
+        => ReferenceEquals(ComparisonReferent(KotoHelper.UnwrapParentheses(node).BoundType), BoundType.String) || IsStringJoin(node, depth);
 
     // SPEC 15.6.1, 23.1: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
@@ -337,17 +341,10 @@ public sealed partial class Binding
     private void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
     {
         var store = this.compilation.StoreOf(node);
-        var (evidence, related) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
-        if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
-        {
-            // SPEC 23.1: a closure end is related at the anonymous function's header, from `func` through the parameter list.
-            var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
-            var at = relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
-            node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
-            return;
-        }
-
-        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
+        var (evidence, related, spans) = this.OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
+        // A closure end's record at a block body is at the Borrow that supplied it.
+        var at = spans is not null && relation.At is CodeBlockKoto ? this.BorrowSource(relation.At, relation.Supplier) ?? relation.At : relation.At;
+        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: at, condition: condition);
     }
 
     // The call signature of a Function Item, closure or Function value.
@@ -410,12 +407,10 @@ public sealed partial class Binding
 
     // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
     // structural part holds failed only in its Origin part, which is an Origin relation, never a Type mismatch (SPEC 15.6.1).
-    // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
-    // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
-    // inference and is a located Unsupported (SPEC 23.1.1), never a relation record.
     // The one record of a failed comparison, by the Kind of the failure its walk found (no reader walks it again): a condition of a
     // whole-contract comparison whose structure holds is one UnprovenOriginContract_Kd at the value (SPEC 10.7, 15.6.1); a plain Origin
-    // position is its relation record (RecordOriginFitFailure), which must find it; a Shape or a structure that differs is a Type mismatch.
+    // position is a row of its body that A5 judges (R7-O1: CheckTypeUse formed it, so no record here); a Shape or a structure that
+    // differs is a Type mismatch.
     // A failed comparison whose structure holds always gives its fact, so one without a fact is a broken contract (design-r2 §2, D2-N4).
     private BoundType? RecordMismatch(Koto node, Koto at, MismatchSide actual, MismatchSide expected, in ComparisonFailure failure)
     {
@@ -428,11 +423,15 @@ public sealed partial class Binding
             return null;
         }
 
-        var storage = actual.Type is { } actualType && expected.Type is { } expectedType && ReferenceTypes.StorageMatches(expectedType, actualType);
-        if (storage && failure.Kind != ComparisonFailureKind.Shape)
+        // SPEC 8.2.3, 15.6.1 (F's C2 rulings 307 (2), 315): the record reads the pair its walk compared, as the walk's intake formed it
+        // and published it with its facts (comparisonRoot), so identity decides the structure and an Origin difference is the Origin
+        // relation's record; a failure whose facts no recording walk published is read as written.
+        var (walkedActual, walkedExpected) = this.comparisonFacts is [var first, ..] && first.Same(failure) && this.comparisonRoot is (BoundType a, BoundType e)
+            ? (a, e) : (actual.Type, expected.Type);
+        if (TyCtxt.StorageMatches(walkedExpected, walkedActual) && failure.Kind != ComparisonFailureKind.Shape)
         {
             return failure.Kind == ComparisonFailureKind.None ? this.Fail(node, BindingFailure.Internal)
-                : this.RecordComparisonFacts(node, at, actual.Type!, expected.Type!, failure);
+                : this.RecordComparisonFacts(node, at, walkedActual!, walkedExpected!, failure);
         }
 
         return this.RecordTypeMismatch(node, at, actual, expected);
@@ -440,9 +439,10 @@ public sealed partial class Binding
 
     // SPEC 15.6.1, 23.1.2 (design-r2 Amendment 1): every fact of a failed comparison whose structure holds, the first the node's failure
     // and the others published with it (RecordFurtherOriginRecord): each Function component's failed condition is one
-    // UnprovenOriginContract_Kd at the value (ContractFact); the plain positions are recorded once, by RecordOriginFitFailure, whose search
-    // skips the Function components the walk judged; a limit is the located Unsupported_Kd. The walk's facts are read only when their
-    // first is `failure` (another fit may have walked since); otherwise `failure` is the one fact.
+    // UnprovenOriginContract_Kd at the value (ContractFact); a limit is the located Unsupported_Kd. The plain positions are rows A5 judges
+    // (R7-O1), formed by the recording caller's use-site fit (CheckTypeUse, FitsValueAt): a failure with plain positions only reaches here
+    // on a path that bypassed it, a broken contract. The walk's facts are read only when their first is `failure` (another fit may have
+    // walked since); otherwise `failure` is the one fact.
     private BoundType? RecordComparisonFacts(Koto node, Koto at, BoundType actual, BoundType expected, in ComparisonFailure failure)
     {
         if (failure.Kind == ComparisonFailureKind.Limit)
@@ -470,9 +470,8 @@ public sealed partial class Binding
             }
         }
 
-        // A plain position the walk met is always found by its search; one that is not is a broken contract (design-r2 §2).
-        return positions && !this.RecordOriginFitFailure(node, at, actual, expected) && this.RecordedFailure(node) == BindingFailure.None
-            ? this.Fail(node, BindingFailure.Internal) : null;
+        // A plain position is a row the recording caller's use-site fit formed; a failure with no other fact bypassed it (design-r2 §2).
+        return positions && this.RecordedFailure(node) == BindingFailure.None ? this.Fail(node, BindingFailure.Internal) : null;
     }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.
@@ -585,16 +584,16 @@ public sealed partial class Binding
     // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
     private string? SharedIndexNote(Koto target)
     {
-        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !ElementAccess.IsUserIndex(this, index) ||
+        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !this.IsUserIndex(index) ||
             this.Library.UniqIndexable is not { } uniqIndexable)
         {
             return null;
         }
 
         var core = index.Left.BoundType;
-        while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        while (core?.SafeReferent is { } referent)
         {
-            core = core.Components[0];
+            core = referent;
         }
 
         if (core?.Symbol is { Declaration: StructKoto or EnumKoto } owner)
@@ -783,15 +782,18 @@ public sealed partial class Binding
         return problem >= 0 && this.FactOf(problem, ProblemFactKind.Cause) is { } cause ? this.compilation.SyntaxOf(cause.Site) : null;
     }
 
-    private void ReportConstraint(Koto node, DiagnosticCollection? store, in BindingProblem problem, Koto cause)
+    // The adapter's InvalidConstraint row (F's C2 ruling 306): derived from a cause that is missing information, else direct; a
+    // declaration's premise error relates the premises that linked it (SPEC 8.2.3), read from their published Failed state
+    // (FailedPremiseClauses), never proved again.
+    private void ReportConstraint(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, DiagnosticCode code, ushort condition, Koto? cause)
     {
-        if (IsMissingInformation(cause))
+        if (cause is not null && IsMissingInformation(cause))
         {
-            node.ReportDerivedIn(store, problem.Requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
+            node.ReportDerivedIn(store, requirement, [cause.KeyIn(this.compilation.StoreOf(cause), DiagnosticRequirement.Binding(cause.BindingFailure))]);
         }
         else
         {
-            node.ReportIn(store, problem.Requirement, problem.Code, condition: problem.Condition);
+            node.ReportIn(store, requirement, code, condition: condition, related: this.FailedPremiseClauses(node)?.ToArray());
         }
     }
 

@@ -46,9 +46,9 @@ public sealed partial class Binding
 
         var originDeclaration = this.BeginOriginDeclaration(variable, scope);
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
-        if (symbol.Kind == BindingSymbolKind.Local && declared is { ContainsParameter: true })
+        if (symbol.Kind == BindingSymbolKind.Local && declared is not null)
         {
-            declared = this.SubstituteIdentityPremises(declared, scope); // SPEC 8.2: one Type in the premise's scope.
+            declared = this.ClassForm(declared, scope, out _); // SPEC 8.2.3: one Type in the premise's scope.
         }
 
         if (originDeclaration is not null)
@@ -79,8 +79,8 @@ public sealed partial class Binding
                 // Select the Copy-read shape before inferring omitted Origins. Comparing the
                 // unresolved Origin with the stored reference's Origin would reject ref/ref/T
                 // initializers before the ordinary lifetime constraints can be inferred.
-                if (variable.InitializerKoto is { } value && !ReferenceTypes.StorageMatches(inferred, declared) &&
-                    this.ReadTypeReferent(inferred, scope) is { } referent && ReferenceTypes.StorageMatches(referent, declared))
+                if (variable.InitializerKoto is { } value && !TyCtxt.StorageMatches(inferred, declared) &&
+                    this.ReadTypeReferent(inferred, scope) is { } referent && TyCtxt.StorageMatches(referent, declared))
                 {
                     this.adaptations[value] = new(ExpectedAdaptationKind.ReferentRead, referent);
                     inferred = referent;
@@ -89,9 +89,13 @@ public sealed partial class Binding
                 declared = this.InferLocalOrigins(declared, inferred, variable, scope, slot);
             }
 
+            // The misfit fails the node that delivers the value: a Property's initializer, as a body's delivering node does (a return
+            // jump, an expression body, an accessor body: BindAccessorBody), so the Property keeps its Type (SPEC 11.6, 23.1.2); a local's
+            // declaration, the statement of the body that binds it.
             if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable, out var failure))
             {
-                this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared, failure);
+                var value = variable.InitializerKoto ?? variable;
+                this.FailMismatch(symbol.Property is null ? variable : value, value, inferred, declared, failure);
             }
         }
         finally

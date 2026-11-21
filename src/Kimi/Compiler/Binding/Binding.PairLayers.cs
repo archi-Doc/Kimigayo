@@ -78,6 +78,33 @@ public sealed partial class Binding
         => node.BoundType is { } type && this.ConstraintScope(node) is var scope && this.FollowablePair(type, scope, out var target) is { } admitted &&
             admitted != SemanticsMask.None ? this.PairTerminal(target, scope) : null; // A published part admits a case.
 
+    /// <summary>Gets the View Target an object layer designates through stored references (SPEC 3.4.3, 13.5.5): a concrete handle's or
+    /// view's, or a pair layer's in every case (<see cref="ObjectCases"/>); null for any other Type.</summary>
+    /// <param name="type">A complete Type.</param>
+    /// <param name="at">The node whose scope gives a pair layer's admitted set.</param>
+    /// <returns>The View Target, or null.</returns>
+    internal BoundType? ViewTarget(BoundType? type, Koto at)
+    {
+        while (TyCtxt.IsStoredReference(type))
+        {
+            type = type!.SafeReferent;
+        }
+
+        return type is not null && this.ObjectCases(type, this.ConstraintScope(at), out var view) != SemanticsMask.None ? view : null;
+    }
+
+    /// <summary>Gets the Semantics of a shared borrow of a stored value (SPEC 4.7.1, 10.2): `ref` of an owned value or a stored `uniq`,
+    /// `objref` of an object layer in every case (<see cref="ObjectCases"/>; a shared view is Copy and never asks); null otherwise.</summary>
+    /// <param name="stored">The stored Type.</param>
+    /// <param name="at">The node whose scope gives a pair layer's admitted set.</param>
+    /// <returns>The borrow's Semantics, or null.</returns>
+    internal SemanticsKind? SharedBorrowSemantics(BoundType stored, Koto at) => stored.Semantics switch
+    {
+        SemanticsKind.Owner or SemanticsKind.Uniq => SemanticsKind.Ref,
+        SemanticsKind.ObjRef => null,
+        _ => this.ObjectCases(stored, this.ConstraintScope(at), out _) != SemanticsMask.None ? SemanticsKind.ObjRef : null,
+    };
+
     /// <summary>Gets the object Semantics a Type takes in every case and the View Target they share (SPEC 3.4.3, 8.1.1, 8.15.2): a
     /// concrete object handle's or borrow's own, and a pair layer's admitted set where it lies in the object family, each case an object
     /// form of its direct target; None for any other Type. Selection and receivers read an object layer by it alone.</summary>
@@ -85,7 +112,7 @@ public sealed partial class Binding
     /// <param name="scope">The scope whose premises give a pair layer's admitted set.</param>
     /// <param name="view">The View Target.</param>
     /// <returns>The object Semantics of the cases.</returns>
-    internal SemanticsMask ObjectCases(BoundType type, BindingScope scope, out BoundType view)
+    private SemanticsMask ObjectCases(BoundType type, BindingScope scope, out BoundType view)
     {
         const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
         if (type is { Kind: BoundTypeKind.Semantics, Components: [var target] } && IsObjectSemantics(type.Semantics))
@@ -104,42 +131,15 @@ public sealed partial class Binding
         return SemanticsMask.None;
     }
 
-    /// <summary>Gets the View Target an object layer designates through stored references (SPEC 3.4.3, 13.5.5): a concrete handle's or
-    /// view's, or a pair layer's in every case (<see cref="ObjectCases"/>); null for any other Type.</summary>
-    /// <param name="type">A complete Type.</param>
-    /// <param name="at">The node whose scope gives a pair layer's admitted set.</param>
-    /// <returns>The View Target, or null.</returns>
-    internal BoundType? ViewTarget(BoundType? type, Koto at)
-    {
-        while (ReferenceTypes.IsStorage(type))
-        {
-            type = type!.Components[0];
-        }
-
-        return type is not null && this.ObjectCases(type, this.ConstraintScope(at), out var view) != SemanticsMask.None ? view : null;
-    }
-
     /// <summary>Tells whether a receiver's Place is reached through a stored reference or a borrow in every case (SPEC 4.7.1, 4.8.2): a
-    /// storage reference (<see cref="ReferenceTypes.IsStorage"/>), or an object layer whose every case is an object borrow
+    /// storage reference (<see cref="TyCtxt.IsStoredReference"/>), or an object layer whose every case is an object borrow
     /// (<see cref="ObjectCases"/>); a case that is an owning handle keeps an owned root, as a concrete handle does.</summary>
     /// <param name="type">The receiver's Type.</param>
     /// <param name="at">The receiver, whose scope gives a pair layer's admitted set.</param>
     /// <returns>Whether no owned root holds the selected Place.</returns>
-    internal bool BorrowsInEveryCase(BoundType? type, Koto at)
-        => ReferenceTypes.IsStorage(type) ||
+    private bool BorrowsInEveryCase(BoundType? type, Koto at)
+        => TyCtxt.IsStoredReference(type) ||
             (type is not null && this.ObjectCases(type, this.ConstraintScope(at), out _) is var cases && cases != SemanticsMask.None && (cases & ~SemanticsMask.ObjectBorrow) == 0);
-
-    /// <summary>Gets the Semantics of a shared borrow of a stored value (SPEC 4.7.1, 10.2): `ref` of an owned value or a stored `uniq`,
-    /// `objref` of an object layer in every case (<see cref="ObjectCases"/>; a shared view is Copy and never asks); null otherwise.</summary>
-    /// <param name="stored">The stored Type.</param>
-    /// <param name="at">The node whose scope gives a pair layer's admitted set.</param>
-    /// <returns>The borrow's Semantics, or null.</returns>
-    internal SemanticsKind? SharedBorrowSemantics(BoundType stored, Koto at) => stored.Semantics switch
-    {
-        SemanticsKind.Owner or SemanticsKind.Uniq => SemanticsKind.Ref,
-        SemanticsKind.ObjRef => null,
-        _ => this.ObjectCases(stored, this.ConstraintScope(at), out _) != SemanticsMask.None ? SemanticsKind.ObjRef : null,
-    };
 
     // SPEC 13.5.5: the admitted set of a pair layer that may be followed, its set lying in value or valueborrow; None when the set admits
     // no case (8.3.4: the requirement is the emptying environment's Error, so a caller rests on it, RestOnEmptiedSet, or names why it
@@ -161,33 +161,33 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.Semantics, Components: [var below] } && IsBorrow(type.Semantics) ? below
             : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : null;
 
-    // SPEC 13.5.5: the weakest capability over the admitted cases. Owner inherits the operand's own capability (the owner case selects
-    // P itself: a write needs a whole Place that offers Write, WritablePlace, which a writable temporary's whole Temporary Place does
-    // not offer yet, IsTemporaryPlace; a borrow lends P as a Place or a writable temporary,
-    // LendsOwner, SPEC 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A
-    // part of an owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
-    private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
-        => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
-
-    private bool PairCapability(Koto operand, SemanticsMask admitted, BindingScope? scope, bool exclusive)
+    // SPEC 13.5.5: the weakest capability over the admitted cases a borrow is lent (a write's is Writable's, Writes). Owner inherits the
+    // operand's own capability (the owner case selects P itself: a borrow lends P as a Place or a writable temporary, LendsOwner, SPEC
+    // 3.6), uniq grants Write also through a let slot but never through a shared path, and ref grants Read only. A part of an
+    // owner-case selection of a writable temporary is the temporary's part (WritableTemporary).
+    // Lent is the operand's lending fold in the mode (LendFold).
+    private bool PairCapability(SemanticsMask admitted, Koto operand, in PathLend lent)
     {
-        if (!exclusive)
+        if (!lent.Exclusive)
         {
-            return (admitted & SemanticsMask.Owner) == 0 || scope is null || this.LendsOwner(operand, scope, false, out _);
+            return (admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, lent, out _);
         }
 
         return (admitted & SemanticsMask.Ref) == 0 &&
-            ((admitted & SemanticsMask.Uniq) == 0 || !this.ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? this.WritablePlace(operand) : this.LendsOwner(operand, scope, true, out _)));
+            ((admitted & SemanticsMask.Uniq) == 0 || lent.Path.Access != SemanticsKind.Ref) &&
+            ((admitted & SemanticsMask.Owner) == 0 || this.LendsOwner(operand, lent, out _));
     }
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
-    // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability.
-    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType adapted, out ArgumentOperationKind kind, bool record)
+    // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability. SPEC 9.6.1: a receiver whose member a base
+    // declares (`projection`, the base, as for a receiver through a reference layer: AdaptInput) is the layer's target, where member
+    // selection found that base (a receiver below further layers is ReceiverThroughLayers' recorded read), and lends the base
+    // subobject (PLAN G1122).
+    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundType? projection, out BoundType adapted, out ArgumentOperationKind kind, bool record)
     {
         adapted = actual;
         kind = ArgumentOperationKind.Value;
-        if (pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        if (pattern.SafeReferent is not { } referent)
         {
             return false;
         }
@@ -195,23 +195,23 @@ public sealed partial class Binding
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         // A layer admitting no case selects no receiver here (stopped: the call, not the receiver, would have to rest; PLAN G750).
         var admitted = this.FollowablePair(actual, scope, out var target) ?? SemanticsMask.None;
-        if (admitted != SemanticsMask.None && !this.ReceiverTarget(target, pattern.Components[0], scope))
+        if (admitted != SemanticsMask.None && projection is null && !this.ReceiverTarget(target, referent, scope))
         {
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
 
-        if (admitted == SemanticsMask.None || target is null || !this.PairCapability(source, admitted, scope, exclusive))
+        if (admitted == SemanticsMask.None || target is null || !this.PairCapability(admitted, source, this.LendFold(source, scope, exclusive)))
         {
             return false;
         }
 
-        if (this.ReceiverTarget(target, pattern.Components[0], scope))
+        if (projection is not null || this.ReceiverTarget(target, referent, scope))
         {
-            adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
-            kind = ArgumentOperationKind.Borrow;
+            adapted = this.types.Reference(pattern.Semantics, projection ?? target, this.PairOrigin(source, actual, admitted));
+            kind = projection is null ? ArgumentOperationKind.Borrow : ArgumentOperationKind.BaseBorrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
-            this.SharedReferenceThroughLayers(target, pattern.Components[0], scope, out _) is { } inner)
+            this.SharedReferenceThroughLayers(target, referent, scope, out _) is { } inner)
         {
             // The inner shared reference Copies in every admitted case and keeps only its own dependencies.
             adapted = inner;

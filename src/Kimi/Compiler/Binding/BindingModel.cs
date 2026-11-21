@@ -496,7 +496,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.Length = length;
         // DECISIONS BU-24, BU-46: the slot's role is the layer's. Holder and Unstated only in the raw role (Unstated, a kept part's mark
         // of a layer its declaration writes without `during`, Binding.WithUnstatedOrigins).
-        if (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
+        if (!this.IsPointer && origin?.Kind is OriginKind.Unstated or OriginKind.Holder)
         {
             throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }
@@ -510,7 +510,7 @@ public sealed class BoundType : IEquatable<BoundType?>
         this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
-        var raw = semantics == SemanticsKind.Raw && origin is not null;
+        var raw = this.IsPointer && origin is not null;
         var found = (origin is not null && !raw) || originArguments is { Length: > 0 };
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
@@ -610,7 +610,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     public BoundLength? LengthExpression { get; }
 
     /// <summary>Gets the Origin of a borrow, handle, Slice, pair or Parameter layer; never a raw layer's (its <see cref="RawOrigin"/>).</summary>
-    public BoundOrigin? Origin => this.Semantics == SemanticsKind.Raw ? null : this.origin;
+    public BoundOrigin? Origin => this.IsPointer ? null : this.origin;
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
@@ -671,7 +671,7 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated; Unstated only on a kept part's layer its declaration writes
     /// without `during`, DECISIONS BU-46); null on any other layer (DECISIONS BU-24).</summary>
-    internal BoundOrigin? RawOrigin => this.Semantics == SemanticsKind.Raw ? this.origin : null;
+    internal BoundOrigin? RawOrigin => this.IsPointer ? this.origin : null;
 
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin (<see cref="Origin"/>).</summary>
     /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
@@ -765,6 +765,16 @@ public sealed class BoundType : IEquatable<BoundType?>
 
     /// <summary>Gets a value indicating whether this is an objref or objuniq borrow of an object.</summary>
     internal bool IsObjectBorrow => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };
+
+    /// <summary>Gets the referent of a safe value reference <c>ref/T</c> or <c>uniq/T</c> (SPEC 3.4), whatever the referent; null for
+    /// any other Type, a raw pointer, an object borrow or a pair layer among them. The one test of a safe reference layer every phase
+    /// reads; no further layer is followed.</summary>
+    internal BoundType? SafeReferent => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent : null;
+
+    /// <summary>Gets a value indicating whether this is a raw pointer <c>raw/T</c> (SPEC 5.1: a Copy address value; null is its only
+    /// literal), whatever the pointee; false for any other Type, a safe reference or an object borrow among them. The one test of a raw
+    /// layer every phase reads; no further layer is followed.</summary>
+    internal bool IsPointer => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 };
 
     /// <inheritdoc/>
     public bool Equals(BoundType? other) => ReferenceEquals(this, other);
@@ -1034,8 +1044,7 @@ internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
 // `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
 // `Supplier` is the atom (or meet operand) that supplied `Longer` at the use: the end after the Origin declarations and local initializers
 // and before any Closure's receiver resolution (Binding.SuppliedAtUse); the record's Borrow is the one whose Origin is it, by identity
-// (BorrowSource; DECISIONS R4-M133). `Condition` is the Semantics case a fit's position exists in (0: every case), which the
-// dependence query reads (DECISIONS BU-69).
+// (BorrowSource; DECISIONS R4-M133).
 internal readonly record struct OriginRelationFact(
     Koto At, BoundOrigin Longer, BoundOrigin Supplier, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null,
-    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false, ulong Condition = 0);
+    bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);

@@ -8,11 +8,10 @@ namespace Kimi.Compiler;
 
 // The publication of Binding's diagnostics (ReportDiagnostics), after the final analysis.
 // - Responsibility: each direct issue reported with the facts its check recorded (ReportProblem or ReportIssue; at most one explanation
-//   table answers for a node's first failure), each derived issue with its prerequisite keys, the duplicate declaration groups, the
-//   non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
+//   table answers for a node's first failure), each derived issue with its prerequisite keys, the non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
 // - Inputs: the latest pass's issues, derived issues and explanation tables; a refused library's refusal (LibraryLayer.Refusal), which
 //   Core publishes. Outputs: the Binding partition's records. The library's freeze reports a refused library pass's records through
-//   the same per-record steps (ReportFailures, ReportDuplicateDeclarations, ReportNonFailingRecords) while its tables stand.
+//   the same per-record steps (ReportFailures, ReportNonFailingRecords) while its tables stand.
 // - Invariants: invoked after final analysis, not between Mods; each call replaces the partition's records. R7-E5 deletes ReportIssue's chain.
 // - Prohibitions: no failure is decided and no node's binding state is written here.
 public sealed partial class Binding
@@ -30,7 +29,6 @@ public sealed partial class Binding
 
         if (this.Result.Mode == BindingMode.Final)
         {
-            this.ReportDuplicateDeclarations();
             this.ReportNonFailingRecords();
 
             // SPEC 23.2.2: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
@@ -83,6 +81,23 @@ public sealed partial class Binding
             _ => "the declaration requires an explicit fixed-array Type annotation",
         };
         directive.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")]);
+    }
+
+    // SPEC 4.3.1: a local fixed-array annotation's closed reason, with the syntax that supplies or requires the evidence and the sides a
+    // conflict compared (RecordArrayInference).
+    private void ReportArrayInference(Koto node, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var reason = (ArrayInferenceProblem)facts[0].Value;
+        var text = reason switch
+        {
+            ArrayInferenceProblem.Element => "the initializer supplies no element Type for this hole",
+            ArrayInferenceProblem.Length => "the initializer supplies no fixed-array length for this hole",
+            ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(this.report.Length(facts[2]))} but earlier initializer evidence established {DiagnosticLengthName(this.report.Length(facts[3]))}",
+            _ => $"the annotation requires {this.SideOf(facts[3])} here, but the initializer has {DiagnosticTypeName(this.report.Value(facts[2]))}",
+        };
+        var label = reason is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation";
+        node.ReportIn(store, problem.Requirement, problem.Code, evidence: [text], related: [("context", this.compilation.SyntaxOf(facts[1].Site), label)]);
     }
 
     // SPEC 23.2.2's fallback site: the first node whose recorded state is not Resolved, the program part's nodes first, then the library
@@ -147,23 +162,6 @@ public sealed partial class Binding
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
             this.ReportQualification(issue.Node, store, requirement);
-        }
-        else if (issue.Failure == BindingFailure.ArrayAnnotationInference)
-        {
-            var fact = this.arrayInferenceFailures![issue.Node];
-            var reason = fact.Problem switch
-            {
-                ArrayInferenceProblem.Element => "the initializer supplies no element Type for this hole",
-                ArrayInferenceProblem.Length => "the initializer supplies no fixed-array length for this hole",
-                ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(fact.Actual!)} but earlier initializer evidence established {DiagnosticLengthName(fact.Expected!)}",
-                _ => $"the annotation requires a fixed array here, but the initializer has {DiagnosticTypeName(fact.Type!)}",
-            };
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                evidence: [reason],
-                related: [("context", fact.Related, fact.Problem is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation")]);
         }
         else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
         {
@@ -328,10 +326,6 @@ public sealed partial class Binding
             // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
             issue.Node.ReportIn(store, requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
         }
-        else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
-        {
-            this.ReportParameterShapes(issue.Node, store, requirement, shapes);
-        }
         else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
             this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);
@@ -339,10 +333,6 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
-        {
-            this.ReportEffectBound(effect, store, requirement);
         }
         else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, store, requirement))
         {
@@ -476,6 +466,12 @@ public sealed partial class Binding
         {
             issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
+        else if (issue.Failure == BindingFailure.InvalidConstraint)
+        {
+            // A plain Fail(node, InvalidConstraint) keeps no problem until its site records one (R7-E2 E2-5's Contract, conformance and
+            // override sites; R7-E3's call sites); it reaches the adapter's one InvalidConstraint row (F's C2 ruling 306).
+            this.ReportConstraint(issue.Node, store, requirement, issue.Code, 0, null);
+        }
         else
         {
             issue.Node.ReportIn(store, requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
@@ -496,15 +492,10 @@ public sealed partial class Binding
 
         for (var i = 0; i < issues.Count; i++)
         {
-            var issue = issues[i];
-            if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
-            {
-                continue; // Pairwise declaration failures are normalized as one group (ReportDuplicateDeclarations).
-            }
-
-            this.ReportIssue(issue);
+            this.ReportIssue(issues[i]);
         }
 
+        this.ReportResolvedOriginRecords();
         for (var i = 0; i < derivedIssues.Count; i++)
         {
             var issue = derivedIssues[i];

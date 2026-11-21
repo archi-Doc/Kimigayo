@@ -182,7 +182,7 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
         var sources = c.Binding.LocalRegionSources(x).ToArray();
         Assert.True(sources.Contains(borrow), $"{row}: {sources.Length} sources of x, {string.Join(", ", sources.Select(static s => s.Kind))}");
 
-        BoundOrigin Region(string name) => Assert.Single(outer.Locals.ToArray(), l => l.Name == name).Type.Origin!;
+        BoundOrigin Region(string name) => Assert.Single(outer.Locals.ToArray(), l => l.Name == name).Type!.Origin!;
     }
 
     // SPEC 15.3.6: a body variable of a local whose row has no candidate is a local region of the local, never invented as static, so each
@@ -264,13 +264,14 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
     }
 
     // SPEC 15.3.6, 15.6.5: the region's source must outlive each of its bounds; without the premise for the clause's bound, the clause's
-    // row is the relation record at the clause (the old analysis's until A5-F4), never MissingOriginBinding_Kd at the local.
+    // row is the relation record at the initializer that supplies the clause's end (H11b D5, R7-O1 H; it was at the clause), never
+    // MissingOriginBinding_Kd at the local.
     [Fact]
     public void ARegionsSourceMustOutliveItsClauseBound()
     {
         var source = NoPrincipal.Replace("    origin c outlives b\n", string.Empty, StringComparison.Ordinal);
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin x.s outlives b"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h0@move"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     // Pinned: outside a local an omitted Origin keeps its record, a Field's (SPEC 15.3.6) and an expression statement's call qualifier's

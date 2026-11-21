@@ -176,12 +176,12 @@ public sealed partial class Binding
     {
         result = null;
         this.resolvedSlices.Remove(source);
-        var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
-        if (core.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array))
+        if (!IsSequence(receiver))
         {
             return false;
         }
 
+        var core = receiver.SafeReferent ?? receiver;
         var element = core.Components[0];
         BoundType? key;
         if (source.Right is RangeKoto range)
@@ -239,7 +239,7 @@ public sealed partial class Binding
             this.CheckLiteralKey(source, core); // A parenthesized `^a` resolves through a call.
         }
 
-        var resolved = ReferenceTypes.IsResolvedRange(key);
+        var resolved = key is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
         var position = !resolved && this.ProvesClosedContract(key, this.Library.Position, scope);
         if (!resolved && !position && !this.ProvesClosedContract(key, this.Library.PositionRange, scope))
         {

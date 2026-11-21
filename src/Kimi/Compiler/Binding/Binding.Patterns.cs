@@ -385,8 +385,8 @@ public sealed partial class Binding
                     // SPEC 14.8.3: a guard candidate is a shared reference to its Place, the one the body binding takes, whatever the mode
                     // and Copy capability.
                     var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
-                    candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-                        ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
+                    candidate.Type = parent < 0 && matched?.SafeReferent is { } matchedReferent
+                        ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matchedReferent], origin: matched.Origin ?? candidateOrigin)
                         : this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }
@@ -644,9 +644,9 @@ public sealed partial class Binding
         // The structural positions selected every safe reference layer and qualifying pair layer (SPEC 14.8.1).
         while (true)
         {
-            if (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            if (subject.SafeReferent is { } referent)
             {
-                subject = subject.Components[0];
+                subject = referent;
             }
             else if (TryPairLayer(subject, out _, out var target))
             {

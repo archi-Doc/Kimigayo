@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
-
 namespace Kimi.Compiler.Mir;
 
 // A5's pun rule (PLAN G667b, G667c on G667a; SPEC 5.2 Type-punned access, 5.2.1 condition 1, 5.3, 5.5, 5.7 Calls, 15.6).
@@ -76,18 +74,13 @@ internal sealed partial class MirBorrows
         return a == PunWrite.Typed ? b : a;
     }
 
-    // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
-    private void Punning(int pointer, MirPlace place)
+    // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref, step `last` of the Place's `count` steps
+    // in the walk buffer, goes through (MirBorrows.Reach's WriteTargets).
+    private void Punning(int pointer, MirPlace place, int count, int last)
     {
         if (this.Scalar(cases.TypeOf(place)) == Extent.None)
         {
             return;
-        }
-
-        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
-        for (var i = 0; i < count; i++)
-        {
-            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
         }
 
         var on = !this.OffGrid(pointer);
@@ -362,7 +355,7 @@ internal sealed partial class MirBorrows
 
     // A displacement of a raw pointer (SPEC 5.3) by its pointee's stride.
     private int Displaced(int value, BoundType? pointer)
-        => pointer is { Semantics: SemanticsKind.Raw, Components.Count: > 0 } ? this.Stepped(value, pointer, -1) : value;
+        => pointer is { IsPointer: true } ? this.Stepped(value, pointer, -1) : value;
 
     // A pointer's value past a step (Step) of Type `of`: with Δ where a Place an entry names does not keep its Position. The Position is
     // the value's: one entry's Place off marks every entry.

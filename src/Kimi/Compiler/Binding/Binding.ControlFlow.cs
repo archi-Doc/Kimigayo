@@ -1,15 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, ResultContext> resultContexts = new(ReferenceEqualityComparer.Instance);
+    private readonly ResultContextRows resultContexts;
 
     private readonly List<ResultContext> resultPool = new();
     private readonly List<BoundType> resultTypes = new();
+    private readonly List<Koto?> resultValues = new(); // The source node of each of resultTypes (ResultCandidates), null for a formed Type.
     private StructuralCompletion? resultStructure;
     private int resultCursor;
 
@@ -18,7 +20,7 @@ public sealed partial class Binding
     /// <returns>The terminal Scalar Type, or null when the chain does not end in a Scalar.</returns>
     internal static BoundType? ScalarReferent(BoundType? type)
     {
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+        if (type?.SafeReferent is null)
         {
             return null;
         }
@@ -161,14 +163,14 @@ public sealed partial class Binding
         {
             var terminal = types[i];
             var first = types[0];
-            while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            while (terminal.SafeReferent is { } referent)
             {
                 differ |= first is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || first.Semantics != terminal.Semantics;
-                terminal = terminal.Components[0];
+                terminal = referent;
                 first = first is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? first.Components[0] : first;
             }
 
-            differ |= first is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
+            differ |= first.SafeReferent is not null;
             if ((scalar is not null && !ReferenceEquals(scalar, terminal)) ||
                 (!terminal.IsScalar && !this.IsReadType(terminal, scope)))
             {
@@ -245,7 +247,7 @@ public sealed partial class Binding
     // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
     private StructuralCompletion ResultStructure()
     {
-        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence);
+        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.ResultCompletions);
         structural.Clear();
         return structural;
     }
@@ -302,9 +304,10 @@ public sealed partial class Binding
     // SPEC 14.9.2: the Target Result Type of the collected sources, each source checked against it, and the Expression Type.
     private BoundType? DecideResult(Koto node, ResultContext context)
     {
-        var types = this.resultTypes;
+        var (types, values) = (this.resultTypes, this.resultValues);
         types.Clear();
-        var awaiting = this.ResultCandidates(context, types);
+        values.Clear();
+        var awaiting = this.ResultCandidates(context, types, values);
         if (context.Expected is null && types.Count == 0 && awaiting && this.AwaitsWithoutCandidate(node, context, types))
         {
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
@@ -326,13 +329,15 @@ public sealed partial class Binding
         }
         else
         {
-            // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
-            // is the explained one. A region on either side leaves rows, a regional target its source edges too; fixed and omitted targets keep
-            // their immediate/collecting fit.
+            // SPEC 15.6.1, 14.9: each result source fits the expected Type, its Origin positions rows of the body that A5 judges at the
+            // source's value, the value that supplies the fit's longer end (the use-site fit; R7-O1; H11b D5), a structural Unit at the
+            // join; the first that does not fit otherwise is the explained one. A region on either side leaves rows, a regional target its
+            // source edges too.
             for (var i = 0; i < types.Count; i++)
             {
                 ComparisonFailure fit;
-                if (!(this.RegionalAt(types[i], common, node) ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
+                var value = values[i] ?? node;
+                if (!(this.RegionalAt(types[i], common, value) ? this.CheckTypeUse(types[i], common, value, out fit) : this.FitsValueAt(types[i], common, node, value, out fit)))
                 {
                     context.Conflict();
                     if (failed is null)
@@ -366,6 +371,7 @@ public sealed partial class Binding
         }
 
         types.Clear();
+        values.Clear();
         if (context.Outcome == JoinOutcome.Conflict)
         {
             return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common, failure)
@@ -392,7 +398,7 @@ public sealed partial class Binding
     // A join's outcome (SPEC 14.9.2, 23.1.2; DECISIONS BU-43): undecided while it collects its sources and forms its Type; waiting for
     // its position's Type (an outer join's, its call's); failed by a conflict it found (Conflict, its own record) or resting on a failed
     // part or on the join it waited for (Dependent, no record); or decided (bound, or pending on a source that waits for its call).
-    private enum JoinOutcome : byte
+    internal enum JoinOutcome : byte
     {
         Undecided,
         Waiting,
@@ -401,7 +407,25 @@ public sealed partial class Binding
         Decided,
     }
 
-    private sealed class ResultContext
+    /// <summary>The `resultContexts` family's one accessor (DECISIONS BU-220): a working-state family, the context a result target's
+    /// binding rents for it (BeginResult) and every reader takes inside the same pass, kept in the target's module's NodeColumns at its
+    /// SyntaxId (null for none); the library's rows are released at its freeze (NodeColumns.Freeze), so a library node reads none after
+    /// the library pass, as each later pass's reset left it. Its members keep the names its readers use.</summary>
+    private readonly struct ResultContextRows(Binding binding)
+    {
+        internal ResultContext this[Koto target]
+        {
+            get => this.TryGetValue(target, out var context) ? context : throw new KeyNotFoundException($"`{target}` has no result context in this pass.");
+            set => HirTables.Of(target).Families.ResultContexts.Ref(target.SyntaxId, binding) = value;
+        }
+
+        internal bool ContainsKey(Koto target) => this.TryGetValue(target, out _);
+
+        internal bool TryGetValue(Koto target, [NotNullWhen(true)] out ResultContext? context)
+            => (context = target.SyntaxOwner is { } table ? table.Hir.Families.ResultContexts.Get(target.SyntaxId, binding) : null) is not null;
+    }
+
+    internal sealed class ResultContext
     {
         internal Koto? ArrayShape { get; set; }
 

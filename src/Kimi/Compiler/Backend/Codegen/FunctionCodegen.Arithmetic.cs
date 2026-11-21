@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Mir;
-using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -110,7 +109,7 @@ internal sealed partial class FunctionCodegen
             return -1;
         }
 
-        if (type.Semantics == SemanticsKind.Raw)
+        if (type.IsPointer)
         {
             return 5;
         }
@@ -328,12 +327,11 @@ internal sealed partial class FunctionCodegen
     // and the number of those layers.
     private readonly record struct Terminal(BoundType? Type, int References)
     {
-        // The one walk of those layers: TyCtxt.Layer's Deref steps of a ref or uniq layer (an object handle is not followed).
+        // The one walk of those layers: BoundType.SafeReferent's steps (an object handle is not followed).
         internal static Terminal Of(BoundType? type)
         {
             var references = 0;
-            while (TyCtxt.Layer(type, out var below, out _) == HirPlaceKind.Deref
-                && type!.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
+            while (type?.SafeReferent is { } below)
             {
                 references++;
                 type = below;

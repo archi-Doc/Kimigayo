@@ -12,16 +12,6 @@ public sealed partial class Binding
     private readonly PropertyUpdateStorageRows propertyUpdateStorage;
     private readonly PropertyUpdateInputRows propertyUpdateInputs;
 
-    // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
-    // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
-    // is standard. That target locates the Field's Place, and the target's own getter is not called for it; an update's read by the
-    // getter is a value, which no Place walk takes. A getter result, and every path rooted in it, stays a root (11.5). Read by
-    // NextPathStep, PlaceOriginSource, ElementAccess's path roots and ClosureEffects' owned-part climb; NextPathStep's InlinePart case,
-    // IsBarePlace, IsStaticField and TakeJudgment still decide the Field's Place on their own (D-827).
-    internal static bool IsGetterResult(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
-            place.BoundSymbol?.Property is { Getter.IsStandard: false } property && !(property.Setter.IsStandard && IsWriteTarget(place, out _));
-
     // SPEC 13.7.1: whether a node, taken as its outermost group (Grouped), is the target of `=` (write) or of a compound assignment,
     // `++` or `--` (an update): a Property use's write role, read by its binding and IsGetterResult (UseOf reads the same role from the
     // parent's HirOp: D-827).
@@ -69,6 +59,16 @@ public sealed partial class Binding
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
 
+    // SPEC 11.5, 13.7.1, 13.7.2 (D-818): whether a node is a custom getter's result, a temporary rather than the Field's Place: a use of
+    // a Property with a custom `get`, unless it is the synthesized direct storage or the final target of a write or an update whose `set`
+    // is standard. That target locates the Field's Place, and the target's own getter is not called for it; an update's read by the
+    // getter is a value, which no Place walk takes. A getter result, and every path rooted in it, stays a root (11.5). Read by
+    // NextPathStep, PlaceOriginSource, ElementAccess's path roots and ClosureEffects' owned-part climb; NextPathStep's InlinePart case,
+    // IsBarePlace, IsStaticField and TakeJudgment still decide the Field's Place on their own (D-827).
+    private static bool IsGetterResult(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is var place && place is not MemberAccessKoto { IsDirectStorage: true } &&
+            place.BoundSymbol?.Property is { Getter.IsStandard: false } property && !(property.Setter.IsStandard && IsWriteTarget(place, out _));
+
     // PLAN G949 S1-e: every library accessor with a body gets its executing function, numbered, by the last declaration step, after the
     // headers gave its Types: the set the MIR builder executes (MirBuilder.Module), so no later phase numbers a library node (c17).
     private void MakeLibraryAccessorFunctions()
@@ -98,7 +98,7 @@ public sealed partial class Binding
     private bool ValidPropertyWritePath(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        while (node is BinaryKoto projection && (projection is MemberAccessKoto || ElementAccess.IsSyntax(this, projection)))
+        while (node is BinaryKoto projection && (projection is MemberAccessKoto || this.IsSyntax(projection)))
         {
             node = KotoHelper.UnwrapParentheses(projection.Left);
             if (node.BoundType?.Semantics != SemanticsKind.Owner)
@@ -232,8 +232,8 @@ public sealed partial class Binding
             var inputType = accessor.Input is { } declaredInput ? Signature(mistyped ? accessor.Property.Type! : declaredInput) : null;
             // Origin-bearing inputs retain their own execution milestone. An owning or object-form written receiver
             // is the declaration error of SPEC 11.3, not a limit of this path.
-            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
-                (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
+            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (receiverType.SafeReferent is not { } referent || !AdtDef.IsStruct(referent) ||
+                (referent.Kind == BoundTypeKind.Constructed && declaringType is null));
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
                 Signature(mistyped && accessor.Kind == PropertyAccessorKind.Get ? accessor.Property.Type! : declaredResult) is not { } result ||
                 (accessor.Input is not null && inputType is null) || inputType is { CarriesAnyOrigin: true } ||

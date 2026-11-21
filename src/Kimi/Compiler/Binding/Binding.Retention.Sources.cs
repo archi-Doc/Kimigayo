@@ -80,7 +80,7 @@ public sealed partial class Binding
         this.retentionPathIds.Clear();
         for (var i = 0; i < inputs.Length; i++)
         {
-            if (inputs[i] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+            if (inputs[i] is not { IsPointer: true })
             {
                 this.storageSeen.Clear();
                 this.StorageWalk(environment, inputs[i], StorageAt.Input(i) with { Signature = this.SignatureInput(i) });
@@ -122,7 +122,7 @@ public sealed partial class Binding
         // of its own value with no node, matched by CanHold alone at every position of a storage R's Origin test lets keep its input (MayRetain:
         // where the input's Type states an Origin, a storage that as a whole may retain one of them; O-435 (a), F's G935 ruling 81); a raw
         // layer is no such source (the hold walk's).
-        if (layer < 0 && at.Source.Held && referent is null && (type.Kind != BoundTypeKind.Semantics || type.Semantics != SemanticsKind.Raw) &&
+        if (layer < 0 && at.Source.Held && referent is null && !type.IsPointer &&
             this.Leaf(type, run))
         {
             this.retentionSources.Add(new(-1, at.Source.Input, type, null, at.Signature, (this.retentionPaths.Count, 0)));

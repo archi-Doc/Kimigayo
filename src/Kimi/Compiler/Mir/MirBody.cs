@@ -10,7 +10,6 @@
 // Must not resolve syntax or introduce a parallel representation for the same body; a stored body is read, never appended to.
 
 using System.Runtime.InteropServices;
-using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
@@ -221,7 +220,7 @@ internal sealed class MirBody
 
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
-    /// <returns>The Type, or null when a projection is not admitted.</returns>
+    /// <returns>The Type, or null when a projection is not admitted or its root is of no Type (Binding's failed slot, <see cref="MirLocal"/>).</returns>
     internal BoundType? TypeOf(MirPlace place)
     {
         if (place.Projection != 0)
@@ -257,7 +256,7 @@ internal sealed class MirBody
                     return below;
                 }
 
-                return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
+                return type is { IsPointer: true, Components: [var pointee] } ? pointee : null;
             case MirProjectionKind.Index:
                 return type?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice or BoundTypeKind.FixedArray && (uint)arg < (uint)this.localCount &&
                     ReferenceEquals(this.locals[arg].Type, BoundType.ISize) ? type.Components[0] : null;

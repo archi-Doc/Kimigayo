@@ -259,7 +259,7 @@ public sealed partial class Binding
 
     // The Adjust of a child its consumer acquires or uses: an adaptation Binding recorded at the node itself (at its fixed expected Type,
     // or as a receiver) wins over its consumer's operation, except Binding's in-place read of a selection (a shared borrow of the child's
-    // own stored Type, ElementAccess.IsSynthesizedAccess), which this use's exclusive borrow of the child or the child's claim overrides
+    // own stored Type, IsSynthesizedAccess), which this use's exclusive borrow of the child or the child's claim overrides
     // (claimed: this use's operation's target or an earlier use needed exclusive capability of it, as the contract states, in some admitted
     // case or in every one, since the child has one Adjust; SPEC 4.7.1, 7.3). An erasure to its Function Type (SPEC 7.7.4) is the node's
     // own record, its ErasedType: that column, never a consumer's
@@ -269,7 +269,7 @@ public sealed partial class Binding
     // other than a literal in its temporary.
     private HirAdjust ChildAdjust(Koto child, HirAdaptation adaptation, UseKind kind, PlaceUse claimed)
     {
-        var recordedWins = this.adaptations.TryGetValue(child, out var recorded) && !(ElementAccess.IsSynthesizedAccess(this, child) &&
+        var recordedWins = this.adaptations.TryGetValue(child, out var recorded) && !(this.IsSynthesizedAccess(child) &&
             (adaptation == HirAdaptation.ExclusiveBorrow || claimed != PlaceUse.Shared));
         adaptation = recordedWins ? HirAdjust.Of(recorded, child.BoundType)
             : HirTables.ErasedType(child) is not null ? HirAdaptation.Erasure : adaptation;
@@ -462,7 +462,7 @@ public sealed partial class Binding
             var selection = parentOp == HirOp.Call && parent is IndexKoto; // A user or view index, which passes the need its selection takes.
             if (reaching.Use == PlaceUse.Shared ||
                 !(parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto || (selection && binding.SelectionMode(parent!, reaching.Use) != 0)) ||
-                ElementAccess.IsRawRooted(binding, parent!) || !ReferenceEquals(Operand(parent), node))
+                binding.IsRawRooted(parent!) || !ReferenceEquals(Operand(parent), node))
             {
                 return own;
             }

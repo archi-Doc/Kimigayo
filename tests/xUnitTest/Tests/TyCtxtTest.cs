@@ -357,10 +357,10 @@ public sealed partial class TyCtxtTest
         Assert.All(closed, static x => Assert.NotNull(x.InstanceContext));
         Assert.Equal(calls.Select(c.Types.SubstOf), closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(c.Types.SubstOf(calls[0]), c.Types.SubstOf(calls[1]));
-        Assert.All(closed, x => Assert.Same(c.Binding.ClosureSignature(x), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(x)!).Type));
+        Assert.All(closed, x => Assert.Same(c.Binding.ClosureSignature(x), c.Types.Apply(closure.Signature!, c.Types.SubstOfClosure(x)!).Type));
         var identity = c.Types.SubstOfClosure(closure.EnvironmentType!)!;
         Assert.Same(c.Types.Identity(function), identity);
-        Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity).Type);
+        Assert.Same(closure.Signature, c.Types.Apply(closure.Signature!, identity).Type);
     }
 
     // SPEC 15.3.1, 15.3.6 (PLAN G457): a call's instance maps each of the callee's Type and Origin slots once, so a Type argument naming the
@@ -1097,7 +1097,7 @@ public sealed partial class TyCtxtTest
         }
 
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
-        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), x => TyCtxt.StatesUnstated(x.Type, seen));
+        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), x => x.Type is { } type && TyCtxt.StatesUnstated(type, seen));
 
         // A kept Field (the kept base at -1), or the kept payload Tuple of an enum's Case `part`.
         BoundType Part(BoundType x, int part)
@@ -1403,7 +1403,7 @@ public sealed partial class TyCtxtTest
         Assert.NotEmpty(viewed.Inputs.ToArray());
         Assert.All([erased, types.Erase(viewed)!], static x => Assert.True(x.Origins.IsEmpty && x.Inputs.IsEmpty));
         var locals = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl?.Name == "keep" || (x.Key.Kind == MirBodyKind.Closure && x.Source.Module == 0))
-            .SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).ToArray();
+            .SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type!).ToArray();
         Assert.True(locals.Length > 4);
         foreach (var local in locals)
         {
@@ -1840,7 +1840,7 @@ public sealed partial class TyCtxtTest
     public void WarmEraseAllocatesNothing()
     {
         var c = SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
-        var locals = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).Distinct().ToArray();
+        var locals = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type!).Distinct().ToArray();
         var erased = locals.Select(c.Types.Erase).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -1979,7 +1979,11 @@ public sealed partial class TyCtxtTest
         {
             foreach (var local in body.Locals)
             {
-                Visit(local.Type);
+                // A local of no Type (a failed slot or a temp derived from one, MirLocal; PLAN G1073) stores nothing to erase.
+                if (local.Type is { } type)
+                {
+                    Visit(type);
+                }
             }
         }
 
@@ -2092,7 +2096,7 @@ public sealed partial class TyCtxtTest
             var instance = declared is null ? null : Instance(c, declared, subst, context);
             if (!ReferenceEquals(applied, instance) ||
                 (applied is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && function.ClosureOf() is { } closure &&
-                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(applied)!).Type)))
+                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature!, c.Types.SubstOfClosure(applied)!).Type)))
             {
                 problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} {declared}: {applied}");
             }

@@ -30,7 +30,8 @@ public sealed partial class Binding
 
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
     // the rows of a link of the subject's chain in a view (null while the link is open), each link's rows of the request's last round
-    // (EnumerateClosed's seed; the two tables change places between rounds) and, above, the pooled lists.
+    // (EnumerateClosed's seed; the two tables change places between rounds) and, above, the pooled lists, which belong to the tables:
+    // each is emptied with them when the request returns (LeaveRows), so between requests the pool holds empty lists only.
     private Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateMemo = new();
     private Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateSeed = new();
     private int enumeratePoolNext;
@@ -424,6 +425,11 @@ public sealed partial class Binding
             this.enumerateMemo.Clear();
             this.enumerateSeed.Clear();
             this.DropOwnedEntries();
+            for (var i = 0; i < this.enumeratePoolNext; i++)
+            {
+                this.enumeratePool[i].Clear(); // the tables' contract above: a request's rows do not outlive it
+            }
+
             this.enumeratePoolNext = 0;
             if (!this.KeepsAcrossRequests)
             {
@@ -487,7 +493,7 @@ public sealed partial class Binding
     {
         for (var scope = view.Premises; scope is not null; scope = scope.Parent)
         {
-            if (scope.Constraints is not { Invalid: false } environment)
+            if (scope.Constraints is not { } environment)
             {
                 continue;
             }
@@ -572,20 +578,22 @@ public sealed partial class Binding
     private int IndexNormalized(ViewIndex index, EvidenceView view)
     {
         int? after = index.Serial; // The loop writes nothing but through Reading.
-        if (HasParameterIdentity(view.Premises))
+        if (HasTypeIdentity(view.Premises))
         {
             var start = this.enumerateNormalized.Count;
             for (var scope = view.Premises; scope is not null; scope = scope.Parent)
             {
-                if (scope.Constraints is not { Invalid: false } environment)
+                if (scope.Constraints is not { } environment)
                 {
                     continue;
                 }
 
                 foreach (var fact in environment.Facts)
                 {
+                    // R7-M25 (D), R7-C3 C6: a reading whose subject has no abstract part is not filed; a concrete constructed member's
+                    // conformance is ResolveConformance's (never Unknown), so its row would repeat it or be a premise error.
                     if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } &&
-                        this.Reading(fact, view.Premises, ref after) is { Subject: not null } normalized && !ReferenceEquals(normalized, fact))
+                        this.Reading(fact, view.Premises, ref after) is { Subject.HasAbstractPart: true } normalized && !ReferenceEquals(normalized, fact))
                     {
                         this.enumerateNormalized.Add((scope, fact, normalized));
                     }

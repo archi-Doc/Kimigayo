@@ -514,7 +514,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.retentionArguments[input] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        return this.retentionArguments[input] is { IsPointer: true };
     }
 
     // Whether the instantiated tests (the closure, CanHold, pairs) may give a position input `input`'s row: anywhere but in the callee's kept
@@ -551,7 +551,7 @@ public sealed partial class Binding
 
         var found = RetentionKind.None;
         var run = this.HeldRun(declared, null, null, out var complete);
-        this.retentionLimit |= !complete; // Undecided at Binding's Limit, as at an Unsupported entry (HeldRun): the contract's Limit.
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit: the contract's Limit.
         for (var i = run.Start; i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
@@ -561,7 +561,7 @@ public sealed partial class Binding
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
-        if (ReferenceTypes.IsPointer(declared) && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
+        if (declared.IsPointer && this.retentionDeclared.Count > 0 && this.RawStepAt(declared, null, null, declared) == HoldStep.Exclusive)
         {
             var first = this.rawMembers.Count;
             this.retentionLimit |= !this.RawMembers(OwnedOrigin(declared)!, CollectionsMarshal.AsSpan(this.retentionDeclared)[..^1], this.rawMembers);
@@ -635,7 +635,7 @@ public sealed partial class Binding
     // one of the callable's parameters holds the input's Type, Origins erased, or is a raw pointer as the input is (BU-66).
     private bool Takes(BoundType callable, BoundType argument, BindingScope? view)
     {
-        var pointer = argument is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
+        var pointer = argument is { IsPointer: true };
         if (this.Hands(argument, callable) || (argument.CarriesAnyOrigin && !pointer))
         {
             return true;
@@ -646,7 +646,7 @@ public sealed partial class Binding
         {
             var parameter = parameters.Components[j];
             this.retentionWalked.Clear();
-            if ((pointer && parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw }) || this.Occurs(parameter, argument, view))
+            if ((pointer && parameter is { IsPointer: true }) || this.Occurs(parameter, argument, view))
             {
                 return true;
             }
@@ -712,8 +712,8 @@ public sealed partial class Binding
     // a fresh handle brings a new payload, `set: (uniq/(rc/T) during u, E)`; never past a borrow, `set: (uniq/(ref/T during a) during u,
     // E)`, whose referent is never fresh, PLAN G993). `reach` is the step into the storage the walk stands in: Inline in the parameter's
     // own value, Exclusive in storage the call writes, Own in a value it stores there anew. Each (Type, reach) entered at the shallowest
-    // depth it is met at (Enters, retentionReaches). A Type's entries are HeldRun's, so a write the walk cannot decide (Binding's Limit, an
-    // Unsupported entry) makes the contract the Limit, never "writes nothing".
+    // depth it is met at (Enters, retentionReaches). A Type's entries are HeldRun's, so a write the walk cannot decide (Binding's Limit)
+    // makes the contract the Limit, never "writes nothing".
     private bool WrittenThrough(BoundType? type, BoundType position, HoldStep reach, int depth, BindingScope? view)
     {
         if (type is null || depth > StorageBound)
@@ -734,7 +734,7 @@ public sealed partial class Binding
 
         var found = false;
         var run = this.HeldRun(type, null, null, out var complete);
-        this.retentionLimit |= !complete; // Undecided at Binding's Limit, as at an Unsupported entry (HeldRun): the contract's Limit.
+        this.retentionLimit |= !complete; // Undecided at Binding's Limit: the contract's Limit.
         for (var i = run.Start; !found && i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
@@ -1285,7 +1285,7 @@ public sealed partial class Binding
             hidden |= places && entry.Step == HoldStep.Abstract;
         }
 
-        var stated = stepped && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } &&
+        var stated = stepped && type is { IsPointer: true } &&
             OwnedOrigin(type) is { Kind: not OriginKind.Unstated } origin ? origin : null;
         if (stated is not null && this.retentionRawSources.Count > 0)
         {

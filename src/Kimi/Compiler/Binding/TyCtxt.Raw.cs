@@ -29,7 +29,7 @@ internal sealed partial class TyCtxt
     // array's element at any position, from-end included. An enum's Case payload is none (SPEC 5.2 lists Fields and elements: a payload is
     // reached by matching the enum, which reads it), nor is a Closure's environment, an Array's, view's or Dictionary's element (the
     // referent of `index`/`indexUniq`) or a reference's or handle's part (a referent). The one statement of the rule: Binding's IsRawPlace
-    // walk (ElementAccess), MIR's move paths (MirMoveData.Resolve) per step and RawPlaces' rows. A read of the Type; total; allocates nothing.
+    // walk (PlaceAuthority.Raw), MIR's move paths (MirMoveData.Resolve) per step and RawPlaces' rows. A read of the Type; total; allocates nothing.
     internal static bool RawPart(BoundType? container) => container is { Semantics: Parsing.SemanticsKind.Owner } &&
         (container.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(container));
 
@@ -87,7 +87,7 @@ internal sealed partial class TyCtxt
     // ends with the Type (no bound of its own); total; allocates nothing for a Type already decided.
     internal bool Punnable(BoundType type)
     {
-        if (type.IsScalar || type.IsAbstract || type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw })
+        if (type.IsScalar || type.IsAbstract || type.IsPointer)
         {
             return true;
         }
@@ -132,9 +132,9 @@ internal sealed partial class TyCtxt
     // Holdings' one form table at the key (Decided): Listed, the rows (RawPart's forms); Empty, no row: an enum (a Case payload is reached by
     // matching the enum, which reads it), a Closure (its environment) and every form whose Holdings rows hold nothing inline (a
     // referent, a collection's elements, Type arguments, an erased environment, a Scalar); Undecided, so that no reader counts too few:
-    // an Abstract row (SPEC 8.15.1, 4.4.2: any admitted binding's raw Places, as Punnable's abstract row states it), an Unsupported row,
-    // an unbound part, an Inline row of any other form (an owner layer, a pair layer's owner case: its target's, not listed here; none
-    // reaches it on dev) and Binding's Limit. Rows are published for RawPart's forms whatever the answer (as Holdings publishes its
+    // an Abstract row (SPEC 8.15.1, 4.4.2: any admitted binding's raw Places, as Punnable's abstract row states it), an unbound part,
+    // an Inline row of any other form (an owner layer, a pair layer's owner case: its target's, not listed here; none reaches it on
+    // dev) and Binding's Limit. Rows are published for RawPart's forms whatever the answer (as Holdings publishes its
     // entries at a Limit): at Undecided they are the parts Binding's storage states, an unbound part giving none. At Undecided the
     // reader keeps its own reading (O-231 (a): the pun rule its written parts; A5 its abstract rule or its located Unsupported_Kd),
     // never "empty". Total, a function of the key; allocates nothing warm.
@@ -188,8 +188,8 @@ internal sealed partial class TyCtxt
     // order: (layer, step, Past) for each raw layer met there, not gone past, its step that at the Place: DeclaredStep under its holding
     // instance, except that a `during self` layer, where the key's path dereferences, has the step of the Origin reading it gives (SPEC 5.7
     // Writing a Field), and Unsupported through a U2 path; (null, step, Past) for each other part that reaches storage (a borrow or pair
-    // case, an rc or arc view, an abstract, erased, unsupported or unbound part); nothing for a part with no entry. Past is the key past
-    // the entry, with the path's last dereferenced layer past it (Binding.PastThrough). Unsupported is never a stated Origin: a reader takes
+    // case, an rc or arc view, an abstract, erased or unbound part); nothing for a part with no entry. Past is the key past the entry,
+    // with the path's last dereferenced layer past it (Binding.PastThrough). Unsupported is never a stated Origin: a reader takes
     // it as no answer (A5: a located Unsupported_Kd or Φ kept, never a dropped Φ). The step is not the walked signature's cap (RawStepAt),
     // which a covering needs not. A `during self` layer reached through a dereference has StepOf's cap-free kind (DECISIONS BU-24): past a
     // `ref` it is Exclusive, an over-approximation of write authority that only adds writes (conservative); a borrow entry keeps Holdings'
@@ -299,8 +299,8 @@ internal sealed partial class TyCtxt
     // decided where every row is one of: a layer's or a collection's referent, a Type argument, an erased environment (none of them
     // inline), no row at all (a Scalar, a Range, a Function Item), or an Inline part of a form whose inline parts SPEC 5.2 classifies:
     // RawPart's (Fields, base, elements: the rows), an enum's Case payloads or a Closure's environment (no raw Place). Every other row
-    // leaves it unknown: Abstract (SPEC 8.15.1: a binding's), Unsupported (a form with no row), a part Binding did not bind, an Inline
-    // part of any other form (an owner layer's or a pair layer's owner case: its target at its own address, not listed here), a Limit.
+    // leaves it unknown: Abstract (SPEC 8.15.1: a binding's), a part Binding did not bind, an Inline part of any other form (an owner
+    // layer's or a pair layer's owner case: its target at its own address, not listed here), a Limit.
     private bool Decided(PlaceKey at, BoundType type)
     {
         var inline = RawPart(type) || AdtDef.IsEnum(type) || type.Kind == BoundTypeKind.Closure;
@@ -310,7 +310,7 @@ internal sealed partial class TyCtxt
         {
             decided = this.rawForm[i] switch
             {
-                { Step: HoldStep.Abstract or HoldStep.Unsupported } => false,
+                { Step: HoldStep.Abstract } => false,
                 { Step: HoldStep.Inline } part => inline && part.Part is not null,
                 _ => true,
             };

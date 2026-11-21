@@ -71,8 +71,8 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Semantics == SemanticsKind.Raw && a.Kind == BoundTypeKind.Semantics
-            ? b is not { Semantics: SemanticsKind.Raw, Kind: BoundTypeKind.Semantics }
+        if (a.IsPointer
+            ? !b.IsPointer
             : !a.SameExceptOrigins(b) || !ReferenceEquals(a.Origin, b.Origin) || !a.OriginArguments.SequenceEqual(b.OriginArguments))
         {
             return false;
@@ -118,7 +118,7 @@ public sealed partial class Binding
             }
 
             var parts = components.AsSpan(0, type.Components.Count);
-            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
+            return type.IsPointer
                 ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
         }
         finally
