@@ -298,9 +298,9 @@ public sealed partial class Binding
             }
 
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : declaration!.BoundSymbol!;
-            if (!this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            if (this.InaccessibleProjection(use.Use, use.Type, use.Contract, domain) is { } inaccessible)
             {
-                this.Fail(declaration!, BindingFailure.Access);
+                this.RecordAccess(declaration!, inaccessible, use.Use);
             }
 
             this.RequireConstraint(declaration!, this.CheckTypeConstraints(use.Type, this.ConstraintScope(use.Use)), mode);
@@ -316,9 +316,9 @@ public sealed partial class Binding
             // The header/storage Type belongs to the Property domain even when
             // every accessor has narrower access. Requirements inherit the Contract domain.
             var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : property.Symbol;
-            if (property.Type is { } type && !this.TypeAccessCovers(type, domain, domain))
+            if (property.Type is { } type && this.InaccessibleType(type, domain, domain) is { } inaccessible)
             {
-                this.Fail(syntax, BindingFailure.Access);
+                this.RecordAccess(syntax, inaccessible, syntax.TypeKoto); // An inferred Type is checked as a written one, at the Property.
             }
 
             var proof = this.ValidateAccessor(property.Getter);
@@ -369,7 +369,9 @@ public sealed partial class Binding
         // Property's. One node holds one failure, so a mismatch beside another of them goes unreported.
         if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
         {
-            this.Fail(syntax, BindingFailure.Access);
+            // SPEC 11.3.2: a word broader than its Property's: no declaration's accessibility fails to cover a use, so no fact (the
+            // Property bounds the word, not RecordAccess' role 0).
+            this.RecordNumbered(syntax, BindingFailure.Access, []);
             return ConstraintProof.Error;
         }
 
@@ -447,11 +449,28 @@ public sealed partial class Binding
         }
 
         var domain = property.Declaration.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : accessor.SignatureSymbol!;
-        if (!this.TypeAccessCovers(accessor.Result, domain, domain) ||
-            (accessor.Input is { } input && !this.TypeAccessCovers(input, domain, domain)) ||
-            (accessor.Receiver is { } receiverType && !this.TypeAccessCovers(receiverType, domain, domain)))
+        // SPEC 9.4.4: each accessor component is its own part (one problem each).
+        var exposed = false;
+        if (this.InaccessibleType(accessor.Result, domain, domain) is { } result)
         {
-            this.Fail(syntax!, BindingFailure.Access);
+            this.RecordAccess(syntax!, result, syntax!.ReturnType);
+            exposed = true;
+        }
+
+        if (accessor.Input is { } input && this.InaccessibleType(input, domain, domain) is { } value)
+        {
+            this.RecordAccess(syntax!, value, syntax!.ValueType);
+            exposed = true;
+        }
+
+        if (accessor.Receiver is { } receiverType && this.InaccessibleType(receiverType, domain, domain) is { } receiver)
+        {
+            this.RecordAccess(syntax!, receiver, syntax!.ReceiverType);
+            exposed = true;
+        }
+
+        if (exposed)
+        {
             return ConstraintProof.Error;
         }
 

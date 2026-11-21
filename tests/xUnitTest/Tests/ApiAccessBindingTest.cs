@@ -168,6 +168,19 @@ public class ApiAccessBindingTest
     public void AnOwnersOwnFailureStaysBesideItsInaccessibleClause(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
 
+    // SPEC 9.4.4, 23.1.2, 23.3 (R7-E2 E2-4a): a function's record is located at the part of its own signature that shows the inaccessible
+    // Type and relates that Type's declaration (RecordAccess). Two parameters exposing two private Types are two failed requirements, two
+    // records (a6: M1); one private Type at two parts is one requirement shown twice, a record per part (a1s: G, the grouping's choice);
+    // one part naming two private Types is one record relating the first its query met (r4: G, first only). The twins are valid.
+    [Theory]
+    [InlineData("public group Api\n    struct H1\n    struct H2\n    public func f(value: H1, other: H2) -> () => ()\n", "InaccessibleBinding_Kd 4:26 H1, inaccessible declaration 'H1'|InaccessibleBinding_Kd 4:37 H2, inaccessible declaration 'H2'")] // a6
+    [InlineData("public group Api\n    public struct H1\n    public struct H2\n    public func f(value: H1, other: H2) -> () => ()\n", "")] // a6t
+    [InlineData("struct H\npublic contract C\n    func f(value: H) -> H\n", "InaccessibleBinding_Kd 3:19 H, inaccessible declaration 'H'|InaccessibleBinding_Kd 3:25 H, inaccessible declaration 'H'")] // a1s
+    [InlineData("public group Api\n    struct H1\n    struct H2\n    public struct Pair<A, B>\n    public func f(value: Pair<H1, H2>) -> () => ()\n", "InaccessibleBinding_Kd 5:26 Pair<H1, H2>, inaccessible declaration 'H1'")] // r4
+    [InlineData("public group Api\n    public struct H1\n    public struct H2\n    public struct Pair<A, B>\n    public func f(value: Pair<H1, H2>) -> () => ()\n", "")] // r4t
+    public void EachExposingPartOfASignatureIsItsOwnRecord(string source, string records)
+        => Assert.Equal(records, string.Join('|', DiagnosticCorpus.LocatedRecords(source + "public func main() => ()\n")));
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmApiAccessChecksAllocateNothing()
@@ -181,5 +194,17 @@ public class ApiAccessBindingTest
                 throw new InvalidOperationException("API accessibility Binding failed.");
             }
         }));
+    }
+
+    // A function's two exposing parts rebind without allocating: RecordAccess's facts are a stack span and its numbering walks the
+    // subject's kept problems (RecordNumbered).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void TwoExposingPartsRebindWithoutAllocation()
+    {
+        var c = MinimalEmissionTest.Analyze("public group Api\n    struct H1\n    struct H2\n    public func f(value: H1, other: H2) -> () => ()");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.False(c.Binding.Result.IsComplete);
     }
 }
