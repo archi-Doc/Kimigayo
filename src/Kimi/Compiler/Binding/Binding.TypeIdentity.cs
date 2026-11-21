@@ -295,7 +295,17 @@ public sealed partial class Binding
         }
 
         this.identityRecorded.Add(scope, (scope.Owner.BindingFailure == BindingFailure.None, limited));
-        this.Record(scope.Owner, failure, []); // a problem of its own where the owner's first failure is another check's (SPEC 23.1.2)
+        if (ImplementationLimit(failure) is null)
+        {
+            this.Record(scope.Owner, failure, []); // a problem of its own where the owner's first failure is another check's (SPEC 23.1.2)
+        }
+        else
+        {
+            // A Resource record (SPEC 8.3.3 Limits, 23.1.1) is written as every limit writer writes it (RefuseProof's, TypeHeight's): the
+            // owner's failure, whose issue names its limit (ReportIssue); a problem carries no limit fact.
+            this.Fail(scope.Owner, failure);
+        }
+
         return true;
     }
 
