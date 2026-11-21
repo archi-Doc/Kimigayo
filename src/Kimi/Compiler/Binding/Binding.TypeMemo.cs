@@ -2,7 +2,8 @@
 
 namespace Kimi.Compiler;
 
-// Owns the per-query answer table of Binding's walks over a Type's parts (DECISIONS BU-19). An interned Type is a DAG, so a walk reaches
+// Owns the per-query answer table of Binding's walks over a Type's parts (DECISIONS BU-19), and the query number's one step (NextQuery),
+// which StructuralCompletion's query memo advances by too. An interned Type is a DAG, so a walk reaches
 // a shared part along many paths; each walk that uses a table answers a function of the part and of its query's fixed inputs, so it
 // decides each distinct part once per query and stays linear in the distinct parts. A walk whose visit of a part also depends on a Type
 // beside it keys its entry by the pair (part, beside), so it decides each distinct pair once per query and stays linear in the distinct
@@ -18,6 +19,9 @@ namespace Kimi.Compiler;
 // Must not carry an answer past its query, or serve two walks with different inputs under one stamp.
 public sealed partial class Binding
 {
+    // A query-stamped memo's first query number: 0 is no query, the number an absent row or entry carries.
+    internal const uint FirstQuery = 1;
+
     private readonly TypeMemo<BoundType, BoundType?> substitutedParts = new(); // SubstituteType's images.
 
     private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseNestedTypes' images.
@@ -38,6 +42,12 @@ public sealed partial class Binding
     // and ClosureArgumentVariance's Occurrences (a bit per polarity).
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
 
+    // The query number after a query's: the one step every query-stamped memo advances by (TypeMemo.Begin, StructuralCompletion.Clear;
+    // R7-N5 B6b, the Front's C6). It skips 0, the number an absent row or entry carries, restarting at FirstQuery after uint.MaxValue,
+    // so a fresh query never reads an absent row as its own. A number repeats only after 2^32 - 1 queries: TypeMemo empties its table
+    // there, and a working-state family's rows of an earlier pass read absent by its pass stamp (no pass asks that many queries).
+    internal static uint NextQuery(uint query) => query == uint.MaxValue ? FirstQuery : query + 1;
+
     private sealed class TypeMemo<TKey, T>
         where TKey : notnull
     {
@@ -45,17 +55,17 @@ public sealed partial class Binding
         private ulong pass;
         private uint query;
 
-        // Begins a query of a Binding pass: its unique stamp.
+        // Begins a query of a Binding pass: its unique stamp. A new pass, or the number's wrap (NextQuery), empties the table.
         internal uint Begin(ulong pass)
         {
-            if (pass != this.pass || this.query == uint.MaxValue)
+            this.query = pass == this.pass ? NextQuery(this.query) : FirstQuery;
+            if (this.query == FirstQuery)
             {
                 this.answers.Clear();
                 this.pass = pass;
-                this.query = 0;
             }
 
-            return ++this.query;
+            return this.query;
         }
 
         internal bool TryGet(TKey key, uint query, out T answer)

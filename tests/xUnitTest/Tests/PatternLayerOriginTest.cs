@@ -26,8 +26,7 @@ public class PatternLayerOriginTest
     public void AnExclusiveLayerBelowASharedOneKeepsTheOuterDependency()
     {
         var c = MinimalEmissionTest.Analyze("func f(" + Parameter + ") -> ref/i32 during b\n    match r\n        .Some(let v) => return v\n        .None => $abort(\"none\")\npublic func main() => ()");
-        var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal(DiagnosticCode.UnprovenOriginRelation_Kd, issue.Code);
+        Assert.Empty(c.Binding.Issues); // R7-O1 H: the relation is A5's record alone (Binding judges no body relation).
 
         // The failed return reports no dependent result mismatch: the published Errors are exactly the cause's.
         Assert.Equal(["UnprovenOriginRelation_Kd v"], CompilationTestHelper.PublishedErrors(c).Select(static x => $"{x.Code} {x.Text}"));

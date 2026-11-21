@@ -153,6 +153,8 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.Equal(codes.Split(' '), errors.Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
+    // SPEC 23.1.2: three independent records. R7-O1 H: the relation is A5's one record (Binding's twin went), so the analysis's records
+    // are published beside Binding's (ReportAnalysis).
     [Fact]
     public void AnInvalidContractCannotHideAnIndependentlyRefutedLifetime()
     {
@@ -165,6 +167,7 @@ public class OriginRecoveryTest(ITestOutputHelper output)
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
         Assert.Equal(["OriginRelationOperator_Kd", "UnsatisfiedOriginRelation_Kd", "TypeMismatch_Kd"], c.Diagnostics.Finalize(rejected: true).Diagnostics.Select(static x => x.Code));
     }
 
@@ -182,12 +185,15 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("OriginRecoveryValid", Source, "1 2\n");
     }
 
+    // SPEC 23.1.2: three independent records. R7-O1 H: the relation is A5's one record (Binding's twin went), so the analysis's records
+    // are published beside Binding's (ReportAnalysis).
     [Fact]
     public void AnAbsentProjectionDoesNotHideAnIndependentlyRefutedLifetime()
     {
         const string Source = Prelude + "func f<T>(value: View<T>) -> ref/i32 during static\n    origin value.sorce outlives static\n    let local = 1\n    return local@ref\nlet wrong: i32 = true";
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
         var errors = c.Diagnostics.Finalize(rejected: true).Diagnostics;
         output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span)));
         Assert.Equal(["InvalidOriginBinding_Kd", "UnsatisfiedOriginRelation_Kd", "TypeMismatch_Kd"], errors.Select(static x => x.Code));
@@ -196,7 +202,10 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Generate(TextWriter.Null));
         c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
         c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
         Assert.Equal(errors, c.Diagnostics.Finalize(rejected: true).Diagnostics);
     }
 

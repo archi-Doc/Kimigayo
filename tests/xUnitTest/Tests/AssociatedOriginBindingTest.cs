@@ -43,7 +43,7 @@ public class AssociatedOriginBindingTest
         (Own + "    public let w: S#Item\n" + OwnRest, nameof(Kimi.DiagnosticCode.MissingOriginBinding_Kd), "S"),
         (Unused + "struct K {k}\n    public let w: S#Item\n    public init() => self.w = 1\n", nameof(Kimi.DiagnosticCode.MissingOriginBinding_Kd), "S"),
         (Base + "func f(a: ref/i32) -> i32\n    var w: S#Item\n    w = a\n    return 0\n", nameof(Kimi.DiagnosticCode.MissingOriginBinding_Kd), "S"),
-        (Base + "func f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n    let w: S#Item = l@ref\n    return w\n", nameof(Kimi.DiagnosticCode.UnsatisfiedOriginRelation_Kd), "return w"),
+        (Base + "func f(a: ref/i32) -> ref/i32 during a\n    let l = 5\n    let w: S#Item = l@ref\n    return w\n", nameof(Kimi.DiagnosticCode.UnsatisfiedOriginRelation_Kd), "w"), // A5's record at the value (R7-O1 H).
         (Base + "func g(x: S#Item, y: ref/i32) -> ref/i32 during y => x\n", nameof(Kimi.DiagnosticCode.UnprovenOriginRelation_Kd), "x"));
 
     [Theory]
@@ -232,7 +232,7 @@ public class AssociatedOriginBindingTest
         var source = "contract C\n    associate Item(step)\nfunc f<T>(x: ref/i32 during a, y: ref/i32 during b, value: T.Item(a)) -> T.Item(b)\n    T is C" + condition + "\n    return value@move";
         ParseTestHelper.ParseSuccess(source);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 
     // SPEC 15.4.2, 8.5.1, 8.5.2: a projection base is a written Type occurrence, so the projection's position completes the base's
@@ -255,8 +255,8 @@ public class AssociatedOriginBindingTest
     {
         _ = qualified;
         var c = MinimalEmissionTest.Analyze(source);
-        var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal((code, at), (issue.Code.ToString(), issue.Node.ToString()!.Split('\n')[0]));
+        var issue = Assert.Single(CompilationTestHelper.PublishedErrors(c)); // R7-O1 H: A5's published record (Binding judges no body relation).
+        Assert.Equal((code, at), (issue.Code, issue.Text!.Split('\n')[0]));
     }
 
     // SPEC 15.4.4: the local publishes the Origin its initializer infers for the base's slot, the input of f, never S's declared slot.

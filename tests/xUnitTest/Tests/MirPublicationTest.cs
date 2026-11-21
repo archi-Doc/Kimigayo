@@ -236,7 +236,7 @@ public sealed class MirPublicationTest
         Assert.Equal(
             [
                 ("let local: i32 = 1", "relation longer shorter source", "wellFormed"),
-                ("return local@ref", "relation longer shorter source destination", "fit"),
+                ("local@ref", "relation longer shorter source destination", "fit"), // At the value (R7-O1 H).
             ],
             Records(c).Select(x => (Text(Source, x.Span), string.Join(' ', x.Reason!.Select(static r => r.Name)), x.Reason!.Single(IsSource).Value)).Order());
 
