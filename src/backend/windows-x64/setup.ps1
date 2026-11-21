@@ -1,9 +1,10 @@
-# Installs the pinned LLVM tools, the backend and tatara.dll from the extracted LLVM release archive into a toolchain root and records
-# them in installation.json (Tatara design A4 §2.3). The tools and tatara.dll are validated and built before the root changes. A file
-# whose destination already has the same SHA-256 is not written, so an unchanged rerun writes nothing a running process holds;
-# tatara.dll and the record are replaced by a move. No archive DLL is installed (no tool imports one; PLAN G1175): the record's
-# supportingDlls is empty, kept in schema 1 for older bases' verify on a shared root, and an existing root's DLLs stay. The last step
-# checks the root (check-toolchain.ps1).
+# Installs the pinned LLVM tools and tatara.dll from the extracted LLVM release archive into a toolchain root and records them in
+# installation.json (Tatara design A4 §2.3), after the backend's candidates (build.ps1) reproduce the adopted libraries the compiler
+# carries; no library is installed (Tatara B6b6), and an existing root's windows_x64 stays. The tools and tatara.dll are validated and
+# built before the root changes. A file whose destination already has the same SHA-256 is not written, so an unchanged rerun writes
+# nothing a running process holds; tatara.dll and the record are replaced by a move. No archive DLL is installed (no tool imports one;
+# PLAN G1175): the record's supportingDlls is empty, kept in schema 1 for older bases' verify on a shared root, and an existing root's
+# DLLs stay. The last step checks the root (check-toolchain.ps1).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmRoot,
@@ -48,18 +49,13 @@ foreach ($file in @($names | ForEach-Object { Join-Path $source "$_.exe" })) {
     }
 }
 & (Join-Path $PSScriptRoot 'build.ps1') -ToolchainRoot $ToolchainRoot
-$installed = Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
 $candidate = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../../artifacts/backend/windows-x64/verification.json') -Raw | ConvertFrom-Json
-# Both libraries are the adopted bytes (profile.json), which the compiler carries: the candidate's kernel32 first, since build.ps1 then
-# installs neither library, and the installed one after the backend.
-$kernelFailure = 'Toolchain setup did not reproduce the adopted kernel32 import library. Review the candidate report.'
-if ($candidate.kernel32.sha256 -cne $profile.kernel32.sha256) { throw $kernelFailure }
-if ($candidate.status -cne 'tested-candidate' -or $candidate.unverifiedToolchain -or $candidate.artifactSha256 -cne $profile.artifactSha256 -or
-    (Get-KimiSha256 $installed) -cne $profile.artifactSha256) {
+# Both candidates are the adopted bytes (profile.json), which the compiler carries.
+if ($candidate.kernel32.sha256 -cne $profile.kernel32.sha256) { throw 'Toolchain setup did not reproduce the adopted kernel32 import library. Review the candidate report.' }
+if ($candidate.status -cne 'tested-candidate' -or $candidate.unverifiedToolchain -or $candidate.artifactSha256 -cne $profile.artifactSha256) {
     throw 'Toolchain setup did not produce the adopted backend. Review the candidate report.'
 }
-if ((Get-KimiSha256 (Join-Path $ToolchainRoot 'windows_x64/kernel32.lib')) -cne $profile.kernel32.sha256) { throw $kernelFailure }
-# The backend builder publishes the already-tested shared imports and generation conditions.
+# The tools the candidates were built and tested with are the installed ones.
 $identities = [ordered]@{}
 foreach ($name in $names) {
     $identities[$name] = Get-KimiSha256 (Join-Path $ToolchainRoot "$name.exe")

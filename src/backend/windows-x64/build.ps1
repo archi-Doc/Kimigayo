@@ -73,7 +73,7 @@ foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
     if ($LASTEXITCODE -ne 0 -or $disassembly -match '\bcall[q]?\s') { throw "Unexpected helper call: $name" }
     $disassembly | ConvertTo-KimiArtifactText | Set-Content -LiteralPath (Join-Path $outDir "$name.disassembly.txt") -Encoding utf8
 }
-$archive = Join-Path $outDir 'kimi_backend_windows_x64_v1.lib'
+$archive = Join-Path $outDir ([IO.Path]::GetFileName((Get-KimiBackendArchive)))
 $librarian = (Resolve-Path -LiteralPath $tools['llvm-lib']).Path
 Push-Location -LiteralPath $workDir
 try {
@@ -127,40 +127,9 @@ foreach ($file in $inputFiles) {
 } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
 Write-Output "Native tests passed. Candidate report: $reportPath (not an adopted compiler catalog)."
 $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+# The candidates are checked, never installed: the compiler carries the adopted libraries (Tatara B6a), and setup requires the
+# candidates to reproduce them.
 if ($unverified -or $archiveHash -cne $profile.artifactSha256 -or $kernel.sha256 -cne $profile.kernel32.sha256) {
-    Write-Warning 'Candidates retained in artifacts/backend/windows-x64; toolchain libraries were not updated. Installation requires pinned tools and the adopted backend and kernel32 hashes (profile.json).'
+    Write-Warning 'The candidates in artifacts/backend/windows-x64 are not the adopted backend and kernel32 (profile.json), or unpinned tools built them.'
 }
-else {
-    $libraryDirectory = Join-Path $ToolchainRoot 'windows_x64'
-    New-Item -ItemType Directory -Force -Path $libraryDirectory | Out-Null
-    $installed = Join-Path $libraryDirectory 'kimi_backend_windows_x64_v1.lib'
-    $temporary = $installed + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
-    # Only a file whose installed copy differs is written (Test-KimiSameFile).
-    $written = $false
-    try {
-        if (-not (Test-KimiSameFile $archive $installed)) {
-            Copy-Item -LiteralPath $archive -Destination $temporary
-            if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Backend changed during toolchain installation' }
-            Move-KimiFile $temporary $installed
-            $written = $true
-        }
-    }
-    finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
-    # Reuse the import library already generated and checked for this candidate's O0/O2 tests.
-    $installedKernel = Join-Path $libraryDirectory 'kernel32.lib'
-    foreach ($extension in @('.lib', '.def')) {
-        $file = [IO.Path]::ChangeExtension($kernel.path, $extension)
-        $destination = [IO.Path]::ChangeExtension($installedKernel, $extension)
-        if (-not (Test-KimiSameFile $file $destination)) { Copy-Item -LiteralPath $file -Destination $destination -Force; $written = $true }
-    }
-    if ((Get-FileHash -LiteralPath $installedKernel -Algorithm SHA256).Hash.ToLowerInvariant() -cne $kernel.sha256) { throw 'Kernel32 changed during installation' }
-    # The generation conditions are written beside the build's other files first, so that an equal record is not written either.
-    $metadata = Join-Path $workDir 'kernel32.json'
-    [ordered]@{ generator = 'llvm-dlltool'; generatorSha256 = $toolIdentities['llvm-dlltool'].sha256; target = 'x86_64-pc-windows-msvc'
-        dll = $kernel.dll; definitionSha256 = $kernel.definitionSha256; sha256 = $kernel.sha256 } |
-        ConvertTo-Json | Set-Content -LiteralPath $metadata -Encoding utf8
-    $installedMetadata = [IO.Path]::ChangeExtension($installedKernel, '.json')
-    if (-not (Test-KimiSameFile $metadata $installedMetadata)) { Copy-Item -LiteralPath $metadata -Destination $installedMetadata -Force; $written = $true }
-    if ($written) { Write-Output "Installed verified backend: $installed" }
-    else { Write-Output "Verified backend unchanged: $installed" }
-}
+else { Write-Output 'The candidates reproduce the adopted backend and kernel32 (profile.json).' }

@@ -1,9 +1,7 @@
 # Shared import definition, identity checks and generation for all PowerShell builders.
-function Get-KimiInstalledKernel32([string] $ToolchainRoot) {
-    $path = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Toolchain file not found: $path. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM $((Read-KimiWindowsProfile).llvmVersion) archive, extracted> for the selected toolchain." }
-    return @{ path = $path; generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
-}
+# The adopted kernel32 import library, committed beside the catalog (profile.json's kernel32.sha256) and carried by the compiler: the
+# one place naming it, which every script linking kernel32 reads.
+function Get-KimiKernel32 { return Join-Path $PSScriptRoot 'kernel32.lib' }
 
 function Get-KimiKernel32Definition {
     $definition = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'kernel32.def')).Replace("`r`n", "`n").TrimEnd() + "`n"
@@ -28,8 +26,8 @@ function Get-KimiDlltoolIdentity {
 }
 
 # An import library's content, as the tools read it: llvm-dlltool names KERNEL32.dll, and llvm-readobj lists x64 COFF members only that
-# define exactly the definition's symbols and their __imp_ forms, each once. Generation's check (New-KimiKernel32Library) and the
-# development toolchain's (check-toolchain.ps1).
+# define exactly the definition's symbols and their __imp_ forms, each once. Generation's check (New-KimiKernel32Library), so the
+# adopted bytes were inspected when setup or an LLVM update reproduced them.
 function Test-KimiKernel32Library([string] $Dlltool, [string] $Readobj, [string] $Path) {
     $dll = & $Dlltool -I $Path | Out-String
     if ($LASTEXITCODE -ne 0 -or $dll.Trim() -cne 'KERNEL32.dll') { throw 'Unexpected generated kernel32 DLL name' }
@@ -39,9 +37,11 @@ function Test-KimiKernel32Library([string] $Dlltool, [string] $Readobj, [string]
     $expected = @($symbols) + @($symbols | ForEach-Object { "__imp_$_" })
     $actual = @([regex]::Matches($inspection, '(?m)^Symbol: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })
     $formats = @([regex]::Matches($inspection, '(?m)^Format: (\S+)\r?$') | ForEach-Object { $_.Groups[1].Value })
-    if ((($actual | Sort-Object -CaseSensitive) -join ',') -cne (($expected | Sort-Object -CaseSensitive) -join ',') -or
-        $formats.Count -eq 0 -or @($formats | Where-Object { $_ -cnotin @('COFF-x86-64','COFF-import-file-x86-64') }).Count -ne 0) {
-        throw 'Generated kernel32 library has an unexpected architecture or import symbol set'
+    if ($formats.Count -eq 0 -or @($formats | Where-Object { $_ -cnotin @('COFF-x86-64','COFF-import-file-x86-64') }).Count -ne 0) {
+        throw 'Generated kernel32 library has an unexpected architecture'
+    }
+    if ((($actual | Sort-Object -CaseSensitive) -join ',') -cne (($expected | Sort-Object -CaseSensitive) -join ',')) {
+        throw 'Generated kernel32 library has an unexpected import symbol set'
     }
 }
 

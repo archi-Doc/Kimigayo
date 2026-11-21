@@ -1,10 +1,9 @@
 # Checks a development toolchain root, as setup.ps1 installed it (Tatara B6b3; decision 20 Q3 (a): Kimi reads no root, so the root's
 # checks are this script's, unchanged in rule from the C# verify of B6b1): installation.json's shape (schema 1 of this profile, the tools'
-# and the supporting DLLs' hashes by name, tatara.dll's hash); each tool's SHA-256 against the record (llvm-dlltool's also against
-# profile.json's) after its version banner (the seven that print one); the supporting DLLs' and tatara.dll's hashes against the record;
-# and the root's windows_x64 until B6b6 removes it: the backend's and kernel32's SHA-256 against the catalog (profile.json), kernel32's
-# generation record and definition, and its content (kernel32.ps1's inspection). tatara.dll is hashed, not loaded. A failure throws
-# naming the file and the remedy. Callers: setup.ps1's last step and verify.ps1 -VerifyToolchain.
+# and the supporting DLLs' hashes by name, tatara.dll's hash); each tool's identity (toolchain.ps1's Get-KimiToolchainToolSha256: the
+# version banner of the seven that print one, llvm-dlltool's pin) and SHA-256 against the record; the supporting DLLs' and tatara.dll's
+# hashes against the record. A root's windows_x64 is not read (Tatara B6b6: the compiler carries the libraries). tatara.dll is hashed,
+# not loaded. A failure throws naming the file and the remedy. Callers: setup.ps1's last step and verify.ps1 -VerifyToolchain.
 [CmdletBinding()]
 param([string] $ToolchainRoot = '')
 $ErrorActionPreference = 'Stop'
@@ -41,20 +40,4 @@ foreach ($dll in $installed.supportingDlls.PSObject.Properties) {
 $tatara = Get-InstalledFile 'tatara.dll'
 if ((Get-KimiSha256 $tatara) -cne $installed.tatara.sha256) { throw "tatara.dll SHA-256 mismatch: $tatara. Run $setup again." }
 Write-Output "tatara.dll: $($installed.tatara.sha256)"
-
-$backend = Get-InstalledFile "windows_x64/kimi_backend_windows_x64_v1.lib"
-if ((Get-KimiSha256 $backend) -cne $profile.artifactSha256) { throw "Adopted backend SHA-256 mismatch: $backend" }
-$kernel = Get-InstalledFile 'windows_x64/kernel32.lib'
-$generation = Get-Content -LiteralPath (Get-InstalledFile 'windows_x64/kernel32.json') -Raw | ConvertFrom-Json
-$kernelHash = Get-KimiSha256 $kernel
-$conditions = [ordered]@{ generator = 'llvm-dlltool'; generatorSha256 = $profile.kernel32.dlltoolSha256; target = 'x86_64-pc-windows-msvc'; dll = 'KERNEL32.dll'
-    definitionSha256 = $profile.kernel32.definitionSha256; sha256 = $kernelHash }
-foreach ($condition in $conditions.GetEnumerator()) {
-    if ($generation -isnot [pscustomobject] -or $generation.($condition.Key) -isnot [string] -or $generation.($condition.Key) -cne $condition.Value) {
-        throw "Installed kernel32 generation conditions or SHA-256 mismatch. Run $setup again."
-    }
-}
-if ($kernelHash -cne $profile.kernel32.sha256) { throw "Adopted kernel32 SHA-256 mismatch: $kernel" }
-if ((Get-KimiSha256 (Get-InstalledFile 'windows_x64/kernel32.def')) -cne $profile.kernel32.definitionSha256) { throw 'Installed kernel32 definition SHA-256 mismatch.' }
-Test-KimiKernel32Library (Join-Path $ToolchainRoot 'llvm-dlltool.exe') (Join-Path $ToolchainRoot 'llvm-readobj.exe') $kernel
 Write-Output "Development toolchain check passed: $ToolchainRoot"

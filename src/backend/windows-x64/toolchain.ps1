@@ -42,6 +42,10 @@ function Read-KimiWindowsProfile {
     return $profile
 }
 
+# The adopted backend archive, committed beside the catalog (profile.json's artifactSha256) and carried by the compiler: the one place
+# naming its file, which every script linking the backend reads (build.ps1 names its candidate after it).
+function Get-KimiBackendArchive { return Join-Path $PSScriptRoot 'kimi_backend_windows_x64_v1.lib' }
+
 function Invoke-KimiLlvmVersion([string] $ToolPath) {
     $output = & $ToolPath --version 2>&1 | Out-String
     return @{ output = $output.Trim(); exitCode = $LASTEXITCODE }
