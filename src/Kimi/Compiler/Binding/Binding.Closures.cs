@@ -296,6 +296,11 @@ public sealed partial class Binding
             return failed;
         }
 
+        if (this.FormsBorrows)
+        {
+            this.CaptureBorrows(plan, this.borrows); // The entries' Borrows, before the body that states their atoms (Binding.RawOrigins.Borrows).
+        }
+
         this.BindClosureBody(function, scope);
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter

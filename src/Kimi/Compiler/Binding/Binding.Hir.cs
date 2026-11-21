@@ -62,10 +62,13 @@ public sealed partial class Binding
         }
 
         var publisher = this.hirPublisher ??= new(this);
+        this.BeginBorrowPublication();
         for (var i = 0; i < this.pass.Count; i++)
         {
             publisher.Publish(this.pass[i].Syntax, this.pass[i].RootKoto);
         }
+
+        this.CheckBorrows(); // The Origin-atom borrows against the published borrow positions (Binding.RawOrigins.Borrows.cs).
     }
 
     // One walk of the tree through its child slots; each node's position follows from the slot its parent holds it in.
@@ -96,6 +99,7 @@ public sealed partial class Binding
             var (parent, parentOp, outer, need, rooted) = (this.parent, this.parentOp, this.position, this.need, this.rooted);
             var position = this.PositionOf(node, parent, parentOp, outer);
             var op = this.OpOf(node, position);
+            binding.PublishedNode(node, op);
             var parts = this.Parts(node, op, position);
             var claimed = this.uses.Claimed(node); // The takes' claim, which the rows of a kept or an Error node replace.
             if (parentOp == HirOp.Error && position == HirPosition.Evaluated)
@@ -255,6 +259,7 @@ public sealed partial class Binding
             {
                 var discarded = binding.Discarded(node);
                 HirTables.PlanFor(node, discarded != default).Adjust = discarded;
+                binding.PublishedAdaptation(node); // The census's input (Binding.RawOrigins.Borrows): Discarded's ChildAdjust reads it first.
             }
 
             return !grouped && (unset || node.Parent is DiscardKoto) && Discards(node) ? binding.SuppliedType(node) : null;

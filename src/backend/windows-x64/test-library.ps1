@@ -31,7 +31,7 @@ try {
         $name = $entry.name
         $directory = Join-Path $work "sources/$name"
         $null = New-Item -ItemType Directory -Path $directory
-        'OutputKind="Library" Targets={"x86_64-pc-windows-msvc"} LlvmBin="absent toolchain"' | Set-Content -LiteralPath "$directory/$name.kimiproj" -Encoding utf8
+        'OutputKind="Library" Targets={"x86_64-pc-windows-msvc"}' | Set-Content -LiteralPath "$directory/$name.kimiproj" -Encoding utf8
         [IO.File]::WriteAllText("$directory/Library.kimi", $entry.source, [Text.UTF8Encoding]::new($false))
         & dotnet $compiler emit "$directory/$name.kimiproj" 1> "$directory/emit.stdout" 2> "$directory/emit.stderr"
         if ($LASTEXITCODE -ne 0) { throw "Library emit failed: $name" }
