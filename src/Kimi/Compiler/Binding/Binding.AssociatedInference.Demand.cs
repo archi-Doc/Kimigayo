@@ -20,11 +20,6 @@ namespace Kimi.Compiler;
 //   inside a request (a held answer is Provisional).
 public sealed partial class Binding
 {
-    // The component whose request is open, or -1.
-    private int inferenceRequest = -1;
-
-    private int inferenceEmptyHold;
-
     private readonly Dictionary<AssociatedBinding, int> inferenceBindingIndex = new(ReferenceEqualityComparer.Instance);
 
     private readonly List<InferenceEntry> inferenceBindings = new();
@@ -38,6 +33,11 @@ public sealed partial class Binding
     private readonly Dictionary<(AssociatedInference Batch, int Hold), AssociatedInference> inferenceRuns = new();
 
     private Dictionary<HoldKey, int>? inferenceHoldIds;
+
+    // The component whose request is open, or -1.
+    private int inferenceRequest = -1;
+
+    private int inferenceEmptyHold;
 
     private void PrepareAssociatedInference()
     {
