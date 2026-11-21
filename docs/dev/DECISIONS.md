@@ -27894,6 +27894,8 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     cancellation the outcome is the cancellation (130), never a copy's failure. Limit: a descendant that escaped the kill's walk (its
     parent exited first) and holds the program's output keeps a cancelled run waiting until it exits or a second Ctrl+C ends the
     process (PLAN G1188).
+  - Amended by T-M9 (unit B6b1, 2026-11-21): the carry list's "Tatara's loaded DLL per path" is Tatara's one instance per
+    process (`Tatara.Instance`).
 - **T-M6 The single-shot switch: the build calls Tatara** (Tatara, 2026-11-21; the plan's unit A4, Q-604, D-981; Major; design
   review C-427; implementation reviews C-428, C-429, C-430; the owner's O-460 (a), the plan's decision 17)
   - `NativeBuild` loads `Tatara` (`Tatara.Load`, the root's `tatara.dll`) after the pair's check and the record's first write,
@@ -27930,6 +27932,9 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     decision 1); `toolchain verify` reads its option. Removal is B6's, after its owner question (the plan's §11; PLAN G1173).
   - Rejected: `schemaVersion` 2; the hash before the load in verify (`Tatara.Load` owns the not-found text; C-428 n1); an
     `ArchitectureRulesTest` name rule for `ToolProcess` (the `file` scope enforces it).
+  - Amended by T-M9 (unit B6b1, 2026-11-21): `NativeBuild` and `toolchain verify` take the compiler's Tatara (`Tatara.Instance`),
+    not the root's `tatara.dll` (`Tatara.Load` is removed); `tools.tatara` has no `path`, and verify hashes the root's `tatara.dll`
+    as a file.
 - **T-M7 The record is the truth** (Tatara, 2026-11-21; the plan's unit B5; the owner's decisions 18 (O-467 (a)) and 19
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
@@ -27988,3 +27993,40 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
     two supplies); keeping the override (two forms for one supply that can carry only the same bytes); two validators; a schema or
     value change (schema 5, `resolution: "compiler"`); an MSBuild or initializer hash check; removing `windows_x64` in B6a (its readers
     include `toolchain verify`, B6b's).
+- **T-M9 Tatara in the process** (Tatara, 2026-11-21; the plan's unit B6b1, Q-620, D-1015; Major; design
+  `artifacts\handoff\tatara\units\B6\design-b6b.md` Revision 1 §2; design review C-437; implementation review C-438, ACCEPT; the
+  owner's decision 20 (O-469 (a), (a), (a))). Amends T-M5's carry list and T-M6's load.
+  - **One binding:** `Tatara`'s nine `LibraryImport("tatara")` declarations, each with
+    `DefaultDllImportSearchPaths(AssemblyDirectory | System32)`, so a `tatara.dll` on PATH is never loaded; under NativeAOT they bind
+    to what the link supplies (`tatara.dll` beside `kimi.exe` until B6b2, the linked objects after it).
+  - **One instance per process:** `Tatara.Instance`, created under the lock at its first use, its start check kept (ABI = SHA-256 of
+    the embedded `tatara.h`, LLVM = the catalog's); a failed load or check keeps no instance. A load failure is the toolchain's
+    InvalidDataException "Tatara cannot be loaded: tatara.dll beside the compiler (<base directory>): ... Run <setup> for a toolchain
+    directory of this checkout's own (not a junction to the shared root), or use a compiler of the toolchain's revision; then build
+    Kimi again."; the start check's remedy reads "build Kimi again with the toolchain of its revision (a toolchain directory of this
+    checkout's own, or a merge to the toolchain's revision)". Neither leads to setup into a shared or linked toolchain (C-437 C1).
+    The check calls two exports; the other seven bind at their first call, and a library that passes the ABI check but lacks one
+    broke the ABI contract (build.ps1's export-list check), so that EntryPointNotFoundException is a fault (C-437 N1-1).
+  - **A native build reads no toolchain root** (`NativeBuild.Run()`, `BuildManifest(path, report, token)`); the record's
+    `tools.tatara` is `{build, abi, llvmVersion}`, without `path` (R2: `kimi.exe` has no file, and the copy's path says nothing the
+    build identity does not).
+  - **The managed copy** comes from the checkout's development toolchain only (R1): `Kimi.csproj`'s `None` item
+    `$(KimiRepositoryRoot)toolchain\tatara.dll` (Directory.Build.props' repository root), `PreserveNewest` to the output and the
+    publish, conditioned on the file's existence; it reaches the xUnit output through the project reference. It costs about 69 MB
+    per output folder (Kimi, xUnit, Benchmark, Playground; each configuration and worktree), accepted (C-437 N1-6). Without a
+    development toolchain (CI's Ubuntu job, a fresh clone) Kimi builds with no copy and no warning, and its first native build
+    fails with the load text (C-437 N1-4; PLAN G1213 closed). The copy is checked where it is used (the start check, the record's
+    build identity, verify's report), not at Kimi's build.
+  - **Readings:** decision 20's "copied by the build from the development toolchain" is the checkout's `toolchain/`, with no
+    selection of another (R1); "Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere" is the compiler at run time; the scripts' default changes
+    in B6b4.
+  - **Interim states:** `--ToolchainRoot`, `KIMI_TOOLCHAIN_ROOT` and `--LlvmBin` are accepted and read by no build until B6b4
+    (PLAN G1224, G1173); `toolchain verify` resolves the root for its tools until B6b3 and reports `Tatara.Instance`, the root's
+    `tatara.dll` hashed as a file; the published folder is `kimi.exe` with `tatara.dll` beside it until B6b2 (PLAN G1225).
+  - **Removed:** `Tatara.Load`, the per-path table, `Path`, the seven function-pointer fields and the `GetExport` constructor; the
+    build's root parameter and resolution.
+  - Rejected: a `SetDllImportResolver` that knows a root (a second binding path, the root an input of the managed form); no search
+    attribute (PATH's `tatara.dll` is loaded when the copy is missing, probe `artifacts\tatara\b6b\probe-search`); an MSBuild
+    `KimiToolchain` property (a second way to name a root, R1); the copy checked at Kimi's build (a second copy of the installation
+    rule); the copy required (it fails CI's Ubuntu job and fresh clones) or warned about (it fails `-warnaserror`);
+    `CopyToOutputDirectory="Always"` (a 68.6 MB copy per build).
