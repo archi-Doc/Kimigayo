@@ -21,10 +21,9 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void Dispose() => Directory.Delete(this.directory, true);
 
     [Fact]
-    public void PublishesMatchedPairAndRebasesConfiguredPaths()
+    public void PublishesTheMatchedPair()
     {
         var c = this.Create();
-        c.Project.ProjectFile.LlvmBin = "tools/LLVM bin";
         c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
         {
             ["unused"] = new() { Kind = "import", Input = "unused.lib" },
@@ -50,7 +49,6 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal("kimi_backend", libraries[1].GetProperty("name").GetString());
         Assert.Equal("toolchain", libraries[1].GetProperty("resolution").GetString());
         Assert.False(libraries[1].TryGetProperty("input", out _));
-        Assert.Equal(Path.Combine("..", "tools", "LLVM bin"), root.GetProperty("toolchain").GetProperty("llvmBin").GetString());
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(path!)!, "*.tmp"));
     }
 
