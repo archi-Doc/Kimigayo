@@ -102,6 +102,9 @@ public sealed partial class Binding
             return true;
         }
 
+        // The check's site is its owner (a site frame, Binding.TypeHeight's inputs: an environment's owner), so a Type its requests form
+        // past the height limit is refused there; what it reads explains no outcome of the owner (DropConsultation).
+        var frame = this.BeginConsultation(scope.Owner);
         var classes = this.RequestClasses(scope); // before the query: a build of the view's classes may begin queries of its own
         var start = this.directionSeeds.Count;
         var query = this.visitedParts.Begin(this.storageVersion);
@@ -142,6 +145,7 @@ public sealed partial class Binding
         }
 
         this.directionSeeds.RemoveRange(start, this.directionSeeds.Count - start);
+        this.DropConsultation(frame);
         return valid;
     }
 
