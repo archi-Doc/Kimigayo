@@ -43,9 +43,10 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, byte> visitedParts = new();
 
     // The query number after a query's: the one step every query-stamped memo advances by (TypeMemo.Begin, StructuralCompletion.Clear;
-    // R7-N5 B6b, the Front's C6). It skips 0, the number an absent row or entry carries, restarting at FirstQuery after uint.MaxValue,
-    // so a fresh query never reads an absent row as its own. A number repeats only after 2^32 - 1 queries: TypeMemo empties its table
-    // there, and a working-state family's rows of an earlier pass read absent by its pass stamp (no pass asks that many queries).
+    // R7-N5 B6b, the Front's C6), and the HIR publisher's publication number (FormReads, DECISIONS D-986). It skips 0, the number an
+    // absent row or entry carries, restarting at FirstQuery after uint.MaxValue, so a fresh query never reads an absent row as its own. A
+    // number repeats only after 2^32 - 1 queries: TypeMemo empties its table there, and a working-state family's rows of an earlier pass
+    // read absent by its pass stamp (no pass asks that many queries).
     internal static uint NextQuery(uint query) => query == uint.MaxValue ? FirstQuery : query + 1;
 
     private sealed class TypeMemo<TKey, T>

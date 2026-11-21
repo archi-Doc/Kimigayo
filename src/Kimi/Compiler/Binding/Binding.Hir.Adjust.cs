@@ -418,11 +418,12 @@ public sealed partial class Binding
     // earlier claim (a kept operand's rows are this publish's, written after). A use in place is no read of the whole Place even where
     // the rule takes it as a Temporary (a value base) or Binding recorded a synthesized shared read of a selection's receiver (SPEC 3.4.3,
     // 15.1.4), so it is left out. It writes no plan row, so the Error's own rule (Keeps, R4-M109) stands, and the publisher marks only
-    // the kept ones (PlanRow.KeptRead). It is the `formReads` family's one accessor (DECISIONS BU-220): a working-state family, a read
-    // child's row in its module's NodeColumns at its SyntaxId, read at the child's visit in the same publication; a pass's first write
-    // empties it, and every publication of one pass reads the same Binding facts, so a row never needs a clear. The library's is
-    // released at its freeze (NodeColumns.Freeze); the library has no Error, so its publication writes none.
-    private readonly struct FormReads(Binding binding) : IHirUses
+    // the kept ones (PlanRow.KeptRead). It is the FormReads family's one accessor (DECISIONS BU-220 as R7-N5 B6b amends it): a
+    // working-state family whose row, a read child's in its module's NodeColumns at its SyntaxId, carries the publication that wrote it
+    // (the publisher's number), a row of another publication absent, since Check publishes again in its pass after H1's failures and
+    // CheckBound reruns it. The library's is released at its freeze (NodeColumns.Freeze); the library pass records no failure (one
+    // refuses it: FreezeLibrary), so it writes none.
+    private readonly struct FormReads(Binding binding, uint publication) : IHirUses
     {
         public void Call(int ordinal)
         {
@@ -436,14 +437,15 @@ public sealed partial class Binding
 
         public void FixAdjust(Koto? child, HirAdjust adjust, HirPlace place) => this.Add(child, adjust);
 
-        // Whether the form of the Error a node belongs to read its whole Place in this publication.
-        internal static bool Of(Binding binding, Koto node) => node.SyntaxOwner is { } table && table.Hir.Families.FormReads.Get(node.SyntaxId, binding);
+        // Whether the form of the Error a node belongs to read its whole Place in a publication.
+        internal static bool Of(Binding binding, Koto node, uint publication)
+            => node.SyntaxOwner is { } table && table.Hir.Families.FormReads.Get(node.SyntaxId, binding) == publication;
 
         private void Add(Koto? child, HirAdjust adjust)
         {
             if (child is not null && adjust.Reads)
             {
-                HirTables.Of(child).Families.FormReads.Ref(child.SyntaxId, binding) = true;
+                HirTables.Of(child).Families.FormReads.Ref(child.SyntaxId, binding) = publication;
             }
         }
     }

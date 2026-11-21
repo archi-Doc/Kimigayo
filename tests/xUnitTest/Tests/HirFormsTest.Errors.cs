@@ -461,6 +461,25 @@ public sealed partial class HirFormsTest
         Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
     }
 
+    // DECISIONS D-986 (G147 ruling 53): a kept operand's read is its publication's. Check publishes again in its pass (after H1's
+    // failures; CheckBound reruns it), so a read an earlier publication of the pass recorded is not a later one's: with the recorded read
+    // of `v[missing]`'s index placed at its kept base `v`, which the form uses in place, CheckBound's republication marks the index alone.
+    // Fail-before (a pass-lived row): `v` was marked read too.
+    [Fact]
+    public void AKeptOperandsReadIsItsPublications()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(v: [3 of i32]) -> i32\n    return v[missing]\n", output: OutputKind.Library);
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(static x => x.ToString() == "v[missing]" && HirTables.Op(x) == HirOp.Error);
+        var (unread, read) = (node.Children().First(static x => x.ToString() == "v"), node.Children().First(static x => x.ToString() == "missing"));
+        ref var rows = ref HirTables.Of(read).Families.FormReads;
+        var recorded = rows.Get(read.SyntaxId, c.Binding);
+        Assert.NotEqual(default, recorded);
+        rows.Ref(unread.SyntaxId, c.Binding) = recorded;
+        c.Binding.CheckBound();
+        Assert.Equal("missing", string.Join(" ", node.Children().Where(HirTables.KeptRead).Select(static x => x.ToString())));
+    }
+
     // DECISIONS Z16 (Z15 2g-D D2; B1, B4, B6): every failure fact the HIR publishes (Binding.FailureFact: an Error, a failed acquisition at
     // the acquired node, a stored Property's declaration not published Body: a static with no initializer, or one whose parts are
     // unverified or whose slots are unstated) rests on its causes (Binding.RestingCauses), so the publisher's one list of broken contracts
