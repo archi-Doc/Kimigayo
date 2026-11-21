@@ -111,7 +111,7 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 15.2.3, 23.1.2 (C-359 B4; G812 rulings 89-91, the owner's O-369 (a)): a reference at a common Function Type whose
-    // signature rests on an unformed split (DECISIONS D3) is still erased in its environment, whose Owned proof reads only the bound Type
+    // signature rests on an unformed split (DECISIONS BU-240) is still erased in its environment, whose Owned proof reads only the bound Type
     // arguments, never the unformed signature: a Language failure of its own, recorded at its own node, as on dev. A written Type argument
     // (the reference's own, or its container's for a member) not proven Owned is recorded there, and the reference, a verdict over that
     // failed child, adds no record; with none written, the one candidate's inferred arguments (its trial frame) make the reference's
@@ -167,7 +167,7 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 7.7.4, 15.2.3 (C-359 C2): the Owned part of an erasure whose signature part rests on an unformed split (DECISIONS D3), judged
+    // SPEC 7.7.4, 15.2.3 (C-359 C2): the Owned part of an erasure whose signature part rests on an unformed split (DECISIONS BU-240), judged
     // and recorded as the erasure's own is (ProveErasedOwned, FailOwnedConversion): whether the environment is not proven Owned.
     private bool FailErasedOwned(Koto node, BoundType actual, BoundType expected)
     {

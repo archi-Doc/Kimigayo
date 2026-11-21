@@ -361,7 +361,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open): the canonical case's Type `formed` marked open, with its outer Semantics and
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open): the canonical case's Type `formed` marked open, with its outer Semantics and
     // Origin (a raw layer's stays in the formed Type alone), so a Function Type whose input it is keeps its per-call binder.
     internal BoundType Open(BoundType formed) => this.Intern(BoundTypeKind.Open, null, formed.Semantics, [formed], origin: formed.Origin);
 

@@ -63,7 +63,7 @@ public sealed partial class Binding
 
     // SPEC 3.5.2, 8.7.2, 8.7.3: what a set of outer Semantics, other than owner alone, states of an intrinsic capability of a layer
     // whatever its target: a shared or raw layer Copies and an exclusive or object layer does not; a Sealed or ObjectPayload Type has
-    // an owner case. DECISIONS D3 (temporary, removed with (R)): read by the case set of a binding that forms no Type alone
+    // an owner case. DECISIONS BU-240 (temporary, removed with (R)): read by the case set of a binding that forms no Type alone
     // (SplitCases); a formed pair layer is judged over its admitted cases by the engine (the owner's O-417 (a)), which gives these
     // verdicts case by case.
     private static ConstraintProof LayerEvidence(IntrinsicKind intrinsic, SemanticsMask mask)

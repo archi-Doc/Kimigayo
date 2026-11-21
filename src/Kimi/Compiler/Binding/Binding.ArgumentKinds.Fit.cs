@@ -15,7 +15,7 @@ public sealed partial class Binding
     // The waiting parts a value call's split check is judging (WaitingPartFails), each judgment's from its own mark.
     private readonly List<WaitingPart> judgedParts = new();
 
-    // DECISIONS D3 (the owner's O-392 (c), G812 rulings 109, 111; temporary, removed with (R)): the components down to the part
+    // DECISIONS BU-240 (the owner's O-392 (c), G812 rulings 109, 111; temporary, removed with (R)): the components down to the part
     // where the last argument fit failed (FitArgument's Inapplicable): a Tuple or array literal's element (ProbeAggregateArgument)
     // or a join's child position (FitsPosition), below the layer it is borrowed at (FitComposite), then, below a typed part, the
     // components its structural fit names (FitTyped); none where the failure is the argument's own. A value call on the split

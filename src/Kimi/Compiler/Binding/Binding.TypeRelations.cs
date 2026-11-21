@@ -165,7 +165,7 @@ public sealed partial class Binding
 
     // SPEC 8.1.1: the direct target of a pair binder's binding: a family's case by case, a layer's target, a Type parameter's or pair
     // original's projection, and a value Type or an owner-proven abstract Type itself; a binding that forms no Type has none represented
-    // (Unformed, D3).
+    // (Unformed, BU-240).
     private BoundType? DirectTarget(BoundType whole)
     {
         if (whole.Kind == BoundTypeKind.SemanticsAdaptation)

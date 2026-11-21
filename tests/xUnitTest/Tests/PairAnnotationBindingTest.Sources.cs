@@ -193,7 +193,7 @@ public partial class PairAnnotationBindingTest
     // rejected all five.
     // Under a binding that forms no Type (a pair target alone or an unresolved projection no premise proves owner, PLAN G886), a Type
     // formed under it, its standalone target or its pair layer's outer-Origin slot is not represented, so the call is one located
-    // Unsupported_Kd (DECISIONS D3, temporary until G886's representation; F's ruling of 11-15): valid (f1n, f1ns, a Never argument)
+    // Unsupported_Kd (DECISIONS BU-240, temporary until G886's representation; F's ruling of 11-15): valid (f1n, f1ns, a Never argument)
     // and invalid alike (f1e; dt2, whose `W is Tag` needs the target; ow1p, ow1ps, whose premise is unproven). Box at the closed leaf
     // `s/Box` against U's undetermined evidence is IsSource's Language verdict first (C-359 B1, F's O1 (a)): f1, f1s, f1a. A plain
     // Type parameter has a selector of its own (f1x, f1xn, dt2x) and a premise proving owner forms (f1o). 9a0248f9f gave f1, f1s, f1e,
@@ -203,7 +203,7 @@ public partial class PairAnnotationBindingTest
     // B1, F's O1 (a)); `t is owner` alone forms (fr4cv, con1o). The invalid
     // rows' record is the owner's O-332 (a). A reference at a required Type whose closed leaf layer `s/Box` meets `Box` is not on the
     // split: the leaf is an exact source (the owner's O-338 (a)), and its owner evidence and U's undetermined outer Semantics do not
-    // agree (IsSource, D3 revision 2: p3's Language verdict, SPEC 10.8), so fr1w (which 2f4bec489 accepted) has p3's record at the
+    // agree (IsSource, BU-240 revision 2: p3's Language verdict, SPEC 10.8), so fr1w (which 2f4bec489 accepted) has p3's record at the
     // reference and rf1 (a reference in a candidate's argument, which 2f4bec489 accepted) at the call; rf1o is its `t is owner` twin.
     [Theory]
     [InlineData("func put<s/W>(m: s/W, y: s/(ref/i32 during b) during a) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    let a: i64 = 1\n    return put(a@move, r)\n", "clean")] // n1
@@ -386,7 +386,7 @@ public partial class PairAnnotationBindingTest
     public void AStructuredApplicationIsFormedAfterTheExactSources(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // SPEC 10.1 (Unknown applicability), 10.1.1, 10.2.1, 10.4 (C-359 B1; DECISIONS D3 with rule W, BU-79; F's ruling 81): an unformed
+    // SPEC 10.1 (Unknown applicability), 10.1.1, 10.2.1, 10.4 (C-359 B1; DECISIONS BU-240 with rule W, BU-79; F's ruling 81): an unformed
     // split is an Unknown in one candidate's fit, never a call's verdict by itself. A check that fails through it leaves its part
     // unknown and the trial goes on; the candidate rests on the split (one located Unsupported_Kd at the call) only where every other
     // check passes, and is judged without it otherwise. So SPEC's selection stands where the pair candidate fails a check that reads no
@@ -484,7 +484,7 @@ public partial class PairAnnotationBindingTest
     public void AnErasedReferenceOnTheSplitStillProvesItsEnvironmentOwned(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // SPEC 8.1.1, 8.15.2, 10.1.1, 10.2, 10.7, 23.1.2 (C-359 C1; DECISIONS D3 with rule W, Q13 rule 3): a check on the unformed split
+    // SPEC 8.1.1, 8.15.2, 10.1.1, 10.2, 10.7, 23.1.2 (C-359 C1; DECISIONS BU-240 with rule W, Q13 rule 3): a check on the unformed split
     // whose binder is fixed before any evidence (a Function Item's bound arguments, a reference's written ones) is judged in each case
     // of the split layer: one that fails in every case fails by itself and keeps its Language record, as on dev, and only one that some
     // case takes rests on the split (Unsupported_Kd, the owner's O-332 (a)). A value call through `put3<U>`: a Tag or `true` at `s/Box`
@@ -531,7 +531,7 @@ public partial class PairAnnotationBindingTest
     public void ACheckThatFailsInEveryCaseOfTheSplitKeepsItsLanguageRecord(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // SPEC 8.15.2, 3.5.2, 23.1.2 (C-359 E1, E2, E3; G812 rulings 102-104; DECISIONS D3): a check on the split is a list of parts, and a
+    // SPEC 8.15.2, 3.5.2, 23.1.2 (C-359 E1, E2, E3; G812 rulings 102-104; DECISIONS BU-240): a check on the split is a list of parts, and a
     // failure belongs to the part that fails. A member call's typed part at a layer of the receiver's container binder is judged in
     // each case as a frame slot's is (dM1: a Tag at `s/Box` over `S<U>`; dM2 the split only; dM5 no split). A part that forms no
     // Type in any case (a direct target, `n: W`) is unknown and the next part is judged, whatever the parameter order (dtA, dtA2;
@@ -751,7 +751,7 @@ public partial class PairAnnotationBindingTest
     public void ACheckOnTheSplitIsJudgedByItsParts(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
-    // DECISIONS D3 (G812 rulings 112, 114, N-d): a value call's argument that fails at a component of its parameter is judged in the
+    // DECISIONS BU-240 (G812 rulings 112, 114, N-d): a value call's argument that fails at a component of its parameter is judged in the
     // nine cases of the one binding that component reads, so a search that grows below the bound (65 runs) fails too: a Tag at the
     // third element of a Tuple literal (eT3c), at the nested second element of a join's Tuple result (jJg) and in the element
     // position of a join's array result at `n: [2 of (s0/Box during a, s1/Box during b)]` (jJa2). 529b15159 gave jJa2 a resting

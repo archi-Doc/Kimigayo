@@ -182,7 +182,7 @@ public sealed partial class Binding
         // (FittedPattern of the Literal part: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)). `met` is
         // that pattern, whose outer layer decides the operation the position is ranked by (SPEC 10.2.2's Literal row; PLAN G915).
         // Where the default has nothing to bind (DefaultBindsAt) its shape is not checked: the Literal fits the layer's target once
-        // the binder is fixed. Where the pattern forms no Type (Unformed, D3), `met` is null and the Literal meets what the one Literal
+        // the binder is fixed. Where the pattern forms no Type (Unformed, BU-240), `met` is null and the Literal meets what the one Literal
         // layer rule gives (LiteralInputType: a pair layer that formed nothing passes to its target, a ref layer to its referent, any
         // other layer as it is), a fit every case needs: a misfit fails the part, a fit leaves it unknown (PLAN G886).
         internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape, Koto literal, out BoundType? met)
@@ -320,7 +320,7 @@ public sealed partial class Binding
         // SPEC 10.2, 10.8, 6.5.2 step 2: the pattern a part adapts at: under the bindings fixed before any evidence (FixedPattern), with each
         // structured application of its outer layers formed under the binder its sources fixed (FittedPattern; the owner's O-283 (a)), and
         // every pair layer so for a Literal, which is no evidence (SPEC 10.5.1; the owner's O-294 (b)).
-        // Null where a binding forms no Type (Binding.Unformed, D3).
+        // Null where a binding forms no Type (Binding.Unformed, BU-240).
         private readonly FixedPattern? AdaptationPattern(BoundType pattern, Koto? source)
             => this.Binding.FittedPattern(pattern, this.SlotOwner, this.Frame, source) is { } fitted ? FixedPattern.Of(this.Binding, fitted, this.Fixed) : null;
 
@@ -363,7 +363,7 @@ public sealed partial class Binding
             var callee = actual;
             if (this.AdaptationPattern(pattern, part.Node) is not { } adaptation)
             {
-                return false; // Unformed (D3): the call is Unsupported.
+                return false; // Unformed (BU-240): the call is Unsupported.
             }
 
             actual = binding.SignatureAtFunction(adaptation.Type, actual);
@@ -372,7 +372,7 @@ public sealed partial class Binding
             var matched = this.OriginPattern(pattern);
             if ((matched ?? binding.FormedApplication(pattern, this.SlotOwner, this.Frame)) is not { } formed)
             {
-                return false; // Unformed (D3): the call is Unsupported.
+                return false; // Unformed (BU-240): the call is Unsupported.
             }
 
             var known = part.Node is { } node && formed.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
@@ -467,7 +467,7 @@ public sealed partial class Binding
                 // result; a late default fixes owner) supplies its Origin, at the complete Type or at the formed layer.
                 if ((fixedType ?? this.AdaptationPattern(pattern, literal)?.Type) is not { } at)
                 {
-                    return false; // Unformed (D3): the layer forms no Type, and the call is Unsupported.
+                    return false; // Unformed (BU-240): the layer forms no Type, and the call is Unsupported.
                 }
 
                 if (this.Binding.Materialization(literal, at, this.Scope) is not null)

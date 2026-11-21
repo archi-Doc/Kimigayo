@@ -225,7 +225,7 @@ public sealed partial class Binding
     // family; an owner binding gives the target) over the callee's target, which is formed first: a caller's pair is never formed again
     // under the callee's bindings (a recursive call), and Origin matching never meets an unformed application (MatchInputOrigins). An
     // application whose s is still unknown is kept as it is.
-    // Null where a binding forms no Type (Unformed, D3): the part fails and the call is Unsupported.
+    // Null where a binding forms no Type (Unformed, BU-240): the part fails and the call is Unsupported.
     private BoundType? FormedApplication(BoundType pattern, Koto function, SlotFrame frame)
     {
         var count = pattern.Components.Count;
@@ -274,7 +274,7 @@ public sealed partial class Binding
     // evidence (SPEC 10.5.1, 10.2.1; the owner's O-294 (b)): its default fits every pair layer whose binder evidence fixed, an exact
     // source and an occurrence of the original whose Type is still open alike (a borrowed temporary under ref), and binds only what no
     // evidence binds.
-    // Null where a binding forms no Type (Unformed, D3).
+    // Null where a binding forms no Type (Unformed, BU-240).
     private BoundType? FittedPattern(BoundType pattern, Koto function, SlotFrame frame, Koto? part)
     {
         var literal = part is not null && this.KindOf(part) == PartKind.Literal;
@@ -377,7 +377,7 @@ public sealed partial class Binding
     // SPEC 8.1.2, 10.8, 8.3.4: `s/target` formed under pair slot `slot`'s binder (ApplySemantics); false while no source has fixed it. One
     // meaning each (PremiseScope): the slot's stored binding is the Type every phase substitutes, so it forms as that Type is; while the
     // slot is unbound, its selector evidence is a source's outer Semantics at this call, so it forms under the premises at the solve's
-    // node (EnterEvidence), as IsSource compares it. `formed` is null where the binder forms no Type (Unformed, D3).
+    // node (EnterEvidence), as IsSource compares it. `formed` is null where the binder forms no Type (Unformed, BU-240).
     private bool FormedUnder(SlotFrame frame, int slot, BoundType target, BoundOrigin? origin, out BoundType? formed)
     {
         formed = null;
@@ -424,7 +424,7 @@ public sealed partial class Binding
             return false;
         }
 
-        return !this.FormedUnder(frame, slot, target, pattern.Origin, out formed) || formed is not null; // Unformed (D3): the part fails and the call is Unsupported.
+        return !this.FormedUnder(frame, slot, target, pattern.Origin, out formed) || formed is not null; // Unformed (BU-240): the part fails and the call is Unsupported.
     }
 
     // SPEC 10.8, 8.1.2: the actual an occurrence of a pair's original binds its slot with: null when it disagrees with the binder's
@@ -484,7 +484,7 @@ public sealed partial class Binding
         {
             // SPEC 8.1.2: matched as the Type it forms (SourcedLayer): a layer, in the caller's terms, by its target against the actual's
             // part below the same layer; an owner binding's target, in the callee's terms, or a family as the Type it is.
-            // DECISIONS D3 (G812 rulings 104 C-E5, 106 C-I1): in a structural walk each compared split layer is its own part of a split
+            // DECISIONS BU-240 (G812 rulings 104 C-E5, 106 C-I1): in a structural walk each compared split layer is its own part of a split
             // search. What lies below it is compared with the part its case formed, so the layers below are handed its reads
             // (CarrySplitPart) until they fit; a sibling layer is handed nothing.
             var target = pattern.Components[0];

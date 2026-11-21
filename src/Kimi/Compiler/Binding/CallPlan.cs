@@ -125,7 +125,7 @@ public sealed class CallPlan
 
     internal ConversionKoto? AdaptationSource { get; set; }
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 159): the selected candidate's premise was Unknown at a split's mark
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; G812 ruling 159): the selected candidate's premise was Unknown at a split's mark
     // (its trial's Unknown proof read the split, premiseReadsSplit, at a Type argument holding a mark, Binding.HoldsMark: the call is
     // below a split call's open position), written with the
     // selection (Binding.Calls): the call's obligation rests at its verdict (Binding.Check), whose record is the split call's located

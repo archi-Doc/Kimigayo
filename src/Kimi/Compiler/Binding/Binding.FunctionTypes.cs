@@ -169,7 +169,7 @@ public sealed partial class Binding
         return failure.Depth == 0 ? null : member;
     }
 
-    // DECISIONS D3 (temporary, PLAN G886): whether a Closure or Function Item value at a common Function Type carries the located limit
+    // DECISIONS BU-240 (temporary, PLAN G886): whether a Closure or Function Item value at a common Function Type carries the located limit
     // its erasure reported for an unformed split (ErasesToFunction).
     private static bool RestsOnErasure(Koto node, BoundType actual, BoundType expected)
         => node.BindingFailure == BindingFailure.Unsupported && actual.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem &&
@@ -200,7 +200,7 @@ public sealed partial class Binding
         var fits = this.ErasureFits(actual, expected, node, this.comparisonRows, out var failure);
         if (this.UnformedSince(unformedMark))
         {
-            // DECISIONS D3 (temporary, PLAN G886): the Item's signature rests on a Type no binding represents (ItemSignatureFits), so the
+            // DECISIONS BU-240 (temporary, PLAN G886): the Item's signature rests on a Type no binding represents (ItemSignatureFits), so the
             // conversion is one located Unsupported_Kd, which forms no comparison row; its environment is still judged
             // (FailErasedOwned), that record the node's one.
             this.DropComparisonRows(rows);
@@ -227,7 +227,7 @@ public sealed partial class Binding
     // SPEC 7.7.4: an erasure's decision from the verdict of its receiver and signature part (`fits`, with the `failure` of a
     // signature that does not fit), and its published outcome. The verdict is ErasesToFunction's own (ErasureFits), or a Function
     // reference's, whose candidate search decided that its bound Item's signature meets the required Type in no case of its split
-    // (BindFunctionReference; DECISIONS D3, temporary, PLAN G886), so that decision is not searched a second time.
+    // (BindFunctionReference; DECISIONS BU-240, temporary, PLAN G886), so that decision is not searched a second time.
     private bool DecideErasure(Koto node, BoundType actual, BoundType expected, bool fits, in ComparisonFailure failure)
     {
         var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
@@ -299,7 +299,7 @@ public sealed partial class Binding
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
     // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
     // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part, or the located limit of an
-    // unformed split (ErasesToFunction; DECISIONS D3), is the value's failure. The value's Type at the position: null when it failed;
+    // unformed split (ErasesToFunction; DECISIONS BU-240), is the value's failure. The value's Type at the position: null when it failed;
     // the expected Type when it converted, written to the node's own Type (unlike an erasure, which keeps the node's Type and publishes
     // ErasedFunctionType for HIR's Erasure; subtyping inserts no operation, SPEC 3.8, so no adaptation records it), so every consumer's
     // fit (a declaration, a join, a store, a return) is identity and the conversion's comparison has one judge; otherwise its own.
@@ -346,7 +346,7 @@ public sealed partial class Binding
             this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
     }
 
-    // SPEC 7.7.4, 10.7: whether a Function Item's signature fits the required contract. DECISIONS D3 with rule W (BU-79; C-359 C1, C2;
+    // SPEC 7.7.4, 10.7: whether a Function Item's signature fits the required contract. DECISIONS BU-240 with rule W (BU-79; C-359 C1, C2;
     // temporary, PLAN G886): an Item whose signature formed a Type no binding represents has its binder fixed before any evidence, so
     // the same check is judged in each combination of split cases (RestsOnSplitCases). One that no combination fits fails by itself;
     // one that some combination fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (a
@@ -390,7 +390,7 @@ public sealed partial class Binding
         var inputCount = InputOriginCount(function);
         var closure = item is { Kind: BoundTypeKind.Closure } ? this.ClosureSignature(item) : null;
 
-        // DECISIONS D3 (G812 ruling 103 D1): in a split search each input and the result is a part of the check; a part's structural
+        // DECISIONS BU-240 (G812 ruling 103 D1): in a split search each input and the result is a part of the check; a part's structural
         // misfit is blamed on the bindings its own Type reads, with those the required signature read before (CarrySplitPart), and
         // any other failure (an Origin, a premise, a clause) on the whole run: the solve joins every part.
         this.CarrySplitPart(this.splitPartStamp);
@@ -498,7 +498,7 @@ public sealed partial class Binding
 
         return true;
 
-        // DECISIONS D3 (G812 rulings 103 D1, 105; temporary, removed with (R)): in a split search, what a failed part of the contract is
+        // DECISIONS BU-240 (G812 rulings 103 D1, 105; temporary, removed with (R)): in a split search, what a failed part of the contract is
         // blamed on. Any failure but a structural one joins every part (an Origin, a premise, a clause: the solve). A structural
         // misfit belongs to the layer that misfits: where the walk's failure names a member inside the part's nested Callable
         // signatures (FailedMember), that member is the failing part, formed again on its own (Read), so the run blames the bindings

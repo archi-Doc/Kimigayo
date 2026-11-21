@@ -157,7 +157,7 @@ public sealed partial class Binding
             var callable = callableType is not null && this.TryCallable(callableType, scope, out signature, out receiverKind, out several);
             if (this.UnformedSince(unformedMark))
             {
-                // DECISIONS D3 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents:
+                // DECISIONS BU-240 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents:
                 // the call is judged in the cases of the split layer, each part as the unsplit path judges it (BindValueCallOnSplit).
                 return this.BindValueCallOnSplit(call, scope, callableType!, expected, unformedMark);
             }
@@ -271,7 +271,7 @@ public sealed partial class Binding
 
             if (selection == CallSelection.UnformedSplit)
             {
-                // DECISIONS D3 (temporary, PLAN G886; ClassifySelection; G812 rulings 139, 141): judged case by case; a candidate every
+                // DECISIONS BU-240 (temporary, PLAN G886; ClassifySelection; G812 rulings 139, 141): judged case by case; a candidate every
                 // case selects, whose own trial reads no split, is the selection (SelectionOnSplit), else the call rests or fails there.
                 var split = this.SelectionOnSplit(in evaluation);
                 if (split.Selected < 0)
@@ -551,7 +551,7 @@ public sealed partial class Binding
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             RequireOriginWidths(selected, originSlots, inputSlots);
             (call.CallStorage ??= new()).Set(this, executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
-            call.CallStorage.PremiseReadsMark = evaluated[winnerIndex].PremiseReadsMark; // DECISIONS D3 (G812 ruling 159).
+            call.CallStorage.PremiseReadsMark = evaluated[winnerIndex].PremiseReadsMark; // DECISIONS BU-240 (G812 ruling 159).
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.

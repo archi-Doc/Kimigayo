@@ -63,7 +63,7 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
     }
 
     // Without owner evidence `U.(C).Item` binds keep's pair alone, which forms no Type (PLAN G886): the call's verdict rests on that
-    // unformed split, so its one record is the located Unsupported_Kd at the call (DECISIONS D3, the owner's O-332 (a)) until the
+    // unformed split, so its one record is the located Unsupported_Kd at the call (DECISIONS BU-240, the owner's O-332 (a)) until the
     // representation lands; 2f4bec489 gave the unproven `s is owner` for U.Item (UnprovenConstraint_Kd).
     [Theory]
     [InlineData("", false)]

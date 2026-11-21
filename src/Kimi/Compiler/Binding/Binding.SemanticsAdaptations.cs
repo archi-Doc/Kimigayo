@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // DECISIONS D3 (temporary; removed with (R), the split layer as a published case family, PLAN G886): the combination of split cases a
+    // DECISIONS BU-240 (temporary; removed with (R), the split layer as a published case family, PLAN G886): the combination of split cases a
     // check is being judged in (RestsOnSplitCases): each binding that forms no Type the check has met, with the cases its premises
     // admit (SplitCases), its case (an index of SemanticsOrder), the bindings blamed while it cycled, and the stamp of its last read.
     private readonly List<(BoundType Whole, SemanticsMask Admitted, int Case, ulong Blame, int Stamp)> splitCases = [];
@@ -16,18 +16,18 @@ public sealed partial class Binding
     // evidence Type (PremiseScope); null otherwise.
     private BindingScope? premiseUse;
 
-    // DECISIONS D3 (G812 ruling 141, L2): whether the current candidate trial's Unknown proof read a pair slot that a binding forming no
+    // DECISIONS BU-240 (G812 ruling 141, L2): whether the current candidate trial's Unknown proof read a pair slot that a binding forming no
     // Type sources (SelectsUnformed): its premise reads the split, which no premise of the split's case names.
     private bool premiseReadsSplit;
 
-    // DECISIONS D3 (G812 ruling 141, L1): whether the current candidate trial's source comparison refused a binding that forms no Type
+    // DECISIONS BU-240 (G812 ruling 141, L1): whether the current candidate trial's source comparison refused a binding that forms no Type
     // outside a split's run (IsSource): the candidate is refused only through the split.
     private bool refusedOnSplit;
 
-    // DECISIONS D3: the formations so far that formed no Type (Unformed); a check compares it with its mark (UnformedSince).
+    // DECISIONS BU-240: the formations so far that formed no Type (Unformed); a check compares it with its mark (UnformedSince).
     private int unformedWrites;
 
-    // DECISIONS D3: whether a check is being judged in a combination of split cases (RestsOnSplitCases); the runs so far, and those of
+    // DECISIONS BU-240: whether a check is being judged in a combination of split cases (RestsOnSplitCases); the runs so far, and those of
     // the outermost search with every search inside its runs (the bound is per check); the read stamps: the last, the run's and the
     // current part's start; the write marks of the run's and the part's start; the bindings earlier parts hand the current one.
     private bool splitOpen;
@@ -48,10 +48,10 @@ public sealed partial class Binding
 
     private ulong splitCarried;
 
-    // DECISIONS D3 (G812 rulings 134, 143): what OpenForm's run formed.
+    // DECISIONS BU-240 (G812 rulings 134, 143): what OpenForm's run formed.
     private BoundType? openForm;
 
-    // DECISIONS D3 (G812 ruling 156, SN2): the formations OpenMarked made so far, which a scaling check reads (OpenMarkedWork).
+    // DECISIONS BU-240 (G812 ruling 156, SN2): the formations OpenMarked made so far, which a scaling check reads (OpenMarkedWork).
     private long openMarkedFormations;
 
     // A finite Type family stores complete case Types in SemanticsOrder, packed by its Length mask.
@@ -196,7 +196,7 @@ public sealed partial class Binding
     // no Type over another target is formed under it (ApplySemantics, SubstituteFamily; PLAN G886: its representation is the remainder).
     private static bool HasOwnSelector(BoundType binding) => binding.Kind == BoundTypeKind.Parameter || binding.Semantics == SemanticsKind.Parameter;
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 ruling 159): whether one of the Types holds the open formed Type's mark,
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; G812 ruling 159): whether one of the Types holds the open formed Type's mark,
     // which an inference slot takes from its marked position below a split call's completion (OpenForm), the one former of marks.
     private static bool HoldsMark(ReadOnlySpan<BoundType?> types)
     {
@@ -268,7 +268,7 @@ public sealed partial class Binding
     // projection no premise proves owner) forms none (Unformed; PLAN G886).
     private bool FormsUnder(BoundType binding) => !this.IsAbstractBinding(binding) || HasOwnSelector(binding);
 
-    // DECISIONS D3: whether a call's pair slots take a source that forms no Type (FormsUnder): a binding the split decides.
+    // DECISIONS BU-240: whether a call's pair slots take a source that forms no Type (FormsUnder): a binding the split decides.
     private bool SelectsUnformed(ReadOnlySpan<BoundType?> selectors)
     {
         foreach (var selector in selectors)
@@ -282,7 +282,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // DECISIONS D3 (temporary; removed with the representation of a selector-less binding's split, PLAN G886): a formation under a binding
+    // DECISIONS BU-240 (temporary; removed with the representation of a selector-less binding's split, PLAN G886): a formation under a binding
     // that forms none (FormsUnder) forms nothing (null) and counts one write (unformedWrites), the one record of it; its readers compare
     // the count with a mark (UnformedSince). The split is an Unknown in one candidate's fit (rule W, BU-79): a part whose own pattern
     // forms no Type is unknown (UnformedPart), and a candidate trial rests on it only where every other check passed, which its verdict
@@ -298,7 +298,7 @@ public sealed partial class Binding
         return null;
     }
 
-    // DECISIONS D3 with rule W (BU-79; SPEC 8.1.1's table, 8.15.2: a split layer is judged case by case; C-359 C1, E2, E3; temporary,
+    // DECISIONS BU-240 with rule W (BU-79; SPEC 8.1.1's table, 8.15.2: a split layer is judged case by case; C-359 C1, E2, E3; temporary,
     // removed with (R)): whether a check that formed a Type no binding represents (a write since `mark`) rests on that split, for a
     // check whose binders are fixed before any evidence. `fails` runs the same check once per combination of cases: in a run, each
     // binding that forms no Type forms `s/target` as its case's layer (ApplySemantics) and keeps an outer slot as that layer does
@@ -352,7 +352,7 @@ public sealed partial class Binding
         return rests;
     }
 
-    // DECISIONS D3 (temporary with it; G812 rulings 134, 143; the owner's O-428 (a)): the Type `form` gives a declared Type in the
+    // DECISIONS BU-240 (temporary with it; G812 rulings 134, 143; the owner's O-428 (a)): the Type `form` gives a declared Type in the
     // canonical case, each binding at its first admitted Semantics (a search's first run, RestsOnSplitCases), marked open
     // (BoundTypeKind.Open) at each position whose formation read a split binding (OpenMarked); null where it formed none. The split
     // call's completion is its one maker.
@@ -376,7 +376,7 @@ public sealed partial class Binding
         return this.openForm;
     }
 
-    // DECISIONS D3: in a run, `form` of `declared`, marked open where its formation read a split binding: at the innermost declared
+    // DECISIONS BU-240: in a run, `form` of `declared`, marked open where its formation read a split binding: at the innermost declared
     // component whose own formation read one; a part no component accounts for (a pair layer, an Origin, a formation that changed the
     // Type's shape) is marked whole.
     private BoundType? OpenMarked<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form)
@@ -413,7 +413,7 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS D3: `type` with its open marks removed, the canonical case's Type.
+    // DECISIONS BU-240: `type` with its open marks removed, the canonical case's Type.
     private BoundType Unmarked(BoundType type)
     {
         if (!type.ContainsOpen)
@@ -442,7 +442,7 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS D3: `form` of a declared Type in a run, with whether it read a split binding or formed none.
+    // DECISIONS BU-240: `form` of a declared Type in a run, with whether it read a split binding or formed none.
     private BoundType? FormReadsSplit<TState>(BoundType declared, TState state, Func<Binding, TState, BoundType, BoundType?> form, out bool split)
     {
         var (stamp, mark) = (this.splitReads, this.unformedWrites);
@@ -451,18 +451,18 @@ public sealed partial class Binding
         return type;
     }
 
-    // DECISIONS D3: whether what was formed since `stamp` and `mark` read a split layer: a binding of the open combination, or a
+    // DECISIONS BU-240: whether what was formed since `stamp` and `mark` read a split layer: a binding of the open combination, or a
     // formation that formed none (the one predicate of a part's split read: FormReadsSplit, ItemPartFails).
     private bool ReadSplitSince(int stamp, int mark) => this.splitReads != stamp || this.UnformedSince(mark);
 
-    // DECISIONS D3: a part of a check judged in split cases starts (RestsOnSplitCases): its writes and reads count from here.
+    // DECISIONS BU-240: a part of a check judged in split cases starts (RestsOnSplitCases): its writes and reads count from here.
     private void EnterSplitPart()
     {
         this.splitPartMark = this.unformedWrites;
         this.splitPartStamp = this.splitReads;
     }
 
-    // DECISIONS D3: a joint part starts, one that reads what every earlier part of the run gave (a solve over all the parts, a proof
+    // DECISIONS BU-240: a joint part starts, one that reads what every earlier part of the run gave (a solve over all the parts, a proof
     // of the whole): it is unknown where any part of the run formed none, and it is blamed on every binding the run read.
     private void EnterJointSplitPart()
     {
@@ -470,14 +470,14 @@ public sealed partial class Binding
         this.splitPartStamp = this.splitRunStamp;
     }
 
-    // DECISIONS D3: the bindings read since `stamp` are handed to every later part of the run, which reads their result (a slot or
+    // DECISIONS BU-240: the bindings read since `stamp` are handed to every later part of the run, which reads their result (a slot or
     // an Origin an earlier part bound in its case; the Type the enclosing part formed for a comparison's parts).
     private void CarrySplitPart(int stamp) => this.splitCarried |= this.SplitReadsSince(stamp);
 
-    // DECISIONS D3: whether the current part's check formed none: the part is unknown in this run (RestsOnSplitCases).
+    // DECISIONS BU-240: whether the current part's check formed none: the part is unknown in this run (RestsOnSplitCases).
     private bool SplitPartUnknown() => this.UnformedSince(this.splitPartMark);
 
-    // DECISIONS D3: the bindings of the open combination read since `stamp`, as bits of their positions.
+    // DECISIONS BU-240: the bindings of the open combination read since `stamp`, as bits of their positions.
     private ulong SplitReadsSince(int stamp)
     {
         var read = 0UL;
@@ -489,7 +489,7 @@ public sealed partial class Binding
         return read;
     }
 
-    // DECISIONS D3: the next combination after a run that failed by itself, for a search opened from `first` (RestsOnSplitCases):
+    // DECISIONS BU-240: the next combination after a run that failed by itself, for a search opened from `first` (RestsOnSplitCases):
     // the most recent binding of the search in `blame` takes its next admitted case, the bindings met after it are dropped (met
     // again under their first case), and the rest of the blame is kept with it; when its cases are exhausted it is dropped and
     // the blame kept with it goes on to the most recent binding in that. False when no binding of the search is blamed.
@@ -516,7 +516,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // DECISIONS D3 (SPEC 8.1.1, 3.5.2; E3 (a), G812 ruling 103 D2 (ii)): the cases of a binding that forms no Type: the outer
+    // DECISIONS BU-240 (SPEC 8.1.1, 3.5.2; E3 (a), G812 ruling 103 D2 (ii)): the cases of a binding that forms no Type: the outer
     // Semantics its premises admit (ResultSemantics, as IsAbstractBinding reads it), less those a capability proven of it refutes
     // (LayerEvidence, the solver's rule: a Copy Type has no exclusive or object outer layer). Read here only: the proofs that
     // read ResultSemantics do not move (PLAN G886).
@@ -540,7 +540,7 @@ public sealed partial class Binding
         return cases;
     }
 
-    // DECISIONS D3: the case of the binding `whole`, which forms no Type, in the combination a check is being judged in
+    // DECISIONS BU-240: the case of the binding `whole`, which forms no Type, in the combination a check is being judged in
     // (RestsOnSplitCases), stamped as read; a binding the run meets first takes its first admitted case (SplitCases). False while
     // no check is judged, and for a binding that admits no case or is met beyond the 64 a blame holds (it stays Unformed).
     private bool InSplitCase(BoundType whole, out SemanticsKind mode)
@@ -587,18 +587,18 @@ public sealed partial class Binding
         return -1;
     }
 
-    // DECISIONS D3 with rule W (BU-79): whether a formation since `mark` (an earlier unformedWrites) formed no Type, so that a check that
+    // DECISIONS BU-240 with rule W (BU-79): whether a formation since `mark` (an earlier unformedWrites) formed no Type, so that a check that
     // failed since then failed through the split: an Unknown, not a failure of its own.
     private bool UnformedSince(int mark) => this.unformedWrites != mark;
 
-    // DECISIONS D3 with rule W (G812 rulings 141, 156): whether a check over `types` read a position a split binding decides: a formation
+    // DECISIONS BU-240 with rule W (G812 rulings 141, 156): whether a check over `types` read a position a split binding decides: a formation
     // since `mark` that formed none (UnformedSince), or one of the Types holding the open formed Type's mark (HoldsMark), so that a check
     // that failed there failed through the split: an Unknown.
     private bool ReadsSplitDecided(int mark, ReadOnlySpan<BoundType?> types) => HoldsMark(types) || this.UnformedSince(mark);
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none. For a
-    // binding that forms no Type it is unrepresented (Unformed, D3): the slot is kept and the candidate rests on the split.
+    // binding that forms no Type it is unrepresented (Unformed, BU-240): the slot is kept and the candidate rests on the split.
     private bool HasOuterSlot(BoundType binding)
     {
         var isAbstract = this.IsAbstractBinding(binding);

@@ -101,7 +101,7 @@ public sealed partial class Binding
         // literals whole there; a slot those steps bound gives the parts at its positions their expected Type (10.8).
         internal SlotSet Left;
 
-        // DECISIONS D3 (temporary, removed with (R)): the trial's arguments whose own pattern forms no Type, each unknown in the trial, a
+        // DECISIONS BU-240 (temporary, removed with (R)): the trial's arguments whose own pattern forms no Type, each unknown in the trial, a
         // wildcard in every later check (UnformedPart adds them; SolveLate and the pass loop skip them). The trial's scratch, rented and
         // returned by TryCandidateCore.
         internal SlotSet Unknown;

@@ -17,7 +17,7 @@ public sealed partial class Binding
     // reads, and at which waiting part, with the canonical case's Type (none: a misfit, the call's own record).
     private readonly List<SplitPart> splitParts = [];
 
-    // DECISIONS D3 with rule W (G812 rulings 123-132; temporary with the search): of a value call's split check, the part awaiting
+    // DECISIONS BU-240 with rule W (G812 rulings 123-132; temporary with the search): of a value call's split check, the part awaiting
     // its call (a named Call or a contextual Case) that failed the current part of a run, with the Type the run formed for its
     // position (runWaiting, WaitingFails); the current run's failure, the part (an argument's index, the result's after them, -1 the
     // call's argument count) with that waiting part, none for a misfit (runFailure, ItemPartFails); and the failure of the search's
@@ -28,10 +28,10 @@ public sealed partial class Binding
     private (int Part, Koto? Waiting, BoundType? Type) runFailure;
     private (int Part, Koto? Waiting, BoundType? Type, bool Same)? splitFailure;
 
-    // DECISIONS D3 (G812 ruling 139): the first run's selection of a named call's split check (SelectionOnSplit; null before it).
+    // DECISIONS BU-240 (G812 ruling 139): the first run's selection of a named call's split check (SelectionOnSplit; null before it).
     private ProbedSelection? canonicalSelection;
 
-    // DECISIONS D3 (G812 ruling 158): the one walk that unmarks a completed split part's published Types (CompleteOnSplit), kept.
+    // DECISIONS BU-240 (G812 ruling 158): the one walk that unmarks a completed split part's published Types (CompleteOnSplit), kept.
     private OpenMarkRemover? openMarkRemover;
 
     // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and in its identity class's form (ClassForm).
@@ -188,7 +188,7 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS D3 with rule W (BU-79; C-359 C1; G812 rulings 123-132; temporary, PLAN G886): a value call whose callee signature (a
+    // DECISIONS BU-240 with rule W (BU-79; C-359 C1; G812 rulings 123-132; temporary, PLAN G886): a value call whose callee signature (a
     // Function Item's) formed a Type no binding represents. Its binder is fixed before any evidence, so the call is probed in each
     // combination of split cases (RestsOnSplitCases, ItemCallFails), an argument that failed its preparation being rule W's
     // wildcard, and each part is then judged as the unsplit path (BindValueCall) judges it, every failing part keeping its record
@@ -282,7 +282,7 @@ public sealed partial class Binding
                 ? this.OpenForm(declared, (item, scope), static (binding, state, type) => binding.ItemPart(type, state.item, (FunctionKoto)state.item.Symbol!.Declaration, state.scope))
                 : null) is { } parameter && this.CompleteOnSplit(call.ArgumentNodes[i], parameter, scope, call) ? call.ArgumentNodes[i] : null;
 
-    // DECISIONS D3 (rule W): a resting part of a split call completed at `parameter` by the unsplit completion (CompleteValueCallPart),
+    // DECISIONS BU-240 (rule W): a resting part of a split call completed at `parameter` by the unsplit completion (CompleteValueCallPart),
     // read by no check of that call but its failure (SPEC 23.1.2: the call rests on a failed part, CompleteDependent; as
     // CompleteUnselected, no frame is open): whether it failed, by its own verdict (G812 ruling 151): its own record, or the record it
     // rests on, is reported (FailureReported, the one dependence test; G812 ruling 164). An input pending with no record (a join's arm
@@ -305,7 +305,7 @@ public sealed partial class Binding
         }
     }
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; G812 rulings 158, 165, 172): the walk over a split call's completed part, the one
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; G812 rulings 158, 165, 172): the walk over a split call's completed part, the one
     // place the split completes. The completion is the one former of marks (OpenForm), and a mark is never a node's published Type, so
     // it gives each node of the part whose Type holds one the canonical case's Type (Unmarked), its state unchanged: a node that took its
     // Type from its marked position (a waiting call's inferred slot, a join, a Never Tuple element, a construction target). The binder
@@ -433,7 +433,7 @@ public sealed partial class Binding
         return this.EndRunPart(i, fails);
     }
 
-    // DECISIONS D3 (G812 rulings 132, 156): a run's judgment of one part of a split call's check starts (a part of its own,
+    // DECISIONS BU-240 (G812 rulings 132, 156): a run's judgment of one part of a split call's check starts (a part of its own,
     // EnterSplitPart, with no waiting part failed yet) and ends: a failure is the run's, with the waiting part it failed at (runFailure).
     private void EnterRunPart()
     {

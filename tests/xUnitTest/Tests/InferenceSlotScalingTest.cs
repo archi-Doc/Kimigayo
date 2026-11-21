@@ -65,7 +65,7 @@ public class InferenceSlotScalingTest
         }
     }
 
-    // DECISIONS D3 (C-359 C1, E2, E3; G812 rulings 97, 99, 104; SPEC 8.15.2): a check over n bindings that form no Type, its misfit (a
+    // DECISIONS BU-240 (C-359 C1, E2, E3; G812 rulings 97, 99, 104; SPEC 8.15.2): a check over n bindings that form no Type, its misfit (a
     // Tag at the last `s/Box`) failing in every combination of their cases, is judged in the 9 cases of the one binding its failing
     // part reads, at every n: a failing run blames only that part's bindings, and the bindings earlier, passing parts read keep
     // their case. So for a reference `put<U0, ...>` at S and for the value call of the same Item (32f0cde25: 8n + 1 and
@@ -99,7 +99,7 @@ public class InferenceSlotScalingTest
         string List(Func<int, string> item) => string.Join(", ", all.Select(item));
     }
 
-    // DECISIONS D3 (G812 rulings 136, 143, 156): a resting part is completed at its open formed parameter (OpenForm, one one-run search
+    // DECISIONS BU-240 (G812 rulings 136, 143, 156): a resting part is completed at its open formed parameter (OpenForm, one one-run search
     // per part), so a tree chain of n Tuple elements each holding a contextual Case whose payload is an anonymous function
     // (`(.Some(func (x) => true), (...))` at `(Option<(s0/Box) -> i32>, (...))`) takes split runs and formations of the open formed Type
     // (OpenMarkedWork: each declared component formed again below its mark; SN2) at most linear in n, and each body keeps its record
@@ -132,7 +132,7 @@ public class InferenceSlotScalingTest
         }
     }
 
-    // DECISIONS D3 (G812 ruling 139): a named call's selection on the split is judged in each combination of split cases, each run one
+    // DECISIONS BU-240 (G812 ruling 139): a named call's selection on the split is judged in each combination of split cases, each run one
     // query over the group (SelectionOnSplit): with n split parameters (`b: s0/Box during c`) and a candidate `k: Tag` beside one at
     // `k: s0/Box during c`, the canonical run selects and the search ends there, so the split runs grow linearly in n (n = 10, 20, 40),
     // and the Closure is completed at the selected candidate's `(s0/Box) -> i32` with its body's record; with the second candidate at
@@ -163,7 +163,7 @@ public class InferenceSlotScalingTest
         }
     }
 
-    // DECISIONS D3 (G812 rulings 141, 142; the Middle's C-359 re-check of 8b5807535): SelectionOnSplit's second search (every combination
+    // DECISIONS BU-240 (G812 rulings 141, 142; the Middle's C-359 re-check of 8b5807535): SelectionOnSplit's second search (every combination
     // asked whether it selects the canonical run's candidate, which reads no split) over a tree chain of n rL4-shaped named calls
     // (`h(w_i@move, 6, <level i + 1>)`: `h<s/W>`, refused only through the split, beside the applicable `h<X>`): every level accepted, as
     // h<X> is selected in every case, in split runs linear in n (n = 30, 60, 120; the Middle's rq30 and rq60).

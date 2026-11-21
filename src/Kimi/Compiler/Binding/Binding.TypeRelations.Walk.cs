@@ -335,7 +335,7 @@ public sealed partial class Binding
         {
             if (this.Discharged(actual, expected) || actual.Kind == BoundTypeKind.Open || expected.Kind == BoundTypeKind.Open)
             {
-                return true; // DECISIONS D3 (rule W): a position a split binding decides holds without a record, judged case by case.
+                return true; // DECISIONS BU-240 (rule W): a position a split binding decides holds without a record, judged case by case.
             }
 
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))

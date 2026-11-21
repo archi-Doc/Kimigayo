@@ -16,7 +16,7 @@ public sealed partial class Binding
 
     private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
 
-    // DECISIONS D3 (temporary, removed with (R)): a frame's first `count` slot bindings, each slot's Type, length and selector, by
+    // DECISIONS BU-240 (temporary, removed with (R)): a frame's first `count` slot bindings, each slot's Type, length and selector, by
     // which a part of a split search that bound one is told (InferReferencePart compares the references).
     private static object?[] SlotBindings(SlotFrame frame, int count)
     {
@@ -134,7 +134,7 @@ public sealed partial class Binding
 
                 if (this.UnformedSince(unformedMark))
                 {
-                    // DECISIONS D3: the candidate's own run left its unformed parts unknown, so its state, and a Constraint fact its
+                    // DECISIONS BU-240: the candidate's own run left its unformed parts unknown, so its state, and a Constraint fact its
                     // proof left over an unformed Type, are the split's: the combinations decide (SplitState).
                     state = this.SplitState(use, candidate, required, scope, unformedMark, state);
                     resting |= state == CandidateApplicability.Pending;
@@ -168,7 +168,7 @@ public sealed partial class Binding
 
             if (resting)
             {
-                // DECISIONS D3 (temporary, PLAN G886): a candidate rests on a Type no binding represents (RestsOnSplit), so the reference
+                // DECISIONS BU-240 (temporary, PLAN G886): a candidate rests on a Type no binding represents (RestsOnSplit), so the reference
                 // is one located Unsupported_Kd, whatever the other candidates (SPEC 10.1's unproven candidate). Its erasure's Owned
                 // proof reads only its bound Type arguments, so it is still judged (FailUnformedOwned), and a reference resting on a
                 // failed argument is no record of its own (SPEC 23.1.2).
@@ -220,7 +220,7 @@ public sealed partial class Binding
                     var candidateSignature = this.FunctionItemSignature(candidateItem);
                     if (this.UnformedSince(signatureMark))
                     {
-                        // DECISIONS D3 (temporary, PLAN G886): the bound Item's signature forms no Type, and no combination of its split
+                        // DECISIONS BU-240 (temporary, PLAN G886): the bound Item's signature forms no Type, and no combination of its split
                         // cases meets S (SplitState): the record names the Item, its Note the erasure's part, decided from that
                         // search's verdict (DecideErasure; no second search).
                         this.unformedWrites = signatureMark;
@@ -367,7 +367,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // DECISIONS D3 with rule W (BU-79; C-359 C1, E2; temporary, PLAN G886): the state of a candidate whose check at S formed a Type no
+    // DECISIONS BU-240 with rule W (BU-79; C-359 C1, E2; temporary, PLAN G886): the state of a candidate whose check at S formed a Type no
     // binding represents (a write since `mark`). A reference's binder is fixed before any evidence, so the same check is judged in
     // each combination of split cases (RestsOnSplitCases), whatever its own run gave: that run left its unformed parts unknown. A
     // candidate inapplicable in every combination is inapplicable by itself, its Language record the reference's (SPEC 23.1.2);
@@ -508,7 +508,7 @@ public sealed partial class Binding
             sourced = SourcedSlots(frame);
             for (var i = 0; i < function.Parameters.Count + (result ? 1 : 0); i++)
             {
-                // DECISIONS D3 with rule W (BU-79; C-359 E2): each parameter and the result is a part of the check a split search
+                // DECISIONS BU-240 with rule W (BU-79; C-359 E2): each parameter and the result is a part of the check a split search
                 // judges. One whose own Type or match formed no Type is unknown, and the next part is judged, so that a part
                 // which reads no unformed formation still fails by itself.
                 var last = i == function.Parameters.Count;
@@ -537,7 +537,7 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.8: one part of a reference's signature matched against its part of S (InferReferenceSlots), as a part of the
-    // check a split search judges (DECISIONS D3): unknown, so true, where its match formed no Type; one that bound a slot, or an
+    // check a split search judges (DECISIONS BU-240): unknown, so true, where its match formed no Type; one that bound a slot, or an
     // Origin in one, in its case hands its reads to the later parts, which read that binding (CarrySplitPart).
     private bool InferReferencePart(BoundType part, BoundType actual, SolveBinder binder, SlotFrame frame, bool commonOrigins)
     {

@@ -388,7 +388,7 @@ public sealed partial class Binding
         row.IndependentRejection = independentRejection;
         row.ConstraintFailure = rejectedConstraint;
         row.PremiseUnknown = premiseUnknown;
-        row.PremiseReadsMark = this.premiseReadsSplit && HoldsMark(evaluation.Frames[index].Types); // DECISIONS D3 (G812 ruling 159)
+        row.PremiseReadsMark = this.premiseReadsSplit && HoldsMark(evaluation.Frames[index].Types); // DECISIONS BU-240 (G812 ruling 159)
         row.HeldRefusal = held;
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
@@ -397,7 +397,7 @@ public sealed partial class Binding
             evaluation.Mapping.AsSpan(0, argumentCount).CopyTo(evaluation.AllMaps.AsSpan(index * argumentCount));
         }
 
-        // The trial's judgment is taken once, in the selection's frame (DECISIONS BU-86); an unformed split (D3) only of a candidate that
+        // The trial's judgment is taken once, in the selection's frame (DECISIONS BU-86); an unformed split (BU-240) only of a candidate that
         // rests on it (Pending; TryCandidate's verdict), as an environment result.
         var judgment = this.TakeTrialPending(call);
         evaluation.Unformed |= state == CandidateApplicability.Pending && judgment is { Kind: PendingJudgmentKind.UnformedSplit };
@@ -437,7 +437,7 @@ public sealed partial class Binding
 
     // The selection the evaluated candidates determine. A failed candidate declaration or signature leaves the selection resting on
     // that failure (SPEC 23.1.2); an Unknown premise defers it only when it can affect it (SPEC 8.3.3). A candidate unproven through an
-    // unformed split (DECISIONS D3, temporary, PLAN G886: never premise-only, unrankable) makes the selection UnformedSplit: the call is
+    // unformed split (DECISIONS BU-240, temporary, PLAN G886: never premise-only, unrankable) makes the selection UnformedSplit: the call is
     // one located Unsupported_Kd, however many are pending (FailUnformedCall).
     private (CallSelection Kind, int Winner) ClassifySelection(ref CallEvaluation evaluation)
     {
@@ -487,7 +487,7 @@ public sealed partial class Binding
         return (winner < 0 ? CallSelection.Ambiguous : CallSelection.Selected, winner);
     }
 
-    // DECISIONS D3 (temporary, PLAN G886), SPEC 7.7.4, 23.1.2 (C-359 C2): a call whose selection rests on an unformed split is one located
+    // DECISIONS BU-240 (temporary, PLAN G886), SPEC 7.7.4, 23.1.2 (C-359 C2): a call whose selection rests on an unformed split is one located
     // Unsupported_Kd. A Function Item or reference part that every candidate a case can still select declares at a common Function Type
     // (ErasedByEveryCandidate) is erased whichever of them a case selects, so its environment is still judged, once, as a conversion's
     // is (FailErasedOwned; a reference part by its written arguments, FailUnformedOwned): the erasure comes after a selection that
@@ -539,7 +539,7 @@ public sealed partial class Binding
         return (FailedShapeMember(in evaluation) ?? completion) is { } failed ? this.CompleteDependent(call, failed) : this.Fail(call, BindingFailure.Unsupported, true);
     }
 
-    // DECISIONS D3 with rule W (G812 rulings 143, 156; SPEC 23.1.2): argument `a` of a named call on the split, awaiting the call, at the
+    // DECISIONS BU-240 with rule W (G812 rulings 143, 156; SPEC 23.1.2): argument `a` of a named call on the split, awaiting the call, at the
     // parameter `form` gives its declared Type in the canonical run's candidate. It is judged in each case of the bindings it reads as
     // a value call's part is (JudgeSplitPart, ArgumentPartFails), so one failing in every case at a waiting part is completed at the
     // canonical case's Type, where that failure is its record (CompleteFailedPart); any other is completed at the open formed parameter
@@ -565,7 +565,7 @@ public sealed partial class Binding
         return this.OpenForm(part.Declared, state, form) is { } parameter && this.CompleteOnSplit(argument, parameter, part.Scope, part.Call) ? argument : null;
     }
 
-    // DECISIONS D3 with rule W (G812 ruling 139; temporary with it): a named call's selection judged in each combination of split
+    // DECISIONS BU-240 with rule W (G812 ruling 139; temporary with it): a named call's selection judged in each combination of split
     // cases (RestsOnSplitCases), each run a query (ProbeSelection), the whole selection one part: whether it fails in every combination
     // (no candidate, an ambiguity or an unproven premise: where BindCall records the call's own failure; an unproven premise that reads
     // the split rests on it, O-332 (a), G812 ruling 141), and the canonical run's selection (the first run's, each binding at its first
@@ -592,7 +592,7 @@ public sealed partial class Binding
         return (!rests, canonical, only);
     }
 
-    // DECISIONS D3 (G812 rulings 134, 139): candidate `index` (the canonical run's winner), whose trial's frame and mapping the
+    // DECISIONS BU-240 (G812 rulings 134, 139): candidate `index` (the canonical run's winner), whose trial's frame and mapping the
     // evaluation then holds: the last trial's, so a candidate evaluated before another is evaluated again alone, as a query that
     // publishes nothing (BeginSelectionQuery); the evaluation's counts stay its selection's. -1 for none.
     private int SelectedCandidate(ref CallEvaluation evaluation, int index)
@@ -679,9 +679,9 @@ public sealed partial class Binding
         internal bool Pending;
         internal bool PremisesOnly;
         internal bool Error;
-        internal bool Unformed; // DECISIONS D3: a candidate rests on a Type formed under an unrepresented split (PendingJudgmentKind.UnformedSplit).
-        internal bool PremiseReadsSplit; // DECISIONS D3 (G812 ruling 141, L2): a Pending candidate's Unknown premise reads the split.
-        internal bool RefusedOnSplit; // DECISIONS D3 (G812 ruling 141, L1): a candidate refused only through the split (IsSource).
+        internal bool Unformed; // DECISIONS BU-240: a candidate rests on a Type formed under an unrepresented split (PendingJudgmentKind.UnformedSplit).
+        internal bool PremiseReadsSplit; // DECISIONS BU-240 (G812 ruling 141, L2): a Pending candidate's Unknown premise reads the split.
+        internal bool RefusedOnSplit; // DECISIONS BU-240 (G812 ruling 141, L1): a candidate refused only through the split (IsSource).
         internal CallableConstraintFact? CallableFailure;
         internal ReferenceConstraintFailure? ConstraintFailure;
         internal PendingJudgment? PendingJudgment;

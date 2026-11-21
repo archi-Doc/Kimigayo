@@ -81,7 +81,7 @@ public sealed partial class Binding
             !this.HasBorrowSemantics(referent) ? referent : position;
 
     // SPEC 10.2.1, 12.3.1 (the one Literal layer rule, the owner's O-372 (a)): the Type a Literal meets at a parameter Type: a pair layer
-    // that formed nothing (an application under a binding that forms no Type, D3) passes to its target, one fixed ref layer to the
+    // that formed nothing (an application under a binding that forms no Type, BU-240) passes to its target, one fixed ref layer to the
     // value part's expected Type there (ExpectedTypeOf: its referent, a borrowed temporary, unless that is a borrow value), and any
     // other fixed layer (uniq, an object form, raw) is met as it is, which no Literal fits.
     private BoundType LiteralInputType(BoundType parameter)

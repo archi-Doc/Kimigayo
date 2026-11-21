@@ -63,7 +63,7 @@ public sealed partial class Binding
 
             // Rule W at the candidate's own verdict (DECISIONS BU-79; SPEC 23.1.2; PLAN G206): a parameter or result Type that failed to
             // bind is a wildcard in every fit, so only a candidate that would apply rests on it (IncompleteSignature) instead. The same
-            // verdict over an unformed split (D3, PLAN G886; SPEC 10.1's unproven candidate): a trial that formed a Type no binding
+            // verdict over an unformed split (BU-240, PLAN G886; SPEC 10.1's unproven candidate): a trial that formed a Type no binding
             // represents rests on it (Pending, UnformedSplit) only where every check reading no unformed Type passed; an inapplicable
             // candidate is judged without it, its writes dropped. A proof's Error without one stays (InvalidDeclarationContext).
             if (this.UnformedSince(unformedMark) && result is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error))
@@ -174,7 +174,7 @@ public sealed partial class Binding
             this.UnformedPart(ref solution, type, i, this.FormsNone(type, mark)) == true;
     }
 
-    // DECISIONS D3 with rule W (BU-79; G812 ruling 88, design revision 1): argument i's check failed; whether it failed through its own
+    // DECISIONS BU-240 with rule W (BU-79; G812 ruling 88, design revision 1): argument i's check failed; whether it failed through its own
     // pattern's formation, `formsNone` (FormsNone over a mark taken at that part's evidence check, which forms only the part's own
     // pattern: its adaptation pattern, application, direct target; or around its `solution.Type` in the pass loop). Null where its
     // pattern formed: the part's own failure. A Literal is judged at its target (FitsLiteralShape, SPEC 10.2.1): false, the part's own
@@ -201,7 +201,7 @@ public sealed partial class Binding
         return true;
     }
 
-    // DECISIONS D3 (the part predicate's one spelling): whether a pattern formed since `mark` formed no Type or kept an unrepresented slot;
+    // DECISIONS BU-240 (the part predicate's one spelling): whether a pattern formed since `mark` formed no Type or kept an unrepresented slot;
     // a closed Type forms under no binding, while a call's Type also reads every pair's outer slot (CallType), so only a pattern with
     // an abstract part counts.
     private bool FormsNone(BoundType pattern, int mark) => pattern.HasAbstractPart && this.UnformedSince(mark);
@@ -211,7 +211,7 @@ public sealed partial class Binding
     private bool TypedPartFails(ref SlotSolution solution, BoundType type, Koto part)
         => this.LeafDisagrees(ref solution, type, part) || !this.FitsOpenLayer(ref solution, type, part);
 
-    // SPEC 7.7.4, 10.5 (C-359 C1): whether a Function Item part whose own signature forms no Type (DECISIONS D3) fits no case of its
+    // SPEC 7.7.4, 10.5 (C-359 C1): whether a Function Item part whose own signature forms no Type (DECISIONS BU-240) fits no case of its
     // split at the Function Type the frame completes (ItemSignatureFits); one that some case fits, or whose parameter is still open,
     // rests on the split. Read once every part's evidence is in (TryCandidateCore), so the argument order decides nothing.
     private bool UnformedItemFails(ref SlotSolution solution, BoundType type, Koto part)
@@ -612,7 +612,7 @@ public sealed partial class Binding
 
                     var mark = this.unformedWrites;
                     var type = solution.Type(pattern);
-                    var formsNone = this.FormsNone(pattern, mark); // D3: its own Type forms none or keeps an unrepresented slot.
+                    var formsNone = this.FormsNone(pattern, mark); // BU-240: its own Type forms none or keeps an unrepresented slot.
                     if (type is null)
                     {
                         if (this.IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
@@ -735,7 +735,7 @@ public sealed partial class Binding
                     {
                         if (this.UnformedPart(ref solution, pattern, i, formsNone) == true)
                         {
-                            continue; // D3: the fit failed at a Type formed with an unrepresented slot (HasOuterSlot).
+                            continue; // BU-240: the fit failed at a Type formed with an unrepresented slot (HasOuterSlot).
                         }
 
                         return applicability;
@@ -745,7 +745,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                // DECISIONS D3 (C-359 C1): a Function Item part left unknown through its own signature fails where no case fits it.
+                // DECISIONS BU-240 (C-359 C1): a Function Item part left unknown through its own signature fails where no case fits it.
                 if (solution.Unknown.Contains(i) && this.UnformedItemFails(ref solution, function.Parameters[mapping[i]].Type.BoundType!, call.ArgumentNodes[i]))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -781,7 +781,7 @@ public sealed partial class Binding
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 // SPEC 10.8: a parameter Type that holds an unsolved slot, an open position or an unused default, is no failure of its own;
-                // nor one that forms no Type (D3: its part is unknown, UnformedPart).
+                // nor one that forms no Type (BU-240: its part is unknown, UnformedPart).
                 var mark = this.unformedWrites;
                 if (function.Parameters[i].Type.BoundType is { } parameter && (solution.Type(parameter) is not { } completed
                     ? !(waitingCallables || MentionsSlots(parameter, CallSlotOwner(function), unsolvedSlots) || this.FormsNone(parameter, mark))
@@ -802,7 +802,7 @@ public sealed partial class Binding
             }
 
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
-            // still checked against an expected result (SPEC 10.3). Nor is one that forms no Type (D3, as a parameter Type above).
+            // still checked against an expected result (SPEC 10.3). Nor is one that forms no Type (BU-240, as a parameter Type above).
             var openResult = result is null && resultPattern is not null &&
                 (MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots) || this.FormsNone(resultPattern, resultMark));
             if (resultPattern is not null && result is null && !waitingCallables && !openResult)
@@ -828,12 +828,12 @@ public sealed partial class Binding
             var splitDecided = this.ReadsSplitDecided(proofMark, slots);
             if (proof is ConstraintProof.Refuted or ConstraintProof.Error && splitDecided)
             {
-                // D3: a proof that read a position a split binding decides (a Type no binding represents, dt2; a slot holding the open
+                // BU-240: a proof that read a position a split binding decides (a Type no binding represents, dt2; a slot holding the open
                 // formed Type's mark, G812 ruling 156) is Unknown through the split.
                 proof = ConstraintProof.Unknown;
             }
 
-            // D3 (G812 rulings 141, 156): an Unknown proof over pair slots a binding that forms none sources (L2), or over a position a split
+            // BU-240 (G812 rulings 141, 156): an Unknown proof over pair slots a binding that forms none sources (L2), or over a position a split
             // binding decides, reads the split without its case.
             this.premiseReadsSplit = proof == ConstraintProof.Unknown && (splitDecided || this.SelectsUnformed(frame.Selectors[..CallSlotCount(function)]));
 

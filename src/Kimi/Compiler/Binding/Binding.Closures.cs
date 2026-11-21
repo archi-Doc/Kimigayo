@@ -240,7 +240,7 @@ public sealed partial class Binding
     {
         if (expected is { ContainsOpen: true })
         {
-            // DECISIONS D3 (temporary with BoundTypeKind.Open): the expected signature's parts a split binding decides are open, read
+            // DECISIONS BU-240 (temporary with BoundTypeKind.Open): the expected signature's parts a split binding decides are open, read
             // once from its marks (OpenParts.Of) and then removed.
             open = OpenParts.Of(expected, open);
             expected = this.Unmarked(expected);
@@ -505,7 +505,7 @@ public sealed partial class Binding
     {
         var symbol = this.symbols[function];
 
-        // DECISIONS D3 (G812 rulings 134, 158, 172): the body read an open input's parameter as resting (BindClosureHeader); once it is
+        // DECISIONS BU-240 (G812 rulings 134, 158, 172): the body read an open input's parameter as resting (BindClosureHeader); once it is
         // bound, the parameter's slot takes the header's Type, the canonical case's, as the split's completion gives a marked node its
         // Type with its state unchanged: its uses still rest, nothing is judged again, and the Signature below is formed from typed
         // slots (PLAN G1073, G1110).
@@ -588,14 +588,14 @@ public sealed partial class Binding
 
     // SPEC 10.5, 10.8, 23.1.2: the parts of an anonymous function's fixed expected signature that guide nothing: the result, inferred
     // from the body (SPEC 10.8: a result Type the call leaves open, FailUnboundSlots), and the inputs (bit i) a split layer decides case
-    // by case (DECISIONS D3 with rule W, temporary with it; G812 ruling 134). At an open input an omitted parameter Type takes the
+    // by case (DECISIONS BU-240 with rule W, temporary with it; G812 ruling 134). At an open input an omitted parameter Type takes the
     // expected input in the published header, while the body reads the parameter as resting, so each check that reads it rests on the
     // split (O-332 (a)); a written one is not compared, its fit having been judged in each case.
     private readonly record struct OpenParts(bool Result, ulong Inputs)
     {
         internal bool Input(int i) => i < 64 && (this.Inputs & (1UL << i)) != 0;
 
-        // DECISIONS D3: `open` with the parts of `expected` that hold a mark: an input or the result, or every part where the whole is
+        // DECISIONS BU-240: `open` with the parts of `expected` that hold a mark: an input or the result, or every part where the whole is
         // marked (a signature a split binding decides as a whole).
         internal static OpenParts Of(BoundType expected, OpenParts open)
         {

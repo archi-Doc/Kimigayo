@@ -145,14 +145,14 @@ public sealed partial class Binding
     private static BindingState CompletedState(BindingState state, BoundType? type)
         => state == BindingState.Invalid ? state : type is null ? BindingState.Unresolved : BindingState.Resolved;
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; rule W): an unbound part other than an anonymous function at a position a split
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; rule W): an unbound part other than an anonymous function at a position a split
     // binding decides as a whole: every check of it reads the position, so it rests, unbound, as a part awaiting its position does,
     // and is bound on its own once its call ends (CompleteUnselected). A typed part there holds (the relation holds at a mark); an
     // anonymous function reads the mark (BindClosure: every part open).
     private static bool RestsAtOpenPosition(Koto node, BoundType? expected)
         => expected is { Kind: BoundTypeKind.Open } && node.BoundType is null && KotoHelper.UnwrapParentheses(node) is not FunctionKoto { IsAnonymous: true };
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open; rule W; G812 ruling 151): a node bound at a position holding a mark that forms
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open; rule W; G812 ruling 151): a node bound at a position holding a mark that forms
     // no Type and has no failure cause (no record of its own, no failed or resting input: HasFailureCauses) formed none because a part
     // of it rests at its open position (RestsAtOpenPosition), the split's own limit. It rests there as that part does, so its reader
     // does not take it as a failed input (SPEC 23.1.2: a rest has a reported cause): a Tuple whose element rests so, a Case whose
@@ -253,7 +253,7 @@ public sealed partial class Binding
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
-        // DECISIONS D3 (temporary with BoundTypeKind.Open): an anonymous function reads the marks of its expected signature (BindClosure)
+        // DECISIONS BU-240 (temporary with BoundTypeKind.Open): an anonymous function reads the marks of its expected signature (BindClosure)
         // and is then adapted at the unmarked one, the erasure's signature having been judged case by case.
         var closure = KotoHelper.UnwrapParentheses(node) is FunctionKoto { IsAnonymous: true };
         if (expected is not null)

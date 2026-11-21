@@ -73,7 +73,7 @@ public enum BoundTypeKind : byte
     Dictionary,
     FunctionItem,
 
-    // DECISIONS D3 (temporary, removed with D3's representation (R); the owner's O-428 (a), G812 ruling 143): the canonical case's Type
+    // DECISIONS BU-240 (temporary, removed with BU-240's representation (R); the owner's O-428 (a), G812 ruling 143): the canonical case's Type
     // (its one component) at a position a split binding decides, formed only by a split call's completion (Binding.OpenForm); every
     // check that reads it rests, as rule W's failed part does. Never a node's published Type (the split call's completion unmarks what
     // it publishes, CompleteOnSplit; the HIR publisher lists one that holds it as Broken, InternalInvariant_Kd).
@@ -730,7 +730,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
     internal bool ContainsNested => this.containsNested;
 
-    // DECISIONS D3 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
+    // DECISIONS BU-240 (temporary with BoundTypeKind.Open): whether this subtree holds a position a split binding decides.
     internal bool ContainsOpen => this.containsOpen;
 
     /// <summary>Gets a value indicating whether this Type is a Scalar (SPEC 3.1): an integer or floating-point Core, bool, char or a
