@@ -239,7 +239,7 @@ public sealed partial class Binding
             for (var b = start; b < end; b++)
             {
                 var batch = this.inferenceComponents[b];
-                batch.State = 2;
+                batch.Published = true;
                 batch.RunsRented = 0;
             }
         }

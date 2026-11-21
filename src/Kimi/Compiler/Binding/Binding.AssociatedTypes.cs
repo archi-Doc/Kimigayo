@@ -694,7 +694,7 @@ public sealed partial class Binding
                 }
 
                 this.CountInferenceRead(path.Type);
-                return batch.State != 2 || binding.InferenceConflict || binding.InlineCycle ||
+                return !batch.Published || binding.InferenceConflict || binding.InlineCycle ||
                     binding.Inferred is null ? null : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
             }
 

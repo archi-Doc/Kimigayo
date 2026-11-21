@@ -141,7 +141,7 @@ public sealed partial class Binding
         for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {
             var batch = batches.Current!;
-            batch.State = 0;
+            batch.Published = false;
             batch.Active = false;
             batch.Paths.Clear();
             batch.Normalized.Clear();
@@ -714,7 +714,9 @@ public sealed partial class Binding
     {
         internal BindingSymbol Type { get; } = type;
 
-        internal byte State { get; set; }
+        // Whether its component's request has ended: its bindings are published (Complete). R7-C4: no batch is open; availability is
+        // the request's (Binding.AssociatedInference.Demand), never a batch state.
+        internal bool Published { get; set; }
 
         internal bool Active { get; set; }
 
@@ -777,7 +779,6 @@ public sealed partial class Binding
             }
 
             var run = this.RunPool[this.RunsRented++];
-            run.State = 0;
             run.Normalized.Clear();
             run.Holes.Clear();
             run.Pairs.Clear();

@@ -111,7 +111,7 @@ public sealed partial class Binding
             conformance.Unsupported = false;
         }
 
-        if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && batch.State != 2)
+        if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && !batch.Published)
         {
             return ConstraintProof.Unknown; // Type-value scheduling never certifies a collecting definition.
         }
