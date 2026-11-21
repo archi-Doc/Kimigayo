@@ -5,8 +5,9 @@
 // - Responsibility: the records of a per-call slot (ReportPerCallSlot), a per-call Origin (ReportPerCallOrigin), an undeclared
 //   storage Origin name (ReportUndeclaredStorageOrigin over Binding.Storage's StorageType, TypeNameSpan), an absent slot
 //   (RecordAbsentSlot, ReportAbsentSlot) and an invalid slot (ReportInvalidOriginSlot); the omitted-result Note (OmittedResultNote);
-//   an Origin relation record's end displays (OriginDisplay, SlotProjection, OriginIncludes) and the Borrow that supplies an end
-//   (BorrowSource, LocalBorrow), which the records of Binding.Diagnostics.cs show and relate.
+//   an Origin relation record's end displays (OriginDisplay, SlotProjection, OriginIncludes), the atom that supplied a row's record's
+//   end (RowSupplier) and the Borrow that supplies an end (BorrowSource, LocalBorrow), which the records of Binding.Diagnostics.cs and
+//   A5's through the publication's Relation row show and relate.
 // - Inputs: the failing node and the facts its check recorded (absentSlotProjections, invalidStaticOriginSlots, phantomRawOrigins,
 //   PerCallSlotFact, PerCallOriginFact), the result contexts, the bound syntax.
 // - Outputs: the records with their Notes, evidence and related locations; the Borrow node.
@@ -26,6 +27,11 @@ public sealed partial class Binding
     // SPEC 15.3.2: the projections of a slot their Type does not declare, with that Type.
     // Recorded only on failure and reused across passes; dependent checks use the failed Origin contract's cause.
     private Dictionary<Koto, BoundType>? absentSlotProjections;
+
+    // DECISIONS R4-M133 (R7-O1 F-H1-3): the supplier of a row's record's longer end `resolved`: of the row's longer end as formed,
+    // supplied at the record's site (SuppliedAtUse), the part whose resolution there holds `resolved`, a meet's first such operand; or
+    // `resolved` itself when no part does (the record's end is another row's, or a reversed `==` row's shorter end).
+    internal BoundOrigin RowSupplier(BoundOrigin formed, BoundOrigin resolved, Koto at) => this.SuppliedPart(this.SuppliedAtUse(formed, at), resolved, at) ?? resolved;
 
     // The Name of a struct or enum in its first declaration line, the related location of a Type without a header.
     private static SourceSpan TypeNameSpan(DeclarationContainerKoto type)
@@ -249,6 +255,20 @@ public sealed partial class Binding
         }
 
         return cases.Length == 0 ? string.Empty : (several ? " in the Semantics cases " : " in the Semantics case ") + text;
+    }
+
+    // The part of RowSupplier's `supplied` whose resolution at `at` holds `resolved`, or null.
+    private BoundOrigin? SuppliedPart(BoundOrigin supplied, BoundOrigin resolved, Koto at)
+    {
+        for (var i = 0; i < supplied.Operands.Count; i++)
+        {
+            if (this.SuppliedPart(supplied.Operands[i], resolved, at) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return OriginIncludes(this.ReceiverAtUse(supplied, at), resolved) ? supplied : null;
     }
 
     // The Borrow that supplies a record's end, by the atom `supplier` the failing check recorded for it: the value itself, the Borrow

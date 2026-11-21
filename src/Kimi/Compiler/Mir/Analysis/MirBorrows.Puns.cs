@@ -74,18 +74,13 @@ internal sealed partial class MirBorrows
         return a == PunWrite.Typed ? b : a;
     }
 
-    // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
-    private void Punning(int pointer, MirPlace place)
+    // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref, step `last` of the Place's `count` steps
+    // in the walk buffer, goes through (MirBorrows.Reach's WriteTargets).
+    private void Punning(int pointer, MirPlace place, int count, int last)
     {
         if (this.Scalar(cases.TypeOf(place)) == Extent.None)
         {
             return;
-        }
-
-        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
-        for (var i = 0; i < count; i++)
-        {
-            last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
         }
 
         var on = !this.OffGrid(pointer);

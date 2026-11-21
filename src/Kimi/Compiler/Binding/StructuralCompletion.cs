@@ -1,13 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns structural completion: whether a node's evaluation can complete normally and which jumps leave it, from source structure.
+// Owns structural completion: whether a node's evaluation can complete normally and the targets its Exit and Yield transfers reach
+// outward, from source structure.
 // Input: a node, its creator's Never evidence, optionally the guesses (which reads the composition cannot know), an invocation's
 // omitted default arguments, read through its creator's Binding (Binding.CallOf), and each jump's published target
 // (Binding.TransferTarget, BU-101), the one input of a composed form that is not one of its parts.
 // Output: CanComplete, read by Binding's result Types and the HIR Completion column.
-// A node still being composed (a recursive default) is assumed to complete. Results stay cached until Clear, which a caller calls
-// whenever its Never evidence may change. The cache and the transfer sets are keyed by Koto reference: ARCH "Syntax identity" debt,
-// due by R7's exit.
+// A node still being composed (a recursive default) is assumed to complete. Results hold until Clear, which a caller calls whenever its
+// Never evidence may change: each instance's query memo is its own working-state family of the node's module's NodeColumns (Memo),
+// whose row carries the query that wrote it, so Clear advances the instance's query and a row of another query reads absent (DECISIONS
+// BU-220 as R7-N5 B6b amends it). A completion's transfers are values: the SyntaxIds of the targets its Exit and Yield transfers reach
+// outward (Outward).
+// Invariant: a query composes only nodes of the running pass's modules, never a frozen library node (the library declares no parameter
+// default, and GuessedCompletionNodes answers none at a frozen node: KimiLibraryShapeTest's two premise rows).
 // Must not evaluate constants or Scope Exit cleanup, or report diagnostics.
 
 using Kimi.Compiler.Parsing;
@@ -20,14 +25,26 @@ namespace Kimi.Compiler;
 /// <param name="isGuess">Whether a read the composition makes at a node is unknown, assumed then not to complete normally: asked only
 /// where it reads the node itself, at a block (its items, which the parser may have supplied) and at an evaluated node (its Never
 /// evidence), never at a form it composes from its parts (PLAN G47).</param>
-internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isNever, Func<Koto, bool>? isGuess = null)
+/// <param name="memo">The instance's family in a module's NodeColumns, which holds its query memo.</param>
+internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isNever, Func<Koto, bool>? isGuess, StructuralCompletion.Memo memo)
 {
-    private readonly Dictionary<Koto, Completion> cache = new(ReferenceEqualityComparer.Instance);
-
-    private readonly List<HashSet<JumpKoto>> transferPool = new();
+    // The chains of Outward's target ids: cell i - 1 holds a target and the next cell's index plus 1 (0 ends the chain). A chain grows
+    // only at its head and never changes once a completion holds it, so completions share tails; Clear empties the cells when it ends
+    // the query whose rows hold their chains.
+    private readonly List<(int Target, int Next)> outward = new();
     private readonly List<Koto> children = new();
     private Collector? collector;
-    private int cursor;
+
+    // The query the memo's current rows carry: FirstQuery at creation, advanced by Clear through Binding.NextQuery, which skips 0 (an
+    // absent row's number: no query).
+    private uint query = Binding.FirstQuery;
+
+    /// <summary>Selects an instance's working-state family of a module's NodeColumns: a node's completion in the query its row carries.
+    /// Each of the four creators passes a static lambda naming its family, chosen once at creation (no capture, no allocation); no reader
+    /// tests which family an instance holds (DECISIONS BU-220 as R7-N5 B6b amends it).</summary>
+    /// <param name="columns">The module's families.</param>
+    /// <returns>The instance's column.</returns>
+    internal delegate ref StampedColumn<(uint Query, Completion Completion), Binding.PassCounter> Memo(ref NodeColumns columns);
 
     internal static void CollectEvaluationChildren(Koto node, List<Koto> children, KotoVisitor collector)
     {
@@ -37,19 +54,6 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
             // Keep lexical visitors unchanged; simple assignment alone evaluates RHS first.
             var last = children.Count - 1;
             (children[last - 1], children[last]) = (children[last], children[last - 1]);
-        }
-    }
-
-    // HashSet.UnionWith accepts IEnumerable and boxes its source enumerator.
-    // The transfer sets are retained concrete sets; enumerate those directly.
-    internal static void UnionTransfers(HashSet<JumpKoto> destination, HashSet<JumpKoto> source)
-    {
-        if (!ReferenceEquals(destination, source))
-        {
-            foreach (var transfer in source)
-            {
-                destination.Add(transfer);
-            }
         }
     }
 
@@ -90,51 +94,84 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         _ => false,
     };
 
-    /// <summary>Gets the number of node completions composed since creation, which <see cref="Clear"/> keeps: a scaling check's work
-    /// measure.</summary>
-    internal long Composed { get; private set; }
+    /// <summary>Gets the work since creation, which <see cref="Clear"/> keeps: the node completions composed and the Outward cells
+    /// read or added, a scaling check's measure.</summary>
+    internal long Work { get; private set; }
 
     internal bool CanComplete(Koto node) => this.Visit(node).Normal;
 
     internal void Clear()
     {
-        this.cache.Clear();
-        this.cursor = 0;
+        this.query = Binding.NextQuery(this.query);
+        this.outward.Clear();
     }
 
-    private HashSet<JumpKoto> Transfers(HashSet<JumpKoto>? a, HashSet<JumpKoto>? b = null, JumpKoto? jump = null)
+    // The target a transfer completes (SPEC 14.1): an Exit or a Yield to a form that receives it here; a Continue repeats its target,
+    // a Return's and a deferred body's targets run no contents here, and an invalid transfer goes to none.
+    private static Koto? Completes(JumpKoto jump)
+        => jump is not ContinueKoto && Binding.TransferTarget(jump) is { } target && IsTransferTarget(target) ? target : null;
+
+    private bool Holds(int chain, int target)
     {
-        if (this.cursor == this.transferPool.Count)
+        for (; chain != 0; chain = this.outward[chain - 1].Next)
         {
-            this.transferPool.Add(new(ReferenceEqualityComparer.Instance));
+            this.Work++;
+            if (this.outward[chain - 1].Target == target)
+            {
+                return true;
+            }
         }
 
-        var result = this.transferPool[this.cursor++];
-        result.Clear();
-        if (a is not null)
+        return false;
+    }
+
+    private int With(int chain, int target)
+    {
+        if (this.Holds(chain, target))
         {
-            UnionTransfers(result, a);
+            return chain;
         }
 
-        if (b is not null)
+        this.outward.Add((target, chain));
+        return this.outward.Count;
+    }
+
+    private int Join(int left, int right)
+    {
+        if (left == 0 || left == right)
         {
-            UnionTransfers(result, b);
+            return right;
         }
 
-        if (jump is not null)
+        var result = left;
+        for (var chain = right; chain != 0; chain = this.outward[chain - 1].Next)
         {
-            result.Add(jump);
+            result = this.With(result, this.outward[chain - 1].Target);
         }
 
         return result;
     }
 
+    // The chain without a held target: the cells above it are re-added over the rest (a chain's ids are unique, so none is held there).
+    private int Without(int chain, int target)
+    {
+        this.Work++;
+        var (head, next) = this.outward[chain - 1];
+        if (head == target)
+        {
+            return next;
+        }
+
+        this.outward.Add((head, this.Without(next, target)));
+        return this.outward.Count;
+    }
+
     private Completion Merge(Completion left, Completion right)
-        => new(left.Normal || right.Normal, left.Transfers is null && right.Transfers is null ? null : this.Transfers(left.Transfers, right.Transfers));
+        => new(left.Normal || right.Normal, this.Join(left.Outward, right.Outward));
 
     private Completion Sequence(IReadOnlyList<Koto> items, int start, int count)
     {
-        var result = new Completion(true, null);
+        var result = new Completion(true, 0);
         for (var i = start; i < start + count && result.Normal; i++)
         {
             var next = this.Visit(items[i]);
@@ -146,20 +183,22 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
 
     private Completion Visit(Koto node)
     {
-        if (this.cache.TryGetValue(node, out var cached))
+        if (node.SyntaxOwner is { } table && memo(ref table.Hir.Families).Get(node.SyntaxId, binding) is var row && row.Query == this.query)
         {
-            return cached;
+            return row.Completion;
         }
 
         // Selected defaults can form recursive evaluation dependencies. Until a
         // node completes, conservatively assume completion; semantic flow retains
         // a pending obligation for recursive defaults.
-        this.cache[node] = new(true, null);
-        this.Composed++;
+        this.Remember(node, new(true, 0));
+        this.Work++;
         var result = this.CloseTransfers(node, this.Compose(node));
-        this.cache[node] = result;
+        this.Remember(node, result);
         return result;
     }
+
+    private void Remember(Koto node, Completion completion) => memo(ref HirTables.Of(node).Families).Ref(node.SyntaxId, binding) = (this.query, completion);
 
     // A form's completion from its parts' completions in evaluation order; any other node evaluates its children (Evaluate). The parts
     // each case reaches on every path are OnEveryPath's rows; a case that changes them changes its row.
@@ -169,18 +208,18 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         switch (node)
         {
             case Koto when RunsNoContents(node):
-                return new(true, null);
+                return new(true, 0);
             case LabeledKoto label:
                 return this.Visit(label.Target);
             case CodeBlockKoto body:
-                return isGuess?.Invoke(body) == true ? new(false, null) : this.Sequence(body.Items, 0, body.Items.Count);
+                return isGuess?.Invoke(body) == true ? new(false, 0) : this.Sequence(body.Items, 0, body.Items.Count);
             case DoKoto scoped:
                 return this.Visit(scoped.Body);
             case UnsafeBlockKoto permission:
                 return this.Visit(permission.Body);
             case JumpKoto jump:
-                result = jump.Expression is { } operand ? this.Visit(operand) : new(true, null);
-                return result.Normal ? new(false, this.Transfers(result.Transfers, jump: jump)) : result;
+                result = jump.Expression is { } operand ? this.Visit(operand) : new(true, 0);
+                return result.Normal ? new(false, Completes(jump) is { } target ? this.With(result.Outward, target.SyntaxId) : result.Outward) : result;
             case IfKoto conditional:
                 return this.Conditional(conditional);
             case MatchKoto match:
@@ -207,7 +246,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
                 result = this.Visit(logical.Left);
                 return result.Normal ? this.Merge(result, this.Visit(logical.Right)) : result;
             default:
-                return isGuess?.Invoke(node) == true ? new(false, null) : this.Evaluate(node);
+                return isGuess?.Invoke(node) == true ? new(false, 0) : this.Evaluate(node);
         }
     }
 
@@ -215,7 +254,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
     // after the last condition.
     private Completion Conditional(IfKoto conditional)
     {
-        var result = new Completion(false, null);
+        var result = new Completion(false, 0);
         var next = true;
         for (var i = 0; i < conditional.Branches.Count; i++)
         {
@@ -236,7 +275,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
 
         if (next)
         {
-            result = this.Merge(result, conditional.ElseBody is { } other ? this.Visit(other) : new(true, null));
+            result = this.Merge(result, conditional.ElseBody is { } other ? this.Visit(other) : new(true, 0));
         }
 
         return result;
@@ -252,7 +291,7 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
             for (var i = 0; i < match.Arms.Count; i++)
             {
                 var arm = match.Arms[i];
-                var guard = arm.Guard is { } condition ? this.Visit(condition) : new Completion(true, null);
+                var guard = arm.Guard is { } condition ? this.Visit(condition) : new Completion(true, 0);
                 var branch = guard.Normal ? this.Merge(guard with { Normal = false }, this.Visit(arm.Body)) : guard;
                 result = this.Merge(result, branch);
             }
@@ -290,33 +329,16 @@ internal sealed class StructuralCompletion(Binding binding, Func<Koto, bool> isN
         return result;
     }
 
-    // A jump that goes to the node ends at it: an exit or a yield completes the node normally, a continue repeats it. Other jumps
-    // leave it, as does an invalid one, which goes to no target and completes nothing (SPEC 14.9.3; DECISIONS BU-101).
+    // A transfer that goes to the node ends at it: an exit or a yield completes the node normally (Completes keeps no other). Other
+    // transfers leave it (SPEC 14.9.3; DECISIONS BU-101).
     private Completion CloseTransfers(Koto node, Completion result)
-    {
-        if (result.Transfers is null || !IsTransferTarget(node))
-        {
-            return result;
-        }
+        => result.Outward != 0 && IsTransferTarget(node) && this.Holds(result.Outward, node.SyntaxId)
+            ? new(true, this.Without(result.Outward, node.SyntaxId)) : result;
 
-        var normal = result.Normal;
-        var outward = this.Transfers(null);
-        foreach (var jump in result.Transfers)
-        {
-            if (Binding.TransferTarget(jump) == node)
-            {
-                normal |= jump is not ContinueKoto;
-            }
-            else
-            {
-                outward.Add(jump);
-            }
-        }
-
-        return new(normal, outward);
-    }
-
-    private readonly record struct Completion(bool Normal, HashSet<JumpKoto>? Transfers);
+    // A node's Structural Completion (SPEC 14.9.3): whether it can complete normally, and the targets, by SyntaxId in the node's module,
+    // that its Exit and Yield transfers reach outward (a chain of outward; 0 for none). A transfer never leaves its function (SPEC
+    // 14.5), and an omitted default argument passes only Normal on, so a chain's targets are ancestors in the node's own module.
+    internal readonly record struct Completion(bool Normal, int Outward);
 
     private sealed class Collector(List<Koto> children) : KotoVisitor
     {

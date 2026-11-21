@@ -182,8 +182,11 @@ public sealed partial class Binding
     }
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
-    // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability.
-    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType adapted, out ArgumentOperationKind kind, bool record)
+    // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability. SPEC 9.6.1: a receiver whose member a base
+    // declares (`projection`, the base, as for a receiver through a reference layer: AdaptInput) is the layer's target, where member
+    // selection found that base (a receiver below further layers is ReceiverThroughLayers' recorded read), and lends the base
+    // subobject (PLAN G1122).
+    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundType? projection, out BoundType adapted, out ArgumentOperationKind kind, bool record)
     {
         adapted = actual;
         kind = ArgumentOperationKind.Value;
@@ -195,7 +198,7 @@ public sealed partial class Binding
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         // A layer admitting no case selects no receiver here (stopped: the call, not the receiver, would have to rest; PLAN G750).
         var admitted = this.FollowablePair(actual, scope, out var target) ?? SemanticsMask.None;
-        if (admitted != SemanticsMask.None && !this.ReceiverTarget(target, referent, scope))
+        if (admitted != SemanticsMask.None && projection is null && !this.ReceiverTarget(target, referent, scope))
         {
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
@@ -205,10 +208,10 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.ReceiverTarget(target, referent, scope))
+        if (projection is not null || this.ReceiverTarget(target, referent, scope))
         {
-            adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
-            kind = ArgumentOperationKind.Borrow;
+            adapted = this.types.Reference(pattern.Semantics, projection ?? target, this.PairOrigin(source, actual, admitted));
+            kind = projection is null ? ArgumentOperationKind.Borrow : ArgumentOperationKind.BaseBorrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
             this.SharedReferenceThroughLayers(target, referent, scope, out _) is { } inner)
