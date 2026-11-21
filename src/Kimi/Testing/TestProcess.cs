@@ -1,18 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
-using System.IO.Pipes;
 using System.Text;
-using Microsoft.Win32.SafeHandles;
 
 namespace Kimi.Testing;
 
-/// <summary>A test case's process (IMPL 20.6.3): a <see cref="JobProcess"/> with the case's environment, a closed standard input and the
-/// result channel, a pipe the child finds by its handle in KIMI_TEST_PIPE.</summary>
+/// <summary>A test case's process (IMPL 20.6.3): a <see cref="JobProcess"/> with the case's environment, no standard input (JobProcess's
+/// closed input) and the result channel, a pipe the child finds by its handle in KIMI_TEST_PIPE.</summary>
 internal sealed class TestProcess : JobProcess
 {
-    private TestProcess(string executable, string directory, string environment, SafePipeHandle input, nint channel, Stream result)
-        : base(executable, directory, environment, input, channel)
+    private TestProcess(string executable, string directory, string environment, nint channel, Stream result)
+        : base(executable, directory, environment, null, channel)
         => this.Result = result;
 
     internal Stream Result { get; }
@@ -28,24 +26,15 @@ internal sealed class TestProcess : JobProcess
         using var channel = Pipe(out var result);
         try
         {
-            SafePipeHandle input;
-            using (var pipe = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None))
+            var handle = channel.SafePipeHandle.DangerousGetHandle();
+            environment["KIMI_TEST_PIPE"] = ((ulong)handle).ToString(CultureInfo.InvariantCulture);
+            var block = new StringBuilder();
+            foreach (var (name, value) in environment)
             {
-                input = pipe.ClientSafePipeHandle; // The write end closes with the server: the case's input is closed.
+                block.Append(name).Append('=').Append(value).Append('\0');
             }
 
-            using (input)
-            {
-                var handle = channel.SafePipeHandle.DangerousGetHandle();
-                environment["KIMI_TEST_PIPE"] = ((ulong)handle).ToString(CultureInfo.InvariantCulture);
-                var block = new StringBuilder();
-                foreach (var (name, value) in environment)
-                {
-                    block.Append(name).Append('=').Append(value).Append('\0');
-                }
-
-                return new(executable, directory, block.Append('\0').ToString(), input, handle, result);
-            }
+            return new(executable, directory, block.Append('\0').ToString(), handle, result);
         }
         catch
         {

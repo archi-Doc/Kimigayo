@@ -303,13 +303,17 @@ public sealed class NativeToolchainTest : IDisposable
     // input and reads its output and exit code, which are the run's: each output line the program's TEMP, each error line a process of
     // the program's tree (its id and start time), which has ended when Kimi has. "escape" leaves a descendant that holds the program's
     // output and whose parent exited first, so a kill of the program's tree misses it; once the row has read the tree's lines, the probe
-    // cancels the run or ends its process as a second Ctrl+C does. On dev 43fc18f6c the descendant keeps the run waiting, so Kimi does not end in a
-    // minute.
+    // cancels the run or ends its process as a second Ctrl+C does. On dev 43fc18f6c the descendant keeps the run waiting, so Kimi does
+    // not end in a minute. "no input" and "invalid input" give Kimi no standard input, or one that is no open handle of its own, before
+    // the run: the program reads end of input at once (JobProcess's closed input), never its hidden console's input; on 8653cc017 it
+    // read the console's and Kimi did not end in a minute.
     [Theory]
     [InlineData("exit", "x", null, 123, 0)] // The program reads Kimi's input (Tatara decision 15); its exit code is the run's (a kill's is 125).
     [InlineData("descendant", "", null, 0, 1)] // The program's output is the run's; the descendant it left ends with the run.
     [InlineData("escape", "", "cancel", 130, 2)] // A cancelled run ends though the escaped descendant holds the program's output.
     [InlineData("escape", "", "end", 130, 2)] // Kimi's end (Program.EndProcess) ends the program and its descendant.
+    [InlineData("exit", "", "no input", 0, 1)] // A program run while Kimi has no standard input reads end of input.
+    [InlineData("exit", "", "invalid input", 0, 1)] // So does one run while Kimi's standard input is no open handle of its own.
     public async Task ARunsProgramAndItsDescendantsEndWithTheRun(string program, string input, string? action, int exitCode, int lines)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "The probe runs on Windows.");
@@ -330,7 +334,7 @@ public sealed class NativeToolchainTest : IDisposable
             start.Environment["KIMI_TEST_PROCESS_ACTION"] = action;
         }
 
-        // A printed process is held from its line on when its id still names it (TestProcessRecoveryTest.Identified), so only the
+        // A printed process is held from its line on when its id still names it (TestProcessRecoveryTest.TryIdentify), so only the
         // run's own processes are awaited and, should one outlive the row, killed; one that already ended is not held.
         var processes = program switch { "descendant" => 1, "escape" => 3, _ => 0 };
         var printed = new List<string>();

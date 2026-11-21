@@ -9,8 +9,9 @@
 // rule of the programs Kimi runs: a Windows x64 host, as WindowsProfile's target (IMPL 20.3, 20.6.1).
 // Readers: Testing's TestProcess (a test case, IMPL 20.6.3) and Build's NativeToolchain.RunExecutable (run's program, IMPL 20.3).
 // Input: the executable, its working directory, its environment block (null: this process's), its standard input (an open handle of
-// this process, of which the child gets an inheritable duplicate, or null: none; whether a reader has an input is the reader's decision)
-// and the handles it inherits besides (each inheritable).
+// this process, of which the child gets an inheritable duplicate, or null: none, whether a reader has one being the reader's decision)
+// and the handles it inherits besides (each inheritable). A child with no input gets a closed one, the one form of "no input": the read
+// end of an anonymous pipe whose write end closes before the start, so it reads end of input at once, never its hidden console's input.
 // Output: the child's standard output and error, each a pipe this process reads; its exit and exit code; whether the job's processes
 // have all ended (IsRecovered). A failure is an exception naming the failed call, and for a start the executable, beside the system's
 // text: PlatformNotSupportedException ("Running a program requires Windows x64.") off a Windows x64 host, else Win32Exception.
@@ -38,7 +39,7 @@ internal unsafe class JobProcess : IDisposable
     /// <param name="executable">The executable's full path.</param>
     /// <param name="directory">The working directory.</param>
     /// <param name="environment">The environment block, or null for this process's environment.</param>
-    /// <param name="input">The child's standard input, an open handle of this process, or null for none.</param>
+    /// <param name="input">The child's standard input, an open handle of this process, or null for none (a closed input).</param>
     /// <param name="inherited">The inheritable handles the child inherits besides its standard ones.</param>
     internal JobProcess(string executable, string directory, string? environment, SafeHandle? input, params ReadOnlySpan<nint> inherited)
     {
@@ -70,7 +71,8 @@ internal unsafe class JobProcess : IDisposable
             stdout = outRead;
             using var errorWrite = Pipe(out var errorRead);
             stderr = errorRead;
-            using var inputCopy = input is null ? null : Inheritable(input, executable);
+            using var closed = input is null ? ClosedInput() : null;
+            using var inputCopy = Inheritable(input ?? closed!, executable);
             nuint bytes = 0;
             _ = InitializeProcThreadAttributeList(0, 2, 0, ref bytes);
             attributes = Marshal.AllocHGlobal(checked((nint)bytes));
@@ -85,11 +87,7 @@ internal unsafe class JobProcess : IDisposable
             var count = 0;
             handles[count++] = outWrite.SafePipeHandle.DangerousGetHandle();
             handles[count++] = errorWrite.SafePipeHandle.DangerousGetHandle();
-            if (inputCopy is not null)
-            {
-                handles[count++] = inputCopy.DangerousGetHandle();
-            }
-
+            handles[count++] = inputCopy.DangerousGetHandle();
             foreach (var handle in inherited)
             {
                 handles[count++] = handle;
@@ -110,7 +108,7 @@ internal unsafe class JobProcess : IDisposable
             {
                 Size = (uint)sizeof(StartupInfoEx),
                 Flags = 0x100, // STARTF_USESTDHANDLES
-                Input = inputCopy?.DangerousGetHandle() ?? 0,
+                Input = handles[2],
                 Output = handles[0],
                 Error = handles[1],
                 Attributes = attributes,
@@ -248,6 +246,14 @@ internal unsafe class JobProcess : IDisposable
     }
 
     private static Win32Exception StartError(string executable, string call) => Error($"Cannot start {executable}: {call}");
+
+    // A closed input: the read end of an anonymous pipe whose write end is closed. The read end is exposed before the server's
+    // disposal (which closes the write end), so it survives it.
+    private static SafePipeHandle ClosedInput()
+    {
+        using var pipe = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None);
+        return pipe.ClientSafePipeHandle;
+    }
 
     // The child's input: an inheritable duplicate of the handle, owned by the caller, with the handle's access (DUPLICATE_SAME_ACCESS);
     // a handle that is no open handle of this process fails the start.

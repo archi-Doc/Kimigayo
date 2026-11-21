@@ -160,10 +160,10 @@ internal static partial class NativeToolchain
     // Runs a program and returns its exit code. The program runs in a job of its own (JobProcess), so its whole tree ends with the run:
     // after the program's exit its remaining descendants (as a test case's do), on cancellation the program with them, and when Kimi's
     // process ends (a second Ctrl+C included) with the job's last handle (PLAN G1188). It shares Kimi's standard input (Tatara decision
-    // 15; none when Kimi has none: StandardInput); its output is copied to Kimi's raw standard streams and is complete when this returns
-    // or throws: the copies take no token and are awaited after the job's end, so the pipes reach their end. After a cancellation the
-    // outcome is the cancellation (130): the copies are awaited without observing their outcome and the cancellation is rethrown. The
-    // exit is awaited on a thread of its own.
+    // 15; when Kimi has none, StandardInput, the program reads end of input); its output is copied to Kimi's raw standard streams and
+    // is complete when this returns or throws: the copies take no token and are awaited after the job's end, so the pipes reach their
+    // end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome and the
+    // cancellation is rethrown. The exit is awaited on a thread of its own.
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -292,7 +292,8 @@ internal static partial class NativeToolchain
     };
 
     // Kimi's own standard input for run's program (Tatara decision 15), which the caller does not own; null when Kimi has none: no handle,
-    // or a value that is no open handle of this process (one its parent passed without letting it inherit), so the program gets none.
+    // or a value that is no open handle of this process (one its parent passed without letting it inherit), so the program gets
+    // JobProcess's closed input and reads end of input.
     private static SafeFileHandle? StandardInput()
     {
         var input = new SafeFileHandle(GetStdHandle(-10), ownsHandle: false);

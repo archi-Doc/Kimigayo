@@ -4,6 +4,7 @@ using System.Collections;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Kimi;
 using Kimi.Build;
 using Kimi.Testing;
@@ -218,15 +219,26 @@ public class TestProcessRecoveryTest
     }
 
     // Kimi's side of NativeToolchainTest's run rows: runs this apphost as kimi run runs a program, in KIMI_TEST_PROCESS_PROGRAM's mode;
-    // when the row has read the program's output (KIMI_TEST_PROCESS_GO), KIMI_TEST_PROCESS_ACTION "cancel" cancels the run and "end" ends
-    // this process as a second Ctrl+C does (Program.EndProcess). Exits with the run's exit code, 130 for a cancellation.
+    // KIMI_TEST_PROCESS_ACTION "no input" and "invalid input" set this process's standard input to no handle or to a value no handle of
+    // it has (above the handle table's limit) before the run; when the row has read the program's output (KIMI_TEST_PROCESS_GO), "cancel"
+    // cancels the run and "end" ends this process as a second Ctrl+C does (Program.EndProcess). Exits with the run's exit code, 130 for a
+    // cancellation.
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void RunProgram()
     {
         Environment.SetEnvironmentVariable("KIMI_TEST_PROCESS_PROBE", Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_PROGRAM"));
+        var action = Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_ACTION");
+        if (action is "no input" or "invalid input")
+        {
+            if (!SetStdHandle(-10, action == "no input" ? 0 : 0x7FFF_FFF8))
+            {
+                Environment.Exit(122);
+            }
+        }
+
         using var cancellation = new CancellationTokenSource();
         var run = NativeToolchain.RunExecutable(Environment.ProcessPath!, Environment.CurrentDirectory, cancellation.Token);
-        if (Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_ACTION") is { } action)
+        if (action is "cancel" or "end")
         {
             using (var go = EventWaitHandle.OpenExisting(Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_GO")!))
             {
@@ -250,4 +262,9 @@ public class TestProcessRecoveryTest
             Environment.Exit(130);
         }
     }
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetStdHandle(int kind, nint handle);
 }
