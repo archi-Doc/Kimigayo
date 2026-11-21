@@ -156,6 +156,34 @@ public class InferenceSlotScalingTest
         Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{form} [{unit}]: work {string.Join(", ", work)}");
     }
 
+    // SPEC 10.5.1 (PLAN G924 AF-3b, design-af3 R1.6): a part checked against its expected Type is queried once per distinct Type it
+    // receives. Under k outer candidates (sc-k-d) an `idf` chain of depth d, one candidate per level, starts k * d queries, the selected
+    // candidate's completion reading the memo. Two wrapping overloads per level (sg2v: `g(x: Box<T>)`, `g(x: Opt<T>)` over `mkb` levels)
+    // give their part 2^(j-1) distinct Types at depth j, so the queries grow as 2^d: 3 * 2^d - 3 (the g levels 2^d - 1, the mkb levels,
+    // checked only below a Box, 2^(d+1) - 2); past 4,096, at d = 11, the resolution is refused (ResolutionWorkLimit_Kd, the owner's O-351
+    // (a)).
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(8)]
+    public void CheckedPartsAreQueriedOncePerDistinctType(int k)
+    {
+        string[] others = ["bool", "string", "f64", "i32", "i64", "u8", "i16"];
+        var overloads = "func fok(x: ref/[2 of i64]) -> i32 => 0\n" + string.Concat(others.Take(k - 1).Select(t => $"func fok(x: {t}) -> i32 => 1\n"));
+        long[] queries = [.. new[] { 10, 20, 40 }.Select(d => Bound("func idf<T>(value: T) -> T => value@move\n" + overloads +
+            $"func k() -> i32\n    return fok({string.Concat(Enumerable.Repeat("idf(", d))}[2 of 1]{new string(')', d)})\n()").Binding.InferenceMetrics.Queries)];
+        Assert.Equal(new long[] { k * 10L, k * 20L, k * 40L }, queries);
+    }
+
+    [Fact]
+    public void WrappingOverloadsGiveTheirPartsDistinctTypesUpToTheLimit()
+    {
+        long[] queries = [.. Enumerable.Range(1, 10).Select(d => Bound(WrappedChain(d)).Binding.InferenceMetrics.Queries)];
+        Assert.Equal(Enumerable.Range(1, 10).Select(d => (3L << d) - 3), queries);
+        var refused = MinimalEmissionTest.Analyze(WrappedChain(11));
+        Assert.Contains(refused.Binding.Issues, x => x.Failure == BindingFailure.ResolutionWorkLimit);
+    }
+
     // G379 (a)'s C3 (SPEC 10.5.1, 10.1 step 5): a chain of nested Tuple literals with an erasure at its innermost element, which step 5 reads
     // among the element positions (tl): at depth 10, 20 and 40 the first run is inapplicable there and run<T> is selected, and the one call's
     // selection work does not grow with the depth (each element position is fitted and read once per candidate). From depth 80 the Type's
@@ -176,6 +204,12 @@ public class InferenceSlotScalingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete));
         Assert.True(complete, MinimalEmissionTest.Describe(c));
     }
+
+    // sg2v at depth d (the coverage rows sg2v-*, tv10-tv12): two wrapping overloads per level over d `mkb` levels.
+    private static string WrappedChain(int d)
+        => "struct Box<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\nstruct Opt<T>\n    public var v: T\n    public init(v: T) => self.v = v@move\n" +
+            "func g<T>(x: Box<T>) -> T => $abort(\"g\")\nfunc g<T>(x: Opt<T>) -> T => $abort(\"g\")\nfunc mkb<T>(x: T) -> Box<T> => Box.init(x@move)\n" +
+            $"func take(x: i64) -> () => ()\nfunc k() -> i32\n    take({string.Concat(Enumerable.Repeat("g(", d))}{string.Concat(Enumerable.Repeat("mkb(", d))}1{new string(')', 2 * d)})\n    return 0\n()";
 
     private static string CallWorkload(string workload, int calls)
     {
