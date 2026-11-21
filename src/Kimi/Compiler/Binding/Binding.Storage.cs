@@ -22,7 +22,10 @@ public sealed partial class Binding
     // (CompleteProjections, DECISIONS BU-50), which StoredLayer and the hold walk read, and AdtDef's view, the same Types
     // WithoutRawOrigins (DECISIONS BU-24; design-final §15): an erased instance is often the user's own
     // Type (no Origins, or only `static`), so the erasure of an AdtDef stored Type is the stored Type of the erased instance only then
-    // (R5-M39).
+    // (R5-M39). The formation owns its height refusals inside the instance collector's answer frame (Binding.TypeHeight, R7-T1): a stored
+    // Type past IMPL A.4's height leaves its part null and the instance's HeightLimit set, the cause every reader of the instance reads
+    // (Binding's storage walk a limit, Layout its HeightLimit), so no record is made here and none at a second reader; outside the frame
+    // the refusal is recorded as before and HeightLimit stays false.
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -35,7 +38,9 @@ public sealed partial class Binding
         {
             // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
             // refreshes it in this run) is never current, so the refreshed ADT forms it again.
+            var formation = this.OpenFormation();
             this.Substitute(type, adt, instance);
+            instance.HeightLimit = this.CloseAnswer(formation);
             instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
         }
 
@@ -345,7 +350,7 @@ public sealed partial class Binding
             }
 
             var parts = components.AsSpan(0, declared.Components.Count);
-            if (declared is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, RawOrigin: null })
+            if (declared is { IsPointer: true, RawOrigin: null })
             {
                 return this.types.Pointer(parts[0], BoundOrigin.Unstated);
             }
@@ -756,8 +761,9 @@ public sealed partial class Binding
     }
 
     // A call's images of its callee binder's per-call atoms (SPEC 15.6.4, 15.8.2; DECISIONS R4-M152, R4-M159): its inputs, in parameter-slot
-    // order, and at a value call of a Closure its two reserved atoms', the call receiver ρ (the receiver acquisition's Origin) and the
-    // call result (the call's Unbound atom, R4-M118), each built only where the result names its atom; a missing image keeps its atom.
+    // order, and its two reserved atoms', the call receiver ρ (a value call's receiver acquisition's Origin, built only where the result
+    // names ρ) and the call result (only Owned's closed signature images it, to static, DECISIONS BU-73; a value call publishes it as it
+    // is, R7-O1 H); a missing image keeps its atom.
     // A Closure Type's Origin arguments are the images of its definition's (DECISIONS R4-M159): `definition[i]` becomes `value[i]`.
     private readonly ref struct PerCallImages(
         ReadOnlySpan<BoundOrigin> inputs,

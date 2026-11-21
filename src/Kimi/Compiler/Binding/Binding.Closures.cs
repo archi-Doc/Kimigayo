@@ -13,11 +13,12 @@
 //   formation (Binding.Captures.cs), the receiver classification (Binding.ClosureReceivers.cs) and the call-local result test
 //   (Binding.ClosureResults.cs).
 // - Outputs: the literal's Type (its EnvironmentType) or its failure; BoundClosure's Storage, Signature, EnvironmentType,
-//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located Unsupported_Kd of each use the classification leaves unlisted.
-// - Invariants: BindClosure clears the published Signature and Classified before a binding, and the pending relations an earlier
-//   binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause) and
-//   has them classified right after the body is bound, before a failed result or parameter Type returns, its pending relations judged
-//   then (Binding.OriginProof.cs); a header probe binds no parameter, visits no body and restores the enclosing probe on exit.
+//   EvaluatingBody and InfersResult; a ClosureReceiverRefutation; the located InternalInvariant_Kd of each use no consumer takes.
+// - Invariants: BindClosure clears the published Signature, Published and Classified before a binding, and the pending relations an
+//   earlier binding formed in its body; BindConcreteClosure starts from reset receiver facts (empty Storage, Shared, no exclusive cause)
+//   and has them classified right after the body is bound, its pending relations judged then (Binding.OriginProof.cs); PublishClosure
+//   publishes the definition on both paths, with no Signature where a parameter's or the result's slot failed (BoundClosure's Access
+//   paragraph); a header probe binds no parameter, visits no body and restores the enclosing probe on exit.
 // - Prohibitions: no receiver classification, capture formation or capture record here (Binding.ClosureReceivers.cs,
 //   Binding.Captures.cs, Binding.CaptureDiagnostics.cs).
 
@@ -223,14 +224,14 @@ public sealed partial class Binding
             }
 
             var type = this.BindType(function.Parameters[i].Type, scope);
-            if (!ReferenceTypes.StorageMatches(inputs.Components[i], type))
+            if (!TyCtxt.StorageMatches(inputs.Components[i], type))
             {
                 return false;
             }
         }
 
         return openResult || function.ReturnType is null ||
-            ReferenceTypes.StorageMatches(expected.Components[1], this.ClosureResultType(function, inputs, scope));
+            TyCtxt.StorageMatches(expected.Components[1], this.ClosureResultType(function, inputs, scope));
     }
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
@@ -244,9 +245,9 @@ public sealed partial class Binding
 
         if (function.ClosureStorage is { } previous)
         {
-            previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
+            previous.Signature = null;
+            previous.Published = false; // BoundClosure.Of is this binding's definition, set once it is published.
             previous.Classified = false; // And its receiver facts this binding's, once it has classified them.
-            this.LeavePendingRelations(function); // The pending relations of an earlier binding leave with it (R4-M126 §2.5 (d)).
         }
 
         if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
@@ -291,13 +292,13 @@ public sealed partial class Binding
 
         // SPEC 7.7.3: the receiver is classified from the bound body on every path that bound it, a failed result or parameter
         // included; classification reads neither the signature nor the environment Type. A use of a pair-layer capture that no consumer
-        // takes, which could leave a case Shared, is a located Unsupported_Kd (the owner's net, DECISIONS R4-M145). The
-        // relations that waited for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
+        // takes is a broken contract, a located InternalInvariant_Kd (DECISIONS R7-M53; it was R4-M145's net). The relations that waited
+        // for the classification are judged then (SPEC 15.8.2, 23.1.2; DECISIONS R4-M126 §2.5).
         var effects = this.closureEffects ??= new(this);
         effects.Classify(function, plan);
-        foreach (var (use, _) in effects.Unlisted)
+        foreach (var use in effects.Unlisted)
         {
-            this.Fail(use, BindingFailure.Unsupported);
+            this.Fail(use, BindingFailure.Internal);
         }
 
         // A use whose need no published fact decides leaves the receiver undecided, a located Unsupported_Kd: a call of a foreign import
@@ -308,7 +309,6 @@ public sealed partial class Binding
             this.Fail(use, BindingFailure.Unsupported);
         }
 
-        this.JudgePendingRelations(function);
         return this.PublishClosure(function, plan, expected, openResult);
     }
 
@@ -432,52 +432,73 @@ public sealed partial class Binding
     private BoundType? PublishClosure(FunctionKoto function, BoundClosure plan, BoundType? expected, bool openResult)
     {
         var symbol = this.symbols[function];
-        if (symbol.Type is null)
-        {
-            return Complete(function, null);
-        }
 
         // SPEC 15.8.2 (DECISIONS R4-M126 P8, R4-M152): an inferred result is published once the receiver is classified.
-        var publishes = function.ReturnType is null && (expected is null || openResult);
+        var publishes = symbol.Type is not null && function.ReturnType is null && (expected is null || openResult);
         var closureBody = new ExecutableBody(symbol);
         if (publishes)
         {
-            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type, closureBody));
+            symbol.Type = this.PublishedResult(function, plan.Receiver, closureBody, this.ResolveLocalResultOrigins(symbol.Type!, closureBody));
         }
 
-        var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
+        // SPEC 23.1.2 (PLAN G1110, DECISIONS R5-M63 (1) as amended): a parameter or result slot that failed (the failed-slot fact) leaves the
+        // Signature null and the creation failed; the definition is still published (Published) with its final EnvironmentType, its
+        // Origin arguments from the typed header parts only (a failed part names no atom).
+        var failed = symbol.Type is null;
+        var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count + 1, plan.Storage.Count));
         try
         {
+            var typed = 0;
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                if (function.Parameters[i].Type.BoundType is not { } input)
+                if (function.Parameters[i].Type.BoundType is { } input)
                 {
-                    return Complete(function, null);
+                    buffer[typed++] = input;
                 }
-
-                buffer[i] = input;
+                else
+                {
+                    failed = true;
+                }
             }
 
-            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
+            BoundType header;
+            if (!failed)
+            {
+                var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
+                plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type!]);
+                header = plan.Signature;
+            }
+            else
+            {
+                if (symbol.Type is { } result)
+                {
+                    buffer[typed++] = result;
+                }
+
+                header = typed == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, typed));
+            }
+
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
-            plan.EnvironmentType = this.ClosureType(symbol, function, plan.Signature, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
+            plan.EnvironmentType = this.ClosureType(symbol, function, header, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
         }
         finally
         {
             this.typeScratch.Return(buffer, clearArray: true);
         }
 
+        plan.Published = true;
+        // SPEC 23.1.2 (rule W): the result's sources and the omitted captures are judged on both paths; a returned value read from a
+        // failed slot has no Type and rests (FitResultSources skips it), any other source is fitted.
         if (publishes)
         {
-            this.FitResultSources(function, closureBody, symbol.Type); // A returned value over the call's own storage is Refuted where it returns.
+            this.FitResultSources(function, closureBody, symbol.Type!); // A returned value over the call's own storage is Refuted where it returns.
         }
 
         this.JudgeOmittedCaptures(function, plan);
-        return Complete(function, plan.EnvironmentType);
+        return Complete(function, failed ? null : plan.EnvironmentType);
     }
 }

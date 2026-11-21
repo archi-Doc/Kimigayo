@@ -185,6 +185,20 @@ public partial class KimiLibraryShapeTest
         Assert.True(bases.Length == 0, build + string.Join(", ", bases));
     }
 
+    // R7-N5 B6b's second premise (DECISIONS BU-220 as B6b amends it; the first is TheLibraryDeclaresNoParameterDefault): StructuralCompletion's
+    // query memos are working-state families of the composed node's module, which the frozen library refuses, so no program query may
+    // compose a library node. The guess rule, which MIR also asks after the Bind at a require's failure body, answers none at a frozen
+    // library node (the library's pass is complete and recovered nothing), so a program whose pass is incomplete composes none.
+    [Fact]
+    public void TheGuessRuleAnswersNoneAtAFrozenNode()
+    {
+        var c = CompilationTestHelper.Parse("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\n", "Hello.kimi");
+        Assert.False(c.Bind().IsComplete);
+        var requires = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<RequireKoto>().ToArray();
+        Assert.NotEmpty(requires);
+        Assert.All(requires, x => Assert.True(c.Binding.GuessedCompletionNodes(x.ElseBody, x.ElseBody).IsEmpty, Line(x)));
+    }
+
     // PLAN G949 S1-r1b (commit 9's premise; review-s1r1b Part 3, F's ruling 179): the documents' unnamed aliases are a per-pass map
     // (PassPart.AliasesByDocument), and the library declares no unnamed alias, so the library pass's PrepareAliases prunes no entry a
     // program document needs and the layer's map stays empty. A tripwire, true today: the unit that gives the library its first unnamed
@@ -247,8 +261,8 @@ public partial class KimiLibraryShapeTest
     {
         var c = Bound(string.Empty);
         Assert.False((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
-        var known = (System.Collections.ICollection?)typeof(Binding).GetField("knownBases", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding);
-        Assert.True(known is null or { Count: 0 });
+        Assert.False(c.Library.Kotonoha.Syntax.Hir.Families.KnownBases.Enumerate().MoveNext()); // R7-N5 B5a: the kept family's rows.
+        Assert.False(c.Kotonoha.Syntax.Hir.Families.KnownBases.Enumerate().MoveNext());
     }
 
     // PLAN G949 S1-r1b (r1b plan section 1, step 0; s1r1-design 8.10's first branch): the library declares no shape contract and no
@@ -267,8 +281,9 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(0, heads);
         Assert.Empty((System.Collections.ICollection)typeof(Binding).GetField("shapeContracts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
-        var conflicts = (System.Collections.IDictionary)typeof(Binding).GetField("parameterShapeConflicts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        Assert.DoesNotContain(conflicts.Keys.Cast<Koto>(), x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+        // R7-E2 E2-3b: a conflict is a problem in the pass's report (its stores are gone), so the bound library holds none.
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.DoesNotContain(Enumerable.Range(0, report.Count), i => report.Problem(i).Code == Kimi.DiagnosticCode.ParameterShapeMismatch_Kd);
     }
 
     // G949 D2b-d's d12 (N5-3): the library's explicit specializations (SPEC 8.13: tryResolve's, writer's and format's) are their

@@ -6,7 +6,8 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys.
+// Owns a node's direct failure (Fail), consultation and declaration-part prerequisites, their derived failures and published diagnostic keys,
+// and RestingCauses, the one cause query of a node a later phase derives a value or a check from (DECISIONS Z16).
 // Checks record the parts they read; publication follows those records without binding or proving them again.
 // Storage is reused between passes and cleared by ResetPrerequisites with the other Binding facts.
 // A consultation frame is the site of what a check reads and forms (PLAN G651 U1), in one of three forms: the walk's (BindNode,
@@ -34,17 +35,23 @@ public sealed partial class Binding
 
     // The pass's change signal (ValidateConstraintEnvironments): advanced by every write of what an environment's judgment reads, in the
     // step that writes it: each Fail call, whether or not the node held a failure already (a conformance's, an identity's or an Access
-    // path's Invalid is written with one); each environment made Invalid (FailEnvironment); and an inference consumer made Invalid under
+    // path's Invalid is written with one); each premise failed (FailPremise, FailFacts); and an inference consumer made Invalid under
     // its source's use (InvalidateAssociatedEvidence). PublishSourceStates' state, written with no Fail at each ValidateConformances,
     // only withdraws a premise (AvailableContractPremise); the failure an Error reads (InvalidDeclarationContext) is written through Fail
     // by ValidateClosedTypeConstraints, which the rounds' condition runs before the walk (InvalidateProjectionCertificates).
     private int invalidations;
 
-    // The running pass's part (PassPart.DerivedIssues), which its Check writes (EnterPass).
-    private List<Koto> derivedIssues;
+    // R7-C3 (F's C2 ruling 317 (1)): the census of the Failed state (ConstraintEnvironment's contract): every premise newly failed
+    // (FailPremise) and every unproven input named (FailInput), zeroed with the pass's environments (ResetPass). While it is 0 no
+    // environment a judgment reads holds either, so the per-proof readers answer "nothing failed" at once.
+    private int premiseFailures;
 
-    /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
-    internal IReadOnlyList<Koto> DerivedIssues { get; }
+    // The running pass's part (PassPart.DerivedIssues), which its Check writes (EnterPass).
+    private List<BindingIssue> derivedIssues;
+
+    /// <summary>Gets final problems that are explained by failed prerequisites, each by its own requirement; they are reported as derived
+    /// problems.</summary>
+    internal IReadOnlyList<BindingIssue> DerivedIssues { get; }
 
     // A recovery node, an ErrorKoto or synthesized syntax kept in place of a rejected form, stands for its syntax error.
     internal static bool IsRecovery(Koto node, out DiagnosticKey cause)
@@ -70,6 +77,19 @@ public sealed partial class Binding
     /// <returns>The check keys, or <see langword="null"/>.</returns>
     internal DiagnosticKey[]? FailureCauses(Koto node) => this.HasFailureCauses(node) ? this.CauseKeys(node) : null;
 
+    /// <summary>Gets the causes a check resting on a node rests on (docs/dev/DIAGNOSTICS.md §4.3), the one cause query of the nodes the
+    /// HIR publisher's contract names (<see cref="FailureFact"/>; DECISIONS Z16), by the one rule RestingSource states.</summary>
+    /// <param name="node">The node, such as one of GuessedCompletionNodes or a failure fact.</param>
+    /// <returns>The causes, or null at a node nothing rejected and Binding recorded no cause for.</returns>
+    internal DiagnosticKey[]? RestingCauses(Koto node)
+        => !this.RestingSource(node, out var failed, out var own) ? null : failed is not null ? this.CauseKeys(failed) : [own];
+
+    /// <summary>Gets whether a check resting on a node rests on causes (<see cref="RestingCauses"/> is not null), without forming them:
+    /// the HIR publisher's contract check, which a warm publish runs without allocating.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>Whether it rests on causes.</returns>
+    internal bool HasRestingCauses(Koto node) => this.RestingSource(node, out _, out _);
+
     /// <summary>Gets whether Binding recorded a cause for a node it did not resolve: the node is a recovery, failed, or rests on an
     /// unresolved prerequisite (a dependent, SPEC 23.1.2).</summary>
     /// <param name="node">The node.</param>
@@ -78,9 +98,11 @@ public sealed partial class Binding
         => this.RecordedState(node) != BindingState.Resolved &&
             (IsRecovery(node, out _) || this.RecordedFailure(node) != BindingFailure.None || this.HasUnresolvedPrerequisite(node));
 
-    // SPEC 23.1.2: the declaration part that gives a binding its Type: a parameter's written Type, an accessor parameter's annotation or
-    // Property Type, or a local's or Pattern's declaration; null for any other binding. A use or a written capture entry of a binding
-    // without a Type rests on it.
+    // SPEC 23.1.2 (PLAN G1073): the declaration part that gives a slot its Type, where Binding records that Type's failure: a
+    // parameter's written Type, an accessor parameter's annotation or Property Type; a definition's result: an accessor's executing
+    // function's written result, else its Property's Type or the Property, a function's or Closure's written result Type, else the
+    // function; a Property's (a static's or Field's), a local's or a Pattern's declaration; null for any other binding. A use or a
+    // written capture entry of a binding without a Type rests on it (ConsultTypeSource: not for a variable, a Property included).
     private static Koto? TypeSource(BindingSymbol symbol)
     {
         if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
@@ -95,7 +117,80 @@ public sealed partial class Binding
             return annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration;
         }
 
-        return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate ? symbol.Declaration : null;
+        if (symbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto definition })
+        {
+            return definition.Accessor?.Declaration is PropertyAccessorKoto executed
+                ? executed.ReturnType ?? Accessor(executed).Property.Declaration.TypeKoto ?? Accessor(executed).Property.Declaration
+                : definition.ReturnType ?? definition;
+        }
+
+        return symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Property ? symbol.Declaration : null;
+    }
+
+    // Whether a match (a `try` included) or `for` takes `node` as its Subject (SPEC 15.1.6), as its consumer takes it (Grouped,
+    // R4-M145): CompleteDependent's walk stops short of it.
+    private static bool IsSubject(Koto node)
+    {
+        var taken = Grouped(node);
+        return ReferenceEquals(taken, taken.Parent switch { MatchKoto match => match.Expression, ForKoto loop => loop.Iterable, _ => null });
+    }
+
+    // DIAGNOSTICS 4.3 (a problem is derived only from what its check read): a requirement whose check compares only what declarations
+    // declare (their names, normalized signatures, conformance targets or specialization arguments), never what the node's own binding
+    // consulted, so neither the node's own recovery nor a recovery or limit it rests on derives it. Census (E2-3b), Duplicate alone, at every
+    // site: FailDuplicate's six pairwise sites (Scopes, Aliases, Contracts.Registration twice, Signatures, Specializations;
+    // RecordDuplicateGroups records them), a Semantics parameter's name (Indexing), a nested container's name over an inherited member
+    // (MemberLookup), `Kimi` and a module's conflicting names (Modules), a capture list's repeat (CaptureDiagnostics), an Origin set's or
+    // annotation's repeat (OriginDeclarations, Origins.Annotations, AssociatedOrigins) and Origins.Schemas' three (a container fragment's
+    // incompatible header, an Origin name repeating an enclosing abstract Origin, a repeated Origin name).
+    [Transitional("R7", Reason = "The row stands for per-problem inputs (d4: a repeated let beside its initializer's syntax error; k2: a repeated Signature whose later header is a recovery), until R7-E5 states what each problem's check read.")]
+    private static bool JudgedByDeclaredNames(BindingFailure failure) => failure == BindingFailure.Duplicate;
+
+    // PLAN G1073, the failed-slot fact: a slot is stated when it has its Type or Binding recorded a cause at its TypeSource (its record
+    // reported or resting on a reported one), so a published slot of no Type is the failed slot. The HIR publisher's slot rows read it
+    // (HasFacts, SlotsStated); a node with a slot neither typed nor failed is Broken. One direction only: a Closure whose written result
+    // failed keeps an inferred Type until PLAN D-848.
+    private bool Stated(BindingSymbol slot) => slot.Type is not null || (TypeSource(slot) is { } source && this.HasFailureCauses(source));
+
+    // The one rule of what a check resting on a node rests on (RestingCauses; docs/dev/DIAGNOSTICS.md §4.3): a supplied body's syntax
+    // Error, else the node's own Binding causes (failed: the node, whose CauseKeys they are), else the unresolved mark for an expression
+    // the guess rule counts as unresolved. A node rejected without such a cause (Binding.Rejected) rests on its own record: a failure
+    // Binding recorded at it, a recovery's syntax Error, a malformed char literal's lexical Error (CharLiteralKoto.Cause), an admitted
+    // misfit's value on its write's fit failure (failed: the write, MisfitWrite). A Place Binding resolved whose acquisition failed, its
+    // Move resting on an Error Copy proof (HirAcquire.Failed, DECISIONS BU-103), rests on the unresolved mark: Binding records that
+    // proof's failure at the Type's declaration, not at the use (DECISIONS Z16). The row reads a resolved node's Failed, which of
+    // BU-103's three kinds only the Error Copy proof gives (no Type leaves a node unresolved; a failed Pattern Type check rests on its
+    // Pattern's record); a fourth kind revisits it. False at a node nothing rejected and Binding recorded no cause for.
+    private bool RestingSource(Koto node, out Koto? failed, out DiagnosticKey own)
+    {
+        (failed, own) = (null, DiagnosticKey.Unresolved);
+        if (SuppliedCause(node) is { } supplied)
+        {
+            own = supplied;
+            return true;
+        }
+
+        if (this.HasFailureCauses(node) || this.RecordedFailure(node) != BindingFailure.None)
+        {
+            failed = node;
+            return true;
+        }
+
+        if (IsRecovery(node, out var recovered))
+        {
+            own = recovered;
+            return true;
+        }
+
+        if (node is CharLiteralKoto { Value: null } literal)
+        {
+            own = literal.Cause ?? DiagnosticKey.Unresolved;
+            return true;
+        }
+
+        failed = MisfitWrite(node) is { } write && this.HasFailureCauses(write) ? write : null;
+        return failed is not null || IsUnresolvedGuess(node) ||
+            (this.RecordedState(node) == BindingState.Resolved && (HirTables.AdjustOf(node).Acquire == HirAcquire.Failed || HirTables.PlanOf(node).Adjust.Acquire == HirAcquire.Failed));
     }
 
     private bool IsUnresolvedPrerequisite(Koto node)
@@ -135,6 +230,29 @@ public sealed partial class Binding
         }
     }
 
+    // The fact a failure carries (a failure-fact family's row, such as `qualificationFailures`' stop), stored with its failure by the
+    // recorder's one decision (DECISIONS G949 S1 as R7-N5 B4 amends it): a node of a module the running pass binds in its
+    // module's column at its SyntaxId, any other node in the part's foreign columns at its entry's index (PassPart.ForeignFacts), the
+    // row its entry names; its readers read it as RecordedFailure reads the failure, so no caller chooses a store.
+    private T RecordedFact<T>(Koto node, FactFamily<T> family)
+        => this.IndexOfForeign(node) is var i and >= 0 ? family(ref this.pass.Part.ForeignFacts).Get(i, this)
+            : node.SyntaxOwner is { } table ? family(ref table.Hir.Families).Get(node.SyntaxId, this) : default!;
+
+    private void SetRecordedFact<T>(Koto node, FactFamily<T> family, T fact)
+    {
+        if (this.pass.Binds(node.SyntaxOwner))
+        {
+            family(ref HirTables.Of(node).Families).Ref(node.SyntaxId, this) = fact;
+            return;
+        }
+
+        this.ForeignEntry(node);
+        var row = this.IndexOfForeign(node);
+        ref var facts = ref this.pass.Part.ForeignFacts;
+        facts.Resize(this.foreignFailures.Count);
+        family(ref facts).Ref(row, this) = fact;
+    }
+
     // A foreign node's entry, listed at the pass's first write to it with its columns as they stood (State and Before the state its own
     // pass counted): a node a check cleared (ClearFailure) and fails again keeps its one entry with that first state (review-s1r1b N2),
     // so a node enters the list once per pass.
@@ -164,26 +282,42 @@ public sealed partial class Binding
         return -1;
     }
 
-    // An environment made Invalid by the failure of `node` (ConstraintEnvironment.Fail), counted in the change signal whether or not the
-    // writer also fails a node: under an owner that held a failure already it calls no Fail.
-    private void FailEnvironment(ConstraintEnvironment environment, Koto node)
+    // R7-C3 (F's C2 rulings 272-273): the premises of a declaration whose own judgment failed it (an invalid conditional or block) fail
+    // with it, each through the one writer.
+    private void FailFacts(BindingScope scope, Koto owner)
     {
-        environment.Fail(node);
-        this.Invalidated();
+        if (scope.Constraints is not { } environment)
+        {
+            return;
+        }
+
+        foreach (var fact in environment.Facts)
+        {
+            this.FailPremise(environment, fact, owner);
+        }
     }
 
-    // The change signal's one writer: Fail, FailEnvironment and an evidence record made Invalid with no failure of its own call it.
+    // R7-C3 (B1'): a premise failed alone (ConstraintEnvironment.FailPremise), counted in the change signal and in the Failed state's
+    // census when it newly failed: the environment's judgments read the remainder. True when it newly failed.
+    private bool FailPremise(ConstraintEnvironment environment, BoundConstraint fact, Koto owner)
+    {
+        if (!environment.FailPremise(fact, owner))
+        {
+            return false;
+        }
+
+        this.premiseFailures++;
+        this.Invalidated();
+        return true;
+    }
+
+    // The change signal's one writer: Fail, FailPremise, FailFacts and an evidence record made Invalid with no failure of its own call it.
     private void Invalidated() => this.invalidations++;
 
+    // The recorder: records the failure it is given and decides none (a miss's qualification is the resolver's, FailUnselected).
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
         this.Invalidated();
-        if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
-        {
-            failure = BindingFailure.QualificationRequired;
-            this.qualificationFailures[node] = qualification;
-            unresolved = false;
-        }
 
         // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
         if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
@@ -224,20 +358,50 @@ public sealed partial class Binding
         => this.partPrerequisites.TryGetValue(node, out var part) && this.IsUnresolvedPrerequisite(part) ? part : null;
 
     // A dependent takes Complete's state for no Type; a node of a module the pass does not bind takes it in its entry and keeps its
-    // columns, its Type's included.
+    // columns, its Type's included. SPEC 23.1.2 (D-823): a node that rests after the Places built on it were bound (a late rest, such as
+    // Check's on a called declaration validation failed) takes them with it: each enclosing group, and each Place whose path's next step
+    // (NextPathStep) is the node, rests on it, so no Resolved Place stands over an untyped node (the HIR's compound Place has a Place
+    // root). The Places are found before any Type is cleared, since a step's form reads its operand's Type. A walk that ends at a match
+    // (a `try` included) or `for` Subject (SPEC 15.1.6) rests nothing above the node: that Subject Place, and each part of it, is the
+    // construct's, whose own binding owns a resting Subject (BindMatch; open: PLAN G1076, its arms and body published with failed-slot
+    // bindings). While binding, a node's consumers are not bound yet, so the walk stops at once.
     private BoundType? CompleteDependent(Koto node, Koto cause)
     {
         this.prerequisites[node] = (this.prerequisiteStore.Count, 1);
         this.prerequisiteStore.Add(cause);
         if (this.pass.Binds(node.SyntaxOwner))
         {
-            return Complete(node, null);
+            var top = node;
+            while (top.Parent is { BindingState: BindingState.Resolved } parent && this.BuiltOn(parent, top))
+            {
+                top = parent;
+            }
+
+            if (IsSubject(top))
+            {
+                top = node;
+            }
+
+            Complete(node, null);
+            for (var place = node; !ReferenceEquals(place, top); place = place.Parent!)
+            {
+                this.prerequisites[place.Parent!] = (this.prerequisiteStore.Count, 1);
+                this.prerequisiteStore.Add(place);
+                Complete(place.Parent!, null);
+            }
+
+            return null;
         }
 
         ref var entry = ref this.ForeignEntry(node);
         entry.State = CompletedState(entry.State, null);
         return null;
     }
+
+    // Whether `parent` is a group around `place` or a Place whose path's next step is `place` (NextPathStep, the one enumeration of a
+    // path's forms).
+    private bool BuiltOn(Koto parent, Koto place)
+        => IsGroup(parent) || (this.NextPathStep(parent, out var next) is not (PathStep.Root or PathStep.Candidate or PathStep.Receiver) && ReferenceEquals(next, place));
 
     private (int Start, Koto? Node) BeginConsultation(Koto node)
     {
@@ -289,6 +453,11 @@ public sealed partial class Binding
 
     private void ResumeConsultation((int Start, Koto? Node) parent) => (this.consultationStart, this.consultationNode) = parent;
 
+    // R7-C3 C3-1b (F's C2 rulings 289-290; SPEC 8.2.3, 23.1.2): whether the open consultation is `site`'s own check. A failure's own
+    // checks are its sites, never its readers: the one rule for a named unproven input (UnprovenInputRead) and an identity premise
+    // error (IdentityPremiseErrorRead).
+    private bool ChecksOwnSite(Koto site) => ReferenceEquals(site, this.consultationNode);
+
     /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
     /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
     /// <param name="dependency">The node whose result was read.</param>
@@ -312,29 +481,28 @@ public sealed partial class Binding
     }
 
     // A recovery node derives from its syntax error, and so does every failure of a check that consulted a recovery node,
-    // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3).
-    // A failure that reports missing information is derived when the check consulted prerequisites that stayed unresolved;
-    // a failure explained by the Origin rule, or any other definite failure, is direct.
+    // directly or through unresolved operands: the parser's guess explains what the check combined (DIAGNOSTICS.md §4.3), except a
+    // requirement judged by declared names alone (JudgedByDeclaredNames), whose check reads no guess. A failure that reports missing
+    // information is derived when the check consulted prerequisites that stayed unresolved; a failure explained by the Origin rule, or any
+    // other definite failure, is direct.
     // A constraint proof that a declaration-level check found failing because a part it read failed, such as the invalid
     // declaration context of a Property (AddPrerequisite), is a consequence of that part. A Type mismatch over a Type in an erroneous
-    // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses).
-    private bool IsDerived(Koto node)
-    {
-        var failure = this.RecordedFailure(node);
-        return IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node) ||
+    // identity class rests on the premise error recorded at the declaration (SPEC 8.2.3: never again at uses). `failure` is the
+    // requirement judged: the caller passes the problem's (CollectIssue: the node's recorded failure).
+    private bool IsDerived(Koto node, BindingFailure failure)
+        => (!JudgedByDeclaredNames(failure) && (IsRecovery(node, out _) || this.RestsOnRecoveryOrLimit(node))) ||
             (failure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node)) ||
             (failure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) &&
             (this.RecordedState(part) == BindingState.Invalid || this.HasFailureCauses(part))) ||
             (failure == BindingFailure.InvalidOrigin && node is IsKoto { IsAssociatedConstraint: true } && this.partPrerequisites.TryGetValue(node, out var occurrence) &&
-            this.formationCauses?.ContainsKey(occurrence) == true) ||
+            this.formationCauses.ContainsKey(occurrence)) ||
             (failure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
             (this.RecordedFailure(specification) != BindingFailure.None || this.RecordedState(specification) == BindingState.Invalid)) ||
             (failure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
-            this.formationCauses?.ContainsKey(read) == true) ||
+            this.formationCauses.ContainsKey(read)) ||
             (failure == BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var premise) &&
             this.KeepsPremiseErrorContext(premise));
-    }
 
     // SPEC 23.1.2, 8.3.3 (Limits): a check whose evidence read, directly or through failures resting on it, a recovery node or a node
     // a reached implementation limit refused (its record's category is Resource) derives every outcome, Unproven, Invalid or any
@@ -385,6 +553,16 @@ public sealed partial class Binding
         {
             this.partPrerequisites[node] = part;
         }
+    }
+
+    // SPEC 23.1.2 (rule W): an owner whose check read a failed part and fails only because of it is Invalid resting on that part, with no
+    // failure of its own, so it is derived and records nothing. That holds only where the part's own record publishes: an attribute's
+    // target on its rejected attribute (InvalidateAttributeTarget), whose record is direct, since an attribute carries no frame or part
+    // another check writes. It runs before the pass's first environment walk, so no change signal is due (Invalidated).
+    private void RestOnPart(Koto owner, Koto part)
+    {
+        this.SetRecordedState(owner, BindingState.Invalid);
+        this.AddPrerequisite(owner, part);
     }
 
     /// <summary>Records a part that a later check of the pass judges, such as a projection use, whose conformance is checked after the

@@ -1,5 +1,16 @@
 # Complete Polonius-Style A5: Plan for R4's Remaining Scope
 
+Status (2026-11-19): **closed, 取り込み済み** ([INTEGRATED](../INTEGRATED.md), 2026-11-19), moved from `Proposals/` on the owner's
+instruction (verbatim 「PLAN G396 に移ったものとして、「取り込み済み」で draft/Changes に移してください」). Its SPEC items are integrated or closed as INTEGRATED
+records them: S1 (Loan Identity by Base) and S5 (Effect Atoms Widen) through their proposals, both in `Changes/`; S2 closed as 完了
+(superseded by Abstract Calls Reach by Paths, DECISIONS R4-M106); S3 and S4 integrated as clarifications; relaxation (c) and the
+root-most kill not adopted. Its exit rules (§6.2) are superseded by the owner's 90% rule (DECISIONS R4-M165). The remaining units of
+the two A5 plans moved to PLAN G396 (and the R7, R8 and R9 plan's §5.4, "G396's items in the owner's order (R4-M165)"): F7's 2c-6 and
+2c-7, F8 with Appendix B's U8s, F10, A6's 2g-1 to 2g-7 with G105 and Appendix B's U11, the 25 `Unsupported_Kd` producers without a
+removal stage, G103, G124, G126, G147 (2), G160's remainder, G263, X-5's notes and the step 2 plan's OQ8 condition; 2g-1 remains the
+removal condition of H3-2's interim records (PLAN). Nothing below this paragraph changed except the link to PLAN10, which stays in
+`Proposals/`; that link follows the move.
+
 Date: 2026-10-16
 
 Status: Proposal (plan only). The owner chose the direction on 2026-10-16 and refined it the same day: a simple, fast
@@ -13,7 +24,7 @@ Conventions:
 
 - "§n" is a SPEC section; "plan §n" is a section of this document.
 - Short names:
-  - PLAN10: [2026-10-10 Compiler Size Reduction and Single MIR Plan](2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md)
+  - PLAN10: [2026-10-10 Compiler Size Reduction and Single MIR Plan](../Proposals/2026-10-10%20Compiler%20Size%20Reduction%20and%20Single%20MIR%20Plan.md)
   - OBS13: [2026-10-13 R4 Completion Plan and Budget](../Obsolete/2026-10-13%20R4%20Completion%20Plan%20and%20Budget.md) (withdrawn)
   - DEC: [DECISIONS](../../docs/dev/DECISIONS.md); ARCH: [COMPILER_ARCHITECTURE](../../docs/dev/COMPILER_ARCHITECTURE.md); PLAN: [PLAN](../../docs/dev/PLAN.md)
 - C1–C8, M39, U8–U12 and E2–E9 are OBS13's names. PLAN10 Appendix B's C1–C6 (cited by DEC O3) are not used here.

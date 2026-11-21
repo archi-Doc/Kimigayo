@@ -94,9 +94,9 @@ public sealed partial class Binding
             source = forwarded;
         }
 
-        if (source.Type is null && source.Declaration is VariableKoto variable)
+        if (source.Type is null && source.Declaration is VariableKoto variable && this.RecordedState(variable) == BindingState.Unvisited)
         {
-            this.BindVariable(variable, source.Scope);
+            this.BindVariable(variable, source.Scope); // A declaration this pass has not bound yet; a bound one without a Type failed.
         }
 
         if (source.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture))
@@ -123,7 +123,7 @@ public sealed partial class Binding
         {
             if (entry is { } written)
             {
-                this.FailUnsupportedAt(function, written.Span);
+                this.RecordLocated(function, written.Span);
             }
             else
             {

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -33,6 +34,36 @@ public partial class TypeDagScalingTest
     [InlineData("paircycle")]
     public void AnIdentityCycleIsFoundWithoutADepthBound(string shape)
         => Assert.Equal("1*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(IdentitySource(shape, 70)));
+
+    // R7-C3 (F's C2 rulings 250 (1), 252, 255; SPEC 8.2.3): the premise fixpoint fails a chain of n premises before the bodies, one more
+    // each round (written last premise first, the worst order: n rounds), so each premise's projection reads its failed side when its
+    // record is made: the premise error at the declaration and one record at each projection, never an Unknown judged before its premise
+    // failed (d221bee0a: 2 InvalidConstraint_Kd and n - 1 UnprovenConstraint_Kd). check timed at n = 30, 60, 120: 2.7 to 5.0 s on both
+    // sides, startup included (design §13.6).
+    [Theory]
+    [InlineData(30)]
+    [InlineData(120)]
+    public void APremiseChainFailsWithinTheFixpoint(int n)
+    {
+        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"T{i}"));
+        var chain = string.Concat(Enumerable.Range(1, n).Reverse().Select(static k => $"    T{k} is T{k - 1}.(K).X\n"));
+        var source = $"contract K\n    associate X\nfunc f<{parameters}>(t: ref/T0) -> i32\n    T0 is i32\n    T0 is K\n" + chain + "    return 0\n";
+        Assert.Equal($"{n + 1}*InvalidConstraint_Kd", DiagnosticCorpus.RecordProfile(source + "public func main() -> ()\n    return\n"));
+    }
+
+    // PLAN G935 c3-2 (F's G935 ruling 74 C4; the Middle's G986 measure): `f<T0..Tn>(v: T0)` with `Ti is (Ti+1, Ti+1)` and a raw leaf. f's
+    // declared retention (TyCtxt.Retains, which A5 reads at a call of f) views its signature as f's body sees it (Binding.Viewed), each
+    // (part, depth) once (viewedParts): n + 1 distinct parts, not 2^n paths. Before the memo: n = 24 took seconds, n = 32 did not finish.
+    [Theory]
+    [InlineData(24)]
+    [InlineData(32)]
+    public void ADeclaredSignatureIsViewedOncePerPartAndDepth(int n)
+    {
+        var c = MinimalEmissionTest.Analyze(IdentitySource("rawtree", n));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        Assert.NotNull(c.Types.Retains(f.SymbolOf()!, null, null));
+    }
 
     // R7-C3a (the provisional path's bound, Binding.TypeIdentity's contract): a table read under a Provisional availability (a Contract's
     // supplied identity) is rebuilt at each read, so its work is the reads times the view's premise nodes: linear in the uses, and in
@@ -301,6 +332,7 @@ public partial class TypeDagScalingTest
         var premises = shape switch
         {
             "tree" => Enumerable.Range(0, n).Select(static i => $"    T{i} is (T{i + 1}, T{i + 1})\n"),
+            "rawtree" => Enumerable.Range(0, n).Select(static i => $"    T{i} is (T{i + 1}, T{i + 1})\n").Append($"    T{n} is raw/u8\n"),
             "chain" => Enumerable.Range(0, n).Select(static i => $"    T{i} is T{i + 1}\n").Append($"    T{n} is i32\n"),
             "pairs" => Enumerable.Range(0, n).Select(static i => $"    s{i} is ref\n    T{i} is s{i}/A{i}\n    A{i} is T{i + 1}\n").Append($"    T{n} is i32\n"),
             "pairsfn" => Enumerable.Range(0, n).Select(static i => $"    s{i} is obj\n    T{i} is (s{i}/A{i}) -> i32\n    T{i} is (obj/A{i}) -> i32\n    A{i} is T{i + 1}\n")

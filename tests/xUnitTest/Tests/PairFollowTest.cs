@@ -347,6 +347,12 @@ public class PairFollowTest
         "struct Node\n    public var weight: i32\n    public init(weight: i32) => self.weight = weight\n    public func load(self: ref/Self) -> i32 => self.weight\n" +
         "func g(v: ref/i32) -> i32 => v + 0\nfunc both(a: ref/i32, b: uniq/i32) -> i32 => 0\n";
 
+    // PLAN G1122: a Meter read, viewed and updated through several layers.
+    private const string Meter =
+        "struct Meter\n    public var n: i32 = 0\n    public computed level: i32\n        get() -> i32 => self.n\n        set(value: i32) -> () => self.n = value\n" +
+        "    public func view(self) -> ref/Self => self\n    public func add(self: uniq/Self, k: i32) => self.n += k\n" +
+        "    public func show(self) -> i32 => self.n\n    public init() => ()\n";
+
     private const string Reached = Layered + Box +
         "struct Outer\n    public var inner: Node\n    public init(inner: Node) => self.inner = inner@move\nfunc look<T>(x: ref/T) => ()\n";
 
@@ -491,7 +497,7 @@ public class PairFollowTest
     {
         foreach (var c in new[] { MinimalEmissionTest.Analyze(Box + pair), MinimalEmissionTest.Analyze(Box + concrete) })
         {
-            Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], c.Binding.Issues.Select(x => x.Code));
+            Assert.Empty(c.Binding.Issues); // R7-O1 H: Binding judges no body relation; the record is A5's (the MIR side below).
             Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], MirTargetSide.MirSide(c).Select(static x => x.Code));
         }
     }
@@ -613,13 +619,36 @@ public class PairFollowTest
         "    public func bumpW(self: uniq/Self) => self.w += 1\n" +
         "struct P\n    public var v: i32\n    public var inner: Q\n    public var items: Array<i32>\n    public var coll: Collection<i32>\n" +
         "    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n        self.items = [1, 2]\n        self.coll = Collection<i32>.init(items: [1, 2])\n" +
-        "    public func bump(self: uniq/Self) => self.v += 1\n";
+        "    public func bump(self: uniq/Self) => self.v += 1\n" +
+        "    public computed level: i32\n        get() -> i32 => self.v\n        set(value: i32) -> () => self.v = value\n" +
+        "    public var tally: i32 = 0\n        get() -> i32 => storage\n" +
+        "open struct Base\n    public var hits: i32 = 0\n    public computed bonus: i32\n        get() -> i32 => self.hits\n" +
+        "        set(value: i32) -> () => self.hits = value\n    public func peekB(self) -> i32 => self.hits\n" +
+        "    public func bumpB(self: uniq/Self) => self.hits += 1\n    public init() => ()\n" +
+        "struct D: Base\n    public var extra: i32 = 0\n    public init() : base() => ()\n";
 
     // SPEC 13.5.5, 3.4.3: a member selected through a pair layer follows it as @follow does: with owner admitted, a Field inline
     // in the operand needs it exclusively writable (a let binding or an owned parameter is not), no case offers Take, and a uniq
     // reference stored in the operand still grants Write through it. A user index through a pair layer is the located limit
-    // (PLAN G179), unlike its reference-layer twins.
+    // (PLAN G179), unlike its reference-layer twins. With owner admitted, `@follow` of a newly owned temporary selects its whole
+    // Temporary Place (P itself, SPEC 3.6: exclusively writable), a valid target no lowering writes whole yet: the located limit, also
+    // parenthesized and for an update (D-827); a let local's is not writable, the referent under `s is uniq` is, and a ref case
+    // shares it. PLAN G1112 (labels from SPEC 3.5, 13.5.5, 13.7.2): an update of a Property with a custom accessor (`+=`, `++`, `--`)
+    // locates its receiver once below the layer, as its assignment, its `@follow` and its concrete `uniq/P` twins do: valid under
+    // `s is uniq` and, with owner admitted, through a `var` local; invalid through a ref case and through a parameter slot.
+    // PLAN G1122 (labels from SPEC 3.4.3, 7.3.3, 9.6.1, 13.5.5): a receiver selected through several safe layers in either order
+    // (`uniq/(s/P)`, `s/(uniq/P)`) is one reference to the declaring Type, exclusive unless a layer or case is shared, as its concrete
+    // `uniq/(uniq/P)` twin is; through one pair layer a member a base declares is projected as through a reference layer: its getter
+    // and shared method are valid, its update and assignment the concrete `uniq/D` twin's located limit (G1117). A Tuple element
+    // through several layers is lent as a Field is (SPEC 13.5.6): `t.0@ref` and `t.0@uniq` valid in both orders and concrete, an
+    // exclusive borrow through a shared case or layer or of a parameter's owned root invalid.
     [Theory]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p@move@follow = P.init(1)", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner\n    (p@move)@follow = P.init(1)", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: s/i32)\n    s is owner or uniq\n    x@move@follow += 1", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let q = p@move\n    q@follow = P.init(1)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or ref\n    p@move@follow = P.init(1)", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p@move@follow = P.init(1)", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v += 1", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v++", DiagnosticCode.InvalidAssignment_Kd)]
@@ -643,6 +672,17 @@ public class PairFollowTest
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.inner.w = 5", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    let r = p.v@uniq\n    r@follow = 3", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p@follow.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.level += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.level++", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    --p.level", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.tally += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    q.level += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.level = 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.v += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p@follow.level += 1", null)]
+    [InlineData("func g(p: uniq/P)\n    p.level += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is ref or uniq\n    p.level += 1", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.level += 1", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.inner.bumpW()", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.items.append(3)", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.coll[0] = 5", null)]
@@ -663,6 +703,34 @@ public class PairFollowTest
     [InlineData("func g(x: uniq/Collection<i32>)\n    x[0] = 5", null)]
     [InlineData("func g(x: ref/Collection<i32>)\n    let y = x[0]", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    let y = p[0]", DiagnosticCode.NotIndexable_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is uniq\n    p.level += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is uniq\n    p.level = 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is uniq\n    p.bump()", null)]
+    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is owner or uniq\n    p.level++", null)]
+    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is ref or uniq\n    p.level += 1", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: uniq/(s/P during b))\n    s is ref or uniq\n    p.bump()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/(uniq/P during b))\n    s is uniq\n    p.level += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/(uniq/P during b))\n    s is uniq\n    p.bump()", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/(uniq/P during b))\n    s is ref or uniq\n    let n = p.level", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/(uniq/P during b))\n    s is ref or uniq\n    p.level += 1", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, t: uniq/(s/(i32, i32) during b))\n    s is uniq\n    t.0 += 1", null)]
+    [InlineData("func g<s/T>(value: s/T, d: s/D)\n    s is uniq\n    let n = d.bonus", null)]
+    [InlineData("func g<s/T>(value: s/T, d: s/D)\n    s is ref or uniq\n    let n = d.peekB()", null)]
+    [InlineData("func g<s/T>(value: s/T, d: s/(uniq/D during b))\n    s is uniq\n    let n = d.bonus", null)]
+    [InlineData("func g<s/T>(value: s/T, d: s/D)\n    s is uniq\n    d.bonus += 1", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, d: s/D)\n    s is uniq\n    d.bonus = 1", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g(d: uniq/D)\n    d.bonus += 1", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("func g<s/T>(value: s/T, d: s/D)\n    s is ref or uniq\n    d.bonus += 1", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, d: uniq/(s/D during b))\n    s is ref or uniq\n    d.bumpB()", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func g<s/T>(value: s/T, t: uniq/(s/(i32, i32) during b))\n    s is uniq\n    let r = t.0@ref\n    t.1 = 4\n    let k = r@follow", null)]
+    [InlineData("func g<s/T>(value: s/T, t: s/(uniq/(i32, i32) during b))\n    s is uniq\n    let r = t.0@ref\n    let k = r@follow", null)]
+    [InlineData("func g<s/T, u/U>(value: s/T, n: u/U, t: s/(u/(i32, i32) during b))\n    s is uniq\n    u is uniq\n    let r = t.0@ref\n    let k = r@follow", null)]
+    [InlineData("func g<s/T>(value: s/T, t: uniq/(s/(i32, i32) during b))\n    s is uniq\n    let r = t.0@uniq\n    r@follow = 3", null)]
+    [InlineData("func g(t: uniq/(uniq/(i32, i32) during b))\n    let r = t.0@ref\n    t.1 = 4\n    let k = r@follow", null)]
+    [InlineData("func g(t: uniq/(uniq/(i32, i32) during b))\n    let r = t.0@uniq\n    r@follow = 3", null)]
+    [InlineData("func g<s/T>(value: s/T, t: uniq/(s/(i32, i32) during b))\n    s is ref or uniq\n    let r = t.0@uniq", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g(t: ref/(uniq/(i32, i32) during b))\n    let r = t.0@uniq", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func g<s/T, u/U>(value: s/T, n: u/U, t: s/(u/(i32, i32) during b))\n    s is owner\n    u is owner\n    let r = t.0@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     public void SelectionsFollowPairLayers(string function, DiagnosticCode? code)
     {
         var c = MinimalEmissionTest.Analyze(Selected + function);
@@ -786,6 +854,21 @@ public class PairFollowTest
     [InlineData("borrow", 33)]
     public void EveryQualifyingPairLayerIsFollowed(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, true, layers);
 
+    // Q20 B1 (D-827; SPEC 13.5.5, 3.6): through any number of owner-case `@follow`s of a newly owned temporary, a part of its Temporary
+    // Place is written and the whole Place is the located limit, as through one: WritableTemporary sees through each selection once
+    // (IsTemporaryPlace), and a ref case still shares the path.
+    [Theory]
+    [InlineData(33)]
+    [InlineData(65)]
+    public void OwnerCaseFollowsReachTheTemporaryAtAnyDepth(int layers)
+    {
+        var target = "n@move" + string.Concat(Enumerable.Repeat("@follow", layers));
+        var head = $"struct N\n    public var v: i32 = 0\n    public init() => ()\nfunc f<s/T>(n: {TypeDagScalingTest.PairLayers(layers, "N")}, m: s/T)\n";
+        Assert.Empty(Codes(MinimalEmissionTest.Analyze(head + $"    s is owner or uniq\n    {target}.v = 1\n")));
+        Assert.Equal([DiagnosticCode.Unsupported_Kd], Codes(MinimalEmissionTest.Analyze(head + $"    s is owner or uniq\n    {target} = N.init()\n")));
+        Assert.Equal([DiagnosticCode.SharedPathAccess_Kd], Codes(MinimalEmissionTest.Analyze(head + $"    s is owner or ref\n    {target}.v = 1\n")));
+    }
+
     // PLAN G703 (SPEC 8.7.4, 8.1.1; 3.4.3, 3.5.3, 10.2; 13.5.2): a pair target standing alone has the capabilities its Constraints
     // prove, as a Type slot has; a value read follows qualifying pair layers at every read position (an annotated let, an argument,
     // a result, an assignment, a condition, an operand, a conversion's operand), in any order with ref and uniq layers, and ends
@@ -872,7 +955,9 @@ public class PairFollowTest
     // PLAN G794 (SPEC 10.2, 3.4.3, 13.5.5, 15.6.1): the shared-reference row, a ref/Self receiver, a borrowing `for` and a member Borrow
     // through a qualifying pair layer below ref or uniq layers, and an index key through one (SPEC 4.7.1: a Dictionary's and a user
     // Type's ref/Key), as a Non-Copy key through two concrete layers is. Below a met layer the slot of an owner- or uniq-admitting pair is
-    // implied by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted.
+    // implied by well-formedness, so `during x` holds in every case and `during m0` only where ref alone is admitted. PLAN G1122 (labels
+    // from SPEC 13.5.5, 10.2, 15.6.3): a receiver through several layers depends on the Place itself where every layer admits only owner,
+    // and on the path it is reached through (a shared `x` or a ref case), as its concrete `ref/Box<uniq/(uniq/Meter)>` twin does.
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    let r: ref/i32 = x\n    return 0")]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or uniq\n    let r: ref/i32 = x\n    return 0")]
@@ -894,6 +979,13 @@ public class PairFollowTest
     [InlineData("func f<s/T>(d: uniq/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or ref\n    d[k] = 5\n    return 0")]
     [InlineData(TwoKeys + "func f<s/T>(m: ref/M, k: ref/(s/i32 during m0), n: s/T) -> i32\n    s is owner or ref\n    return m[k] + 0")]
     [InlineData("func f(d: ref/Dictionary<string, i32>, k: ref/(ref/string during m0)) -> i32\n    return d[k] + 0")]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    return p.show()")]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    var h = p@move\n    h.add(1)\n    return h.n")]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    let r = p.view()\n    return r.n")]
+    [InlineData(Box + Meter + "func f<t/U>(x: ref/Box<uniq/(t/Meter during b) during c>, k: t/U) -> i32\n    t is uniq\n    return x.item.level")]
+    [InlineData(Box + Meter + "func f<t/U>(x: uniq/Box<uniq/(t/Meter during b) during c>, k: t/U) -> i32\n    t is ref or uniq\n    return x.item.show()")]
+    [InlineData(Box + Meter + "func f<s/T, t/U>(x: s/Box<uniq/(t/Meter during b) during c>, m: s/T, k: t/U) -> i32\n    s is ref or uniq\n    t is uniq\n    return x.item.level")]
+    [InlineData(Box + Meter + "func f(x: ref/Box<uniq/(uniq/Meter during b) during c>) -> i32\n    return x.item.level")]
     public void LayeredPairReadsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);
@@ -901,7 +993,8 @@ public class PairFollowTest
     }
 
     // Their invalid twins report the violation itself (an Origin, a Loan, a shared path, a pair admitting raw, a wrong referent); an
-    // Exclusive `for` through such a pair is the loop's located limit (PLAN G162, G179).
+    // Exclusive `for` through such a pair is the loop's located limit (PLAN G162, G179). PLAN G1122: a receiver through owner-only layers
+    // keeps its Loan on the Place (a replacement, an exclusive call, a Move while its view is live).
     [Theory]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> ref/i32 during m0\n    s is owner or ref\n    return x", DiagnosticCode.UnprovenOriginRelation_Kd)]
     [InlineData("func f<s/T>(x: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or raw\n    let r: ref/i32 = x\n    return 0", DiagnosticCode.TypeMismatch_Kd)]
@@ -915,6 +1008,9 @@ public class PairFollowTest
     [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i32 during m0), m: s/T) -> i32\n    s is owner or raw\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("func f<s/T>(d: ref/Dictionary<i32, i32>, k: ref/(s/i64 during m0), m: s/T) -> i32\n    s is owner or ref\n    let v = d[k]\n    return v", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("func f(d: ref/Dictionary<string, i32>, k: ref/(ref/i32 during m0)) -> i32\n    return d[k] + 0", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    var h = p@move\n    let r = h.view()\n    h = Meter.init()\n    return r.n", DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    var h = p@move\n    let r = h.view()\n    h.add(1)\n    return r.n", DiagnosticCode.CallActivationConflict_Kd)]
+    [InlineData(Meter + "func f<s/T, t/U>(p: s/(t/Meter during b), m: s/T, k: t/U) -> i32\n    s is owner\n    t is owner\n    let r = p.view()\n    let z = p@move\n    return r.n", DiagnosticCode.ComparisonLoanConflict_Kd)]
     public void LayeredPairReadsReject(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(Layered + source);

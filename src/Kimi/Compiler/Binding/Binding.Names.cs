@@ -53,7 +53,7 @@ public sealed partial class Binding
         var symbol = this.Lookup(node.IdentifierName, scope, node);
         if (symbol is null)
         {
-            return this.Fail(node, BindingFailure.MissingName, true);
+            return this.FailUnselected(node, BindingFailure.MissingName);
         }
 
         return this.BindReference(node, symbol, scope);
@@ -136,9 +136,13 @@ public sealed partial class Binding
                     this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
                 }
             }
+            else if (this.RecordedState(variable) == BindingState.Unvisited)
+            {
+                this.BindVariable(variable, symbol.Scope); // A use binds a declaration this pass has not bound yet (BindReference).
+            }
             else
             {
-                this.BindVariable(variable, symbol.Scope);
+                this.Consulted(variable); // SPEC 23.1.2: a bound declaration without a Type is the failed slot; its use rests on it.
             }
         }
 

@@ -41,7 +41,7 @@
 // segment it holds and on that segment (MirProgram.LibrarySegment), so any other program or a segment built again takes the library step.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
-// (MirEffects.Views); the initialization proof that consults one rests on it (MirBorrows.Unproved).
+// (MirEffects.Views), also as a static's initializer a site's row composes (MirEffects.Spread, Without), so its keys decide no effect conflict.
 
 namespace Kimi.Compiler.Mir;
 
@@ -72,7 +72,7 @@ internal sealed class MirAnalysis
         this.cases = new(types);
         this.moves = new(types);
         this.lints = new(reach);
-        this.flow = new(reach);
+        this.flow = new(reach, this.cases);
         this.drops = new(types, this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, this.flow);

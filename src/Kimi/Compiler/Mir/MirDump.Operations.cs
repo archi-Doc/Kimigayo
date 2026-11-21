@@ -88,6 +88,10 @@ internal static partial class MirDump
                     FormattableString.Invariant($"{x.Value}: bb{x.Target}, ")));
                 text.Append("otherwise: bb").Append(terminator.Target).Append(']');
                 break;
+            case MirTerminatorKind.CaseSwitch:
+                Operand(text.Append("caseswitch "), body, terminator.Operand).Append(" [exclusive: bb").Append(body.Cases[terminator.Start].Target)
+                    .Append(", shared: bb").Append(terminator.Target).Append(']');
+                break;
             case MirTerminatorKind.Call:
                 var callee = terminator.Callee;
                 Place(text, body, terminator.Place).Append(" = ").Append(
@@ -186,7 +190,7 @@ internal static partial class MirDump
                 }),
             body,
             place with { Projection = row.Prefix });
-        return Step(text, row.Kind, row.Arg);
+        return row.Position >= 0 ? text.Append("[_").Append(row.Arg).Append(" = ").Append(row.Position).Append(']') : Step(text, row.Kind, row.Arg);
     }
 
     // A projection after its prefix; a Deref, Downcast or PairLayer closes the parenthesis its Place opened.

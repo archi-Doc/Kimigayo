@@ -81,6 +81,33 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(2, Problems(c, program, LoanCodes).Length);
     }
 
+    // V16 (D-910's review N4): N calls whose argument Reborrows through a reference carrying N unique parents under one runtime Index child
+    // of z, against N shared candidates on z whose borrow Deref lies deeper than every parent (each also met at its formation, SPEC
+    // 15.6.2): a candidate's Unproven child is decided by the child's deepest end, not by walking its N parents, so the work stays within
+    // the dense bound the calls' gathers take (a walk of the parents per candidate and call would be cubic).
+    [Fact]
+    public void AnUnprovenParentChildIsDecidedByItsDeepestEnd()
+    {
+        const string Shape = "struct Big {a}\n«N:    public var g{0}: i32 = 0\n»    public var r: uniq/i32 during a\n" +
+            "    public init(r: uniq/i32 during a) => self.r = r\nfunc shape(flag: bool, i: isize, j: isize)\n    var x = 0\n    var y = 0\n" +
+            "    var z: [2 of Big] = [Big.init(r: x@uniq), Big.init(r: y@uniq)]\n«N:    let s{0} = z[j].r@follow@ref\n»    var p = z[i].g0@uniq\n" +
+            "«N:    if flag\n        p = z[i].g{0}@uniq\n»«N:    setM(p@follow@uniq)\n»«N:    inspect(s{0})\n»";
+        long[] work = [.. new[] { 32, 64, 128 }.Select(n => WorkOf(Prelude + Expand(Shape, n, 0)))];
+        output.WriteLine($"N 32, 64, 128: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+
+        static long WorkOf(string source)
+        {
+            var c = MirBuildTest.Compile(source);
+            Assert.Empty(c.Binding.Issues);
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var stratum = new Stratum(c.Types);
+            stratum.Run(program);
+            return stratum.Borrows.Work;
+        }
+    }
+
     // V16 (R4-M169's review B2): one activation whose parent's Place indexes a fixed array nested d deep inserts each step once, so the work
     // is linear in d (8 / 16 / 32), whatever the index steps' ambiguity.
     [Fact]
@@ -91,5 +118,65 @@ public sealed partial class MirBorrowsTest
         long[] work = [.. new[] { 8, 16, 32 }.Select(d => Measured(Prelude + Expand(Nested, d, 0)).Work)];
         output.WriteLine($"d 8, 16, 32: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+    }
+
+    // R7 plan Z23 (SPEC 8.15.2, 8.14, 4.7.1 step 3; the design's C6): a selection by case acquires per case, and A5's views follow the case
+    // branch's side: a5's take of v[0] under a live `view = v@ref` conflicts in the uniq view only (view 1: its ref view borrows the
+    // receiver shared for index; dev 5dd6543e6 recorded both views), and a12's take of the Field below v[0] is accepted in both views.
+    [Fact]
+    public void ASelectionByCaseConflictsOnlyInTheViewsThatReborrow()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                public var uniqCalls: i32 = 0
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+                    self.uniqCalls += 1
+                    return self.first@uniq
+            struct Holder<T>
+                public var link: T
+                public init(link: T) => self.link = link@move
+            func a5<s/T>(v: uniq/Two<s/T>) -> i32
+                s is ref or uniq
+                let view = v@ref
+                let x = v[0]
+                _ = x
+                return view.uniqCalls
+            func a12<s/T>(v: uniq/Two<Holder<s/T>>) -> ()
+                s is ref or uniq
+                let y = v[0].link
+                _ = y
+            """;
+        Assert.Equal(["a5: v[0] CallActivationConflict_Kd views 2"], ViewProblems(Source));
+    }
+
+    // r1x (SPEC 8.15.2, 15.6.7, 4.7.1 step 3; the code review's N3): r1 under a live `view = u@follow@ref`, a body with a nested frame
+    // (CB(s) at w, CB(r) on each side): u's indexUniq conflicts with the view exactly in the r=uniq views (1 and 3, views 10), one
+    // record of u[0], built on each side of w's branch; its r=ref views take index, a shared borrow.
+    [Fact]
+    public void ANestedCaseBranchConflictsOnlyInItsReborrowingViews()
+    {
+        const string Source = """
+            struct Two<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                public var first: T
+                public init(first: T) => self.first = first@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            func pick<X>(value: X) -> isize => 0
+            func r1x<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>) -> ()
+                s is ref or uniq
+                r is ref or uniq
+                let view = u@follow@ref
+                let x = w[0][pick(u[0])]
+                _ = x
+                _ = view
+            """;
+        Assert.Equal(["r1x: u[0] CallActivationConflict_Kd views 10"], ViewProblems(Source));
     }
 }

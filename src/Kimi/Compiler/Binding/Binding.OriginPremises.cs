@@ -358,10 +358,6 @@ public sealed partial class Binding
                 this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Completed)
             {
                 this.AddDeclarationPremises(environment, declaration.Relations);
-                if (environment.Dependence)
-                {
-                    this.ReadFailedClauses(environment, declaration, null);
-                }
             }
         }
 
@@ -387,7 +383,7 @@ public sealed partial class Binding
             var places = environment.Places;
             if (environment.Shorter is { } shorter && closure.TryNode(shorter, out var start))
             {
-                places.Add(start);
+                closure.AddPlace(start, places);
             }
 
             for (var i = 0; i < places.Count; i++)
@@ -396,6 +392,31 @@ public sealed partial class Binding
                 {
                     this.AddStoredPremises(environment, stored, places[i], OriginPremiseRule.LocalPlace, false);
                     closure.AddLongerEnds(places[i], OriginPremiseRule.LocalPlace, places);
+                }
+                else if (this.LocalRegionOf(environment, places[i], body) is { } region)
+                {
+                    // SPEC 15.4.4, 15.6.5 (PLAN G492): a region of a local of the body is bounded by each Origin the body recorded as
+                    // outliving it, a stored value's or another region's, in turn; a later store only adds bounds.
+                    for (var bound = 0; this.LocalRegionBound(region, bound) is { } longer; bound++)
+                    {
+                        AddPremiseEdge(environment, this.PremiseNode(environment, longer), places[i], OriginPremiseRule.LocalPlace);
+                    }
+
+                    closure.AddLongerEnds(places[i], OriginPremiseRule.LocalPlace, places);
+                }
+            }
+
+            // J1 (the owner's O-264 Q5 (a), O-286 (a)): the recorded bounds of every other region of the body that the request or the
+            // comparison's premises name, and of a region among them in turn, each node and bound once (O(N + B) per request); R5's
+            // start stays the request's shorter end (G491's (b): a Borrow such a bound names gets no stored premises).
+            for (var node = 0; node < closure.NodeCount; node++)
+            {
+                if (!closure.IsPlace(node) && this.LocalRegionOf(environment, node, body) is { } named)
+                {
+                    for (var bound = 0; this.LocalRegionBound(named, bound) is { } longer; bound++)
+                    {
+                        AddPremiseEdge(environment, this.PremiseNode(environment, longer), node, OriginPremiseRule.LocalPlace);
+                    }
                 }
             }
 
@@ -425,6 +446,12 @@ public sealed partial class Binding
             this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
             !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? stored : null;
 
+    // R5's region: the region `node` is, when it is a slot of a local of the use's own body other than the one being declared; otherwise
+    // null. A nested body or signature has no such premise: there the region is a fixed Origin (SPEC 15.3.4, 15.6.5).
+    private BoundOrigin? LocalRegionOf(OriginPremiseEnvironment environment, int node, Koto? body)
+        => environment.Closure.Origin(node) is { Kind: OriginKind.Inference, Binder: VariableKoto variable } region && IsLocalRegion(region) &&
+            !IsWithin(environment.Use, variable) && ReferenceEquals(PremiseSignature(variable), body) ? region : null;
+
     // A required signature's own well-formedness: its inputs' and its result's.
     private void AddRequiredPremises(OriginPremiseEnvironment environment, BoundType? required)
     {
@@ -448,19 +475,6 @@ public sealed partial class Binding
         {
             this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
         }
-    }
-
-    // DECISIONS BU-69: a dependence query reads a contract's failed clauses where the extraction reads that contract (R1, or a Type's
-    // premises substituted with the occurrence's Origin `arguments`): one repair per failed clause (DependenceCause).
-    private void ReadFailedClauses(OriginPremiseEnvironment environment, OriginDeclaration declaration, BoundOrigin[]? arguments)
-    {
-        foreach (var (clause, left, right) in declaration.FailedClauses)
-        {
-            environment.Repairs.Add((clause, Substitute(left), Substitute(right), arguments is null ? declaration.Owner : null, arguments));
-        }
-
-        BoundOrigin? Substitute(BoundOrigin? origin)
-            => origin is null || arguments is null ? origin : this.SubstituteStoredOrigin(origin, declaration.Owner, arguments);
     }
 
     // SPEC 8.5.4: an associated application's inherited formation and its requirement's clauses, substituted with its
@@ -551,7 +565,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.3: a well-formed Type's own clauses, substituted with its Origin arguments, are premises under `rule` (an input's, R2; a
-    // result's, R3); a dependence query reads their failed clauses there too (DECISIONS BU-69).
+    // result's, R3).
     private void AddTypeClausePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
         if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || !declaration.Completed)
@@ -564,11 +578,6 @@ public sealed partial class Binding
             var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
             var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
             this.AddPremise(environment, a, b, relation.Equality, rule);
-        }
-
-        if (environment.Dependence)
-        {
-            this.ReadFailedClauses(environment, declaration, (BoundOrigin[])type.OriginArguments);
         }
     }
 
@@ -683,7 +692,7 @@ public sealed partial class Binding
         internal CallableInstance Comparison { get; set; }
 
         // The request's shorter end (EntailsOrigin), where R5 starts in a comparison; null for an environment without one (a body's
-        // oracle, retention, a dependence query).
+        // oracle, retention).
         internal BoundOrigin? Shorter { get; set; }
 
         // In a comparison, R5's Places from the shorter end: its node, then the nodes its stored Origins introduce, each once.
@@ -694,12 +703,6 @@ public sealed partial class Binding
 
         // A session environment's Origin state (originStateVersion) when it was built.
         internal int Version { get; set; }
-
-        // Whether this request is a fit's dependence query (DECISIONS BU-69), which reads a repair of each failed clause of a contract
-        // it reads, with its visible Origins' owner (R1) or occurrence arguments (a Type's premises).
-        internal bool Dependence { get; set; }
-
-        internal List<(OriginRelationKoto Clause, BoundOrigin? Left, BoundOrigin? Right, Koto? Owner, BoundOrigin[]? Arguments)> Repairs { get; } = new();
 
         internal void Clear()
         {
@@ -713,12 +716,10 @@ public sealed partial class Binding
             this.Shorter = null;
             this.Places.Clear();
             this.LocalPlaces = 0;
-            this.Dependence = false;
-            this.Repairs.Clear();
         }
     }
 
-    // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness visit, an
+    // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness enumeration, an
     // Origin inference): its environments by anchor and excluded result premise, the storage they reuse, and whether it is open. An
     // environment lives until the session closes, never across passes, and is rebuilt when the Origin state changed; no opener's request
     // writes the other premise inputs (scopes, bound input Types, a Closure's classification). The environments are the session's own

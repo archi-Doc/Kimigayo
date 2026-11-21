@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
 using Kimi;
@@ -13,6 +14,8 @@ namespace XunitTest;
 
 public sealed class NativeToolchainTest : IDisposable
 {
+    private const string Windows = "Native builds run on Windows.";
+
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-native-" + Guid.NewGuid().ToString("N"));
 
     // The host's console of the test's projects, which reads a refusal's message.
@@ -27,17 +30,47 @@ public sealed class NativeToolchainTest : IDisposable
     {
         var input = Path.Combine(this.directory, "input.lib");
         File.WriteAllText(input, "first");
-        var staged = NativeToolchain.StageInput(input, Path.Combine(this.directory, "output"), out var hash);
+        var staged = Stage(out var hash);
         Assert.Equal(ArtifactFiles.Hash(input), hash);
         File.WriteAllText(input, "second");
         Assert.Equal("first", File.ReadAllText(staged));
         Assert.Equal(hash, ArtifactFiles.Hash(staged));
         File.WriteAllText(input, "first");
         File.WriteAllText(staged, "damaged staged copy");
-        Assert.Equal(staged, NativeToolchain.StageInput(input, Path.Combine(this.directory, "output"), out var repairedHash));
+        Assert.Equal(staged, Stage(out var repairedHash));
         Assert.Equal(hash, repairedHash);
         Assert.Equal("first", File.ReadAllText(staged));
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(staged)!, "*.tmp"));
+
+        string Stage(out string stagedHash)
+        {
+            using var stream = File.OpenRead(input);
+            return NativeToolchain.StageInput(stream, Path.Combine(this.directory, "output"), out stagedHash);
+        }
+    }
+
+    // IMPL 20.4 (Tatara B6a): the compiler carries its supplies' bytes. The rows are the two reserved names in Ordinal order, each row's
+    // SHA-256 the catalog's, and each embedded resource has that SHA-256 and is the file committed beside the catalog, so a build
+    // stages the adopted bytes.
+    [Fact]
+    public void EachCompilerSupplyIsTheCatalogsCommittedFile()
+    {
+        var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/backend/windows-x64"));
+        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "profile.json")));
+        Assert.Equal(
+            [
+                "kernel32 " + catalog.RootElement.GetProperty("kernel32").GetProperty("sha256").GetString(),
+                "kimi_backend " + catalog.RootElement.GetProperty("artifactSha256").GetString(),
+            ],
+            ToolchainIdentity.Supplies.Select(static x => x.Name + " " + x.Sha256));
+        foreach (var (supply, file) in ToolchainIdentity.Supplies.Zip(new[] { "kernel32.lib", ToolchainIdentity.BackendFile }))
+        {
+            using var stream = supply.Open();
+            using var bytes = new MemoryStream();
+            stream.CopyTo(bytes);
+            Assert.Equal(supply.Sha256, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())));
+            Assert.Equal(File.ReadAllBytes(Path.Combine(directory, file)), bytes.ToArray());
+        }
     }
 
     [Fact]
@@ -49,7 +82,7 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(paths.Executable, "previous executable");
         File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
         File.AppendAllText(paths.Ir, "; changed");
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("IR/manifest SHA-256", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -57,9 +90,9 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // R9-B1 part 2 (form J, PLAN G983's manifest share): a manifest field that is missing, of another JSON kind or, for an Int32 row,
-    // another number fails at its read with InvalidDataException naming the field, before any tool and with the record left
+    // another number fails at its read with InvalidDataException naming the field, before Tatara is loaded and with the record left
     // incomplete; a fixed field with another value is not this compiler's. Each row edits one field of an emitted Application's
-    // manifest (a JSON value, or null to remove it). The libraries are read after the tools are found, so their rows need a toolchain.
+    // manifest (a JSON value, or null to remove it). The libraries are read after Tatara is loaded, so their rows need a toolchain.
     [Theory]
     [InlineData("schemaVersion", "3.5", "'schemaVersion' is not this compiler's")]
     [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
@@ -88,7 +121,7 @@ public sealed class NativeToolchainTest : IDisposable
         }
 
         File.WriteAllText(paths.Manifest, manifest.ToJsonString());
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains(failure, error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -135,11 +168,13 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(Directory.Exists(Path.Combine(this.directory, "windows_x64")));
     }
 
+    // A root without tatara.dll: emit does not need it, and the build fails before any step, leaving the previous executable and no
+    // successful record.
     [Fact]
-    public async Task EmitDoesNotRequireLlvmButBuildDoesAndInvalidatesPreviousSuccess()
+    public async Task EmitDoesNotRequireTataraButBuildDoesAndInvalidatesPreviousSuccess()
     {
         var project = this.Create();
-        project.ProjectFile.LlvmBin = "missing LLVM directory";
+        project.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "toolchain");
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
         Assert.True(File.Exists(paths.Ir));
@@ -203,7 +238,7 @@ public sealed class NativeToolchainTest : IDisposable
         project.ProjectFile.OutputKind = OutputKind.Library;
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
-        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, (_, _) => { }, TestContext.Current.CancellationToken));
         Assert.Contains("Application", error.Message);
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
@@ -283,26 +318,29 @@ public sealed class NativeToolchainTest : IDisposable
     }
 
     // PLAN G983 (form J; R9-B2's O3 for toolchain verify): an installation record that is not the JSON verification expects (a field
-    // missing or of another kind, a number that is not an Int32, not an object) is an invalid installation, InvalidDataException with its
-    // repair, kept in the report, before any tool; a tool's entry missing or of another kind is that tool's mismatch, after its identity.
-    // Each row writes the record into an empty toolchain root; a tool's row verifies the installed tools against it.
+    // missing or of another kind, tatara's sha256 among them, a number that is not an Int32, not an object) is an invalid installation,
+    // InvalidDataException with its repair, kept in the report, before any tool; a tool's entry missing or of another kind is that tool's
+    // mismatch, after its identity. Each row writes the record into an empty toolchain root; a tool's row verifies the installed tools
+    // against it.
     [Theory]
-    [InlineData("{\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{}}", null)]
-    [InlineData("{\"schemaVersion\":\"1\",\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{}}", null)]
-    [InlineData("{\"schemaVersion\":3.5,\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{}}", null)]
-    [InlineData("{\"schemaVersion\":1,\"profile\":1,\"tools\":{},\"supportingDlls\":{}}", null)]
-    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":[],\"supportingDlls\":{}}", null)]
-    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{}}", null)]
+    [InlineData("{\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{},\"tatara\":{\"sha256\":\"\"}}", null)]
+    [InlineData("{\"schemaVersion\":\"1\",\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{},\"tatara\":{\"sha256\":\"\"}}", null)]
+    [InlineData("{\"schemaVersion\":3.5,\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{},\"tatara\":{\"sha256\":\"\"}}", null)]
+    [InlineData("{\"schemaVersion\":1,\"profile\":1,\"tools\":{},\"supportingDlls\":{},\"tatara\":{\"sha256\":\"\"}}", null)]
+    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":[],\"supportingDlls\":{},\"tatara\":{\"sha256\":\"\"}}", null)]
+    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{},\"tatara\":{\"sha256\":\"\"}}", null)]
+    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{}}", null)]
+    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{},\"tatara\":{\"sha256\":7}}", null)]
     [InlineData("[]", null)]
-    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{}}", "Tool executable SHA-256 mismatch")]
-    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{\"clang\":7},\"supportingDlls\":{}}", "Tool executable SHA-256 mismatch")]
+    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{},\"supportingDlls\":{},\"tatara\":{\"sha256\":\"\"}}", "Tool executable SHA-256 mismatch")]
+    [InlineData("{\"schemaVersion\":1,\"profile\":\"windows-x64-v1\",\"tools\":{\"clang\":7},\"supportingDlls\":{},\"tatara\":{\"sha256\":\"\"}}", "Tool executable SHA-256 mismatch")]
     public async Task VerificationRejectsAMalformedInstallationRecord(string installation, string? toolFailure)
     {
         File.WriteAllText(Path.Combine(this.directory, "installation.json"), installation);
         var bin = toolFailure is null ? null : ToolchainResolver.ResolveRoot(null);
         var report = Path.Combine(this.directory, "evidence", "toolchain.json");
         var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.Verify(this.directory, bin, report, (_, _) => { }, TestContext.Current.CancellationToken));
-        var failure = toolFailure ?? "Invalid toolchain installation record. Run setup.ps1 again.";
+        var failure = toolFailure ?? $"Invalid toolchain installation record. Run {NativeToolchain.SetupCommand} again.";
         Assert.Contains(failure, error.Message, StringComparison.Ordinal);
         using var record = JsonDocument.Parse(File.ReadAllText(report));
         Assert.Contains(failure, record.RootElement.GetProperty("error").GetString(), StringComparison.Ordinal);
@@ -310,30 +348,198 @@ public sealed class NativeToolchainTest : IDisposable
 
     // The toolchain boundary's known limit closes (R9-M10, PLAN G983): inside the toolchain's call, an exception the toolchain does not
     // raise as its failure, here the host's console throwing InvalidOperationException at the native build's "Built: " report, ends the
-    // build's own result as Faulted (one CheckFaulted_Kd at the project file), never the toolchain's message. The failed attempt leaves
-    // no successful record (IMPL 20.3.2; PLAN G985: the record was linked before the report), so run --no-build refuses its executable.
-    // The build uses the installed toolchain.
+    // build's own result as Faulted (one CheckFaulted_Kd at the project file), never the toolchain's message. The failed attempt (v2,
+    // after a successful v1) publishes nothing (IMPL 20.3.2; PLAN G985: the record was linked before the report; G1045: v2's executable
+    // was in place before it), so run --no-build refuses v1's executable. The builds use the installed toolchain.
     [Fact]
     public async Task AFailingBuiltReportFaultsTheBuildAndLeavesNoSuccessfulRecord()
     {
-        var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
-        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
-        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = "Built: " };
-        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
-        Assert.False(await project.Build(TestContext.Current.CancellationToken), console.Text);
-        Assert.Null(console.FailingLine);
-        Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
-        Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
-        Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
-        var paths = ArtifactPaths.Create(project);
-        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, _, v1) = await this.BuildHello();
+        this.console.LineAction = ("Built: ", DiagnosticContractTest.DiagnosticConsole.Fail);
+        var project = this.Hello("Hi");
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Null(this.console.LineAction);
+        Assert.Equal(1, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), this.console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimiproj", this.console.Text, StringComparison.Ordinal);
+        await this.AssertNothingPublished(project, v1);
+    }
+
+    // G1045 (IMPL 20.3.2: an Application publishes its executable only on success; Tatara decision 18): the build writes the success
+    // record, naming the private file's hash, and then moves the executable into place. After a successful v1, a v2 cancelled at its
+    // "Built: " report, whose success record cannot be written (the record held without write sharing at the report) or whose
+    // executable cannot be moved into place (the executable held without delete sharing at the report; the record is invalidated again)
+    // publishes nothing, so run --no-build refuses v1's executable. The builds use the installed toolchain.
+    [Theory]
+    [InlineData("cancel")]
+    [InlineData("record")]
+    [InlineData("executable")]
+    public async Task AFailureAtTheCommitPublishesNoExecutable(string point)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (_, paths, v1) = await this.BuildHello();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        FileStream? held = null;
+        this.console.LineAction = ("Built: ", () =>
         {
-            Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+            if (point == "cancel")
+            {
+                cancellation.Cancel();
+            }
+            else
+            {
+                held = new FileStream(point == "record" ? paths.Record : paths.Executable, FileMode.Open, FileAccess.Read, FileShare.Read);
+            }
+        });
+        var project = this.Hello("Hi");
+        try
+        {
+            if (point == "cancel")
+            {
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => project.Build(cancellation.Token));
+            }
+            else
+            {
+                Assert.False(await project.Build(cancellation.Token), this.console.Text);
+            }
+        }
+        finally
+        {
+            held?.Dispose();
         }
 
-        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken));
-        Assert.Contains("The latest build failed or the binary was changed. Run 'kimi build' first.", console.Text, StringComparison.Ordinal);
+        Assert.Null(this.console.LineAction);
+        await this.AssertNothingPublished(project, v1);
+    }
+
+    // The output's lock (IMPL 20.3.2; NativeToolchain.Begin): while another build holds the lock of a build's record
+    // (Name.link.build.lock, which the test holds without sharing), the build waits and reports it once, and builds after the release;
+    // a cancellation ends the wait, and the record (v1's success) and the executable stay as they were. O2 and O0 share the record, so
+    // O0 of a project whose O2 record exists waits; build --Manifest waits for the lock of the source build's record. Each row first
+    // builds Hello at O2 (v1) on the installed toolchain.
+    [Theory]
+    [InlineData("O2", "release")]
+    [InlineData("O2", "cancel")]
+    [InlineData("O0", "release")]
+    [InlineData("manifest", "release")]
+    public async Task ABuildWaitsForTheLockOfItsRecord(string build, string action)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (project, paths, v1) = await this.BuildHello();
+        var record = File.ReadAllText(paths.Record);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var lockPath = Path.ChangeExtension(paths.Record, ".lock");
+        using var held = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Action release = action == "release" ? held.Dispose : cancellation.Cancel;
+        this.console.LineAction = ("Waiting for another build: " + lockPath, release);
+        project.ProjectFile.Optimization = build == "O0" ? "O0" : "O2";
+        var built = build == "manifest"
+            ? NativeToolchain.BuildManifest(paths.Manifest, null, (_, message) => this.console.WriteLine(message), cancellation.Token)
+            : project.Build(cancellation.Token);
+        if (action == "cancel")
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => built);
+            Assert.Equal(record, File.ReadAllText(paths.Record));
+            Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        }
+        else
+        {
+            await built; // A failed source build returns false, and its record is not linked.
+            using var linked = JsonDocument.Parse(File.ReadAllText(paths.Record));
+            Assert.Equal("linked", linked.RootElement.GetProperty("status").GetString());
+            Assert.Equal(project.ProjectFile.Optimization, linked.RootElement.GetProperty("optimization").GetString());
+        }
+
+        Assert.Null(this.console.LineAction);
+        Assert.Equal(1, this.console.Text.Split("Waiting for another build: ").Length - 1);
+    }
+
+    // A build waits only while another build holds its record's lock (NativeToolchain.Begin; C-433 B2, N6): after a build in this process
+    // whose invalidation failed (its record's path a directory, an output failure: the lock was closed again), and while another
+    // output's lock is held, Hello builds with no waiting line (a wait would fail the build at the console instead of hanging the row).
+    // On the installed toolchain.
+    [Theory]
+    [InlineData("failed invalidation")]
+    [InlineData("another output")]
+    public async Task ABuildWaitsForNoLockButItsHeldOne(string row)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = this.Hello("Hello");
+        var paths = ArtifactPaths.Create(project);
+        var output = Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!).FullName;
+        using var other = row == "another output"
+            ? new FileStream(Path.Combine(output, "Other.link.build.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)
+            : null;
+        this.console.LineAction = ("Waiting for another build: ", DiagnosticContractTest.DiagnosticConsole.Fail);
+        if (row == "failed invalidation")
+        {
+            Directory.CreateDirectory(paths.Record);
+            Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+            Assert.Equal(0, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+            Directory.Delete(paths.Record);
+        }
+
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.NotNull(this.console.LineAction);
+    }
+
+    // IMPL 20.4 (Tatara B6a): a build stages the compiler's supplies as it stages a program's input and links those snapshots. The
+    // record's libraries rows name the staged files (<stem>.native/<hash>.lib) with the catalog's hashes, and it has no kernel32 member;
+    // a second build, after the staged kernel32 file was overwritten, replaces it and links the first build's executable. On the
+    // installed toolchain.
+    [Fact]
+    public async Task ABuildLinksTheCompilersSuppliesAsStagedSnapshots()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var (project, paths, v1) = await this.BuildHello();
+        var staged = ToolchainIdentity.Supplies.Select(x => (x.Name, Path: Path.Combine(paths.Stem + ".native", x.Sha256 + ".lib"), x.Sha256)).ToArray();
+        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        {
+            Assert.False(record.RootElement.TryGetProperty("kernel32", out _));
+            Assert.Equal(
+                staged.Select(x => x.Name + " " + NativeToolchain.Redact(x.Path, this.directory) + " " + x.Sha256),
+                record.RootElement.GetProperty("libraries").EnumerateArray().Select(static x =>
+                    x.GetProperty("name").GetString() + " " + x.GetProperty("path").GetString() + " " + x.GetProperty("sha256").GetString()));
+        }
+
+        Assert.All(staged, static x => Assert.Equal(x.Sha256, ArtifactFiles.Hash(x.Path)));
+        File.WriteAllText(staged[0].Path, "overwritten");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Equal(staged[0].Sha256, ArtifactFiles.Hash(staged[0].Path));
+        Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+    }
+
+    // IMPL 20.4 "its hash assertions are checked" (Tatara B6a): a compiler's supply's manifest entry may assert a SHA-256 as a program's
+    // may, and the build checks it against the staged bytes: the catalog's hash builds, another fails before the link. On the installed
+    // toolchain.
+    [Theory]
+    [InlineData("kernel32", true)]
+    [InlineData("kernel32", false)]
+    [InlineData("kimi_backend", true)]
+    [InlineData("kimi_backend", false)]
+    public async Task ACompilerSupplysHashAssertionIsChecked(string name, bool adopted)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), Windows);
+        var project = this.Create();
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+        var entry = manifest["libraries"]!.AsArray().Single(x => x!["name"]!.GetValue<string>() == name)!;
+        entry["sha256"] = adopted ? Array.Find(ToolchainIdentity.Supplies, x => x.Name == name)!.Sha256 : new string('0', 64);
+        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        var build = NativeToolchain.BuildManifest(paths.Manifest, null, (_, _) => { }, TestContext.Current.CancellationToken);
+        if (adopted)
+        {
+            await build;
+            Assert.True(File.Exists(paths.Executable));
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<InvalidDataException>(() => build);
+            Assert.Equal($"Native library '{name}' does not match its manifest Sha256 assertion.", error.Message);
+            Assert.False(File.Exists(paths.Executable));
+        }
     }
 
     [Fact]
@@ -372,23 +578,22 @@ public sealed class NativeToolchainTest : IDisposable
     //   toolchain failure).
     // - CheckFaulted_Kd, the build's own result (Build's outer catch): "toolchain's message", the host's console throwing at the line that
     //   renders a toolchain failure, outside the toolchain's call (it escaped the build).
-    // - The toolchain's message and no code: a missing tool, a tool that does not start, a configuration value the artifact paths read.
+    // - The toolchain's message and no code: a root without tatara.dll (the remedy names setup with -LlvmRoot), a tatara.dll that does not
+    //   load (not a DLL, so the host maps nothing), a configuration value the artifact paths read.
     // No production seam: the console is the host's, and the project file's values are the caller's.
     [Theory]
     [InlineData("project checks", null, null)]
     [InlineData("report", "Generated LLVM inputs", null)]
-    [InlineData("toolchain's message", "Toolchain file not found", null)]
-    [InlineData("toolchain", null, "Toolchain file not found")]
-    [InlineData("tool start", null, "not a valid")]
+    [InlineData("toolchain's message", "Tatara not found", null)]
+    [InlineData("toolchain", null, "tatara.dll. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM")]
+    [InlineData("tatara load", null, "Tatara cannot be loaded")]
     [InlineData("configuration", null, "Optimization must be O0 or O2.")]
     public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
     {
-        var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
-        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
-        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = failingLine };
-        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
-        project.ProjectFile.LlvmBin = "missing LLVM directory";
+        this.console.LineAction = failingLine is null ? null : (failingLine, DiagnosticContractTest.DiagnosticConsole.Fail);
+        var project = this.Hello("Hello");
+        var root = Path.Combine(this.directory, "toolchain");
+        project.KimiOptions.ToolchainRoot = root;
         if (origin == "project checks")
         {
             project.ProjectFile.Targets = null!;
@@ -397,32 +602,22 @@ public sealed class NativeToolchainTest : IDisposable
         {
             project.ProjectFile.Optimization = "O3";
         }
-        else if (origin == "tool start")
+        else if (origin == "tatara load")
         {
-            // Every file the native build resolves exists, and opt.exe is not an executable.
-            var root = Path.Combine(this.directory, "toolchain");
-            Directory.CreateDirectory(Path.Combine(root, "windows_x64"));
-            File.WriteAllText(Path.Combine(root, "windows_x64", "kernel32.lib"), "not a library");
-            File.WriteAllText(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile), "not an archive");
-            foreach (var tool in new[] { "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj" })
-            {
-                File.WriteAllText(Path.Combine(root, tool + ".exe"), "not an executable");
-            }
-
-            project.KimiOptions.ToolchainRoot = root;
-            project.ProjectFile.LlvmBin = null;
+            Directory.CreateDirectory(root);
+            File.WriteAllText(Path.Combine(root, "tatara.dll"), "not a DLL");
         }
 
-        Assert.False(await project.Build(TestContext.Current.CancellationToken), console.Text);
-        Assert.Equal(toolchainFailure is null ? 1 : 0, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        Assert.Equal(toolchainFailure is null ? 1 : 0, this.console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
         if (toolchainFailure is null)
         {
-            Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
-            Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+            Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), this.console.Text, StringComparison.Ordinal);
+            Assert.Contains("Hello.kimiproj", this.console.Text, StringComparison.Ordinal);
         }
         else
         {
-            Assert.Contains(toolchainFailure, console.Text, StringComparison.Ordinal);
+            Assert.Contains(toolchainFailure, this.console.Text, StringComparison.Ordinal);
         }
 
         Assert.False(File.Exists(Path.Combine(this.directory, "out", "Hello.O2.exe")));
@@ -433,6 +628,40 @@ public sealed class NativeToolchainTest : IDisposable
     {
         Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken));
         Assert.Contains(reason, this.console.Text, StringComparison.Ordinal);
+    }
+
+    // After a v2 that failed or was cancelled, past a successful v1: the executable is v1's and the only one in its directory (no private
+    // file remains), the record is incomplete and run --no-build refuses the executable.
+    private async Task AssertNothingPublished(Project project, string v1)
+    {
+        var paths = ArtifactPaths.Create(project);
+        Assert.Equal(v1, ArtifactFiles.Hash(paths.Executable));
+        Assert.Equal(paths.Executable, Assert.Single(Directory.GetFiles(Path.GetDirectoryName(paths.Executable)!, "*.exe")));
+        using (var record = JsonDocument.Parse(File.ReadAllText(paths.Record)))
+        {
+            Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        }
+
+        await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
+    }
+
+    // v1: Hello built at O2 on the installed toolchain, with its paths and its executable's hash.
+    private async Task<(Project Project, ArtifactPaths Paths, string Executable)> BuildHello()
+    {
+        var project = this.Hello("Hello");
+        Assert.True(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
+        var paths = ArtifactPaths.Create(project);
+        return (project, paths, ArtifactFiles.Hash(paths.Executable));
+    }
+
+    // Hello.kimiproj at O2 into out/Hello.ll, its main.kimi writing the text, on the test's console.
+    private Project Hello(string text)
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), $"::Kimi.Console.writeLine(\"{text}\")");
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
+        return project;
     }
 
     private Project Create(string source = "::Kimi.Console.writeLine(\"Hello\")")

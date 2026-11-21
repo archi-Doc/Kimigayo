@@ -127,7 +127,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, BindingFailure.MissingName), true);
+                this.FailUnselected(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, BindingFailure.MissingName));
             }
 
             return Complete(call, null);
@@ -140,6 +140,7 @@ public sealed partial class Binding
 
         var requirementGroup = candidates.Requirements;
         var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
+        var evaluated = this.RentCandidates(candidates, callee, scope);
         var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
 
         // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
@@ -154,6 +155,7 @@ public sealed partial class Binding
         callee.BindingState = BindingState.Resolved;
         if (this.GatheredGroupFails(callee, candidates))
         {
+            this.candidateScratch.Return(evaluated, clearArray: true);
             return Complete(call, null);
         }
 
@@ -165,7 +167,7 @@ public sealed partial class Binding
         var originSlots = solveOrigins ? shape.Origins : 0;
         var inputSlots = solveOrigins ? shape.InputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
-        var frames = this.RentFrames(candidateCount, maxGenerics);
+        var frames = this.RentFrames(candidateCount, maxGenerics, scope);
         var explicitTypes = this.typeScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
@@ -175,7 +177,6 @@ public sealed partial class Binding
         completedWaiting.AsSpan(0, argumentCount).Clear();
         var origins = this.originScratch.Rent(originSlots);
         var inputs = this.originScratch.Rent(inputSlots);
-        var evaluated = this.candidateScratch.Rent(candidateCount);
         var allMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
         var allOrigins = this.originScratch.Rent(savedCandidates * originSlots);
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
@@ -206,10 +207,9 @@ public sealed partial class Binding
                     {
                         var typeSlot = false;
                         var lengthSlot = false;
-                        foreach (var candidate in candidates)
+                        foreach (ref readonly var candidate in evaluated.AsSpan(0, candidateCount))
                         {
-                            if (candidate.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count &&
-                                (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType)))
+                            if (candidate.Accessible && candidate.Symbol!.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count)
                             {
                                 lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
                                 typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
@@ -478,7 +478,11 @@ public sealed partial class Binding
                 Complete(constructedMember.Left, selectedType);
             }
 
-            var result = winner.Type is { } returnType ? this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) : null;
+            // SPEC 8.2.3 (F's C2 ruling 268): the call publishes its instantiated result in its one form in the call's view, the form its
+            // Type takes there (BindAndAdaptNode), through the normalizer a value call's signature takes (TryCallable). A result with no
+            // abstract part is its own form (F's C2 ruling 317 (2): over the whole suite no such result's form differed from it).
+            var result = winner.Type is { } returnType && this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) is { } instantiated
+                ? (instantiated.HasAbstractPart ? this.CallableContractType(instantiated, scope) : instantiated) : null;
             if (result is null)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
@@ -564,6 +568,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
+            RequireOriginWidths(selected, originSlots, inputSlots);
             (call.CallStorage ??= new()).Set(this, executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
             if (selected.IsRequirement)
             {

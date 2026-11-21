@@ -6,8 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, NoInitProblem>? noInitFailures;
-
+    // SPEC 4.3.4: the closed reason a noinit directive fails for, its problem's Reason fact (R7-E2).
     private enum NoInitProblem : byte
     {
         LocalVar,
@@ -33,7 +32,7 @@ public sealed partial class Binding
             return true;
         }
 
-        this.FailExplained(ref this.noInitFailures, directive, BindingFailure.NoInit, problem.Value);
+        this.RecordNoInit(directive, problem.Value);
         return false;
     }
 
@@ -51,16 +50,19 @@ public sealed partial class Binding
 
         if (expected is not { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner })
         {
-            return this.FailExplained(ref this.noInitFailures, directive, BindingFailure.NoInit, NoInitProblem.Annotation);
+            return this.RecordNoInit(directive, NoInitProblem.Annotation);
         }
 
         var element = expected.Components[0];
         if (element.Semantics != SemanticsKind.Owner ||
-            !(ScalarTypes.Supports(element) || this.IsGenericInteger(element, scope) || this.IsGenericWrapping(element, scope)))
+            !(element.IsScalar || this.IsGenericInteger(element, scope) || this.IsGenericWrapping(element, scope)))
         {
-            return this.FailExplained(ref this.noInitFailures, directive, BindingFailure.NoInit, NoInitProblem.Element);
+            return this.RecordNoInit(directive, NoInitProblem.Element);
         }
 
         return Complete(directive, expected);
     }
+
+    private BoundType? RecordNoInit(NoInitKoto directive, NoInitProblem problem)
+        => this.Record(directive, BindingFailure.NoInit, [new(ProblemFactKind.Reason, SourceRef.Of(directive), (long)problem)]);
 }

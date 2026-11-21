@@ -6,13 +6,19 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
+    private readonly CallablePremiseFailureRows callablePremiseFailures;
 
     // Each selected use of a bounded Callable clause, once per pass: the running pass's part (PassPart, EnterPass).
     private List<CallableEffectUse> callableEffectUses;
 
+    // SPEC 3.4.3, 7.7.3, 8.10: the Callable a callee value designates, without its acquisition layers: below every ref and uniq layer
+    // (ComparisonReferent), where selection continues, and below a concrete handle's or view's layer, whose View Target selection stops at;
+    // any other Type is its own (a raw pointer is no layer selection follows, SPEC 3.4.1).
     internal static BoundType? CallableCore(BoundType? type)
-        => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
+    {
+        var terminal = type is null ? null : ComparisonReferent(type);
+        return terminal is { Kind: BoundTypeKind.Semantics, Components: [var view] } && IsObjectSemantics(terminal.Semantics) ? view : terminal;
+    }
 
     /// <summary>Gets explicit bounds available on a Callable subject and signature under the local premises.</summary>
     /// <param name="type">The callable Type, without its acquisition layer.</param>
@@ -176,4 +182,24 @@ public sealed partial class Binding
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.
     internal readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
+
+    /// <summary>The `callablePremiseFailures` family's one accessor (DECISIONS BU-220): a pass family, an implementation's bounded Callable
+    /// clause that its requirement's premises do not declare, with that requirement, stored with the use's failure by the recorder
+    /// (RecordedFact; a present row always has its Clause); the first failure a use records stays. Its members keep the names its readers
+    /// use.</summary>
+    private readonly struct CallablePremiseFailureRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(IsKoto Clause, FunctionKoto Requirement), PassCounter> Family(ref NodeColumns columns) => ref columns.CallablePremiseFailures;
+
+        internal void TryAdd(Koto use, (IsKoto Clause, FunctionKoto Requirement) failure)
+        {
+            if (!this.TryGetValue(use, out _))
+            {
+                binding.SetRecordedFact(use, Family, failure);
+            }
+        }
+
+        internal bool TryGetValue(Koto use, out (IsKoto Clause, FunctionKoto Requirement) failure) => (failure = binding.RecordedFact(use, Family)).Clause is not null;
+    }
 }

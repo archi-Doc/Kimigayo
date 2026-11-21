@@ -115,21 +115,23 @@ public sealed class CompilationEntryTest
     }
 
     // R5 K4b (DECISIONS R5-M156, superseding R5-M41's gate): the checked set's records are analysis problems, control-flow Errors at their
-    // located subjects that reject the program.
+    // located subjects that reject the program: a chain of distinct functions whose 19th call forms a Type past IMPL A.4's height, the
+    // collector's TypeHeightLimit_Kd at that call (R7-T1). Before R7-T1 the row read pick<Option^32<ref/i32>>'s storage-nesting gap; that
+    // program is valid (SPEC 8.13.3, 8.15.3) and now an instance (InstanceCollectorTest.AFiniteTypePastBindingsBoundIsAnInstance, B's
+    // ruling 14).
     [Fact]
     public void CheckPublishesTheCollectorRecords()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        var type = string.Concat(Enumerable.Repeat("Option<", 32)) + "ref/i32" + new string('>', 32);
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", $"func pick<T>(value: T) -> T => value@move\nlet v: {type} = .None\nlet w = pick(v@move)\n"));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", InstanceCollectorTest.DeepSource("chain20")));
         Assert.False(Analyze(c, OutputKind.Application));
         var problem = Assert.Single(c.Problems);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "pick(v@move)"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal((DiagnosticCode.TypeHeightLimit_Kd, true), (problem.Code, c.SyntaxOf(problem.Subject).ToString().StartsWith("f20<", StringComparison.Ordinal)));
         Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "pick(v@move)"), (record.Code, record.Text));
+        Assert.Equal(("TypeHeightLimit_Kd", true), (record.Code, record.Text!.StartsWith("f20<", StringComparison.Ordinal)));
     }
 
     // R5 K10c (DECISIONS R5-M52), SPEC 8.15.3 (DECISIONS R4-M134 Q8): a layout over 2^63 - 1 bytes is a Language error at check, at its

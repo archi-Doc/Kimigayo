@@ -10,6 +10,8 @@
 // (Library), each through the one node-to-definition filter (Walked) without building, so a library definition's body has the same
 // ordinal (Slot) in an eager and a lazy build; MirProgram numbers every other body.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
+// A slot is of its symbol's Type as Binding publishes it: none is the failed slot (PLAN G1073; Binding.HasFacts states every slot a
+// published node declares), a local or static of no Type, which a value delivered into it leaves unjudged; no Type is formed from none.
 // Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
 // An Opaque temp, which holds a derived or unsupported value where its consumer needs a Place, is no storage: no Ref, pair-case
@@ -39,6 +41,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
     private readonly List<MirOperand> arguments = []; // The evaluated arguments of the calls being built, innermost last.
     private readonly List<int> leastAfter = []; // By argument of the calls being built: the least position of those evaluated after it.
+    private readonly List<int> inspections = []; // The pending position of the left operand of each comparison being built, innermost last.
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private MirBody body = null!;
     private Koto declaration = null!;
@@ -153,12 +156,20 @@ internal sealed partial class MirBuilder(Compilation compilation)
         return body;
     }
 
-    private static BoundType TypeOf(Koto node) => HirTables.TypeOf(node) ?? BoundType.Unit;
+    // The Type of an evaluated node's value, which Binding publishes with the facts of its Op (Binding.HasFacts): none is a broken HIR
+    // contract, thrown (no recovery). A value whose Type may be unknown is read by KnownType or Held.
+    private static BoundType TypeOf(Koto node)
+        => HirTables.TypeOf(node) ?? throw new InvalidOperationException($"Node {node.SyntaxId} has no published Type (InternalInvariant).");
+
+    // SPEC 23.1.2 (PLAN G1073): the Type of a node's value where it may be unknown (null): a derived value delivered into a slot of no Type
+    // (a failed slot, MirLocal), which has no expected Type and whose own Type failed, as Operand's reservation tests and Unsupported's temp
+    // read it.
+    private static BoundType? KnownType(Koto node) => HirTables.TypeOf(node);
 
     // SPEC 14.2.2, 14.2.4 (DECISIONS BU-98): the Type of the value a statement or an explicit discard holds for its operand: a discarded
     // Place's published Type (PlanRow.DiscardedType: a stored exclusive reference's Reborrow by Binding's name, BU-27), else, a value
-    // statement's, its Meaning.
-    private static BoundType Held(Koto node) => HirTables.PlanOf(node).DiscardedType ?? TypeOf(node);
+    // statement's, its Meaning; none (unknown) for a statement whose value Binding failed, a failed declaration's or an Error's (PLAN G1073).
+    private static BoundType? Held(Koto node) => HirTables.PlanOf(node).DiscardedType ?? KnownType(node);
 
     // Whether the HIR publishes a definition its walk reached (an Op written; a synthesized executing function, which shares its accessor's
     // body, has none) and evaluates its value node (its body, expression body or initializer, not Syntax): exactly a Body's or a Closure's,
@@ -178,8 +189,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // The one map from a published definition's node to its body's key and Body's arguments, the module walk's and Demand's (G951 N6): a
     // function's Fn body, a #Test function's Test body, a Closure's keyed by its own symbol, a module's top-level statements by the module's
     // ordinal; an accessor's Getter or Setter keyed by the function its calls target (SPEC 11.3); a static's initializer; null for another
-    // node.
-    private (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
+    // node. The result is the result slot's Type, its symbol's (an accessor's executing function's), never the node's Type column: none
+    // where Binding failed the slot (PLAN G1073); a module's top-level statements complete as Unit (SPEC 22.4.1).
+    private (MirDefKey Key, BindingSymbol? Function, BoundType? Result, Koto Value)? Definition(Koto node, SyntaxTable table)
     {
         var symbol = HirTables.Symbol(node);
         switch (symbol?.Kind)
@@ -197,15 +209,15 @@ internal sealed partial class MirBuilder(Compilation compilation)
                     kind = TestDefinition.Marker(function) is null ? MirBodyKind.Fn : MirBodyKind.Test;
                 }
 
-                var result = closure ? symbol?.Type ?? BoundType.Unit : TypeOf(node);
-                return (new(symbol, kind, symbol is null ? table.Module : 0), symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
+                return (new(symbol, kind, symbol is null ? table.Module : 0), symbol, symbol is null ? BoundType.Unit : symbol.Type,
+                    (Koto?)function.Body ?? function.ExpressionBody!);
             case BindingSymbolKind.PropertyAccessor:
                 var accessor = (PropertyAccessorKoto)node;
                 var executing = CallPlan.Accessor(compilation.Binding, accessor); // SPEC 11.3: the function its calls target.
                 kind = accessor.AccessorKind == PropertyAccessorKind.Get ? MirBodyKind.Getter : MirBodyKind.Setter;
-                return (new(executing, kind), executing, executing.Type ?? BoundType.Unit, accessor.Body!);
+                return (new(executing, kind), executing, executing.Type, accessor.Body!);
             case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
-                return (new(symbol, MirBodyKind.StaticInit), null, symbol!.Type ?? BoundType.Unit, ((PropertyKoto)node).InitializerKoto!);
+                return (new(symbol, MirBodyKind.StaticInit), null, symbol!.Type, ((PropertyKoto)node).InitializerKoto!);
             default:
                 return null;
         }
@@ -214,7 +226,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // A module walk's definition at a node: its body's key and Body's arguments (Definition) where the node is the table's own and the
     // HIR publishes it with a value (Published), null for another node. The one filter of the module walk, the library's numbering and
     // Demand, so every library body a build or a lookup builds has a slot.
-    private (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Walked(SyntaxTable table, Koto? node)
+    private (MirDefKey Key, BindingSymbol? Function, BoundType? Result, Koto Value)? Walked(SyntaxTable table, Koto? node)
         => node is not null && ReferenceEquals(node.SyntaxOwner, table) && Published(node) ? this.Definition(node, table) : null;
 
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
@@ -318,8 +330,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // through (Bound), and gives the parameter's value. A parameter has no syntax node of its own: it, a template's p_i included, is located
     // at its written Type node, the one a fact about the slot names (DECISIONS R4-M90 D6, BU-48), and a function's result at its written
     // result Type (TyCtxt.SignatureSite); a Closure's environment, a constructor's or destructor's self, an accessor's arguments, a
-    // default template's _0 (the parameter's value) and a result without a written Type are located at their declaration.
-    private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType result, Koto value)
+    // default template's _0 (the parameter's value) and a result without a written Type are located at their declaration. A slot whose
+    // Type Binding failed, its result, a parameter or a template's p_i of a failed parameter, is a local of no Type (MirLocal, PLAN G1073).
+    private void Body(MirDefKey key, Koto declaration, BindingSymbol? function, BoundType? result, Koto value)
     {
         var template = key.Kind == MirBodyKind.DefaultTemplate;
         var source = SourceRef.Of(template ? value : declaration);
@@ -329,6 +342,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.locals.Clear();
         this.targets.Clear();
         this.opaqueTemps.Clear();
+        this.decided.Clear();
         (this.temporaries, this.lexical, this.scopeIds, this.prepared) = (-1, -1, 0, 0);
         this.scopes.Clear();
         this.registrations.Clear();
@@ -362,7 +376,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         {
             var parameter = CallPlan.Parameter(compilation.Binding, function!, i)!;
             this.locals[parameter] = this.Argument(
-                compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
+                parameter.Type is { } prepared ? compilation.Types.Reference(SemanticsKind.Ref, prepared) : null, // A failed parameter's: none.
                 parameter.Name,
                 TyCtxt.SignatureSite(declaration, i),
                 parameters,
@@ -376,7 +390,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         else if (special is not null)
         {
             var layer = this.body.AddLocal(
-                new(special.Type ?? BoundType.Unit, MirLocalKind.Arg, this.Info(declaration, local: true), Name: special.Name, Role: MirLocalRole.Receiver));
+                new(special.Type, MirLocalKind.Arg, this.Info(declaration, local: true), Name: special.Name, Role: MirLocalRole.Receiver));
             this.Register(Cleanup.Fields, this.locals[special] = layer, null, parameters);
         }
         else if (key.Kind == MirBodyKind.Closure && BoundClosure.Of((FunctionKoto)declaration) is { EnvironmentType: { } environment } plan)
@@ -390,15 +404,27 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot), each at its written Type occurrence
         // (SPEC 8.15.3: a parameter's layout record at the use that needs the layout), an accessor's at its declaration.
-        for (var position = 0; !template && function is not null && position < this.Arity(function); position++)
+        for (var position = 0; !template && function is not null && position < CallPlan.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
             var parameter = CallPlan.Parameter(compilation.Binding, function, slot)!;
-            this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, TyCtxt.SignatureSite(declaration, slot), parameters);
+            this.locals[parameter] = this.Argument(parameter.Type, parameter.Name, TyCtxt.SignatureSite(declaration, slot), parameters);
         }
 
         this.current = body.AddBlock();
         this.OpenScope(block: false); // The body value's temporaries, which its end leaves (End).
+        if (function?.Declaration is FunctionKoto { Accessor.SelfSymbol: { Type: null } failed })
+        {
+            // PLAN G1073 (SPEC 23.1.2): an accessor whose written receiver's Type Binding failed executes with no self input, yet its body
+            // reads self, by name or through `storage`: the failed slot (a published self of no Type is one, HasFacts' slot rows), bound
+            // once to an Opaque temp of no Type derived from the slot's record, so each read through it is derived (rule W, Field). With
+            // no such self, a read of the implicit self without a receiver stays a broken contract (Storage).
+            var slot = this.OpaqueTemp(null, declaration);
+            this.SiteRoots((MirPlace?)null);
+            this.Site(declaration, slot, completes: true);
+            (this.locals[failed], this.receiver) = (slot.Root, slot.Root);
+        }
+
         var done = self is null ? new MirPlace(0) : this.Hold(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
         this.targets.Add(new(declaration, done, -1, -1, -1, At: default)); // A return's target, opened at the body's scope.
@@ -449,7 +475,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     }
 
     // An argument local located at a syntax node, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
-    private int Argument(BoundType type, string? name, Koto source, int parameters, MirLocalRole role = MirLocalRole.None)
+    private int Argument(BoundType? type, string? name, Koto source, int parameters, MirLocalRole role = MirLocalRole.None)
     {
         var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(source, local: true), Name: name, Role: role));
         this.Created(local, parameters);

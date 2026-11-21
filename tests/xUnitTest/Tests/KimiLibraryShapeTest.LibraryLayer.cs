@@ -37,8 +37,7 @@ namespace XunitTest;
 // a store not in it is a fact:
 // - fact: each program's rows equal the empty program's. Call scratch (suppliedExpansions, activeOriginRequirements and an Origin
 //   requirement work's Dependents) is a fact once its call empties it at its end (G949 S1-e), so a leftover is a difference;
-//   shapeCallCandidates, storedCases, storedFields and the Origin summaries' forming lists likewise (G949 S1-r1b,
-//   ACallsScratchIsEmptyAfterABind);
+//   storedCases, storedFields and the Origin summaries' forming lists likewise (G949 S1-r1b, ACallsScratchIsEmptyAfterABind);
 // - subset: a content interner or Type-keyed memo keeps every row of the empty program's unchanged, and a program's extra row is the
 //   program's level (D2b-d §1.1, §1.5). The table classes each subset store (G949 ruling 167 Q4): a Type interner's extra row is
 //   keyed by a Type the program made, its key naming a Type id above L (LibraryLayer.TypeCount; the subset Fact, over the stores keyed
@@ -207,12 +206,11 @@ public partial class KimiLibraryShapeTest
     public void TheLibraryLayerIsIndependentOfTheCorpus(string program) => SameLayerAsTheEmptyPrograms(program);
 
     // PLAN G949 S1-r1b (S1-e's call-scratch rule; review-s1r1 Re-check 3, RC-e): the scratch of a call or a step is empty at its end,
-    // so what the last call, container or summary left is no row of the layer, whichever pass ran last: the candidates of a call's
-    // shape contracts, the cases and Fields of the container whose storage was prepared last, the nodes of the Origin summary formed
-    // last. Each held a leftover before (the library's last, in one pass; the program's last after the split, a difference from the
-    // empty program's layer in 163, 30, 182 and 6 of the corpus' 517 differing programs).
+    // so what the last container or summary left is no row of the layer, whichever pass ran last: the cases and Fields of the
+    // container whose storage was prepared last, the nodes of the Origin summary formed last. Each held a leftover before (the
+    // library's last, in one pass; the program's last after the split, a difference from the empty program's layer in 30, 182 and 6
+    // of the corpus' 517 differing programs). A call's shape contracts keep no scratch: they read the call's own candidate span.
     [Theory]
-    [InlineData("shapeCallCandidates")]
     [InlineData("storedCases")]
     [InlineData("storedFields")]
     [InlineData("summaryNodes")]
@@ -376,7 +374,8 @@ public partial class KimiLibraryShapeTest
             // ResetViews drops only TyCtxt's view memos, which a later read forms again, equal).
             ["Binding.instances"] = Rule.Memo, // An ADT's storage at a Type (n9): Fields and parts a function of the Type; Version the run's currency.
             ["Binding.types.instances"] = Rule.Memo, // Whether a definition instantiates: a function of its scope chain.
-            ["Binding.types.copies"] = Rule.Memo, // A premises node's Copy facts, each a function of the node and the Type proven.
+            ["Binding.types.copies"] = Rule.Memo, // A definition's Copy facts, each a function of the definition and the Type proven.
+            ["Binding.types.topLevelCopies"] = Rule.Memo, // The top-level statements' Copy facts (no definition), each a function of the Type proven.
             ["Binding.types.retentions"] = Rule.Memo, // A callee's retention by callee, Subst, premise scope and region version.
             ["Binding.types.handedCallables"] = Rule.Memo, // HandedCallables' answer per interned Type.
             ["Binding.types.comparisons"] = Rule.Memo, // A comparison's composition by Contract, Type and operator form.
@@ -412,9 +411,8 @@ public partial class KimiLibraryShapeTest
             ["Binding.identityPool"] = Rule.Program, // The free identity tables each capability epoch's end returns (ResetIdentityClasses).
             ["Binding.inlineSummaries"] = Rule.Program, // ValidateInlineLayouts' summaries, emptied at its start in each pass.
             ["Binding.inlineSummaryPool"] = Rule.Program, // Their pool: its live prefix is inlineSummaries' values (AssertLivePrefix).
-            ["Binding.resultStructure.cache"] = Rule.Program, // The result walk's Completion memo of the body it walked last (M4).
-            ["Binding.resultStructure.transferPool"] = Rule.Program, // That walk's transfer sets, rented by its cursor for each body.
-            ["Binding.hirPublisher.completion.transferPool"] = Rule.Program, // The publisher's transfer sets for the body it published last (M4).
+            ["Binding.resultStructure.outward"] = Rule.Program, // That walk's Outward target chains, emptied by its Clear for each body.
+            ["Binding.hirPublisher.completion.outward"] = Rule.Program, // The publisher's Outward target chains for the body it published last (M4).
 
             // A run's view, a per-run cache and a walk's reused scratch the reads after a Bind (MIR's) use too (PLAN G949 S1-1, ruling 199 w1
             // (ii)): rebuilt at the run's first read, current in one run, or cleared at the walk's start, so after a step it holds what the
@@ -430,13 +428,28 @@ public partial class KimiLibraryShapeTest
             ["Binding.retentionScope"] = Rule.Program, // BeginRetention's walk and its erased signatures'.
             ["Binding.retentionErasedScope"] = Rule.Program,
             ["Binding.retentionPositions"] = Rule.Program,
+            ["Binding.retentionStored"] = Rule.Program, // StoredRawSources' visits (D-933), cleared with retentionPositions.
             ["Binding.retentionSources"] = Rule.Program, // The retention sources' walk.
             ["Binding.retentionWalked"] = Rule.Program,
             ["Binding.retentionMet"] = Rule.Program, // The retention rows' walk.
+            ["Binding.retentionArguments"] = Rule.Program, // Filled's instantiated inputs, per computation (PLAN G935).
+            ["Binding.retentionFills"] = Rule.Program, // Filled's answers, per computation.
+            ["Binding.retentionHidden"] = Rule.Program, // HiddenKinds' answers per kept Type, per Storages.
+            ["Binding.retentionHiddenSeen"] = Rule.Program, // HiddenKind's walk, per input.
+            ["Binding.retentionReaches"] = Rule.Program, // Writes' walk (WrittenThrough), per handed callable.
+            ["Binding.retentionHandedTypes"] = Rule.Program, // HandedTypes' answer for the output written last.
+            ["Binding.retentionStated"] = Rule.Program, // The stated raw layers one hold walk met (Hold).
+            ["Binding.retentionWrites"] = Rule.Program, // The computation's OutputRetentions (a kept one names its library callee: PLAN G935).
             ["Binding.ownSeen"] = Rule.Program, // OwnLayers' walk.
             ["Binding.storageSeen"] = Rule.Program, // The storage walk (BeginStorages).
             ["Binding.storageHolds"] = Rule.Program,
             ["Binding.storageTargeted"] = Rule.Program,
+            ["Binding.storagePositions"] = Rule.Program, // With the walked signature, and the Origin-free parts' (Node -1; PLAN G935 R1.2).
+            ["Binding.storageTargets"] = Rule.Program, // With the walked signature (Admits; PLAN G935).
+            ["Binding.storageBound"] = Rule.Program, // The kept Type's bindings' written roots (HiddenKinds).
+            ["Binding.storageKept"] = Rule.Program, // The kept abstract Types the output's walk met (Handed).
+            ["Binding.storageResultLeaves"] = Rule.Program, // ResultLeaves' walk and its answer, per computation (PLAN G935).
+            ["Binding.storageResultSeen"] = Rule.Program,
             ["Binding.retentionOccurred"] = Rule.Program,
             ["Binding.types.handedFound"] = Rule.Program, // HandedCallables' walk.
             ["Binding.types.handedSeen"] = Rule.Program,

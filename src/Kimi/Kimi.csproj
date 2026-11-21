@@ -44,16 +44,19 @@
     <EmbeddedResource Include="Testing\TestRuntime.ll" />
     <EmbeddedResource Include="..\backend\windows-x64\profile.json" LogicalName="Kimi.WindowsBackendProfile.json" />
     <EmbeddedResource Include="..\backend\windows-x64\kernel32.def" LogicalName="Kimi.Kernel32.def" />
+    <EmbeddedResource Include="..\backend\windows-x64\kernel32.lib" LogicalName="Kimi.Kernel32.lib" />
+    <EmbeddedResource Include="..\backend\windows-x64\kimi_backend_windows_x64_v1.lib" LogicalName="Kimi.WindowsBackend.lib" />
+    <EmbeddedResource Include="..\Tatara\tatara.h" LogicalName="Kimi.Tatara.h" />
     <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Arc.Collections" Version="2.0.0" />
-    <PackageReference Include="Arc.Threading" Version="0.54.0" />
-    <PackageReference Include="Arc.Unit" Version="0.48.0" />
+    <PackageReference Include="Arc.Collections" Version="2.2.0" />
+    <PackageReference Include="Arc.Threading" Version="0.56.0" />
+    <PackageReference Include="Arc.Unit" Version="0.49.0" />
     <PackageReference Include="SimpleCommandLine" Version="0.47.0" />
-    <PackageReference Include="SimplePrompt" Version="0.28.0" />
+    <PackageReference Include="SimplePrompt" Version="0.30.0" />
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

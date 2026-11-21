@@ -48,7 +48,7 @@ internal sealed partial class TyCtxt
     // SPEC 13.4: whether the operator table runs a Type's comparison under a Contract. Whether a library group serves a Type is the witness
     // table's question (Binding.WitnessGroup); conformance asks both.
     internal static bool OperatorTableRuns(BoundType? type, KimiDeclarationId? contract)
-        => contract == KimiDeclarationId.Equatable ? ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit)
+        => contract == KimiDeclarationId.Equatable ? type is { IsScalar: true } || ReferenceEquals(type, BoundType.Unit)
             : contract == KimiDeclarationId.Comparable && (type is { HasIntegerArithmetic: true } || ReferenceEquals(type, BoundType.Char));
 
     // SPEC 13.4, 13.4.1, 5.1, 3.1.3: whether the operator table runs a built-in comparison operator at a terminal Type, == and != under
@@ -62,7 +62,7 @@ internal sealed partial class TyCtxt
     // and ComparisonProof's float order under operators.
     internal static bool OperatorCompares(BoundType? type, KimiDeclarationId contract)
         => OperatorTableRuns(type, contract) || type is { IsFloatingPoint: true } || ReferenceEquals(type, BoundType.Never) ||
-            (contract == KimiDeclarationId.Equatable && ReferenceTypes.IsPointer(type));
+            (contract == KimiDeclarationId.Equatable && type is { IsPointer: true });
 
     // SPEC 13.4, 13.4.1, 12.4.3: how a comparison of Self under Equatable or Comparable runs, as source operators or the Contract's mapping
     // compare it.

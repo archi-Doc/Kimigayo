@@ -91,22 +91,23 @@ public sealed partial class MirOriginsTest
     // source, fixed target): both rows of r7-inv (one direction of its `==`), a chain through a local region (the j-f chain), a meet at the
     // longer end split per operand (bc801917a239), two well-formedness rows of one call (e3312717bde0), a Phantom slot's `==` failing both
     // ways (one problem with Equality set), a local's callable store (cd1535825466, 597510880fb0, cab8c776076f), a Closure's parameter fit
-    // (8e4cca7290b1), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
+    // (8e4cca7290b1; with it the inner Closure's store of its parameter into its `var` capture of the `let` local `start`, whose slot is
+    // start's own region, a fixed Origin of that body: PLAN G492-a (ii), the owner's O-261 Q1 (a)), a Reborrow through a local's layers, which Binding names by their meet (p1: one problem at the return; rejected
     // since G226, DECISIONS BU-27, closing PLAN G192), and a Field initializer's relation that only the constructor's clause would
     // prove: the layer's part is judged under the Type's public premises (SPEC 6.3.3; DECISIONS R4-M101 E4, R4-M110, R4-M114), also where
     // its written Type is a local's (PLAN G215's twin); a nested result's relation among enclosing Origins, the containing declaration's,
     // judged by the body's oracle (PLAN G216 (b)'s r3 and r6, SPEC 15.3.4), p4's value call without its clause (SPEC 15.6.4), and an
     // unrelated Constraint set's slot, fixed in the body, reached from an input no premise relates to it (DECISIONS BU-100).
     [Theory]
-    [InlineData(R7Inv, "uniq/(ref/i32 during a): a > in1", "let z: uniq/(ref/i32 during a) = y: a > b")]
+    [InlineData(R7Inv, "uniq/(ref/i32 during a): a > in1", "y: a > b")]
     [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n", "r: in0 > in1")]
     [InlineData(Meet, "ref/(ref/i32 during (a and b)) during x: in0 > in2", "ref/(ref/i32 during (a and b)) during x: in1 > in2")]
     [InlineData(TwoRows, "pk(h, x, y, keep): in0 > s", "pk(h, x, y, keep): in1 > s")]
     [InlineData(Phantom, "x@move: in0 == in1")]
-    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h: H{x} = H.init(a)\n        origin x.s == b\n    return 0\n", "let h: H{x} = H.init(a): in0 > in1")]
+    [InlineData(Holder + "func f(a: ref/i32, b: ref/i32) -> i32\n    let h: H{x} = H.init(a)\n        origin x.s == b\n    return 0\n", "H.init(a): in0 > in1")]
     [InlineData(Holder + "func use(a: ref/i32, b: ref/i32, h0: H{p}, k: (H{q}) -> i32) -> i32\n    origin p.s == a\n    origin q.s == b\n    return k(h0@move)\n", "h0@move: in0 > in1")]
-    [InlineData(ClauseBound, "origin x.s outlives b: in2 > in1")]
-    [InlineData(Closures, "a: closure.in0 > in0")]
+    [InlineData(ClauseBound, "h0@move: in2 > in1")]
+    [InlineData(Closures, "n: in0 > Inference", "a: closure.in0 > in0")]
     [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    var q = p\n    return q@follow@follow@uniq\n", "q@follow@follow@uniq: b > a")]
     [InlineData(LayerCount, "ref/(ref/i32 during a) during b: a > b")]
     [InlineData("struct Pair {a, b}\n" + PairInit + InitP, "ref/(ref/i32 during b) during a: b > a")]
@@ -140,32 +141,51 @@ public sealed partial class MirOriginsTest
         Assert.Empty(Origins(c));
     }
 
-    // D1: a relation whose ends are fixed where Binding forms it is Binding's judgment until R7 and forms no row, and its failed node is
-    // Opaque on the MIR, so the stratum forms no problem for it: j-f, j-pick (each case), c-detach (SPEC 15.5), c-box, c-peekU, c-pair (each
-    // case), n-pass, x-skip (an Iterator's item Reborrowed through `self`), p1's direct form and r7-subst's call. So is a relation formed over a
-    // Closure's pending receiver atoms that Binding judges once the Closure is classified, fixed there (DECISIONS R4-M126 §2.5 (b), F3): its
-    // obligation leaves as one judged at binding time forms none, Binding's one record (rv/env-store; g65a annotated and
-    // returned; g6b).
+    // SPEC 15.6.5 (R7-O1 H; DECISIONS draft "A body's Origin relations are judged by A5 alone", superseding 2a0-D D1's fixed-fixed clause):
+    // a relation whose ends are fixed where Binding forms it is a row of the body that the stratum judges, at the value, and never
+    // Binding's record (fail-before: Binding's UnprovenOriginRelation_Kd and no problem of the stratum): j-f, j-pick (each case), c-detach
+    // (SPEC 15.5), c-box, c-peekU, c-pair (each case), n-pass, x-skip (an Iterator's item Reborrowed through `self`), p1's direct form; so
+    // is a relation formed over a Closure's pending receiver atoms, a row like any other (rv/env-store; g65a annotated, its record at the
+    // initializer by D5, and returned; g6b).
     [Theory]
-    [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    let r = x\n    return r\n", "return r")]
-    [InlineData("struct Box<E>\n    public let item: E\nfunc pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is owner or ref\n    return x\n", "return x")]
-    [InlineData("struct UniqView<T> {source}\n    let data: uniq/T during source\n    func detach(self: uniq/Self) -> uniq/T during self.source\n        return self.data\n", "return self.data")]
-    [InlineData("struct Box<E>\n    public let item: E\nfunc f(b: uniq/Box<uniq/i32 during a> during c) -> uniq/i32 during a\n    return b.item@follow@uniq\n", "return b.item@follow@uniq")]
-    [InlineData("func peekU(r: ref/(uniq/i32 during a) during b) -> ref/i32 during a\n    return r@follow@follow@ref\n", "return r@follow@follow@ref")]
-    [InlineData("func pd<s/T>(p: s/(uniq/i32 during a) during b) -> uniq/i32 during a\n    s is owner or uniq\n    return p@follow@follow@uniq\n", "return p@follow@follow@uniq")]
-    [InlineData(NestedPass, "return value")]
+    [InlineData("func f(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    let r = x\n    return r\n", "r")]
+    [InlineData("struct Box<E>\n    public let item: E\nfunc pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is owner or ref\n    return x\n", "x")]
+    [InlineData("struct UniqView<T> {source}\n    let data: uniq/T during source\n    func detach(self: uniq/Self) -> uniq/T during self.source\n        return self.data\n", "self.data")]
+    [InlineData("struct Box<E>\n    public let item: E\nfunc f(b: uniq/Box<uniq/i32 during a> during c) -> uniq/i32 during a\n    return b.item@follow@uniq\n", "b.item@follow@uniq")]
+    [InlineData("func peekU(r: ref/(uniq/i32 during a) during b) -> ref/i32 during a\n    return r@follow@follow@ref\n", "r@follow@follow@ref")]
+    [InlineData("func pd<s/T>(p: s/(uniq/i32 during a) during b) -> uniq/i32 during a\n    s is owner or uniq\n    return p@follow@follow@uniq\n", "p@follow@follow@uniq")]
+    [InlineData(NestedPass, "value")]
     [InlineData(IteratorItem, "self.value")]
-    [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    return p@follow@follow@uniq\n", "return p@follow@follow@uniq")]
-    [InlineData(Substituted, "q")]
+    [InlineData("func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a\n    return p@follow@follow@uniq\n", "p@follow@follow@uniq")]
     [InlineData(EnvStore, "x@ref")]
-    [InlineData(PendingHead + "    let c = func [n] () -> i32\n        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n", "let r: ref/i32 during p = n@ref")]
+    [InlineData(PendingHead + "    let c = func [n] () -> i32\n        let r: ref/i32 during p = n@ref\n        return 0\n    return 0\n", "n@ref")]
     [InlineData(PendingHead + "    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref")]
     [InlineData("func use(p: uniq/i32, q: uniq/(uniq/i32 during p)) -> i32\n    var c = func [p@move, q@move] () -> i32\n        q@follow = p\n        return 0\n    return 0\n", "p")]
-    public void ARelationBindingJudgesDirectlyIsNotTheStratums(string source, string site)
+    public void ARelationBetweenFixedOriginsIsTheStratums(string source, string site)
     {
         var c = MirBuildTest.Compile(source + Main);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd && x.Node.ToString()!.Split('\n')[0].Trim() == site);
-        Assert.Empty(Found(c.BuildMir()));
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Failure == BindingFailure.OriginRelation);
+        Assert.Contains(Found(c.BuildMir()), x => x.Problem.Code == DiagnosticCode.UnprovenOriginRelation_Kd && c.SyntaxOf(x.Problem.Subject).ToString()!.Split('\n')[0].Trim() == site);
+    }
+
+    // SPEC 15.6.1, 15.6.4 step 3, 15.6.5 (R7-O1 b1; DECISIONS draft "A body's Origin relations are judged by A5 alone"): a selected call's
+    // relation, an argument's fit, a substituted clause or a fresh Origin's `==`, is a row of the body that the stratum judges, Binding's
+    // record never (fail-before: Binding's UnprovenOriginRelation_Kd and no problem of the stratum): r7-subst's call, c1b's pinned clause,
+    // c2's argument, c22's `==`, and E2's case (a), a Closure's argument over an enclosing call's result resolved to a fixed Origin; E2's case
+    // (b), a Closure's argument over an enclosing call's unsolved region (the Front's r2f_call), is the nested-body limit (DECISIONS BU-51's
+    // twelfth amendment, the owner's (i)): Unsupported_Kd, the call's own UnprovenConstraint_Kd beside it.
+    [Theory]
+    [InlineData(Substituted, "q", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func need(x: uniq/(ref/i32 during a), y: ref/i32 during b)\n    origin b outlives a\n    return\nfunc f(q: ref/i32, p: ref/i32, slot: uniq/(ref/i32 during q))\n    need(slot, p)\n", "p", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func put(slot: uniq/(ref/i32 during a), value: ref/i32 during a)\n    slot@follow = value\nfunc f(q: ref/i32, p: ref/i32, slot: uniq/(ref/i32 during q))\n    put(slot, p)\n", "p", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func eq(x: uniq/(ref/i32 during a), y: uniq/(ref/i32 during a))\n    return\nfunc f(p: ref/i32, q: ref/i32, s1: uniq/(ref/i32 during p), s2: uniq/(ref/i32 during q))\n    eq(s1, s2)\n", "s2", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func put(slot: uniq/(ref/i32 during a), value: ref/i32 during a)\n    slot@follow = value\nfunc id(x: ref/i32 during a) -> ref/i32 during a => x\nfunc g(p: ref/i32, q: ref/i32) -> ()\n    let r = id(p)\n    let k = func [r] (s: uniq/(ref/i32 during q)) => put(s, r)\n", "r", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData("func put(slot: uniq/(ref/i32 during a), value: ref/i32 during a) -> i32 => 0\nfunc mk4(p: Option<ref/(ref/i32 during a) during b>, y: ref/i32 during b, f: (uniq/(ref/i32 during a)) -> i32) -> i32 => 0\nfunc k(t: ref/i32, u: ref/i32) -> i32\n    return mk4(.None, t, func [u] (s) => put(s, u))\n", "u", DiagnosticCode.Unsupported_Kd)]
+    public void ACallPositionsRelationIsTheStratums(string source, string site, DiagnosticCode code)
+    {
+        var c = MirBuildTest.Compile(source + Main);
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Failure == BindingFailure.OriginRelation);
+        Assert.Contains(Found(c.BuildMir()), x => x.Problem.Code == code && c.SyntaxOf(x.Problem.Subject).ToString()!.Split('\n')[0].Trim() == site);
     }
 
     // SPEC 15.6.5 (with pairs, S1015 item 25): a pair borrow layer's well-formedness is required only in the case with an outer Origin, so

@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-#pragma warning disable SA1210 // Using directives should be ordered alphabetically by namespace
+#pragma warning disable SA1208, SA1210 // Using directives should be ordered by namespace (the global ones come first)
 
 global using Arc;
 global using Arc.Threading;
@@ -9,17 +9,36 @@ global using Kimi;
 global using Microsoft.Extensions.DependencyInjection;
 global using Tinyhand;
 global using ValueLink;
+using System.Runtime.InteropServices;
 using Kimi.Command;
 using Kimi.Unit;
 using SimpleCommandLine;
 
 namespace Kimi;
 
-public class Program
+public partial class Program
 {
+    private static ExecutionRoot? root;
+
+    // Whether the default action has run once (Tatara design A4 §2.2): set by its first call alone, never by Main's or AppCloseHandler's
+    // own termination requests, and never reset.
+    private static int pressed;
+
     public static bool SuppressConsoleOutput { get; private set; }
 
-    private static ExecutionRoot? root;
+    /// <summary>Gets or sets what a Ctrl+C does: the process's one action. The default's first call requests the root's termination
+    /// (the command's cancellation: 130); a later call ends the process at once with 130 (<see cref="EndProcess"/>; the owner's O-460
+    /// (a)). A session of <c>kimi tatara</c> replaces it while it runs and restores it at its end (Tatara design A3 §2.4);
+    /// <c>check --Format json</c> holds it empty while it publishes (SPEC 23.2.3).</summary>
+    internal static Action CancelKey { get; set; } = static () =>
+    {
+        if (Interlocked.Exchange(ref pressed, 1) != 0)
+        {
+            EndProcess();
+        }
+
+        root?.RequestTermination();
+    };
 
     public static async Task Main()
     {
@@ -32,7 +51,7 @@ public class Program
         Console.CancelKeyPress += (s, e) =>
         {// Ctrl+C pressed.
             e.Cancel = true;
-            root?.RequestTermination(); // Send a termination signal to the root.
+            CancelKey();
         };
 
         var args = SimpleParserHelper.GetCommandLineArguments();
@@ -50,4 +69,29 @@ public class Program
             await unitLogger.FlushAndTerminateAsync();
         }
     }
+
+    /// <summary>Ends this process at once with 130, running no handler. On Windows TerminateProcess, not Environment.Exit, which would run
+    /// tatara.dll's detach (it can wait on a lock a stuck thread holds) and the process-exit handler; off Windows libc's _exit, not
+    /// Environment.Exit, which runs AppCloseHandler, and that requests the root's termination and waits up to two seconds.</summary>
+    internal static void EndProcess()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            TerminateProcess(GetCurrentProcess(), 130);
+        }
+        else
+        {
+            Exit(130);
+        }
+    }
+
+    [LibraryImport("libc", EntryPoint = "_exit")]
+    private static partial void Exit(int status);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial nint GetCurrentProcess();
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TerminateProcess(nint process, uint exitCode);
 }

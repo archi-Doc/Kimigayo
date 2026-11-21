@@ -3,9 +3,13 @@
 // The contract of Build (src/Kimi/Build, namespace Kimi.Build), P13, outside the compiler (the R7-R9 plan's §5.3, unit M2), stated
 // here, in its entry file, for all its types.
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
-// pair (NativeToolchain.Build.cs), the built Application's run and the installed toolchain's verification
-// (NativeToolchain.Verification.cs); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
-// identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles).
+// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the root's tatara.dll), so a
+// native build launches no tool; the built Application's run and the installed toolchain's verification
+// (NativeToolchain.Verification.cs, whose file-scoped ToolProcess is the only code here that launches an LLVM tool: the tools' version
+// banners and kernel32's inspection); the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and
+// staged as a program's input is) and the root's resolution (ToolchainIdentity, ToolchainResolver); kernel32's definition and
+// generation conditions (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify loads the root's tatara.dll
+// (Tatara.Load, its start check) and compares its SHA-256 with the installation record's.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the installed toolchain.
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
@@ -14,22 +18,31 @@
 // configuration states too (ProjectFile.OutputKind); the target profile WindowsProfile; CompilerRelease; CompilationBuildMetadata, which
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
-// Output: the pair, the build record, the staged libraries, the object with its inspection and the executable, each published by
-// replacement; and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
-// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception: one IsToolchainFailure classifies is
-// the toolchain's, which its host renders as a message; any other ends the result it interrupted as Faulted (CheckFaulted_Kd): under
-// Project.Build the build's (R9-B2), under a command the command's own (CommandExecution, PLAN G984).
+// Output: the pair, the build record, the staged libraries, the object and the executable, each published by
+// replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
+// failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
+// decision 18; NativeBuild: in the two windows IMPL 20.3.2 states, decision 19, the attempt's success record names a hash no file at
+// the path has, and run --no-build runs only an executable whose hash the record names); and, from publication only, records in the
+// compiler's Emission partition (ArtifactPublicationFailed_Kd and InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other
+// failure is an exception: one IsToolchainFailure classifies is the toolchain's, which its host renders as a message; any other ends the
+// result it interrupted as Faulted (CheckFaulted_Kd): under Project.Build the build's (R9-B2), under a command the command's own
+// (CommandExecution, PLAN G984).
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
-// (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
+// (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders). A build of a record (Project.Build, build --Manifest) holds the record's lock
+// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave.
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
-// The link manifest's fixed fields (one table) and its readers are LinkManifest's: no manifest read raises an accessor's exception (R9-B1).
+// The link manifest's fixed fields (one table), the compiler's supplies' entries (their rows) and its readers are LinkManifest's: no
+// manifest read raises an accessor's exception (R9-B1).
 // The build record's, the installation's and kernel32's readers compare ArtifactFiles' total reads (Member, Text, Number) with what they
 // expect, so a malformed record fails as their InvalidDataException (PLAN G983), and IsToolchainFailure lists no JSON accessor's type
 // (KeyNotFoundException, InvalidOperationException). Known limit (R9-M10's, narrowed): inside the toolchain's calls the set still
 // classifies by type whatever raised the exception, so one of its remaining kinds (publication's, R5-M165; Win32Exception;
 // JsonException) raised by the host's report or a defect here prints as the toolchain's failure; any other type is a fault.
+// Tatara's failures (design A2 §5) are the toolchain's: a missing, unloadable or mismatched tatara.dll an InvalidDataException naming the
+// remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
+// "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.
 
 using System.ComponentModel;
@@ -44,7 +57,7 @@ using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
 
-/// <summary>Owns build-record publication and native tool/executable execution. Consumes checked product metadata
+/// <summary>Owns build-record publication, the native build and the executable's run. Consumes checked product metadata
 /// or validated emission artifacts; publishes success atomically and never checks source semantics.</summary>
 internal static partial class NativeToolchain
 {
@@ -58,10 +71,53 @@ internal static partial class NativeToolchain
     internal static bool IsToolchainFailure(Exception ex)
         => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException;
 
-    internal static void Invalidate(ArtifactPaths paths)
+    // A build begins (IMPL 20.3.2): it creates the record's directory, takes its output's lock, the file beside its record
+    // (Name.link.build.lock, opened without sharing and kept on disk), and then invalidates the record; the caller holds the lock until
+    // the build ends. While another build holds it (IsSharingFailure), the build reports once that it waits and retries every 100 ms.
+    // The token is read only in that wait, which it cancels before anything is written: a free lock is taken and the record invalidated
+    // under a cancelled token too. Any other failure is the output's. Every exception after the open closes the lock again, so no failed
+    // build leaves its output locked in a long-lived process. O0 and O2 share the record, so they share the lock. Its callers are the
+    // two hosts that begin a build of a record, Project.Build and BuildManifest (test builds into a directory of its own), which read
+    // nothing before it but the configuration.
+    internal static async Task<FileStream> Begin(string record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
-        WriteRecord(paths.Record, CreateBuildRecord());
+        Directory.CreateDirectory(Path.GetDirectoryName(record)!);
+        var path = Path.ChangeExtension(record, ".lock");
+        FileStream output;
+        var waiting = false;
+        while (true)
+        {
+            try
+            {
+                output = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                break;
+            }
+            catch (IOException ex) when (IsSharingFailure(ex))
+            {
+                if (!waiting)
+                {
+                    report(DiagnosticSeverity.Information, "Waiting for another build: " + path);
+                    waiting = true;
+                }
+            }
+
+            await Task.Delay(100, cancellationToken);
+        }
+
+        var begun = false;
+        try
+        {
+            Invalidate(record);
+            begun = true;
+            return output;
+        }
+        finally
+        {
+            if (!begun)
+            {
+                output.Dispose();
+            }
+        }
     }
 
     // A checked Library's record, with the front end's metadata of its one target, which the project reads (a compiler step's read).
@@ -97,6 +153,11 @@ internal static partial class NativeToolchain
         return await RunExecutable(paths.Executable, Path.GetFullPath(project.Directory.Length == 0 ? "." : project.Directory), cancellationToken);
     }
 
+    // Runs a program and returns its exit code; its output is copied to Kimi's raw standard streams and is complete when this returns
+    // or throws: the copies take no token and are awaited after Wait, which on cancellation kills the tree first, so the pipes reach
+    // their end. After a cancellation the outcome is the cancellation (130): the copies are awaited without observing their outcome
+    // and the cancellation is rethrown. A descendant that escaped the kill's walk (its parent exited first) and holds the output keeps
+    // a cancelled run waiting until it exits or a second Ctrl+C ends the process.
     internal static async Task<int> RunExecutable(string executable, string workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -114,10 +175,20 @@ internal static partial class NativeToolchain
             RedirectStandardError = true,
         };
         using var process = Process.Start(start) ?? throw new IOException("Cannot start: " + executable);
-        var stdout = process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput(), cancellationToken);
-        var stderr = process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError(), cancellationToken);
-        await Wait(process, cancellationToken);
-        await Task.WhenAll(stdout, stderr);
+        var output = Task.WhenAll(
+            process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput(), CancellationToken.None),
+            process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError(), CancellationToken.None));
+        try
+        {
+            await Wait(process, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            await output.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            throw;
+        }
+
+        await output;
         return process.ExitCode;
     }
 
@@ -192,59 +263,9 @@ internal static partial class NativeToolchain
         }
     }
 
-    private static JsonObject CreateBuildRecord() => new()
-    {
-        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
-        ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
-    };
-
-    private static async Task<string> ExecuteTool(
-        string tool, string[] args, string directory, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken, bool showErrors = true)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var start = new ProcessStartInfo(tool)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = directory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (var argument in args)
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMinutes(5));
-        using var process = Process.Start(start) ?? throw new IOException("Cannot start tool: " + tool);
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        try
-        {
-            await Wait(process, timeout.Token);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new IOException("Tool timed out: " + tool);
-        }
-
-        var output = await stdout;
-        var errors = await stderr;
-        if (process.ExitCode != 0)
-        {
-            throw new IOException($"Tool failed: {tool}; exit={process.ExitCode}\n{output}{errors}");
-        }
-
-        if (showErrors && !string.IsNullOrWhiteSpace(errors))
-        {
-            report(DiagnosticSeverity.Warning, errors.Trim());
-        }
-
-        return showErrors ? output : output + errors;
-    }
-
-    private static async Task Wait(Process process, CancellationToken cancellationToken)
+    // Waits for a launched process; on cancellation kills its tree, waits for its exit and rethrows. RunExecutable's wait, and
+    // Verification's ToolProcess's (internal for that file-scoped type).
+    internal static async Task Wait(Process process, CancellationToken cancellationToken)
     {
         try
         {
@@ -261,6 +282,15 @@ internal static partial class NativeToolchain
             throw;
         }
     }
+
+    private static JsonObject CreateBuildRecord() => new()
+    {
+        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
+        ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
+    };
+
+    // The record's invalidation: the incomplete record a build writes first (Begin) and again after a failed move of its executable.
+    private static void Invalidate(string record) => WriteRecord(record, CreateBuildRecord());
 
     private static void WriteRecord(string path, JsonObject record)
     {

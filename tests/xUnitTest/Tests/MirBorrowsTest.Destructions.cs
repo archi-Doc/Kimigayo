@@ -105,6 +105,14 @@ public sealed partial class MirBorrowsTest
                 self.q = null
             drop
                 unsafe => *self.p = self.q
+        struct RWD {a}
+            public var p: raw/(ref/i32 during a)
+            public var r: ref/i32 during a
+            public init(r: ref/i32 during a)
+                self.p = null
+                self.r = r
+            drop
+                unsafe => *self.p = self.r
         struct WKey
             Self is Equatable
             public var p: raw/(raw/u8)
@@ -484,6 +492,122 @@ public sealed partial class MirBorrowsTest
             f = [Writer.init(q: null), Writer.init(q: null)]
             y = 5
             usep(slot)
+        func derefBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            let r = x@uniq
+            r@follow = Writer.init(q: null)
+            y = 5
+            usep(slot)
+        func derefOk()
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            r@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func derefFieldOk()
+            var x = Writer.init(q: null)
+            var h = (x@uniq, 0)
+            h.0@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func rr2v()
+            var x = Writer.init(q: null)
+            var r = x@uniq
+            let rr = r@uniq
+            rr@follow@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func rr3v()
+            var x = Writer.init(q: null)
+            var r = x@uniq
+            var rr = r@uniq
+            let r3 = rr@uniq
+            r3@follow@follow@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func rr2fv()
+            var x = Writer.init(q: null)
+            var h = (x@uniq, 0)
+            let rr = h@uniq
+            rr@follow.0@follow = Writer.init(q: null)
+            inspect(x@ref)
+        func rr2i(y: uniq/i32)
+            let w = y@follow@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            var r = x@uniq
+            let rr = r@uniq
+            rr@follow@follow = Writer.init(q: null)
+            y@follow = 5
+            usep(slot)
+            inspect(x@ref)
+        func rr2td(y: uniq/i32)
+            let w = y@follow@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: null)
+            x.p = slot@raw
+            var h = (x@uniq, w@raw@raw/u8)
+            let rr = h@uniq
+            rr@follow.0@follow = Writer.init(q: null)
+            y@follow = 5
+            usep(slot)
+            inspect(x@ref)
+        func adX2v()
+            var z: i32 = 0
+            var slot: ref/i32 = z@ref
+            var y: i32 = 1
+            let v = y@ref
+            var k: i32 = 3
+            var x = RWD.init(r: v)
+            x.p = slot@raw
+            var h = (x@uniq, v)
+            let rr = h@uniq
+            rr@follow.0@follow = RWD.init(r: k@ref)
+            y = 5
+            inspect(slot@ref)
+        func dictIndexBad()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            var d: Dictionary<i32, Writer> = [:]
+            _ = d.insertOrReplace(1, x@move)
+            d[1] = Writer.init(q: null)
+            y = 5
+            usep(slot)
+        func dictIndexOk()
+            var d: Dictionary<i32, Writer> = [:]
+            _ = d.insertOrReplace(1, Writer.init(q: null))
+            d[1] = Writer.init(q: null)
+        func uniqElemOk()
+            var a: Array<Writer> = [Writer.init(q: null)]
+            match a.tryGetUniq(0)
+                .Some(let r) => r@follow = Writer.init(q: null)
+                .None => ()
+        func derefInnerOk()
+            var y: i32 = 1
+            var w: ref/i32 = y@ref
+            var slot: raw/u8 = null
+            var o = Outer.init(q: null)
+            o.inner.p = slot@raw
+            let r = o@uniq
+            r.inner = Writer.init(q: null)
+            y = 5
+            usep(slot)
+            inspect(o@ref)
+        func setDerefBad(b: bool)
+            var z: i32 = 0
+            var t: ref/i32 = z@ref
+            var t2: ref/i32 = z@ref
+            var y: i32 = 1
+            if b
+                var s = Setter.init(target: t@uniq, value: y@ref)
+                let r = s@uniq
+                r@follow = Setter.init(target: t2@uniq, value: z@ref)
+            y = 5
+            inspect(t@ref)
         func arrClearBad()
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -555,6 +679,46 @@ public sealed partial class MirBorrowsTest
             Kimi.Intrinsics.replace(x@uniq, with: Writer.init(q: null))
             y = 5
             usep(slot)
+        func replaceDerefOk()
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            Kimi.Intrinsics.replace(r@follow@uniq, with: Writer.init(q: null))
+            inspect(x@ref)
+        func replaceSlotOk()
+            var slot: raw/u8 = null
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            var n = Writer.init(q: null)
+            n.p = slot@raw
+            Kimi.Intrinsics.replace(r@follow@uniq, with: n@move)
+            inspect(x@ref)
+            usep(slot)
+        func replaceFieldOk()
+            var o = Outer.init(q: null)
+            let r = o@uniq
+            Kimi.Intrinsics.replace(r.inner@uniq, with: Writer.init(q: null))
+            inspect(o@ref)
+        func replaceElementOk()
+            var a: Array<Writer> = [Writer.init(q: null)]
+            Kimi.Intrinsics.replace(a[0]@uniq, with: Writer.init(q: null))
+            inspect(a@ref)
+        func replaceValueBad(y: uniq/i32)
+            let w = y@follow@ref
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            Kimi.Intrinsics.replace(r@follow@uniq, with: Writer.init(q: w@raw@raw/u8))
+            y@follow = 5
+            inspect(x@ref)
+        func replaceDerefBad(y: uniq/i32)
+            let w = y@follow@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            let r = x@uniq
+            Kimi.Intrinsics.replace(r@follow@uniq, with: Writer.init(q: null))
+            y@follow = 5
+            usep(slot)
+            inspect(x@ref)
         func keyParamNullOk(d: uniq/Dictionary<WKey, i32>)
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -597,13 +761,25 @@ public sealed partial class MirBorrowsTest
     //   otherwise decide the verdict by itself; rcCellQuietOk has no drop, rcCellNullOk never writes the cell); Array elements
     //   (arrReassignBad, also scopeDrop2Bad; litScopeBad adds the Array literal's own construction, R5-M129); Dictionary values and keys
     //   (dictReassignBad, dictKeyReassignBad); fixed-array elements (fixedReassignBad).
+    // - `=` through an exclusive reference (D-918): the destroyed part's receiver is the reference's Reborrow, the input the drop writes
+    //   through, so the drop's store keeps what reads through it carry (derefBad's q, which addresses w: `y = 5` errs) and never the
+    //   reference's own Loan (rule A, SPEC 15.6.4): derefOk, derefFieldOk (a reference a Tuple holds), uniqElemOk (tryGetUniq's) and a
+    //   Dictionary's indexed replacement through indexUniq's reference (dictIndexOk; dictIndexBad keeps its `y = 5`) are valid, as their
+    //   method twin `r.flush()` is; on dev each kept r's Loan, an error at its referent's storage end and later uses. A Field past the
+    //   reference takes the same receiver (derefInnerOk: `r.inner = ...`), and so does a drop row of the Content kind (setDerefBad:
+    //   Setter's, whose records are setterScopeBad's).
+    // - `=` through two or more exclusive Derefs (D-935; their call forms are AChainRowIsAReadThroughTheArgument's): the receiver also
+    //   carries the parent Loans, which a read through the intermediate reference's holder gives back, the own value the drop's store
+    //   never keeps (rule A): rr2v, rr3v (three) and rr2fv (a Field between) are valid; rr2i and rr2td keep what the read at the last
+    //   Deref carries (q's, and h.1's address of w: `y@follow = 5`), and adX2v keeps v's Loan, which the old x holds though h.1 holds it
+    //   too (`y = 5`; `var z` and the new x's `var k` are its own records on dev too).
     [Theory]
     [InlineData("localBad", "localBad: y = 5")] // Drop at `=`
     [InlineData("localReachBad", "localReachBad: y = 5")] // Drop at `=`
     [InlineData("quietOk", "")] // Drop at `=`
     [InlineData("nullQOk", "")] // Drop at `=`
-    [InlineData("statedBad", "statedBad: y = 5; statedBad: usep(slot)")] // Drop at `=`, stated raw layers
-    [InlineData("statedSlotBad", "statedSlotBad: usep(slot)")] // Drop at `=`, stated raw layers
+    [InlineData("statedBad", "statedBad: y = 5; statedBad: usep(slot); statedBad: var spare: raw/u8 = null; statedBad: var slot: raw/u8 = null")] // Drop at `=`, stated raw layers; the storage ends are true records (5.7 Calls: a stated layer keeps what it admits; D-757)
+    [InlineData("statedSlotBad", "statedSlotBad: usep(slot); statedSlotBad: y = 5; statedSlotBad: var spare: raw/u8 = null; statedSlotBad: var slot: raw/u8 = null")] // Drop at `=`, stated raw layers; true records as statedBad's (D-757)
     [InlineData("tempOnlyBad", "tempOnlyBad: y = 5")] // a temporary's Drop
     [InlineData("tempOnlyNullOk", "")] // a temporary's Drop
     [InlineData("scopeBad", "scopeBad: y = 5")] // scope end
@@ -637,6 +813,20 @@ public sealed partial class MirBorrowsTest
     [InlineData("dictKeyReassignNullOk", "")] // Dictionary keys at `=`
     [InlineData("fixedReassignBad", "fixedReassignBad: y = 5")] // fixed-array elements at `=`
     [InlineData("fixedReassignNullOk", "")] // fixed-array elements at `=`
+    [InlineData("derefBad", "derefBad: y = 5")] // `=` through an exclusive reference: the drop's store keeps q, not r's Loan (D-918)
+    [InlineData("derefOk", "")] // `=` through an exclusive reference (D-918)
+    [InlineData("derefFieldOk", "")] // `=` through a reference a Tuple holds (D-918)
+    [InlineData("dictIndexBad", "dictIndexBad: y = 5")] // a Dictionary's indexed replacement, through indexUniq's reference (D-918)
+    [InlineData("dictIndexOk", "")] // a Dictionary's indexed replacement (D-918)
+    [InlineData("uniqElemOk", "")] // `=` through tryGetUniq's reference (D-918)
+    [InlineData("derefInnerOk", "")] // `=` of a Field past an exclusive reference (D-918)
+    [InlineData("setDerefBad", "setDerefBad: y = 5; setDerefBad: t@ref")] // a Content-kind drop row through a reference: setterScopeBad's records (D-918)
+    [InlineData("rr2v", "")] // `=` through two exclusive Derefs (D-935)
+    [InlineData("rr3v", "")] // `=` through three exclusive Derefs (D-935)
+    [InlineData("rr2fv", "")] // `=` through two Derefs with a Field between (D-935)
+    [InlineData("rr2i", "rr2i: y@follow = 5")] // through two Derefs: q's Loan read at the last Deref stays (D-935)
+    [InlineData("rr2td", "rr2td: y@follow = 5")] // through two Derefs: w's Loan read through h.1's address stays (D-935)
+    [InlineData("adX2v", "adX2v: y = 5; adX2v: var k: i32 = 3; adX2v: var z: i32 = 0")] // through two Derefs: v's Loan, held by x and h.1, stays (D-935)
     public void ADestructionRetainsAsItsDropsCall(string form, string expected)
     {
         var c = MirBuildTest.Compile(DropShapes + Form(DropForms, form));
@@ -649,6 +839,11 @@ public sealed partial class MirBorrowsTest
     // ATruncateOrRemoveAllComposesItsElementsDestruction. Each Bad errs at `y = 5` through the composition (DECISIONS R4-M150; before it,
     // R4-M143's referent guard) or the key's dependencies; each null twin (the destroyed element's q is null, so its drop stores nothing
     // that carries y) is valid, so the composition adds no Loan the drop does not store.
+    // D-933 (SPEC 15.7, 15.6.4): `replace` writes only its target and places `with`'s value there, never writing through it, so the
+    // target's own Loans (`x@uniq` past `r`, `o@uniq` past `r` to a Field, the element borrow) reach no storage through `with`'s raw Field:
+    // replaceDerefOk, replaceSlotOk (`with` addresses a local slot), replaceFieldOk and replaceElementOk are valid (fail-before: records at
+    // the root's storage end and the later `@ref`); replaceValueBad's placed value carries w's Loan into x, and replaceDerefBad's old value's
+    // drop stores q, so each errs at `y@follow = 5` alone (fail-before: also at `var x` and `x@ref`).
     [Theory]
     [InlineData("arrClearBad", "arrClearBad: y = 5")]
     [InlineData("clearNullOk", "")]
@@ -656,6 +851,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("removeAllNullOk", "")]
     [InlineData("replaceBad", "replaceBad: y = 5")]
     [InlineData("replaceNullOk", "")]
+    [InlineData("replaceDerefOk", "")]
+    [InlineData("replaceSlotOk", "")]
+    [InlineData("replaceFieldOk", "")]
+    [InlineData("replaceElementOk", "")]
+    [InlineData("replaceValueBad", "replaceValueBad: y@follow = 5")]
+    [InlineData("replaceDerefBad", "replaceDerefBad: y@follow = 5")]
     [InlineData("keyParamBad", "keyParamBad: y = 5")]
     [InlineData("keyParamNullOk", "")]
     public void APublishedDestroyingCallComposesItsRowsDestruction(string form, string expected)
@@ -700,14 +901,17 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16: A5 on a program version it checked before allocates nothing at destructions: every site's composition, the published
-    // destroying calls, a drop writing through a borrow Field and one through stated raw layers.
+    // destroying calls, a drop writing through a borrow Field and one through stated raw layers, and a Drop through an exclusive
+    // reference, whose receiver is its Reborrow (D-918), also through two (D-935: the referent and the Remove nodes of rr2v, rr2td and
+    // adX2v interned once).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmDestructionAllocatesNothing()
     {
         string[] forms = ["localBad", "tempOnlyBad", "scopeBad", "discardBad", "escapeBad", "setterScopeBad", "statedBad", "fieldBad", "orderBad",
             "baseBad", "tupleBad", "optionBad", "holderBad", "closureBad", "sealedLateBad", "erasedLateBad", "rcCellBad", "arrReassignBad",
-            "litScopeBad", "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad"];
+            "litScopeBad", "dictReassignBad", "dictKeyReassignBad", "fixedReassignBad", "arrClearBad", "replaceBad", "keyParamBad", "derefOk",
+            "derefBad", "rr2v", "rr2td", "adX2v"];
         var c = MirBuildTest.Compile(DropShapes + string.Concat(forms.Select(static x => Form(DropForms, x))) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);

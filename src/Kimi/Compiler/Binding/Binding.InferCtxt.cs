@@ -5,17 +5,21 @@ using System.Diagnostics;
 namespace Kimi.Compiler;
 
 // InferCtxt (SPEC 10.8; DECISIONS R7-I2): the owner of every solve's slot frames, with an undo log and snapshots.
-// - Responsibility: the slot frames (a solve's Type slots, length slots and invariant marks: a call candidate's, one per candidate, a
-//   Case construction's, a fixed construction's re-check, an implicit constructor's, a function reference's), held privately; their
-//   writes, each logged while a snapshot is open; Snapshot and Rollback. A frame lives as long as its solve, so its marks are that
-//   solve's alone.
-// - Inputs: Rent and Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, SetInvariant, ClearTypes,
-//   ClearLengths, CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's seeding and clearing, a trial's
-//   write-back and an open Origin's instantiation.
-// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.IsInvariant), which SlotSolution and the other solves read.
-// - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write; no snapshot is open and
-//   the log is empty between two solves; a frame is returned only with no snapshot open (asserted); Rollback undoes in reverse order;
-//   the frames and the log are pooled and reused (warm 0 B).
+// - Responsibility: the slot frames (a solve's Type slots, length slots, invariant marks and environment judgments: a call
+//   candidate's, one per candidate, a Case construction's, a fixed construction's re-check, an implicit constructor's, a function
+//   reference's), held privately; their writes, each logged while a snapshot is open; Snapshot and Rollback. A frame lives as long as
+//   its solve, so its marks and judgments are that solve's alone.
+// - Inputs: Rent, with the scope of the use the solve judges (no default: each Rent site gives its own), and Return from the solve
+//   that owns a frame; writes through a SlotFrame (SetType, SetLength, SetInvariant, SetEnvironmentJudgment, ClearTypes, ClearLengths,
+//   CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's seeding and clearing, a trial's write-back and an open
+//   Origin's instantiation.
+// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.IsInvariant, SlotFrame.EnvironmentJudgment), which
+//   SlotSolution and the other solves read; SlotFrame.View, the frame's scope as given, which only the unifier reads (R7-C2c2 c2-4b,
+//   design R4.12c: J4 forms a slot's bindings in that view).
+// - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write but the environment
+//   judgments', which are written only with no snapshot open (asserted); no snapshot is open and the log is empty between two solves;
+//   a frame is returned only with no snapshot open (asserted); Rollback undoes in reverse order; the frames and the log are pooled and
+//   reused (warm 0 B).
 // - Prohibitions: no rule is decided here (fit, meet, applicability, formation, an Origin relation); no syntax is read. The Origin and
 //   input-Origin slots, the All* saves of a comparison and the slot arrays of solves that infer nothing (explicit arguments of a Function
 //   Item, a specialization, a contract match) are not frames.
@@ -25,18 +29,23 @@ public sealed partial class Binding
 
     private readonly record struct InferSnapshot(int Log, int Depth);
 
-    // One solve's slot frame: its Type slots, length slots and invariant marks, read through read-only views and written only through
-    // its logged operations.
+    // One solve's slot frame: its Type slots, length slots, invariant marks and environment judgments, read through read-only views and
+    // written only through its operations (logged but the judgments', which are written with no snapshot open).
     private readonly struct SlotFrame
     {
         private readonly InferCtxt store;
         private readonly int id;
+        private readonly BindingScope view;
 
-        internal SlotFrame(InferCtxt store, int id)
+        internal SlotFrame(InferCtxt store, int id, BindingScope view)
         {
             this.store = store;
             this.id = id;
+            this.view = view;
         }
+
+        // The scope of the use whose solve owns the frame (a call's, a construction's, a reference's), carried for J4 (design R4.12c).
+        internal BindingScope View => this.view;
 
         internal ReadOnlySpan<BoundType?> Types => this.store.Types(this.id);
 
@@ -47,9 +56,15 @@ public sealed partial class Binding
         // SPEC 10.8, 15.3.6: whether the slot's binding in this solve comes from an invariant position.
         internal bool IsInvariant(int slot) => this.store.IsInvariant(this.id, slot);
 
+        // DECISIONS BU-86: the slot's environment judgment in this solve: a known call signature's result over its closure's hidden
+        // environment receiver gave it no evidence (Infer); read by the candidate's trial (EnvironmentJudgment).
+        internal PendingJudgment? EnvironmentJudgment(int slot) => this.store.EnvironmentJudgment(this.id, slot);
+
         internal void SetType(int slot, BoundType? value) => this.store.SetType(this.id, slot, value);
 
         internal void SetInvariant(int slot) => this.store.SetInvariant(this.id, slot);
+
+        internal void SetEnvironmentJudgment(int slot, PendingJudgment value) => this.store.SetEnvironmentJudgment(this.id, slot, value);
 
         internal void SetLength(int slot, BoundLength? value) => this.store.SetLength(this.id, slot, value);
 
@@ -67,6 +82,8 @@ public sealed partial class Binding
         private BoundType?[][] types = new BoundType?[8][];
         private BoundLength?[][] lengths = new BoundLength?[8][];
         private object?[][] marks = new object?[8][];
+        // Typed, so outside the object?[] log: written only with no snapshot open (asserted).
+        private PendingJudgment?[][] environments = new PendingJudgment?[8][];
         private int[] free = new int[8];
         private int frameCount;
         private int freeCount;
@@ -74,8 +91,8 @@ public sealed partial class Binding
         private int logCount;
         private int depth;
 
-        // A frame of at least `capacity` Type and length slots, all unbound.
-        internal SlotFrame Rent(int capacity)
+        // A frame of at least `capacity` Type and length slots, all unbound, for a solve judged in `view`.
+        internal SlotFrame Rent(int capacity, BindingScope view)
         {
             int id;
             if (this.freeCount != 0)
@@ -89,6 +106,7 @@ public sealed partial class Binding
                     Array.Resize(ref this.types, this.frameCount * 2);
                     Array.Resize(ref this.lengths, this.frameCount * 2);
                     Array.Resize(ref this.marks, this.frameCount * 2);
+                    Array.Resize(ref this.environments, this.frameCount * 2);
                     Array.Resize(ref this.free, this.frameCount * 2);
                 }
 
@@ -96,6 +114,7 @@ public sealed partial class Binding
                 this.types[id] = [];
                 this.lengths[id] = [];
                 this.marks[id] = [];
+                this.environments[id] = [];
             }
 
             if (this.types[id].Length < capacity)
@@ -103,9 +122,10 @@ public sealed partial class Binding
                 this.types[id] = new BoundType?[Math.Max(capacity, 4)];
                 this.lengths[id] = new BoundLength?[Math.Max(capacity, 4)];
                 this.marks[id] = new object?[Math.Max(capacity, 4)];
+                this.environments[id] = new PendingJudgment?[Math.Max(capacity, 4)];
             }
 
-            return new(this, id);
+            return new(this, id, view);
         }
 
         // Returns a frame, cleared; never under an open snapshot, whose Rollback would write it.
@@ -115,6 +135,7 @@ public sealed partial class Binding
             Array.Clear(this.types[frame.Id]);
             Array.Clear(this.lengths[frame.Id]);
             Array.Clear(this.marks[frame.Id]);
+            Array.Clear(this.environments[frame.Id]);
             this.free[this.freeCount++] = frame.Id;
         }
 
@@ -123,6 +144,14 @@ public sealed partial class Binding
         internal ReadOnlySpan<BoundLength?> Lengths(int id) => this.lengths[id];
 
         internal bool IsInvariant(int id, int slot) => this.marks[id][slot] is not null;
+
+        internal PendingJudgment? EnvironmentJudgment(int id, int slot) => this.environments[id][slot];
+
+        internal void SetEnvironmentJudgment(int id, int slot, PendingJudgment value)
+        {
+            Debug.Assert(this.depth == 0, "An environment judgment is written only with no snapshot open.");
+            this.environments[id][slot] = value;
+        }
 
         internal void SetInvariant(int id, int slot)
         {
@@ -150,6 +179,7 @@ public sealed partial class Binding
         {
             this.Clear(this.types[id], count);
             this.Clear(this.marks[id], count);
+            this.environments[id].AsSpan(0, count).Clear(); // A judgment describes the solve the slots begin.
         }
 
         internal void ClearLengths(int id, int count) => this.Clear(this.lengths[id], count);

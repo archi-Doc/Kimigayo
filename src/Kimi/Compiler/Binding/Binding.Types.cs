@@ -417,7 +417,7 @@ public sealed partial class Binding
             this.BindUnappliedArguments(generic, scope, context.Nested);
             return definition is null ? this.FailMissing(generic.Identifier!, scope, BindingFailure.MissingType)
                 : container is null or ContractKoto ? this.Fail(generic, BindingFailure.InvalidTypeFormation)
-                : this.FailExplained(ref this.arityFailures, generic, BindingFailure.InvalidTypeFormation, (definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count, false));
+                : this.RecordArity(generic, definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count);
         }
 
         generic.Identifier!.BoundSymbol = definition;

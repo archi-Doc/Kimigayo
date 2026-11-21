@@ -104,7 +104,7 @@ public sealed partial class HirFormsTest
         Assert.Empty(Problems(c, c.Kotonoha));
         var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var calls = Reachable(c.Kotonoha).OfType<InvocationKoto>().Select(x => CallPlan.Of(c.Binding, x)).Where(x => ReferenceEquals(x?.Target.Declaration, f)).ToArray();
-        Assert.Equal([BoundType.I32, BoundType.Boolean], calls.Select(x => c.Types.Apply(DefaultDecl.Of(x!.DefaultArguments[0]).Parameter(1), c.Types.SubstOf(x)!)));
+        Assert.Equal([BoundType.I32, BoundType.Boolean], calls.Select(x => c.Types.Apply(DefaultDecl.Of(x!.DefaultArguments[0]).Parameter(1), c.Types.SubstOf(x)!).Type));
         var declaration = DefaultDecl.Of(calls[0]!.DefaultArguments[0]);
         Assert.Equal((f, 1, HirOp.Call), (declaration.Function, declaration.Index, HirTables.Op(declaration.Expression)));
         Assert.Same(declaration.Parameter(0), declaration.Parameter(1));
@@ -498,7 +498,9 @@ public sealed partial class HirFormsTest
     // included), a getter and a raw pointer's pointee or element select index, and an rc payload offers no exclusive receiver. An
     // exclusive receiver over Binding's in-place read states its own borrow. A discarded element (SPEC 14.2.2) is a bare acquisition: a
     // stored exclusive reference's Reborrow selects indexUniq through the discard row's claim (PLAN G426) in every Discard Context, in
-    // groups, below a Field and by a pair layer's exclusive case; a Copy element selects index.
+    // groups, below a Field and by a pair layer's exclusive case; a Copy element selects index. A raw address of an element is a read
+    // (SPEC 4.7.1 step 3, 5.4; the owner's O-445 (A)): it selects index on a `var` receiver as on a `let` one, and the pointer has the
+    // selected reference's shared authority (SPEC 5.2.1 (3)).
     [Fact]
     public void AnExclusiveUseOfTheElementSelectsIndexUniq()
     {
@@ -583,6 +585,10 @@ public sealed partial class HirFormsTest
                 var ptrs = Pair<raw/i32>.init(p, p)
                 unsafe => *ptrs[0] = 5
                 unsafe => ptrs[1][0] = 6
+                var two = Pair<i32>.init(1, 2)
+                let q = two[0]@raw
+                let fixed = Pair<i32>.init(1, 2)
+                let r = fixed[0]@raw
             struct Shelf {a}
                 public var d: Dictionary<i32, uniq/i32 during a>
             struct Link {a}
@@ -631,6 +637,7 @@ public sealed partial class HirFormsTest
             "objs[0].bump() indexUniq", "entries[1].bump() indexUniq", "require rcs[0].level() == 2 else => $abort(\"rc\") index",
             "require ds[1].peek() == 0 else => $abort(\"base\") index", "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index",
             "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index", "unsafe => ptrs[1][0] = 6 index",
+            "let q = two[0]@raw index", "let r = fixed[0]@raw index",
             "entries[1] indexUniq", "(entries[1]) indexUniq", "d[1] indexUniq", "(d[1]) indexUniq", "e[1] indexUniq", "(e[1]) indexUniq",
             "if c => d[1] indexUniq", "d[1] indexUniq", "true => d[1] indexUniq", "((d[1])) indexUniq", "shelf.d[1] indexUniq",
             "links[1].link indexUniq", "pair[0] indexUniq", "(pair[0]) indexUniq", "d[1] indexUniq", "d[1] index", "ints[0] index",
@@ -827,12 +834,13 @@ public sealed partial class HirFormsTest
         Assert.Equal("Some", BoundEnumConstruction.Of(c.Binding, nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
     }
 
-    // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
-    // stands: inside a parent Binding rejects for its own reason (a let whose Type annotation fails, the parent replaced), or the
-    // kept operand of a failed Index, whose creation is evaluated there (a Closure, in place); a closure whose capture list failed was
+    // SPEC 23.1.2 (DECISIONS R5-M63, Z16): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
+    // stands: inside a parent Binding rejects for its own reason (a let whose Type annotation fails, which keeps its initializer, the
+    // creation, in place since Z16), or the kept operand of a failed Index, whose creation is evaluated there (a Closure, in place); a
+    // closure whose capture list failed was
     // never bound, so its body stays replaced. An inferred result over the call's own storage keeps the Closure's
-    // Type and fails only the returned value (DECISIONS R4-M152): the `return` statement, or an expression body, which its own Consume
-    // takes.
+    // Type, and its returned value is built, the `return` statement as a Jump or the expression body as a Borrow: A5's row judges it
+    // (R7-O1 H; Binding failed them, DECISIONS R4-M152, until then).
     [Fact]
     public void AClosureDefinitionIsPublishedWhereverItsCreationStands()
     {
@@ -846,10 +854,10 @@ public sealed partial class HirFormsTest
         var closures = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var rows = closures.Select(static x => (Koto?)x.Body ?? x.ExpressionBody!)
             .Select(static x => $"{HirTables.Op(x.Parent!)} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Syntax Block Unset", "Closure Error Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
+        Assert.Equal(["Closure Block Unset", "Closure Block Unset", "Closure Block Unset", "Closure Borrow Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
-        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Error], statements);
+        Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Jump], statements);
     }
 
     // SPEC 14.2.2, 3.5 (DECISIONS R4-M145): a Place in Discard Context is acquired by bare acquisition, as at a value position, and
@@ -1062,6 +1070,53 @@ public sealed partial class HirFormsTest
         HirTables.Publish(c);
         var selection = Reachable(c.Kotonoha).Single(x => x is IndexKoto { Parent: ConversionKoto } && ExpansionPlan.Of(c.Binding, x)?.Second is not null);
         Assert.Equal("indexUniq", ExpansionPlan.Of(c.Binding, selection)!.Value.Second!.Target.Name);
+    }
+
+    // SPEC 4.7.1 step 3, 8.14, 13.5.5 (R7 plan Z23; PLAN G147 (2) (a)): a standing bare take of a user index's element that Reborrows in
+    // some admitted case and Copies in another selects per case, as the take's Copy or Reborrow is ("each operation applies the rule of each
+    // admitted Semantics"): a selection by case (HirTables.IndexCaseDecider) whose decider is the Type of the Place taken by case, the
+    // element's (a `let` in the ref or uniq and the owner or uniq cases, an explicit discard, a Dictionary element) or a Field's below it
+    // (SPEC 3.4.3: its receiver needs exclusive capability only where the Field's take Reborrows), and whose expansion names both calls;
+    // a user index below such an element, whose receiver the element's selection takes exclusively only where it selects indexUniq,
+    // selects by the same decider (`w[0][0]`; F's ruling 3), also through a Field between the two (`v[0].items[0]`, SPEC 3.4.3), while a
+    // key's own take keeps its own (`u[0]` in r1, `r/U`), a compound assignment target's key included, whose update selects indexUniq in
+    // every case (`a[pick(v[0])] += 1`, SPEC 13.7.2, 4.7.4). The legality stays the generic body's (SPEC 8.15): an Indexable without
+    // indexUniq selects index, the uniq case's Reborrow of the Field below it the Language error (SPEC 3.5.1); `s is ref` alone is a read
+    // in its one case.
+    [Theory]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref or uniq\n    let x = v[0]\n    _ = x\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is owner or uniq\n    T is Copy\n    let x = v[0]\n    _ = x\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref or uniq\n    _ = v[0]\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<Holder<s/T>>)\n    s is ref or uniq\n    let y = v[0].items\n    _ = y\n", "v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(d: uniq/Dictionary<i32, s/T>)\n    s is ref or uniq\n    let x = d[1]\n    _ = x\n", "d[1] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(w: uniq/Two<Two<s/T>>)\n    s is ref or uniq\n    let x = w[0][0]\n    _ = x\n", "w[0][0] indexUniq index s/T | w[0] indexUniq index s/T", null)]
+    [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T, r/U>(w: uniq/Two<Two<s/T>>, u: uniq/Two<r/U>)\n    s is ref or uniq\n    r is ref or uniq\n    let x = w[0][pick(u[0])]\n    _ = x\n", "w[0][pick(u[0])] indexUniq index s/T | w[0] indexUniq index s/T | u[0] indexUniq index r/U", null)]
+    [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T>(w: uniq/Two<Two<s/T>>, u: uniq/Two<s/T>)\n    s is ref or uniq\n    let x = w[0][pick(u[0])]\n    _ = x\n", "w[0][pick(u[0])] indexUniq index s/T | w[0] indexUniq index s/T | u[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<Holder<Two<s/T>>>)\n    s is ref or uniq\n    let x = v[0].items[0]\n    _ = x\n", "v[0].items[0] indexUniq index s/T | v[0] indexUniq index s/T", null)]
+    [InlineData("func pick<T>(x: T) -> isize => 0\nfunc f<s/T>(v: uniq/Two<s/T>, a: uniq/Two<i32>)\n    s is ref or uniq\n    a[pick(v[0])] += 1\n", "a[pick(v[0])] indexUniq - - | v[0] indexUniq index s/T", null)]
+    [InlineData("func f<s/T>(v: uniq/Two<s/T>)\n    s is ref\n    let x = v[0]\n    _ = x\n", "v[0] index - -", null)]
+    [InlineData("struct Peek<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var first: T\n    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\nfunc f<s/T>(v: uniq/Peek<Holder<s/T>>)\n    s is ref or uniq\n    let y = v[0].items\n    _ = y\n", "v[0] index - -", nameof(DiagnosticCode.TransferRequired_Kd))]
+    public void ATakeByCaseSelectsByItsCases(string program, string expected, string? code)
+    {
+        var source = OverwrittenTakes + program + "()\n";
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && ExpansionPlan.Of(c.Binding, x)?.Second is not null).ToArray();
+        Assert.Equal(expected, string.Join(" | ", selections.Select(x => Selection(c, x))));
+        foreach (var receiver in selections.Where(static x => HirTables.IndexCaseDecider(x) is not null).Select(static x => ((IndexKoto)x).Left))
+        {
+            // Both calls' inputs (DECISIONS R4-M145): the receiver's column is indexUniq's exclusive take, its plan row index's shared one.
+            var (last, earlier) = (HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust);
+            Assert.Equal((true, false, true), (last.ExclusiveMode, earlier.ExclusiveMode, earlier != default));
+        }
+
+        static string Selection(Compilation c, Koto index)
+        {
+            var plan = ExpansionPlan.Of(c.Binding, index)!.Value;
+            var decider = HirTables.IndexCaseDecider(index);
+            return $"{index} {plan.Second!.Target.Name} {plan.Shared?.Target.Name ?? "-"} {(decider is null ? "-" : Binding.HoverTypeName(decider))}";
+        }
     }
 
     // DECISIONS BU-98 (implementation review 1's B-1): every publish writes a node's discarded Type, so an in-place edit and re-bind that

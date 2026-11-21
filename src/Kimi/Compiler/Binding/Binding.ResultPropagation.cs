@@ -126,7 +126,7 @@ public sealed partial class Binding
     // that waits unbound, the Type of a part that awaits its call (Call: AwaitsCall, whatever its kind; SPEC 10.5.1; DECISIONS BU-43), or
     // several; a literal bound once, or a part its call completed, is decided.
     [Flags]
-    private enum Awaiting : byte
+    internal enum Awaiting : byte
     {
         None = 0,
         Never = 1,
@@ -472,10 +472,12 @@ public sealed partial class Binding
             context.Conflict();
         }
 
-        types.Clear(); // A nested result decided above reused the list.
+        types.Clear(); // A nested result decided above reused the lists.
+        this.resultValues.Clear();
         if (common is not null && context.Outcome == JoinOutcome.Undecided)
         {
             types.Add(common);
+            this.resultValues.Add(null);
         }
         else
         {
@@ -492,8 +494,9 @@ public sealed partial class Binding
     // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
     // by its late Type (BindWaitedSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either;
     // a failed source (PartFailed), unbound or typed, is no candidate and is the join's cause, on which it rests at its verdict (SPEC
-    // 23.1.2; rule W, DECISIONS BU-79), and any other unbound source makes the join pending. Returns whether a source awaits.
-    private bool ResultCandidates(ResultContext context, List<BoundType> types)
+    // 23.1.2; rule W, DECISIONS BU-79), and any other unbound source makes the join pending. Each candidate's source node is `values`'
+    // element at its index. Returns whether a source awaits.
+    private bool ResultCandidates(ResultContext context, List<BoundType> types, List<Koto?> values)
     {
         var awaiting = false;
         for (var i = 0; i < context.Sources.Count; i++)
@@ -519,6 +522,7 @@ public sealed partial class Binding
                 else if (!awaits)
                 {
                     types.Add(source);
+                    values.Add(context.SourceNodes[i]);
                     context.HasTyped = true;
                 }
             }
@@ -584,7 +588,9 @@ public sealed partial class Binding
                 // Closure or Function Item converts to a Function Type only by its erasure, whose outcome is that record's fact
                 // (ErasePart, R4-M161). A resting join's bound parts keep their records (DecideWaiting's contract, rule W: DECISIONS
                 // BU-79, G368 (1)); a Conflict join's own record stands for its sources.
-                fits = this.TryPropagate(source, type!, node);
+                // R7-O1: a part whose only misfit is Origin positions fits, its positions rows of the body that A5 judges at the join, as
+                // the join's own fit forms them (CheckTypeUse at `node`: one row per relation).
+                fits = this.TryPropagate(source, type!, node) || (!awaits && this.CheckTypeUse(context.Sources[i]!, type!, node, out fit));
                 if (!fits && !awaits && context.Outcome != JoinOutcome.Conflict)
                 {
                     if (context.Sources[i]!.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && type!.Kind == BoundTypeKind.Function)
@@ -803,7 +809,7 @@ public sealed partial class Binding
             return this.SuppliedType(node);
         }
 
-        var adapted = this.ErasureFits(actual, target, node, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
+        var adapted = this.ErasureFits(actual, target, node, null, out _) ? target : this.ExpectedAdaptation(node, actual, target, recordPair: false)?.Type;
         if (adapted is null)
         {
             return actual;

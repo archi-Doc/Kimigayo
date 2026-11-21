@@ -45,13 +45,9 @@ public sealed partial class Binding
 
     // Whether a transfer operation writes `output` there: a 4.9 operation's row is its complete published effect (SPEC 4.9.6), which
     // writes its result and its receiver's element storage (ReceiverStorage), never through another argument (`append`'s added
-    // `raw/(raw/u8)`), and `exchange` writes its result and its target, never through `with` (15.7); rule A forms no row at another output.
-    private static bool TransferWrites(Transfer transfer, BindingSymbol? callee, int output) => output == CallRetention.ResultOutput || transfer switch
-    {
-        Transfer.Elements => ReceiverStorage(callee!, output),
-        Transfer.Exchange => output == ExchangeTarget,
-        _ => true,
-    };
+    // `raw/(raw/u8)`); rule A forms no row at another output. (`exchange`'s `with` is no output: KimiLibraryCatalog.NoStore, 15.7.)
+    private static bool TransferWrites(Transfer transfer, BindingSymbol? callee, int output)
+        => output == CallRetention.ResultOutput || transfer != Transfer.Elements || ReceiverStorage(callee!, output);
 
     // Whether `output` is the store at the callee's receiver (an input's writable storage, never the result), the one receiver predicate
     // TransferWrites, TransferKept and ReferentStores read: a 4.9 operation's receiver's element storage, and for any operation of SPEC 4.6
@@ -83,6 +79,14 @@ public sealed partial class Binding
             (callee.Parent is { } parent && this.Library.MembersOf(parent) is WitnessMembers.FixedArray or WitnessMembers.FixedArrayEntries) ||
             (owner is { } type && Array.IndexOf(TransferTypes, type) >= 0) ? Transfer.Values : Transfer.None;
     }
+
+    // SPEC 15.6.4 ("Except for the operations whose writes SPEC states, namely `replace`, `exchange` and `swap` (15.7), `Raw.initialize`
+    // (5.6) and the operations of 4.6 to 4.9 (4.9.6), a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): whether
+    // the callee is one of them, by declaring identity: the operations TransferKey names and `replace` and `Raw.initialize`
+    // (CallRetention.Composes).
+    private bool StatesWrites(FunctionKoto? callee)
+        => this.TransferKey(callee) != Transfer.None ||
+            callee?.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Replace or KimiDeclarationId.RawInitialize;
 
     // The Iterator key of a callee TransferKey does not name (the file's contract), its Iterator conformance proven under `premises`
     // (null: the library root's).

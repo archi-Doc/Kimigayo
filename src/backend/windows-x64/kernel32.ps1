@@ -1,7 +1,7 @@
 # Shared import definition, identity checks and generation for all PowerShell builders.
 function Get-KimiInstalledKernel32([string] $ToolchainRoot) {
     $path = Join-Path $ToolchainRoot 'windows_x64/kernel32.lib'
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Toolchain file not found: $path. Run src/backend/windows-x64/setup.ps1 for the selected toolchain." }
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Toolchain file not found: $path. Run src/backend/windows-x64/setup.ps1 -LlvmRoot <the LLVM $((Read-KimiWindowsProfile).llvmVersion) archive, extracted> for the selected toolchain." }
     return @{ path = $path; generator = 'llvm-dlltool'; dll = 'KERNEL32.dll'; definitionSha256 = (Read-KimiWindowsProfile).kernel32.definitionSha256 }
 }
 
@@ -25,13 +25,6 @@ function Get-KimiDlltoolIdentity {
         Write-Warning 'llvm-dlltool SHA-256 mismatch; continuing with an unverified toolchain.'
     }
     return @{ path = $resolved; sha256 = $hash; expectedSha256 = $expected; hashMatched = $matched }
-}
-
-function Assert-KimiKernel32Manifest($Entry) {
-    if ($Entry.kind -cne 'import' -or $Entry.generator -cne 'llvm-dlltool' -or $Entry.dll -cne 'KERNEL32.dll' -or
-        $Entry.definitionSha256 -cne (Read-KimiWindowsProfile).kernel32.definitionSha256 -or $Entry.PSObject.Properties['input']) {
-        throw 'Invalid generated kernel32 identity. Re-emit the link manifest; external kernel32 paths are no longer supported.'
-    }
 }
 
 function New-KimiKernel32Library([hashtable] $Tools, [string] $OutputPath) {

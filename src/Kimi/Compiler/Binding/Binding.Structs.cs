@@ -118,7 +118,7 @@ public sealed partial class Binding
 
     // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
     private ReceiverAuthority? ReceiverOfPart(Koto place)
-        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(ElementAccess.OwnedPathRoot(this, part)) : null;
+        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(this.OwnedPathRoot(part)) : null;
 
     // One row of the special-receiver table (Receiver).
     private readonly record struct ReceiverAuthority(SemanticsKind Parts, bool Whole, bool LendsFields);
@@ -241,12 +241,18 @@ public sealed partial class Binding
     }
 
     // Walks a Type's parts in order (a struct's or enum's base, Fields and Case payload Tuples, then its components): 0, or the limit that
-    // ends the walk. A Field or Case that did not substitute (null) is rejected and walked past, its siblings walked (DECISIONS BU-37).
+    // ends the walk. A Field or Case that did not substitute (null) is rejected and walked past, its siblings walked (DECISIONS BU-37); an
+    // instance whose stored Type passes IMPL A.4's height (its HeightLimit, R7-T1) is refused, a limit.
     private int StorageParts(BoundType type, int path, ref int height, ref int lowest, ref bool rejected)
     {
         if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
         {
             var instance = this.Instance(type);
+            if (instance.HeightLimit)
+            {
+                return StorageRefused;
+            }
+
             var failure = instance.Base is { } parent ? this.StorageEach([parent], path, ref height, ref lowest, ref rejected) : 0;
             failure = failure != 0 ? failure : this.StorageEach(instance.Fields, path, ref height, ref lowest, ref rejected);
             failure = failure != 0 ? failure : this.StorageEach(instance.Cases, path, ref height, ref lowest, ref rejected);
@@ -325,7 +331,11 @@ public sealed partial class Binding
 
         // SPEC 6.3.2, 8.5.2: a projection qualifier constructs its normal form.
         var type = projected is not null ? Complete(member.Left, projected) : this.ConstructorQualifierType(member.Left, path.Symbol!, scope);
-        if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
+
+        // R7-C3 (F's C2 ruling 226, C-i; SPEC 6.3.2, 8.5.2, 8.2.3): the construction's declaring Type is the qualifier's class form in the
+        // use's view, published once by this selection (memberSelections); the qualifier keeps its Type as written, and a record names it.
+        var declaring = type is null ? null : this.ClassForm(type, scope, out _);
+        if (declaring is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
             // DECISIONS BU-61, BU-184 (SPEC 23.1.2): a projection that stays one names no structure; its absence rests on the projection's
@@ -339,7 +349,8 @@ public sealed partial class Binding
             return null;
         }
 
-        return this.PublishMemberAccess(member, constructor, null, LookupRole.Qualifier, null); // SPEC 6.3.2: never on a receiver; no lookup.
+        // SPEC 6.3.2: never on a receiver; no lookup. The selection publishes the declaring Type (memberSelections; C-i).
+        return this.PublishMemberAccess(member, constructor, null, LookupRole.Qualifier, new MemberSelection(constructor, declaring, null));
     }
 
     private BoundType? ConstructorQualifierType(Koto syntax, BindingSymbol symbol, BindingScope scope)
@@ -412,7 +423,7 @@ public sealed partial class Binding
         }
 
         if (type is null || structure is { ConstructorAvailability: not (ConstructorAvailability.MissingInitializer or ConstructorAvailability.CompilerManaged) } ||
-            (type.Kind == BoundTypeKind.Parameter && HasParameterIdentity(this.ConstraintScope(node))))
+            (type.Kind == BoundTypeKind.Parameter && HasTypeIdentity(this.ConstraintScope(node))))
         {
             return this.Fail(node, BindingFailure.Unsupported);
         }
@@ -483,7 +494,7 @@ public sealed partial class Binding
         var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
         var type = baseInitializer
             ? AdtDef.Base(this.types, this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
-            : ((MemberAccessKoto)call.Method).Left.BoundType!;
+            : this.memberSelections[(MemberAccessKoto)call.Method].DeclaringType!; // ConstructorMember's published declaring Type (C-i)
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)
         {

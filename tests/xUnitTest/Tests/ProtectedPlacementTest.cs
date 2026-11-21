@@ -60,6 +60,22 @@ public sealed class ProtectedPlacementTest(ITestOutputHelper output)
     public void StructMembersMayBeProtected(string declarations)
         => Assert.Empty(DiagnosticCorpus.Check(declarations + "public func main() => ()\n").Diagnostics);
 
+    // SPEC 9.4.1, 23.1.2 (R7-E2 E2-3a, M1): the placement is its own requirement, so each misplaced declaration keeps its record beside the
+    // declaration's other failure (a duplicate, SPEC 6.1; a group function that is virtual, 6.4.1), which E2-2's head dropped. The twins fix
+    // one cause: the other record stays alone.
+    [Theory]
+    [InlineData("group G\n    protected func f() => ()\n    protected func f() => ()\n", "DuplicateBinding_Kd ProtectedPlacement_Kd ProtectedPlacement_Kd")]
+    [InlineData("group G\n    protected let x: i32 = 1\n    protected let x: i32 = 2\n", "DuplicateBinding_Kd ProtectedPlacement_Kd ProtectedPlacement_Kd")]
+    [InlineData("group G\n    protected virtual func f() => ()\n", "InvalidVirtualDeclaration_Kd ProtectedPlacement_Kd")]
+    [InlineData("group G\n    func f() => ()\n    func f() => ()\n", "DuplicateBinding_Kd")]
+    [InlineData("group G\n    let x: i32 = 1\n    let x: i32 = 2\n", "DuplicateBinding_Kd")]
+    [InlineData("group G\n    virtual func f() => ()\n", "InvalidVirtualDeclaration_Kd")]
+    public void APlacementIsItsOwnRecordBesideTheDeclarationsOtherFailure(string declarations, string expected)
+    {
+        var result = DiagnosticCorpus.Check(declarations + "public func main() => ()\n");
+        Assert.Equal(expected, string.Join(' ', result.Diagnostics.Select(static x => x.Code).Order(StringComparer.Ordinal)));
+    }
+
     [Fact]
     public void CliAndLspCarryTheContainer()
     {

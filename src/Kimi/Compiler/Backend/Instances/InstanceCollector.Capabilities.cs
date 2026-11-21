@@ -11,7 +11,7 @@ internal sealed partial class InstanceCollector
 {
     // Whether an operation's Types depend on slots: its first operand's or its result's.
     private static bool IsOpen(MirBody body, in MirRvalue rvalue)
-        => OperandType(body, body.Operands[rvalue.Start]).ContainsParameter || rvalue.Type is { ContainsParameter: true };
+        => OperandType(body, body.Operands[rvalue.Start]) is { ContainsParameter: true } || rvalue.Type is { ContainsParameter: true };
 
     // IMPL 21.3.3 (DECISIONS R5-M126): the gap of a Builtin witness's operation, an arithmetic shim's Contract's MIR operator
     // (MirTypes.ArithmeticOperation, SPEC 13.3.3) on the target's closed Self, which Requirement records at each site that requests the
@@ -69,14 +69,14 @@ internal sealed partial class InstanceCollector
     }
 
     // A3b's declaration row (DECISIONS R5-M82): a verified root-module static that can be set (its setter present), whose Type is not a
-    // scalar (ScalarTypes) or whose definition instantiates (a generic container's group, TyCtxt.Instantiates) is the static-storage gap
+    // Scalar (BoundType.IsScalar) or whose definition instantiates (a generic container's group, TyCtxt.Instantiates) is the static-storage gap
     // at its declaration, its StaticInit body's source, whether or not anything reads it; an unverified one is Binding's error. It reads
     // the declaration and the body's identity (Key, Source) alone, which a finding leaves intact, so a body with one keeps it (R5-M183).
     private void CheckStatic(MirBody body)
     {
         if (body.Source.Module < this.rootModules &&
             body.Key is { Kind: MirBodyKind.StaticInit, Decl: { Property: { IsVerified: true } property } definition } &&
-            (property.Setter.IsPresent || !ScalarTypes.Supports(definition.Type) || this.types.Instantiates(definition)))
+            (property.Setter.IsPresent || definition.Type is not { IsScalar: true } || this.types.Instantiates(definition)))
         {
             this.Report(Capability.Code(CapabilityGap.StaticStorage), body.Source);
         }

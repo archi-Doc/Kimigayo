@@ -4,8 +4,9 @@
 // - Responsibility: the callee's acquisition by its receiver mode (AcquireValueCallee), each argument bound and adapted
 //   (AcquireValueCallPart): the evidence parts first (AcquireValueCallArguments), then, the per-call inputs solved from them, the waiting
 //   parts at their instantiated parameters (PLAN G494); the substitution, and the result (ValueCallResult). P9: a Closure's result
-//   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage) and its call result atom the call's Unbound atom,
-//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a Closure value
+//   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage), the image of the Closure binder's reserved atom
+//   built only where the result names it (CallAtomsOf, PerCallImages); its call result atom, which names a Refuted relation A5 judges in
+//   the Closure's body (P8), is published as it is, never an Unbound atom resting on no Binding failure (R4-M118; R7-O1 H); a Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
 //   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
 //   Unsupported_Kd.
@@ -34,8 +35,7 @@ public sealed partial class Binding
     {
         None = 0,
         Receiver = 1,
-        Result = 2,
-        Foreign = 4,
+        Foreign = 2,
     }
 
     // The checked plan of a callable value's call (SetValue below) of the current pass (IsCurrent); null before selection and for a named
@@ -125,19 +125,23 @@ public sealed partial class Binding
         return node.Kind != OriginKind.Projection ? CallAtoms.None : node.Slot switch
         {
             ClosureValueSlot => CallAtoms.Receiver,
-            CallResultSlot => CallAtoms.Result,
             _ => CallAtoms.None,
         };
     }
 
-    // An object callee Place the payload lowering reaches only through a reference, an object layer or an element; a binding, an owned
-    // Field path below one, an object view value and a Temporary Value are reached directly.
+    // An object callee Place the payload lowering reaches only through a reference (the callee's own stored layers included), an object
+    // layer or an element; a binding, an owned Field path below one, an object view value and a Temporary Value are reached directly.
     private bool IndirectObjectCallee(Koto handle)
     {
         var node = KotoHelper.UnwrapParentheses(handle);
+        if (!ReferenceEquals(ComparisonReferent(handle.BoundType!), handle.BoundType))
+        {
+            return true;
+        }
+
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
             (node is not (IdentifierNameKoto or MemberAccessKoto or IndexKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow }) &&
-                !(node is BinaryKoto element && ElementAccess.IsSyntax(this, element))))
+                !(node is BinaryKoto element && this.IsSyntax(element))))
         {
             return false;
         }
@@ -210,27 +214,14 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.3, 15.8.2 (DECISIONS R4-M152): the Origin of a Closure call's receiver acquisition, which a result naming ρ takes: the
-    // acquisition AcquireValueCallee publishes (a payload's borrow, TryPayloadReceiver; a stored exclusive callee's Reborrow, BU-27);
-    // through any other reference callee its referent's (ReferentOrigin: `ref/F`, and a Shared Closure read through `uniq/F`); any
-    // owned callee's Borrow (PlaceOrigin), for the Closure literal itself its own temporary, which is ρ's atom in its evaluating body.
-    private BoundOrigin ReceiverImage(InvocationKoto call, FunctionKoto closure, in BoundArgumentOperation acquisition)
-    {
-        if (acquisition.AdaptedType?.Origin is { } adapted)
-        {
-            return adapted;
-        }
-
-        var callee = call.Method.BoundType!;
-        if (callee.Kind == BoundTypeKind.Semantics && this.ReferentOrigin(call.Method, callee) is { } referent)
-        {
-            return referent;
-        }
-
-        return this.PlaceOrigin(call.Method);
-    }
+    // acquisition AcquireValueCallee publishes (a payload's borrow, TryPayloadReceiver; a reference callee's Reborrow through its layers);
+    // any owned callee's Borrow (PlaceOrigin), for the Closure literal itself its own temporary, which is ρ's atom in its evaluating body.
+    private BoundOrigin ReceiverImage(InvocationKoto call, in BoundArgumentOperation acquisition)
+        => acquisition.AdaptedType?.Origin ?? this.PlaceOrigin(call.Method);
 
     // SPEC 8.10, 15.8.2: the Closure Type a callable value's calls read, the one TryCallable reads its signature from and a value call
-    // declares (R4-M159): the value without its acquisition layer, else its normalized Callable contract Type; null for any other callable.
+    // declares (R4-M159): the value without its acquisition layers (CallableCore), else its normalized Callable contract Type; null for
+    // any other callable.
     private BoundType? CallableClosure(BoundType type, BindingScope scope)
     {
         var owner = CallableCore(type)!;
@@ -252,11 +243,12 @@ public sealed partial class Binding
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
     {
         several = false;
-        // SPEC 7.3, 3.4.3: a callee is called through one layer: a concrete one, or an object layer in every case (ObjectCases).
-        var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : type;
+        // SPEC 7.3.3, 3.4.3: a callee is called below its acquisition layers (CallableCore) and an object layer in every case (ObjectCases).
+        var core = CallableCore(type)!;
+        var owner = this.ObjectCases(core, scope, out var view) != SemanticsMask.None ? view : core;
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
-            signature = this.ContractType(itemSignature, scope);
+            signature = this.CallableContractType(itemSignature, scope); // in the call's view, as a Callable premise's signature (ruling 268)
             receiver = SemanticsKind.Ref;
             return true;
         }
@@ -343,7 +335,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var unsupported = this.IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, scope, receiver == SemanticsKind.Uniq, out _));
+        var unsupported = this.IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, this.LendFold(handle, scope, receiver == SemanticsKind.Uniq), out _));
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
         {
@@ -356,7 +348,7 @@ public sealed partial class Binding
 
         if (unsupported)
         {
-            this.FailUnsupportedAt(call, call.Method.Span);
+            this.RecordLocated(call, call.Method.Span);
             return false;
         }
 
@@ -365,43 +357,33 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 7.3, 7.7.3: the callee of a value call is a Receiver Expression, acquired in the call's mode: through a handle or view as its
-    // payload (TryPayloadReceiver), exclusively only where its lending point is exclusively writable, and owned only by the value read
-    // of a Copy closure; a Shared or Exclusive call borrows an owned callee Place as SPEC lends it (LendsPlace), whose static root is the
-    // located limit until P42, final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC
-    // 23.1.2; FailStaticBorrow). False when the acquisition fails, its record made.
+    // SPEC 7.3, 7.7.3: the callee of a value call is a Receiver Expression, acquired in the call's mode on the path of SPEC 3.4.3, which
+    // continues below every ref and uniq layer (ComparisonReferent) and stops at a handle's or view's View Target (CallableCore): a
+    // reference callee as its Reborrow through its layers, in a Shared call through a concrete handle or view below them too (SPEC 13.5.5:
+    // its payload is read through the layer); any other handle or view as its payload (TryPayloadReceiver, whose limit is a handle below a
+    // reference); owned only by the value read of a Copy closure; a Shared or Exclusive call borrows an owned callee Place as SPEC lends it
+    // (LendsPlace), exclusively only where its lending point is exclusively writable, whose static root is the located limit until P42,
+    // final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC 23.1.2; FailStaticBorrow).
+    // False when the acquisition fails, its record made.
     private bool AcquireValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
     {
         var receiverType = call.Method.BoundType!;
         receiverOperation = default;
-        var handle = this.ObjectCases(receiverType, scope, out _) != SemanticsMask.None ? call.Method
+        var terminal = ComparisonReferent(receiverType, out var layers);
+        var callable = CallableCore(receiverType)!;
+        var read = layers != 0 && receiver == SemanticsKind.Ref && !ReferenceEquals(callable, terminal);
+        var handle = !read && this.ObjectCases(terminal, scope, out _) != SemanticsMask.None ? call.Method
             : receiver != SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } follow ? follow.Left : null;
         if (handle is not null)
         {
             return this.TryPayloadReceiver(call, handle, receiver, scope, out receiverOperation);
         }
 
-        if (receiver == SemanticsKind.Uniq)
-        {
-            if (receiverType.Semantics == SemanticsKind.Ref)
-            {
-                this.FailWrite(call, call.Method);
-                return false;
-            }
-
-            // SPEC 7.3, 7.7.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
-            // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
-            if (receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) && !this.LendsPlace(call.Method, scope, true, out _))
-            {
-                this.FailWrite(call, call.Method);
-                return false;
-            }
-        }
-        else if (receiver == SemanticsKind.Owner)
+        if (receiver == SemanticsKind.Owner)
         {
             // SPEC 7.3 (owning row), 3.5.3: a reference supplies an owning receiver only by the value read of a read Type, which a
             // callable value never is; `r@follow()` Copies a Copy referent.
-            if (receiverType.Kind == BoundTypeKind.Semantics)
+            if (layers != 0)
             {
                 this.FailWrite(call, call.Method);
                 return false;
@@ -413,19 +395,41 @@ public sealed partial class Binding
                 this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
                 return false;
             }
+
+            return true;
         }
 
-        _ = receiver != SemanticsKind.Owner && receiverType.Semantics == SemanticsKind.Owner &&
-            this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
-
-        // SPEC 7.7.3, 15.6.3 (DECISIONS BU-27): a stored exclusive callee taken in its own mode is Reborrowed, named as every Reborrow is;
-        // the MIR builder types the Reborrow by the operation's AdaptedType.
-        if (receiver == SemanticsKind.Uniq && receiverType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var target] })
+        if (layers != 0)
         {
-            var reborrow = this.types.Rebuild(receiverType, [target], this.ReferentOrigin(call.Method, receiverType), []);
-            receiverOperation = new(null, receiverType, null, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow, AdaptedType: reborrow);
+            // SPEC 7.7.3, 7.3.3, 3.5.1, 15.6.3 (DECISIONS BU-27): a reference callee is a borrow value, acquired as `p@follow@ref` or
+            // `p@follow@uniq` on the path through every layer: one reference in the call's mode to the Callable the layers reach, of the
+            // Origin they give (ReferentOrigin, SPEC 10.2), named as every Reborrow is, exclusive only where the path grants exclusive
+            // capability (ReferentAuthority: `ref/F` supplies no Exclusive call). One layer in its own mode over the Callable itself is the
+            // bare acquisition (SPEC 3.5): a `ref` Copied (a value operation, as AdaptInput's), a stored `uniq` Reborrowed. The MIR builder
+            // types the acquisition by the operation's AdaptedType.
+            if (receiver == SemanticsKind.Uniq && this.ReferentAuthority(call.Method) == SemanticsKind.Ref)
+            {
+                this.FailWrite(call, call.Method);
+                return false;
+            }
+
+            var reborrow = this.types.Reference(receiver, callable, this.ReferentOrigin(call.Method, receiverType, layers));
+            var own = layers == 1 && receiverType.Semantics == receiver && !read;
+            receiverOperation = own && receiver == SemanticsKind.Ref
+                ? new(call.Method, receiverType, null, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, AdaptedType: reborrow)
+                : new(call.Method, receiverType, null, ArgumentOperationKind.Reborrow, own ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow, AdaptedType: reborrow);
+            return true;
         }
 
+        // SPEC 7.3, 7.7.3: the callee is a Receiver Expression, acquired exclusively without a spelling when its lending point is
+        // exclusively writable; a let-bound closure Place is never Copied instead.
+        if (receiver == SemanticsKind.Uniq && receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) && !this.LendsPlace(call.Method, scope, true, out _))
+        {
+            this.FailWrite(call, call.Method);
+            return false;
+        }
+
+        _ = receiverType.Semantics == SemanticsKind.Owner && this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
         return true;
     }
 
@@ -544,7 +548,6 @@ public sealed partial class Binding
 
             // SPEC 15.6.1, 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds, also
             // where no input is per-call: a written input's well-formedness is its signature's premise, proven at each call (R4-M137).
-            this.callRelationScratch.Clear();
             for (var i = 0; i < count; i++)
             {
                 this.ChildGroup(solution, i, out var childStart, out var childEnd);
@@ -562,8 +565,6 @@ public sealed partial class Binding
             {
                 this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
             }
-
-            this.PublishCallRelations();
 
             // A call with a part it did not take (failed, misfitting or not acquired) rests on that part's record and forms no result.
             if (!formed)
@@ -692,8 +693,8 @@ public sealed partial class Binding
     // SPEC 15.6.4, 15.8.2 (DECISIONS R4-M152): a value call's result. Fresh input Origins and fixed shared capture results retain their
     // complete call contracts; a result over the per-call inputs takes the arguments' Origins, as an ordinary call's does; one written
     // over a fixed Origin of the calling body stays as written. A Closure's result naming its call receiver ρ takes the receiver
-    // acquisition's Origin and its call result atom the call's Unbound atom, each image built only where the result names its atom;
-    // one naming another Closure's atom is F1's located limit.
+    // acquisition's Origin, the image built only where the result names it, and its call result atom stays as published (P8: its
+    // relation is A5's record in the Closure's body); one naming another Closure's atom is F1's located limit.
     private BoundType? ValueCallResult(
         InvocationKoto call,
         BoundType signature,
@@ -715,9 +716,8 @@ public sealed partial class Binding
             return result;
         }
 
-        var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, closure!, acquisition) : null;
-        var unbound = (atoms & CallAtoms.Result) != 0 ? this.OriginAtom(call, OriginKind.Unbound, 0) : null;
-        var images = new PerCallImages(inputs, image, unbound);
+        var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, acquisition) : null;
+        var images = new PerCallImages(inputs, image, null);
         return this.LacksImage(result, ownBinder, origins, images)
             ? this.Fail(call, BindingFailure.Unsupported) : this.SubstituteStoredOrigins(result, ownBinder, origins, images);
     }

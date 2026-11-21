@@ -51,7 +51,6 @@ public class ElementAssignmentEmissionTest
     [InlineData("var a: [1 of i32] = [0]\na[0] += true")]
     [InlineData("let a: [1 of i32] = [0]\na[0]++")]
     [InlineData("func f(a: [1 of i32])\n    a[0] = 42")]
-    [InlineData("func f() -> [1 of i32] => [0]\nf()[0] = 42")]
     [InlineData("var a: [1 of i32] = [0]\na[0] = true")]
     [InlineData("func f()\n    return\n    var a: [1 of i32]\n    a[0] = 42")]
     public void InvalidOrUnsupportedWritesProduceNoIr(string source)

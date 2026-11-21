@@ -47,11 +47,11 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`; a null Origin argument and an
-    // unproven Origin are Unknown.
+    // SPEC 15.2.3: an Origin of a Type's OwnedOrigins is Owned when it is proven to outlive `static`, a `let` region read as its published
+    // value wherever the judgment is asked (LetRegionValue; B's ruling 28); a null Origin argument and an unproven Origin are Unknown.
     private ConstraintProof StaticOrigin(BoundOrigin? origin, BindingScope scope)
     {
-        if (origin is not null && (this.ProvesOriginOutlives(origin, BoundOrigin.Static, scope.Owner) || this.SolvedStatic(origin)))
+        if (origin is not null && (this.ProvesOriginOutlives(this.LetRegionValue(origin), BoundOrigin.Static, scope.Owner) || this.SolvedStatic(origin)))
         {
             return ConstraintProof.Proven;
         }
@@ -86,9 +86,10 @@ public sealed partial class Binding
         return proof;
     }
 
-    // The work of Owned over `type` in `scope`, whose rest a part's walk reads (OwnedMember); none if no work judged it.
+    // The work of Owned over `type` in `scope`, whose rest a part's walk reads (OwnedMember), read by the key its judge judged
+    // (JudgedCapabilityKey, R7-C3 C7); none if no work judged it.
     private CapabilityWork? OwnedWork(BoundType type, BindingScope scope)
-        => this.capabilityNodes.TryGetValue((this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), scope, false), out var work) ? work : null;
+        => this.capabilityNodes.TryGetValue(this.JudgedCapabilityKey(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.Owned)), scope), out var work) ? work : null;
 
     private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)
     {

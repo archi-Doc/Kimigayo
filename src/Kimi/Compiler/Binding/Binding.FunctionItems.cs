@@ -9,7 +9,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, CallPlan> functionItemContexts = new(ReferenceEqualityComparer.Instance);
 
-    private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
+    internal readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
 
     // The declaring Type of an Item: a generic container member's follows the bound function arguments as the last Component; the Item of
     // a function declared in a body holds the Type instance it was formed in in its context (TyCtxt.HeldType; SPEC 3.2.1, 6.1.3, DECISIONS

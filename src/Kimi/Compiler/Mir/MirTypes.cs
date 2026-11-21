@@ -5,7 +5,7 @@
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes, a body's identity premises (the compilation's TyCtxt.Premised, read through Premised), Binding's Copy and
 // Sealed proofs and the Type statements the operator domain composes (ArithmeticContracts.Supports, TyCtxt.OperatorCompares,
-// ReferenceTypes.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
+// BoundType.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
 // (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
 // operator-domain facts (Operates, the operator table's domain, which the Backend's operator columns read too), and the pairing of the
 // arithmetic Contracts with MIR's operators (ArithmeticOperations, read by Contract through ArithmeticOperation).
@@ -53,6 +53,14 @@ internal static partial class MirTypes
         (KimiDeclarationId.RemainderProvider, MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Rem),
         (KimiDeclarationId.Negatable, MirRvalueKind.UnaryOp, (byte)MirUnaryOp.Neg),
     ];
+
+    // The composite pairs one outermost Agree call met (PLAN G492-a (ii)): Types are DAGs, so a pair met on several paths is decided once.
+    // Sound because a disagreement ends the walk with false and an ancestor never recurs in an acyclic Type, so a pair met again agreed.
+    // Only the outermost call clears it, at its entry and its exit, so no Type stays reachable from it after the call; AgreePart and
+    // AgreeComponents never call Agree. Reused per thread (warm 0 B). Removed with R7-Y5 (MIR Types are the identical Types, PLAN G355),
+    // where Agree is the reference test again.
+    [ThreadStatic]
+    private static HashSet<(BoundType Left, BoundType Right)>? agreedParts;
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
     /// <param name="type">The Type.</param>
@@ -110,7 +118,7 @@ internal static partial class MirTypes
     /// is the receiver's check, DECISIONS R4-M56).</summary>
     /// <param name="type">The receiver's Type.</param>
     /// <returns>Whether the selection reads the receiver's value.</returns>
-    internal static bool SelectsByValue(BoundType? type) => type is { Kind: BoundTypeKind.Slice } or { Semantics: SemanticsKind.Raw };
+    internal static bool SelectsByValue(BoundType? type) => type is { Kind: BoundTypeKind.Slice } or { IsPointer: true };
 
     /// <summary>Gets where a range key's view starts (SPEC 4.6.1-4.6.2, 8.15.3; DECISIONS R8-M13; G597), the one rule of the start, by
     /// the Type that decides it, the start boundary's of the library's Range or ClosedRange, else the key's own: at its receiver's
@@ -133,12 +141,13 @@ internal static partial class MirTypes
     /// pointer, a shared borrow for a shared reference, else an exclusive one, two-phase for a reservation: reserved at the borrow and
     /// activated at the Call that takes it, a call's input on its preparation path (SPEC 15.6.7), or at the write through it, an update's
     /// destination (SPEC 13.7.2).</summary>
-    /// <param name="reference">The reference Type.</param>
+    /// <param name="reference">The reference Type; none for a borrow of a Place of no Type, which <see cref="MirValidator"/> reports (a
+    /// failed slot is borrowed by no location, PLAN G1073).</param>
     /// <param name="input">Whether the borrow is a reservation.</param>
     /// <returns>The borrow's kind.</returns>
-    internal static MirRefKind RefKind(BoundType reference, bool input)
+    internal static MirRefKind RefKind(BoundType? reference, bool input)
     {
-        if (reference.Semantics == SemanticsKind.Raw)
+        if (reference is { IsPointer: true })
         {
             return MirRefKind.Raw;
         }
@@ -155,7 +164,7 @@ internal static partial class MirTypes
     /// integer's, an environment effect (SPEC 8.11.2).</summary>
     /// <param name="source">The converted value's Type.</param>
     /// <returns>The Cast's kind.</returns>
-    internal static MirCastKind PointerCast(BoundType source) => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer;
+    internal static MirCastKind PointerCast(BoundType source) => source.IsPointer ? MirCastKind.Pointer : MirCastKind.IntToPointer;
 
     /// <summary>Gets whether a Type has the integer operators (SPEC 13.3.1: an integer or wrapping integer Type), or one whose instance
     /// decides it: an abstract Type (a PrimitiveInteger T, SPEC 8.7.4) or Wrapping over one, which stays constructed until substitution
@@ -187,7 +196,7 @@ internal static partial class MirTypes
         }
         : InstanceDecides(type) || (MirBinaryOp)op switch
         {
-            MirBinaryOp.Add or MirBinaryOp.Sub => Conforms(kind, op, type) || ReferenceTypes.IsPointer(type),
+            MirBinaryOp.Add or MirBinaryOp.Sub => Conforms(kind, op, type) || type.IsPointer,
             MirBinaryOp.Mul or MirBinaryOp.Div or MirBinaryOp.Rem => Conforms(kind, op, type),
             var bitwise when IsBitwiseOrShift(bitwise) => type.HasIntegerArithmetic,
             MirBinaryOp.Eq or MirBinaryOp.Ne => TyCtxt.OperatorCompares(type, KimiDeclarationId.Equatable),
@@ -218,7 +227,7 @@ internal static partial class MirTypes
     /// <param name="type">The constant's Type.</param>
     /// <returns>Whether an Integer constant has the Type.</returns>
     internal static bool HoldsIntegerConstant(BoundType type)
-        => IsArithmeticInteger(type) || ReferenceEquals(type, BoundType.Char) || type.Semantics == SemanticsKind.Raw;
+        => IsArithmeticInteger(type) || ReferenceEquals(type, BoundType.Char) || type.IsPointer;
 
     // SPEC 8.2, 8.2.3: a Type as the body's identity premises make it (TyCtxt.Premised; itself in a body without a definition), since MIR Types
     // keep a premised parameter (DECISIONS BU-72); Agrees and the builder's walk to a compared Place read it.
@@ -250,6 +259,55 @@ internal static partial class MirTypes
             return true;
         }
 
+        if (!AgreeShallow(left, right))
+        {
+            return false;
+        }
+
+        if (left.Components.Count == 0)
+        {
+            return true;
+        }
+
+        var agreed = agreedParts ??= new();
+        agreed.Clear();
+        try
+        {
+            return AgreeComponents(left, right, agreed);
+        }
+        finally
+        {
+            agreed.Clear();
+        }
+    }
+
+    private static bool AgreePart(BoundType? left, BoundType? right, HashSet<(BoundType Left, BoundType Right)> agreed)
+    {
+        if (ReferenceEquals(left, right) || left is null || right is null)
+        {
+            return true;
+        }
+
+        return AgreeShallow(left, right) && (left.Components.Count == 0 || !agreed.Add((left, right)) || AgreeComponents(left, right, agreed));
+    }
+
+    private static bool AgreeComponents(BoundType left, BoundType right, HashSet<(BoundType Left, BoundType Right)> agreed)
+    {
+        for (var i = 0; i < left.Components.Count; i++)
+        {
+            if (!AgreePart(left.Components[i], right.Components[i], agreed))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Agree's tests of one pair apart from its components: two distinct Types without an Origin never agree, and the Kind, Semantics,
+    // Symbol, lengths, Closure context and arity are equal.
+    private static bool AgreeShallow(BoundType left, BoundType right)
+    {
         if ((!left.CarriesAnyOrigin && !right.CarriesAnyOrigin) || left.Kind != right.Kind || left.Semantics != right.Semantics ||
             !ReferenceEquals(left.Symbol, right.Symbol))
         {
@@ -261,21 +319,8 @@ internal static partial class MirTypes
             return false;
         }
 
-        if (!ReferenceEquals(left.InstanceContext, right.InstanceContext) || left.Components.Count != right.Components.Count ||
-            !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.Components.Count; i++)
-        {
-            if (!Agree(left.Components[i], right.Components[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return ReferenceEquals(left.InstanceContext, right.InstanceContext) && left.Components.Count == right.Components.Count &&
+            left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments);
     }
 
     // An abstract Type (a PrimitiveInteger T, SPEC 8.7.4) or Wrapping over one: its instance decides which operators it has.

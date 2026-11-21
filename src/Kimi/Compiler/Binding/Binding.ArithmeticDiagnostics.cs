@@ -87,7 +87,7 @@ public sealed partial class Binding
             var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
             for (var current = scope; current is not null; current = current.Parent)
             {
-                if (current.Constraints is not { Invalid: false } other)
+                if (current.Constraints is not { } other)
                 {
                     continue;
                 }
@@ -101,6 +101,15 @@ public sealed partial class Binding
                         var here = this.ArithmeticFactUse(fact, scope);
                         var there = this.ArithmeticFactUse(oppositeFact, current);
                         this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
+
+                        // R7-C3 gate 2: the pair's facts fail (this environment's; the opposite one where it is this environment's too), so a
+                        // judgment reading either side rests on the owner's record and every other one is in the remainder.
+                        this.FailPremise(environment, fact, scope.Owner);
+                        if (ReferenceEquals(other, environment))
+                        {
+                            this.FailPremise(environment, oppositeFact, scope.Owner);
+                        }
+
                         return false;
                     }
                 }

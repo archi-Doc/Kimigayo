@@ -295,10 +295,9 @@ public sealed partial class TyCtxtTest
         }
     }
 
-    // PLAN G949 (the flaky TableCounts row of BindingTest.AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass): Binding.TableCounts'
-    // TypeKeys is the Types the compilation interned, whatever the hashes of their parts. A part's hash is its identity hash, which the
-    // thread's earlier objects move: two Tuples over two Types whose identity hashes are equal share one key of the interned Types' table
-    // and are still two Types (a count of the keys counted them as one, so a twin compilation counted one Type fewer).
+    // PLAN G949: the interner makes one Type per distinct content, whatever the hashes of its parts, and TyCtxt.TypeCount counts each Type
+    // it makes. A part's hash is its identity hash, which the thread's earlier objects move: two Tuples over two Types whose identity
+    // hashes are equal share one key of the interned Types' table and are still two Types (a count of the keys would count them as one).
     [Fact]
     public void TypesWhosePartsShareAnIdentityHashAreCountedApart()
     {
@@ -318,9 +317,9 @@ public sealed partial class TyCtxtTest
         }
 
         Assert.NotNull(second);
-        var before = c.Binding.TableCounts.TypeKeys;
+        var before = c.Types.TypeCount;
         Assert.NotSame(c.Types.Tuple([first!]), c.Types.Tuple([second]));
-        Assert.Equal(before + 2, c.Binding.TableCounts.TypeKeys);
+        Assert.Equal(before + 2, c.Types.TypeCount);
     }
 
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
@@ -338,10 +337,10 @@ public sealed partial class TyCtxtTest
         Assert.All(closed, static x => Assert.NotNull(x.InstanceContext));
         Assert.Equal(calls.Select(c.Types.SubstOf), closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(c.Types.SubstOf(calls[0]), c.Types.SubstOf(calls[1]));
-        Assert.All(closed, x => Assert.Same(c.Binding.ClosureSignature(x), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(x)!)));
+        Assert.All(closed, x => Assert.Same(c.Binding.ClosureSignature(x), c.Types.Apply(closure.Signature!, c.Types.SubstOfClosure(x)!).Type));
         var identity = c.Types.SubstOfClosure(closure.EnvironmentType!)!;
         Assert.Same(c.Types.Identity(function), identity);
-        Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
+        Assert.Same(closure.Signature, c.Types.Apply(closure.Signature!, identity).Type);
     }
 
     // SPEC 15.3.1, 15.3.6 (PLAN G457): a call's instance maps each of the callee's Type and Origin slots once, so a Type argument naming the
@@ -368,7 +367,7 @@ public sealed partial class TyCtxtTest
         var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
         var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).First(static x => x?.Target.Name == "identity")!;
         var substs = new[] { BoundType.Boolean, BoundType.I32 }.Select(self => c.Types.SubstOf(Conforming(c.Binding, call, self))!).ToArray();
-        var closed = substs.Select(x => c.Types.Apply(closure.EnvironmentType!, x)!).ToArray();
+        var closed = substs.Select(x => c.Types.Apply(closure.EnvironmentType!, x).Type!).ToArray();
         Assert.Equal(substs, closed.Select(c.Types.SubstOfClosure));
         Assert.NotSame(closed[0], closed[1]);
 
@@ -650,9 +649,14 @@ public sealed partial class TyCtxtTest
             nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "a").SymbolOf()!.Type!,
             nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "b").SymbolOf()!.Type!,
         ];
-        Assert.Same(r, layers[1].RawOrigin);
-        Assert.Same(r, layers[2].RawOrigin);
+        Assert.Equal(OriginKind.Inference, r!.Kind); // r's slot is its region; a read in its own body takes the value (PLAN G492-a (ii)).
+        var value = c.Binding.RegionValueAtUse(r!, r!.Binder!);
         Assert.Contains(layers[0].RawOrigin!.Kind, new[] { OriginKind.Inference, OriginKind.Projection });
+        Assert.Same(value, layers[1].RawOrigin);
+
+        // A call's result is a producer at the call (the owner's O-385 (a)): its argument's Origin is read there, r's value, as the raw
+        // view's is; stored as r's region it differs where b is named in a nested body (PLAN G492-a (ii) phase 4: brow2).
+        Assert.Same(value, layers[2].RawOrigin);
     }
 
     // SPEC 5.7 (design-final §15; DECISIONS BU-24, BU-41): a raw layer an instance stores has the step of its declared Field Type or Case
@@ -1044,7 +1048,7 @@ public sealed partial class TyCtxtTest
         }
 
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
-        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), x => TyCtxt.StatesUnstated(x.Type, seen));
+        Assert.DoesNotContain(c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()), x => x.Type is { } type && TyCtxt.StatesUnstated(type, seen));
 
         // A kept Field (the kept base at -1), or the kept payload Tuple of an enum's Case `part`.
         BoundType Part(BoundType x, int part)
@@ -1350,17 +1354,17 @@ public sealed partial class TyCtxtTest
         Assert.NotEmpty(viewed.Inputs.ToArray());
         Assert.All([erased, types.Erase(viewed)!], static x => Assert.True(x.Origins.IsEmpty && x.Inputs.IsEmpty));
         var locals = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl?.Name == "keep" || (x.Key.Kind == MirBodyKind.Closure && x.Source.Module == 0))
-            .SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).ToArray();
+            .SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type!).ToArray();
         Assert.True(locals.Length > 4);
         foreach (var local in locals)
         {
-            var first = types.Erase(types.Apply(local, calls[0])!);
-            Assert.Same(first, types.Erase(types.Apply(local, calls[1])!));
+            var first = types.Erase(types.Apply(local, calls[0]).Type!);
+            Assert.Same(first, types.Erase(types.Apply(local, calls[1]).Type!));
             Assert.Same(first, types.Erase(first));
         }
 
         var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
-        var closed = calls.Select(x => types.Apply(closure, x)!).ToArray();
+        var closed = calls.Select(x => types.Apply(closure, x).Type!).ToArray();
         Assert.NotSame(closed[0], closed[1]);
         Assert.Same(types.Erase(closed[0]), types.Erase(closed[1]));
         Assert.Same(types.Erase(closed[0].InstanceContext!), types.Erase(closed[0]).InstanceContext);
@@ -1461,8 +1465,8 @@ public sealed partial class TyCtxtTest
     }
 
     // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception. A caller's
-    // instance that makes a requirement call's Self nest past it has no composed substitution (PLAN G157 (4)), so no substitution without
-    // its Self reaches Witness.
+    // instance that makes a requirement call's Self nest past it composes the substitution, its Self formed, with the Limit verdict, so no
+    // substitution without its Self reaches Witness (PLAN G157 (4)).
     [Fact]
     public void ADeepSelfHasTheLimitTarget()
     {
@@ -1481,7 +1485,7 @@ public sealed partial class TyCtxtTest
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
         // Option^40<i32> (storage height 80) is past the bound whatever Witness prepared before it (Wrap^80, whose Type argument no Field
-        // stores, is refused too; DECISIONS BU-11, BU-12), so the caller's instance composes no substitution.
+        // stores, is refused too; DECISIONS BU-11, BU-12): the caller's instance composes the substitution with the Limit verdict.
         var option = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Option" })!;
         var nested = BoundType.I32;
         for (var i = 0; i < 40; i++)
@@ -1492,8 +1496,9 @@ public sealed partial class TyCtxtTest
         var instance = new CallPlan();
         instance.Set(c.Binding, outer.Target, outer.ReturnType, null, [], [nested]);
         var composed = c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!);
-        Assert.Equal((null, Binding.StorageOutcome.Limit), (composed.Subst, composed.Storage));
+        Assert.Equal((TyCtxt.Formation.Formed, Binding.StorageOutcome.Limit), (composed.Cause, composed.Storage));
         Assert.Same(nested, composed.Part);
+        Assert.Same(nested, composed.Subst!.Self);
     }
 
     // DECISIONS BU-36, BU-12: storage preparation's verdict depends on the Type alone. A part Binding did not bind ends no storage walk,
@@ -1513,9 +1518,9 @@ public sealed partial class TyCtxtTest
         Assert.Equal(expected, string.Join(' ', order.Split(' ').Select(x => c.Binding.PrepareTypeStorage(types[x]))));
     }
 
-    // DECISIONS BU-36: TyCtxt.Instance gives the instance a substitution makes with its storage verdict, and Apply is that instance when
-    // Prepared: f's `uniq/T` at Bad<i32>, whose Field m did not bind, is Rejected, at B^65<i32> a Limit, and under f's identity the
-    // declared Type, Prepared.
+    // DECISIONS BU-36: TyCtxt.Instance gives the instance a substitution makes with its storage verdict, and Apply is that instance by the
+    // substitution alone, Formed whatever its storage: f's `uniq/T` at Bad<i32>, whose Field m did not bind, is Rejected, at B^65<i32> a
+    // Limit, and under f's identity the declared Type, Prepared.
     [Fact]
     public void AnInstanceCarriesItsStorageVerdict()
     {
@@ -1526,7 +1531,7 @@ public sealed partial class TyCtxtTest
         var outcomes = calls.Select(x => c.Types.Instance(declared, c.Types.SubstOf(x)!)).ToArray();
         Assert.Equal([Binding.StorageOutcome.Rejected, Binding.StorageOutcome.Limit], outcomes.Select(static x => x.Storage));
         Assert.Equal(["Bad", "B"], outcomes.Select(static x => x.Type!.Components[0].Symbol!.Name));
-        Assert.All(calls, x => Assert.Null(c.Types.Apply(declared, c.Types.SubstOf(x)!)));
+        Assert.Equal(outcomes.Select(static x => (x.Type, TyCtxt.Formation.Formed)), calls.Select(x => c.Types.Apply(declared, c.Types.SubstOf(x)!)));
         var identity = c.Types.Instance(declared, c.Types.Identity(calls[0].Target.Declaration));
         Assert.Same(declared, identity.Type);
         Assert.Equal(Binding.StorageOutcome.Prepared, identity.Storage);
@@ -1602,10 +1607,10 @@ public sealed partial class TyCtxtTest
     }
 
     // DECISIONS BU-38: Compose carries the worst verdict of its parts' storage in the outer instance. inner's call in outer's instance at
-    // Bad<i32>, whose Field m did not bind, is Rejected with its composed substitution; beside a Type argument nested past
-    // the bound it is a Limit without a substitution in either order, as its repair's is (before: null for each, which the collector
-    // published as the storage-nesting gap). The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32>
-    // when Rejected, also before Bad<i64>, and the nested Type beside it in either order; a Rejected composition always has one.
+    // Bad<i32>, whose Field m did not bind, is Rejected with its composed substitution; beside a Type argument nested past the bound it is a
+    // Limit in either order, its substitution formed and kept: a null Subst is only a part that does not form, with its cause (Formation).
+    // The verdict's deciding part (R4-M139) is the first part reaching it, none when Prepared: Bad<i32> when Rejected, also before
+    // Bad<i64>, and the nested Type beside it in either order; a Rejected composition always has one.
     [Theory]
     [InlineData("i32", "i32", "Prepared", -1)]
     [InlineData("Bad<i32>", "i32", "Rejected", 0)]
@@ -1617,11 +1622,12 @@ public sealed partial class TyCtxtTest
         var c = MirBuildTest.Compile(RetentionTest.Box + "struct Bad<T>\n    public var v: T\n    public var m: Missing\nfunc inner<A, B>(a: uniq/A, b: uniq/B) => ()\n" +
             $"func outer<A, B>(a: uniq/A, b: uniq/B) => inner(a, b)\nfunc g(x: uniq/{first}, y: uniq/{second}) => outer(x, y)\n");
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => x.CallOf()!).ToDictionary(static x => x.Target.Name);
-        var (subst, storage, decided) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
+        var (subst, cause, storage, decided) = c.Types.Compose(c.Types.SubstOf(calls["inner"])!, c.Types.SubstOf(calls["outer"])!);
         Assert.Equal(expected, storage.ToString());
         Assert.Same(part < 0 ? null : c.Types.SubstOf(calls["outer"])!.Types[part], decided);
         Assert.True(storage != Binding.StorageOutcome.Rejected || decided is not null);
-        Assert.Equal(storage == Binding.StorageOutcome.Limit, subst is null);
+        Assert.Equal(TyCtxt.Formation.Formed, cause);
+        Assert.NotNull(subst);
     }
 
     // SPEC 8.6.1 (DECISIONS R5-M126; PLAN G157 (16)): the Contract that declares a requirement, also of the built-in target a requirement
@@ -1785,7 +1791,7 @@ public sealed partial class TyCtxtTest
     public void WarmEraseAllocatesNothing()
     {
         var c = SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
-        var locals = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).Distinct().ToArray();
+        var locals = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type!).Distinct().ToArray();
         var erased = locals.Select(c.Types.Erase).ToArray();
         var changed = 0;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -1924,7 +1930,11 @@ public sealed partial class TyCtxtTest
         {
             foreach (var local in body.Locals)
             {
-                Visit(local.Type);
+                // A local of no Type (a failed slot or a temp derived from one, MirLocal; PLAN G1073) stores nothing to erase.
+                if (local.Type is { } type)
+                {
+                    Visit(type);
+                }
             }
         }
 
@@ -1993,8 +2003,8 @@ public sealed partial class TyCtxtTest
             foreach (var declared in ((FunctionKoto)inner.Target.Declaration).Parameters.Select(x => x.Type.TypeOf(c)).Append(inner.Target.Type))
             {
                 var expected = declared is null ? null
-                    : c.Types.Apply(declared, c.Types.SubstOf(inner)!) is { } once ? c.Types.Apply(once, c.Types.SubstOf(outer)!) : null;
-                if (composed is null || !ReferenceEquals(declared is null ? null : c.Types.Apply(declared, composed), expected))
+                    : c.Types.Apply(declared, c.Types.SubstOf(inner)!).Type is { } once ? c.Types.Apply(once, c.Types.SubstOf(outer)!).Type : null;
+                if (composed is null || !ReferenceEquals(declared is null ? null : c.Types.Apply(declared, composed).Type, expected))
                 {
                     problems.Add($"{where} {declared}: {expected}");
                 }
@@ -2024,7 +2034,7 @@ public sealed partial class TyCtxtTest
                 var own = i < count ? implementation.Parameters[i].Type.TypeOf() : subst.Target.Type;
                 var contract = i < count ? slot.Parameters[i].Type.TypeOf() : call.Target.Type;
                 if (i != call.Target.ReceiverIndex && (own is null || contract is null ||
-                    c.Types.Apply(own, subst) is not { } applied || !ReferenceEquals(applied, c.Types.ReadableInstance(contract, c.Types.StorageSubst(call)))))
+                    c.Types.Apply(own, subst).Type is not { } applied || !ReferenceEquals(applied, c.Types.ReadableInstance(contract, c.Types.StorageSubst(call)))))
                 {
                     problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} contract {(i < count ? $"slot {i}" : "result")}");
                 }
@@ -2033,11 +2043,11 @@ public sealed partial class TyCtxtTest
 
         void Check(Koto node, BoundType? declared, Subst subst, CallPlan context)
         {
-            var applied = declared is null ? null : c.Types.Apply(declared, subst);
+            var applied = declared is null ? null : c.Types.Apply(declared, subst).Type;
             var instance = declared is null ? null : Instance(c, declared, subst, context);
             if (!ReferenceEquals(applied, instance) ||
                 (applied is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto function } && function.ClosureOf() is { } closure &&
-                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature, c.Types.SubstOfClosure(applied)!))))
+                    !ReferenceEquals(c.Binding.ClosureSignature(applied), c.Types.Apply(closure.Signature!, c.Types.SubstOfClosure(applied)!).Type)))
             {
                 problems.Add($"{node.CodeContext.SourceDocument?.Path}:{node.Span.Start} {node.Akind} {declared}: {applied}");
             }

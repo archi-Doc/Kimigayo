@@ -17,7 +17,7 @@ public class PropertyApiAccessBindingTest
     [InlineData("struct Hidden\npublic struct Box<T>\npublic struct Api\n    public let item: Box<Hidden>\n        private get")]
     [InlineData("struct Hidden\npublic struct Api\n    public let item: (Hidden) -> ()\n        private get")]
     [InlineData("internal struct Hidden\npublic open struct Api\n    protected let item: Hidden\n        private get")]
-    [InlineData("public group Api\n    private struct Hidden\n    internal let item: Hidden\n        private get")]
+    [InlineData("public group Api\n    private struct Hidden\n    internal let item: Hidden = make()\n        private get\n    func make() -> Hidden => $abort(\"unused\")")]
     public void RestrictedAccessorsDoNotNarrowThePropertyTypeDomain(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -32,7 +32,7 @@ public class PropertyApiAccessBindingTest
     [InlineData("struct Hidden\npublic struct Api\n    private let item: Hidden")]
     [InlineData("internal struct Hidden\npublic open struct Api\n    private protected let item: Hidden\n        private get")]
     [InlineData("internal struct Hidden\ninternal open struct Api\n    protected let item: Hidden\n        private get")]
-    [InlineData("public group Api\n    private struct Hidden\n    private group Inner\n        public let item: Hidden\n            private get")]
+    [InlineData("public group Api\n    private struct Hidden\n    private group Inner\n        public let item: Hidden = make()\n            private get\n        func make() -> Hidden => $abort(\"unused\")")]
     [InlineData("public struct Api<T>\n    public let item: T\n        private get")]
     [InlineData("public struct Value\n    private let storage: i32\npublic struct Api\n    public let item: Value\n        private get")]
     [InlineData("enum Hidden\n    A\ngroup Api\n    public let item = Hidden.A\n        private get")]

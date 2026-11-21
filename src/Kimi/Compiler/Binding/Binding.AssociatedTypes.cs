@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
+    private readonly AssociatedAmbiguityRows associatedAmbiguities;
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
-    private Dictionary<Koto, (BoundRequirement First, BoundRequirement Second, int Count)>? associatedAmbiguities;
 
     // Whether the pass's declaration evidence of conformance bindings is incomplete: before PrepareAssociatedInference has collected it,
     // or while an inference batch collects (a state-3 verdict then is provisional; PrepareAssociatedInference resolves every binding again).
@@ -96,7 +96,7 @@ public sealed partial class Binding
         reference = search.Reference;
         if (search.Alternative is { } second)
         {
-            this.FailExplained(ref this.associatedAmbiguities, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
+            this.FailExplained(AssociatedAmbiguityRows.Family, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
             return null;
         }
 
@@ -363,11 +363,7 @@ public sealed partial class Binding
         if (owner.Declaration is ContractKoto)
         {
             clause.BoundConstraint ??= this.InternConstraint(new(ConstraintKind.Error));
-            var environment = scope.Constraints ??= new();
-            if (this.AddConstraintFact(environment, clause.BoundConstraint))
-            {
-                this.FailEnvironment(environment, clause); // The clause failed, or holds a recovery.
-            }
+            this.AddConstraintFact(scope.Constraints ??= new(), clause.BoundConstraint); // An Error fact fails alone (R7-C3 gate 2).
 
             if (requirement is null)
             {
@@ -637,10 +633,12 @@ public sealed partial class Binding
             if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
             {
                 // SPEC 8.5.5, 8.6.3 (PLAN G1001): a formation reads an inferred binding as its normal form, a requirement's evidence as its
-                // sources wrote it (InferredEvidence).
+                // sources wrote it (InferredEvidence). SPEC 6.2, DECISIONS BU-128: one on an inline cycle names no Type to either reader
+                // after the failed Binding, as a written one does (its failed specification fails the conformance's environment, so its
+                // path's conditions are Error).
                 this.InferAssociatedTypes(batch);
-                return batch.State != 2 || ReferenceEquals(batch, this.collectingAssociated) || binding.InferenceConflict || binding.Inferred is null ? null
-                    : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
+                return batch.State != 2 || ReferenceEquals(batch, this.collectingAssociated) || binding.InferenceConflict || binding.InlineCycle ||
+                    binding.Inferred is null ? null : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, batch, out pending);
             }
 
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
@@ -681,7 +679,9 @@ public sealed partial class Binding
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
-            valid &= result is null || this.SameCompleteType(result, type);
+            // R7-C2c2 c2-4b (design R4.12b, J2): the candidates' agreement is the identity proposition in the path's view (SPEC 8.2.3:
+            // several bindings of one Type all hold), judged by the identity judge; the binding stores the candidate as written.
+            valid &= result is null || this.IdentityProven(result, type, scope);
             result = type;
         }
 
@@ -753,6 +753,9 @@ public sealed partial class Binding
 
         internal bool InferenceConflict { get; set; }
 
+        // Whether the binding lies on an inline storage cycle (Binding.InlineLayouts, SPEC 6.2), written after the cycles are judged.
+        internal bool InlineCycle { get; set; }
+
         internal InferenceProblem Problem { get; set; }
 
         internal FunctionKoto? ProblemSource { get; set; }
@@ -770,6 +773,7 @@ public sealed partial class Binding
             this.Inferred = null;
             this.InferenceSource = null;
             this.InferenceConflict = false;
+            this.InlineCycle = false;
             this.Problem = InferenceProblem.None;
             this.ProblemSource = null;
             this.ProblemDetail = null;
@@ -777,5 +781,17 @@ public sealed partial class Binding
             this.State = 0;
             this.FormationScope?.Reset();
         }
+    }
+
+    /// <summary>The `associatedAmbiguities` family's one accessor (DECISIONS BU-220): a pass family, the two associated candidates (and their
+    /// count) an ambiguous associated Type use found (SPEC 9.7.3), stored with its failure by the recorder (RecordedFact) and written by
+    /// FailExplained (a present row always has its First requirement). Its members keep the names its readers use.</summary>
+    private readonly struct AssociatedAmbiguityRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), PassCounter> Family(ref NodeColumns columns) => ref columns.AssociatedAmbiguities;
+
+        internal bool TryGetValue(Koto use, out (BoundRequirement First, BoundRequirement Second, int Count) ambiguity)
+            => (ambiguity = binding.RecordedFact(use, Family)).First.Symbol is not null;
     }
 }

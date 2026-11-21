@@ -48,6 +48,15 @@ public sealed partial class Binding
         return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(incomplete ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
     }
 
+    // R7-C3 (F's C2 rulings 271 (3), 273): a clause list judged at a use reads its declaration's clauses, each a premise of that
+    // declaration's environment, through the one consult (AvailableConstraintFact): a failed one is the obligation's Error resting on
+    // the declaration's record (RestOnFailure), a derived obligation of the list (DerivedObligation: `S<i32>.f(1)` over f's `U is Missing`).
+    // None at once while nothing failed (premiseFailures, the Failed state's census).
+    private PremiseFailure? FailedClauseRead(IsKoto clause, BoundConstraint fact)
+        => this.premiseFailures != 0 && clause.Parent is { } declaration && this.scopes.TryGetValue(declaration, out var scope) &&
+            scope.Constraints is { } environment && environment.IsFailed(fact) && !this.AvailableConstraintFact(environment, fact, out _)
+            ? environment.FailedPremise : null;
+
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
     private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, in CallSubstitution substitution, BindingScope scope, BoundType? self = null, bool incomplete = false, bool skipUnresolved = false)
@@ -55,6 +64,7 @@ public sealed partial class Binding
         var binder = substitution.Binder;
         this.BeginProof(); // A clause list is one conjunction (DECISIONS BU-22).
         var result = ConstraintProof.Proven;
+        var derived = false;
         ClauseFact? best = null;
         for (var i = 0; i < clauses.Count; i++)
         {
@@ -85,7 +95,8 @@ public sealed partial class Binding
             substituted = this.ContractConstraint(substituted, scope, self);
             var unknown = this.ScopeReads.Unknown;
             var limit = this.ScopeReads.Limit;
-            var proof = this.ProveConstraint(substituted, scope);
+            var error = this.ScopeReads.Error;
+            var proof = this.FailedClauseRead(constraint, bound) is { } failed ? this.RestOnFailure(failed) : this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
@@ -97,6 +108,12 @@ public sealed partial class Binding
             }
 
             var outcome = bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof;
+            if (this.DerivedObligation(outcome, error))
+            {
+                derived = true;
+                continue;
+            }
+
             if (outcome != ConstraintProof.Proven)
             {
                 var onLimit = outcome == ConstraintProof.Unknown && this.ScopeReads.Limit is { } read && !ReferenceEquals(read, limit);
@@ -106,6 +123,7 @@ public sealed partial class Binding
             result = CombineProof(result, outcome, true);
         }
 
+        result = this.DerivedVerdict(result, derived);
         var verdict = this.EndProof(result);
         this.LeaveClause(best, result);
         return verdict;

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -302,7 +303,7 @@ public class ClosureReceiverClassificationTest
     {
         var source = "struct P\n    public var x: i32 = 0\n    public init() => ()\npublic func main() -> ()\n" + head +
             "    let f = func [r] () -> i32\n        let s: " + type + " during r = r\n        return 0\n    let v = f()\n";
-        Assert.Equal("UnprovenOriginRelation_Kd r; InvalidAssignment_Kd f", Records(source));
+        Assert.Equal("UnprovenOriginRelation_Kd r; InvalidAssignment_Kd f", Records(source)); // At the initializer (R7-O1 H, D5).
     }
 
     // SPEC 7.3.3 (check 1), 7.7.3, 13.5.5: an object callee supplies only its payload authority. rc, arc and objref grant shared access,
@@ -604,9 +605,43 @@ public class ClosureReceiverClassificationTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
-        Assert.Equal(records, string.Join("; ", CompilationTestHelper.BindingErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        // R7-O1 H: the published Errors (the payload's relation is A5's record).
+        Assert.Equal(records, string.Join("; ", CompilationTestHelper.PublishedErrors(c).Select(x => $"{x.Code} {source.Substring(x.Span.Start, x.Span.Length)}")));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!;
         Assert.Equal((SemanticsKind.Ref, SemanticsKind.Uniq, "value"), (closure.CaseFreeReceiver, closure.Receiver, string.Join(",", closure.Captures.Where(x => x.BareReborrows).Select(x => x.Environment.Name))));
+    }
+
+    // SPEC 13.7.1, 23.1.2 (DECISIONS R7-M53; PLAN G396 (3), X3): an admitted misfit's value is the write's Error (O-241 (a)), whose
+    // children the HIR publisher takes no acquisition of, so a captured pair layer it holds is explained by the write's TypeMismatch_Kd
+    // and marks nothing. It was R4-M145's net, an Unsupported_Kd at `value` beside the Language record.
+    [Theory]
+    [InlineData("value@follow")]
+    [InlineData("(value, 1)")]
+    [InlineData("value@ref")]
+    public void AnAdmittedMisfitsValueExplainsTheCaptureItHolds(string value)
+        => Assert.Equal(
+            "TypeMismatch_Kd " + value,
+            Records(PairHead + "    var h = func [value] () -> ()\n        var local: i32 = 0\n        local = " + value + "\n        _ = local\n    h()\n" + PairMain));
+
+    // SPEC 7.7.3, 23.1.2 (DECISIONS R7-M53; PLAN G396 (3), X3): the receiver's classification is closed: each use of a capture is taken
+    // by its consumer's Adjust rule or explained, so a use no consumer takes is a broken contract, InternalInvariant_Kd at the use, never
+    // R4-M145's located Unsupported_Kd. Hand-built: after Binding, `take(value)`'s plan takes its callee in place of its written argument,
+    // and the Closure is bound again over that plan.
+    [Fact]
+    public void AUseNoConsumerTakesIsABrokenContract()
+    {
+        var c = CompilationTestHelper.ParseSuccess(PairHead + "    var h = func [value] () -> ()\n        take(value)\n    h()\n" + PairMain);
+        Assert.True(c.Bind().IsComplete);
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous);
+        var call = nodes.OfType<InvocationKoto>().Single(static x => x.ToString() == "take(value)");
+        var operations = (BoundArgumentOperation[])typeof(CallPlan).GetField("argumentOperations", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(CallPlan.Of(c.Binding, call))!;
+        var use = operations[0].Source!;
+        operations[0] = operations[0] with { Source = call.Method };
+        typeof(Binding).GetMethod("BindClosure", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [closure, Binding.KeptScopes.Slot(closure), null, false]);
+        Assert.Equal(BindingFailure.Internal, c.Semantics.FailureOf(use));
     }
 
     // DECISIONS R4-M126 (N4 (a)): each binding of a Closure classifies its receiver once its body is bound, also when the Closure then
@@ -617,13 +652,14 @@ public class ClosureReceiverClassificationTest
     public void EveryBindingThatBoundTheBodyIsClassified(string source, bool complete)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        Assert.Equal(complete, CompilationTestHelper.PublishedErrors(c).Length == 0); // R7-O1 H: the published verdict (A5's record; Binding judges no body relation).
+        var bound = c.Binding.Result.IsComplete;
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         for (var pass = 0; pass < 2; pass++)
         {
             var closure = BoundClosure.Of(function)!;
             Assert.Equal((true, SemanticsKind.Uniq, SemanticsKind.Uniq, "n"), (closure.Classified, closure.CaseFreeReceiver, closure.Receiver, closure.ExclusiveUse?.ToString()));
-            Assert.Equal(complete, c.Bind().IsComplete);
+            Assert.Equal(bound, c.Bind().IsComplete); // A rebind gives Binding's first verdict again.
         }
     }
 
