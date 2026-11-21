@@ -182,8 +182,14 @@ public sealed partial class Binding
         return this.LookupMember(expected, name.IdentifierName, scope, LookupRole.EnumCase).Member;
     }
 
-    private BoundType? BindEnumConstruction(Koto use, Koto reference, BindingSymbol symbol, InvocationKoto? call, BindingScope scope, BoundType? expected)
+    // SPEC 6.5.2: what a Case reference names where it is published: the Case its lookup selected, and for a qualified reference the
+    // declaring Type that lookup recorded, for a contextual one the expected Type (U at an expected `ref/U`, SPEC 10.8.1).
+    private ConstructionTarget PublishedTarget(Koto reference, BindingSymbol symbol, BoundType? expected)
+        => new(symbol, reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : this.ExpectedTypeOf(expected));
+
+    private BoundType? BindEnumConstruction(Koto use, Koto reference, in ConstructionTarget target, InvocationKoto? call, BindingScope scope, BoundType? expected)
     {
+        var symbol = target.Case;
         var enumeration = symbol.EnumCase!;
         expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: a Case construction is an owner value; its expected result at `ref/U` is U.
         var declaration = (EnumKoto)enumeration.Owner.Declaration;
@@ -195,7 +201,7 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.TypeMismatch);
         }
 
-        var owner = reference is MemberAccessKoto access && this.memberSelections.TryGetValue(access, out var selection) ? selection.DeclaringType : expected;
+        var owner = target.Owner;
         var inferred = reference is MemberAccessKoto qualified && this.inferredConstructionTargets.Contains(qualified.Left);
         var slots = declaration.BoundSymbol!.Schema!.GenericSlots.Count;
         var originCount = declaration.BoundSymbol.Schema.Origins.Count;
@@ -587,8 +593,7 @@ public sealed partial class Binding
         for (var i = 0; i < payload.Length; i++)
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
-            var stored = this.PartTypeIn(payload[i], result, scope)!;
-            var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
+            var type = this.PayloadTypeAt(payload[i], result, scope, out var stored);
             var fitted = default(BoundArgumentOperation);
             var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
@@ -646,6 +651,14 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // SPEC 6.5.2, 5.7: a payload's Type in the constructed Type `result`: its stored Type there (`stored`), with a Case holding
+    // `during self` constructed through no dereference.
+    private BoundType PayloadTypeAt(Koto payload, BoundType result, BindingScope scope, out BoundType stored)
+    {
+        stored = this.PartTypeIn(payload, result, scope)!;
+        return this.ReplaceHolder(stored, null);
     }
 
     private void CompleteEnumAcquisitions()
@@ -766,4 +779,8 @@ public sealed partial class Binding
         internal bool TryGetValue(Koto use, [NotNullWhen(true)] out BoundEnumConstruction? plan)
             => (plan = use.SyntaxOwner is { } table ? table.Hir.Families.EnumConstructions.Get(use.SyntaxId) : null) is not null;
     }
+
+    // SPEC 6.5.2: the Case a reference names and the enum Type that its qualifier and the expected Type fix (its declaring Type for a
+    // qualified reference, the expected Type for a contextual one): what a Case construction is bound from.
+    private readonly record struct ConstructionTarget(BindingSymbol Case, BoundType? Owner);
 }

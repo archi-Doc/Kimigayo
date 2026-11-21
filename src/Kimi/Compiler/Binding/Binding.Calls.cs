@@ -92,7 +92,7 @@ public sealed partial class Binding
         if (group?.EnumCase is not null)
         {
             return generic is null && callee is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase }
-                ? this.BindEnumConstruction(call, callee, group, call, scope, expected)
+                ? this.BindEnumConstruction(call, callee, this.PublishedTarget(callee, group, expected), call, scope, expected)
                 : this.Fail(call, BindingFailure.NotCallable);
         }
 
