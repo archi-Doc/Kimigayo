@@ -12200,6 +12200,8 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-226 (PLAN G632, R7-N1 c2): a value path that 9.5's stop ends at stage 5 or 6 finds nothing, so the Type path is
     the sole success (9.6) and the interim no longer fires there (w15v, w16v, w19v, q11v accepted; w17i QualificationRequired_Kd at
     the qualifier); the rest of the class stays until R7-N1 c-b's c3.
+  - Superseded by BU-238 (R7-N1 c-b, Q-598; this entry's removal stage) except its remainder: a member-access left whose Type
+    walk selects and whose value reading may succeed at the left keeps one located Unsupported_Kd at the left (PLAN G1195).
 
 - **BU-112 Parsing bounds syntax nesting at L = 1,024: `SyntaxNesting` and `NestingLimit_Kd`** (2026-11-06; PLAN G444 U2a, unit
   bu191; Major, G444's design (a) reviewed; the owner (board O-20), verbatim 「推奨どおり承認」: Q1 a new Resource code, Q2 L = 1,024
@@ -14211,6 +14213,11 @@ resumed by R4-M86 (2026-10-20).
     x06 and x07) or in the walk (no applied Type, y04); BaseLayers' early reads for the conformance table; the side as a
     `MemberSelection` field (a constructor selection changes `CallDeclaringType` and `ReferenceDeclaringType`); a HIR column (a byte
     per node).
+  - Amended by BU-238 (R7-N1 c-b's c4; PLAN G724 (a)-(c)): `Member`'s projection qualifier is no longer a located `Unsupported_Kd`:
+    a Type-side member through it is selected over the formed projection (its normal form's members and its Constraints'
+    requirements), a Name after a projection that names a member Type of its normal form selects that Type, formed in the normal
+    form (x08), and a member missing through a projection that stays one rests on the projection's use. Remaining keeps b1x's and
+    r10's second `UnsatisfiedConstraint_Kd` at the call (BU-61's gap, PLAN G724) and the 9.7.3 rows.
 - **BU-187 A literal source at a reference is one borrowed temporary of U at every position (PLAN G585)** (2026-11-12; Front,
   Binding; Major, an acceptance mover: valid forms newly accepted (Q17 class 3), class 1 moves (the family of a fill or mixed range
   at a `ref/U` other than its own Type), invalid twins keep their rejection with the lifetime or relation record; supersedes
@@ -16109,6 +16116,9 @@ resumed by R4-M86 (2026-10-20).
     NotCallable_Kd (c05j, r05i, r08i, w05i, q04i), NoApplicableOverload_Kd (c15i, r06j, w03i), InvalidAssignment_Kd (q03i),
     Unsupported_Kd (q05i, q06i, q07i; w17i at `X`), InternalInvariant_Kd (r04i, w09i, q09i); support: w15v, w16v, w19v, q11v
     (BU-117's Unsupported_Kd -> accepted), and D11 alike (a Type path found at stage 6; its row 72b22eb33, C-393's N1).
+  - Amended by BU-238 (R7-N1 c-b): the two formers that still wrote their own member publish through `PublishPath`: the qualified
+    Case pattern by the MemberAccess step (its Case Name typed first by the pattern marker's rule), a projection's selection by its
+    own ProjectionMember step; a length argument's group member is selected by `LookupMember` in the Value role.
 - **BU-227 PB3: one ContractReference rule, one ContractSelector reader, the ConditionalConformance head, a failed member's
   recovery, an OriginApplication that ends a NamedType (PLAN G857 F5-1, G873 with R1; PB3b)** (Front, 2026-11-19; PB3 + PB3b, the
   Front's third Parsing bundle (Q-504); plan revision 69 (B) class 1, (C) one bundle per component; Major, an acceptance mover in
@@ -16420,6 +16430,103 @@ resumed by R4-M86 (2026-10-20).
     formation validator in `TyCtxt.Intern` (hot path, facts the formation sites already establish); a shared container-kind rule read
     by `KimiLibrary.Register` (no group reaches it: a mechanism with no need); moving the access check before role filtering
     (contradicts SPEC 9.5's order for every group).
+- **BU-238 A member access's left is read by SPEC 9.6 before either reading publishes: `ReadLeft`, `PickReading` and one Type-path
+  verdict, `TypePathFailure`; a projection qualifier's member is selected over its formed normal form (PLAN G488, G634, G724 (a)-(c))**
+  (2026-11-21; Front, Binding; Major, an acceptance mover; R7-N1 c-b, Q-598, landed in one head with Q-594 (G812 ruling 173); design
+  `...\front\notes\N1c\design-cb.md` (Revision 1, phases 3 and 4), its reviews and the implementation's reviews and delta reads to MET
+  (F's N1c rulings 13-44); the owner's O-431 (a), O-433 (a), O-439 (b), O-441 (a); the Middle's RP17 C-404; W-298) SPEC 9.6, 9.6.1,
+  9.5, 7.3.4, 8.5.2, 8.3.2, 8.2.3, 6.5.2, 23.1.2. Supersedes BU-117 except its remainder; amends BU-185 and BU-226.
+  - Rule (`ReadLeft`, `Binding.ResolvePath`): the left's Type walk (`EvaluateUse`, the use's lookup in its row) and its value reading
+    (`LeftValue`) are evaluated unpublished. A Name left, with Type arguments or not, whose Type walk selected, ended at a projection,
+    was ambiguous or stopped takes `PickReading`: the Type path's member over the qualifier declaration's own Type (`OwnType`:
+    arguments never change the selection; `TypePathMember`), the value path's over the value's declared Type (`DeclaredValueType`
+    through `QueryValueType`; `ValueStepMember`). The sole success is selected. When both succeed, paths to one Symbol that the value
+    access uses with no receiver count once, as the Type reading (SPEC 9.6 as O-431 (a) states it: k20v), and any other pair is
+    `AmbiguousBinding_Kd` at the access (an instance function reached with and without a receiver: k20i, rb07a, rb73i). When neither
+    does, a path that failed at its own stage keeps its record (the value path's stop or conflict, published by `Lookup`, when only
+    it failed so: Q2 (b)), else the Type path's. A member-access left takes the value reading when its Type walk failed, and
+    `PickReading` when its value walk fails (`ValueWalk`: each step's verdict over the previous member's declared value Type, walked
+    only where the Type reading may succeed; an uncalled function member forms no value, 7.3.4); when both readings may succeed at the
+    left, the remainder below. A left with no value reading takes the Type reading.
+  - The Type path's one verdict at a member step (`TypePathFailure`, `Binding.MemberLookup`), read by `PickReading` (through
+    `TypePathMember`, which `LeftValue`'s static-value step reads too) and by `SelectMember`: Ambiguous; MissingName;
+    QualificationRequired for an instance member that is no function (its static or instance use: the path supplies no receiver; a
+    Type-qualified instance function takes its receiver as an argument, 9.6.1); Access for an inaccessible member that is no function.
+    The access records `QualificationRequired_Kd` with its own cause `TypePath`, written by the check (`QualificationFact.Cause`), its
+    Container the member's declaring Type and no qualifying repair (DIAGNOSTICS Qualification; rulings 38, 41, 44): rb30i and rb31i
+    (`T.n` for an instance Field `n`), dev's `InternalInvariant_Kd` and BU-117's `Unsupported_Kd` before.
+  - P2 (rulings 42-44): a member missing over a projection still in its class form is the located `Unsupported_Kd`, not a missing
+    name, where this use's evaluation does not read an identity a declared bound may give (`UnreadIdentity`): the projection's
+    subject is bounded in its declaring Contract by a Contract that strictly refines the written qualifier and whose supply
+    (`ContractSupply`: it and every Contract it inherits) holds a Type identity of the associated Type. Declared facts only, nothing
+    applied or proved; a failed declaration in that supply gives no identity, and the use rests on it (`CompleteDependent`). Removal:
+    R7-C3's order-free step (PLAN G1196). Rejected: P1, every missing member over an unidentified projection (it turns the decidably
+    invalid dq7i's Language record into `Unsupported_Kd`).
+  - A projection qualifier (c4; PLAN G724 (a)-(c)) is a Type whose members are its normal form's and its Constraints' requirements:
+    `Member`'s projection arm forms it (`BindAssociatedProjection`) and selects over it (`QualifierSelection`), so a Type function, a
+    Case or a requirement member through it is selected and a private one is `InaccessibleBinding_Kd`; a member missing through a
+    projection that stays one rests on the projection's use (a pending prerequisite, as `ConstructorMember`, BU-184: r10 keeps only the
+    two `UnsatisfiedConstraint_Kd`). A Name after a projection that names a member Type of its normal form selects that Type, formed
+    in the normal form (`BindContainerReference`; x08); an inaccessible one is `InaccessibleBinding_Kd`. A projection path in the left
+    is evaluated before the reading and formed after it (BU-239).
+  - One writer: every member-access selection is published by `PublishPath` (`PublishMemberAccess`, the MemberAccess step), BU-226's
+    two staged writers included: the qualified Case pattern (`ResolvePatternCase`, its Case Name typed first by the pattern marker's
+    rule, `CompletePatternSyntax`) and a length argument's group member (`LengthArgumentSymbol`: `LookupMember` over the group's own
+    Type in the Value role). `NameStepKind` gains two steps: ProjectionMember, a projection path's selection (`PublishProjectionMember`,
+    a Type position: no side and no member lookup), and HiddenMember, the inaccessible member a lookup met where it selected none
+    (`PublishHiddenMember`: the access records `InaccessibleBinding_Kd` once; rb86i, rb87i). A failed Type walk beside the value
+    reading publishes its outcome, true facts the inner accesses read, so a chain is walked once (`PublishesFailedWalk`), unless a step
+    records, and without the head's own steps when the head is a value.
+  - HIR: a projection path names a Type, so `NameOp` reads its published `PathEnd.Projection` first and the path's nodes are Syntax
+    (ruling 36; the head `L.(C)` carries no symbol, which Z1's builder contract met as a broken PrimitiveOp on 54 valid programs;
+    `HirFormsTest.AProjectionPathIsATypeReading`).
+  - Remainder (BU-117's; ruling 13's Q1 (a)): a member-access left whose Type walk selects and whose value reading may succeed at the
+    left is one located `Unsupported_Kd` at the left (`Member`'s `LeftReading.Unsupported` arm; k16v, k16i, k17v, p10v, p10i): its
+    value is its own access's selection, which the expression binder publishes as it selects (PLAN G1195).
+  - Census (ArchitectureRulesTest): name evaluations gain `EvaluateUse` and `EvaluateName` (`Binding.ResolvePath.cs` 21 -> 28); use
+    lookups gain `PublishLookup`, `ReadLeft` and `MayBeValueQualifier` (ResolvePath.cs 2 -> 4, MemberLookup.cs 2 -> 1,
+    ResultSurvey.cs 0 -> 1); "Readers of a class's form" gains reader (iii), a member step's receiver (`QualifierSelection`'s receiver
+    Type, `EvaluateProjection`'s normal form; MemberLookup.cs 1, ResolvePath.cs 1).
+  - Cost: the left's Type walk is read once per access and its value walk only where the Type reading may succeed, so a qualified
+    chain binds in time linear in its length (TypeDagScalingTest `AMemberAccessLeftIsReadOncePerAccess`; a probe per prefix was
+    quadratic); P2's walk is linear in the Contract chain (`AnUnreadIdentityIsDecidedInWorkLinearInTheContractChain`).
+  - Moves (Q13; 207 programs labelled from SPEC first, `...\front\notes\N1c\j1\`): against Q-584's head 137 move, none rejecting what
+    it accepts and none to `InternalInvariant_Kd`. Unmoved: the remainder, Q2 (b)'s guards, G727's class.
+  - Rejected: a namespace mode beside the role (BU-131's form); a probe per prefix (`ProbePath`, quadratic in a chain); a second code
+    for a Type path's missing receiver (a vocabulary entry for one failure; ruling 38); the 9.5 stop's Label, Note and qualifying
+    repair on a qualified use (ruling 41's B1); deciding the record's cause from the use's syntax (`Qualified`; ruling 44's N1).
+  - Open (PLAN): a use's verdict depends on a sibling use's premise supply (G1196, O-441 (a)'s L1); the shared catalog Message of
+    `QualificationRequired_Kd` (G1197).
+- **BU-239 A projection path in a member access's left is evaluated before the left's reading is decided and formed after it:
+  `EvaluateProjection`, `BindingScope.EvaluatedPremises`** (2026-11-21; Front, Binding; Major, a new representation; R7-N1 c-b, Q-598:
+  6f7d35c10, 870058dba, 4cfbf210f, 33b12484f; F's N1c rulings 22-28, 31-33; the owner's O-439 (b), O-441 (a); W-298) SPEC 8.5.2,
+  8.3.2, 8.2.3, 9.6. BU-122's family.
+  - Rule: `EvaluateProjection` (`Binding.ResolvePath`) forms no input whose form depends on the undecided reading; an input every
+    reading forms alike, the written Contract reference (`C<i32>` in `S.(C<i32>).Item`, SPEC 9.6, 8.5.2), is formed first by its own
+    former (`ProjectionQualifier`, in the use's scope). It takes the former's own steps, shared with `BindAssociatedProjection`: the
+    associated search alone (`SearchAssociated`), the family fact (`UnappliedFamily`), the Contract evidence (`ProjectionEvidence`: the
+    written Contract, else the declaring reference, else the declaring Contract) and its proof (`SuppliesPremises`), the identity
+    (`ProjectionIdentity`) and the normalizer (`NormalizedProjection`); a Name after a projection receiver that names a member Type of
+    its normal form evaluates to that Type (x08).
+  - Premises: where the evidence is proved, the premises the Contract supplies for the receiver (SPEC 8.3.2: `AddContractPremises`,
+    the one `ContractSupply` enumeration) are added to the use scope's one kept layer (`BindingScope.EvaluatedPremises`: its Parent
+    the use's scope, made on first use, kept with the scope and reset with it each pass, so a warm pass forms none; ruling 28's K2,
+    K3), never to the use's scope. The search, proof and normalization of each projection read that layer, so an outer projection sees
+    an inner one's premises as in the former's scope (`T.(C).Item.(D).X` normalized by D's clause `Self.(D).X is M`). The layer is
+    shared by the scope's uses: it may hold a sibling use's supply before that use is formed (PLAN G1196).
+  - The normal form is read in its class's form in that view (`ClassForm`, R7-C3 C3-1's one identity judge, SPEC 8.2.3; 33b12484f), so
+    two identities of one projection give one form in any order of premises and clauses (K1; O-439 (b), O-441 (a)).
+  - `BindAssociatedProjection` forms the projection once, after the reading, and publishes as before (`Member`'s projection arm, or
+    the value former's inner access), so `ReadLeft` and ResultSurvey's `MayBeValueQualifier` give one answer whatever was published
+    before them (an `if` join: rb81v, dq9v).
+  - Cost: a projection chain in a left is evaluated under the one layer, linear in its length (TypeDagScalingTest
+    `AProjectionChainInALeftIsEvaluatedUnderOneLayer`; a layer per evaluation level was quadratic).
+  - Rejected: the pre-formation in `ReadLeft` (ruling 22's I2); a pure Type-argument evaluator (ruling 24's Q-a (b), a second copy of
+    Type-argument binding); the reference from the receiver's sole conformance (Q-a (c), a second path to it); an environment
+    parameter on `ContractTypeAnswer` (every normalization carries it for one caller); a copy of the supplied facts or a second
+    enumeration of the supply; a fresh layer per evaluation level (allocated every warm pass, a new view per level: K2, K3); a layer
+    per use node (every use builds its chain's views again); adding the premises to the use's scope before the reading (a
+    publication on the way).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
