@@ -2,8 +2,6 @@
 
 namespace Kimi;
 
-using System.Text.Json.Nodes;
-using Kimi.Build;
 using Kimi.Diagnostics;
 
 public class Kimigayo
@@ -16,9 +14,11 @@ public class Kimigayo
     /// <remarks>The language server disables rendering: its standard output carries only protocol frames.</remarks>
     internal bool RendersDiagnostics { get; }
 
-    /// <summary>Gets or sets the factory of the native build's executor; the default is the external tools'.</summary>
-    /// <remarks>Temporary (Tatara A3 to A4): unit A4 removes it when Tatara's executor becomes the build's.</remarks>
-    internal Func<NativeExecutorContext, JsonObject, NativeExecutor> NativeExecutor { get; set; } = NativeToolchain.ExternalToolExecutor.Create;
+    /// <summary>Gets or sets what the host does after a <c>run</c> command's work, whose program output Kimi copied to the raw standard
+    /// streams, past the host's console writer; it may run when no program ran (a build failure, a missing executable, a failed start).
+    /// Default: nothing. A terminal session of <c>kimi tatara</c> replaces it while it runs and restores it at its end. An exception from
+    /// it replaces the command's.</summary>
+    internal Action RunEnded { get; set; } = static () => { };
 
     public Kimigayo(IConsoleService consoleService)
         : this(consoleService, new(), true)

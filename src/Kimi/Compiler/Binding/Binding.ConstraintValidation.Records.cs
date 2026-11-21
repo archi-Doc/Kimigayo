@@ -20,7 +20,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // A node's clause record, published by ReportClauseConstraint.
-    private Dictionary<Koto, ReferenceConstraintFailure>? clauseConstraints;
+    private readonly ClauseConstraintRows clauseConstraints;
 
     // The declaration that states a clause fact's clause when neither the member nor a container enclosing it does (G354 (2)): a Type
     // formed for the use, such as a Type argument's, whose formation decided the fact; its record names it, not the member.
@@ -125,7 +125,7 @@ public sealed partial class Binding
     private BoundType? FailClauseRecord(Koto use, ReferenceConstraintFailure clause, bool unresolved)
     {
         var failure = clause.Proof == ConstraintProof.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint;
-        return this.FailExplained(ref this.clauseConstraints, use, failure, clause, unresolved);
+        return this.FailExplained(ClauseConstraintRows.Family, use, failure, clause, unresolved);
     }
 
     private void ReportClauseConstraint(Koto use, DiagnosticCollection? store, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -146,5 +146,16 @@ public sealed partial class Binding
             evidence: subject is null ? null : [subject, owner ?? member, clause],
             note: note,
             related: [("constraint", fact.Clause, role)]);
+    }
+
+    /// <summary>The `clauseConstraints` family's one accessor (DECISIONS BU-220): a pass family, a node's clause record (its clause, Constraint,
+    /// proof and stating declaration), stored with its failure by the recorder (RecordedFact) and written by FailExplained (a present row
+    /// always has its Clause). Its members keep the names its readers use.</summary>
+    private readonly struct ClauseConstraintRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<ReferenceConstraintFailure, PassCounter> Family(ref NodeColumns columns) => ref columns.ClauseConstraints;
+
+        internal bool TryGetValue(Koto use, out ReferenceConstraintFailure clause) => (clause = binding.RecordedFact(use, Family)).Clause is not null;
     }
 }
