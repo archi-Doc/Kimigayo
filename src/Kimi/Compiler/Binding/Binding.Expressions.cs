@@ -242,6 +242,11 @@ public sealed partial class Binding
         // none (RestsBelowOpenPosition).
         var parent = this.BeginConsultation(node);
         var type = this.HeightChecked(node, this.BindAndAdaptNode(node, scope, expected));
+        if (this.FormsBorrows)
+        {
+            this.OwnBorrows(node, this.borrows); // The node's own borrow facts (Binding.RawOrigins.Borrows).
+        }
+
         this.EndConsultation(node, parent);
         if (!this.RestsBelowOpenPosition(node, type, expected))
         {

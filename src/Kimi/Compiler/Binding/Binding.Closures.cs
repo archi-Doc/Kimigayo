@@ -298,6 +298,11 @@ public sealed partial class Binding
             return failed;
         }
 
+        if (this.FormsBorrows)
+        {
+            this.CaptureBorrows(plan, this.borrows); // The entries' Borrows, before the body that states their atoms (Binding.RawOrigins.Borrows).
+        }
+
         if (this.TypedByHeader(function, scope, plan, open) is { } property)
         {
             // Typing the Property needs this Type, not the body, which its variable binding binds with its parts (BindLeftBodies).

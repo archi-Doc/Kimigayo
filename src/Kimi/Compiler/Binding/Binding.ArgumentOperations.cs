@@ -574,7 +574,14 @@ public sealed partial class Binding
     {
         internal BoundAdaptation this[Koto node]
         {
-            set => HirTables.Of(node).Families.Adaptations.Ref(node.SyntaxId, binding) = value;
+            set
+            {
+                HirTables.Of(node).Families.Adaptations.Ref(node.SyntaxId, binding) = value;
+                if (binding.FormsBorrows)
+                {
+                    binding.AdaptationBorrow(value, binding.borrows); // An adaptation is a borrow fact of its node (Binding.RawOrigins.Borrows).
+                }
+            }
         }
 
         internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);

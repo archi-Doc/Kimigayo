@@ -163,6 +163,10 @@ public sealed partial class Binding
             subject = this.AcquireSubject(match.Expression, subject, out var borrow, out var mode);
             plan.SubjectBorrow = borrow;
             plan.Mode = mode;
+            if (this.FormsBorrows)
+            {
+                this.RecordBorrow(this.borrows, borrow); // Its writer forms it, before the arms bind (Binding.RawOrigins.Borrows).
+            }
         }
 
         var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
@@ -179,6 +183,8 @@ public sealed partial class Binding
 
             this.MarkPatternTree(arm.Pattern, subject is null ? match.Expression : null);
         }
+
+        this.AcquireReferenceBindings(plan); // Before the guards and bodies, which state the bindings' atoms.
 
         // Pattern bindings must have their Subject Types before collecting result evidence.
         // Otherwise an unfitted literal arm could default to f64 before seeing an f32 binding.
@@ -608,6 +614,27 @@ public sealed partial class Binding
             : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move
             : proof == ConstraintProof.Unknown ? PatternAcquisition.CopyOrMove : PatternAcquisition.Deferred;
         plan.PositionStorage[index] = position with { Acquisition = acquisition };
+    }
+
+    // SPEC 15.1.6: a binding reached with shared or exclusive access borrows the Place its step selected, which its access alone decides
+    // (AcquireBinding reads no Copy proof for it): it is acquired where its plan's Patterns are bound, and its Borrow is formed there, before
+    // the guards and bodies that state its atom bind (Binding.RawOrigins.Borrows; G147 ruling 37, D3: a Binding past a qualifying pair layer
+    // of an owned Subject depends on the Subject Place itself, whose atom no other Borrow fills). Check acquires every binding again, the
+    // owned ones by their Copy proof.
+    private void AcquireReferenceBindings(BoundMatch plan)
+    {
+        for (var i = 0; i < plan.PositionStorage.Count; i++)
+        {
+            if (plan.PositionStorage[i] is { Kind: BoundPatternKind.Binding, AccessMode: not PatternAccessMode.Owned })
+            {
+                this.AcquireBinding(plan, i);
+            }
+        }
+
+        if (this.FormsBorrows)
+        {
+            this.BindingBorrows(plan, this.borrows);
+        }
     }
 
     private void CalculateMatchCoverage(BoundMatch plan, BoundType? subject)

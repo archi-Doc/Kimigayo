@@ -739,7 +739,8 @@ public sealed partial class HirFormsTest
 
     // SPEC 3.4.3, 4.7.1, 7.3, 15.1.6 (PLAN G147 (2b)): a part below an element storing reference layers is a Place reached through those
     // layers, as below a local of the element's Type: a receiver borrows it in place in the receiver's mode, and a Subject or a compared
-    // operand (SPEC 13.4) in place.
+    // operand (SPEC 13.4) in place. A compared element storing two or more layers above `string` (an Array's, a Dictionary's) is read
+    // once, through its layers (G147 ruling 60: its element read and its layers' read were both formed).
     [Fact]
     public void APartBelowAStoredReferenceIsAPlace()
     {
@@ -779,13 +780,19 @@ public sealed partial class HirFormsTest
             func shared(value: ref/Point during a) -> bool
                 var entries: Dictionary<i32, ref/Point during a> = [1: value]
                 return entries[1].name == "a"
+            func layered(value: uniq/(uniq/string during a) during b) -> bool
+                var rows: Array<uniq/(uniq/string during a) during b> = [value@move]
+                return rows[0] == "b"
+            func keyed(value: uniq/(uniq/string during a) during b) -> bool
+                var named: Dictionary<i32, uniq/(uniq/string during a) during b> = [1: value@move]
+                return named[1] == "b"
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         HirTables.Publish(c);
         Assert.Empty(Problems(c, c.Kotonoha));
-        string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner", "entries[1].name", "entries[1].inner.name"];
+        string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner", "entries[1].name", "entries[1].inner.name", "rows[0]", "named[1]"];
         var adjusted = Reachable(c.Kotonoha).Where(x => x.Span.Start >= Source.IndexOf("func parts", StringComparison.Ordinal) && parts.Contains(Text(x)))
             .Select(x => $"{Line(x.Span.Start)}: {Text(x)} {HirTables.AdjustOf(x).Acquire}/{HirTables.AdjustOf(x).Adaptation}");
         string[] expected =
@@ -797,6 +804,7 @@ public sealed partial class HirFormsTest
             "return entries[1].name == \"a\" and entries[1].inner.name == \"b\": entries[1].inner.name None/SharedBorrow",
             "return entries[1].name == \"a\" and entries[1].inner.name == \"b\": entries[1].inner None/SharedBorrow",
             "return entries[1].0 == \"a\": entries[1].0 None/SharedBorrow", "return entries[1].name == \"a\": entries[1].name None/SharedBorrow",
+            "return rows[0] == \"b\": rows[0] None/ReferenceRead", "return named[1] == \"b\": named[1] None/ReferenceRead",
         ];
         Assert.Equal(expected, adjusted);
         var element = Reachable(c.Kotonoha).Single(x => Text(x) == "entries[1]" && Line(x.Span.Start) == "entries[1].bump()");

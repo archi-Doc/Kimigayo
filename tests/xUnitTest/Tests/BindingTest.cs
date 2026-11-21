@@ -742,6 +742,78 @@ public class BindingTest
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Failure == BindingFailure.MissingOrigin);
     }
 
+    // R7-N5 E (B4's precedent, AFactALibraryNodesFailureCarriesIsRecordedWithIt): a node's dependence row is stored by the recorder's
+    // decision, so a library node the program pass rests (CompleteDependent's foreign branch: the rest is the node's entry) keeps its
+    // consultation range in the part's foreign row, which the family's reader reads; no library column is written (HirTables.Of refuses
+    // the frozen table, where dev's Dictionary took the row). No program rests one today, so the row rests one through the private writer
+    // after a Final Bind, on the program's failed Type name, and the publication's walk reads the range through the entry: the node's one
+    // cause is that name's record.
+    [Fact]
+    public void ALibraryNodeTheProgramPassRestsKeepsItsRangeInItsEntry()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var cause = c.Binding.Issues.Select(static x => x.Node).First(x => x.FailureOf(c) != BindingFailure.None);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        typeof(Binding).GetMethod("CompleteDependent", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [node, cause]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var entry = Assert.Single(own.ForeignFailures);
+        Assert.Equal((node, BindingState.Resolved, BindingFailure.None), (entry.Node, entry.Before, entry.Failure));
+        Assert.NotEqual(BindingState.Resolved, entry.State);
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
+        var rows = typeof(Binding).GetField("prerequisites", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        object?[] read = [node, null];
+        Assert.True((bool)rows.GetType().GetMethod("TryGetValue", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(rows, read)!);
+        var range = ((int Start, int Count))read[1]!;
+        var store = (List<Koto>)typeof(Binding).GetField("prerequisiteStore", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal(1, range.Count);
+        Assert.Same(cause, store[range.Start]);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.Prerequisites.Used);
+        Assert.Empty(c.Library.Layer.Part.ForeignFailures);
+        Assert.Same(cause, Assert.Single(c.Binding.FailureCauses(node)!).Subject);
+    }
+
+    // R7-N5 E (C5's foreign row; B4's precedent): a declaration's duplicate group row is stored by the recorder's decision and listed in
+    // the pass's working order of groups, so a library declaration a pairwise check pairs with a program one (RegisterConformanceDeclaration's
+    // library clause) keeps its row in the program part's entry, which its Duplicate failure made; no library column is written, and
+    // RecordDuplicateGroups walks it in the order it joined, recording both declarations. No program pairs one today (a conformance is
+    // declared in its Type), so the row takes FailDuplicate's steps after a Final Bind through the private writers: both failures, both
+    // joins, and the group's rows with the library declaration first. (FailDuplicate itself would order the two by CompareDeclarations,
+    // whose KeyOf refuses a frozen library node: dev's code, which this unit leaves as it is.)
+    [Fact]
+    public void ALibraryDeclarationAPairwiseCheckPairsKeepsItsGroupRowInItsEntry()
+    {
+        var c = CompilationTestHelper.Parse("let x = 1\n");
+        Assert.True(c.Bind().IsComplete);
+        Koto declaration = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single();
+        Koto library = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().First(x => x.StateOf(c) == BindingState.Resolved);
+        var fail = typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fail.Invoke(c.Binding, [library, BindingFailure.Duplicate, false]);
+        fail.Invoke(c.Binding, [declaration, BindingFailure.Duplicate, false]);
+        var rows = typeof(Binding).GetField("duplicateDeclarations", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var join = rows.GetType().GetMethod("Join", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        join.Invoke(rows, [library]);
+        join.Invoke(rows, [declaration]);
+        var row = rows.GetType().GetProperty("Item", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        row.SetValue(rows, ((Koto?)library, (Koto?)declaration), [library]);
+        row.SetValue(rows, ((Koto?)library, (Koto?)null), [declaration]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((library, BindingFailure.Duplicate), (Assert.Single(own.ForeignFailures).Node, own.ForeignFailures[0].Failure));
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (library.StateOf(c), library.FailureOf(c)));
+        Assert.Equal(((Koto?)library, (Koto?)declaration), ((Koto?, Koto?))row.GetValue(rows, [library])!);
+        Assert.Equal(0, c.Library.Kotonoha.Syntax.Hir.Families.DuplicateDeclarations.Used);
+        var order = (List<Koto>)typeof(Binding).GetField("duplicateOrder", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Collection(order, x => Assert.Same(library, x), x => Assert.Same(declaration, x));
+        join.Invoke(rows, [library]); // A declaration already in a group keeps its row and its one listing.
+        Assert.Equal(2, order.Count);
+        Assert.Same(library, typeof(Binding).GetMethod("FirstDuplicateDeclaration", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, [declaration]));
+        typeof(Binding).GetMethod("RecordDuplicateGroups", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, []);
+        c.Binding.CheckBound();
+        var issues = c.Binding.Issues.Concat(c.Binding.DerivedIssues).ToArray();
+        Assert.Contains(issues, x => ReferenceEquals(x.Node, library) && x.Failure == BindingFailure.Duplicate);
+        Assert.Contains(issues, x => ReferenceEquals(x.Node, declaration) && x.Failure == BindingFailure.Duplicate);
+    }
+
     // R7-E2 E2-1 (PLAN G1083, D-850): a fact-less family-1 problem a program pass records at a frozen library node goes through Core's one
     // store decision (Compilation.StoreOf; ReportProblem's Koto.ReportIn), so it is the program's record, published once, and another
     // compilation over the same library holds none. No program records one today, so the row records one through the recorder after a

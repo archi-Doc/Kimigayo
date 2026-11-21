@@ -142,6 +142,7 @@ public sealed partial class Binding
         }
 
         this.regionVersion = 0;
+        this.borrowVersion = 0;
         this.signatureWalks = 0;
         this.memberWalks = 0;
         this.unreadIdentityWork = 0;
@@ -278,6 +279,7 @@ public sealed partial class Binding
         this.BindBodies();
         this.ValidateBoundDeclarations(mode);
         this.Check(mode);
+        this.borrowsComplete = true; // RetentionState's complete value from here: no borrow writer runs after Check (Binding.RawOrigins.Borrows.cs).
         if (pass.Library is not null)
         {
             // The library module's place in the pass's set, never which pass runs (RB1): the facts a later pass would otherwise form
@@ -297,13 +299,14 @@ public sealed partial class Binding
     // ends the capability epoch): each pass's start, and a refused library pass's end, which leaves both parts empty (PLAN G949 Stage 2 U2a).
     private void StartPass(BindingPass pass, BindingMode mode)
     {
+        this.borrowsComplete = false;
         this.EnterPass(pass);
         this.ResetPass(mode);
     }
 
     // Hands a pass its part: the fields every step writes become the part's lists.
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
-    [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
+    [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions), nameof(borrows))]
     [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations), nameof(foreignFailures))]
     [MemberNotNull(nameof(enumerateIndex), nameof(enumerateIndexPool), nameof(aliasesByDocument), nameof(boundContracts))]
     private void EnterPass(BindingPass pass)
@@ -322,6 +325,7 @@ public sealed partial class Binding
         var layer = this.Library.Layer.Part;
         this.selectableEffectClauses = new(part.CallableEffectClauses, ReferenceEquals(part, layer) ? this.noClauses : layer.CallableEffectClauses);
         this.localRegions = part.Regions;
+        this.borrows = part.Borrows;
         this.keepers = part.Keepers;
         this.contractShapes = part.ContractShapes;
         this.boundedRequirements = part.BoundedRequirements;
@@ -392,6 +396,10 @@ public sealed partial class Binding
         // Each declared slot's keepers (Binding.RawOrigins.Keepers.cs), keyed by reference: a slot is kept only by its declaration's
         // pass, and a list is current while its Pass is RequirementCall, the requirement counter's value at the pass's latest call.
         internal Dictionary<OriginParameter, KeeperList> Keepers { get; } = new(ReferenceEqualityComparer.Instance);
+
+        // The Origin-atom borrows by atom (Binding.RawOrigins.Borrows.cs), keyed by reference: formed while the pass's bodies bind,
+        // checked and marked at its HIR publication.
+        internal Dictionary<BoundOrigin, BorrowList> Borrows { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal uint RequirementCall { get; set; }
 

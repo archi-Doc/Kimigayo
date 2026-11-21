@@ -288,8 +288,7 @@ public sealed partial class Binding
     private SideSelection? ValueSideMember(MemberAccessKoto member, string name, BindingScope scope)
     {
         var receiverType = this.BindNode(member.Left, scope);
-        this.ReceiverThroughLayers(member.Left, receiverType);
-        this.ReceiverElement(member.Left, receiverType);
+        this.ReceiverElement(member.Left, receiverType, this.ReceiverThroughLayers(member.Left, receiverType));
         var side = this.ReceiverMember(member, name, scope, receiverType, out var emptied);
         if (emptied)
         {

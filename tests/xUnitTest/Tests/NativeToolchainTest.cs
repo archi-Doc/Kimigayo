@@ -91,9 +91,11 @@ public sealed class NativeToolchainTest : IDisposable
 
     // R9-B1 part 2 (form J, PLAN G983's manifest share): a manifest field that is missing, of another JSON kind or, for an Int32 row,
     // another number fails at its read with InvalidDataException naming the field, before Tatara is loaded and with the record left
-    // incomplete; a fixed field with another value is not this compiler's. Each row edits one field of an emitted Application's
-    // manifest (a JSON value, or null to remove it). The libraries are read after Tatara is loaded, so their rows need a toolchain.
+    // incomplete; a fixed field with another value is not this compiler's, and a removed member (Tatara B6b5: the toolchain, whatever its
+    // content) asks to re-emit. Each row edits one field of an emitted Application's manifest (a JSON value, or null to remove it). The
+    // libraries are read after Tatara is loaded, so their rows need a toolchain.
     [Theory]
+    [InlineData("toolchain", "{\"llvmBin\": \"../tools\"}", "The link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest.")]
     [InlineData("schemaVersion", "3.5", "'schemaVersion' is not this compiler's")]
     [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
     [InlineData("backendSupport.abiVersion", "2.5", "'backendSupport.abiVersion' is not this compiler's")]
@@ -176,7 +178,6 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(Path.Combine(this.directory, "product.kimi"), "public group Example");
         File.WriteAllText(Path.Combine(this.directory, "tests.kimi"), "let broken =");
         Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
-        project.ProjectFile.LlvmBin = "missing LLVM directory";
         project.KimiOptions.Debug = true;
         Assert.True(await project.Build(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
