@@ -353,7 +353,7 @@ public class BindingTest
     public void RebindingAMilestoneProgramDoesNotAllocate(int number)
     {
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         compilation.Kotonoha.AddSource(new SourceDocument($"Milestone{number}.kimi", DiagnosticCorpus.Milestone(number)));
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));

@@ -129,8 +129,8 @@ public class Solution
         }
 
         var project = this.Projects.Values.Single();
-        if ((this.KimiOptions.Target.Length != 0 && this.KimiOptions.Target != Compiler.WindowsProfile.Target) ||
-            !project.ProjectFile.Targets.Contains(Compiler.WindowsProfile.Target, StringComparer.Ordinal))
+        if ((this.KimiOptions.Target.Length != 0 && this.KimiOptions.Target != Compiler.TargetProfile.Windows.Target) ||
+            !project.ProjectFile.Targets.Contains(Compiler.TargetProfile.Windows.Target, StringComparer.Ordinal))
         {
             throw new CommandInputException("Run requires the Windows x64 target.");
         }

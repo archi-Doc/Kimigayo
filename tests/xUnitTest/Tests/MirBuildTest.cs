@@ -90,7 +90,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         string LibraryMir(BindingMode mode)
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             if (hello)
             {
                 c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
@@ -113,7 +113,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         foreach (var program in new[] { "docs/examples/Hello/Hello.kimi", "tests/milestones/Milestone26.kimi" })
         {
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText(program.Split('/'))));
             Assert.Equal(Binding.Frozen, HirTables.LibraryVersion(c));
             Assert.True(c.Bind().IsComplete, program);
@@ -741,7 +741,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
         c.Bind();

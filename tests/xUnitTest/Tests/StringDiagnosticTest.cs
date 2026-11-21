@@ -76,7 +76,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void LiteralRecoveryDoesNotCrossSourceBoundaries()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("first.kimi", BrokenCall));
         c.Kotonoha.AddSource(new SourceDocument("second.kimi", "let n = (1"));
         c.Bind();

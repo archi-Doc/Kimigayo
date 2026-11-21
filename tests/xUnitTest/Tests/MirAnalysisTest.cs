@@ -830,7 +830,7 @@ public sealed class MirAnalysisTest
     // judges every body with A3 and A5 and collects the same checked set again: a library segment kept across versions (G950-K) is still
     // judged in each.
     [Theory]
-    [InlineData(WindowsProfile.Target)]
+    [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("i686-unknown-linux-gnu")]
     public void TheLibraryHasNoAnalysisProblem(string target)
     {

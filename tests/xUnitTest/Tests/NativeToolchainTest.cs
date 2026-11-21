@@ -202,7 +202,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal("checked", root.GetProperty("status").GetString());
         Assert.Equal("Library", root.GetProperty("outputKind").GetString());
         Assert.Equal(file, root.GetProperty("input").GetString());
-        Assert.Equal(WindowsProfile.Target, root.GetProperty("target").GetString());
+        Assert.Equal(TargetProfile.Windows.Target, root.GetProperty("target").GetString());
         Assert.True(root.GetProperty("debug").GetBoolean());
         Assert.Equal(Compilation.CurrentLanguageVersion, root.GetProperty("languageVersion").GetString());
         Assert.Equal(Compilation.CompilerVersion, root.GetProperty("compilerVersion").GetString());
@@ -250,7 +250,7 @@ public sealed class NativeToolchainTest : IDisposable
     {
         var project = this.Create("public group Example");
         project.ProjectFile.OutputKind = OutputKind.Library;
-        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", WindowsProfile.Target];
+        project.ProjectFile.Targets = ["aarch64-pc-windows-msvc", TargetProfile.Windows.Target];
         project.KimiOptions.Target = selected;
         Assert.Equal(accepted, await project.Build(TestContext.Current.CancellationToken));
         using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project).Record));
@@ -685,7 +685,7 @@ public sealed class NativeToolchainTest : IDisposable
             File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"codec\", \"f\")\n    public unsafe func f() -> i32\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.f()\n");
             Directory.CreateDirectory(Path.Combine(this.directory, "native"));
             File.WriteAllText(Path.Combine(this.directory, "native", "codec.lib"), "not the asserted bytes");
-            project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('0', 64) } };
+            project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('0', 64) } };
         }
 
         Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
@@ -738,7 +738,7 @@ public sealed class NativeToolchainTest : IDisposable
     private Project Hello(string text)
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\"");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), $"::Kimi.Console.writeLine(\"{text}\")");
         Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
         return project;

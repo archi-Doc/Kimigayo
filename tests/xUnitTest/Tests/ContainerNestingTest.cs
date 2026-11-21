@@ -447,7 +447,7 @@ public class ContainerNestingTest
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(c.Kotonoha));
         Assert.NotNull(restored);
         var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        Assert.True(compilation.Prepare(TargetProfile.Windows.Target));
         restored.OnDeserialized(compilation);
         Assert.Empty(TestDiagnostics.Of(restored));
         Assert.Single(Assert.Single(restored.RootKoto.NestedContainers).NestedContainers);

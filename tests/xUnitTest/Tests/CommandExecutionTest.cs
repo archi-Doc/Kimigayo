@@ -209,7 +209,7 @@ public sealed class CommandExecutionTest : IDisposable
     private string Write(string name)
     {
         var file = Path.Combine(this.directory, name + ".kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/{name}.ll\"");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/{name}.ll\"");
         File.WriteAllText(Path.Combine(this.directory, name + ".kimi"), "::Kimi.Console.writeLine(\"Hello\")");
         return file;
     }
@@ -261,7 +261,7 @@ public sealed class CommandExecutionTest : IDisposable
             var project = Path.Combine(this.directory, folder, "Tests.kimiproj");
             Directory.CreateDirectory(Path.GetDirectoryName(project)!);
             File.WriteAllText(Path.Combine(this.directory, folder, "tests.kimi"), "#Test\nfunc passes()\n    $require(1 == 1)\n");
-            File.WriteAllText(project, $"Targets = {{ \"{WindowsProfile.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n");
+            File.WriteAllText(project, $"Targets = {{ \"{TargetProfile.Windows.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n");
             var product = TataraCommandTest.Unit(new());
             var console = Console.Out;
             using var output = new StringWriter();

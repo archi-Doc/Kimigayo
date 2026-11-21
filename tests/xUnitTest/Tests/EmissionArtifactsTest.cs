@@ -24,7 +24,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void PublishesTheMatchedPair()
     {
         var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new()
+        c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new()
         {
             ["unused"] = new() { Kind = "import", Input = "unused.lib" },
             Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Input = "native/codec.lib" }],
@@ -79,7 +79,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void InvalidNativeInputsAreRejectedEvenWhenUnused(string name, string? kind, string input)
     {
         var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { [name] = new() { Kind = kind, Input = input } };
+        c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { [name] = new() { Kind = kind, Input = input } };
         Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
         Assert.NotEmpty(PublicationFailure(c));
@@ -93,7 +93,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void InvalidPackageTargetedSuppliesAreRejectedEvenWhenUnused(string? kind, string input)
     {
         var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Kind = kind, Input = input }] };
+        c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "example.codec", PackageVersion = "1" }, Kind = kind, Input = input }] };
         Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
         Assert.NotEmpty(PublicationFailure(c));
@@ -111,8 +111,8 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void AProjectsOwnBackendEntryCannotPrepare()
     {
         var c = Compilation.CreateForTest();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["kimi_backend"] = new() { Kind = "static", Input = "vendor/kimi_backend.lib" } };
-        Assert.False(c.Prepare(WindowsProfile.Target));
+        c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["kimi_backend"] = new() { Kind = "static", Input = "vendor/kimi_backend.lib" } };
+        Assert.False(c.Prepare(TargetProfile.Windows.Target));
         Assert.Contains(
             TestDiagnostics.Of(c),
             static x => x.Code == nameof(DiagnosticCode.InvalidDependencyConfiguration_Kd) &&
@@ -241,7 +241,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.NotEmpty(PublicationFailure(c));
 
         var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\"");
         File.WriteAllText(Path.Combine(this.directory, "Hello.kimi"), "::Kimi.Console.writeLine(\"Hello, world!\")");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
@@ -288,7 +288,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void AConfigurationFailureLeavesGenerationsRecords()
     {
         var c = this.Create();
-        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = "unused.dll" } };
+        c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["unused"] = new() { Kind = "import", Input = "unused.dll" } };
         FunctionCodegenTest.RemoveTheDropVerdict(c);
         Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
@@ -317,7 +317,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public async Task AnExceptionEndsTheCommandsResultAsFaulted(string phase, int published)
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\"");
         File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
         var console = new DiagnosticContractTest.DiagnosticConsole { LineAction = phase == "report" ? ("Generated LLVM inputs", DiagnosticContractTest.DiagnosticConsole.Fail) : null };
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
@@ -333,7 +333,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         if (phase == "publication")
         {
             var c = this.Create();
-            c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
+            c.Project.ProjectFile.NativeLibraries[TargetProfile.Windows.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
 
             Assert.False(project.PublishArtifacts(c, null, null, out var path));
             Assert.Null(path);
@@ -357,7 +357,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void ANulInsideTheProjectIsPublished()
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
-        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(file, $"Targets={{\"{TargetProfile.Windows.Target}\"}} OutputPath=\"out/Hello.ll\"");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
         var c = this.Create("var x: i32 = 1\nx = x + 1\nrequire x == 2 else => $abort(\"two\")\n", Path.Combine(this.directory, "He\0llo.kimi"));
@@ -412,7 +412,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             "group Native\n    #LibraryImport(\"zlib\", \"inflate\")\n    public unsafe func inflate(value: i32) -> i32\n" +
             "    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n    #LibraryImport(\"codec\", \"decode\")\n    public unsafe func decode(value: i32) -> i32\n" +
             "public func main()\n    var v: i32 = 0\n    unsafe => v = Native.inflate(Native.encode(Native.decode(1)))",
-            settings => settings.NativeLibraries[WindowsProfile.Target] = new()
+            settings => settings.NativeLibraries[TargetProfile.Windows.Target] = new()
             {
                 ["zlib"] = new() { Kind = "import", Input = "zlib.lib" },
                 ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('a', 64) },
@@ -440,7 +440,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             "    #LibraryImport(\"zlib\", \"inflate\")\n    public unsafe func inflate(value: i32) -> i32\n" +
             "    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
             "public func main()\n    var v: i32 = 0\n    var e: u32 = 0\n    unsafe => v = Native.encode(1)\n    unsafe => e = Native.lastError()",
-            settings => settings.NativeLibraries[WindowsProfile.Target] = new()
+            settings => settings.NativeLibraries[TargetProfile.Windows.Target] = new()
             {
                 ["codec"] = new() { Kind = "static", Input = "codec.lib" },
                 ["zlib"] = new() { Kind = "import", Input = "zlib.lib" },
@@ -491,7 +491,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.CreateForeign(
             "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\npublic func main() => ()",
-            settings => settings.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
+            settings => settings.NativeRequirements[TargetProfile.Windows.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } });
         Assert.False(EmissionArtifacts.Publish(c, null, out var path));
         Assert.Null(path);
         Assert.Contains("has no NativeLibraries supply", PublicationFailure(c));
@@ -506,7 +506,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = Compilation.CreateForTest();
         configure(c.Project.ProjectFile);
-        Assert.True(c.Prepare(WindowsProfile.Target));
+        Assert.True(c.Prepare(TargetProfile.Windows.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

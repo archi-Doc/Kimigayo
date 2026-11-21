@@ -108,14 +108,14 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal(this.directory, project.Directory);
         Assert.Equal(OutputKind.Application, project.ProjectFile.OutputKind);
         Assert.Equal("O2", project.ProjectFile.Optimization);
-        Assert.Equal(WindowsProfile.Target, Assert.Single(project.ProjectFile.Targets));
+        Assert.Equal(TargetProfile.Windows.Target, Assert.Single(project.ProjectFile.Targets));
         Assert.True(await solution.Generate(TestContext.Current.CancellationToken));
         var paths = ArtifactPaths.Create(project);
         Assert.True(File.Exists(paths.Ir));
         Assert.True(File.Exists(paths.Manifest));
         Assert.False(File.Exists(paths.Record));
         Assert.False(File.Exists(Path.ChangeExtension(source, ".kimiproj")));
-        Assert.Equal(Path.Combine(this.directory, "bin", WindowsProfile.Target, "Single.O2.exe"), paths.Executable);
+        Assert.Equal(Path.Combine(this.directory, "bin", TargetProfile.Windows.Target, "Single.O2.exe"), paths.Executable);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class SolutionInputTest : IDisposable
         if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64)
         {
             solution.PrepareProject(null);
-            Assert.Equal(WindowsProfile.Target, Assert.Single(Assert.Single(solution.Projects).Value.ProjectFile.Targets));
+            Assert.Equal(TargetProfile.Windows.Target, Assert.Single(Assert.Single(solution.Projects).Value.ProjectFile.Targets));
         }
         else
         {
@@ -148,7 +148,7 @@ public sealed class SolutionInputTest : IDisposable
         File.WriteAllBytes(source, [0xff]);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         var solution = new Solution(new Kimigayo(console));
-        solution.LoadForBuild(null, new() { Target = WindowsProfile.Target }, [source]);
+        solution.LoadForBuild(null, new() { Target = TargetProfile.Windows.Target }, [source]);
         solution.PrepareProject(null);
         Assert.Equal(1, await solution.Run(TestContext.Current.CancellationToken)); // The toolchain's failure before launch (IMPL 20.3).
         Assert.Contains("Run 'kimi build' first", console.Text, StringComparison.Ordinal);
@@ -211,7 +211,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
         Assert.Equal("corrupt lock", File.ReadAllText(lockPath));
-        var resolution = DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        var resolution = DependencyResolver.Resolve(path, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         DependencyLock.Update(lockPath, resolution, TestContext.Current.CancellationToken);
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         var bytes = File.ReadAllBytes(lockPath);
@@ -235,7 +235,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         var lockPath = DependencyLock.PathForProject(path);
         Assert.False(File.Exists(lockPath));
-        var resolution = DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        var resolution = DependencyResolver.Resolve(path, TargetProfile.Windows.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         Assert.True(resolution.Product.IsResolved);
         Assert.False(resolution.Test.IsResolved);
         DependencyLock.Update(lockPath, resolution, TestContext.Current.CancellationToken);
@@ -243,7 +243,7 @@ public sealed class SolutionInputTest : IDisposable
         Assert.True(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
         Assert.True(await solution.Generate(TestContext.Current.CancellationToken));
-        var ir = Path.Combine(this.directory, "bin", WindowsProfile.Target, "Root.ll");
+        var ir = Path.Combine(this.directory, "bin", TargetProfile.Windows.Target, "Root.ll");
         Assert.True(File.Exists(ir));
         Assert.False(File.Exists(Path.ChangeExtension(ir, ".link.build.json")));
         File.AppendAllText(librarySource, "\npublic func unused() => missing()");
@@ -266,7 +266,7 @@ public sealed class SolutionInputTest : IDisposable
     private Solution Load(params string[] paths)
     {
         var solution = new Solution(Compilation.CreateForTest().Kimigayo);
-        solution.LoadForBuild(null, new() { Target = WindowsProfile.Target }, paths);
+        solution.LoadForBuild(null, new() { Target = TargetProfile.Windows.Target }, paths);
         solution.PrepareProject(null);
         return solution;
     }

@@ -57,7 +57,7 @@ public class InferenceSlotScalingTest
             var source = "func id<T>(v: T) -> T => v@move\nfunc f() -> i32\n    let n: i32 = 1\n    let r1 = n@ref\n" +
                 string.Concat(Enumerable.Range(1, layers - 1).Select(static i => $"    let r{i + 1} = r{i}@ref\n")) + $"    let z = id(r{layers})\n    return z\n";
             var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
+            Assert.True(c.Prepare(TargetProfile.Windows.Target));
             c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
             c.Binding.MeasureCallInference = true;
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));

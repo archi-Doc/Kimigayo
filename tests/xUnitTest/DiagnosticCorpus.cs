@@ -255,12 +255,12 @@ internal static class DiagnosticCorpus
         try
         {
             var project = Path.Combine(folder, "Program.kimiproj");
-            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{WindowsProfile.Target}\"}}\n{settings}");
+            File.WriteAllText(project, $"OutputKind=\"{outputKind}\" Targets={{\"{TargetProfile.Windows.Target}\"}}\n{settings}");
             File.WriteAllText(Path.Combine(folder, "Program.kimi"), source);
             Assert.True(
                 Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
                 string.Join(", ", failures));
-            return CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+            return CheckService.Run(loaded, TargetProfile.Windows.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         }
         finally
         {

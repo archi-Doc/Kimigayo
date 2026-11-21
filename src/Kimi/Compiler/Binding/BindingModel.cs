@@ -461,7 +461,7 @@ public sealed class BoundType : IEquatable<BoundType?>
     // The width in bits of isize and usize for every Compilation, with or without a target: the profile's (SPEC 22, O-79 (a); IMPL
     // 21.1.3; DECISIONS BU-130), from IrTarget's row for its triple, read once by Row; every reader of their width asks the Type (Width).
     // A target's own width is only the pointerWidth Condition's (SPEC 19.2). Declared before the static Types, whose rows read it.
-    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(WindowsProfile.Target)).PointerWidth;
+    private static readonly int SizeWidth = IrTarget.Create(TargetTriple.Parse(TargetProfile.Windows.Target)).PointerWidth;
 
     private readonly NumericCategory numeric;
     private readonly byte width;
