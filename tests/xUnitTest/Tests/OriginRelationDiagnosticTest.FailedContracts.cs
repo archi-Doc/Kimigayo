@@ -187,7 +187,7 @@ public partial class OriginRelationDiagnosticTest
             "    public let rb: ref/i32 during b\n    public init(ra: ref/i32 during a, rb: ref/i32 during b)\n" +
             "        self.ra = ra\n        self.rb = rb\n" +
             "func h(o: ref/D{y}, p: ref/D{w}) -> ref/i32 during w.b => o.ra\n",
-            [],
+            ["UnprovenOriginRelation_Kd o.ra"],
             "struct D {a, b}\n    origin a outlives static\n    public let ra: ref/i32 during a\n" +
             "    public let rb: ref/i32 during b\n    public init(ra: ref/i32 during a, rb: ref/i32 during b)\n" +
             "        self.ra = ra\n        self.rb = rb\n" +
@@ -208,7 +208,7 @@ public partial class OriginRelationDiagnosticTest
             "struct C {s}\n    public let r: ref/i32 during s\n" +
             "    public init(r: ref/i32 during s) => self.r = r\n" +
             "func g(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    origin b == zz\n    return b\n",
-            [],
+            ["UnprovenOriginRelation_Kd b"],
             "struct C {s}\n    public let r: ref/i32 during s\n" +
             "    public init(r: ref/i32 during s) => self.r = r\n" +
             "func g(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    origin b == a\n    return b\n",
@@ -233,7 +233,7 @@ public partial class OriginRelationDiagnosticTest
             "    public init(r: ref/i32 during s) => self.r = r\n" +
             "func g(a: ref/i32, b: ref/i32, c: ref/i32) -> ref/i32 during a\n    origin b outlives c\n" +
             "    origin c outlives zz\n    return b\n",
-            [],
+            ["UnprovenOriginRelation_Kd b"],
             null,
             []
         },
@@ -256,7 +256,7 @@ public partial class OriginRelationDiagnosticTest
             "    public let rb: ref/i32 during b\n    public init(ra: ref/i32 during a, rb: ref/i32 during b)\n" +
             "        self.ra = ra\n        self.rb = rb\n" +
             "    public func m(self: ref/Self, other: ref/D{y}) -> ref/i32 during y.a => other.rb\n",
-            [],
+            ["UnprovenOriginRelation_Kd other.rb"],
             "struct D {a, b}\n    origin b outlives a\n    public let ra: ref/i32 during a\n" +
             "    public let rb: ref/i32 during b\n    public init(ra: ref/i32 during a, rb: ref/i32 during b)\n" +
             "        self.ra = ra\n        self.rb = rb\n" +
@@ -278,7 +278,7 @@ public partial class OriginRelationDiagnosticTest
             "struct C {s}\n    public let r: ref/i32 during s\n" +
             "    public init(r: ref/i32 during s) => self.r = r\n" +
             "func g(a: ref/i32, b: ref/i32, l: ref/i32) -> ref/i32 during a\n    origin b = a\n    return l\n",
-            [],
+            ["UnprovenOriginRelation_Kd l"],
             null,
             []
         },
@@ -287,7 +287,7 @@ public partial class OriginRelationDiagnosticTest
             "struct D {a, b}\n    origin b = a\n    public let r: ref/i32 during a\n" +
             "    public init(r: ref/i32 during a) => self.r = r\n" +
             "    public func m(self: ref/Self, l: ref/i32 during b) -> ref/i32 during a => l\n",
-            [],
+            ["UnprovenOriginRelation_Kd l"],
             null,
             []
         },
@@ -296,7 +296,7 @@ public partial class OriginRelationDiagnosticTest
             "func g(a: ref/i32) -> ref/i32 during a\n    origin zz outlives a\n" +
             "    func inner(l: ref/i32, k: ref/i32) -> ref/i32 during a\n        origin l outlives yy\n" +
             "        return l\n    return a\n",
-            [],
+            ["UnprovenOriginRelation_Kd l"],
             "func g(a: ref/i32) -> ref/i32 during a\n    origin static outlives a\n" +
             "    func inner(l: ref/i32, k: ref/i32) -> ref/i32 during a\n        origin l outlives a\n" +
             "        return l\n    return a\n",
@@ -308,7 +308,7 @@ public partial class OriginRelationDiagnosticTest
             "    public init(r: ref/i32 during a) => self.r = r\n" +
             "    public func m(self: ref/Self, l: ref/i32, k: ref/i32) -> ref/i32 during a\n" +
             "        origin yy outlives a\n        return l\n",
-            [],
+            ["UnprovenOriginRelation_Kd l"],
             "struct D {a}\n    public let r: ref/i32 during a\n" +
             "    public init(r: ref/i32 during a) => self.r = r\n" +
             "    public func m(self: ref/Self, l: ref/i32, k: ref/i32) -> ref/i32 during a\n" +
@@ -319,7 +319,7 @@ public partial class OriginRelationDiagnosticTest
         {
             "func g(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    origin b == zz\n" +
             "    func inner(l: ref/i32 during b) -> ref/i32 during a => l\n    return a\n",
-            [],
+            ["UnprovenOriginRelation_Kd l"],
             "func g(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    origin b == a\n" +
             "    func inner(l: ref/i32 during b) -> ref/i32 during a => l\n    return a\n",
             []
@@ -330,7 +330,7 @@ public partial class OriginRelationDiagnosticTest
             "    public let rb: ref/i32 during b\n    public init(ra: ref/i32 during a, rb: ref/i32 during b)\n" +
             "        self.ra = ra\n        self.rb = rb\n" +
             "func h(o: ref/D{y}, p: ref/D{w}) -> ref/i32 during w.a => o.rb\n",
-            [],
+            ["UnprovenOriginRelation_Kd o.rb"],
             "struct D {a, b}\n    origin b outlives a\n    origin a == static\n" +
             "    public let ra: ref/i32 during a\n    public let rb: ref/i32 during b\n" +
             "    public init(ra: ref/i32 during a, rb: ref/i32 during b)\n        self.ra = ra\n" +
@@ -353,7 +353,7 @@ public partial class OriginRelationDiagnosticTest
 
         // A position that exists only in the pair binder's borrow cases (the record's Condition): `b == zz`'s repair `b == a` proves it,
         // `c == zz`'s does not.
-        { PairReturn + "    origin b == zz\n    return x\n", [], PairReturn + "    origin b == a\n    return x\n", [] },
+        { PairReturn + "    origin b == zz\n    return x\n", ["UnprovenOriginRelation_Kd x"], PairReturn + "    origin b == a\n    return x\n", [] },
         {
             PairReturn + "    origin c == zz\n    return x\n", [Unproven + "x"], PairReturn + "    origin c == a\n    return x\n",
             [Unproven + "x"]
@@ -361,7 +361,7 @@ public partial class OriginRelationDiagnosticTest
 
         // The record's Condition decides: `d >= e` holds only in the borrow cases (y's pair layer), where the repair `e == a` proves the
         // record, so it is derived; in every case it would not be.
-        { PairCondition + "    origin e == zz\n    return x\n", [], PairCondition + "    origin e == a\n    return x\n", [] },
+        { PairCondition + "    origin e == zz\n    return x\n", ["UnprovenOriginRelation_Kd x"], PairCondition + "    origin e == a\n    return x\n", [] },
     };
 
     [Theory]

@@ -94,7 +94,7 @@ public class OwnershipJoinTest
     public void BorrowJoinCannotChangeItsContract(string annotation, string first, string second)
     {
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected: " + annotation + " = if c => " + first + " else => " + second + "\ninspect(true)");
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         Assert.False(c.Generate(TextWriter.Null));
     }
 

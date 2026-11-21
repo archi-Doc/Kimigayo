@@ -57,7 +57,7 @@ public class DependentPointerEmissionTest
     public void RawAcquisitionCannotExtendThePointeesOrigin()
     {
         var c = MinimalEmissionTest.Analyze("func read(pointer: raw/(ref/i32 during a)) -> ref/i32 during static\n    unsafe => return *pointer");
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         Assert.False(c.Generate(TextWriter.Null));
     }
 

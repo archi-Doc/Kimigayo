@@ -312,10 +312,11 @@ public sealed partial class MirBorrowsTest
     // `==` or `outlives`); a comparison with a Function Type reads the contract alone (O-61 (a)) and is no member. R reads as its solved value,
     // the meet of its bounds (15.3.6), so R's one bound p makes R outlive p and p outlive R, but the A5 oracle reads that value at a longer end
     // only (G572's named limit, beside r18's; lifted by the unit that reads the shorter end). Each row asserts today's records so a change is
-    // seen: a stated local through `uniq` (i1), a call's equal Origins in either order (e1, also q5; i3), a clause `r == p` (c5i, also a4v)
+    // seen: a stated local through `uniq` (i1, its fit at the initializer `u`, R7-O1 H's D5), a call's equal Origins in either order (e1,
+    // also q5; i3), a clause `r == p` (c5i, also a4v)
     // and `s == r` (v3), the laws `r == (r and p)` (l2v) and `(r and p) outlives r` (l4v), and the Closure writing p into its `[var r]` (z3v).
     [Theory]
-    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "let h: uniq/(ref/i32 during p) = u", null, "uniq/(ref/i32 during p)")]
+    [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    var outer = func [var r] ()\n        let u = r@uniq\n        let h: uniq/(ref/i32 during p) = u\n        see(h@follow)\n    outer()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "= u\n        see(h", "u", "uniq/(ref/i32 during p)")]
     [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(h, r@uniq)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "r@uniq", null, "r@uniq")]
     [InlineData("func same(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o))\n    ()\nfunc f(p: ref/i32)\n    var r = p\n    var s = p\n    var outer = func [var r] (h: uniq/(ref/i32 during p))\n        same(r@uniq, h)\n    outer(s@uniq)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "same(r@uniq, h)", "h", null)]
     [InlineData(See + "func f(p: ref/i32)\n    var r = p\n    let c = func [r] () -> i32\n        let w: i32 = 1\n            origin r == p\n        return w\n    let n = c()\n    see(n@ref)\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "origin r == p", null, null)]
@@ -382,10 +383,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("func f(p: ref/i32 during x) -> ref/i32 during x\n    let outer = func (a: ref/i32)\n        let make = func (b: ref/i32)\n            var r = b\n            return func [r] () => r\n        return make(a)\n    let g = outer(p)\n    return g()\n" + Main)]
     public void AMakersRegionReachesItsCallerAsItsSources(string source) => MirTargetSide.Check(source);
 
-    // The invalid counterparts: the caller's write under the result (m3) and a chain between two parameters of the maker's call (m14).
+    // The invalid counterparts: the caller's write under the result (m3) and a chain between two parameters of the maker's call (m14, at
+    // the returned value: R7-O1 H, A5's record at the value).
     [Theory]
     [InlineData(See + "func t()\n    var a: i32 = 1\n    let make = func (p: ref/i32)\n        var r = p\n        return func [r] () => r\n    let g = make(a@ref)\n    let v = g()\n    a = 2\n    see(v)\n" + Main, DiagnosticCode.ComparisonLoanConflict_Kd, "a = 2", null)]
-    [InlineData("func f(p: ref/i32 during x, q: ref/i32 during y, k: bool) -> ref/i32 during x\n    let make = func (a: ref/i32, b: ref/i32)\n        var r = a\n        if k => r = b\n        return func [r] () -> ref/i32 during r => r\n    let g = make(p, q)\n    return g()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "return g()", null)]
+    [InlineData("func f(p: ref/i32 during x, q: ref/i32 during y, k: bool) -> ref/i32 during x\n    let make = func (a: ref/i32, b: ref/i32)\n        var r = a\n        if k => r = b\n        return func [r] () -> ref/i32 during r => r\n    let g = make(p, q)\n    return g()\n" + Main, DiagnosticCode.UnprovenOriginRelation_Kd, "return g()", "g()")]
     public void AMakersRegionKeepsItsSourcesAtTheCaller(string source, DiagnosticCode code, string context, string? subject)
         => MirTargetSide.Check(source, (code, MirTargetSide.At(context, subject)));
 }
