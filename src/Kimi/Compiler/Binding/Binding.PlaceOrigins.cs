@@ -111,10 +111,12 @@ public sealed partial class Binding
 
     // SPEC 15.6.3, 13.5.5, 3.4.3: a Borrow of the referent that `layers` safe borrow layers of `reference`, stored at `holder`, reach (a
     // follow, a Subject's Reborrow, a read in place or through several layers): those layers first (MeetLayers), then, unless one of
-    // them is shared, the layers `holder` is reached through. A Type that is no safe borrow layer keeps its own Origin.
+    // them is shared, the layers `holder` is reached through. A Type that is neither a safe borrow layer nor a pair layer (which
+    // MeetLayers meets by its cases) keeps its own Origin; null when nothing on the path is dereferenced (pair layers admitting only
+    // owner select the Place itself, SPEC 13.5.5, below a root), whose caller names the Place.
     private BoundOrigin? ReferentOrigin(Koto holder, BoundType? reference, int layers = 1)
     {
-        if (reference is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || !IsBorrow(reference.Semantics))
+        if (!TryPairLayer(reference, out _, out _) && (reference is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 } || !IsBorrow(reference.Semantics)))
         {
             return reference?.Origin;
         }
