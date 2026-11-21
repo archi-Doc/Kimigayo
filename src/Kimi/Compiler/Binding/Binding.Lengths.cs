@@ -325,7 +325,7 @@ public sealed partial class Binding
         var name = TypeSpelling(syntax);
         if (syntax is MemberAccessKoto member)
         {
-            return this.LengthArgumentSymbol(member, scope)?.Kind == BindingSymbolKind.Property;
+            return this.LengthArgumentSymbol(member, scope) is { } length && (length.Member ?? length.Hidden)?.Kind == BindingSymbolKind.Property;
         }
 
         return name is not null && this.Lookup(name, scope, syntax) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
@@ -707,7 +707,18 @@ public sealed partial class Binding
 
         if (syntax is MemberAccessKoto member && member.Right is not IdentifierNameKoto)
         {
-            var symbol = this.Supported(member, this.LengthArgumentSymbol(member, scope));
+            if (this.LengthArgumentSymbol(member, scope) is not { } length)
+            {
+                return null;
+            }
+
+            if (length is { Member: null, Hidden: { } hidden })
+            {
+                this.PublishHiddenMember(member, hidden); // SPEC 9.4: the group's member is inaccessible from the use.
+                return null;
+            }
+
+            var symbol = this.Supported(member, length.Member);
             if (symbol is null)
             {
                 return null;
@@ -722,15 +733,17 @@ public sealed partial class Binding
         return this.BindNode(syntax, scope);
     }
 
-    private BindingSymbol? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
+    private MemberSelection? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
     {
         if (this.TypeName(member.Left, scope) is not { Declaration: GroupKoto } qualifier ||
-            !this.scopes.TryGetValue(qualifier.Declaration, out var members) || TypeSpelling(member.Right) is not { } name)
+            !this.scopes.ContainsKey(qualifier.Declaration) || TypeSpelling(member.Right) is not { } name)
         {
             return null;
         }
 
+        // SPEC 9.6, 9.4: the group's member in the Value role (LookupMember): accessible from the use, or the inaccessible one it met (its
+        // former's record; this question records nothing).
         PublishQualifier(member.Left, qualifier);
-        return members.Values.GetValueOrDefault(name);
+        return this.LookupMember(this.OwnType(qualifier)!, name, scope, LookupRole.Value);
     }
 }

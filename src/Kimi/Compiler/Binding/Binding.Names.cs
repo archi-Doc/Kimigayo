@@ -59,6 +59,43 @@ public sealed partial class Binding
         return this.BindReference(node, symbol, scope);
     }
 
+    // A value's declaration queried for its Type as a use reads it: a Property's header (its and its storage's Types belong there; a
+    // use never re-enters accessor bodies; a demand of the header while it is computed is its re-entry, which the Signature kind's rule
+    // answers in BindHeader: DECISIONS BU-105, G812 ruling 167), another variable's declaration.
+    private void QueryValueType(BindingSymbol symbol)
+    {
+        if (symbol.Type is not null || symbol.Declaration is not VariableKoto variable)
+        {
+            return;
+        }
+
+        if (variable is not PropertyKoto)
+        {
+            // A use binds a declaration this pass has not bound yet (BindReference), which consults it there (BindVariable); a bound one
+            // without a Type is the failed slot, which its use consults and rests on (SPEC 23.1.2; PLAN G1110, D-865).
+            if (this.RecordedState(variable) == BindingState.Unvisited)
+            {
+                this.BindVariable(variable, symbol.Scope);
+            }
+            else
+            {
+                this.Consulted(variable);
+            }
+
+            return;
+        }
+
+        this.BindHeader(variable.BoundSymbol!);
+    }
+
+    // A value's declared Type for a member step (SPEC 9.6): its declaration queried (QueryValueType); none for a Property its header
+    // refused or whose header query failed (its re-entry's cycle, recorded at the declaration).
+    private BoundType? DeclaredValueType(BindingSymbol symbol)
+    {
+        this.QueryValueType(symbol);
+        return symbol.Property?.Refusal is null ? symbol.Type : null;
+    }
+
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
@@ -117,25 +154,12 @@ public sealed partial class Binding
 
         if (symbol.Type is null && symbol.Declaration is VariableKoto variable)
         {
-            if (variable is PropertyKoto)
+            // SPEC 23.1.2 (DECISIONS BU-105): a use of a failed header (Error, its re-entry's cycle) rests on the declaration's record in
+            // every binding of the pass; one of a header without a Type, on the part that gives it.
+            this.QueryValueType(symbol);
+            if (symbol.Type is null && variable is PropertyKoto)
             {
-                // Property and storage Types belong to the header. A use never re-enters accessor bodies. SPEC 23.1.2 (DECISIONS BU-105):
-                // a use of a failed header (Error, its re-entry's cycle) rests on the declaration's record in every binding of the pass;
-                // one of a header without a Type, on the part that gives it.
-                var declaration = variable.BoundSymbol!;
-                this.BindHeader(declaration);
-                if (symbol.Type is null)
-                {
-                    this.Consulted(this.QueryRecord(declaration, DeclQueryKind.Signature) ?? variable.TypeKoto ?? variable.InitializerKoto ?? variable);
-                }
-            }
-            else if (this.RecordedState(variable) == BindingState.Unvisited)
-            {
-                this.BindVariable(variable, symbol.Scope); // A use binds a declaration this pass has not bound yet (BindReference).
-            }
-            else
-            {
-                this.Consulted(variable); // SPEC 23.1.2: a bound declaration without a Type is the failed slot; its use rests on it.
+                this.Consulted(this.QueryRecord(variable.BoundSymbol!, DeclQueryKind.Signature) ?? variable.TypeKoto ?? variable.InitializerKoto ?? variable);
             }
         }
 

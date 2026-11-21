@@ -1145,6 +1145,28 @@ public sealed partial class HirFormsTest
         Assert.Equal(default, HirTables.PlanOf(statement).Adjust); // A publish clears it, so no earlier pass's take claims the node (Binding.Claimed).
     }
 
+    // SPEC 8.5.2, 9.6 (R7-N1 c-b; F's N1c ruling 36): a projection path names a Type (its published lookup PathEnd.Projection), so the HIR
+    // publishes every node of it, the contract-qualified head `L.(C)` included, as Syntax, a Type reading nothing evaluates, and no node is
+    // a broken contract (Z1's HasFacts) where the path is the left of a static call (with a Type or a Type parameter at its head), of a
+    // Case, of a nested projection, or of a nested Type's Case in a join. The programs are valid. Fail-before: each head `L.(C)` carries no
+    // symbol, so it was a PrimitiveOp lacking a sequence's form: Broken, InternalInvariant_Kd from the builder (`kimi check`).
+    [Theory]
+    [InlineData("contract C\n    associate Item\nstruct P\n    public init() => ()\n    public func make() -> i32 => 7\nstruct S\n    Self is C\n    associate C.Item is P\nfunc g() -> i32 => S.(C).Item.make()\n", "S.(C)")]
+    [InlineData("contract K\n    func mk() -> i32\ncontract E\n    associate Item\nstruct Q<U>\n    U is E\n    U.(E).Item is K\n    public func g() -> i32 => U.(E).Item.mk()\n", "U.(E)")]
+    [InlineData("contract C<T>\n    associate Item\nenum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is M\nfunc g() -> i32 => S.(C<i32>).Item.A.f()\n", "S.(C<i32>)")]
+    [InlineData("enum M\n    A\n    B(i32)\n    public func f(self) -> i32 => 1\n    public func make() -> i32 => 7\ncontract D\n    associate X\n    Self.(D).X is M\ncontract C\n    associate Item is D\nfunc g<T>() -> i32\n    T is C\n    return T.(C).Item.(D).X.A.f()\n", "T.(C).Item.(D)")]
+    [InlineData("contract C<T>\n    associate Item\nstruct P\n    public init() => ()\n    public enum N\n        A\n        B(i32)\n        public func f(self) -> i32 => 1\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\nfunc g(c: bool) -> i32\n    let x = if c => S.(C<i32>).Item.N.A.f() else => 0\n    return x\n", "S.(C<i32>)")]
+    public void AProjectionPathIsATypeReading(string source, string head)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        Assert.Empty(CompilationTestHelper.BindingErrors(c));
+        var projections = Reachable(c.Kotonoha).Where(static x => HirTables.LookupOf(x) == PathEnd.Projection).ToArray();
+        Assert.Contains(projections, x => x.ToString() == head);
+        Assert.All(projections, static x => Assert.Equal((x.ToString(), HirOp.Syntax), (x.ToString(), HirTables.Op(x))));
+        Assert.Empty(c.Kotonoha.Syntax.Hir.Broken!);
+    }
+
     // The same over the accepted SPEC examples and the corpus (R5's sweep): no Place the builder reads by its row has it unset or failed.
     [Theory]
     [MemberData(nameof(AcceptedPrograms))]

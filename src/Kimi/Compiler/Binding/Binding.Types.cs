@@ -392,8 +392,7 @@ public sealed partial class Binding
 
             syntax.BoundSymbol = symbol;
 
-            var projected = this.types.Intern(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self, this.ProjectionContract(symbol, reference)]);
-            return this.NormalizedProjection(projected, scope, applyingOrigins);
+            return this.NormalizedProjection(this.ProjectionIdentity(self, symbol, reference, null), scope, applyingOrigins);
         }
 
         if (symbol.Kind == BindingSymbolKind.SemanticsTarget && !IsDirectObjectTarget(syntax))
