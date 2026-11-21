@@ -80,12 +80,11 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2: whether a declaration is failed for the check reading it: Invalid, but not the declaration whose own validation step
-    // runs, whatever that step recorded against it (validationStep: a self-read is no failed input), and not a declaration whose own
-    // failure is its premise error, which keeps its context for every reader (SPEC 8.2.3, KeepsPremiseErrorContext; F's C2 ruling 327:
-    // k2n's `Self is ObjectPayload` in K's later rounds and in its requirement's view). Every read of a declaration's failure in a proof
-    // goes through it: its context (InvalidDeclarationCause), a leaf capability's Type, a conformance's Contract.
+    // runs, whatever that step recorded against it (validationStep: a self-read is no failed input). Every read of a declaration's
+    // failure in a proof goes through it: its context (InvalidDeclarationCause, which a leaf capability's Type reads too: a declaration
+    // whose own failure is its premise error keeps it, SPEC 8.2.3; F's C2 ruling 327) and a conformance's Contract.
     private bool DeclarationFailed(Koto declaration)
-        => declaration.BindingState == BindingState.Invalid && !ReferenceEquals(declaration, this.validationStep) && !this.KeepsPremiseErrorContext(declaration);
+        => declaration.BindingState == BindingState.Invalid && !ReferenceEquals(declaration, this.validationStep);
 
     private Koto? InvalidDeclarationCause(Koto declaration)
     {
@@ -94,7 +93,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return this.UnresolvedPart(declaration) ?? (KeepsSignature(declaration) ? null : declaration);
+        return this.UnresolvedPart(declaration) ?? (KeepsSignature(declaration) || this.KeepsPremiseErrorContext(declaration) ? null : declaration);
     }
 
     // The declaration contexts a Type's parts name: whether one is in a failed context and whether one is not yet resolved, each distinct
