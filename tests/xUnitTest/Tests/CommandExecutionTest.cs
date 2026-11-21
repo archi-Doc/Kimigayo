@@ -3,6 +3,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Kimi;
 using Kimi.Command;
 using Kimi.Compiler;
@@ -223,6 +224,72 @@ public sealed class CommandExecutionTest : IDisposable
         public ConsoleTests() => Directory.CreateDirectory(this.directory);
 
         public void Dispose() => Directory.Delete(this.directory, true);
+
+        // The removed options (Tatara B6b4, decision 20; design §5.2 rows 1, 2 and 4, C4, N4-2, N4-3): a command line naming
+        // --ToolchainRoot or --LlvmBin, in any spelling the parser binds as an option, fails before its command runs, test and toolchain
+        // verify included: each occurrence's text on standard error, nothing on standard output (check --Format json writes no
+        // document), no file written, exit 1. After -- the name is no option, and the input rules decide.
+        [Theory]
+        [InlineData("build <lib> --ToolchainRoot C:\\tc", "--ToolchainRoot")]
+        [InlineData("test <lib> --LlvmBin x", "--LlvmBin")]
+        [InlineData("toolchain verify --ToolchainRoot x", "--ToolchainRoot")]
+        [InlineData("run <lib> --LlvmBin x", "--LlvmBin")]
+        [InlineData("build <lib> -ToolchainRoot x", "--ToolchainRoot")]
+        [InlineData("build <lib> --TOOLCHAINROOT x", "--ToolchainRoot")]
+        [InlineData("build <lib> --LlvmBin y --ToolchainRoot x", "--LlvmBin", "--ToolchainRoot")]
+        [InlineData("check <lib> --Format json --ToolchainRoot y", "--ToolchainRoot")]
+        [InlineData("build <lib> -- --ToolchainRoot")]
+        public async Task ARemovedOptionFailsTheLineBeforeItsCommand(string line, params string[] removed)
+        {
+            var folder = Path.Combine(this.directory, "Lib");
+            TataraCommandTest.WriteLibrary(folder);
+            var files = TataraCommandTest.Files(this.directory);
+            var console = new TataraCommandTest.SessionConsole();
+            var product = TataraCommandTest.Unit(console);
+            var (output, error) = (Console.Out, Console.Error);
+            using var stdout = new StringWriter();
+            using var stderr = new StringWriter();
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            try
+            {
+                Environment.ExitCode = 0;
+                await product.Execute(line.Replace("<lib>", Path.Combine(folder, "Lib.kimiproj"), StringComparison.Ordinal), product.Context.ServiceProvider, TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetOut(output);
+                Console.SetError(error);
+            }
+
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            var texts = stderr.ToString().Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Where(x => x.Contains(" was removed: ", StringComparison.Ordinal));
+            Assert.Equal(removed.Select(x => x + " was removed: Kimi carries its toolchain."), texts);
+            if (removed.Length != 0)
+            {
+                Assert.Equal(1, exit);
+                Assert.Equal(string.Empty, stdout.ToString() + console.Text);
+                Assert.Equal(files, TataraCommandTest.Files(this.directory));
+            }
+        }
+
+        // The removal names only the removed options (C-447 N8): toolchain verify --Report <path> binds its option and writes its report
+        // (scripts/build-kimi.ps1 reads it).
+        [Fact]
+        public async Task ToolchainVerifyStillBindsItsReport()
+        {
+            Assert.SkipUnless(OperatingSystem.IsWindows(), "Tatara runs on Windows.");
+            var report = Path.Combine(this.directory, "verify report.json");
+            var product = TataraCommandTest.Unit(new());
+            Environment.ExitCode = 0;
+            await product.Execute($"toolchain verify --Report \"{report}\"", product.Context.ServiceProvider, TestContext.Current.CancellationToken);
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            Assert.Equal(0, exit);
+            using var record = JsonDocument.Parse(File.ReadAllText(report));
+            Assert.Equal("passed", record.RootElement.GetProperty("status").GetString());
+        }
 
         // kimi test's selection (IMPL 20.6.4: "2: invalid options, settings or selection"): a missing input and a solution file nested
         // deeper than the configuration reader reads (the file's failure, never the runner's 3).

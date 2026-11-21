@@ -9,12 +9,29 @@ namespace XunitTest;
 public class CommandOptionsTest
 {
     [Fact]
-    public void ManifestBuildPreservesPathsAndToolOverrides()
+    public void ManifestBuildPreservesPathsAndOptionValues()
     {
-        Assert.True(SimpleParser.TryParseOptions<BuildCommand.Options>(["--Manifest", "folder with spaces/app.link.json", "--ToolchainRoot", "tools", "--LlvmBin", "LLVM tools"], out var options));
+        Assert.True(SimpleParser.TryParseOptions<BuildCommand.Options>(["--Manifest", "folder with spaces/app.link.json", "--Target", "a target"], out var options));
         Assert.Equal("folder with spaces/app.link.json", options!.Manifest);
-        Assert.Equal("tools", options.ToolchainRoot);
-        Assert.Equal("LLVM tools", options.LlvmBin);
+        Assert.Equal("a target", options.Target);
+    }
+
+    // A removed option is named by SimpleCommandLine's own option rule (Tatara B6b4, C4): each spelling the parser binds as an option,
+    // here Target's, names a removed option when it carries the removed name, and a word the parser does not bind names none.
+    [Theory]
+    [InlineData("--Target", true)]
+    [InlineData("-Target", true)]
+    [InlineData("--TARGET", true)]
+    [InlineData("---target", true)]
+    [InlineData("Target", false)]
+    [InlineData("--Target=x", false)]
+    [InlineData("\"--Target\"", false)]
+    public void ARemovedOptionIsNamedAsTheParserBindsAnOption(string spelling, bool binds)
+    {
+        Assert.True(SimpleParser.TryParseOptions<KimiOptions>(spelling + " value", out var options));
+        Assert.Equal(binds, options!.Target == "value");
+        string[] expected = binds ? ["--LlvmBin was removed: Kimi carries its toolchain."] : [];
+        Assert.Equal(expected, KimiOptions.RemovedOptions(spelling.Replace("Target", "LlvmBin", StringComparison.OrdinalIgnoreCase) + " value"));
     }
 
     [Theory]
@@ -54,23 +71,23 @@ public class CommandOptionsTest
     [Fact]
     public void RawCommandLinePreservesQuotedPaths()
     {
-        var command = KimiOptions.ExpandFlags("--locked --ToolchainRoot \"folder with spaces\" --Debug true");
+        var command = KimiOptions.ExpandFlags("--locked --Target \"folder with spaces\" --Debug true");
         Assert.True(SimpleParser.TryParseOptions<KimiOptions>(command, out var options));
         Assert.True(options!.Locked);
         Assert.True(options.Debug);
-        Assert.Equal("folder with spaces", options.ToolchainRoot);
+        Assert.Equal("folder with spaces", options.Target);
     }
 
     [Theory]
-    [InlineData("--no-build --ToolchainRoot \"folder with spaces\" --Debug true", false)]
-    [InlineData("--no-build --locked --ToolchainRoot \"folder with spaces\" --Debug true", true)]
+    [InlineData("--no-build --Target \"folder with spaces\" --Debug true", false)]
+    [InlineData("--no-build --locked --Target \"folder with spaces\" --Debug true", true)]
     public void RunFlagsPreserveInheritedOptionsAndQuotedPaths(string commandLine, bool locked)
     {
         Assert.True(SimpleParser.TryParseOptions<RunCommand.Options>(KimiOptions.ExpandFlags(commandLine), out var options));
         Assert.True(options!.NoBuild);
         Assert.Equal(locked, options.Locked);
         Assert.True(options.Debug);
-        Assert.Equal("folder with spaces", options.ToolchainRoot);
+        Assert.Equal("folder with spaces", options.Target);
     }
 
     [Fact]
