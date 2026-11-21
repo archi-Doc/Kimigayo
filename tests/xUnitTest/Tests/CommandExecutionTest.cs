@@ -250,6 +250,40 @@ public sealed class CommandExecutionTest : IDisposable
             Assert.Equal(2, exit);
         }
 
+        // kimi test takes its arguments from the command line as every command does (PLAN G1214): the parser splits the line and unwraps
+        // a quoted argument, so a quoted input, with a space or without, and a quoted option value arrive without their quotes, and a bare
+        // --locked arrives as --locked true (KimiOptions.ExpandFlags); an unquoted input is unchanged. --list builds nothing natively.
+        [Theory]
+        [InlineData("test --list \"<input>\"", "with space")]
+        [InlineData("test --list \"<input>\"", "nospace")]
+        [InlineData("test --list <input>", "nospace")]
+        [InlineData("test --list --filter \"passes\" --locked <input>", "nospace")]
+        public async Task TestTakesItsArgumentsFromTheCommandLineAsEveryCommand(string line, string folder)
+        {
+            var project = Path.Combine(this.directory, folder, "Tests.kimiproj");
+            Directory.CreateDirectory(Path.GetDirectoryName(project)!);
+            File.WriteAllText(Path.Combine(this.directory, folder, "tests.kimi"), "#Test\nfunc passes()\n    $require(1 == 1)\n");
+            File.WriteAllText(project, $"Targets = {{ \"{WindowsProfile.Target}\" }}\nOutputKind = \"Library\"\nTestSources = {{ \"tests.kimi\" }}\n");
+            var product = TataraCommandTest.Unit(new());
+            var console = Console.Out;
+            using var output = new StringWriter();
+            Console.SetOut(output);
+            try
+            {
+                Environment.ExitCode = 0;
+                await product.Execute(line.Replace("<input>", project, StringComparison.Ordinal), product.Context.ServiceProvider, TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            Assert.Equal(0, exit);
+            Assert.Contains("Tests.kimiproj::passes", output.ToString(), StringComparison.Ordinal);
+        }
+
         // Kimigayo.RunEnded (Tatara unit SP1): a cancelled run <file.exe> calls it once, after its program ended (RunExecutable kills the
         // tree and drains the output first) and before "Command cancelled.", and returns 130 (after a cancellation the outcome is the
         // cancellation). The program is the test apphost's sleeping probe (TestProcessRecoveryTest.ProcessProbe): run passes no argument,
