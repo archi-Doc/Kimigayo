@@ -154,22 +154,17 @@ public sealed partial class Binding
     private BoundType? RecordNumbered(Koto node, BindingFailure failure, ReadOnlySpan<ProblemFact> facts, bool unresolved = false)
         => this.Record(node, failure, facts, this.report.Condition(new(this.CodeOf(node, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(node), 0), facts), unresolved);
 
-    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them. Until E3 records the family's conditions, a node keeps its
-    // first failure, as a Fail does.
+    // SPEC 23.3: the sides a mismatch compared and the syntax that shows them; a node's further mismatch with other sides takes its own
+    // key (RecordNumbered).
     private BoundType? RecordTypeMismatch(Koto node, Koto at, in MismatchSide actual, in MismatchSide expected)
     {
-        if (this.RecordedFailure(node) != BindingFailure.None)
-        {
-            return this.Fail(node, BindingFailure.TypeMismatch);
-        }
-
         if (this.IdentityPremiseErrorRead(this.ConstraintScope(node), actual.Type, expected.Type) is { } premise)
         {
             this.AddPrerequisite(node, premise.Use); // SPEC 8.2.3: a premise error is never reported again at uses (IsDerived).
         }
 
         var site = this.FactSite(at);
-        return this.Record(
+        return this.RecordNumbered(
             node,
             BindingFailure.TypeMismatch,
             [
@@ -241,6 +236,9 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "Finds the slot's issue among a node's problems until the slot's reads and Binding.Issues go (R7-E5).")]
     private int SlotProblem(Koto node)
         => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), 0);
+
+    // A problem's condition, the last part of the key its record is published at; 0 for no problem (a slot without one).
+    private ushort ConditionOf(int problem) => problem >= 0 ? this.report.Problem(problem).Condition : (ushort)0;
 
     // The part of a located problem (its Span fact), or null for no problem.
     private SourceSpan? LocatedPart(int problem)

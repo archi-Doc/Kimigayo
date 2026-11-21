@@ -149,17 +149,17 @@ public class WrappingIntegerTest
     }
 
     [Theory]
-    [InlineData("let x: u64 = 1\nlet w = x@Wrapping<u32>", "u64", "Wrapping<u32>")]
-    [InlineData("let w: Wrapping<u32> = 1\nlet x = w@i64", "Wrapping<u32>", "i64")]
-    [InlineData("let w: Wrapping<u32> = 1\nlet x = w@f32", "Wrapping<u32>", "f32")]
-    public void ConversionAcrossTheArgumentExplainsTheSameArgumentRule(string source, string actual, string expected)
+    [InlineData("let x: u64 = 1\nlet w = x@Wrapping<u32>", "x@Wrapping<u32>", "u64", "Wrapping<u32>")]
+    [InlineData("let w: Wrapping<u32> = 1\nlet x = w@i64", "w@i64", "Wrapping<u32>", "i64")]
+    [InlineData("let w: Wrapping<u32> = 1\nlet x = w@f32", "w@f32", "Wrapping<u32>", "f32")]
+    public void ConversionAcrossTheArgumentIsATypeMismatch(string source, string at, string actual, string expected)
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
-        Assert.Equal($"expected {expected}, found {actual}", error.Label);
-        Assert.Equal(Binding.WrappingConversionNote, error.Note);
+        Assert.Equal((at, $"expected {expected}, found {actual}"), (error.Text, error.Label));
+        Assert.Null(error.Note);
     }
 
     [Theory]

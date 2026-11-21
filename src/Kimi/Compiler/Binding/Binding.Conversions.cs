@@ -271,7 +271,7 @@ public sealed partial class Binding
             // referent, copies no same-Type reference and never Reborrows. Payloads are selected with @follow.
             if (pattern.SafeReferent is { } referent && !ReferenceEquals(actual, referent))
             {
-                return this.Fail(conversion, BindingFailure.TypeMismatch);
+                return this.RecordTypeMismatch(conversion, conversion, actual, referent);
             }
 
             if (pattern.SafeReferent is not null && pattern.Origin is null && this.IsRawRooted(conversion.Left))
@@ -594,6 +594,6 @@ public sealed partial class Binding
         // SPEC 13.5.3: an owned target never extracts its Core through a safe reference (only the value read of a read Type does,
         // above). Other ownership/borrow adaptations require their own verified paths.
         var unsupported = !SupportsIdentityAcquisition(target) || (!SupportsIdentityAcquisition(source) && source.SafeReferent is null);
-        return this.Fail(conversion, unsupported ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, unsupported);
+        return unsupported ? this.Fail(conversion, BindingFailure.Unsupported, true) : this.RecordTypeMismatch(conversion, conversion, source, target);
     }
 }
