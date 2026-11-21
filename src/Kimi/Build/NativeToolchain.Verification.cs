@@ -106,18 +106,20 @@ internal static partial class NativeToolchain
                 }
             }
 
-            // tatara.dll after the tools: Tatara.Load's checks (found, loaded and bound, its ABI and LLVM version), then its hash.
-            var tatara = Tatara.Load(root);
-            var tataraHash = Hash(tatara.Path);
+            // After the tools: the compiler's Tatara (Tatara.Instance, its start check) with its identity, and the root's tatara.dll as a
+            // file, its hash against the record's (until B6b3's self-check).
+            var tatara = Tatara.Instance;
+            var tataraFile = RequireInstalledFile(Path.Combine(root, "tatara.dll"));
+            var tataraHash = Hash(tataraFile);
             record["tatara"] = new JsonObject
             {
-                ["path"] = Redact(tatara.Path, Directory.GetCurrentDirectory()), ["sha256"] = tataraHash, ["build"] = tatara.Build,
+                ["path"] = Redact(tataraFile, Directory.GetCurrentDirectory()), ["sha256"] = tataraHash, ["build"] = tatara.Build,
                 ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion, ["expectedSha256"] = tataraSha256,
                 ["hashMatched"] = tataraHash == tataraSha256,
             };
             if (tataraHash != tataraSha256)
             {
-                throw new InvalidDataException($"tatara.dll SHA-256 mismatch: {tatara.Path}. Run {SetupCommand} again.");
+                throw new InvalidDataException($"tatara.dll SHA-256 mismatch: {tataraFile}. Run {SetupCommand} again.");
             }
 
             var backend = RequireInstalledFile(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile));

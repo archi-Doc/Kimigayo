@@ -306,7 +306,7 @@ public sealed partial class Binding
                         return matches is null ? ConstraintProof.Unknown : ConstraintProof.Refuted;
                     }
 
-                    var compatible = this.CompatibleRequirement(path, requirement, implementation, self, scope, selection);
+                    var (compatible, _) = this.CompatibleRequirement(path, requirement, implementation, self, scope, selection);
                     // Incompatibility of the retained mapping rules out this path, not the derived declaration.
                     proof = CombineProof(proof, compatible == ConstraintProof.Error ? ConstraintProof.Refuted : compatible, true);
                     var inherited = new BoundWitness(identity, witness.Implementation, this.FunctionWitness(path, identity));

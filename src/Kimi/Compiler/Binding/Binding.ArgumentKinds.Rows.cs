@@ -359,7 +359,8 @@ public sealed partial class Binding
     // its own sub-Type by what it contributes, and the argument's own position by its root row when it has no child rows (`[]`, a
     // completed waiting part). No aggregate of the leaves is formed. Every record is at the argument (S1; the sites are U4's). A failed
     // part is a wildcard (rule W, SPEC 23.1.2). A child whose Type is not derivable fails the argument once, after the rows before it.
-    private void JudgePositionRows(Koto at, in PositionRow root, in SlotSolution solution)
+    // `solved` is the call's solve, whose published Marked fact a leaf's premises read (RequireInputPremises).
+    private void JudgePositionRows(Koto at, in PositionRow root, in SlotSolution solution, OriginInference? solved)
     {
         if (this.PartFailed(KotoHelper.UnwrapParentheses(at)))
         {
@@ -369,7 +370,7 @@ public sealed partial class Binding
         this.ChildGroup(solution, root.Argument, out var start, out var end);
         if (start == end)
         {
-            this.JudgeLeafPosition(at, root);
+            this.JudgeLeafPosition(at, root, solved);
             return;
         }
 
@@ -389,7 +390,7 @@ public sealed partial class Binding
         {
             if (this.IsLeaf(sliceStart, j, end) && this.positionRows[first + (j - start)] is { Type: not null } leaf)
             {
-                this.JudgeLeafPosition(at, leaf);
+                this.JudgeLeafPosition(at, leaf, solved);
             }
         }
 
@@ -444,12 +445,12 @@ public sealed partial class Binding
     // A leaf position's well-formedness at its parameter Type (SPEC 15.6.4 step 3): a typed part only where its fit replaced an Origin;
     // any other part, and an aggregate whose positions no part fills (`[]`), at every position (RequireInputPremises). A part that failed
     // after the composition, in its completion, is a wildcard (rule W).
-    private void JudgeLeafPosition(Koto at, in PositionRow row)
+    private void JudgeLeafPosition(Koto at, in PositionRow row, OriginInference? solved)
     {
         var node = KotoHelper.UnwrapParentheses(row.Part);
         if (!this.PartFailed(node) && (row.Contribution == Contribution.Signature || node.BoundType is not null))
         {
-            this.RequireInputPremises(at, row.Pattern!, row.Type!, row.Contribution == Contribution.Evidence ? node.BoundType : null, row.Contribution);
+            this.RequireInputPremises(at, row.Pattern!, row.Type!, row.Contribution == Contribution.Evidence ? node.BoundType : null, row.Contribution, solved);
         }
     }
 }

@@ -420,8 +420,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
             // once to an Opaque temp of no Type derived from the slot's record, so each read through it is derived (rule W, Field). With
             // no such self, a read of the implicit self without a receiver stays a broken contract (Storage).
             var slot = this.OpaqueTemp(null, declaration);
-            this.SiteRoots((MirPlace?)null);
-            this.Site(declaration, slot, completes: true);
+            this.SiteUses((MirPlace?)null);
+            this.Derived(declaration, slot, completes: true);
             (this.locals[failed], this.receiver) = (slot.Root, slot.Root);
         }
 

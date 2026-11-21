@@ -201,8 +201,8 @@ public sealed partial class Binding
                 if (!same)
                 {
                     identity.Invalid = true;
-                    this.Fail(a.Declaration, BindingFailure.IncompatibleImplementation);
-                    this.Fail(b.Declaration, BindingFailure.IncompatibleImplementation);
+                    this.Record(a.Declaration, BindingFailure.IncompatibleImplementation, []);
+                    this.Record(b.Declaration, BindingFailure.IncompatibleImplementation, []);
                     proof = ConstraintProof.Error;
                 }
             }
@@ -235,7 +235,7 @@ public sealed partial class Binding
 
             if (container is not (StructKoto or EnumKoto) || syntax.Operands.Length is not (2 or 3) || syntax.Operands[0] is not IsKoto target || syntax.Operands[1] is not SyntaxFormKoto premises)
             {
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 continue;
             }
 
@@ -254,7 +254,7 @@ public sealed partial class Binding
                 // A subject other than Self is Parsing's record (F.6.2, ParseConformanceConditions); its head rests (the prerequisite above).
                 if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
                 {
-                    this.Fail(syntax, BindingFailure.InvalidConstraint);
+                    this.Record(syntax, BindingFailure.InvalidConstraint, []);
                     continue;
                 }
 
@@ -267,11 +267,11 @@ public sealed partial class Binding
 
                 if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
                 {
-                    this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
+                    this.Record(target, BindingFailure.ClosedContractConformance, []); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
                 }
                 else if (IntrinsicContract.Of(contract.Intrinsic).Declaration is not BindingFailure.None and var failure)
                 {
-                    this.Fail(target, failure); // SPEC 8.7.1: decided by the Type's structure alone.
+                    this.Record(target, failure, []); // SPEC 8.7.1: decided by the Type's structure alone.
                 }
                 else
                 {
@@ -326,7 +326,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 this.FailFacts(scope, syntax); // R7-C3: an invalid condition's premises fail with its judgment, never the environment
             }
         }

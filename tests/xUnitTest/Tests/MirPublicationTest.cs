@@ -148,6 +148,11 @@ public sealed class MirPublicationTest
     [InlineData((byte)ProblemFactKind.Terminal)]
     [InlineData((byte)ProblemFactKind.Constraint)]
     [InlineData((byte)ProblemFactKind.OriginRecord)]
+    [InlineData((byte)ProblemFactKind.Related)]
+    [InlineData((byte)ProblemFactKind.Count)]
+    [InlineData((byte)ProblemFactKind.Reason)]
+    [InlineData((byte)ProblemFactKind.Key)]
+    [InlineData((byte)ProblemFactKind.Instance)]
     public void AMirRecordCarryingABindingKindIsABrokenContract(byte kind)
     {
         var (c, program) = Program(Valid);

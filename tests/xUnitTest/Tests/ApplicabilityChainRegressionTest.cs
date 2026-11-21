@@ -577,11 +577,14 @@ public partial class ApplicabilityChainRegressionTest
         Assert.False(rejected.Accepted);
         var error = Assert.Single(rejected.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnprovenOriginContract_Kd), error.Code);
-        // A comparison's solve judges no bound (PLAN G492-a (iii)), so the record is the member's that the walk judges after it, at
-        // the result's invariant layer: `x == y`, as LocalOriginClauseTest's veqin (G913 alone names the solve's first failing bound,
-        // `y outlives x`: the same record at the same place, record selection).
+        // A comparison's solve judges no bound (PLAN G492-a (iii)), but `s`'s own equality fails: its partners `x` and `y` are not proven
+        // equal, so `s` is not solved and the comparison's record is that equality, the solve's published fact (G1128 R1.3 (i), G147
+        // ruling 43 (4)), never `b`'s relation over `s`'s held value; in either member order.
         Assert.Equal("the result requires x == y, which is not proven", error.Label);
         Assert.True(DiagnosticCorpus.Check(Source.Replace("during y", "during x", StringComparison.Ordinal)).Accepted);
+        var swapped = DiagnosticCorpus.Check(Source.Replace(
+            "(uniq/(ref/i32 during x) during x, uniq/(ref/i32 during y) during y)", "(uniq/(ref/i32 during y) during y, uniq/(ref/i32 during x) during x)", StringComparison.Ordinal));
+        Assert.Equal("the result requires y == x, which is not proven", Assert.Single(swapped.Diagnostics).Label);
     }
 
     [Theory]

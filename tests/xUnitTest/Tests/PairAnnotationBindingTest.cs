@@ -167,6 +167,7 @@ public class PairAnnotationBindingTest
     [InlineData("func f<T>(value: uniq/T during a, other: uniq/T during o) -> ()\n    var arr: Array<uniq/T during o> = [other@move]\n    arr.append(value@move)\n    _ = arr@move\n", "1*UnprovenOriginRelation_Kd")] // c6bad-cu
     [InlineData("func f<s/T>(value: s/T during a, other: s/T during a) -> ()\n    s is ref or uniq\n    var local = value\n    local = other\n    var arr: Array<s/T during a> = []\n    arr.append(local@move)\n    _ = arr@move\n", "clean")] // c6v-PRU
     [InlineData("func both<U>(x: U, y: U) -> i32 => 0\nfunc f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is ref\n    return both(value, other)\n", "clean")] // k08-pr-generic-both
+    [InlineData("func both<U>(x: U, y: U) -> i32 => 0\nfunc f<s/T>(value: s/T, other: s/T during a) -> i32\n    s is ref\n    return both(other, value)\n", "clean")] // k08-sw (G1128: f's `o` is a slot variable's bound like `a`)
     public void APairSlotDifferenceNeverMakesACandidateInapplicable(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source + "public func main() => ()\n", "Application"));
 

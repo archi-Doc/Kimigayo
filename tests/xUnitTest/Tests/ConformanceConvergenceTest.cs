@@ -1115,6 +1115,30 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         Assert.Equal(valid, c.Binding.Result.IsComplete);
     }
 
+    // SPEC 8.9.2, 23.1.2 (R7-E2 E2-5b, M1): two associated Types whose bindings disagree at one intersection are two failed requirements,
+    // each its own record (RecordNumbered) with its own Types; with Other's bindings agreeing, Item's alone.
+    [Theory]
+    [InlineData("bool", 2)]
+    [InlineData("i32", 1)]
+    public void EachDisagreeingAssociatedTypeIsItsOwnRecord(string other, int count)
+    {
+        var records = DiagnosticCorpus.Check(TwoAssociatedPairs(other)).Diagnostics;
+        Assert.All(records, static x => Assert.Equal("InvalidAssociatedType_Kd", x.Code));
+        string[] labels = ["at C<U> = C<i32>, Item's Types string and i32 are not proven equal", "at C<U> = C<i32>, Other's Types bool and i32 are not proven equal"];
+        Assert.Equal(labels[..count], records.Select(static x => x.Label));
+    }
+
+    // The two disagreeing pairs rebind without allocating: the further problem's numbering walks the subject's kept problems.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void TwoDisagreeingPairsRebindWithoutAllocation()
+    {
+        var c = MinimalEmissionTest.Analyze(TwoAssociatedPairs("bool"));
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     [Fact]
     public void OverlapFailureExplainsTheConflictInCliAndLspAndKeepsIndependentErrors()
     {
@@ -1158,4 +1182,8 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
         Assert.Equal(disjoint, c.Binding.Result.IsComplete);
     }
+
+    private static string TwoAssociatedPairs(string other)
+        => "contract C<E>\n    associate Item(a)\n    associate Other(b)\ncontract Q<U>: C<i32>, C<U>\n    associate C<i32>.Item(a) is i32\n" +
+        "    associate C<U>.Item(a) is string\n    associate C<i32>.Other(b) is i32\n    associate C<U>.Other(b) is " + other + "\nlet present = 1";
 }

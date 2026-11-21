@@ -134,7 +134,7 @@ public sealed partial class MirBuildTest
             { Kind: MirRvalueKind.Use } use when body.Operands[use.Start] is { Kind: MirOperandKind.PairAcquire } operand =>
                 $"acquire {Root(operand.Place.Root)}",
             { Kind: MirRvalueKind.Opaque } derived when body.OpaqueSites[derived.Arg] is { Count: 1 } site &&
-                Root(body.OpaqueRoots[site.Start]) == "opaque" => "derived",
+                Root(body.OpaqueUses[site.Start].Root) == "opaque" => "derived",
             _ => null,
         }).OfType<string>()];
     }

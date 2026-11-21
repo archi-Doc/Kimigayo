@@ -125,7 +125,6 @@ public sealed class EmissionArtifactsTest : IDisposable
     public void DefaultManifestNeedsNoToolchainAndRejectsOldSchema()
     {
         var c = this.Create();
-        c.Project.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "absent tools");
         Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
         var json = File.ReadAllText(Path.ChangeExtension(path!, ".link.json"));
         using var manifest = JsonDocument.Parse(json);

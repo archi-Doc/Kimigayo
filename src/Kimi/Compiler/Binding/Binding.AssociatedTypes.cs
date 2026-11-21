@@ -1,13 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
-    private readonly AssociatedAmbiguityRows associatedAmbiguities;
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
 
     // Whether the pass's declaration evidence of conformance bindings is incomplete: before PrepareAssociatedInference has collected it,
@@ -96,11 +96,59 @@ public sealed partial class Binding
         reference = search.Reference;
         if (search.Alternative is { } second)
         {
-            this.FailExplained(AssociatedAmbiguityRows.Family, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
+            this.RecordAssociatedAmbiguity(use, new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count);
             return null;
         }
 
         return search.Found;
+    }
+
+    // SPEC 8.5.2, 8.4.3-3: an ambiguous associated Type use's problem: each candidate's declaration (Related, role 0) with the declaring
+    // Contract's instance it stands for (Instance; one declaration serves both candidates of `Q<U>: C<i32>, C<U>`) and the candidate count
+    // (Count).
+    private void RecordAssociatedAmbiguity(Koto use, BoundRequirement first, BoundRequirement second, int count)
+    {
+        var a = this.FactSite(first.Symbol.Declaration);
+        var b = this.FactSite(second.Symbol.Declaration);
+        this.Record(
+            use,
+            BindingFailure.Ambiguous,
+            [
+                new(ProblemFactKind.Related, a, 0),
+                new(ProblemFactKind.Instance, a, this.report.Keep(this.ProjectionContract(first.Symbol, first.Contract))),
+                new(ProblemFactKind.Related, b, 0),
+                new(ProblemFactKind.Instance, b, this.report.Keep(this.ProjectionContract(second.Symbol, second.Contract))),
+                new(ProblemFactKind.Count, SourceRef.Of(use), count),
+            ]);
+    }
+
+    // SPEC 8.5.2: an ambiguous associated Type use's record, at its head, its candidates related by their identities (`C<i32>.Item`).
+    private void ReportAssociatedAmbiguity(Koto use, DiagnosticCollection? store, int index, in BindingProblem problem)
+    {
+        var facts = this.report.Facts(index);
+        var first = this.compilation.SyntaxOf(facts[0].Site);
+        var second = this.compilation.SyntaxOf(facts[2].Site);
+        var head = AssociatedHead(use);
+        use.ReportIn(
+            store,
+            problem.Requirement,
+            problem.Code,
+            at: head is OriginApplicationKoto application ? application.Type : head,
+            evidence: [(int)facts[4].Value],
+            related: [("candidate", first, this.AssociatedIdentityText(facts[1], first)), ("candidate", second, this.AssociatedIdentityText(facts[3], second))],
+            condition: problem.Condition);
+    }
+
+    // An associated Type's identity as a record names it: the Contract instance a related party stands for (its Instance fact) and the
+    // associated Type's name.
+    private string AssociatedIdentityText(in ProblemFact instance, Koto declaration)
+        => $"{DiagnosticTypeName(this.report.Value(instance))}.{this.AssociatedName(declaration)}";
+
+    // The name an associated Type's declaration declares (DeclareAssociatedType's spelling): a read of a recorded location.
+    private string AssociatedName(Koto declaration)
+    {
+        var head = AssociatedHead(declaration);
+        return TypeSpelling(head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type)! : head!)!;
     }
 
     // The search alone, recording nothing (a walk's question, 9.7.3's evidence): the candidate Contracts are the qualifier's, else the
@@ -266,7 +314,7 @@ public sealed partial class Binding
 
         if (this.ProjectsThroughItsOwnClause(syntax, type, scope))
         {
-            return this.Fail(syntax, BindingFailure.Cycle, true);
+            return this.Record(syntax, BindingFailure.Cycle, [], unresolved: true);
         }
 
         var associated = this.FindAssociated(type, scope, name, qualifier, syntax, out var reference);
@@ -282,7 +330,7 @@ public sealed partial class Binding
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))
         {
-            return this.Fail(syntax, BindingFailure.InvalidAssociatedType);
+            return this.Record(syntax, BindingFailure.InvalidAssociatedType, []);
         }
 
         var evidence = qualifier ?? reference ?? associated.Scope.Owner.BoundSymbol!;
@@ -347,7 +395,7 @@ public sealed partial class Binding
         if (IsRecovery(clause, out _) || IsRecovery(clause.Left, out _))
         {
             // The head failed (SPEC F.6.2): the specification is judged no further, and its requirement keeps its own records (23.1.2).
-            this.Fail(clause, BindingFailure.InvalidConstraint);
+            this.Record(clause, BindingFailure.InvalidConstraint, []);
             this.BindRequirement(clause.Right, BoundType.Unit, false, this.NodeScope(clause, scope));
             clause.BoundConstraint = owner.Declaration is ContractKoto ? this.InternConstraint(new(ConstraintKind.Error)) : null;
             return;
@@ -376,7 +424,7 @@ public sealed partial class Binding
     {
         if (clause.FormationType is not null)
         {
-            this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.5: a specification fixes its Type; only a requirement may end with a formation Type.
+            this.Record(clause, BindingFailure.InvalidConstraint, []); // SPEC 8.5: a specification fixes its Type; only a requirement may end with a formation Type.
             return null;
         }
 
@@ -428,12 +476,12 @@ public sealed partial class Binding
                 this.QualifierReference(written, selection, scope) is not { } bound)
             {
                 pending = this.PendingReference(member.Left, selection, scope);
-                return pending ? null : this.Fail(clause, BindingFailure.InvalidAssociatedType);
+                return pending ? null : this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
 
             if (!this.SelectorQualifies(owner, self, bound))
             {
-                return this.Fail(clause, BindingFailure.InvalidAssociatedType);
+                return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
             }
 
             qualifier = bound;
@@ -446,13 +494,15 @@ public sealed partial class Binding
         if (associated is null || (owner.Declaration is not ContractKoto &&
             (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || this.impls.PathsOf(conformance).Count == 0)))
         {
+            // SPEC 23.1.2: FindAssociated may have recorded the Name's ambiguity at this clause first (SPEC 8.5.2) and found nothing, which
+            // this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe q1).
             return this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
         }
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         if (parameters.Length != (applied?.ArgumentNodes.Count ?? 0))
         {
-            return this.Fail(clause, BindingFailure.InvalidAssociatedType);
+            return this.Record(clause, BindingFailure.InvalidAssociatedType, []);
         }
 
         var projection = this.types.Intern(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference ?? qualifier)], originArguments: parameters);
@@ -781,17 +831,5 @@ public sealed partial class Binding
             this.State = 0;
             this.FormationScope?.Reset();
         }
-    }
-
-    /// <summary>The `associatedAmbiguities` family's one accessor (DECISIONS BU-220): a pass family, the two associated candidates (and their
-    /// count) an ambiguous associated Type use found (SPEC 9.7.3), stored with its failure by the recorder (RecordedFact) and written by
-    /// FailExplained (a present row always has its First requirement). Its members keep the names its readers use.</summary>
-    private readonly struct AssociatedAmbiguityRows(Binding binding)
-    {
-        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
-        internal static ref StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), PassCounter> Family(ref NodeColumns columns) => ref columns.AssociatedAmbiguities;
-
-        internal bool TryGetValue(Koto use, out (BoundRequirement First, BoundRequirement Second, int Count) ambiguity)
-            => (ambiguity = binding.RecordedFact(use, Family)).First.Symbol is not null;
     }
 }

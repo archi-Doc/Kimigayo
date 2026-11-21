@@ -149,7 +149,6 @@ public sealed partial class Binding
         this.projectionUses.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
-        this.contractAgreementFailures?.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
         this.memberSides.Clear();
@@ -235,7 +234,7 @@ public sealed partial class Binding
         {
             if (shape.State == 1)
             {
-                this.Fail(contract, BindingFailure.Cycle);
+                this.Record(contract, BindingFailure.Cycle, []);
                 return false;
             }
 
@@ -249,7 +248,7 @@ public sealed partial class Binding
             var syntax = contract.Bases[i];
             if (!IsRefinementName(syntax))
             {
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 valid = false;
                 continue;
             }
@@ -274,7 +273,7 @@ public sealed partial class Binding
             {
                 // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
                 this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
-                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                this.Record(syntax, BindingFailure.InvalidConstraint, []);
                 valid = false;
                 continue;
             }
@@ -302,6 +301,8 @@ public sealed partial class Binding
 
             if (parent is null)
             {
+                // SPEC 23.1.2: BindContractReference failed the reference first (its arity or an Origin argument, SPEC 9.7.1) and formed
+                // nothing, which this verdict reads: the slot's first failure keeps it derived until R7-E5's per-problem inputs (D-924; probe a1).
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;
@@ -351,7 +352,7 @@ public sealed partial class Binding
             {
                 // An effect specification is checked with the bounds of the Contract (BindEffectBound); a misplaced specialization
                 // (SPEC F.6.2) is no member: it stands for its placement Error, so the Contract's verdict does not rest on it.
-                this.Fail(member, BindingFailure.InvalidConstraint);
+                this.Record(member, BindingFailure.InvalidConstraint, []);
                 valid = false;
             }
         }
@@ -383,6 +384,8 @@ public sealed partial class Binding
 
         if (!valid)
         {
+            // SPEC 23.1.2: invalid over a failed refinement or its own cycle, which it reads: the slot's first failure keeps it derived (no
+            // record of its own beside them) until R7-E5's per-problem inputs (D-924; probe c1).
             this.Fail(contract, BindingFailure.InvalidConstraint);
         }
 
@@ -629,7 +632,7 @@ public sealed partial class Binding
 
                         if (sameSignature && (differentLabels || !SameGenericShape(a, b)))
                         {
-                            this.Fail(contract, BindingFailure.InvalidConstraint);
+                            this.Record(contract, BindingFailure.InvalidConstraint, []);
                         }
                     }
                 }
