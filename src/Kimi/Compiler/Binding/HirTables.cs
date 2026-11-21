@@ -670,10 +670,12 @@ internal struct PlanRow
 
     /// <summary>Whether the form of the Error a kept operand belongs to reads the operand's whole Place in a use not in place (DECISIONS
     /// D-986; SPEC 13.4, 15.1.5, 15.1.6): the Adjust rule (<c>Binding.AdjustChildren</c>) for the Error's form (its <c>KindOp</c>) takes
-    /// it by an acquisition or a shared borrow (<see cref="HirAdjust.Reads"/>), as it takes a valid node's child of the same form. False
-    /// for a kept operand the form uses in place (a projection's receiver or base, a follow's, borrow's, runtime test's or case
-    /// adaptation's operand, a group's operand), borrows exclusively or whose acquisition failed, for one whose take Binding did not
-    /// decide (an argument of a call Binding did not resolve, which has no plan), and for every other node. Written at each kept operand
+    /// it by an acquisition or a shared borrow (<see cref="HirAdjust.Reads"/>), as it takes a valid node's child of the same form, an
+    /// argument of an application Binding did not resolve by a stand-in, its evaluation as a value, which every candidate's operation
+    /// reads as (DECISIONS G1178; SPEC 7.4, 10.1, 10.2).
+    /// False for a kept operand the form uses in place (a projection's receiver or base, a follow's, borrow's, runtime test's or case
+    /// adaptation's operand, a group's operand), borrows exclusively, reads through a reference or whose acquisition failed, and for
+    /// every other node. Written at each kept operand
     /// of each publish, whose column stays the kept mark <c>(None, None)</c> (DECISIONS R5-M63): a kept operand is evaluated as its Place
     /// and never acquired, so no claim reads this (R7-M8). A publish clears every row's first.</summary>
     internal bool KeptRead;

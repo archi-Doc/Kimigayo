@@ -6,7 +6,8 @@
 //   is acquired (Discarded), and what a use of a Place needs of it (UseOf over the rows' takes, Take), which the HIR publisher's claim and
 //   ClosureEffects read.
 // - Inputs: a consumer and its evaluated Op (OpOf), Binding's facts for the consumer (its call plans, receiver operations, conversion,
-//   match plan, enum construction) and for the child (its recorded adaptation, erasure, bare acquisition); and two facts of the record's
+//   match plan, enum construction; none for an application it did not resolve) and for the child (its recorded adaptation, erasure,
+//   bare acquisition); and two facts of the record's
 //   walk: the capability the consumer's own use needs (AdjustChildren's `need`: Shared, ByCase or Exclusive), which only a user index's
 //   selection reads (SelectionMode; SPEC 4.7.1, 8.14; DECISIONS BU-8; R7 plan Z23: by case, both calls' inputs), and a child's claim
 //   (ChildAdjust's `claimed`, of the same three values): whether a use of the child that stands needed exclusive capability of it, in
@@ -204,6 +205,20 @@ public sealed partial class Binding
                 break;
             case MacroKoto { Formatting.Acquisition: { } acquisition } when this.CallOf(acquisition) is { ArgumentOperations: [var writer, ..] }:
                 uses.Use(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
+                break;
+            case InvocationKoto application when application.BindingState != BindingState.Resolved:
+                // SPEC 7.4, 10.1, 10.2, 15.1.5 (DECISIONS G1178): an application Binding did not resolve has no plan and no Case
+                // construction (CallPlan.Of, TryGetEnumConstruction), so no operation takes its written arguments. Their operations would
+                // depend on the candidate (a `ref` parameter borrows where an owner one copies or moves), but every candidate's reads the
+                // argument's whole Place, so each argument is taken by a stand-in, its evaluation as a value (its recorded adaptation or bare
+                // acquisition), which only FormReads reads, and only as HirAdjust.Reads: it never stands as an operation. RowUses never
+                // meets this row (a published call or construction is resolved, HasFacts), and ClosureEffects, which needs the operation,
+                // gives a failed consumer's argument no take for that reason (R4-M145 C2: no IsBareAcquisitionPosition).
+                for (var i = 0; i < application.ArgumentNodes.Count; i++)
+                {
+                    uses.Use(application.ArgumentNodes[i]);
+                }
+
                 break;
         }
 
