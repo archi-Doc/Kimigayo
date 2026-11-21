@@ -6,8 +6,9 @@
 // pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the root's tatara.dll), so a
 // native build launches no tool; the built Application's run and the installed toolchain's verification
 // (NativeToolchain.Verification.cs, whose file-scoped ToolProcess is the only code here that launches an LLVM tool: the tools' version
-// banners and kernel32's inspection); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
-// identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify loads the root's tatara.dll
+// banners and kernel32's inspection); the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and
+// staged as a program's input is) and the root's resolution (ToolchainIdentity, ToolchainResolver); kernel32's definition and
+// generation conditions (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify loads the root's tatara.dll
 // (Tatara.Load, its start check) and compares its SHA-256 with the installation record's.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the installed toolchain.
@@ -18,16 +19,22 @@
 // Project.Build reads and passes; and of Kimi.Diagnostics the record writer DiagnosticOwner.Report, DiagnosticCode, DiagnosticPartition and DiagnosticSeverity. Beside the compiler it reads
 // project configuration: Project with its KimiOptions, ProjectFile, NativeConfiguration and NativeLibraryInput.
 // Output: the pair, the build record, the staged libraries, the object and the executable, each published by
-// replacement; and, from publication only, records in the compiler's Emission partition (ArtifactPublicationFailed_Kd and
-// InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other failure is an exception: one IsToolchainFailure classifies is
-// the toolchain's, which its host renders as a message; any other ends the result it interrupted as Faulted (CheckFaulted_Kd): under
-// Project.Build the build's (R9-B2), under a command the command's own (CommandExecution, PLAN G984).
+// replacement, the executable last: linked to a private name, it moves into place after the success record that names its hash, and a
+// failed move invalidates the record again, so its path keeps the previous executable until a build succeeds (IMPL 20.3.2; Tatara
+// decision 18; NativeBuild: in the two windows IMPL 20.3.2 states, decision 19, the attempt's success record names a hash no file at
+// the path has, and run --no-build runs only an executable whose hash the record names); and, from publication only, records in the
+// compiler's Emission partition (ArtifactPublicationFailed_Kd and InternalInvariant_Kd at the project; DECISIONS R5-M165). Every other
+// failure is an exception: one IsToolchainFailure classifies is the toolchain's, which its host renders as a message; any other ends the
+// result it interrupted as Faulted (CheckFaulted_Kd): under Project.Build the build's (R9-B2), under a command the command's own
+// (CommandExecution, PLAN G984).
 // Invariants: no file of Compiler/, Checking/, Lsp/, Testing/ or Diagnostics/ reads a Build type. Build's readers are Project and the
 // commands, the hosts that call it, and DependencyLock, which reads ArtifactFiles.Replace only
-// (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
+// (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders). A build of a record (Project.Build, build --Manifest) holds the record's lock
+// (Begin) from its first write to its last, so two builds of one record, at either optimization, never interleave.
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
-// The link manifest's fixed fields (one table) and its readers are LinkManifest's: no manifest read raises an accessor's exception (R9-B1).
+// The link manifest's fixed fields (one table), the compiler's supplies' entries (their rows) and its readers are LinkManifest's: no
+// manifest read raises an accessor's exception (R9-B1).
 // The build record's, the installation's and kernel32's readers compare ArtifactFiles' total reads (Member, Text, Number) with what they
 // expect, so a malformed record fails as their InvalidDataException (PLAN G983), and IsToolchainFailure lists no JSON accessor's type
 // (KeyNotFoundException, InvalidOperationException). Known limit (R9-M10's, narrowed): inside the toolchain's calls the set still
@@ -45,6 +52,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
@@ -63,10 +71,53 @@ internal static partial class NativeToolchain
     internal static bool IsToolchainFailure(Exception ex)
         => EmissionArtifacts.IsPublicationFailure(ex) || ex is Win32Exception or JsonException;
 
-    internal static void Invalidate(ArtifactPaths paths)
+    // A build begins (IMPL 20.3.2): it creates the record's directory, takes its output's lock, the file beside its record
+    // (Name.link.build.lock, opened without sharing and kept on disk), and then invalidates the record; the caller holds the lock until
+    // the build ends. While another build holds it (IsSharingFailure), the build reports once that it waits and retries every 100 ms.
+    // The token is read only in that wait, which it cancels before anything is written: a free lock is taken and the record invalidated
+    // under a cancelled token too. Any other failure is the output's. Every exception after the open closes the lock again, so no failed
+    // build leaves its output locked in a long-lived process. O0 and O2 share the record, so they share the lock. Its callers are the
+    // two hosts that begin a build of a record, Project.Build and BuildManifest (test builds into a directory of its own), which read
+    // nothing before it but the configuration.
+    internal static async Task<FileStream> Begin(string record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
-        WriteRecord(paths.Record, CreateBuildRecord());
+        Directory.CreateDirectory(Path.GetDirectoryName(record)!);
+        var path = Path.ChangeExtension(record, ".lock");
+        FileStream output;
+        var waiting = false;
+        while (true)
+        {
+            try
+            {
+                output = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                break;
+            }
+            catch (IOException ex) when (IsSharingFailure(ex))
+            {
+                if (!waiting)
+                {
+                    report(DiagnosticSeverity.Information, "Waiting for another build: " + path);
+                    waiting = true;
+                }
+            }
+
+            await Task.Delay(100, cancellationToken);
+        }
+
+        var begun = false;
+        try
+        {
+            Invalidate(record);
+            begun = true;
+            return output;
+        }
+        finally
+        {
+            if (!begun)
+            {
+                output.Dispose();
+            }
+        }
     }
 
     // A checked Library's record, with the front end's metadata of its one target, which the project reads (a compiler step's read).
@@ -237,6 +288,9 @@ internal static partial class NativeToolchain
         ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
         ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
     };
+
+    // The record's invalidation: the incomplete record a build writes first (Begin) and again after a failed move of its executable.
+    private static void Invalidate(string record) => WriteRecord(record, CreateBuildRecord());
 
     private static void WriteRecord(string path, JsonObject record)
     {

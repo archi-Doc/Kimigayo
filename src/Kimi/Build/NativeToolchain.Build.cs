@@ -26,13 +26,13 @@ internal static partial class NativeToolchain
 
     // Both CLI entry points consume the same checked artifact pair and native pipeline. A standalone
     // manifest carries expanded user-library assertions; no project reload or compiler initialization is needed. Its toolchain.llvmBin is
-    // accepted and not read, as a project's LlvmBin.
+    // accepted and not read, as a project's LlvmBin. It holds its record's lock (Begin) from its first write to its end.
     internal static async Task BuildManifest(string path, string? toolchainRoot, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         path = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(path)!;
         var record = Path.ChangeExtension(path, ".build.json");
-        WriteRecord(record, CreateBuildRecord());
+        using var output = await Begin(record, report, cancellationToken);
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(path, cancellationToken));
         var manifest = document.RootElement;
         ValidateManifest(manifest);
@@ -72,15 +72,20 @@ internal static partial class NativeToolchain
     }
 
     // SPEC 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable
-    // original; a staged copy is reused only when its bytes still have that hash.
-    internal static string StageInput(string input, string stem, out string hash)
+    // original; a staged copy is reused only when its bytes still have that hash. The input is a stream (a program's file or the
+    // compiler's resource), which the caller disposes.
+    internal static string StageInput(Stream input, string stem, out string hash)
     {
         var directory = stem + ".native";
         Directory.CreateDirectory(directory);
         var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            File.Copy(input, temporary);
+            using (var copy = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                input.CopyTo(copy);
+            }
+
             hash = Hash(temporary);
             var staged = Path.Combine(directory, hash + ".lib");
             if (!File.Exists(staged) || Hash(staged) != hash)
@@ -128,9 +133,17 @@ internal static partial class NativeToolchain
     /// standalone manifest), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
     /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> takes the toolchain root's selection, which it
     /// resolves after the pair's check, and runs the steps once, in order: the pair's identity, Tatara (the root's tatara.dll, loaded and
-    /// checked, identified in the record's tools), the libraries, the object, its inspection, the link and the report; the steps fill the
-    /// record and <see cref="Run"/> writes each of its states, the success last, so a step that fails, the report included, throws and
-    /// leaves the record at the last incomplete state written (IMPL 20.3.2).</summary>
+    /// checked, identified in the record's tools), the libraries (each staged: the compiler's supplies from its resources, a program's
+    /// from its input), the object, its inspection, the link to a private file, the report and the commit; the steps fill the record and
+    /// <see cref="Run"/> writes each of its states. The commit, after the report and the last
+    /// cancellation point, writes the success record, which names the private file's hash, and then moves the file to the executable's
+    /// path, so an Application publishes its executable only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the
+    /// commit, the report included, throws and leaves the previous executable and the record at the last incomplete state written, and a
+    /// failed move writes the invalidation again and rethrows the move's failure. The private file is deleted on every outcome. IMPL
+    /// 20.3.2 states the two windows (the owner's decision 19, O-468 (a)): should the process end between the success record and the
+    /// move, or the move and the invalidation both fail (one IOException naming both, the move's as its inner exception), the attempt's
+    /// success record stays, naming a hash no file at the path has. run --no-build runs only an executable whose hash the record names,
+    /// so it refuses that one, and the next build invalidates the record.</summary>
     private sealed class NativeBuild
     {
         private readonly Project? project;
@@ -175,13 +188,42 @@ internal static partial class NativeToolchain
             {
                 ["path"] = Redact(tatara.Path, this.directory), ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion,
             });
-            var libraries = this.ResolveLibraries(toolchainRoot);
+            var libraries = this.ResolveLibraries();
             WriteRecord(this.paths.Record, this.record);
             var obj = await this.Compile(tatara);
             var undefined = this.Inspect(tatara, obj);
-            this.Link(tatara, obj, libraries, undefined);
-            this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
-            WriteRecord(this.paths.Record, this.record);
+            var executable = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe"; // Private until the commit moves it into place.
+            try
+            {
+                this.Link(tatara, obj, libraries, undefined, executable);
+                this.context.Report(DiagnosticSeverity.Information, "Built: " + this.paths.Executable);
+                this.context.CancellationToken.ThrowIfCancellationRequested();
+                WriteRecord(this.paths.Record, this.record);
+                try
+                {
+                    Replace(executable, this.paths.Executable);
+                }
+                catch (Exception move) when (IsOutputFailure(move))
+                {
+                    // Two output failures are one output failure naming both. Invalidate raises only output failures (WriteRecord's
+                    // file writes and Replace), so any other failure there comes from a defect and propagates as itself, a fault no
+                    // catch classifies (C-433 c5; COMPILER_ARCHITECTURE's catch boundaries).
+                    try
+                    {
+                        Invalidate(this.paths.Record);
+                    }
+                    catch (Exception invalidation) when (IsOutputFailure(invalidation))
+                    {
+                        throw new IOException($"{move.Message} The build record was not invalidated again: {invalidation.Message}", move);
+                    }
+
+                    throw;
+                }
+            }
+            finally
+            {
+                File.Delete(executable);
+            }
         }
 
         // SPEC 20.4-2: another supply must be this project's own, with its expanded Kind and the
@@ -220,9 +262,11 @@ internal static partial class NativeToolchain
             return irHash;
         }
 
-        // The manifest's libraries in its order, each the file the linker receives, checked against its assertions and identified in
-        // the record (SPEC 20.4).
-        private List<string> ResolveLibraries(string toolchainRoot)
+        // The manifest's libraries in its order, each staged (the file the linker receives), checked against its assertions and
+        // identified in the record by its staged path and hash (SPEC 20.4). A reserved name is the compiler's supply: its entry the one
+        // this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies); any other is a program's, staged
+        // from its input and checked against the project's supply. Every compiler's supply is listed.
+        private List<string> ResolveLibraries()
         {
             var libraries = new List<string>();
             var libraryIdentities = new JsonArray();
@@ -236,13 +280,15 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException("Invalid or duplicate native library.");
                 }
 
-                var path = this.ResolveLibrary(item, name, toolchainRoot, out var hash);
-                if ((name == WindowsProfile.Kernel32Library && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
+                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Name == name);
+                if (supply is not null)
                 {
-                    throw new InvalidDataException("Native library kind mismatch.");
+                    LinkManifest.CheckCompilerSupply(item, supply);
                 }
 
-                if (this.project is not null && name is not (WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary))
+                using var input = supply is null ? File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory)) : supply.Open();
+                var path = StageInput(input, this.paths.Stem, out var hash);
+                if (this.project is not null && supply is null)
                 {
                     CheckSupply(this.project, name, kind, hash);
                 }
@@ -257,55 +303,13 @@ internal static partial class NativeToolchain
                 libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, this.directory), ["sha256"] = hash });
             }
 
-            if (!seen.Contains(WindowsProfile.Kernel32Library) || !seen.Contains(WindowsProfile.BackendLibrary))
+            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Name)))
             {
                 throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
             }
 
             this.record["libraries"] = libraryIdentities;
             return libraries;
-        }
-
-        // One library's file by its supply: the toolchain's generated kernel32 import library; the backend archive, the toolchain's or
-        // an explicit input; or a project's supply. An input is staged, and its hash is the staged bytes' (SPEC 20.4).
-        private string ResolveLibrary(JsonElement item, string name, string toolchainRoot, out string? stagedHash)
-        {
-            stagedHash = null;
-            if (name == WindowsProfile.Kernel32Library)
-            {
-                Kernel32Imports.ValidateManifest(item);
-                var kernel = RequireInstalledFile(Path.Combine(toolchainRoot, "windows_x64", "kernel32.lib"));
-                this.record["kernel32"] = new JsonObject
-                {
-                    ["generator"] = Kernel32Imports.Generator, ["dll"] = Kernel32Imports.Dll, ["definitionSha256"] = Kernel32Imports.DefinitionSha256,
-                    ["path"] = Redact(kernel, this.directory),
-                };
-                return kernel;
-            }
-
-            if (name != WindowsProfile.BackendLibrary)
-            {
-                return StageInput(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory), this.paths.Stem, out stagedHash);
-            }
-
-            var backend = ToolchainResolver.ResolveBackend(item, toolchainRoot, this.outputDirectory);
-            if (!File.Exists(backend))
-            {
-                throw new InvalidDataException(
-                    $"Backend archive not found: {backend}. Run src/backend/windows-x64/build.ps1 for this toolchain, " +
-                    "or install the matching compiler toolchain package.");
-            }
-
-            if (LinkManifest.OptionalText(item, "libraries.input") is not null)
-            {
-                backend = StageInput(backend, this.paths.Stem, out stagedHash);
-                if (stagedHash != ToolchainIdentity.BackendSha256)
-                {
-                    throw new InvalidDataException("Explicit backend input SHA-256 mismatch.");
-                }
-            }
-
-            return backend;
         }
 
         // The object: the IR verified, for O2 optimized, its module paths redacted and verified again, then compiled.
@@ -361,33 +365,24 @@ internal static partial class NativeToolchain
             return string.Join('\n', lines);
         }
 
-        // The executable: linked to a fresh file, so a failed link never publishes a partially written one, then the record's linked
-        // state, which Run publishes last.
-        private void Link(Tatara tatara, string obj, List<string> libraries, string undefined)
+        // The executable: linked to Run's private file, so neither a failed link nor any failure before the commit publishes it, then the
+        // record's linked state, naming the private file's hash, which Run's commit publishes before the file.
+        private void Link(Tatara tatara, string obj, List<string> libraries, string undefined, string executable)
         {
-            var temporary = this.paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
-            try
-            {
-                var link = new string[libraries.Count + 6];
-                link[0] = obj;
-                libraries.CopyTo(link, 1);
-                link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
-                link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
-                link[^3] = "/nodefaultlib";
-                link[^2] = "/Brepro";
-                link[^1] = "/out:" + temporary;
-                tatara.Link(this.context, link);
-                this.context.CancellationToken.ThrowIfCancellationRequested();
-                Replace(temporary, this.paths.Executable);
-                this.record["status"] = "linked";
-                this.record["executable"] = Path.GetFileName(this.paths.Executable);
-                this.record["executableSha256"] = Hash(this.paths.Executable);
-                this.record["objectUndefinedSymbols"] = undefined;
-            }
-            finally
-            {
-                File.Delete(temporary);
-            }
+            var link = new string[libraries.Count + 6];
+            link[0] = obj;
+            libraries.CopyTo(link, 1);
+            link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
+            link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
+            link[^3] = "/nodefaultlib";
+            link[^2] = "/Brepro";
+            link[^1] = "/out:" + executable;
+            tatara.Link(this.context, link);
+            this.context.CancellationToken.ThrowIfCancellationRequested();
+            this.record["status"] = "linked";
+            this.record["executable"] = Path.GetFileName(this.paths.Executable);
+            this.record["executableSha256"] = Hash(executable);
+            this.record["objectUndefinedSymbols"] = undefined;
         }
     }
 }

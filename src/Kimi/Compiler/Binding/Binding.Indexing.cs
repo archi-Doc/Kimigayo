@@ -24,7 +24,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly IndexVisitor indexer;
-    private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
     private TestSyntaxVisitor? testSyntaxVisitor;
 
     // The indexer resets every semantic field of the pass's modules before any header or expression is evaluated: its source trees and
@@ -496,12 +495,8 @@ public sealed partial class Binding
                     typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : binding.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
                     if (parameter.SemanticsParameter is not null)
                     {
-                        if (!binding.pairSymbols.TryGetValue(parameter, out var semanticsSymbol))
-                        {
-                            semanticsSymbol = new(parameter.SemanticsParameter, BindingSymbolKind.SemanticsParameter, node, this.Scope);
-                            binding.pairSymbols.Add(parameter, semanticsSymbol);
-                        }
-
+                        // The Semantics symbol is the kept target symbol's Pair (its listed slot, DECISIONS BU-220), made once.
+                        var semanticsSymbol = typeSymbol.Pair ?? new(parameter.SemanticsParameter, BindingSymbolKind.SemanticsParameter, node, this.Scope);
                         semanticsSymbol.Scope = this.Scope;
                         semanticsSymbol.Pair = typeSymbol;
                         typeSymbol.Pair = semanticsSymbol;

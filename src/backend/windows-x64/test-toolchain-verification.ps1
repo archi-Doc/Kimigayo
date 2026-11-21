@@ -54,6 +54,14 @@ Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'windows_x64/kernel32.def') -De
 [IO.File]::WriteAllText((Join-Path $copy 'windows_x64/kimi_backend_windows_x64_v1.lib'), 'changed')
 Verify 'backend' 'Adopted backend SHA-256 mismatch'
 Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib') -Destination (Join-Path $copy 'windows_x64/kimi_backend_windows_x64_v1.lib') -Force
-Remove-Item -LiteralPath (Join-Path $copy 'windows_x64/kernel32.lib')
+# A kernel32.lib its kernel32.json agrees with, but not the catalog's kernel32.sha256 (the compiler's supply's bytes).
+$kernelLibrary = Join-Path $copy 'windows_x64/kernel32.lib'
+[IO.File]::WriteAllText($kernelLibrary, 'changed')
+$changed = $metadata | ConvertFrom-Json
+$changed.sha256 = (Get-FileHash -LiteralPath $kernelLibrary -Algorithm SHA256).Hash.ToLowerInvariant()
+$changed | ConvertTo-Json | Set-Content -LiteralPath $kernelPath -Encoding utf8
+Verify 'kernel-catalog' 'Adopted kernel32 SHA-256 mismatch'
+[IO.File]::WriteAllText($kernelPath, $metadata)
+Remove-Item -LiteralPath $kernelLibrary
 Verify 'missing-kernel' 'setup.ps1'
 Write-Output "Toolchain verification tests passed: $work"

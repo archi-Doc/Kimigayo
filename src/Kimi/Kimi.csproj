@@ -44,6 +44,8 @@
     <EmbeddedResource Include="Testing\TestRuntime.ll" />
     <EmbeddedResource Include="..\backend\windows-x64\profile.json" LogicalName="Kimi.WindowsBackendProfile.json" />
     <EmbeddedResource Include="..\backend\windows-x64\kernel32.def" LogicalName="Kimi.Kernel32.def" />
+    <EmbeddedResource Include="..\backend\windows-x64\kernel32.lib" LogicalName="Kimi.Kernel32.lib" />
+    <EmbeddedResource Include="..\backend\windows-x64\kimi_backend_windows_x64_v1.lib" LogicalName="Kimi.WindowsBackend.lib" />
     <EmbeddedResource Include="..\Tatara\tatara.h" LogicalName="Kimi.Tatara.h" />
     <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
