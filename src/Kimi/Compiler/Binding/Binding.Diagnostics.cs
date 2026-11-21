@@ -753,7 +753,7 @@ public sealed partial class Binding
         return this.Fail(use, BindingFailure.NotObjectPayload);
     }
 
-    [Transitional("R7", Reason = "Records only at a node without a failure (Q1: a cause-less failure resting on the node's own record), until R7-E2 E2-5 with its callers.")]
+    [Transitional("R7", Reason = "Records only at a node without a failure: each caller (ConstraintValidation's use, VirtualOverrides' inherited premise, ArrayInference's fill) may judge a node its own earlier verdict failed, and this guard carries that dependence (R7-E2 E2-5's O2), until R7-E5's per-problem inputs.")]
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {
         if (this.RecordedFailure(use) != BindingFailure.None)

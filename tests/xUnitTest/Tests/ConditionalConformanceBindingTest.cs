@@ -1131,6 +1131,14 @@ public class ConditionalConformanceBindingTest
         Assert.Equal(2, c.Binding.Issues.Count);
     }
 
+    // R7-E2 E2-5a (probe c4, labelled from SPEC 8.7 and 23.1.2 first): each closed-Contract clause is its own failed requirement, and the
+    // clause's unsatisfied use rests on its own rejected registration, which it reads: no UnsatisfiedConstraint_Kd beside them (the slot's
+    // first failure until R7-E5, D-924). A regression row for the records E2-5's first prototype published at each clause.
+    [Theory]
+    [InlineData("c4", "struct S\n    Self is PrimitiveInteger\n    Self is PrimitiveInteger", "ClosedContractConformance_Kd: Self is PrimitiveInteger")]
+    public void ARepeatedClosedClauseAddsNoUnsatisfiedRecord(string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, program + "\npublic func main() => ()", records);
+
     // PLAN G949 S1-b1 (the review's N1; DECISIONS BU-220) guarded a conditional block's declaring path after an edit that keeps its
     // clause's key but registers the conformance no more: the clause's subject `Self` made `T`. Under SPEC Appendix F (normative) that
     // program is invalid syntax: F.6.2's ConditionalConformance is `"Self" "is" ContractReference "when" ConformanceConditions` and SPEC

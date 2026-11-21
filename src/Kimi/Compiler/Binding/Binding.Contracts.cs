@@ -387,6 +387,8 @@ public sealed partial class Binding
 
         if (!valid)
         {
+            // SPEC 23.1.2: invalid over a failed refinement or its own cycle, which it reads: the slot's first failure keeps it derived (no
+            // record of its own beside them) until R7-E5's per-problem inputs (D-924; probe c1).
             this.Fail(contract, BindingFailure.InvalidConstraint);
         }
 

@@ -471,7 +471,7 @@ public sealed partial class Binding
                     if (this.InvalidDeclarationContext(shape.Ancestors[a].Declaration))
                     {
                         var previous = contract.BindingState;
-                        this.Fail(contract, BindingFailure.UnsatisfiedConstraint);
+                        this.Fail(contract, BindingFailure.UnsatisfiedConstraint); // Over an ancestor's invalid context, which it reads: the slot's drop until R7-E5 (D-924).
                         changed |= previous != contract.BindingState;
                         break;
                     }
@@ -686,7 +686,7 @@ public sealed partial class Binding
         }
         else if (proof == ConstraintProof.Refuted)
         {
-            this.Fail(use, BindingFailure.UnsatisfiedConstraint);
+            this.Fail(use, BindingFailure.UnsatisfiedConstraint); // May rest on the use's own rejected registration (probe c2): the slot's drop until R7-E5 (D-924).
         }
         else if (proof == ConstraintProof.Unknown && mode == BindingMode.Final)
         {
