@@ -11,7 +11,8 @@ $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $work = Join-Path $repo "artifacts/verify/toolchain/$([guid]::NewGuid().ToString('N'))"
 $copy = Join-Path $work 'installation'
 New-Item -ItemType Directory -Path (Join-Path $copy 'windows_x64') -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'installation.json') -Destination $copy
+# Every row's root holds the toolchain's tatara.dll, which each verify process maps on its own.
+foreach ($name in @('installation.json', 'tatara.dll')) { Copy-Item -LiteralPath (Join-Path $ToolchainRoot $name) -Destination $copy }
 foreach ($name in @('kernel32.lib', 'kernel32.def', 'kernel32.json', 'kimi_backend_windows_x64_v1.lib')) {
     Copy-Item -LiteralPath (Join-Path $ToolchainRoot "windows_x64/$name") -Destination (Join-Path $copy "windows_x64/$name")
 }
@@ -33,6 +34,10 @@ $changed = $installation | ConvertFrom-Json
 $changed.tools.opt = '0' * 64
 $changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
 Verify 'tool-hash' 'Tool executable SHA-256 mismatch'
+$changed = $installation | ConvertFrom-Json
+$changed.tatara.sha256 = '0' * 64
+$changed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $installationPath -Encoding utf8
+Verify 'tatara-hash' 'tatara.dll SHA-256 mismatch'
 [IO.File]::WriteAllText($installationPath, $installation)
 $kernelPath = Join-Path $copy 'windows_x64/kernel32.json'
 $metadata = [IO.File]::ReadAllText($kernelPath)

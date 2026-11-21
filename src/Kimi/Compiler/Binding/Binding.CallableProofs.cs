@@ -11,7 +11,7 @@ internal readonly record struct CallableConstraintFact(Koto At, IsKoto Clause, B
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, CallableConstraintFact>? callableConstraints;
+    private readonly CallableConstraintRows callableConstraints;
 
     // SPEC 8.10, 8.3, 15.6.1, 23.1: the Reason names the Type bound to F, the clause, the failing member and the relation with both ends
     // as Origin displays; the clause is related as `constraint`, an omitted end at its Type occurrence and a closure's call receiver at
@@ -109,5 +109,16 @@ public sealed partial class Binding
 
             return null;
         }
+    }
+
+    /// <summary>The `callableConstraints` family's one accessor (DECISIONS BU-220): a pass family, the Callable Constraint whose proof is Unknown
+    /// only in its Origin part (SPEC 8.3, 15.6.1), stored with its failure by the recorder (RecordedFact) and written by FailExplained (a
+    /// present row always has its Clause). Its members keep the names its readers use.</summary>
+    private readonly struct CallableConstraintRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<CallableConstraintFact, PassCounter> Family(ref NodeColumns columns) => ref columns.CallableConstraints;
+
+        internal bool TryGetValue(Koto use, out CallableConstraintFact fact) => (fact = binding.RecordedFact(use, Family)).Clause is not null;
     }
 }

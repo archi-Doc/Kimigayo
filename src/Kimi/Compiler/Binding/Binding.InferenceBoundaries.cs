@@ -13,7 +13,7 @@ public sealed partial class Binding
 {
     private const string UnboundReferenceNote = "A function reference without a fixed expected call signature binds its Type parameters only from explicit Type arguments (SPEC 10.5)";
 
-    private Dictionary<Koto, UnboundSlotFact>? unboundSlots;
+    private readonly UnboundSlotRows unboundSlots;
 
     // The callee's own Type slot a part of a Type names itself, -1 for none: directly, as the selector of an `s/U` application or
     // adaptation, or as the target projection of a pair slot (the one owner of the own-slot kinds).
@@ -345,7 +345,7 @@ public sealed partial class Binding
             var note = waiting is not null
                 ? $"No explicit Type argument or evidence binds {name}; it appears in the fixed expected call signature of a waiting argument, which is never evidence for an outer slot{also} (SPEC 10.5, 10.8)"
                 : $"No explicit Type argument or evidence binds {name}{also} (SPEC 10.8)";
-            return this.FailExplained(ref this.unboundSlots, call, BindingFailure.UnboundTypeArgument, new UnboundSlotFact(selected, name, waiting, note), true);
+            return this.FailExplained(UnboundSlotRows.Family, call, BindingFailure.UnboundTypeArgument, new UnboundSlotFact(selected, name, waiting, note), true);
 
             // Explicit Type arguments are a complete list (SPEC 8.1): every slot must be writable, so a slot that a waiting argument binds or
             // that holds a Closure or Function Item Type leaves none to write.
@@ -405,5 +405,16 @@ public sealed partial class Binding
                 this.CompleteDependent(inferred, cause);
             }
         }
+    }
+
+    /// <summary>The `unboundSlots` family's one accessor (DECISIONS BU-220): a pass family, a selected call's first slot that no evidence
+    /// binds, stored with its failure by the recorder (RecordedFact) and written by FailExplained (a present row always has its
+    /// Declaration). Its members keep the names its readers use.</summary>
+    private readonly struct UnboundSlotRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<UnboundSlotFact, PassCounter> Family(ref NodeColumns columns) => ref columns.UnboundSlots;
+
+        internal bool TryGetValue(Koto call, out UnboundSlotFact fact) => (fact = binding.RecordedFact(call, Family)).Declaration is not null;
     }
 }

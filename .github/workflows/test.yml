@@ -44,7 +44,7 @@ jobs:
       id: llvm
       with:
         path: toolchain
-        key: llvm-windows-x64-${{ hashFiles('src/backend/windows-x64/profile.json') }}
+        key: llvm-windows-x64-${{ hashFiles('src/backend/windows-x64/profile.json', 'src/backend/windows-x64/setup.ps1', 'src/Tatara/**') }}
     - name: Install pinned LLVM tools
       if: steps.llvm.outputs.cache-hit != 'true'
       run: |
@@ -58,7 +58,7 @@ jobs:
         New-Item -ItemType Directory -Path $expanded | Out-Null
         tar -xf $archive -C $expanded --strip-components=1
         if ($LASTEXITCODE -ne 0) { throw 'LLVM extraction failed.' }
-        ./src/backend/windows-x64/setup.ps1 -LlvmBin (Join-Path $expanded 'bin')
+        ./src/backend/windows-x64/setup.ps1 -LlvmRoot $expanded
     - run: dotnet restore
     - name: Compiler, allocation and native O0/O2 regressions
       run: ./scripts/verify.ps1 -Mode Session -Fixtures '*.ll' -VerifyToolchain -Name ci
