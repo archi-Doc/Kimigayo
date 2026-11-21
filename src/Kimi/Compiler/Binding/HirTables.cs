@@ -361,6 +361,7 @@ internal struct NodeColumns
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> GuessedCompletions; // Work: the guess rule's (Binding.GuessedCompletionNodes) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
+    internal StampedColumn<bool, Binding.PassCounter> FormReads; // Work: whether its Error's form reads a node's whole Place, the HIR publisher's working state, read only in the publication that wrote it, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
 
     internal void Resize(int length)
     {
@@ -433,6 +434,7 @@ internal struct NodeColumns
         this.GuessedCompletions.Grow(length);
         this.PublishedCompletions.Grow(length);
         this.LintCompletions.Grow(length);
+        this.FormReads.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -482,6 +484,7 @@ internal struct NodeColumns
         this.GuessedCompletions.Release();
         this.PublishedCompletions.Release();
         this.LintCompletions.Release();
+        this.FormReads.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -559,6 +562,7 @@ internal struct NodeColumns
             GuessedCompletions = this.GuessedCompletions.Renumbered(length),
             PublishedCompletions = this.PublishedCompletions.Renumbered(length),
             LintCompletions = this.LintCompletions.Renumbered(length),
+            FormReads = this.FormReads.Renumbered(length),
         };
         return columns;
     }

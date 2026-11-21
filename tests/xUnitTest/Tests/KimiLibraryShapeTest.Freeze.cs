@@ -73,6 +73,7 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.GuessedCompletions"] = "released at the freeze: the guess rule's query memo, its working state; the guess rule answers none at a frozen node (R7-N5 B6b)",
         ["NodeColumns.PublishedCompletions"] = "released at the freeze: the HIR publisher's query memo, read only at the library's publication, before the freeze (R7-N5 B6b)",
         ["NodeColumns.LintCompletions"] = "released at the freeze: the lint walk's query memo; the library is not linted (R7-N5 B6b)",
+        ["NodeColumns.FormReads"] = "released at the freeze: the HIR publisher's kept-read working state, read only in the publication that wrote it; the library has no Error, so it writes none (D-986)",
         ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ArithmeticConformanceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.AssociatedAmbiguities"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
