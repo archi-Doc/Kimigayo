@@ -237,6 +237,9 @@ public sealed partial class Binding
     private int SlotProblem(Koto node)
         => this.report.Count == 0 ? -1 : this.report.Find(SourceRef.Written(node), DiagnosticRequirement.Binding(this.RecordedFailure(node)), 0);
 
+    // A problem's condition, the last part of the key its record is published at; 0 for no problem (a slot without one).
+    private ushort ConditionOf(int problem) => problem >= 0 ? this.report.Problem(problem).Condition : (ushort)0;
+
     // The part of a located problem (its Span fact), or null for no problem.
     private SourceSpan? LocatedPart(int problem)
         => problem >= 0 && this.FactOf(problem, ProblemFactKind.Span) is { } fact ? new((int)(fact.Value >> 32), (int)fact.Value) : null;

@@ -160,7 +160,7 @@ public sealed partial class Binding
 
                 // SPEC 10.5.3, 10.7: the one candidate's record reads the signature its trial substituted, its Item over the arguments the
                 // trial bound (the written ones where given) and its container; with a slot unbound there is none, and the declaration's
-                // own signature is a Type mismatch whose Note names the slot. When only its Origin contract fails, the record names that
+                // own signature is the Type mismatch's found side. When only its Origin contract fails, the record names that
                 // contract (SPEC 15.6.1), with the candidate's own inputs instantiated: a member, else a condition of the candidate. A
                 // comparison that names no fact read the contract its failed clause made unavailable, so the record rests on that
                 // clause (SPEC 23.1.2, DECISIONS Q13 rule W).
