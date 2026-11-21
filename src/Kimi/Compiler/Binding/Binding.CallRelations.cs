@@ -65,6 +65,10 @@ public sealed partial class Binding
         InvocationKoto call, in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, ReadOnlySpan<BoundDefaultArgument> defaults)
     {
         var selected = solution.Function;
+
+        // The selected candidate's solve as its runs retained it (InferenceOf), whose published Marked fact the clauses and the input
+        // premises read; the solution rebuilt for this judgment carries none.
+        var solved = this.originInferences.GetValueOrDefault((call, selected));
         this.RecordOpenings(call, solution);
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
@@ -92,7 +96,7 @@ public sealed partial class Binding
             {
                 // The parameter's pattern as the candidate reads it, the receiver's too (DECISIONS BU-99).
                 var pattern = i < argumentCount ? solution.Rows[i].Pattern : solution.Pattern(selected.Parameters[receiver.ParameterIndex].Type.BoundType!);
-                this.RequireInputPremises(at, pattern!, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence);
+                this.RequireInputPremises(at, pattern!, parameter, adapted, i < argumentCount ? solution.Rows[i].Contribution : Contribution.Evidence, solved);
             }
             else if (i < argumentCount && operations[i] is { Source: { } whole, ParameterType: { } type })
             {
@@ -104,16 +108,16 @@ public sealed partial class Binding
                     root = root with { Pattern = IsBorrow(root.Pattern!.Semantics) ? root.Pattern.Components[0] : root.Pattern, Type = value };
                 }
 
-                this.JudgePositionRows(whole, root, solution);
+                this.JudgePositionRows(whole, root, solution, solved);
             }
         }
 
         foreach (var argument in defaults)
         {
-            this.RequireInputPremises(call, solution.Pattern(argument.Parameter.Type!)!, argument.ParameterType, null, Contribution.Signature);
+            this.RequireInputPremises(call, solution.Pattern(argument.Parameter.Type!)!, argument.ParameterType, null, Contribution.Signature, solved);
         }
 
-        this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
+        this.JudgeCallClauses(call, selected, operations, solution.Origins, solution.Inputs, solution.DeclaringType, solved);
         this.CollectFitBounds(operations, argumentCount);
     }
 
@@ -161,13 +165,21 @@ public sealed partial class Binding
         }
     }
 
-    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType)
+    // `operations` holds the arguments' and, last, the receiver's; `solved` is the call's solve, whose published Marked fact a clause over
+    // a marked variable rests on (rule W, SPEC 23.1.2).
+    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType, OriginInference? solved)
     {
+        var argumentCount = operations.Length - 1;
         var binder = selected.OriginBinder;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
         {
             foreach (var relation in declaration.Relations)
             {
+                if (solved is not null && (solved.ReadsMarked(relation.Longer) || solved.ReadsMarked(relation.Shorter)))
+                {
+                    continue;
+                }
+
                 // SPEC 15.6.1: a substituted clause is located at the first input whose parameter names its longer Origin.
                 var at = this.ClauseInput(selected, operations, argumentCount, relation.Longer) ?? call;
                 var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, declaringType);

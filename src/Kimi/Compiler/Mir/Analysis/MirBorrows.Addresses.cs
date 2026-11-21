@@ -287,7 +287,8 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // The addresses' uses of one location: its Places with their accesses, an operand's Place read by a Copy, Move or PairAcquire.
+    // The addresses' uses of one location: its Places with their accesses, an operand's Place read by a Copy, Move or PairAcquire, an
+    // Opaque site's undecided use at its root (MirDescriptors.Judged, DECISIONS Z17).
     private struct Addressing(MirBorrows owner) : IMirUses
     {
         private int location;
@@ -304,7 +305,7 @@ internal sealed partial class MirBorrows
         {
             var read = this.inOperand && this.operand.Place == place;
             this.inOperand &= !read;
-            owner.Use(this.location, place, access, kind, read);
+            owner.Use(this.location, MirDescriptors.Judged(place, access), access, kind, read);
         }
 
         internal void At(int location) => (this.location, this.inOperand) = (location, false);

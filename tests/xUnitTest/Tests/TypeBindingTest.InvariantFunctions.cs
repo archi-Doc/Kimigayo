@@ -1137,7 +1137,9 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
-        // rt2i (invalid, review): a generic caller g<T>(x: T, y: T), uniq/PC then uniq/FX(b).
+        // rt2i (invalid, review): a generic caller g<T>(x: T, y: T), uniq/PC then uniq/FX(b). SPEC 10.8 as revised (G1128): the Function
+        // Type's input Origin in T is a slot variable that only FX's `b` bounds (PC's per-call input is bound by its own Type, 15.3.4), so
+        // T is uniq/FX(b) and PC's argument is the one that does not fit it, in either order (rt2j).
         {
             "rt2i",
             """
@@ -1149,7 +1151,7 @@ public partial class TypeBindingTest
 
             public func main() => ()
             """,
-            "UnprovenOriginContract_Kd y0@move"
+            "UnprovenOriginContract_Kd x0@move"
         },
         // rt2j (invalid, review): rt2i with FX(b) first.
         {
@@ -1172,6 +1174,32 @@ public partial class TypeBindingTest
             func g<T>(x: T, y: T) -> i32 => 0
 
             func f(q: ref/i32, x0: uniq/((ref/i32) -> i32) during q, y0: uniq/((ref/i32) -> i32) during q) -> i32
+                return g(x0@move, y0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rt2c, rt2d (valid, G1128): rt2i's bindings at covariant positions, in either order: T is FX(b), whose input Origin only FX's
+        // `b` bounds, and PC's value instantiates its per-call input to `b` (SPEC 10.7, 10.8 as revised).
+        {
+            "rt2c",
+            """
+            func g<T>(x: T, y: T) -> i32 => 0
+
+            func f(b: ref/i32, x0: (ref/i32) -> i32, y0: (ref/i32 during b) -> i32) -> i32
+                return g(x0@move, y0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        {
+            "rt2d",
+            """
+            func g<T>(x: T, y: T) -> i32 => 0
+
+            func f(b: ref/i32, x0: (ref/i32 during b) -> i32, y0: (ref/i32) -> i32) -> i32
                 return g(x0@move, y0@move)
 
             public func main() => ()

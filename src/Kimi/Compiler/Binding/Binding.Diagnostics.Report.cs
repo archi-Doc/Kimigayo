@@ -196,20 +196,6 @@ public sealed partial class Binding
         else if (this.ReportCallableSelection(issue.Node, store, requirement, issue.Code))
         {
         }
-        else if (issue.Code == DiagnosticCode.AmbiguousBinding_Kd && this.associatedAmbiguities.TryGetValue(issue.Node, out var associated))
-        {
-            var first = $"{DiagnosticTypeName(this.ProjectionContract(associated.First.Symbol, associated.First.Contract))}.{associated.First.Symbol.Name}";
-            var second = $"{DiagnosticTypeName(this.ProjectionContract(associated.Second.Symbol, associated.Second.Contract))}.{associated.Second.Symbol.Name}";
-            var head = AssociatedHead(issue.Node);
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                at: head is OriginApplicationKoto application ? application.Type : head,
-                evidence: [associated.Count],
-                related: [("candidate", associated.First.Symbol.Declaration, first), ("candidate", associated.Second.Symbol.Declaration, second)],
-                note: $"{first} and {second} are distinct associated-Type identities; the declaring Contract's bindings are part of each identity (SPEC 8.4.3-3)");
-        }
         else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var range) == true)
         {
             var rejected = CollectionsMarshal.AsSpan(this.rejectedRows).Slice(range.Start, range.Count);
@@ -327,36 +313,9 @@ public sealed partial class Binding
             // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
             issue.Node.ReportIn(store, requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
         }
-        else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
-        {
-            this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
             this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, store, requirement))
-        {
-            // Declaration evidence is retained by the common binder, independent of the adapter.
-        }
-        else if (issue.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or DiagnosticCode.InvalidAssociatedType_Kd && this.contractAgreementFailures?.TryGetValue(issue.Node, out var agreement) == true)
-        {
-            var first = DiagnosticTypeName(agreement.Left.Type!);
-            var second = DiagnosticTypeName(agreement.Right.Type!);
-            object[] evidence = agreement.AssociatedLeft is { } a
-                ? [first, second, agreement.Associated!.Name, DiagnosticTypeName(a), DiagnosticTypeName(agreement.AssociatedRight!)]
-                : [$"At {first} = {second}, effective implementation mappings do not agree"];
-            issue.Node.ReportIn(
-                store,
-                requirement,
-                issue.Code,
-                evidence: evidence,
-                related: [("contract", agreement.Left.Declaration, first), ("contract", agreement.Right.Declaration, second)],
-                note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.9.2)");
-        }
-        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, store, requirement))
-        {
-            // SPEC 8.11.4: an implementation cannot add an unrequired Callable bound.
         }
         else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, store, requirement, issue.Code))
         {
@@ -424,10 +383,6 @@ public sealed partial class Binding
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
             issue.Node.ReportIn(store, requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
-        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints.TryGetValue(issue.Node, out var reference))
-        {
-            this.ReportClauseConstraint(issue.Node, store, reference, requirement, issue.Code);
-        }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures.TryGetValue(issue.Node, out var erasure))
         {
             var subject = DiagnosticTypeName(erasure.Source);
@@ -459,18 +414,15 @@ public sealed partial class Binding
             var end = DiagnosticTypeName(unproven.Subject.Components[1]);
             issue.Node.ReportIn(store, requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type");
         }
-        else if (issue.Code is DiagnosticCode.UnresolvedBinding_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.constructorAbsences?.TryGetValue(issue.Node, out var absent) == true)
-        {
-            this.ReportConstructorAbsence(issue.Node, store, absent, requirement, issue.Code);
-        }
         else if (issue.Code == DiagnosticCode.InaccessibleBinding_Kd && issue.Node is MemberAccessKoto { BoundSymbol: { } inaccessible })
         {
             issue.Node.ReportIn(store, requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
         }
         else if (issue.Failure == BindingFailure.InvalidConstraint)
         {
-            // A plain Fail(node, InvalidConstraint) keeps no problem until its site records one (R7-E2 E2-5's Contract, conformance and
-            // override sites; R7-E3's call sites); it reaches the adapter's one InvalidConstraint row (F's C2 ruling 306).
+            // A plain Fail(node, InvalidConstraint) keeps no problem until its site records one (R7-E3's call sites; until R7-E5,
+            // Constraints.Requirements' cause-less branch and Contracts' invalid Contract, which read the node's own earlier failure or a
+            // failed part); it reaches the adapter's one InvalidConstraint row (F's C2 ruling 306).
             this.ReportConstraint(issue.Node, store, requirement, issue.Code, 0, null);
         }
         else

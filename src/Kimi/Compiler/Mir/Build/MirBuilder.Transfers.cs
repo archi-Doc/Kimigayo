@@ -51,10 +51,17 @@ internal sealed partial class MirBuilder
         {
             // The published target row is null exactly where Binding rejected the jump (no valid target, or a #switch in its function part
             // selected no arm; DECISIONS R5-M31, R5-M42), so the jump is derived from that record (SPEC 23.1.2): its operand is built,
-            // keeping its own records, and the jump is an Opaque value of what the operand gave or designates, without a record. No
-            // consumer takes the operand, so a Place it designates is not acquired (an acquisition is its consumer's, DECISIONS BU-27).
-            this.SiteRoots(operand is null ? null : this.DerivedOperand(operand));
-            this.Site(jump, this.Temp(jump), Completes(jump));
+            // keeping its own records, and the jump is an Opaque value of what the operand gave or designates, located (none for a
+            // constant), without a record. No consumer takes the operand, so a Place it designates is not acquired (an acquisition is
+            // its consumer's, DECISIONS BU-27).
+            var first = this.located.Count;
+            if (operand is not null && this.DerivedOperand(operand) is { } designated)
+            {
+                this.located.Add((operand, designated));
+            }
+
+            this.Opaque(jump, this.Temp(jump));
+            CollectionsMarshal.SetCount(this.located, first);
             return;
         }
 

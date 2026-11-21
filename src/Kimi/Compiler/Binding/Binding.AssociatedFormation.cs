@@ -72,6 +72,8 @@ public sealed partial class Binding
 
         if (!IsAssociatedRequirement(declaration) || (declaration is IsKoto clause && AssociatedIdentityType(clause.BoundConstraint) is not null))
         {
+            // SPEC 23.1.2: BindSpecification judged a specification's formation Type first, by the same rule (SPEC 8.5), at this clause:
+            // the slot's first failure keeps one record until R7-E5's per-problem inputs (D-924; probe f1).
             this.Fail(declaration, BindingFailure.InvalidAssociatedType);
             return;
         }
