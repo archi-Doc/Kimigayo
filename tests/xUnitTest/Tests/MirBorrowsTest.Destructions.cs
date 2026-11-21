@@ -679,6 +679,46 @@ public sealed partial class MirBorrowsTest
             Kimi.Intrinsics.replace(x@uniq, with: Writer.init(q: null))
             y = 5
             usep(slot)
+        func replaceDerefOk()
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            Kimi.Intrinsics.replace(r@follow@uniq, with: Writer.init(q: null))
+            inspect(x@ref)
+        func replaceSlotOk()
+            var slot: raw/u8 = null
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            var n = Writer.init(q: null)
+            n.p = slot@raw
+            Kimi.Intrinsics.replace(r@follow@uniq, with: n@move)
+            inspect(x@ref)
+            usep(slot)
+        func replaceFieldOk()
+            var o = Outer.init(q: null)
+            let r = o@uniq
+            Kimi.Intrinsics.replace(r.inner@uniq, with: Writer.init(q: null))
+            inspect(o@ref)
+        func replaceElementOk()
+            var a: Array<Writer> = [Writer.init(q: null)]
+            Kimi.Intrinsics.replace(a[0]@uniq, with: Writer.init(q: null))
+            inspect(a@ref)
+        func replaceValueBad(y: uniq/i32)
+            let w = y@follow@ref
+            var x = Writer.init(q: null)
+            let r = x@uniq
+            Kimi.Intrinsics.replace(r@follow@uniq, with: Writer.init(q: w@raw@raw/u8))
+            y@follow = 5
+            inspect(x@ref)
+        func replaceDerefBad(y: uniq/i32)
+            let w = y@follow@ref
+            var slot: raw/u8 = null
+            var x = Writer.init(q: w@raw@raw/u8)
+            x.p = slot@raw
+            let r = x@uniq
+            Kimi.Intrinsics.replace(r@follow@uniq, with: Writer.init(q: null))
+            y@follow = 5
+            usep(slot)
+            inspect(x@ref)
         func keyParamNullOk(d: uniq/Dictionary<WKey, i32>)
             var y: i32 = 1
             var w: ref/i32 = y@ref
@@ -799,6 +839,11 @@ public sealed partial class MirBorrowsTest
     // ATruncateOrRemoveAllComposesItsElementsDestruction. Each Bad errs at `y = 5` through the composition (DECISIONS R4-M150; before it,
     // R4-M143's referent guard) or the key's dependencies; each null twin (the destroyed element's q is null, so its drop stores nothing
     // that carries y) is valid, so the composition adds no Loan the drop does not store.
+    // D-933 (SPEC 15.7, 15.6.4): `replace` writes only its target and places `with`'s value there, never writing through it, so the
+    // target's own Loans (`x@uniq` past `r`, `o@uniq` past `r` to a Field, the element borrow) reach no storage through `with`'s raw Field:
+    // replaceDerefOk, replaceSlotOk (`with` addresses a local slot), replaceFieldOk and replaceElementOk are valid (fail-before: records at
+    // the root's storage end and the later `@ref`); replaceValueBad's placed value carries w's Loan into x, and replaceDerefBad's old value's
+    // drop stores q, so each errs at `y@follow = 5` alone (fail-before: also at `var x` and `x@ref`).
     [Theory]
     [InlineData("arrClearBad", "arrClearBad: y = 5")]
     [InlineData("clearNullOk", "")]
@@ -806,6 +851,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("removeAllNullOk", "")]
     [InlineData("replaceBad", "replaceBad: y = 5")]
     [InlineData("replaceNullOk", "")]
+    [InlineData("replaceDerefOk", "")]
+    [InlineData("replaceSlotOk", "")]
+    [InlineData("replaceFieldOk", "")]
+    [InlineData("replaceElementOk", "")]
+    [InlineData("replaceValueBad", "replaceValueBad: y@follow = 5")]
+    [InlineData("replaceDerefBad", "replaceDerefBad: y@follow = 5")]
     [InlineData("keyParamBad", "keyParamBad: y = 5")]
     [InlineData("keyParamNullOk", "")]
     public void APublishedDestroyingCallComposesItsRowsDestruction(string form, string expected)
