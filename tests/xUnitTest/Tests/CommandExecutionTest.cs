@@ -251,13 +251,15 @@ public sealed class CommandExecutionTest : IDisposable
         }
 
         // kimi test takes its arguments from the command line as every command does (PLAN G1214): the parser splits the line and unwraps
-        // a quoted argument, so a quoted input, with a space or without, and a quoted option value arrive without their quotes, and a bare
-        // --locked arrives as --locked true (KimiOptions.ExpandFlags); an unquoted input is unchanged. --list builds nothing natively.
+        // a quoted argument, so a quoted input, with a space or without, and a quoted option value arrive without their quotes, a bare
+        // --locked arrives as --locked true (KimiOptions.ExpandFlags) and --locked false is the Boolean option's value, not the input
+        // (IMPL 20.3); an unquoted input is unchanged. --list builds nothing natively.
         [Theory]
         [InlineData("test --list \"<input>\"", "with space")]
         [InlineData("test --list \"<input>\"", "nospace")]
         [InlineData("test --list <input>", "nospace")]
         [InlineData("test --list --filter \"passes\" --locked <input>", "nospace")]
+        [InlineData("test --list --locked false <input>", "nospace")]
         public async Task TestTakesItsArgumentsFromTheCommandLineAsEveryCommand(string line, string folder)
         {
             var project = Path.Combine(this.directory, folder, "Tests.kimiproj");
