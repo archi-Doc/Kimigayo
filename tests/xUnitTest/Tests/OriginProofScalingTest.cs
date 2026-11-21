@@ -135,8 +135,8 @@ public class OriginProofScalingTest(ITestOutputHelper output)
     // above (dag: two carried paths per level, 2^n paths in all; the code review's N5). Each Closure's carried regions are formed once
     // (BoundClosure.Carried, a list the next level's formation reads) and each body's oracle reads each region once, in turn included:
     // the region reads grow linearly with n (the row asserts them; the time is printed). n is 15, 30, 60 for the chain; the dag's is 5,
-    // 10, 20, below the knee of a compile time exponential in its depth that dev has without A1 (PLAN open issue D-1001: about 36 s at
-    // 30 levels); the unit that fixes D-1001 raises the dag's depths to the chain's.
+    // 10, 20, below the knee of a compile time exponential in its depth that dev has without A1 (PLAN G1209: about 36 s at
+    // 30 levels); the unit that fixes G1209 raises the dag's depths to the chain's.
     [Theory]
     [InlineData("chain", 15)]
     [InlineData("dag", 5)]

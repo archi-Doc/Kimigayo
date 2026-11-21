@@ -2,7 +2,7 @@
 
 // Origin inference of a call's or a contract comparison's per-call Origins (SPEC 15.3.6, 10.5; DECISIONS BU-221).
 // - Responsibility: the solve's bounds and variables (OriginInference: CollectOriginInference, a declaration's relations), their
-//   candidates in a fixpoint by the solve's reading of SPEC 15.3.6's table (RowCandidate, with its two departures until PLAN D-998;
+//   candidates in a fixpoint by the solve's reading of SPEC 15.3.6's table (RowCandidate, with its two departures until PLAN G1208;
 //   SolveLocalBounds reads it too) with the strongest lower bound (StrongestLowerBound, which a local region's candidate shares), the
 //   representatives of variables without a principal solution, J2's waited variables, and, outside a selection, the judgment of each
 //   bound.
@@ -491,7 +491,7 @@ public sealed partial class Binding
     // bound, as SPEC states them. It departs from the table twice: a covariant variable without an upper bound takes the lower bound (the
     // table: none), and an invariant one gives none unless its meet and its lower bound are proven equal (the table: otherwise the
     // covariant, else the contravariant candidate), which the representative then takes. Removed when the solve reads the table itself
-    // (PLAN open issue D-998: one owner moves the solve's records); a local region's candidate is the table's (Binding.LocalRegions'
+    // (PLAN G1208: one owner moves the solve's records); a local region's candidate is the table's (Binding.LocalRegions'
     // VarCandidate). Proofs at `use` in `comparison`.
     private BoundOrigin? RowCandidate(OriginVariance row, BoundOrigin? upper, BoundOrigin? lower, Koto use, in CallableInstance comparison)
         => row switch

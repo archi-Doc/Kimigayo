@@ -376,7 +376,7 @@ public sealed partial class Binding
     // without one: "never replaced by static"), contravariant its strongest lower bound (LowerBound), invariant the proven equality, which
     // its upper bounds' meet is where it has one (an equality records both directions), otherwise the covariant, else the contravariant
     // candidate. The strongest lower bound is read only for a row that takes it. The call solve's reading departs from the table
-    // (OriginInference's RowCandidate, until PLAN D-998). Null with no candidate.
+    // (OriginInference's RowCandidate, until PLAN G1208). Null with no candidate.
     private BoundOrigin? VarCandidate(BoundOrigin origin, LocalRegion region, Koto? body, Koto binder)
     {
         var (value, bounded) = (BoundOrigin.Static, false);
