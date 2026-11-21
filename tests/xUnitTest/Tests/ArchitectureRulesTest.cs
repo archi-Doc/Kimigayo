@@ -128,8 +128,9 @@ public class ArchitectureRulesTest
     // anything else asks the judge or a relation; formed: both sides passed a judgment's intake (ClassForm at J1-J4 and (ii), or the pair
     // RelationWalk.Intake published); declared: declared shapes or published Types in their own terms (signatures, a declaration's Self,
     // associated bindings, an overlap's two paths, a layout's parts: no form crosses views); representation: TyCtxt's interning and a
-    // Type's own equality, below every view; record: a record's or note's selection, no verdict.
-    private static readonly string[] TypeComparisonReasons = ["kind", "unchanged", "key", "sufficient", "formed", "declared", "representation", "record"];
+    // Type's own equality, below every view; record: a record's or note's selection, no verdict; finding: an operand that is not what its
+    // owner publishes (a defect found, not fixed here), kept until its PLAN open issue's fix lands; the row's comment names that row.
+    private static readonly string[] TypeComparisonReasons = ["kind", "unchanged", "key", "sufficient", "formed", "declared", "representation", "record", "finding"];
 
     // R7-C3 C3c: one row per site and reason, `File:Member=count reason`.
     private static readonly string[] TypeComparisonSites =
@@ -142,13 +143,14 @@ public class ArchitectureRulesTest
         "Binding.ArgumentKinds.Evidence.cs:InferPosition=1 kind",
         "Binding.ArgumentKinds.Fit.cs:ProbeRangeBoundary=1 formed",
         "Binding.ArgumentKinds.Fit.cs:ProbeRangeBoundary=1 kind",
+        "Binding.ArgumentKinds.Solution.cs:RestoreSlotValues=1 unchanged",
         "Binding.ArgumentKinds.Wholes.cs:BindWholes=1 key",
         "Binding.ArgumentKinds.Wholes.cs:HoldsNeverPart=1 kind",
         "Binding.ArgumentKinds.Wholes.cs:SameBinding=1 sufficient",
         "Binding.ArgumentOperations.cs:AdaptInput=2 declared",
         "Binding.ArgumentOperations.cs:AdaptInput=2 kind",
         "Binding.ArgumentOperations.cs:AdaptInput=2 sufficient",
-        "Binding.ArgumentOperations.cs:SharedReferenceThroughLayers=1 unchanged",
+        "Binding.ArgumentOperations.cs:SharedReferenceThroughLayers=1 sufficient",
         "Binding.ArithmeticContracts.cs:NotString=1 kind",
         "Binding.ArithmeticOperators.cs:TryArithmetic=1 kind",
         "Binding.ArithmeticOperators.cs:TryArithmetic=1 sufficient",
@@ -229,7 +231,8 @@ public class ArchitectureRulesTest
         "Binding.ControlFlow.cs:ReadTypeUnification=1 formed",
         "Binding.ControlFlow.cs:SelectCommonType=2 kind",
         "Binding.Conversions.Raw.cs:CompletePointerConversion=2 kind",
-        "Binding.Conversions.cs:BindConversion=12 formed",
+        "Binding.Conversions.cs:BindConversion=9 formed",
+        "Binding.Conversions.cs:BindConversion=3 finding", // PLAN G1240 (D-1036): the typed-borrow target compared as written
         "Binding.Conversions.cs:BindConversion=2 kind",
         "Binding.Conversions.cs:IsNeverValue=1 kind",
         "Binding.Conversions.cs:IsRuntimeRecordType=3 kind",
@@ -261,7 +264,9 @@ public class ArchitectureRulesTest
         "Binding.Hir.cs:Layers=1 unchanged",
         "Binding.Imports.cs:AddImport=1 declared",
         "Binding.InPlaceReads.cs:ElementRead=1 unchanged",
+        "Binding.InPlaceReads.cs:StringThroughLayers=2 kind",
         "Binding.Indexers.cs:TryBindIndexer=1 unchanged",
+        "Binding.InferCtxt.cs:BindsDistinctTypes=1 formed",
         "Binding.InheritedConformances.cs:InheritedSelfMismatchNote=1 record",
         "Binding.InlineLayouts.cs:AddInlinePart=1 key",
         "Binding.InlineLayouts.cs:WithComponent=1 unchanged",
@@ -282,7 +287,7 @@ public class ArchitectureRulesTest
         "Binding.NumericConversions.cs:TryFloatLiteral=1 kind",
         "Binding.ObjectViews.cs:FindObjectErasure=1 declared",
         "Binding.ObjectViews.cs:FindObjectErasure=2 key",
-        "Binding.ObjectViews.cs:ObjectUpcastFits=1 declared",
+        "Binding.ObjectViews.cs:ObjectUpcastFits=1 finding", // PLAN G1240 (D-1036): BindConversion's typed-borrow target reaches it as written
         "Binding.ObjectViews.cs:RequireObjectErasure=1 sufficient",
         "Binding.OpenOrigins.cs:FillOpenOrigins=1 sufficient",
         "Binding.OpenOrigins.cs:FillOpenOrigins=1 unchanged",
@@ -300,7 +305,6 @@ public class ArchitectureRulesTest
         "Binding.Operators.cs:BindBinary=1 kind",
         "Binding.Operators.cs:CompleteBinary=2 kind",
         "Binding.Operators.cs:NonNumericOperand=2 kind",
-        "Binding.Operators.cs:StringThroughLayers=2 kind",
         "Binding.OriginDiagnostics.cs:IsExcludedInputOrigin=1 record",
         "Binding.OriginInheritance.cs:CompleteImplementationOrigins=2 formed",
         "Binding.OriginRequirements.cs:PairOrdinal=1 key",
@@ -327,6 +331,8 @@ public class ArchitectureRulesTest
         "Binding.Ranges.cs:FromEndOffset=1 kind",
         "Binding.Ranges.cs:IndependentBoundary=1 kind",
         "Binding.Ranges.cs:TryBindKeyedSelection=2 kind",
+        "Binding.RawOrigins.Borrows.cs:Join=1 key",
+        "Binding.RawOrigins.Borrows.cs:Mode=1 key",
         "Binding.RawOrigins.cs:SameExceptRawOrigins=1 sufficient",
         "Binding.ReadTypes.cs:ReadTypeReferent=1 unchanged",
         "Binding.RecursiveContracts.cs:IsRecursive=2 declared",
@@ -366,6 +372,8 @@ public class ArchitectureRulesTest
         "Binding.ShapeEvidence.cs:SameArgumentEvidence=1 kind",
         "Binding.ShapeEvidence.cs:SameShapeBinding=1 sufficient",
         "Binding.Signatures.cs:SignatureEquals=1 sufficient",
+        "Binding.SlotVariables.cs:SkeletonOf=1 unchanged",
+        "Binding.SlotVariables.cs:SlotValuesOf=1 unchanged",
         "Binding.Specializations.cs:MayMatch=1 sufficient",
         "Binding.Startup.cs:ValidMain=1 kind",
         "Binding.Storage.cs:CompletedParts=2 unchanged",
@@ -397,7 +405,8 @@ public class ArchitectureRulesTest
         "BindingModel.cs:Equals=1 representation",
         "BindingModel.cs:IsScalar=2 kind",
         "BindingModel.cs:IsWrappingInteger=1 representation",
-        "ExplicitAdaptationPlan.cs:Select=7 formed",
+        "ExplicitAdaptationPlan.cs:Select=5 formed",
+        "ExplicitAdaptationPlan.cs:Select=2 finding", // PLAN G1240 (D-1036): BindConversion's typed-borrow target reaches the borrow arms as written
         "ExplicitAdaptationPlan.cs:Select=2 kind",
         "TyCtxt.Comparison.cs:OperatorCompares=1 kind",
         "TyCtxt.Comparison.cs:OperatorTableRuns=2 kind",
@@ -871,8 +880,10 @@ public class ArchitectureRulesTest
     // (TypeComparisonReasons); a further site fails here until its row is reviewed. Read by the semantic model: `==`, `!=`,
     // ReferenceEquals and Equals whose two operands are Types (a null literal is none), SameCompleteType, and a library search of Types
     // for a Type (Contains, IndexOf, LastIndexOf, SequenceEqual, Remove), each counted at its file and member (a lambda's or local
-    // function's in its declaring member). Not seen, so review reads them: a Type as a key (a Dictionary's or HashSet's lookup, a
-    // tuple's or record's generated equality), an equality through a comparer or an object-typed operand.
+    // function's in its declaring member), a conditional access's too (`a?.Equals(b)`, `xs?.Contains(t)`). A candidate the model does
+    // not resolve (an error-typed operand, or an Equals, ReferenceEquals or search call without its method) fails here, naming its site.
+    // Not seen, so review reads them: a Type as a key (a Dictionary's or HashSet's lookup, a tuple's or record's generated equality), an
+    // equality through a comparer or an object-typed operand.
     [Fact]
     public void TypeComparisonsOutsideTheJudgeStayAtTheirSites()
     {
@@ -880,16 +891,19 @@ public class ArchitectureRulesTest
         Assert.All(rows, static x => Assert.True(x.Length == 2 && TypeComparisonReasons.Contains(x[1]), $"A row names one reason: {string.Join(' ', x)}."));
         var expected = rows.Select(static x => x[0].Split('=')).GroupBy(static x => x[0], StringComparer.Ordinal)
             .Select(static x => $"{x.Key}={x.Sum(static y => int.Parse(y[1], System.Globalization.CultureInfo.InvariantCulture))}").Order(StringComparer.Ordinal).ToArray();
-        var actual = TypeComparisons().GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
+        var sites = TypeComparisons();
+        var unresolved = sites.Where(static x => x.Unresolved).Select(static x => x.Site).Distinct().Order(StringComparer.Ordinal).ToArray();
+        Assert.True(unresolved.Length == 0, $"Candidate Type comparisons the semantic model does not resolve: {string.Join(";", unresolved)}.");
+        var actual = sites.GroupBy(static x => x.Site, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
         Assert.True(
             expected.SequenceEqual(actual),
             $"Type comparisons outside the judge: new or changed {string.Join(";", actual.Except(expected))}; the rows say {string.Join(";", expected.Except(actual))}.");
     }
 
-    // The comparisons of two Types in Binding outside the judge's files (Binding.TypeIdentity*.cs), one `File:Member` per comparison, read
-    // by Roslyn's semantic model over the compiler's sources (the source generators' members are absent; a comparison whose operand is
-    // one has no Type and is not seen).
-    private static IEnumerable<string> TypeComparisons()
+    // The comparisons of two Types in Binding outside the judge's files (Binding.TypeIdentity.cs and its Binding.TypeIdentity.<Concern>.cs),
+    // one `File:Member` per comparison, read by Roslyn's semantic model over the compiler's sources; Unresolved marks a candidate the model
+    // does not resolve (the source generators' members are absent, so an operand that is one is error-typed).
+    private static (string Site, bool Unresolved)[] TypeComparisons()
     {
         var options = new CSharpParseOptions(LanguageVersion.Preview);
         var root = Path.GetFullPath(Path.Combine(Repository.Root, "src", "Kimi"));
@@ -909,35 +923,56 @@ public class ArchitectureRulesTest
             "Kimi", trees, references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, allowUnsafe: true, nullableContextOptions: NullableContextOptions.Enable));
         var type = compilation.GetTypeByMetadataName("Kimi.Compiler.BoundType") ?? throw new InvalidOperationException("No BoundType.");
         var binding = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Binding") + Path.DirectorySeparatorChar;
-        return trees.Where(x => x.FilePath.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(x.FilePath).StartsWith("Binding.TypeIdentity", StringComparison.Ordinal))
+        return trees.Where(x => x.FilePath.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && !Path.GetFileName(x.FilePath).StartsWith("Binding.TypeIdentity.", StringComparison.Ordinal))
             .AsParallel().SelectMany(x => Sites(x, compilation.GetSemanticModel(x))).ToArray();
 
-        IEnumerable<string> Sites(SyntaxTree tree, SemanticModel model)
+        IEnumerable<(string Site, bool Unresolved)> Sites(SyntaxTree tree, SemanticModel model)
         {
             foreach (var node in tree.GetRoot(TestContext.Current.CancellationToken).DescendantNodes())
             {
-                var compares = node switch
+                // Null: a candidate the model does not resolve.
+                bool? compares = node switch
                 {
                     BinaryExpressionSyntax x when x.IsKind(SyntaxKind.EqualsExpression) || x.IsKind(SyntaxKind.NotEqualsExpression) => Types(x.Left, x.Right),
-                    InvocationExpressionSyntax { ArgumentList.Arguments: [var a, var b] } x when CalledName(x.Expression) is "ReferenceEquals" or "Equals" => Types(a.Expression, b.Expression),
-                    InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax access, ArgumentList.Arguments: [var a] } x when CalledName(x.Expression) is "Equals" =>
-                        Types(access.Expression, a.Expression),
-                    InvocationExpressionSyntax x when CalledName(x.Expression) is "SameCompleteType" => true,
-                    InvocationExpressionSyntax x when CalledName(x.Expression) is "Contains" or "IndexOf" or "LastIndexOf" or "SequenceEqual" or "Remove" =>
-                        model.GetSymbolInfo(x, TestContext.Current.CancellationToken).Symbol is IMethodSymbol method && !SymbolEqualityComparer.Default.Equals(method.ContainingAssembly, compilation.Assembly) && (method.TypeArguments.Any(Is) || method.ContainingType.TypeArguments.Any(Is) || method.Parameters.Any(p => Is(p.Type))),
+                    InvocationExpressionSyntax { ArgumentList.Arguments: [var a, var b] } x when Name(x.Expression) is "ReferenceEquals" or "Equals" => Resolved(x, Types(a.Expression, b.Expression)),
+                    InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax or MemberBindingExpressionSyntax, ArgumentList.Arguments: [var a] } x when Name(x.Expression) is "Equals" =>
+                        Resolved(x, Types(Receiver(x.Expression), a.Expression)),
+                    InvocationExpressionSyntax x when Name(x.Expression) is "SameCompleteType" => true,
+                    InvocationExpressionSyntax x when Name(x.Expression) is "Contains" or "IndexOf" or "LastIndexOf" or "SequenceEqual" or "Remove" =>
+                        model.GetSymbolInfo(x, TestContext.Current.CancellationToken).Symbol is IMethodSymbol method
+                            ? !SymbolEqualityComparer.Default.Equals(method.ContainingAssembly, compilation.Assembly) && (method.TypeArguments.Any(Is) || method.ContainingType.TypeArguments.Any(Is) || method.Parameters.Any(p => Is(p.Type)))
+                            : null,
                     _ => false,
                 };
-                if (compares)
+                if (compares is not false)
                 {
-                    yield return $"{Path.GetFileName(tree.FilePath)}:{Member(node)}";
+                    yield return ($"{Path.GetFileName(tree.FilePath)}:{Member(node)}", compares is null);
                 }
             }
 
-            bool Types(ExpressionSyntax left, ExpressionSyntax right) => !left.IsKind(SyntaxKind.NullLiteralExpression) && !right.IsKind(SyntaxKind.NullLiteralExpression) &&
-                Is(model.GetTypeInfo(left, TestContext.Current.CancellationToken).Type) && Is(model.GetTypeInfo(right, TestContext.Current.CancellationToken).Type);
+            bool? Types(ExpressionSyntax left, ExpressionSyntax right)
+            {
+                if (left.IsKind(SyntaxKind.NullLiteralExpression) || right.IsKind(SyntaxKind.NullLiteralExpression))
+                {
+                    return false;
+                }
+
+                var leftType = model.GetTypeInfo(left, TestContext.Current.CancellationToken).Type;
+                var rightType = model.GetTypeInfo(right, TestContext.Current.CancellationToken).Type;
+                return leftType is { TypeKind: TypeKind.Error } || rightType is { TypeKind: TypeKind.Error } ? null : Is(leftType) && Is(rightType);
+            }
+
+            bool? Resolved(InvocationExpressionSyntax call, bool? compares) => model.GetSymbolInfo(call, TestContext.Current.CancellationToken).Symbol is null ? null : compares;
         }
 
         bool Is(ITypeSymbol? candidate) => SymbolEqualityComparer.Default.Equals(candidate, type);
+
+        // A called name, a conditional access's member binding (`a?.Equals(b)`) included.
+        static string? Name(ExpressionSyntax called) => called is MemberBindingExpressionSyntax binding ? binding.Name.Identifier.Text : CalledName(called);
+
+        // An instance call's receiver: its member access's, or for a member binding its conditional access's.
+        static ExpressionSyntax Receiver(ExpressionSyntax called) => called is MemberAccessExpressionSyntax access ? access.Expression
+            : called.Ancestors().OfType<ConditionalAccessExpressionSyntax>().First(x => x.WhenNotNull.Span.Contains(called.Span)).Expression;
 
         static string Member(SyntaxNode node) => node.Ancestors().FirstOrDefault(static x => x is BaseMethodDeclarationSyntax or BasePropertyDeclarationSyntax or BaseFieldDeclarationSyntax) switch
         {
