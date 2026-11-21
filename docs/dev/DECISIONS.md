@@ -27575,10 +27575,11 @@ holds the owner's decisions 1–17). Units of the Tatara lane record their entri
   (O-468 (a)); design reviews C-433 1-3; closes PLAN G1045)
   - `NativeBuild` links to the private `<stem>.<guid>.exe` and sets the record's linked fields from that file's hash; then the
     "Built: " report, the last cancellation check, the success record, and only then the move into place. A failed move writes
-    the invalidation again and rethrows the move's failure; when the re-invalidation fails too, one `IOException` naming both (both
-    output failures) or an `AggregateException` of both (a fault). The report stays before the commit, so a failing report leaves
-    no successful record (G985) without un-publishing; a failed move (realistically a running v1) prints its error after
-    "Built: ".
+    the invalidation again and rethrows the move's failure (an output failure); when the re-invalidation fails too, one
+    `IOException` naming both, the move's as its inner exception (`Invalidate` raises only output failures, so any other failure
+    there is a defect's and propagates as itself, a fault no catch classifies; COMPILER_ARCHITECTURE's catch boundaries). The
+    report stays before the commit, so a failing report leaves no successful record (G985) without un-publishing; a failed move
+    (realistically a running v1) prints its error after "Built: ".
   - The windows (decision 19): the process ending between the success record and the move, and a failed move whose
     re-invalidation fails, leave the attempt's success record with the previous executable at the path; a failed first
     invalidation leaves the earlier success. IMPL 20.3.2 states them; `run --no-build` runs only an executable whose hash the
