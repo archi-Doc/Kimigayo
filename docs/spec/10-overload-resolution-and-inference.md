@@ -335,7 +335,7 @@ Common Function Type erasure ([§7.7.4](07-functions-and-callable-values.md#774-
 
 **Result compatibility.** An implementation result `R` is compatible with a required result `Q` when `R <: Q` or `R` is Never. Contract implementation matching, refinement conflict checks, Callable compatibility and common Function Type erasure all use this one relation. A value of one common Function Type relates to another only by subtyping, and Never fitting ([§3.8](03-types-and-values.md#38-type-relations-and-operations)) is a separate relation from subtyping.
 
-Origins and Loans are compared by canonical Origin contracts ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)): required quantifiers are rigid, and only the implementation's call-time Origins are inferred. Compatibility inserts no borrow, conversion or erasure. A direct match and an erasure are incomparable ([§10.2.2](#1022-inference-and-adaptation-classes)).
+Origins and Loans are compared by canonical Origin contracts ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)): required quantifiers are rigid, and only the implementation's call-time Origins and the body inference variables of either side ([§15.3.4](15-ownership-and-lifetime-analysis.md#1534-names-scope-and-quantification)) are inferred. Compatibility inserts no borrow, conversion or erasure. A direct match and an erasure are incomparable ([§10.2.2](#1022-inference-and-adaptation-classes)).
 
 ```kimi
 contract Empty
