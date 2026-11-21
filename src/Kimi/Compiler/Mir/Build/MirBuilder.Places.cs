@@ -243,7 +243,7 @@ internal sealed partial class MirBuilder
     {
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
-        this.SiteRoots(receiver);
+        this.SiteUses(receiver);
         this.Unsupported(node, temp, node);
         return temp;
     }
@@ -264,14 +264,14 @@ internal sealed partial class MirBuilder
 
         var temp = this.Temp(TypeOf(node), node);
         this.opaqueTemps.Add(temp.Root);
-        this.SiteRoots(receiver);
+        this.SiteUses(receiver);
         if (owner is null && known is not null)
         {
             this.Unsupported(node, temp, node);
         }
         else
         {
-            this.Site(node, temp, Completes(node));
+            this.Derived(node, temp, Completes(node));
         }
 
         return temp;
@@ -307,7 +307,7 @@ internal sealed partial class MirBuilder
     // is held at the Type its consumer expects (expected), as Opaque holds a derived one: SPEC 14.9.2 makes a construct's Type the
     // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1). An Error node's value is
     // held there also where Binding gave the node a Type, and it is never taken from where an expansion located the node: each consumer
-    // receives its own derived value, whose site names the located root (SiteRoots; DECISIONS R4-M109).
+    // receives its own derived value, whose site takes the located part (SiteUses; DECISIONS R4-M109, Z17).
     private MirPlace Value(Koto node, MirPlace? into = null, bool input = false, BoundType? expected = null)
     {
         if (HirTables.Op(node) != HirOp.Error && this.Located(node) is { } located)

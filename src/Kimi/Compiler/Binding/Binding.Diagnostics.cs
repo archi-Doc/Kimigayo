@@ -486,7 +486,7 @@ public sealed partial class Binding
 
     // FailExplained's form for a pass family's column (R7-N5, DECISIONS BU-220): the same rule, the fact stored with the failure by the
     // recorder (SetRecordedFact: the node's module's column, or the pass's foreign entry's row). The Dictionary form above goes with the
-    // last family converted (batch E's), its staged removal.
+    // last explanation store that uses it, its staged removal: R7-E3's and R7-E4's, which delete them (R7-N5 E converts none).
     private BoundType? FailExplained<T>(FactFamily<T> facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
         if (this.RecordedFailure(node) == BindingFailure.None)
@@ -646,15 +646,12 @@ public sealed partial class Binding
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();
-        this.constructorAbsences?.Clear();
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
         this.rejectedRows.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
-        this.duplicateDeclarations?.Clear();
-        this.prerequisites.Clear();
-        this.partPrerequisites.Clear();
+        this.duplicateOrder.Clear();
         this.specificationLinks?.Clear();
         this.derivedUses?.Clear();
         this.prerequisiteStore.Clear();
@@ -742,7 +739,7 @@ public sealed partial class Binding
         return this.Fail(use, BindingFailure.NotObjectPayload);
     }
 
-    [Transitional("R7", Reason = "Records only at a node without a failure (Q1: a cause-less failure resting on the node's own record), until R7-E2 E2-5 with its callers.")]
+    [Transitional("R7", Reason = "Records only at a node without a failure, so the node keeps its first failure until R7-E5's per-problem inputs (the owner's O-470 (a); R7-E2 E2-5's O2, the Front's C4): RequireConstraint's Error proof at a node that already failed, which would otherwise publish a dependent record (a clause's own Refuted conformance) or an internal error; InheritVirtualConstraints and BindArrayFill, where no program records otherwise (a repeat records the same key). Constraints.Requirements' cause-less Fail keeps the requirement's own Type record (BindType's, at the node).")]
     private void FailConstraint(Koto use, Koto? diagnosticCause = null)
     {
         if (this.RecordedFailure(use) != BindingFailure.None)

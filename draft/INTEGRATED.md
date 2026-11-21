@@ -1681,3 +1681,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   T lane's seats 1+1 (one implementer, one designer or reviewer seat) are raised to 2+1, two implementers and one designer or
   reviewer; the one-implementer-per-toolchain-root rule stands. Decision 11 changes by the owner's own instruction; no other decision
   changes. Nothing frozen.
+- Revision 7 (2026-11-21, the owner's answers O-467 (a), O-468 (a), O-469 (a) (a) (a) and O-473 (Q1 changed to (d)), and
+  the owner's approvals in T's dialog (「推奨の組み合わせで結構です」, decisions 23 and 24); T's D-1018): §2 gains decisions 18-24;
+  §7: B6's and B7's rows name the units they land as, and a new row B9 (a freestanding target, decision 22) follows B8;
+  §11: the questions before B5, B6 and B7 are answered, and one before B9 is added. No earlier decision changes. Nothing frozen.
+- Revision 8 (2026-11-22, the owner's answers O-478 (i)-(iv) (a), (ii) confirmed in T's dialog 「(a) のまま」, and O-479 (B8 a
+  future plan); T's D-1035): §2 gains decisions 25-28 (the Linux clock as a 28th intrinsic `MonotonicClock`; the musl 1.2.6
+  download; `KIMI_E_PROCESS_HEAP` removed in B7r2; decision 23's memory gate); §7: B7's row names B7b's group B7r and its
+  order, B8's row records the owner's deferral; §11: the question before B7b is answered. No earlier decision changes.
+  Nothing frozen.

@@ -15,7 +15,7 @@ fn f @0
   s1: unsafe in s0 @0
   b0: T Value, Uniq
   static0: f: i32
-  opaque 0 @0: _3
+  opaque 0 @0: _3 _1.0
   must not complete bb7 from bb1 @0 guessed @0
   bb0:
     * StorageLive(_3) @0 s1

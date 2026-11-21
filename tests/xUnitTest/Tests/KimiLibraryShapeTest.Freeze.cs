@@ -60,7 +60,6 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ImplicitPairFollows"] = "never written: the library follows no pair layer",
         ["NodeColumns.PhantomRawOrigins"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.InvalidStaticOriginSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.CallablePremiseFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.EffectBoundRejections"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.InferredArrayLengths"] = "never written: the library writes no length hole",
         ["NodeColumns.ArrayInferenceShapes"] = "never written: the library writes no fixed-array annotation with a hole",
@@ -75,12 +74,13 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.LintCompletions"] = "released at the freeze: the lint walk's query memo; the library is not linted (R7-N5 B6b)",
         ["NodeColumns.ReachedThroughBorrow"] = "released at the freeze: a selection's ReachesThroughBorrow answer, the library pass's working state, read only by that pass's queries (D-932)",
         ["NodeColumns.FormReads"] = "released at the freeze: the HIR publisher's kept-read working state, a row of another publication absent; the library pass records no failure (one refuses it: FreezeLibrary), so it writes none (D-986)",
+        ["NodeColumns.DuplicateDeclarations"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary), so its pairwise checks join no group (R7-N5 E)",
+        ["NodeColumns.PrerequisiteVisits"] = "released at the freeze: the library pass's publication walks' visited marks, a walk's scratch, a row of another walk absent (R7-N5 E)",
+        ["NodeColumns.PartPrerequisites"] = "released at the freeze: the library pass's part prerequisites, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
+        ["NodeColumns.Prerequisites"] = "released at the freeze: the library pass's consultation ranges, its dependence store, read only by that pass's checks and publication (R7-N5 E)",
         ["NodeColumns.ResultContexts"] = "released at the freeze: the library pass's result contexts, its working state, no reader reads after it (R7-N5 B2a-2; TheFreezeReleasesTheLibrarysWorkingState)",
         ["NodeColumns.ArithmeticConformanceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.AssociatedAmbiguities"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.InferenceFailures"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.CallableConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
-        ["NodeColumns.ClauseConstraints"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UnboundSlots"] = "never written: the library pass records no failure (one refuses it: FreezeLibrary)",
         ["NodeColumns.UniqIndexing"] = "never written: the library indexes no user Indexable and no view",
         ["NodeColumns.EarlyReads"] = "never written: the library declares no struct with a base (TheLibraryDeclaresNoStructWithABase), so no library lookup sees a clause not ready",
@@ -496,6 +496,9 @@ public partial class KimiLibraryShapeTest
         Released(families.RequirementGroups);
         Released(families.ReachedThroughBorrow);
         Released(families.ResolvedSlices);
+        Released(families.Prerequisites);
+        Released(families.PartPrerequisites);
+        Released(families.PrerequisiteVisits);
         var nodes = library.Kotonoha.Syntax.Nodes.ToArray().Where(static x => x is not null).Select(static x => x!).ToArray();
         Assert.Contains(nodes, static x => x is IfKoto or MatchKoto or DoKoto or LoopKoto);
         Assert.Contains(nodes, static x => x is IndexKoto { Right: RangeKoto });
