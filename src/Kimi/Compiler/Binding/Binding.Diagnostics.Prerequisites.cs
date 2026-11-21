@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -249,19 +250,24 @@ public sealed partial class Binding
         => this.IndexOfForeign(node) is var i and >= 0 ? family(ref this.pass.Part.ForeignFacts).Get(i, this)
             : node.SyntaxOwner is { } table ? family(ref table.Hir.Families).Get(node.SyntaxId, this) : default!;
 
-    private void SetRecordedFact<T>(Koto node, FactFamily<T> family, T fact)
+    private void SetRecordedFact<T>(Koto node, FactFamily<T> family, T fact) => this.RecordedSlot(node, family) = fact;
+
+    // The writers' one store decision, SetRecordedFact's: a node's row for a write, in its module's column when the running pass binds
+    // the module, else in the part's foreign columns at its entry, which the pass's first write to the node makes. A step that reads a
+    // row and then writes it (a walk's visit mark, PrerequisiteVisitRows.Add) takes the slot once; the slot is used before the family's
+    // next write (PagedColumn's Ref).
+    private ref T RecordedSlot<T>(Koto node, FactFamily<T> family)
     {
         if (this.pass.Binds(node.SyntaxOwner))
         {
-            family(ref HirTables.Of(node).Families).Ref(node.SyntaxId, this) = fact;
-            return;
+            return ref family(ref HirTables.Of(node).Families).Ref(node.SyntaxId, this);
         }
 
         this.ForeignEntry(node);
         var row = this.IndexOfForeign(node);
         ref var facts = ref this.pass.Part.ForeignFacts;
         facts.Resize(this.foreignFailures.Count);
-        family(ref facts).Ref(row, this) = fact;
+        return ref family(ref facts).Ref(row, this);
     }
 
     // A foreign node's entry, listed at the pass's first write to it with its columns as they stood (State and Before the state its own
@@ -279,9 +285,16 @@ public sealed partial class Binding
         return ref CollectionsMarshal.AsSpan(this.foreignFailures)[i];
     }
 
-    // The running pass's entry of a node, or -1: linear in the list, which no program fills today.
+    // The running pass's entry of a node, or -1: linear in the list, which no program fills today, and at once while the pass has no
+    // entry (every read and write of the recorder asks it first, the walks' per node).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int IndexOfForeign(Koto node)
     {
+        if (this.foreignFailures.Count == 0)
+        {
+            return -1;
+        }
+
         for (var i = 0; i < this.foreignFailures.Count; i++)
         {
             if (ReferenceEquals(this.foreignFailures[i].Node, node))
@@ -786,15 +799,17 @@ public sealed partial class Binding
     {
         internal static ref StampedColumn<uint, PassCounter> Family(ref NodeColumns columns) => ref columns.PrerequisiteVisits;
 
-        // HashSet.Add's answer: false when this walk visited the node already.
+        // HashSet.Add's answer: false when this walk visited the node already. One slot of the recorder's (RecordedSlot) is read and
+        // written, so a visit makes one store decision, as HashSet.Add made one hash lookup.
         internal bool Add(Koto node)
         {
-            if (binding.RecordedFact(node, Family) == binding.prerequisiteWalk)
+            ref var mark = ref binding.RecordedSlot(node, Family);
+            if (mark == binding.prerequisiteWalk)
             {
                 return false;
             }
 
-            binding.SetRecordedFact(node, Family, binding.prerequisiteWalk);
+            mark = binding.prerequisiteWalk;
             return true;
         }
 
