@@ -10287,6 +10287,26 @@ resumed by R4-M86 (2026-10-20).
     local's Type before the name selects one (invalid names became `Unsupported_Kd`).
   - Extended by R8-M56 (PLAN G492-a (ii), the owner's O-394 (a), 2026-11-19): the interim also covers a written Origin naming an
     enclosing `let` local's written Type, as a `var` local's, until PLAN G230 (A).
+  - Amended by D-990 (Q-607; Front, 2026-11-21; a Q13 regression on dev since W-292; F's G147 ruling 46) SPEC 23.1.2, 15.3.4: a nested
+    function's result the header failed is the interim's located `Unsupported_Kd` where its second binding binds it (the unannotated
+    class; BU-234's failed-slot fact applied to it).
+    - Cause: BindDeclarations' header loop binds a named nested function's header before its enclosing body types an unannotated local
+      the header's written Origins name, so such a slot fails (its cause at its TypeSource). `BindFunction` binds the header again in
+      the body: each parameter takes its re-bound Type (BU-56's "an unannotated local's value keeps dev's binding"), but the result's
+      re-bind only re-resolved its TypeSource and never reached `symbol.Type`, so the result slot was neither typed nor stated and,
+      since D-834 published the parts (af8cdd2d3), `HirTables.Broken` / `MirBuilder.Build` gave `InternalInvariant_Kd`; its call got
+      `UnresolvedBinding_Kd` (before W-292 too) or the function `PrerequisiteUnavailable_Kd`.
+    - Rule: a result whose header binding failed and whose second binding binds records the located `Unsupported_Kd` at its written
+      result Type, with no Type there; the call rests on it. Parameters keep dev's binding; a non-borrow local keeps its
+      `InvalidOriginBinding_Kd` in either slot (SPEC 15.2.1); an annotated local keeps BU-56's record at the name.
+    - Removal condition: G230 (A)'s name link (BU-56's removal condition: a nested signature's name of an unannotated local's region
+      links to that local); then a result binds like a parameter and an invalid return (nfd) is rejected by its own relation check.
+    - Rejected: writing the re-bound result to the symbol like a parameter (option (a): invalid nfd,
+      `func pick(v: ref/i32 during p) -> ref/i32 during r => v`, would be accepted, Q13 scope 1, because the interim reads `during r`
+      as the Origin the body first gives r, p's, the D-862 class; BindFunctionParts does check the body after the second binding); a
+      located `Unsupported_Kd` at the name for every slot the header binds before the local is typed (option (c): `let w = 1` /
+      `during w` loses its `InvalidOriginBinding_Kd`, Q13 scope 3, since the header cannot tell a borrow local from another before the
+      body types it).
 
 - **BU-58 A stored part's written Type at inline positions is one TyCtxt view, `TyCtxt.WrittenAt`; the raw-Origin views and the walks
   over a written Type decide each distinct part once per call** (2026-10-30; R4's part R4-M157; PLAN G307's Binding part, unit bu72)
