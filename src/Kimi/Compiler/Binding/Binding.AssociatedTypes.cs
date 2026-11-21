@@ -701,7 +701,8 @@ public sealed partial class Binding
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
         }
 
-        if (binding.State != 0)
+        var formed = binding.State == 0;
+        if (!formed)
         {
             binding.State = binding.State == 1 ? (byte)4 : binding.State; // Revisited while it is being resolved.
             pending |= binding.State == 4;
@@ -722,7 +723,16 @@ public sealed partial class Binding
 
         // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence reads the binding as its first candidate formed in
         // that evidence, so each part rests on its own route there (HeldPending), through every associated Type it names.
-        return binding.State != 2 ? null : this.FormationRead ? binding.Result : this.ContractType(binding.Candidates[0], path.Scope, this.ConformanceSelf(path));
+        var read = binding.State != 2 ? null : this.FormationRead ? binding.Result : this.ContractType(binding.Candidates[0], path.Scope, this.ConformanceSelf(path));
+        if (formed && this.inferenceRequest >= 0)
+        {
+            // R7-C4 design R4: a binding formed inside an inference request is that read's (it may read a held answer), never kept; the
+            // reset loop after the requests forms it finally.
+            binding.State = 0;
+            binding.Result = null;
+        }
+
+        return read;
     }
 
     // The binding's formation from its candidates (ResolveAssociated): one Type, or none.

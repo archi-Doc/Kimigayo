@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 // Signatures: a declaration's header, its declared signature (FnSig) and the signature rules of a member group.
 // - Responsibility: BindHeader, the owner of Binding.DeclQuery's Signature kind, binds a function's, property's or annotated variable's
 //   header when first demanded (BindDeclarations' header loop forces the rest), once per pass, except while a pending associated Type
-//   keeps a function's header open: BindFunctionHeader then leaves it unbound (AbandonQuery), and a later BindHeader binds it again. A
+//   keeps a function's header open: BindFunctionHeader then leaves it unbound (AbandonQuery), and a later BindHeader binds it again
+//   (never while an associated-inference request is open: its runs read the header bound before it, Binding.AssociatedInference.Demand). A
 //   demand while the header is being bound returns, and an anonymous function's header belongs to its expression context.
 //   FnSig is the one read of a callable's declared signature (SPEC 9.1: generic count and ordered parameter Types, the receiver
 //   included; with its result, Origin count and binder): a view over what the header published, read by every signature comparison,
@@ -82,8 +83,9 @@ public sealed partial class Binding
 
     private void BindHeader(BindingSymbol symbol)
     {
-        // Resolving is the variable binding's own Running flag (interim until R7-D2 d4, Binding.DeclQuery).
-        if (symbol.Declaration is FunctionKoto { IsAnonymous: true } || symbol.Resolving ||
+        // Resolving is the variable binding's own Running flag (interim until R7-D2 d4, Binding.DeclQuery). While an associated-inference
+        // request is open no header is bound: its runs read the headers bound before it (R7-C4 design R4, ruling 6 (ii)).
+        if (this.inferenceRequest >= 0 || symbol.Declaration is FunctionKoto { IsAnonymous: true } || symbol.Resolving ||
             this.BeginQuery(symbol, DeclQueryKind.Signature) != DeclState.NotStarted)
         {
             // An anonymous header belongs to its fixed expression context, including on a later binding pass.

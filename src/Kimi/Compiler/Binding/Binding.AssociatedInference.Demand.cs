@@ -218,6 +218,7 @@ public sealed partial class Binding
             }
         }
 
+        this.BindBeforeRequest(start, end);
         this.inferenceRequest = component;
         var empty = this.InternHold(this.inferenceHoldArena.Count);
         try
@@ -268,9 +269,10 @@ public sealed partial class Binding
         var conflict = false;
         if (ownRun.Usable.TryGetValue(binding, out var owned) && frozenRun.Usable.TryGetValue(binding, out var held))
         {
-            foreach (var (source, type) in owned)
+            for (var i = 0; i < owned.Count; i++)
             {
-                if (!this.SuppliesInBoth(source, type, held))
+                var type = owned[i].Type;
+                if (!this.SuppliesInBoth(owned, i, held))
                 {
                     continue;
                 }
@@ -291,20 +293,58 @@ public sealed partial class Binding
         return answer;
     }
 
-    // Whether the source position supplies the same complete Type in the other run (the evidence's position: its path, source, written
-    // part and requirement's part).
-    private bool SuppliesInBoth(AssociatedEvidence source, BoundType type, List<(AssociatedEvidence Source, BoundType Type)> other)
+    // Whether `own[at]` supplies the same complete Type in the other run. A position's identity across runs is hold-free (design R4 (c)):
+    // its path, its source member and the requirement's part there, with its ordinal among that source's positions at the part; never
+    // a formed Type's reference.
+    private bool SuppliesInBoth(List<(AssociatedEvidence Source, BoundType Type)> own, int at, List<(AssociatedEvidence Source, BoundType Type)> other)
     {
+        var (source, type) = own[at];
+        var ordinal = 0;
+        for (var i = 0; i < at; i++)
+        {
+            ordinal += SamePosition(own[i].Source, source) ? 1 : 0;
+        }
+
         foreach (var (position, held) in other)
         {
-            if (ReferenceEquals(position.Path, source.Path) && ReferenceEquals(position.Source, source.Source) &&
-                ReferenceEquals(position.Written, source.Written) && ReferenceEquals(position.Required, source.Required))
+            if (SamePosition(position, source) && ordinal-- == 0)
             {
                 return this.SameCompleteType(held, type);
             }
         }
 
         return false;
+
+        static bool SamePosition(AssociatedEvidence a, AssociatedEvidence b)
+            => ReferenceEquals(a.Path, b.Path) && ReferenceEquals(a.Source, b.Source) && ReferenceEquals(a.Required, b.Required);
+    }
+
+    // Design R4 (ruling 6 (ii)): before a component's request, with every earlier component published, the headers its runs read are bound
+    // as dev's batch binds them (each path's function requirements and IdentifyRequirement's candidates): a header naming no value of the
+    // component completes, one naming one is bound partially and abandoned (BindFunctionHeader), its projections kept for the runs to
+    // normalize under their holds. No run binds a header (BindHeader) or keeps a formed binding (ResolveAssociated); the header loop and
+    // the reset loop after the requests bind and form them finally.
+    private void BindBeforeRequest(int start, int end)
+    {
+        for (var b = start; b < end; b++)
+        {
+            foreach (var path in this.inferenceComponents[b].Paths)
+            {
+                if (path.InheritedFrom is not null)
+                {
+                    continue;
+                }
+
+                foreach (var identity in path.Contract.Contract!.RequirementStorage)
+                {
+                    if (identity.Contract == path.Contract && identity.Symbol.Declaration is FunctionKoto)
+                    {
+                        this.BindHeader(identity.Symbol);
+                        this.IdentifyRequirement(path, identity);
+                    }
+                }
+            }
+        }
     }
 
     // A collection of `batch`'s evidence under `hold` (a run), once per request: identification, extraction and each hole's usable
@@ -453,9 +493,10 @@ public sealed partial class Binding
         var own = this.InferenceRun(entry.Batch, this.HoldWith(empty, this.inferenceBindingIndex[binding], null));
         if (frozen.Usable.TryGetValue(binding, out var usable) && own.Usable.TryGetValue(binding, out var owned))
         {
-            foreach (var (source, type) in owned)
+            for (var i = 0; i < owned.Count; i++)
             {
-                if (!this.SuppliesInBoth(source, type, usable))
+                var (source, type) = owned[i];
+                if (!this.SuppliesInBoth(owned, i, usable))
                 {
                     continue;
                 }
