@@ -133,7 +133,8 @@ public partial class SyntaxIdTest
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
-    // its container's list; OverrideEntries: a Type's implementations by original; Refusals: the refusal a losing candidate's request
+    // its container's list; OverrideEntries: a Type's implementations by original; SpecializationStorage: Milestone11's specialization
+    // entries, reused by every Bind; Refusals: the refusal a losing candidate's request
     // past the round bound holds, unsettled, in a valid program, G881b's xovm). The column is read by reflection, since the families'
     // rows differ. FormationCauses (R7-N5 B3-2) has no row: its rows are a failing program's and each Final check's start empties them,
     // so none survives an edit; d7 (EveryNodeFamilyIsResizedRenumberedAndMoved) covers its moves, and
@@ -147,6 +148,7 @@ public partial class SyntaxIdTest
     [InlineData("CopyByType", CopyPoint)]
     [InlineData("OverrideEntries", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
     [InlineData("SpecializationsByOriginal", "milestone:Milestone11")]
+    [InlineData("SpecializationStorage", "milestone:Milestone11")]
     [InlineData("OriginDeclarations", "milestone:Milestone13")]
     [InlineData("DiscoveredOrigins", "milestone:Milestone13")]
     [InlineData("OriginRequirementNodes", "milestone:Milestone10")]
