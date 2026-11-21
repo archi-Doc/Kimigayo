@@ -28,19 +28,28 @@ public class RunCommand : ISimpleCommand<RunCommand.Options>
     {
         Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
         {
-            if (args.Length == 1 && Path.GetExtension(args[0]).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+            try
             {
-                return await CommandExecution.Toolchain(this.kimigayo, () => Build.NativeToolchain.RunExecutable(Path.GetFullPath(args[0]), Directory.GetCurrentDirectory(), cancellationToken));
-            }
+                if (args.Length == 1 && Path.GetExtension(args[0]).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    return await CommandExecution.Toolchain(this.kimigayo, () => Build.NativeToolchain.RunExecutable(Path.GetFullPath(args[0]), Directory.GetCurrentDirectory(), cancellationToken));
+                }
 
-            this.solution.LoadForBuild(this.logger, options, args);
-            this.solution.PrepareProject(this.logger);
-            if (!options.NoBuild && !await this.solution.Build(cancellationToken))
+                this.solution.LoadForBuild(this.logger, options, args);
+                this.solution.PrepareProject(this.logger);
+                if (!options.NoBuild && !await this.solution.Build(cancellationToken))
+                {
+                    return 1;
+                }
+
+                return await this.solution.Run(cancellationToken);
+            }
+            finally
             {
-                return 1;
+                // Once per attempt (Kimigayo.RunEnded): after the program's output, before CommandExecution.Execute writes a cancellation
+                // or a fault.
+                this.kimigayo.RunEnded();
             }
-
-            return await this.solution.Run(cancellationToken);
         });
     }
 }

@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
+    private readonly AssociatedAmbiguityRows associatedAmbiguities;
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
-    private Dictionary<Koto, (BoundRequirement First, BoundRequirement Second, int Count)>? associatedAmbiguities;
 
     // Whether the pass's declaration evidence of conformance bindings is incomplete: before PrepareAssociatedInference has collected it,
     // or while an inference batch collects (a state-3 verdict then is provisional; PrepareAssociatedInference resolves every binding again).
@@ -96,7 +96,7 @@ public sealed partial class Binding
         reference = search.Reference;
         if (search.Alternative is { } second)
         {
-            this.FailExplained(ref this.associatedAmbiguities, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
+            this.FailExplained(AssociatedAmbiguityRows.Family, use, BindingFailure.Ambiguous, (new(search.Found!, search.Reference!), second, this.ambiguousAssociatedMatches!.Count));
             return null;
         }
 
@@ -780,5 +780,17 @@ public sealed partial class Binding
             this.State = 0;
             this.FormationScope?.Reset();
         }
+    }
+
+    /// <summary>The `associatedAmbiguities` family's one accessor (DECISIONS BU-220): a pass family, the two associated candidates (and their
+    /// count) an ambiguous associated Type use found (SPEC 9.7.3), stored with its failure by the recorder (RecordedFact) and written by
+    /// FailExplained (a present row always has its First requirement). Its members keep the names its readers use.</summary>
+    private readonly struct AssociatedAmbiguityRows(Binding binding)
+    {
+        // The family's column in a NodeColumns, the store the recorder decides (RecordedFact, SetRecordedFact).
+        internal static ref StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), PassCounter> Family(ref NodeColumns columns) => ref columns.AssociatedAmbiguities;
+
+        internal bool TryGetValue(Koto use, out (BoundRequirement First, BoundRequirement Second, int Count) ambiguity)
+            => (ambiguity = binding.RecordedFact(use, Family)).First.Symbol is not null;
     }
 }

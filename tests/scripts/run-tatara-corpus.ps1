@@ -1,10 +1,9 @@
-# Runs TataraExecutorTest against a private toolchain root (Tatara design A2 §4.5; temporary until unit A4 builds tatara.dll for every
-# lane): the root is a copy of the shared toolchain plus the given tatara.dll, set for this process only (DECISIONS T-M3); a DLL whose
-# build identity is not this checkout's (src/Tatara/identity.ps1) is refused. Without -Fixtures the class runs its fixed rows; with it,
-# the corpus is those fixture .ll files (tool control comparison at O0 and O2) and a pair per milestone and level (executor
-# comparison). Each fatal row runs in a test process of its own. Writes <Output>/report.md with the run's identity (the checkout,
-# its state and the binaries' hashes, read at the start), the test results and the corpus counts. The caller wraps the run in its
-# own guard (the test processes and the pairs' kimi emit runs alike).
+# Runs TataraExecutorTest and TataraCommandNativeTest against a toolchain root of this run's own (Tatara designs A2 §4.5 and A4 §2.6):
+# the root is a copy of the shared toolchain plus the given tatara.dll, set for this process only; a DLL whose build identity is not
+# this checkout's (src/Tatara/identity.ps1) is refused. Without -Fixtures the tool control comparison runs its fixed rows; with it, its
+# corpus is those fixture .ll files at O0 and O2 (an LLVM update's gate, plan §6). Each fatal row runs in a child test process of its
+# own, which its class's parent row starts. Writes <Output>/report.md with the run's identity (the checkout, its state and the
+# binaries' hashes, read at the start), the test results and the corpus counts. The caller wraps the run in its own guard.
 param(
     [Parameter(Mandatory)] [string] $Dll,
     [Parameter(Mandatory)] [string] $Output,
@@ -53,39 +52,21 @@ $env:KIMI_TOOLCHAIN_ROOT = $root
 $env:KIMI_TATARA_CORPUS = $null
 $corpusLines = @()
 if ($Fixtures) {
-    # The corpus: the fixtures (read in place through a junction) and one generated pair per milestone and level.
+    # The corpus: the fixtures, read in place through a junction.
     $corpus = Join-Path $Output 'corpus'
     Remove-Item -LiteralPath $corpus -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Path (Join-Path $corpus 'pairs') | Out-Null
+    New-Item -ItemType Directory -Path $corpus | Out-Null
     New-Item -ItemType Junction -Path (Join-Path $corpus 'fixtures') -Target ([IO.Path]::GetFullPath($Fixtures)) | Out-Null
-    $sources = @(Get-ChildItem -LiteralPath (Join-Path $repository 'tests\milestones') -Filter '*.kimi')
-    $skipped = @()
-    foreach ($source in $sources) {
-        foreach ($level in 'O0', 'O2') {
-            $pair = Join-Path $corpus "pairs\$($source.BaseName)-$level"
-            New-Item -ItemType Directory -Path $pair | Out-Null
-            Copy-Item -LiteralPath $source.FullName -Destination $pair
-            "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$level`"" | Set-Content -LiteralPath (Join-Path $pair "$($source.BaseName).kimiproj") -Encoding utf8
-            $emitted = & dotnet $kimi emit (Join-Path $pair "$($source.BaseName).kimiproj") 2>&1 | Out-String
-            if ($LASTEXITCODE -ne 0) { $skipped += "$($source.BaseName)-$level"; Remove-Item -LiteralPath $pair -Recurse -Force; $emitted | Set-Content (Join-Path $Output "skipped-$($source.BaseName)-$level.txt") }
-        }
-    }
     $env:KIMI_TATARA_CORPUS = $corpus
-    $corpusLines += "Fixtures: $Fixtures ($((Get-ChildItem -LiteralPath $Fixtures -Filter '*.ll').Count) .ll files)",
-        "Milestones: $($sources.Count) sources at O0 and O2; pairs generated: $((Get-ChildItem (Join-Path $corpus 'pairs') -Directory).Count); not generated: $($skipped -join ', ')"
+    $corpusLines += "Fixtures: $Fixtures ($((Get-ChildItem -LiteralPath $Fixtures -Filter '*.ll').Count) .ll files)"
 }
 
-# The class, then each fatal row in its own process.
+# Each class; its fatal rows' parent rows start their child processes.
 $results = @()
-$runs = @(, @('XunitTest.TataraExecutorTest', '-class', 'XunitTest.TataraExecutorTest'))
-foreach ($fatal in 'FatalErrorRefusesEveryLaterCall', 'LinkerFatalRefusesEveryLaterCall') { $runs += , @("Fatal.$fatal", '-method', "XunitTest.TataraExecutorTest+Fatal.$fatal") }
-# kimi tatara's native rows (Tatara design A3 §3), then its fatal row in its own process.
-$runs += , @('XunitTest.TataraCommandNativeTest', '-class', 'XunitTest.TataraCommandNativeTest')
-$runs += , @('TataraCommandNativeTest.Fatal.AFatalErrorEndsTheSession', '-method', 'XunitTest.TataraCommandNativeTest+Fatal.AFatalErrorEndsTheSession')
-foreach ($run in $runs) {
-    $xml = Join-Path $Output "$($run[0]).xml"
-    $log = & dotnet $tests $run[1] $run[2] -explicit only -xml $xml 2>&1 | Out-String
-    $results += "## $($run[0]) (exit $LASTEXITCODE)", '', '```', $log.Trim(), '```', ''
+foreach ($class in 'XunitTest.TataraExecutorTest', 'XunitTest.TataraCommandNativeTest') {
+    $xml = Join-Path $Output "$class.xml"
+    $log = & dotnet $tests -class $class -xml $xml 2>&1 | Out-String
+    $results += "## $class (exit $LASTEXITCODE)", '', '```', $log.Trim(), '```', ''
 }
 
 $report = @('# Tatara corpus run', '') + $checkout + @('', "Build identity $expected", '', '| File | SHA-256 |', '|---|---|') + $hashes + '' + $corpusLines + '' + $results

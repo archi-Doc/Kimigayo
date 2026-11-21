@@ -149,15 +149,11 @@ public sealed partial class Binding
         this.projectionUses.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
-        this.associatedAmbiguities?.Clear();
         this.contractAgreementFailures?.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
         this.memberSides.Clear();
-        foreach (var group in this.requirementGroups.Values)
-        {
-            group.Active = false;
-        }
+        this.requirementCursor = 0;
     }
 
     private void PrepareContracts()
