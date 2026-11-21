@@ -254,6 +254,19 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
 
+    // DECISIONS BU-175 (R7-C8 U-D3): an input nested past 64 levels does not make the universal one it mentions. `Mentions` had a count
+    // of 64 and took any deeper part as mentioning it, so `s` was no result-only Origin and `make(constantOf)` had no applicable overload.
+    [Theory]
+    [InlineData(65)]
+    [InlineData(130)]
+    public void AResultOnlyUniversalBesideADeepInputIsInstantiatedToTheOpenRegion(int depth)
+    {
+        var input = string.Concat(Enumerable.Repeat("Option<", depth)) + "ref/i32" + new string('>', depth);
+        var source = $"func constantOf(n: {input}) -> ref/i32 during s => $abort(\"never\")\nfunc make<T>(f: ({input}) -> T) -> i32 => 7\n" +
+            "let r = make(constantOf)\nrequire r == 7 else => $abort(\"result only\")\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
     // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
     [Theory]
     [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "makeOf(bounded)")]
