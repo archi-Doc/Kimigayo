@@ -20,8 +20,10 @@ namespace Kimi.Command;
 // per path and its refusal, Kimigayo, the current directory and the runtime; the session owns Ctrl+C while it runs (Program.CancelKey)
 // and restores it at its end (a press with no read or line pending, the redirected reader waiting for input, calls the action the
 // session replaced: by default its first press requests the root's termination and its second ends the process with 130; Tatara
-// design A4 §2.2). Prohibitions: no build rule of its own; the loop catches nothing (CommandExecution
-// classifies a command's failures); a refusal is read from Tatara, never from a message's text.
+// design A4 §2.2); a terminal session also sets Kimigayo.RunEnded to end a run program's last line when that output stopped mid-line
+// (EndProgramLine) and restores it at its end, and a redirected one leaves it (Tatara unit SP1). Prohibitions: no build rule of its
+// own; the loop catches nothing (CommandExecution classifies a command's failures); a refusal is read from Tatara, never from a
+// message's text.
 [SimpleCommand("tatara")]
 public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitContext, IServiceScopeFactory scopes) : ISimpleCommand
 {
@@ -60,7 +62,13 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
     internal async Task<int> Run(Stream? input, CancellationToken cancellationToken)
     {
         var previous = Program.CancelKey;
+        var runEnded = kimigayo.RunEnded;
         Program.CancelKey = () => this.CancelKey(previous);
+        if (input is null)
+        {
+            kimigayo.RunEnded = EndProgramLine;
+        }
+
         using var registration = cancellationToken.Register(() => Volatile.Read(ref this.pending)?.Source.Cancel());
         var failed = false;
         try
@@ -97,10 +105,21 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
         {
             Volatile.Write(ref this.pending, null);
             Program.CancelKey = previous;
+            kimigayo.RunEnded = runEnded;
         }
 
         cancellationToken.ThrowIfCancellationRequested(); // The end of input or a cancelled line after the root's termination: 130.
         return failed ? 1 : 0;
+    }
+
+    // The terminal session's Kimigayo.RunEnded: SimplePrompt reads the cursor the program's raw output moved (SimplePrompt 0.30.0), and
+    // ends that output's last line when it stopped mid-line, so what Kimi writes next starts its own line.
+    private static void EndProgramLine()
+    {
+        if (SimpleConsole.Instance.SynchronizeCursorPosition() && SimpleConsole.CursorLeft > 0)
+        {
+            SimpleConsole.Instance.WriteLine();
+        }
     }
 
     // The gate (§2.1), on SimpleCommandLine's own split of a nonempty line other than exit (null: a line above the limit, not split):
