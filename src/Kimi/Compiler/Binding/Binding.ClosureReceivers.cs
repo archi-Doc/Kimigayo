@@ -577,6 +577,10 @@ public sealed partial class Binding
 
             public void Call(int ordinal) => this.call = ordinal;
 
+            public readonly void Unselected(CallPlan call)
+            {
+            }
+
             public void Use(Koto? child, HirAdaptation adaptation, UseKind kind)
             {
                 if (child is not null)

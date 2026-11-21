@@ -134,7 +134,7 @@ public sealed partial class Binding
 
             if (decomposition is not null && slot is not null)
             {
-                // Acquired by the match's rule, when the match's bindings are (CompleteIterationAcquisitions).
+                // Acquired by the match's rule, when the match's bindings are (AcquireReferenceBindings, CompleteIterationAcquisitions).
                 var parent = source.IsTupleBinding ? 1 : 0;
                 var position = new BoundPattern(name, slot, BoundPatternKind.Binding, parent, parent * i, decomposition.Positions.Count + 1);
                 decomposition.PositionStorage.Add(position with
@@ -151,6 +151,7 @@ public sealed partial class Binding
         if (decomposition is not null)
         {
             this.EndIterationStep(source, decomposition, tuple);
+            this.AcquireReferenceBindings(decomposition); // Before the body, which states the item bindings' atoms.
         }
 
         this.BindNode(source.Body, scope);

@@ -390,15 +390,4 @@ public sealed partial class Binding
             BindingFailure.ArithmeticSelection,
             new(rejected, left, right, ArithmeticContract(operation), ArithmeticSelectionCause.NoFit));
     }
-
-    // SPEC 13.4, 10.2: a string operand behind several reference layers is read as one shared reference to the string;
-    // a single ref or uniq layer is inspected as it is.
-    private void StringThroughLayers(Koto operand, BoundType type)
-    {
-        if (type.Components.Count == 1 && ReferenceEquals(ComparisonReferent(type), BoundType.String) && !ReferenceEquals(type.SafeReferent, BoundType.String) &&
-            this.SharedReferenceThroughLayers(type, BoundType.String, this.ConstraintScope(operand), out _) is { } shared)
-        {
-            this.adaptations[operand] = new(ExpectedAdaptationKind.ReferenceRead, shared);
-        }
-    }
 }
