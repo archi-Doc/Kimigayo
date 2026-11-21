@@ -33,7 +33,7 @@ public static class EmissionArtifacts
 
         var settings = compilation.Project.ProjectFile;
         string directory, destination, manifest, outputDirectory;
-        string? tempIr = null, tempManifest = null, llvm = null;
+        string? tempIr = null, tempManifest = null;
         StreamWriter? writer = null;
         try
         {
@@ -48,12 +48,6 @@ public static class EmissionArtifacts
                 manifest = paths.Manifest;
                 outputDirectory = Path.GetDirectoryName(destination)!;
                 CheckLibraryInputs(settings);
-                if (settings.LlvmBin is { } bin)
-                {
-                    CheckPath(bin);
-                    llvm = Path.GetRelativePath(outputDirectory, Path.GetFullPath(bin, directory));
-                }
-
                 Directory.CreateDirectory(outputDirectory);
                 var unique = Guid.NewGuid().ToString("N");
                 tempIr = destination + "." + unique + ".tmp";
@@ -85,13 +79,6 @@ public static class EmissionArtifacts
                     json.WriteString("optimization", settings.Optimization);
                     WriteOutput(json, Path.GetFileName(destination), hash, module);
                     WriteLibraries(json, foreign, directory, outputDirectory);
-                    if (llvm is not null)
-                    {
-                        json.WriteStartObject("toolchain"); // The configured LLVM directory.
-                        json.WriteString("llvmBin", llvm);
-                        json.WriteEndObject();
-                    }
-
                     json.WriteEndObject();
                 }
 

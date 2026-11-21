@@ -35,9 +35,6 @@ public sealed partial class Binding
     // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
     private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
 
-    // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
-    private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
-
     // The target a write could not use, recorded only when the check fails; it is the smallest syntax that shows the failure.
     private Dictionary<Koto, Koto>? writeTargets;
 
@@ -53,9 +50,6 @@ public sealed partial class Binding
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
     // slot would hold (as bits) and that signature.
     private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature);
-
-    // The referenced declaration, its Type parameter when one is known (else -1), the failure and whether Type arguments are written.
-    private readonly record struct ReferenceSlotFact(FunctionKoto Declaration, int Slot, ReferenceSlotFailure Failure, bool Explicit);
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
@@ -482,7 +476,7 @@ public sealed partial class Binding
 
     // FailExplained's form for a pass family's column (R7-N5, DECISIONS BU-220): the same rule, the fact stored with the failure by the
     // recorder (SetRecordedFact: the node's module's column, or the pass's foreign entry's row). The Dictionary form above goes with the
-    // last family converted (batch E's), its staged removal.
+    // last explanation store that uses it, its staged removal: R7-E3's and R7-E4's, which delete them (R7-N5 E converts none).
     private BoundType? FailExplained<T>(FactFamily<T> facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
         if (this.RecordedFailure(node) == BindingFailure.None)
@@ -631,7 +625,6 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
-        this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
         this.pendingJudgments?.Clear();
         this.arithmeticSelectionFailures?.Clear();
@@ -646,9 +639,7 @@ public sealed partial class Binding
         this.rejectedRows.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
-        this.duplicateDeclarations?.Clear();
-        this.prerequisites.Clear();
-        this.partPrerequisites.Clear();
+        this.duplicateOrder.Clear();
         this.specificationLinks?.Clear();
         this.derivedUses?.Clear();
         this.prerequisiteStore.Clear();

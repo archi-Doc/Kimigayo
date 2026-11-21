@@ -150,7 +150,7 @@ public sealed partial class Binding
             // signature.
             var span = this.LocatedPart(issue.Problem) ??
                 (issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null);
-            issue.Node.ReportIn(store, requirement, issue.Code, span: span);
+            issue.Node.ReportIn(store, requirement, issue.Code, condition: this.ConditionOf(issue.Problem), span: span);
         }
         else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures.TryGetValue(issue.Node, out var arithmetic))
         {
@@ -389,12 +389,9 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {
+            // The subject stays the failed node; the location is the syntax that shows the two Types.
             var mismatch = this.Mismatch(issue.Problem);
-            // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
-            // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4).
-            var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-            var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch);
-            issue.Node.ReportIn(store, requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            issue.Node.ReportIn(store, requirement, issue.Code, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)], condition: this.ConditionOf(issue.Problem));
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures.TryGetValue(issue.Node, out var erasure))
         {
@@ -453,8 +450,7 @@ public sealed partial class Binding
         for (var i = 0; i < derivedIssues.Count; i++)
         {
             var issue = derivedIssues[i];
-            var condition = issue.Problem >= 0 ? this.report.Problem(issue.Problem).Condition : (ushort)0;
-            issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), condition);
+            issue.Node.ReportDerivedIn(this.compilation.StoreOf(issue.Node), DiagnosticRequirement.Binding(issue.Failure), this.PrerequisiteKeys(issue.Node), this.ConditionOf(issue.Problem));
         }
     }
 }
