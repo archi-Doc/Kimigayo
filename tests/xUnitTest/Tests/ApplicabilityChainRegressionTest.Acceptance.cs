@@ -100,7 +100,7 @@ public partial class ApplicabilityChainRegressionTest
     [Theory]
     [InlineData("P3", "p24", MakeFirst + MakeBody + "    return make(c@ref, e@ref, n, 2)\n", "", Explicit = true)]
     [InlineData("P3", "p23", MakeSecond + MakeBody + "    return make(e@ref, c@ref, n, 2)\n", "", Explicit = true)]
-    [InlineData("P3", "n4g", MakeOne + "func k() -> i32\n" + MakeClosure + "    return make(c@ref, n, 2)\n", "NoApplicableOverload_Kd: return make(c@ref, n, 2)", Explicit = true)]
+    [InlineData("guard", "n4g", MakeOne + "func k() -> i32\n" + MakeClosure + "    return make(c@ref, n, 2)\n", "NoApplicableOverload_Kd: return make(c@ref, n, 2)")]
     [InlineData("guard", "n4h", MakeOneBound + "func k() -> i32\n" + MakeClosure + "    return make(c@ref, n)\n", "NoApplicableOverload_Kd: return make(c@ref, n)")]
     public void AJudgmentOnAnUnboundSlotHidesNoRefutation(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
