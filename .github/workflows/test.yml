@@ -44,7 +44,7 @@ jobs:
       id: llvm
       with:
         path: toolchain
-        key: llvm-windows-x64-${{ hashFiles('src/backend/windows-x64/profile.json', 'src/backend/windows-x64/setup.ps1', 'src/Tatara/**') }}
+        key: llvm-windows-x64-${{ hashFiles('src/backend/windows-x64/profile.json', 'src/backend/windows-x64/setup.ps1', 'src/backend/windows-x64/build.ps1', 'src/backend/windows-x64/kernel32.ps1', 'src/backend/windows-x64/src/**', 'src/Tatara/**') }}
     - name: Install pinned LLVM tools
       if: steps.llvm.outputs.cache-hit != 'true'
       run: |

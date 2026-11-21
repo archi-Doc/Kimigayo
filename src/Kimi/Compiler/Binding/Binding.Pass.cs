@@ -44,7 +44,6 @@ public sealed partial class Binding
         this.inferredConstructionTargets.Clear();
         this.clausesBindable = false;
         this.verifiedClause = null;
-        this.earlyReads?.Clear();
         this.earlyObjectForms?.Clear();
         this.earlyProjections.Clear();
         this.storageMarks.Clear();

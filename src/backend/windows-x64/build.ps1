@@ -55,7 +55,8 @@ $tools['llvm-dlltool'] = Tool 'llvm-dlltool'
 $toolIdentities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool'] -AllowUnpinnedToolchain:$AllowUnpinnedToolchain
 $unverified = -not $matched -or -not $toolIdentities['llvm-dlltool'].hashMatched
 @{ status = 'incomplete'; adopted = $false; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; tools = $toolIdentities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
-$kernel = New-KimiKernel32Library $tools (Join-Path $workDir 'kernel32.lib')
+# The kernel32 candidate is kept beside the backend's (with its definition), for the report and an LLVM update's adoption.
+$kernel = New-KimiKernel32Library $tools (Join-Path $outDir 'kernel32.lib')
 $kernelPath = $kernel.path
 $objects = @()
 foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
@@ -126,8 +127,8 @@ foreach ($file in $inputFiles) {
 } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
 Write-Output "Native tests passed. Candidate report: $reportPath (not an adopted compiler catalog)."
 $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($unverified -or $archiveHash -cne $profile.artifactSha256) {
-    Write-Warning 'Candidate retained in artifacts/backend/windows-x64; toolchain library was not updated. Installation requires pinned tools and the adopted archive hash.'
+if ($unverified -or $archiveHash -cne $profile.artifactSha256 -or $kernel.sha256 -cne $profile.kernel32.sha256) {
+    Write-Warning 'Candidates retained in artifacts/backend/windows-x64; toolchain libraries were not updated. Installation requires pinned tools and the adopted backend and kernel32 hashes (profile.json).'
 }
 else {
     $libraryDirectory = Join-Path $ToolchainRoot 'windows_x64'

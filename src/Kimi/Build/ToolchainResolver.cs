@@ -1,10 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text.Json;
-
 namespace Kimi.Build;
 
-/// <summary>Resolves compiler tools and profile libraries independently of project locations.</summary>
+/// <summary>Resolves the toolchain root independently of project locations.</summary>
 internal static class ToolchainResolver
 {
     internal static string ResolveRoot(string? configured)
@@ -36,20 +34,5 @@ internal static class ToolchainResolver
         }
 
         return Path.GetFullPath(adjacent);
-    }
-
-    internal static string ResolveBackend(JsonElement entry, string root, string manifestDirectory)
-    {
-        if (LinkManifest.OptionalText(entry, "libraries.resolution") is { } resolution)
-        {
-            if (resolution != "toolchain" || LinkManifest.OptionalText(entry, "libraries.input") is not null)
-            {
-                throw new InvalidDataException("Invalid backend toolchain resolution: an input path is not permitted.");
-            }
-
-            return Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile);
-        }
-
-        return ArtifactFiles.ResolvePath(LinkManifest.Text(entry, "libraries.input"), manifestDirectory);
     }
 }

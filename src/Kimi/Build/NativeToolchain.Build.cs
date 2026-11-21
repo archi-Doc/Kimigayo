@@ -72,15 +72,20 @@ internal static partial class NativeToolchain
     }
 
     // SPEC 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable
-    // original; a staged copy is reused only when its bytes still have that hash.
-    internal static string StageInput(string input, string stem, out string hash)
+    // original; a staged copy is reused only when its bytes still have that hash. The input is a stream (a program's file or the
+    // compiler's resource), which the caller disposes.
+    internal static string StageInput(Stream input, string stem, out string hash)
     {
         var directory = stem + ".native";
         Directory.CreateDirectory(directory);
         var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            File.Copy(input, temporary);
+            using (var copy = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                input.CopyTo(copy);
+            }
+
             hash = Hash(temporary);
             var staged = Path.Combine(directory, hash + ".lib");
             if (!File.Exists(staged) || Hash(staged) != hash)
@@ -128,8 +133,9 @@ internal static partial class NativeToolchain
     /// standalone manifest), the pair, the root its records redact, the optimization and the host's report and cancellation, which Tatara's
     /// calls take with the target values (<see cref="TataraContext"/>). <see cref="Run"/> takes the toolchain root's selection, which it
     /// resolves after the pair's check, and runs the steps once, in order: the pair's identity, Tatara (the root's tatara.dll, loaded and
-    /// checked, identified in the record's tools), the libraries, the object, its inspection, the link to a private file, the report and
-    /// the commit; the steps fill the record and <see cref="Run"/> writes each of its states. The commit, after the report and the last
+    /// checked, identified in the record's tools), the libraries (each staged: the compiler's supplies from its resources, a program's
+    /// from its input), the object, its inspection, the link to a private file, the report and the commit; the steps fill the record and
+    /// <see cref="Run"/> writes each of its states. The commit, after the report and the last
     /// cancellation point, writes the success record, which names the private file's hash, and then moves the file to the executable's
     /// path, so an Application publishes its executable only on success (IMPL 20.3.2; Tatara decision 18): a step that fails before the
     /// commit, the report included, throws and leaves the previous executable and the record at the last incomplete state written, and a
@@ -182,7 +188,7 @@ internal static partial class NativeToolchain
             {
                 ["path"] = Redact(tatara.Path, this.directory), ["build"] = tatara.Build, ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion,
             });
-            var libraries = this.ResolveLibraries(toolchainRoot);
+            var libraries = this.ResolveLibraries();
             WriteRecord(this.paths.Record, this.record);
             var obj = await this.Compile(tatara);
             var undefined = this.Inspect(tatara, obj);
@@ -256,9 +262,11 @@ internal static partial class NativeToolchain
             return irHash;
         }
 
-        // The manifest's libraries in its order, each the file the linker receives, checked against its assertions and identified in
-        // the record (SPEC 20.4).
-        private List<string> ResolveLibraries(string toolchainRoot)
+        // The manifest's libraries in its order, each staged (the file the linker receives), checked against its assertions and
+        // identified in the record by its staged path and hash (SPEC 20.4). A reserved name is the compiler's supply: its entry the one
+        // this compiler writes (LinkManifest) and its bytes the compiler's (ToolchainIdentity.Supplies); any other is a program's, staged
+        // from its input and checked against the project's supply. Every compiler's supply is listed.
+        private List<string> ResolveLibraries()
         {
             var libraries = new List<string>();
             var libraryIdentities = new JsonArray();
@@ -272,13 +280,15 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException("Invalid or duplicate native library.");
                 }
 
-                var path = this.ResolveLibrary(item, name, toolchainRoot, out var hash);
-                if ((name == WindowsProfile.Kernel32Library && kind != "import") || (name == WindowsProfile.BackendLibrary && kind != "static"))
+                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Name == name);
+                if (supply is not null)
                 {
-                    throw new InvalidDataException("Native library kind mismatch.");
+                    LinkManifest.CheckCompilerSupply(item, supply);
                 }
 
-                if (this.project is not null && name is not (WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary))
+                using var input = supply is null ? File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory)) : supply.Open();
+                var path = StageInput(input, this.paths.Stem, out var hash);
+                if (this.project is not null && supply is null)
                 {
                     CheckSupply(this.project, name, kind, hash);
                 }
@@ -293,55 +303,13 @@ internal static partial class NativeToolchain
                 libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, this.directory), ["sha256"] = hash });
             }
 
-            if (!seen.Contains(WindowsProfile.Kernel32Library) || !seen.Contains(WindowsProfile.BackendLibrary))
+            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Name)))
             {
                 throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
             }
 
             this.record["libraries"] = libraryIdentities;
             return libraries;
-        }
-
-        // One library's file by its supply: the toolchain's generated kernel32 import library; the backend archive, the toolchain's or
-        // an explicit input; or a project's supply. An input is staged, and its hash is the staged bytes' (SPEC 20.4).
-        private string ResolveLibrary(JsonElement item, string name, string toolchainRoot, out string? stagedHash)
-        {
-            stagedHash = null;
-            if (name == WindowsProfile.Kernel32Library)
-            {
-                Kernel32Imports.ValidateManifest(item);
-                var kernel = RequireInstalledFile(Path.Combine(toolchainRoot, "windows_x64", "kernel32.lib"));
-                this.record["kernel32"] = new JsonObject
-                {
-                    ["generator"] = Kernel32Imports.Generator, ["dll"] = Kernel32Imports.Dll, ["definitionSha256"] = Kernel32Imports.DefinitionSha256,
-                    ["path"] = Redact(kernel, this.directory),
-                };
-                return kernel;
-            }
-
-            if (name != WindowsProfile.BackendLibrary)
-            {
-                return StageInput(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory), this.paths.Stem, out stagedHash);
-            }
-
-            var backend = ToolchainResolver.ResolveBackend(item, toolchainRoot, this.outputDirectory);
-            if (!File.Exists(backend))
-            {
-                throw new InvalidDataException(
-                    $"Backend archive not found: {backend}. Run src/backend/windows-x64/build.ps1 for this toolchain, " +
-                    "or install the matching compiler toolchain package.");
-            }
-
-            if (LinkManifest.OptionalText(item, "libraries.input") is not null)
-            {
-                backend = StageInput(backend, this.paths.Stem, out stagedHash);
-                if (stagedHash != ToolchainIdentity.BackendSha256)
-                {
-                    throw new InvalidDataException("Explicit backend input SHA-256 mismatch.");
-                }
-            }
-
-            return backend;
         }
 
         // The object: the IR verified, for O2 optimized, its module paths redacted and verified again, then compiled.

@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text.Json;
 using Kimi.Build;
-using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -46,26 +44,5 @@ public sealed class ToolchainResolverTest : IDisposable
     {
         var executable = Path.Combine(this.directory, "distribution");
         Assert.Equal(Path.Combine(executable, "toolchain"), ToolchainResolver.ResolveRoot(null, null, executable, this.directory));
-    }
-
-    [Fact]
-    public void BackendResolutionIsRelocatableAndLegacyInputsRemainManifestRelative()
-    {
-        using var automatic = JsonDocument.Parse("""{"resolution":"toolchain"}""");
-        using var explicitInput = JsonDocument.Parse("""{"input":"custom.lib"}""");
-        var root = Path.Combine(this.directory, "tools with spaces");
-        var manifest = Path.Combine(this.directory, "project", "out");
-        Assert.Equal(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile), ToolchainResolver.ResolveBackend(automatic.RootElement, root, manifest));
-        Assert.Equal(Path.Combine(manifest, "custom.lib"), ToolchainResolver.ResolveBackend(explicitInput.RootElement, root, manifest));
-    }
-
-    [Theory]
-    [InlineData("""{"resolution":"toolchain","input":"override.lib"}""")]
-    [InlineData("""{"resolution":"other"}""")]
-    [InlineData("""{"input":"-override.lib"}""")]
-    public void AmbiguousOrInvalidBackendLocationsAreRejected(string json)
-    {
-        using var entry = JsonDocument.Parse(json);
-        Assert.Throws<InvalidDataException>(() => ToolchainResolver.ResolveBackend(entry.RootElement, this.directory, this.directory));
     }
 }

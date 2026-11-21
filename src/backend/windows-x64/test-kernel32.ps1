@@ -43,8 +43,4 @@ $warnings = @()
 $unverified = Get-KimiDlltoolIdentity $tools['llvm-readobj'] -AllowUnpinnedToolchain -WarningVariable warnings -WarningAction SilentlyContinue
 if ($unverified.hashMatched -or $warnings.Count -ne 1) { throw 'Missing exploratory warning/identity' }
 Expect-Failure { Get-KimiDlltoolIdentity (Join-Path $root 'missing.exe') } 'not found'
-$entry = [pscustomobject]@{ name='kernel32'; kind='import'; generator='llvm-dlltool'; dll='KERNEL32.dll'; definitionSha256=(Read-KimiWindowsProfile).kernel32.definitionSha256 }
-Assert-KimiKernel32Manifest $entry
-$entry.definitionSha256 = '0' * 64
-Expect-Failure { Assert-KimiKernel32Manifest $entry } 'Invalid generated kernel32 identity'
-Write-Output 'Kernel32 tests passed: generation, inspection, path independence, privacy, failed generation, tool policy and manifest integrity.'
+Write-Output 'Kernel32 tests passed: generation, inspection, path independence, privacy, failed generation and tool policy.'
