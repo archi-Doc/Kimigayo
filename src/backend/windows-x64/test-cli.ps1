@@ -59,8 +59,9 @@ $output = Invoke-Kimi @('run', $project)
 if (-not $output.Contains('Hello, world!')) { throw "Automatic toolchain resolution failed: $output" }
 # IMPL 20.3.2, 20.4 (Tatara B6b1): a native build runs no LLVM tool, links the compiler's own libraries and reads no toolchain root,
 # so build --Manifest and a test project's build need none either. The options --ToolchainRoot and --LlvmBin were removed (Tatara
-# B6b4): a command line naming either, in any spelling the parser binds, fails before its command runs, with each text on standard
-# error and nothing on standard output (check --Format json writes no document).
+# B6b4): a command naming either among its arguments, in any spelling the parser binds, fails as its input error before its work,
+# with each text on standard error and nothing on standard output (check --Format json writes no document); test, as its invalid
+# option (exit 2).
 $missingRoot = Join-Path $work 'missing toolchain'
 foreach ($row in @(@('--ToolchainRoot', 'build', $project, '--ToolchainRoot', $missingRoot), @('--LlvmBin', 'check', $project, '--Format', 'json', '-llvmbin', $missingRoot))) {
     $output = Invoke-Kimi $row[1..($row.Count - 1)] 1

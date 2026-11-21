@@ -19,7 +19,8 @@ $kimi = Join-Path $repository "tests\xUnitTest\bin\$Configuration\net10.0\Kimi.d
 $tatara = Join-Path $repository "tests\xUnitTest\bin\$Configuration\net10.0\tatara.dll"
 $checkout = @("Checkout at the start: $(git -C $repository rev-parse HEAD)", '', '``` git status --porcelain') + @(git -C $repository status --porcelain) + '```'
 
-# The DLL's identity, read in a child process so this process maps no tatara.dll.
+# The DLL's identity, read in a child process so this process maps no tatara.dll; the build copies it only from a checkout that has it.
+if (-not (Test-Path -LiteralPath $tatara -PathType Leaf)) { throw "Missing tatara.dll: $tatara. Build it with src/Tatara/build.ps1 into a toolchain directory of this checkout's own, then build Kimi." }
 . (Join-Path $repository 'src\Tatara\identity.ps1')
 $expected = Get-TataraBuildIdentity
 $read = @'

@@ -21,7 +21,7 @@ public sealed class ToolchainCommand : ISimpleCommand<ToolchainCommand.Options>
 
     public async Task Execute(Options options, string[] args, CancellationToken cancellationToken)
     {
-        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, args, async () =>
         {
             if (args.Length != 1 || args[0] != "verify")
             {

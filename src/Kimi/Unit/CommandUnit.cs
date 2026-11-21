@@ -106,19 +106,6 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
         /// <returns>A task that completes when the command has run.</returns>
         internal async Task Execute(string commandLine, IServiceProvider serviceProvider, CancellationToken cancellationToken)
         {
-            // A removed option fails the line before any command runs, test included: each occurrence is reported on standard error, as
-            // check --Format json requires of everything but its document (SPEC 23.3), and the line ends with 1 (IMPL 20.3).
-            if (KimiOptions.RemovedOptions(commandLine) is [_, ..] removed)
-            {
-                foreach (var text in removed)
-                {
-                    Console.Error.WriteLine(text);
-                }
-
-                Environment.ExitCode = 1;
-                return;
-            }
-
             var parserOptions = SimpleParserOptions.Standard with
             {
                 ServiceProvider = serviceProvider,

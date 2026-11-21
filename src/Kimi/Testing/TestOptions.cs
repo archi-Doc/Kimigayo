@@ -43,7 +43,8 @@ internal sealed class TestOptions
                 "--case-diagnostic-count" or "--case-diagnostic-bytes" or "--case-log-bytes" or "--run-diagnostic-count" or "--run-diagnostic-bytes" or "--run-log-bytes" or
                 "--Target" or "--Debug"))
             {
-                throw new InvalidDataException("Unknown test option: " + name);
+                // An invalid option, a removed one named by its removal (Tatara B6b4): test's 2 (IMPL 20.6.4).
+                throw new InvalidDataException(KimiOptions.RemovedOption(name) ?? "Unknown test option: " + name);
             }
 
             if (!result.values.TryAdd(name, flag ? "true" : ++i < args.Length ? args[i] : throw new InvalidDataException("Missing value: " + name)))
