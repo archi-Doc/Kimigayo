@@ -1,8 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Collections;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Kimi;
+using Kimi.Build;
 using Kimi.Testing;
 using Xunit;
 
@@ -41,15 +45,11 @@ public class TestProcessRecoveryTest
 
             if (mode == "descendant")
             {
-                var pid = int.Parse(File.ReadAllText(outcome.Stderr!).Trim(), System.Globalization.CultureInfo.InvariantCulture);
-                try
+                // The job ended the descendant: its id names it no more (reaped, or reused), or it has exited.
+                Assert.True(TryIdentify(File.ReadAllText(outcome.Stderr!).Trim(), out var child));
+                using (child)
                 {
-                    using var child = Process.GetProcessById(pid);
-                    Assert.True(child.HasExited);
-                }
-                catch (ArgumentException)
-                {
-                    // The job reaped the descendant before the query.
+                    Assert.True(child is null || child.HasExited);
                 }
             }
         }
@@ -59,8 +59,38 @@ public class TestProcessRecoveryTest
         }
     }
 
+    // A process line of the probe (its id and start time) as the process it names while that process runs on, else null: an id is
+    // reused once its process has ended, and the start time tells the two apart. False for a line that is no process line.
+    internal static bool TryIdentify(string line, out Process? process)
+    {
+        process = null;
+        if (line.Split(' ') is not [var id, var started] || !int.TryParse(id, System.Globalization.CultureInfo.InvariantCulture, out var pid) ||
+            !long.TryParse(started, System.Globalization.CultureInfo.InvariantCulture, out var ticks))
+        {
+            return false;
+        }
+
+        try
+        {
+            process = Process.GetProcessById(pid);
+            _ = process.SafeHandle; // Held from here on, so its id cannot name another process.
+            if (process.StartTime.Ticks == ticks)
+            {
+                return true;
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            // It has ended, or the id names another user's process.
+        }
+
+        process?.Dispose();
+        process = null;
+        return true;
+    }
+
     // The ordinary test apphost doubles as an isolated process fixture. No shell or
-    // external build is needed, and child behavior is selected only by this test.
+    // external build is needed, and child behavior is selected only by this test and NativeToolchainTest's run rows ("escape", "run").
     [ModuleInitializer]
     internal static void ProcessProbe()
     {
@@ -70,7 +100,11 @@ public class TestProcessRecoveryTest
         }
 
         var mode = Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_PROBE");
-        if (mode is not ("exit" or "sleep" or "cancel" or "descendant"))
+        if (mode == "run")
+        {
+            RunProgram();
+        }
+        else if (mode is not ("exit" or "sleep" or "cancel" or "descendant" or "escape"))
         {
             return;
         }
@@ -83,14 +117,25 @@ public class TestProcessRecoveryTest
 
         if (mode == "descendant")
         {
-            StartDescendant();
+            using var descendant = StartDescendant("sleep");
+        }
+        else if (mode == "escape")
+        {
+            // A descendant whose parent exits first: a kill of this process's tree no longer finds it (Tatara SP1's limit, C-427 N7).
+            using (var self = Process.GetCurrentProcess())
+            {
+                Console.Error.WriteLine(Identity(self));
+            }
+
+            using var intermediate = StartDescendant("descendant");
+            intermediate.WaitForExit();
         }
 
         if (mode != "sleep")
         {
             if (Console.In.Read() != -1)
             {
-                Environment.Exit(125);
+                Environment.Exit(123); // Not a kill's 125 (JobProcess.Kill).
             }
 
             Console.WriteLine(Environment.GetEnvironmentVariable("TEMP"));
@@ -145,7 +190,12 @@ public class TestProcessRecoveryTest
         }
     }
 
-    private static void StartDescendant()
+    // A process's line for TryIdentify: its id and start time.
+    private static string Identity(Process process) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{process.Id} {process.StartTime.Ticks}");
+
+    // A descendant in the mode, ready, its line (Identity) on the error output. It holds this process's standard output and error: the
+    // redirected input makes Process.Start pass them (with the input, closed at once).
+    private static Process StartDescendant(string mode)
     {
         var readyName = "kimi-recovery-child-" + Guid.NewGuid().ToString("N");
         using var ready = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, readyName);
@@ -153,15 +203,68 @@ public class TestProcessRecoveryTest
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardInput = true,
         };
-        start.Environment["KIMI_TEST_PROCESS_PROBE"] = "sleep";
+        start.Environment["KIMI_TEST_PROCESS_PROBE"] = mode;
         start.Environment["KIMI_TEST_PROCESS_READY"] = readyName;
-        using var child = Process.Start(start)!;
+        var child = Process.Start(start)!;
+        child.StandardInput.Close();
         if (!ready.WaitOne(TimeSpan.FromSeconds(30)))
         {
             Environment.Exit(124);
         }
 
-        Console.Error.WriteLine(child.Id);
+        Console.Error.WriteLine(Identity(child));
+        return child;
     }
+
+    // Kimi's side of NativeToolchainTest's run rows: runs this apphost as kimi run runs a program, in KIMI_TEST_PROCESS_PROGRAM's mode;
+    // KIMI_TEST_PROCESS_ACTION "no input" and "invalid input" set this process's standard input to no handle or to a value no handle of
+    // it has (above the handle table's limit) before the run; when the row has read the program's output (KIMI_TEST_PROCESS_GO), "cancel"
+    // cancels the run and "end" ends this process as a second Ctrl+C does (Program.EndProcess). Exits with the run's exit code, 130 for a
+    // cancellation.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RunProgram()
+    {
+        Environment.SetEnvironmentVariable("KIMI_TEST_PROCESS_PROBE", Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_PROGRAM"));
+        var action = Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_ACTION");
+        if (action is "no input" or "invalid input")
+        {
+            if (!SetStdHandle(-10, action == "no input" ? 0 : 0x7FFF_FFF8))
+            {
+                Environment.Exit(122);
+            }
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        var run = NativeToolchain.RunExecutable(Environment.ProcessPath!, Environment.CurrentDirectory, cancellation.Token);
+        if (action is "cancel" or "end")
+        {
+            using (var go = EventWaitHandle.OpenExisting(Environment.GetEnvironmentVariable("KIMI_TEST_PROCESS_GO")!))
+            {
+                go.WaitOne();
+            }
+
+            if (action == "end")
+            {
+                Program.EndProcess();
+            }
+
+            cancellation.Cancel();
+        }
+
+        try
+        {
+            Environment.Exit(run.GetAwaiter().GetResult());
+        }
+        catch (OperationCanceledException)
+        {
+            Environment.Exit(130);
+        }
+    }
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetStdHandle(int kind, nint handle);
 }

@@ -44,6 +44,18 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
             "1*DeclarationOrderWarning_Kd 2*DuplicateBinding_Kd",
             DiagnosticCorpus.RecordProfile("group G\n    func f() => ()\n    func f() => ()\n    let f: i32 = 1\npublic func main() => ()\n", "Application"));
 
+    // SPEC 9.1, 9.3, 7.3, 23.1.2 (R7-E2 E2-4's B1; the Front's r1, r1b, r1t): a constructor whose written `self` redeclares the contextual
+    // receiver and whose Signature `(i32)` another constructor repeats is invalid, never a compiler defect. The receiver's Duplicate keeps
+    // the slot's failure (Structs' IndexSpecialReceiver), so the Signature group's record, made after Index under the same key with its
+    // own facts, is the constructor's one record and no InternalInvariant_Kd appears (a fact-less record of its own there was one: the
+    // E2-4 prototype's round 1). Distinct Signatures without a written `self` are valid.
+    [Theory]
+    [InlineData("init(self: i32) => ()\n    init(x: i32) => ()", "1*DuplicateBinding_Kd 1*InvalidTypeFormation_Kd")] // r1
+    [InlineData("init(self: i32) => ()\n    init(self: i32) => ()", "1*DuplicateBinding_Kd 2*InvalidTypeFormation_Kd")] // r1b
+    [InlineData("init(x: i32) => ()\n    init(y: i64) => ()", "clean")] // r1t
+    public void AWrittenSelfInADuplicateConstructorKeepsTheGroupsRecord(string constructors, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("struct S\n    " + constructors + "\npublic func main() => ()\n", "Application"));
+
     // SPEC 6.1, 9.1, 23.1.2 (R7-E2 E2-3b, the Front's d4): the repeated Name is judged from the two declarations alone, so the later's
     // initializer's syntax error, which its own binding consulted, does not derive it (IsDerived's JudgedByDeclaredNames row): both are
     // reported, as dev's group walk did; the twin with another name reports the syntax error alone.

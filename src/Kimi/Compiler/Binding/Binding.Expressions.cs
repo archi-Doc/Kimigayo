@@ -501,7 +501,7 @@ public sealed partial class Binding
                 return called;
             case SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred:
                 var inferredSymbol = this.InferredCase(inferred, scope, expected);
-                return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, inferredSymbol, null, scope, expected);
+                return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, this.PublishedTarget(inferred, inferredSymbol, expected), null, scope, expected);
             case IndexKoto index:
                 return this.BindElement(index, scope);
             case RangeKoto range:
@@ -522,7 +522,7 @@ public sealed partial class Binding
                     return this.FailMissing(member, scope, BindingFailure.MissingName);
                 }
 
-                return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, memberSymbol, null, scope, expected) : this.BindReference(member, memberSymbol, scope);
+                return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, this.PublishedTarget(member, memberSymbol, expected), null, scope, expected) : this.BindReference(member, memberSymbol, scope);
             case ParenthesizedKoto parent:
                 return Complete(node, this.BindNode(parent.Operand, scope, expected));
             case UnaryKoto unary:

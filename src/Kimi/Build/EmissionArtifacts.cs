@@ -171,10 +171,10 @@ public static class EmissionArtifacts
         }
     }
 
-    // IMPL 20.4: the supplies of the module's required libraries (the generation result's, one per library) but the compiler's (a name
-    // with a row of ToolchainIdentity.Supplies, which needs no supply), sorted by Ordinal name. Only the root module's own self-targeted supplies connect yet: a logical name alone cannot identify another
+    // IMPL 20.4: the supplies of the module's required libraries (the generation result's, one per library) but the compiler's (a reserved
+    // supply of the target profile, which needs no supply), sorted by Ordinal name. Only the root module's own self-targeted supplies connect yet: a logical name alone cannot identify another
     // module's requirement, and combined-module native records are not generated, so Binding makes a dependency module's import, but
-    // kernel32's, the located Unsupported_Kd (DECISIONS BU-92).
+    // a reserved supply's, the located Unsupported_Kd (DECISIONS BU-92).
     private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(
         IReadOnlyList<(string Library, string Kind)> required, ProjectFile settings)
     {
@@ -182,7 +182,7 @@ public static class EmissionArtifacts
         for (var i = 0; i < required.Count; i++)
         {
             var (name, kind) = required[i];
-            if (Array.Exists(ToolchainIdentity.Supplies, x => x.Name == name))
+            if (WindowsProfile.Supply(name) is not null)
             {
                 continue;
             }
@@ -241,7 +241,7 @@ public static class EmissionArtifacts
         var next = 0;
         foreach (var supply in ToolchainIdentity.Supplies)
         {
-            WriteForeign(supply.Name);
+            WriteForeign(supply.Supply.Name);
             LinkManifest.WriteCompilerSupply(json, supply);
         }
 

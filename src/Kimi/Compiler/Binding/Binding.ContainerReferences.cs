@@ -321,7 +321,7 @@ public sealed partial class Binding
 
         if (inherited is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 })
         {
-            return this.types.Intern(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
+            return this.FormReference(symbol, own, default, default);
         }
 
         if (environment is null)
@@ -341,24 +341,31 @@ public sealed partial class Binding
             return this.RecordArity(syntax, parent!.BoundSymbol!, inherited.GenericSlots.Count, environment?.Components.Count ?? 0);
         }
 
-        var count = own.Length + environment.Components.Count;
+        return this.FormReference(symbol, own, (BoundType[])environment.Components, (BoundOrigin[])environment.OriginArguments);
+    }
+
+    // SPEC 9.7, 9.7.1: a container reference's Type from its own arguments and its environment's components and Origin arguments, the
+    // one formation of it: the own arguments, then the environment's; the declaration's own Origin slots empty, then the environment's
+    // Origins. Pure: it interns, and writes no node, record or table. With no environment it is the declaration's Type at `own`.
+    private BoundType FormReference(BindingSymbol symbol, ReadOnlySpan<BoundType> own, ReadOnlySpan<BoundType> environment, ReadOnlySpan<BoundOrigin> environmentOrigins)
+    {
+        if (environment.IsEmpty && environmentOrigins.IsEmpty)
+        {
+            return this.types.Intern(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
+        }
+
+        var declaration = (DeclarationContainerKoto)symbol.Declaration;
+        var slots = declaration.OriginNames.Count + ((DeclarationContainerKoto)declaration.Parent!).BoundSymbol!.Schema!.Origins.Count;
+        var count = own.Length + environment.Length;
         var types = this.RentTypes(count);
-        var origins = this.originScratch.Rent(declaration.OriginNames.Count + inherited.Origins.Count);
+        var origins = this.originScratch.Rent(slots);
         try
         {
             own.CopyTo(types);
-            for (var i = 0; i < environment.Components.Count; i++)
-            {
-                types[own.Length + i] = environment.Components[i];
-            }
-
-            var originCount = environment.OriginArguments.Count == 0 ? 0 : declaration.OriginNames.Count + inherited.Origins.Count;
+            environment.CopyTo(types.AsSpan(own.Length));
+            var originCount = environmentOrigins.IsEmpty ? 0 : slots;
             Array.Clear(origins, 0, originCount);
-            for (var i = 0; i < environment.OriginArguments.Count; i++)
-            {
-                origins[declaration.OriginNames.Count + i] = environment.OriginArguments[i];
-            }
-
+            environmentOrigins.CopyTo(origins.AsSpan(declaration.OriginNames.Count));
             return this.types.Intern(count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, count), originArguments: origins.AsSpan(0, originCount));
         }
         finally
