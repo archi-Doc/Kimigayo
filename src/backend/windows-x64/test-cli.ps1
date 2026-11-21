@@ -75,7 +75,11 @@ if (-not $output.Contains('Hello, world!')) { throw "A native build needed more 
 $output = Invoke-Kimi @('build', '--Manifest', (Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.link.json'), '--ToolchainRoot', $tataraRoot)
 $output = Invoke-Kimi @('run', $project, '--no-build')
 if (-not $output.Contains('Hello, world!')) { throw "A manifest build needed more than tatara.dll: $output" }
-$testDirectory = Join-Path $work 'test project'
+# kimi test's arguments keep the quotes of a path with spaces (a separate open limit), so its project and root have none.
+$testRoot = Join-Path (Split-Path $work) 'tatara-only'
+New-Item -ItemType Directory -Path $testRoot | Out-Null
+Copy-Item -LiteralPath (Join-Path $ToolchainRoot 'tatara.dll') -Destination $testRoot
+$testDirectory = Join-Path (Split-Path $work) 'test-project'
 New-Item -ItemType Directory -Path $testDirectory | Out-Null
 @'
 #Test
@@ -83,9 +87,11 @@ func passes()
     $require(1 == 1)
 '@ | Set-Content -LiteralPath (Join-Path $testDirectory 'tests.kimi') -Encoding utf8
 "Targets = { `"x86_64-pc-windows-msvc`" }`nOutputKind = `"Library`"`nTestSources = { `"tests.kimi`" }" | Set-Content -LiteralPath (Join-Path $testDirectory 'Tests.kimiproj') -Encoding utf8
-$output = Invoke-Kimi @('test', (Join-Path $testDirectory 'Tests.kimiproj'), '--ToolchainRoot', $tataraRoot)
-$rootFiles = @(Get-ChildItem -LiteralPath $tataraRoot -Name) -join ','
-if ($rootFiles -cne 'tatara.dll') { throw "A build wrote into the toolchain root: $rootFiles" }
+$output = Invoke-Kimi @('test', (Join-Path $testDirectory 'Tests.kimiproj'), '--ToolchainRoot', $testRoot)
+foreach ($root in @($tataraRoot, $testRoot)) {
+    $rootFiles = @(Get-ChildItem -LiteralPath $root -Name) -join ','
+    if ($rootFiles -cne 'tatara.dll') { throw "A build wrote into the toolchain root: $rootFiles" }
+}
 $output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
 # A project's LlvmBin is accepted and not read: with a missing directory emit publishes only the LLVM inputs, and the build succeeds.
 Write-Project 'O2' 'missing LLVM directory'
