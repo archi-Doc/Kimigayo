@@ -1233,50 +1233,6 @@ public sealed partial class MirBorrowsTest
                     y@follow = 5
                 """));
 
-    // SPEC 5.7 ("Reading a Field": a `during self` layer read through a dereferenced borrow states that borrow's Origin), 15.6.4 (G147
-    // ruling 44): a `during self` raw Field nextOf's receiver reaches past `it@uniq` is a layer stating that borrow's Origin, so it
-    // retains through the Origin, never as a raw source by its chain: x keeps nothing of y, and `y@follow = 5` before `use(x)` is valid
-    // (selfFieldOk); its holder without the layer is valid as well (holderOk). Fail-before: e0a190260 rejected selfFieldOk at
-    // `y@follow = 5`, by x's later use. Labels: F\G147\d933\labels-r44.tsv.
-    [Fact]
-    public void ADuringSelfFieldPastABorrowStatesItsOrigin()
-        => Assert.Empty(Problems("""
-            struct Fs {inner}
-                Self is Iterator
-                associate Iterator.Item is i32
-                var keepIn: ref/i32 during inner
-                var p: raw/(ref/i32 during inner) during self
-                public init(keepIn: ref/i32 during inner)
-                    self.keepIn = keepIn
-                    self.p = null
-                public func next(self: uniq/Self) -> Option<i32> => .None
-            struct Fh {inner}
-                Self is Iterator
-                associate Iterator.Item is i32
-                var keepIn: ref/i32 during inner
-                public init(keepIn: ref/i32 during inner) => self.keepIn = keepIn
-                public func next(self: uniq/Self) -> Option<i32> => .None
-            func nextOf<I>(it: uniq/I) -> Option<I.(Iterator).Item>
-                I is Iterator
-                return it.next()
-            func sink<T>(v: T) => ()
-            func use(x: Option<i32>) => ()
-            func selfFieldOk(y: uniq/i32)
-                let w = y@follow@ref
-                var it = Fs.init(keepIn: w)
-                let x = nextOf(it@uniq)
-                sink(it@move)
-                y@follow = 5
-                use(x)
-            func holderOk(y: uniq/i32)
-                let w = y@follow@ref
-                var it = Fh.init(keepIn: w)
-                let x = nextOf(it@uniq)
-                sink(it@move)
-                y@follow = 5
-                use(x)
-            """));
-
     // SPEC 15.6 (a raw pointer that reaches no holder reaches only storage the body does not own, where what is stored may be used after
     // every point; condition 5; DECISIONS R4-M120's departure 1, B1): what that storage holds may refer to it, so a pointer read through a
     // parameter reaches it from any local holder that keeps it, and a call storing x's Loan through the holder keeps it there: a raw local,

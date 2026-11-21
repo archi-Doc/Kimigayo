@@ -172,6 +172,12 @@ public sealed partial class RetentionTest
 
     private const string PField = "    var p: P\n    public init(p: P) => self.p = p@move\n";
 
+    private const string KeepIn = "    var keepIn: ref/i32 during inner\n";
+
+    private const string KeepNull = "    public init(keepIn: ref/i32 during inner)\n        self.keepIn = keepIn\n        self.p = null\n";
+
+    private const string UseInner = "func use(it: uniq/(It during w), w: ref/i32) -> Option<i32> => nextOf(it)\n";
+
     private const string NextOf = "func nextOf<I>(it: uniq/I) -> Option<I.(Iterator).Item>\n    I is Iterator\n    return it.next()\n";
 
     private const string LentUse = "func use(w: ref/i32, it: uniq/(It during w)) -> Option<ref/i32 during w> => nextOf(it)\n";
@@ -994,7 +1000,10 @@ public sealed partial class RetentionTest
     // `associate LendingIterator.LentItem(step) is Item`, a proven identity), so a raw layer `it` holds in a Field or a Type argument is
     // kept there by that classification (labels F\G147\d933\labels-r39.tsv): the stated Field and Type argument as their borrow twins (the
     // Type argument was `result {0 Chain}` on dev c17bd1792: the component path's stated raw source), the unstated Field (D-933's Field
-    // raw source) and Type argument by the chain.
+    // raw source) and Type argument by the chain. A `during self` Field layer past `it`'s borrow reads with that borrow's Origin (SPEC 5.7,
+    // "Reading a Field"; G147 rulings 44 and 47): stated, it gives no result row, as its holder without the layer does, while its unstated
+    // twin keeps `result {0 Chain}` (fail-before: e0a190260 gave the `during self` row `result {0 Chain}` too; labels-r44.tsv). Both keep
+    // `reached {0 Content}`: the call may store through the layer (the delta read's O1, a pre-existing loan-conflict cause, rests on it).
     [Theory]
     [InlineData("struct It {source}\n" + LentIterator + "    var p: raw/i32 during source\n    public init(keep: ref/i32 during source, p: raw/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
     [InlineData("struct It {source}\n" + LentIterator + "    var p: ref/i32 during source\n    public init(keep: ref/i32 during source, p: ref/i32 during source)\n        self.keep = keep\n        self.p = p\n" + LentNext + NextOf + LentUse, "result {0 Content}, store 0: own {0 Content}, reached {}")]
@@ -1002,6 +1011,9 @@ public sealed partial class RetentionTest
     [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<raw/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
     [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(w: ref/i32, it: uniq/It<ref/i32 during w>) -> Option<i32> => nextOf(it)\n", "store 0: own {0 Content}, reached {}")]
     [InlineData("struct It<P>\n" + IntIterator + PField + IntNext + NextOf + "func use(it: uniq/It<raw/i32>) -> Option<i32> => nextOf(it)\n", "result {0 Chain}")]
+    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    var p: raw/(ref/i32 during inner) during self\n" + KeepNull + IntNext + NextOf + UseInner, "store 0: own {0 Content}, reached {0 Content}")]
+    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    var p: raw/(ref/i32 during inner)\n" + KeepNull + IntNext + NextOf + UseInner, "result {0 Chain}, store 0: own {0 Content}, reached {0 Content}")]
+    [InlineData("struct It {inner}\n" + IntIterator + KeepIn + "    public init(keepIn: ref/i32 during inner) => self.keepIn = keepIn\n" + IntNext + NextOf + UseInner, "store 0: own {0 Content}, reached {}")]
     public void ARawLayerWithAnOriginRetainsThroughItsOrigin(string source, string expected)
         => Assert.Equal([expected], Calls(Bind(source), "nextOf"));
 
