@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -86,12 +87,20 @@ public class ObjectPayloadTest
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
-    [Fact]
-    public void TheOptOutIsInheritedByDerivedStructs()
+    // SPEC 8.7.3, 23.3 (R7-E3 E3a-3): the record names and relates the declaration that opts out, its own (an object creation) or the
+    // base's a derived struct inherits (Base, not Leaf); without the opt-out the program is accepted.
+    [Theory]
+    [InlineData("struct Payload\n    Self is not ObjectPayload\n    public init() => ()\nlet h = Payload.init()@obj", "Payload")]
+    [InlineData("open struct Base\n    Self is not ObjectPayload\nopen struct Middle: Base\nstruct Leaf: Middle\nfunc f(x: obj/Leaf) => ()\n()", "Base")]
+    public void TheRecordRelatesTheDeclarationThatOptsOut(string source, string declaring)
     {
-        var c = CompilationTestHelper.Parse("open struct Base\n    Self is not ObjectPayload\nopen struct Middle: Base\nstruct Leaf: Middle\nfunc f(x: obj/Leaf) => ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NotObjectPayload_Kd);
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.NotObjectPayload_Kd), error.Code);
+        Assert.Contains($"Type {declaring} ", error.Message, StringComparison.Ordinal);
+        var related = Assert.Single(error.Related!);
+        Assert.Equal("declaration", related.Role);
+        Assert.StartsWith("struct " + declaring + "\n", source[related.Span!.Value.Start..], StringComparison.Ordinal);
+        Assert.True(DiagnosticCorpus.Check(source.Replace("    Self is not ObjectPayload\n", string.Empty, StringComparison.Ordinal)).Accepted);
     }
 
     [Theory]

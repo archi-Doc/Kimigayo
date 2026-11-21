@@ -15,8 +15,8 @@ internal static partial class NativeToolchain
     private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
     // A project's native build. A build reads no toolchain root and no LlvmBin: --ToolchainRoot, KIMI_TOOLCHAIN_ROOT and the command
-    // line's LlvmBin name the root toolchain verify checks, and they are accepted and not read here (Tatara designs A4 §2.1, B6b1;
-    // removed in B6b).
+    // line's LlvmBin select nothing (B6b3), and they are accepted and not read here; a project's LlvmBin and a link manifest's
+    // toolchain member are errors (B6b5) (Tatara designs A4 §2.1, B6b1; the options removed in B6b4).
     internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(await File.ReadAllBytesAsync(paths.Manifest, cancellationToken));
@@ -114,9 +114,10 @@ internal static partial class NativeToolchain
         return declared;
     }
 
+    // The backend supply's symbols, linked directly, and each runtime declaration in its dllimport form (kernel32's __imp_ symbol).
     private static HashSet<string> CreateAllowedUndefined()
     {
-        var allowed = new HashSet<string>(WindowsProfile.ProvidedSymbols, StringComparer.Ordinal);
+        var allowed = new HashSet<string>(ToolchainIdentity.Backend.Symbols, StringComparer.Ordinal);
         foreach (var (symbol, _) in WindowsProfile.RuntimeDeclarations)
         {
             allowed.Add("__imp_" + symbol);
@@ -276,7 +277,7 @@ internal static partial class NativeToolchain
                     throw new InvalidDataException("Invalid or duplicate native library.");
                 }
 
-                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Name == name);
+                var supply = Array.Find(ToolchainIdentity.Supplies, x => x.Supply.Name == name);
                 if (supply is not null)
                 {
                     LinkManifest.CheckCompilerSupply(item, supply);
@@ -299,7 +300,7 @@ internal static partial class NativeToolchain
                 libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, this.directory), ["sha256"] = hash });
             }
 
-            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Name)))
+            if (!Array.TrueForAll(ToolchainIdentity.Supplies, x => seen.Contains(x.Supply.Name)))
             {
                 throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
             }

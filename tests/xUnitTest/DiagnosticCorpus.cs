@@ -217,6 +217,26 @@ internal static class DiagnosticCorpus
         return records.Any() ? string.Join(' ', records.Select(static x => $"{x.Count()}*{x.Key}")) : "clean";
     }
 
+    /// <summary>Lists an Application program's records in result order (SPEC 23.1, 23.3), each as its code, its location's line and
+    /// column, the text there and the labels of its related locations: "A_Kd 4:19 H1, inaccessible declaration 'H1'".</summary>
+    /// <param name="source">The program, in one source.</param>
+    /// <returns>The records.</returns>
+    internal static string[] LocatedRecords(string source)
+    {
+        return [.. Check(source).Diagnostics.Select(x => Located(x) + string.Concat(x.Related?.Select(static r => ", " + r.Label) ?? []))];
+
+        string Located(CheckDiagnostic record)
+        {
+            if (record.Span is not { } span)
+            {
+                return record.Code;
+            }
+
+            var column = span.Start == 0 ? 1 : span.Start - source.LastIndexOf('\n', span.Start - 1);
+            return $"{record.Code} {source.AsSpan(0, span.Start).Count('\n') + 1}:{column} {source.Substring(span.Start, span.Length)}";
+        }
+    }
+
     /// <summary>Checks a program of an output kind.</summary>
     /// <param name="source">The program.</param>
     /// <param name="outputKind">The project's OutputKind.</param>

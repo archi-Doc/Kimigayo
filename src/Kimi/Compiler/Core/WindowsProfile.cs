@@ -3,9 +3,12 @@
 // Owns the windows-x64 target profile (IMPL 21.4, SPEC 22): the one executable target profile that Binding's native resolution, the
 // Backend's module frame and runtime ABI, target selection (Project, Solution, LSP) and the native build read (DECISIONS R5-M174).
 // Input: none. Output: the triple, the profile name, data layout, CPU, features and code generation settings, the entry and subsystem,
-// the reserved runtime name, the reserved supplies' names (kimi_backend, kernel32) with the backend's helper catalog and kernel32's
-// symbol set, the runtime's kernel32 declarations, and the bound below which the system maps no address.
-// Invariants: constants and arrays only; the native build checks the embedded backend record against them (ToolchainIdentity).
+// the reserved runtime name, the reserved supplies (Supplies: each one's name, kind and symbol set; Supply(name)) and the reserved
+// external names (ReservedSymbols, IMPL 21.2), the runtime's kernel32 declarations, and the bound below which the system maps no address.
+// Invariants: constants and arrays only; the reserved supplies distinct, in Ordinal name order (publication interleaves a program's
+// supplies by name), with disjoint symbol sets (an external symbol has one providing library, IMPL 21.2); the reserved external names
+// are the float marker and the backend supply's symbols; the native build checks the embedded backend record against them and keys
+// its material by the supplies' names (ToolchainIdentity).
 // Must not read a file, a resource or the toolchain (its identity is ToolchainIdentity's), nor stand for the checked triple
 // (Compilation.TargetTriple and IrTarget: any triple a check selects).
 
@@ -25,9 +28,7 @@ public static class WindowsProfile
     internal const string CodeModel = "small";
     internal const string UnwindTables = "async";
 
-    // Reserved supplies (IMPL 20.4, SPEC 21.4.7) and Application entry (SPEC 22.4.3) identities.
-    internal const string BackendLibrary = "kimi_backend";
-    internal const string Kernel32Library = "kernel32";
+    // Application entry (SPEC 22.4.3) and reserved runtime name (IMPL 21.2) identities.
     internal const string EntrySymbol = "__kimi_start";
     internal const string Subsystem = "console";
     internal const string FloatMarker = "_fltused";
@@ -35,9 +36,6 @@ public static class WindowsProfile
     /// <summary>The bound below which Windows maps no address (the null-pointer partition, 64 KiB): no heap block lies below it, so
     /// the runtime's release skips such an address.</summary>
     internal const int UnmappedBound = 65536;
-
-    /// <summary>Gets the helper symbols supplied by the backend archive, in catalog order.</summary>
-    internal static readonly string[] ProvidedSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];
 
     /// <summary>Gets the kernel32 declarations the generated runtimes emit, with their import-ABI physical
     /// signatures: the ordinary runtime of SPEC 21.4.7 and the two test-runtime APIs, which one source can
@@ -56,11 +54,48 @@ public static class WindowsProfile
         ("SetHandleInformation", "4p44"),
     ];
 
-    /// <summary>Gets the kernel32 reserved supply's symbol set (IMPL 20.4): the runtime declarations' symbols, then the VirtualAlloc
-    /// test family and the Windows counter APIs. It follows <see cref="RuntimeDeclarations"/>, whose initializer runs first.</summary>
-    internal static readonly string[] Kernel32Symbols =
+    // The backend supply's helper symbols in catalog order (IMPL 21.4.7), which its supply and the reserved external names share.
+    private static readonly string[] BackendSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];
+
+    /// <summary>Gets the reserved supplies (IMPL 20.4) in Ordinal name order: kernel32, the generated import library, whose symbol set
+    /// is the runtime declarations' symbols, then the VirtualAlloc test family and the Windows counter APIs; and kimi_backend, the
+    /// backend archive, a static library of its helper catalog (IMPL 21.4.7). Static initializers run in text order, so the fields
+    /// above are set first.</summary>
+    internal static TargetSupply[] Supplies { get; } =
     [
-        .. RuntimeDeclarations.Select(static x => x.Symbol),
-        "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency",
+        new(
+            "kernel32",
+            "import",
+            [
+                .. RuntimeDeclarations.Select(static x => x.Symbol),
+                "VirtualAlloc", "VirtualProtect", "VirtualFree", "QueryPerformanceCounter", "QueryPerformanceFrequency",
+            ]),
+        new("kimi_backend", "static", BackendSymbols),
     ];
+
+    /// <summary>Gets the profile's reserved external names (IMPL 21.2): the float marker and the backend supply's symbols.</summary>
+    internal static string[] ReservedSymbols { get; } = [FloatMarker, .. BackendSymbols];
+
+    /// <summary>Gets the reserved supply of a library name.</summary>
+    /// <param name="name">The library name.</param>
+    /// <returns>The reserved supply that <paramref name="name"/> names, or null when it names none.</returns>
+    internal static TargetSupply? Supply(string? name)
+    {
+        foreach (var supply in Supplies)
+        {
+            if (supply.Name == name)
+            {
+                return supply;
+            }
+        }
+
+        return null;
+    }
 }
+
+/// <summary>A reserved supply of the target profile (IMPL 20.4): the library the compiler supplies, its kind and the symbols it
+/// provides.</summary>
+/// <param name="Name">The reserved library name.</param>
+/// <param name="Kind">The library's kind, "import" or "static" (IMPL 20.4).</param>
+/// <param name="Symbols">The external symbols the library provides.</param>
+internal sealed record TargetSupply(string Name, string Kind, string[] Symbols);

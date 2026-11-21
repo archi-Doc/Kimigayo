@@ -1,11 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns initialization and moves (A1; SPEC 15.1, 14.10.3, 7.2.3; DECISIONS R4-M21, R4-M6a, R4-M69) per body and Semantics case view.
-// Input: a validated body, its move paths (MirMoveData), its dataflow (MirDataflow) and the selected view (MirCases). Output: the
-// problems UninitializedPlace_Kd, MovedPlace_Kd, ReassignedLet_Kd, StaticMovePathRequired_Kd and DefaultArgumentMove_Kd through MirReport,
-// each inside an inline default copy with the copy's call as its Inlined fact, and the arena limit through MirDataflow.StorageLimit; to
-// A2 (MirDrops) the code, subject (in the location's scope) and MirReport.Add's index of each problem it records (R4-M102, R4-M132), the
-// paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
+// Input: a validated body, its move paths (MirMoveData), its dataflow (MirDataflow), the selected view (MirCases) and the report, the
+// program's MirReport, the one A2 records into (MirDrops.Begin reads program.Problems; the driver and both harnesses pass the same object).
+// Output: the Language problems UninitializedPlace_Kd, MovedPlace_Kd, ReassignedLet_Kd, StaticMovePathRequired_Kd and
+// DefaultArgumentMove_Kd through A2's record of them (MirDrops.Problem), which adds each one outside every inline default copy to
+// MirReport (a copy's is its template's check, SPEC 7.2.3, R4-M69); a broken contract, InternalInvariant_Kd, to MirReport wherever it
+// lies; OwnershipStorageLimit_Kd, the arena limit, through MirDataflow.StorageLimit; to A2, with each problem, its subject in the
+// location's scope (R4-M102, R4-M132), the paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
 // before each Drop, with whether the runtime edges reach it, and each state event the runtime edges reach.
 // Six lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self), and Unplaced, A1's alone: the value the
@@ -450,21 +452,19 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             DiagnosticRequirement.Ownership(moved ? OwnershipRequirement.PossiblyMovedUse : OwnershipRequirement.UninitializedUse),
             subject);
 
-        // A broken contract at the location (the header's invariants; R6-check H3-2: its requirement first): A2's table marks the body.
+        // A broken contract at the location (the header's invariants; R6-check H3-2: its requirement first), the body's wherever it lies,
+        // an inline default copy included: A2's table marks the body.
         private readonly void Broken()
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-            this.Add(DiagnosticCode.InternalInvariant_Kd, requirement, this.subject);
+            var problem = new MirProblem(DiagnosticCode.InternalInvariant_Kd, requirement, this.subject, body.Ordinal, this.Views);
+            _ = this.Report.Add(problem);
+            drops.Incomplete(problem.Code, new(this.subject, this.scope, StatementStart: false));
         }
 
-        // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69); A2's table
-        // records it first, a copy's included (R4-M102), at its subject in the location's scope.
+        // A Language problem at the location, recorded through A2 (MirDrops.Problem), which marks the body, a copy's included (R4-M102), at
+        // its subject in the location's scope and omits a copy's from MirReport (its template's check, R4-M69).
         private readonly void Add(DiagnosticCode code, DiagnosticRequirement requirement, SourceRef subject)
-        {
-            var problem = new MirProblem(code, requirement, subject, body.Ordinal, this.Views);
-            var inlined = body.Inlining(this.scope);
-            this.Report.Add(problem, inlined < 0 ? default : [new(ProblemFactKind.Inlined, body.Scopes[inlined].Source)]);
-            drops.Incomplete(code, new(subject, this.scope, StatementStart: false));
-        }
+            => drops.Problem(new(code, requirement, subject, body.Ordinal, this.Views), new(subject, this.scope, StatementStart: false));
     }
 }

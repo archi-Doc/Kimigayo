@@ -10,9 +10,10 @@
 // this version, a kept library body's in its library segment's library step, which a round of A4 or the collector reads, PLAN G951), whether its
 // library store holds it (LibraryHolds, the one per-ordinal fact every owner of a store per segment splits by, PLAN G951 U2-K: only the
 // driver's library step closes an entry there, so the fact is stable from that step's end to the version's end), the body's first
-// A1 or A2 problem, an inline copy's included (its code and its subject in its location's scope; both set it after MirReport.Add; the
-// table is exact only without one, R4-M6a, R4-M102), and MovedPlace_Kd through MirReport where a layer with its own drop may be
-// incomplete at a runtime Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69). Elide where the view's
+// A1 or A2 problem, an inline copy's included (its code and its subject in its location's scope; the table is exact only without one,
+// R4-M6a, R4-M102), which both record through Problem, the one path of their Language problems to MirReport: one inside an inline
+// default copy is its template's check and is not added (SPEC 7.2.3, R4-M69); A1's broken contract and storage limit reach MirReport
+// directly; and MovedPlace_Kd through Problem where a layer with its own drop may be incomplete at a runtime Drop. Elide where the view's
 // Type needs no drop (MirTypes.MayNeedDrop) or nothing is initialized on any path; Keep where the whole is initialized on every path or
 // the Place has no Move Path, and in a check-only group
 // also where Flag or an incomplete layer with its own drop would be; Flag where it is complete or wholly absent on every path, the flag
@@ -20,7 +21,7 @@
 // path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per view. Flags are numbered in path
 // order per body, so a subtree's flags are one range.
 // Invariant: a body the table marks has an Error problem in MirReport (R6-check IC, MirAnalysisTest): the one of its code at its subject in
-// the body, or for an inline copy's, which the report drops, its template's of that code and subject (R4-M69), or MirReport's
+// the body, or for an inline copy's, which Problem does not add, its template's of that code and subject (R4-M69), or MirReport's
 // InternalInvariant_Kd (a merge naming another requirement); generation's gate reads the mark. The mark names no report index, so a kept
 // library segment's marks stay valid when its problems are replayed at another index (PLAN G950).
 // A Drop only check edges reach (SPEC 14.10.3) with a Move Path gets the group of what it would destroy from its assumed paths, by the
@@ -340,8 +341,23 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
     /// <param name="views">The views of the solve.</param>
     internal void Event(MirLocation at, int path, bool set, ulong views) => this.events.Add(new(at, path, set, views));
 
-    /// <summary>Records an A1 or A2 problem of the body where its rule forms it, after MirReport.Add, which drops an inline default copy's
-    /// (R4-M69): the first is the body's <see cref="MirDropTable.Incomplete"/> (R4-M102, R4-M132).</summary>
+    /// <summary>Records an A1 or A2 Language problem where its rule forms it (R4-M102, R4-M132): the body's first is its
+    /// <see cref="MirDropTable.Incomplete"/>, and MirReport receives it unless its location lies in an inline default copy, whose problems
+    /// are their template's checks, which the template's own analysis records (SPEC 7.2.3; DECISIONS R4-M69, Z20).</summary>
+    /// <param name="problem">The problem.</param>
+    /// <param name="source">Its subject in its location's scope.</param>
+    internal void Problem(in MirProblem problem, in SourceInfo source)
+    {
+        if (this.body.Inlining(source.Scope) < 0)
+        {
+            _ = this.report.Add(problem);
+        }
+
+        this.Incomplete(problem.Code, source);
+    }
+
+    /// <summary>Marks the body with an A1 problem that reaches MirReport directly, its broken contract or its storage limit, where its rule
+    /// records it: the first A1 or A2 problem is the body's <see cref="MirDropTable.Incomplete"/> (R4-M102, R4-M132).</summary>
     /// <param name="code">The problem's code.</param>
     /// <param name="source">Its subject in its location's scope (the default for the body).</param>
     internal void Incomplete(DiagnosticCode code, in SourceInfo source) => this.incomplete ??= (code, source);
@@ -469,11 +485,7 @@ internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases c
                 {
                     var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
                     var subject = this.body.Subject(drop.Terminator.Source);
-                    var inlined = this.body.Inlining(drop.Terminator.Source.Scope);
-                    this.report.Add(
-                        new(DiagnosticCode.MovedPlace_Kd, requirement, subject, this.body.Ordinal, views),
-                        inlined < 0 ? default : [new(ProblemFactKind.Inlined, this.body.Scopes[inlined].Source)]);
-                    this.Incomplete(DiagnosticCode.MovedPlace_Kd, drop.Terminator.Source);
+                    this.Problem(new(DiagnosticCode.MovedPlace_Kd, requirement, subject, this.body.Ordinal, views), drop.Terminator.Source);
                 }
                 else
                 {

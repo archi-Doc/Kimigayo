@@ -10,7 +10,7 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, (ConstraintProof Proof, BoundConstraint? Failed)> comparedParts = new(); // ComparisonProof's composite parts.
 
     // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of the legacy plan, of
-    // TyCtxt.Comparison and of the built-in target (CompilerRequirementTarget): elementwise over its parts (a Tuple or a safe `ref` layer),
+    // TyCtxt.Comparison and of the comparison built-in rows (ImplTable.Builtin): elementwise over its parts (a Tuple or a safe `ref` layer),
     // natively (a built-in Type; under source operators also a numeric Type, by IEEE), else by the Contract's mapping for the Type: its
     // witness when the Type is closed, its requirement in every instance when it has an abstract part.
     internal static ComparisonKind ComparisonKindOf(BoundType self, KimiDeclarationId? contract, bool operators)
