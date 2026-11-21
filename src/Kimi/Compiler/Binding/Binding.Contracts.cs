@@ -149,7 +149,6 @@ public sealed partial class Binding
         this.projectionUses.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
-        this.associatedAmbiguities?.Clear();
         this.contractAgreementFailures?.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
