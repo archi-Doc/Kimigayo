@@ -38,7 +38,6 @@ The surface syntax of `.kimiproj` and `.kimisln` is implementation-defined. An u
 | NativeRequirements, NativeLibraries | per-target records | empty | [§20.4](#204-native-libraries) |
 | Optimization | `O0` or `O2` | `O2` | [§20.3.2](#2032-builds-and-artifacts) |
 | OutputPath | `.ll` path | `bin/<target>/<Name>.ll` | [§20.3.2](#2032-builds-and-artifacts) |
-| LlvmBin | directory | none | [§20.3.2](#2032-builds-and-artifacts) |
 
 ### 20.2.1. Targets and compile-time settings
 
@@ -128,7 +127,7 @@ For `OutputPath` `Name.ll`, `emit` writes `Name.ll` and `Name.link.json`. An App
 - Reuse of earlier results follows [§A.2](appendices/A-compiler-requirements.md#a2-reuse-of-earlier-work).
 - An Unsupported operation produces no placeholder binary.
 
-**Toolchain.** A native build reads no toolchain root and runs no LLVM tool: it runs Tatara (LLVM and LLD in one library), which the compiler carries (`tatara.dll` beside the compiler), and checks Tatara's ABI and LLVM version before any LLVM or LLD work; the reserved supplies are supplied by the compiler (§20.4). PATH is never searched and nothing is downloaded. The LLVM tools and `tatara.dll` that setup installs live in one directory, the toolchain root (`--ToolchainRoot`, else `KIMI_TOOLCHAIN_ROOT`, else `toolchain` beside the compiler), which only `toolchain verify` reads; a missing selected root is an error there. `toolchain verify`'s command-line `LlvmBin` names the LLVM tool directory it checks; a native build accepts `--ToolchainRoot`, a command-line or project `LlvmBin` and a link manifest's `toolchain.llvmBin`, and reads none of them, nor `KIMI_TOOLCHAIN_ROOT`. A relative root or command-line `LlvmBin` is relative to the invocation directory. Only `toolchain verify` checks the tools' versions against the pinned LLVM release and the hashes of the tools and of the root's `tatara.dll` against setup's installation record.
+**Toolchain.** A native build reads no toolchain root and runs no LLVM tool: it runs Tatara (LLVM and LLD in one library), which the compiler carries (`tatara.dll` beside the compiler), and checks Tatara's ABI and LLVM version before any LLVM or LLD work; the reserved supplies are supplied by the compiler (§20.4). PATH is never searched and nothing is downloaded. The LLVM tools and `tatara.dll` that setup installs live in one directory, the toolchain root (`--ToolchainRoot`, else `KIMI_TOOLCHAIN_ROOT`, else `toolchain` beside the compiler), which only `toolchain verify` reads; a missing selected root is an error there. `toolchain verify`'s command-line `LlvmBin` names the LLVM tool directory it checks; a native build accepts `--ToolchainRoot` and a command-line `LlvmBin` but reads neither, nor `KIMI_TOOLCHAIN_ROOT`. The project setting `LlvmBin` and a link manifest's `toolchain` member are errors: a project file that has the setting fails to load, naming the removal, and `build --Manifest` rejects such a manifest, asking for it to be emitted again. A relative root or command-line `LlvmBin` is relative to the invocation directory. Only `toolchain verify` checks the tools' versions against the pinned LLVM release and the hashes of the tools and of the root's `tatara.dll` against setup's installation record.
 
 ## 20.4. Native libraries
 

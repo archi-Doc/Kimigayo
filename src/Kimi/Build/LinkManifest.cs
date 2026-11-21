@@ -6,14 +6,14 @@
 // ToolchainIdentity.Supplies), each written from its row (WriteCompilerSupply) and checked against it (CheckCompilerSupply); and the
 // readers (Field, Text, OptionalText, Items, Flag), which turn a field that is missing, of another JSON kind or, for an Int32 row, another
 // number into InvalidDataException at the read (form J, the manifest's share of PLAN G983). The variable fields (optimization, the output
-// section, the libraries array and its programs' entries, the toolchain) are written by EmissionArtifacts, which orders and fills the
-// libraries array; all but the toolchain are read, through these readers, by NativeToolchain.Build. The toolchain's llvmBin is accepted
-// and not read (Tatara design A4 §2.1; removed in B6b).
+// section, the libraries array and its programs' entries) are written by EmissionArtifacts, which orders and fills the libraries array,
+// and read, through these readers, by NativeToolchain.Build. A removed member (Removed: the toolchain, Tatara B6b5) is written by no
+// publication and rejected by CheckFixed with its own text, whatever its content.
 // Input: a Utf8JsonWriter (publication) or a manifest element (the native build, a library entry), each field named by its path
 // ("section.name" in a section or an array's items).
 // Output: the fixed fields' and the compiler's supplies' JSON; for a read, the field's value or InvalidDataException naming the field's
 // path, one text for a missing field or another kind, one for another fixed value and one for a compiler's supply's entry that is not
-// this compiler's.
+// this compiler's; a removed member's row's text.
 // Invariants: every manifest read goes through these readers, so no JsonElement accessor exception (KeyNotFound, InvalidOperation,
 // Format) leaves a manifest read; a member's lookup and an Int32's read are ArtifactFiles' (Member, Number), the toolchain files' one
 // rule; the fixed fields are written and checked by the one table, a compiler's supply's entry by its row. Must not: read the build
@@ -46,6 +46,12 @@ internal static class LinkManifest
         ("backendSupport.library", WindowsProfile.BackendLibrary),
         ("backendSupport.artifactSha256", ToolchainIdentity.BackendSha256),
         ("backendSupport.providedSymbols", WindowsProfile.ProvidedSymbols),
+    ];
+
+    // The root members this compiler no longer accepts, each with its text, checked after the fixed fields. A later removal adds a row.
+    private static readonly (string Name, string Text)[] Removed =
+    [
+        ("toolchain", "The link manifest's 'toolchain.llvmBin' was removed: Kimi carries its toolchain. Re-emit the manifest."),
     ];
 
     /// <summary>Writes the fixed fields, the manifest's head, in the table's order.</summary>
@@ -98,9 +104,10 @@ internal static class LinkManifest
         }
     }
 
-    /// <summary>Checks that a manifest states every fixed field as this compiler writes it, in the table's order.</summary>
+    /// <summary>Checks that a manifest states every fixed field as this compiler writes it, in the table's order, and no removed member.</summary>
     /// <param name="root">The manifest's root.</param>
-    /// <exception cref="InvalidDataException">The first field that is missing, of another kind or another value.</exception>
+    /// <exception cref="InvalidDataException">The first field that is missing, of another kind or another value; else the first removed
+    /// member.</exception>
     internal static void CheckFixed(JsonElement root)
     {
         foreach (var (path, value) in Rows)
@@ -122,6 +129,14 @@ internal static class LinkManifest
             if (!states)
             {
                 throw new InvalidDataException($"The link manifest's '{path}' is not this compiler's. Re-emit the manifest.");
+            }
+        }
+
+        foreach (var (name, text) in Removed)
+        {
+            if (ArtifactFiles.Member(root, name).ValueKind != JsonValueKind.Undefined)
+            {
+                throw new InvalidDataException(text);
             }
         }
     }

@@ -256,7 +256,7 @@ public sealed partial class Binding
         {
             if (receiver is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner })
             {
-                this.ReceiverElement(source.Left, receiver);
+                this.ReceiverElement(source.Left, receiver, null);
             }
 
             result = Complete(source, element);
