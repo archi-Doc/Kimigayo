@@ -280,7 +280,7 @@ internal sealed class BindingReport
 
     private bool EqualValue(in ProblemFact kept, in ProblemFact reported) => kept.Kind switch
     {
-        ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal or ProblemFactKind.Key
+        ProblemFactKind.Actual or ProblemFactKind.Expected or ProblemFactKind.Operand or ProblemFactKind.Terminal or ProblemFactKind.Key or ProblemFactKind.Instance
             => Equals(this.sides[(int)kept.Value], this.sides[(int)reported.Value]),
         ProblemFactKind.Constraint => ReferenceEquals(this.Constraint(kept), this.Constraint(reported)),
         ProblemFactKind.OriginRecord => this.Origin(kept) == this.Origin(reported),

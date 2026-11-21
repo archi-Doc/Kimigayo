@@ -98,7 +98,7 @@ public class GenericIdentityAdaptationTest(ITestOutputHelper output)
             Assert.Contains(record.Reason!, x => x.Name == "subject" && x.Value == "U.Item");
             Assert.Contains(record.Reason!, x => x.Name == "member" && x.Value == "keep");
             Assert.Contains(record.Reason!, x => x.Name == "constraint" && x.Value == "s is owner");
-            Assert.Equal("constraint", Assert.Single(record.Related!).Role);
+            Assert.Equal(["constraint", "declaration"], record.Related!.Select(static x => x.Role)); // R7-E2 E2-5b (M4): the called keep, related
             Assert.Equal(new SourceRange(new(8, 11), new(8, 22)), record.Display!.Range);
             Assert.Contains("s is owner", record.Note!, StringComparison.Ordinal);
             Assert.Contains("U.Item", record.Note!, StringComparison.Ordinal);

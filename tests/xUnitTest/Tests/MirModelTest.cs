@@ -144,9 +144,9 @@ public sealed class MirModelTest
         Assert.Equal(-1, root.Root);
         Assert.False(body.HasOpaque);
         var local = Local(body, BoundType.I32);
-        Assert.Equal(0, body.AddOpaque(new(0, 7), [local.Root, root.Root]));
+        Assert.Equal(0, body.AddOpaque(new(0, 7), [local, root]));
         Assert.True(body.HasOpaque);
-        Assert.Equal(new[] { local.Root, root.Root }, body.OpaqueRoots.Slice(body.OpaqueSites[0].Start, body.OpaqueSites[0].Count).ToArray());
+        Assert.Equal(new[] { local, root }, body.OpaqueUses.Slice(body.OpaqueSites[0].Start, body.OpaqueSites[0].Count).ToArray());
         Assert.Equal(new MirScope(-1, MirScopeKind.Lexical, default), Assert.Single(body.Scopes.ToArray()));
     }
 
@@ -247,7 +247,7 @@ public sealed class MirModelTest
         var program = new MirProgram();
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
         var key = new MirDefKey(types.Function, MirBodyKind.Fn);
-        int[] roots = [1];
+        MirPlace[] uses = [new(1)];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             program.Clear();
@@ -266,7 +266,7 @@ public sealed class MirModelTest
                 body.Terminate(block, MirTerminator.Goto(block + 1, At));
             }
 
-            body.AddOpaque(default, roots);
+            body.AddOpaque(default, uses);
             body.Static(new(types.Function, BoundType.I32, false, false));
             body.AddScope(0, MirScopeKind.Unsafe, default);
             program.End();

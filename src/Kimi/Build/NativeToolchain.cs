@@ -3,15 +3,16 @@
 // The contract of Build (src/Kimi/Build, namespace Kimi.Build), P13, outside the compiler (the R7-R9 plan's §5.3, unit M2), stated
 // here, in its entry file, for all its types.
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
-// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the root's tatara.dll), so a
-// native build launches no tool; the built Application's run and the installed toolchain's verification
-// (NativeToolchain.Verification.cs, whose file-scoped ToolProcess is the only code here that launches an LLVM tool: the tools' version
-// banners and kernel32's inspection); the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and
-// staged as a program's input is) and the root's resolution (ToolchainIdentity, ToolchainResolver); kernel32's definition and
-// generation conditions (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify loads the root's tatara.dll
-// (Tatara.Load, its start check) and compares its SHA-256 with the installation record's.
+// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the compiler's Tatara: linked into
+// kimi.exe, or tatara.dll beside Kimi.dll), so a native build launches no tool and reads no toolchain root; the built Application's run
+// and the installed toolchain's verification (NativeToolchain.Verification.cs, whose file-scoped ToolProcess is the only code here that
+// launches an LLVM tool: the tools' version banners and kernel32's inspection); the toolchain's identity with the compiler's supplies (IMPL 20.4's reserved libraries, embedded and
+// staged as a program's input is) and, for toolchain verify, the root's resolution (ToolchainIdentity, ToolchainResolver); kernel32's
+// definition and generation conditions (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify
+// reports the compiler's Tatara (Tatara.Instance, its start check) and compares the root's tatara.dll's SHA-256 with the installation
+// record's.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
-// native build); the installed toolchain.
+// native build); the installed toolchain (toolchain verify).
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
 // Compilation.Diagnostics, and its result Compilation.Generated (GeneratedModule: the output kind, the required libraries and the
 // external declarations, each an ExternalFunction read for its Symbol and DllImport; R9-B1); the enum OutputKind, which project
@@ -40,7 +41,7 @@
 // (KeyNotFoundException, InvalidOperationException). Known limit (R9-M10's, narrowed): inside the toolchain's calls the set still
 // classifies by type whatever raised the exception, so one of its remaining kinds (publication's, R5-M165; Win32Exception;
 // JsonException) raised by the host's report or a defect here prints as the toolchain's failure; any other type is a fault.
-// Tatara's failures (design A2 §5) are the toolchain's: a missing, unloadable or mismatched tatara.dll an InvalidDataException naming the
+// Tatara's failures (design A2 §5) are the toolchain's: a Tatara that does not load or does not match an InvalidDataException naming the
 // remedy; a failed call (return 1, or 2 after which every later call in the process fails naming the first cause) an IOException
 // "Tatara failed: <operation>" with LLVM's or LLD's text, as a tool's failure is.
 // The embedded catalog's reads (ToolchainIdentity) fail as its type initializer (TypeInitializationException), a compiler fault.

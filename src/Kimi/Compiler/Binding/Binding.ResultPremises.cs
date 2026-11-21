@@ -165,12 +165,14 @@ public sealed partial class Binding
     // SPEC 15.6.4 steps 1-4: a call's fresh Origins satisfy its callee's result premises where a solution does, so a result over
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
-    // the solve without them judges no bound either (SolveOriginInference).
-    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, BoundType? declaringType, bool select = false)
+    // the solve without them judges no bound either (SolveOriginInference). The callee is the inference's binder, a function.
+    private bool SolveCallOriginInference(
+        OriginInference inference, Span<BoundOrigin> origins, Span<BoundOrigin> inputs, Span<BoundOrigin> slotValues, BoundType? declaringType, bool select = false)
     {
+        var function = (FunctionKoto)inference.Binder;
         if (!CarriesResultPremises(function))
         {
-            return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
+            return this.SolveOriginInference(inference, origins, inputs, slotValues, declaringType, select);
         }
 
         var type = function.BoundSymbol!.Type!;
@@ -185,7 +187,7 @@ public sealed partial class Binding
 
         if (inference.Bounds.Count != count)
         {
-            if (this.SolveOriginInference(inference, origins, inputs, declaringType))
+            if (this.SolveOriginInference(inference, origins, inputs, slotValues, declaringType))
             {
                 return true;
             }
@@ -194,7 +196,7 @@ public sealed partial class Binding
             inference.Variables.RemoveRange(variables, inference.Variables.Count - variables); // The result-only Origins they discovered.
         }
 
-        return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
+        return this.SolveOriginInference(inference, origins, inputs, slotValues, declaringType, select);
     }
 
     // The bounds the result premises of `function` added to a call's inference, removed again.
@@ -330,12 +332,23 @@ public sealed partial class Binding
 
         foreach (var premise in new WellFormedPremises(this, pattern, instantiated, null, WellFormedSubject.Input, null, use, default))
         {
+            // G1128 R1.3 (b), theorem (2): over a slot's skeleton a premise shortens only its own node's Origin (a layer's premise its
+            // layer's, by the enumeration; a clause relates Origin arguments of its own Type, since no SPEC form names a component's
+            // Origin in a clause), so the variables one key shares have one solution (Release check).
+            if (premise.Clause is not null && (Foreign(inference, premise.Type, premise.Longer) || Foreign(inference, premise.Type, premise.Outer)))
+            {
+                throw new InvalidOperationException("A clause over a slot's skeleton relates only its own Type's Origins (InternalInvariant).");
+            }
+
             BoundOrigins(inference, premise.Longer, premise.Outer, result: false);
             if (premise.Equality)
             {
                 BoundOrigins(inference, premise.Outer, premise.Longer, result: false);
             }
         }
+
+        static bool Foreign(OriginInference inference, BoundType type, BoundOrigin end)
+            => inference.SolvesSlotVariable(end) && Array.IndexOf((BoundOrigin[])type.OriginArguments, end) < 0;
     }
 
     // SPEC 15.3.7, 15.6.4 step 3: the selected call's obligations for the instantiated parameter Type of a slot it fills (SPEC 10.1 step 2),
@@ -350,14 +363,20 @@ public sealed partial class Binding
     // that carries no Origin, such as one that transfers control, supplies none; and an input Binding already failed (its fit's
     // structure, SPEC 5.7's raw-layer rules, a located limit, or its conversion's contract: a Function value's, ConvertFunctionValue,
     // whose relations are published with it, FollowsContract) is no instance of its parameter, so its well-formedness, read from its
-    // supplied Type, would rest on that failure (SPEC 23.1.2).
-    private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution)
+    // supplied Type, would rest on that failure (SPEC 23.1.2), as a premise over a variable `solved`, the call's solve, marked does
+    // (OriginInference.Marked).
+    private void RequireInputPremises(Koto at, BoundType pattern, BoundType parameter, BoundType? supplied, Contribution contribution, OriginInference? solved)
     {
         if (parameter.StoresOrigin && (supplied is null || (supplied.StoresOrigin && at.BindingFailure == BindingFailure.None)))
         {
             var actual = contribution == Contribution.Evidence ? supplied : null;
             foreach (var premise in new WellFormedPremises(this, pattern, parameter, actual, WellFormedSubject.Input, null, at, default))
             {
+                if (solved is not null && (solved.ReadsMarked(premise.Longer) || solved.ReadsMarked(premise.Outer)))
+                {
+                    continue;
+                }
+
                 if (premise.Clause is { } clause)
                 {
                     this.JudgeCallPosition(at, premise.Longer, premise.Outer, premise.Equality, null, clause, declared: true);
@@ -592,11 +611,12 @@ public sealed partial class Binding
         if (function is not null)
         {
             waited.OpenWaited();
+            waited.OpenWaitedSlots();
         }
 
         _ = function is not null
-            ? this.SolveCallOriginInference(function, inference, origins, inputs, null, select: true)
-            : this.SolveOriginInference(inference, origins, inputs, select: true);
+            ? this.SolveCallOriginInference(inference, origins, inputs, [], null, select: true)
+            : this.SolveOriginInference(inference, origins, inputs, [], select: true);
         if (function is not null)
         {
             this.RecordOpenings(waited.Call, waited);
