@@ -14,7 +14,8 @@ using Kimi.Compiler.Parsing;
 // - Inputs: Register's Type, Contract, root, declaration, scope and premises, from the two registrars (Self clauses and conditional
 //   blocks, Binding.Contracts.Registration; inherited paths, Binding.InheritedConformances); Begin's pass counter and the pass's modules
 //   (Binding.ResetContracts);
-//   Sweep at the end of a Bind (Binding.Bind).
+//   Sweep at the end of a Bind (Binding.Bind); Builtin's Type and Contract symbol (its declaration's `#Lang` id), read through
+//   ArithmeticContracts.Supports, Binding.ComparisonKindOf, TyCtxt.OperatorTableRuns and Binding.WitnessGroup.
 // - Outputs: Paths, Identities and ByType (LayerList: the overlay's part, then the base's), InPass (the same lists of the running
 //   pass's stores only, PLAN G949 S1-r2), OfType(type), Find(type, contract),
 //   Path(key) and TryPath(key); PathsOf(identity), the one read of an identity's paths inside a pass; Builtin(type, contract), a

@@ -25,6 +25,8 @@ namespace Kimi.Compiler;
 //   read by its `#Lang`, and a catalog entry for its `#CallerLocation` function when its witness can Abort on its caller's behalf (SPEC 22.5.1).
 //   A receiver-only group (the fixed array's members, SPEC 22.1) adds a value, a WitnessReceiver arm, a Members arm and its property, and
 //   no WitnessGroup arm: a built-in conformance adds no member (PLAN G776-b). No member lookup, diagnostic or written state beyond interning.
+//   No row for an arithmetic Contract, nor an Equatable or Comparable row for a Type the operator table or the composition compares:
+//   ImplTable.Builtin reads those rows first, so such a row would never be read.
 
 /// <summary>The internal Kimi groups of built-in receiver functions: the witness table's groups and the fixed array's member group
 /// (SPEC 22.1).</summary>
