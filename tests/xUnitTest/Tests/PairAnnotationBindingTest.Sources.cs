@@ -4,7 +4,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// PLAN G812: a pair pattern under a call's bindings and the sources of its binder, each row's records by code.
+// DECISIONS BU-207: a pair pattern under a call's bindings and the sources of its binder, each row's records by code.
 public partial class PairAnnotationBindingTest
 {
     // SPEC 8.1.2: `s/U` under s's binding W forms the one Type ApplySemantics gives: a caller's abstract pair (its original or an

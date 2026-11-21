@@ -168,7 +168,7 @@ public sealed partial class Binding
 
             if (resting)
             {
-                // DECISIONS BU-240 (temporary, PLAN G886): a candidate rests on a Type no binding represents (RestsOnSplit), so the reference
+                // DECISIONS BU-240 (temporary, PLAN G886): a candidate rests on a Type no binding represents (SplitState's Pending), so the reference
                 // is one located Unsupported_Kd, whatever the other candidates (SPEC 10.1's unproven candidate). Its erasure's Owned
                 // proof reads only its bound Type arguments, so it is still judged (FailUnformedOwned), and a reference resting on a
                 // failed argument is no record of its own (SPEC 23.1.2).
