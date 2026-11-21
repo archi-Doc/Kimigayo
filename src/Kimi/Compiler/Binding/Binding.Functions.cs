@@ -124,9 +124,15 @@ public sealed partial class Binding
                 this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
             }
 
-            if (function.ReturnType is { } resultSyntax)
+            // SPEC 23.1.2, 15.3.4 (PLAN G230's interim, D-990): the header is bound before the body types an unannotated local its
+            // written Origins name (DECISIONS BU-56); bound again here, each parameter takes its Type (dev's binding), but a result the
+            // header failed keeps that failure, so one this binding binds is the located Unsupported_Kd at its TypeSource: the
+            // failed-slot fact (DECISIONS BU-234), on which a call rests. Removed by G230 (A)'s single binding (the header bound
+            // once, after the local is typed, and the body checked against that result).
+            if (function.ReturnType is { } resultSyntax && this.BindType(resultSyntax, scope) is not null && symbol is { Type: null })
             {
-                this.BindType(resultSyntax, scope);
+                Complete(resultSyntax, null);
+                this.Fail(resultSyntax, BindingFailure.Unsupported);
             }
 
             this.CheckCaseBound(function);
