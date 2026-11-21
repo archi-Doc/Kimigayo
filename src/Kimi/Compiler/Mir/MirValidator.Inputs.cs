@@ -53,14 +53,11 @@ internal sealed partial class MirValidator
         // Temp.
         private void Lent()
         {
-            foreach (var site in body.OpaqueSites)
+            foreach (var use in body.OpaqueUses)
             {
-                foreach (var root in body.OpaqueRoots.Slice(site.Start, site.Count))
+                if (use.Root >= 0)
                 {
-                    if (root >= 0)
-                    {
-                        writes[root] &= unchecked((byte)~Lending); // A local's; a static's is no local.
-                    }
+                    writes[use.Root] &= unchecked((byte)~Lending); // A local's; a static's is no local.
                 }
             }
 

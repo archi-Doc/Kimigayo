@@ -33,7 +33,7 @@ internal sealed class MirBody
     private MirScope[] scopes = [];
     private MirStatic[] statics = [];
     private MirOpaque[] opaques = [];
-    private int[] opaqueRoots = [];
+    private MirPlace[] opaqueUses = [];
     private MirMustNotComplete[] ends = [];
     private SourceRef[] guessedSites = [];
     private int localCount;
@@ -46,7 +46,7 @@ internal sealed class MirBody
     private int scopeCount;
     private int staticCount;
     private int opaqueCount;
-    private int opaqueRootCount;
+    private int opaqueUseCount;
     private int endCount;
     private int guessedSiteCount;
 
@@ -85,7 +85,7 @@ internal sealed class MirBody
 
     internal ReadOnlySpan<MirOpaque> OpaqueSites => this.opaques.AsSpan(0, this.opaqueCount);
 
-    internal ReadOnlySpan<int> OpaqueRoots => this.opaqueRoots.AsSpan(0, this.opaqueRootCount);
+    internal ReadOnlySpan<MirPlace> OpaqueUses => this.opaqueUses.AsSpan(0, this.opaqueUseCount);
 
     /// <summary>Gets the failure bodies of the requires built in this body, each added where its require is finished, so one inside
     /// another's failure body precedes it; a default copy has none, A3 judges its template (SPEC 7.2.3).</summary>
@@ -280,7 +280,7 @@ internal sealed class MirBody
     {
         (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord, this.CaseSwitches) = (key, source, false, false, 0);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
-        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
+        this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueUseCount = this.endCount = this.guessedSiteCount = 0;
         this.projectionIds?.Clear();
         this.constIds?.Clear();
         this.Binders.Clear();
@@ -307,7 +307,7 @@ internal sealed class MirBody
         this.scopeCount = Store(ref this.scopes, built.Scopes);
         this.staticCount = Store(ref this.statics, built.Statics);
         this.opaqueCount = Store(ref this.opaques, built.OpaqueSites);
-        this.opaqueRootCount = Store(ref this.opaqueRoots, built.OpaqueRoots);
+        this.opaqueUseCount = Store(ref this.opaqueUses, built.OpaqueUses);
         this.endCount = Store(ref this.ends, built.MustNotComplete);
         this.guessedSiteCount = Store(ref this.guessedSites, built.GuessedSites);
     }
@@ -398,17 +398,17 @@ internal sealed class MirBody
 
     /// <summary>Adds the site of an Opaque value.</summary>
     /// <param name="source">The syntax it replaces.</param>
-    /// <param name="roots">The roots that syntax reads, writes or borrows: locals, or complements of static indexes.</param>
+    /// <param name="uses">The uses of that syntax: Places of locals or statics, each undecided.</param>
     /// <returns>The site.</returns>
-    internal int AddOpaque(SourceRef source, ReadOnlySpan<int> roots)
+    internal int AddOpaque(SourceRef source, ReadOnlySpan<MirPlace> uses)
     {
-        var start = this.opaqueRootCount;
-        foreach (var root in roots)
+        var start = this.opaqueUseCount;
+        foreach (var use in uses)
         {
-            Add(ref this.opaqueRoots, ref this.opaqueRootCount, root);
+            Add(ref this.opaqueUses, ref this.opaqueUseCount, use);
         }
 
-        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, roots.Length));
+        return Add(ref this.opaques, ref this.opaqueCount, new MirOpaque(source, start, uses.Length));
     }
 
     internal void AddMustNotComplete(in MirMustNotComplete row) => Add(ref this.ends, ref this.endCount, row);

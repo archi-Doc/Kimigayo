@@ -93,9 +93,9 @@ internal static class MirDescriptors
     };
 
     // The access to the rvalue's Place where its kind has one (HasPlace): a Ref's, Discriminant's, Len's or Storage's, or an Adapt's
-    // payload; an Opaque's is to its site's roots, which the replaced syntax may have read, written or borrowed. An operator or a checked
-    // Cast aborts unless Proven; an Adapt may create an object, whose allocation may Abort (SPEC 22.5.1); an aggregate's effects are its
-    // kind's row's.
+    // payload; an Opaque's is to its site's uses, each undecided, which the replaced syntax may have read, written or borrowed. An operator
+    // or a checked Cast aborts unless Proven; an Adapt may create an object, whose allocation may Abort (SPEC 22.5.1); an aggregate's
+    // effects are its kind's row's.
     internal static MirDescriptor Of(MirRvalueKind kind) => kind switch
     {
         MirRvalueKind.Use => Row(MirAccess.None, effects: MirEffect.None),
@@ -199,11 +199,20 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    /// <summary>Gets whether an access a walk reports is an Opaque site's root's (G191 N1): only the Opaque row's roots carry Reads with
-    /// Writes, so the predicate is that row's root access, which the validator's static rule and A5's accesses read.</summary>
+    /// <summary>Gets whether an access a walk reports is an Opaque site's undecided use's (G191 N1, DECISIONS Z17): only the Opaque row's
+    /// access carries Reads with Writes, so the predicate is that row's access, which the validator's rules and A5's accesses read.</summary>
     /// <param name="access">The access <see cref="MirUses"/> reports.</param>
-    /// <returns>Whether it is an Opaque site's root's.</returns>
-    internal static bool IsOpaqueRoot(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
+    /// <returns>Whether it is an Opaque site's undecided use's.</returns>
+    internal static bool IsUndecided(MirAccess access) => (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
+
+    /// <summary>Gets the Place a reader judges an access at (DECISIONS Z17): an undecided use's root, since it stands for whatever its
+    /// replaced syntax may access within that root (R4-M10), and any other access's own Place. A1 alone reads an undecided use at its
+    /// Place, which asks only whether the part is usable; a reader that judges a write, a borrow, a layer or a departure reads
+    /// this.</summary>
+    /// <param name="place">The Place <see cref="MirUses"/> reports.</param>
+    /// <param name="access">Its access.</param>
+    /// <returns>The Place judged.</returns>
+    internal static MirPlace Judged(MirPlace place, MirAccess access) => IsUndecided(access) ? new(place.Root) : place;
 
     // Each family's rows state the columns every row of the family has: a kind's its access and effects, an intrinsic's its effects and
     // arity (it accesses no Place itself: its arguments have their operand rows). A column only some rows set (HasPlace, Diverges,
@@ -361,9 +370,9 @@ internal static class MirUses
             case MirRvalueKind.Opaque:
                 Effect(row.Effects, rvalue.Arg, ref visitor);
                 var site = body.OpaqueSites[rvalue.Arg];
-                foreach (var root in body.OpaqueRoots.Slice(site.Start, site.Count))
+                foreach (var use in body.OpaqueUses.Slice(site.Start, site.Count))
                 {
-                    Place(body, new(root), row.Access, default, ref visitor);
+                    Place(body, use, row.Access, default, ref visitor);
                 }
 
                 break;

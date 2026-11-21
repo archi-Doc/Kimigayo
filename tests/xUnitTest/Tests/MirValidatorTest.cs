@@ -61,8 +61,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // Each closed vocabulary, the aggregate kinds (DECISIONS R5-M129) and the intrinsic table have one overload of MirDescriptors.Of, and each
-    // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its roots', is an Opaque
-    // root's (MirDescriptors.IsOpaqueRoot, G191 N1).
+    // member a row; a value outside the enumeration and IntrinsicId.None have none. Only the Opaque row's access, its undecided uses', is
+    // an undecided use's (MirDescriptors.IsUndecided, G191 N1; DECISIONS Z17).
     [Fact]
     public void EveryKindHasADescriptorRow()
     {
@@ -81,7 +81,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             {
                 var row = (MirDescriptor)overload.Invoke(null, [value])!;
                 Assert.True(row.Defined != value is IntrinsicId.None, $"{kind.Name}.{value}");
-                Assert.True(MirDescriptors.IsOpaqueRoot(row.Access) == value is MirRvalueKind.Opaque, $"{kind.Name}.{value}");
+                Assert.True(MirDescriptors.IsUndecided(row.Access) == value is MirRvalueKind.Opaque, $"{kind.Name}.{value}");
             }
 
             Assert.False(((MirDescriptor)overload.Invoke(null, [Enum.ToObject(kind, 200)])!).Defined);
@@ -178,7 +178,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0), At));
         Assign(exclusive, MirRvalue.Ref(MirRefKind.Uniq, shared, body.TypeOf(exclusive)!));
         Assign(pointer, MirRvalue.Cast(MirCastKind.IntToPointer, Operands(MirOperand.Copy(index)), body.TypeOf(pointer)!));
-        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [array.Root])));
+        Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [new(array.Root)])));
         var token = MirOperand.Const(body.Const(new(MirConstKind.TypeToken, payload!)));
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(value), token), value, types.Pair, shorthand: true, input: false));
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
@@ -660,7 +660,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var block = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is
             { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
         Assert.Equal(form == "opaque", block < 0);
-        Assert.Equal(form == "opaque", body.OpaqueRoots.ToArray().Contains(-1));
+        Assert.Equal(form == "opaque", body.OpaqueUses.ToArray().Any(static x => x.Root == -1));
         if (form == "goto")
         {
             var ensure = body.Blocks[block].Terminator;
@@ -946,7 +946,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
         var slot = body.Statements.ToArray().Single(static x => x.Rvalue is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.TwoPhaseUniq }).Place.Root;
-        Assert.Contains(slot, body.OpaqueRoots.ToArray());
+        Assert.Contains(body.OpaqueUses.ToArray(), x => x.Root == slot);
         Assert.Empty(program.Findings);
     }
 
@@ -2235,7 +2235,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var layer = body.Project(c.Types, pair, MirProjectionKind.PairLayer, 0);
         var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
         Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
-        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [point.Root])));
+        Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [new(point.Root)])));
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
         Assign(shape, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(one, one), 2, types.Shape, 1));
