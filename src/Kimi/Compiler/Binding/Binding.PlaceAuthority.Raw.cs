@@ -10,8 +10,15 @@ namespace Kimi.Compiler;
 // in one walk over NextPathStep:
 // the Origin it is reached through, which a `during self` layer is read with (ReadHolder) and a typed path states (BindAddress), and
 // the stored Field it is or lies inline in, which the allowlist of a layer reached through no dereference judges (HolderPlaceFailure).
+// Each walks syntax only, every step to a strict descendant, so it has no bound of its own: a published tree's depth is at most
+// SyntaxNesting.Limit (IMPL A.4), and no count of steps or selections changes its answer (D-932).
 public sealed partial class Binding
 {
+    private long rawWalkSteps;
+
+    // The steps IsRawPlace and IsRawRooted have taken, never reset (a scaling row's work count, as PathFoldWork).
+    internal long RawWalkWork => this.rawWalkSteps;
+
     // SPEC 5, 5.2, 5.3: the root of a raw Place's path, `*p` or `p[n]` (the node itself, already unwrapped), the one test of it: the raw
     // walks (IsRawPlace, IsRawRooted), the Place classification (IsBarePlace, LendsPlace, PlaceOrigin, PlaceOriginSource, TakeJudgment),
     // its path step (NextPathStep, which PathFold reads) and the unsafe-context rule (RequiresUnsafe) read it.
@@ -38,14 +45,9 @@ public sealed partial class Binding
     // read the same TyCtxt.RawPart per step (MirMoveData.Resolve).
     private bool IsRawPlace(Koto source)
     {
-        source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64; depth++)
+        for (source = KotoHelper.UnwrapParentheses(source); !IsRawRoot(source); source = KotoHelper.UnwrapParentheses(source))
         {
-            if (IsRawRoot(source))
-            {
-                return true;
-            }
-
+            this.rawWalkSteps++;
             if (source is not BinaryKoto element || !this.IsSyntax(element) || !TyCtxt.RawPart(HirTables.TypeOf(element.Left)) ||
                 (element is IndexKoto && KotoHelper.UnwrapParentheses(element.Right) is var key &&
                     (key is RangeKoto || (key is not FromEndIndexKoto && HirTables.TypeOf(element.Right) is not { IsInteger: true }))))
@@ -53,10 +55,10 @@ public sealed partial class Binding
                 return false;
             }
 
-            source = KotoHelper.UnwrapParentheses(element.Left);
+            source = element.Left;
         }
 
-        return false;
+        return true;
     }
 
     // SPEC 5.2.2, 4.7.1: a Place rooted at a raw Place: *p or p[n], or a Place reached from one by built-in steps (IsSyntax): a stored
@@ -66,26 +68,24 @@ public sealed partial class Binding
     // fresh anchor (BorrowRawPlace), its address and its place-ness the raw Place's; only IsRawPlace's Places offer Take.
     private bool IsRawRooted(Koto source)
     {
-        source = KotoHelper.UnwrapParentheses(source);
-        for (var depth = 0; depth < 64; depth++)
+        for (source = KotoHelper.UnwrapParentheses(source); !IsRawRoot(source); source = KotoHelper.UnwrapParentheses(source))
         {
-            if (IsRawRoot(source))
-            {
-                return true;
-            }
-
-            if (source is not BinaryKoto element || !this.IsSyntax(element) ||
-                (element is IndexKoto && (KotoHelper.UnwrapParentheses(element.Right) is RangeKoto or FromEndIndexKoto ||
-                    HirTables.TypeOf(element.Right) is not { IsInteger: true })))
+            this.rawWalkSteps++;
+            if (source is not BinaryKoto element || !this.IsRootedStep(element))
             {
                 return false;
             }
 
-            source = KotoHelper.UnwrapParentheses(element.Left);
+            source = element.Left;
         }
 
-        return false;
+        return true;
     }
+
+    // One step of IsRawRooted: a built-in selection (IsSyntax) at no range or from-end position, an integer one for an element.
+    private bool IsRootedStep(BinaryKoto element)
+        => this.IsSyntax(element) && (element is not IndexKoto || (KotoHelper.UnwrapParentheses(element.Right) is not (RangeKoto or FromEndIndexKoto) &&
+            HirTables.TypeOf(element.Right) is { IsInteger: true }));
 
     // The position an inline part step selects in its owner's Type (a Tuple element's, 0 for a fixed-array element); null for any other
     // step (SPEC 3.4.3).
@@ -105,8 +105,7 @@ public sealed partial class Binding
         Span<int> positions = stackalloc int[16];
         var selected = 0;
         MemberAccessKoto? field = null;
-        var source = KotoHelper.UnwrapParentheses(place);
-        for (var depth = 0; depth < 64; depth++)
+        for (var source = KotoHelper.UnwrapParentheses(place); ; source = KotoHelper.UnwrapParentheses(source))
         {
             var step = this.NextPathStep(source, out var next);
             if (field is null && selected >= 0)
@@ -139,10 +138,8 @@ public sealed partial class Binding
                 return reached with { Origin = origin, Field = field, Stored = StoredPart(field, positions[..Math.Max(selected, 0)]) };
             }
 
-            source = KotoHelper.UnwrapParentheses(next);
+            source = next;
         }
-
-        return new(false, null, field, StoredPart(field, positions[..Math.Max(selected, 0)]));
     }
 
     // One step of PathOrigin: what a step that ends the walk reaches, null for one the walk continues past.

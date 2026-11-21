@@ -730,6 +730,24 @@ public class ClosureEnvironmentOriginTest
         AssertSuppliedRecord(source, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics), at, longer, related, destination);
     }
 
+    // SPEC 23.1, 15.3.3, IMPL A.4 (D-932): a returned Place k Tuple elements below a local names the Borrow the local's initializer
+    // holds at every depth (RootLocal has no bound of its own: SyntaxNesting's), `the borrow n@ref`, with two related locations, both
+    // at `n@ref`: the borrow that created the loan (R7-O1 H) and the origin; a 64-step bound named `the borrow n` at the Place itself
+    // from k = 64. A generic body (Layout's 64-level window).
+    [Theory]
+    [InlineData(63)]
+    [InlineData(64)]
+    [InlineData(65)]
+    public void ADeepPlaceOfALocalNamesTheBorrowItsInitializerHolds(int k)
+    {
+        var source = $"func use<T>(p: ref/i32) -> ref/i32 during p\n    let n: i32 = 1\n    let h0 = {new string('(', k)}n@ref{string.Concat(Enumerable.Repeat(", 0)", k))}\n" +
+            $"    return h0{string.Concat(Enumerable.Repeat(".0", k))}\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, x => x.Span!.Value.Start == source.IndexOf("h0.", StringComparison.Ordinal));
+        Assert.Equal((Unsatisfied, "requires the borrow n@ref outlives p, which is false"), (error.Code, error.Label));
+        var borrow = source.IndexOf("n@ref", StringComparison.Ordinal);
+        Assert.Equal([("borrow", borrow), ("origin", borrow)], error.Related!.Select(static x => (x.Role, x.Span!.Value.Start)));
+    }
+
     // SPEC 23.1, 15.3.3 (DECISIONS R4-M133): a local clause over an environment Borrow names the Borrow its end resolves to through the
     // local's declaration, before the receiver (the Supplier): directly, through a moved local and at the clause's second slot; the
     // plain and Consuming twins name it too. An implicit Borrow of a Field shows by its Place, `s.f`, plain or through the environment.
