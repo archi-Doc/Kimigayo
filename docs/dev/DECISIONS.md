@@ -23900,7 +23900,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     null-scope branch.
   - **Moves.** None below 64 steps (diagnostic and semantic HIR+MIR snapshots unchanged). At 64 steps and more a path is no longer
     cut at its 64th step: Array writes and `@uniq` bind, and a 64-deep owned Array local reaches A5's reported
-    `OwnershipDepthLimit_Kd` (PLAN G1146).
+    `OwnershipDepthLimit_Kd` (PLAN G1146, closed by R7-M70).
   - **Rejected.** A memo of `Writable` per node (a side table beside the walk); a demand flag (a steering parameter); lazy owner
     folds (exponential on alternating paths); a re-fold of the receiver in the exclusive reading (exponential on exclusive
     references stored in Array elements, the Front's B1); one recursion skeleton for both folds (it would take the reading as a
@@ -23929,6 +23929,28 @@ R8-M* and R9-M* by the stage of the recording unit.
       proof);
     - a per-environment flag (a second state);
     - making the environment's writers private behind a wrapper type (a wrapper without semantics for two calls).
+- **R7-M70 A walk over syntax keeps no count of its own** (Back, 2026-11-21; R7-T2's D-932, Q-603, PLAN G1146 (closed); the Front's
+  review ACCEPT through fix (4) and the Middle's RP17 CONSENT, C-402; `claude/b-d932`)
+  - **Rule.** A walk over syntax keeps no count of its own: the published tree's depth (`SyntaxNesting.Limit`, IMPL A.4, BU-112)
+    bounds it. A walk that loops on anything but syntax keeps a located Resource record instead.
+  - **The walks.** The own bounds of IsRawPlace, IsRawRooted, PathOrigin, ReachesThroughBorrow, BorrowedPathRoot, OwnedPathRoot,
+    TakeJudgment, ContainedOrigin and RootLocal are removed, and the dead `+` chain IsStringJoin/IsStringOperand is deleted (R7-M68
+    removed PathAuthority's walk and IsPointerPath; D-972 the PathOrigin buffer's 16-entry cut).
+  - **The HIR publisher** carries the parent's raw-rootedness (`rooted`) down a rooted step (IsRootedStep), asked once per chain, so
+    NeedOf is linear.
+  - **ReachesThroughBorrow's answer has one carrier**, a pass family of the selection (`NodeColumns.ReachedThroughBorrow`): a memo of
+    a final fact of its syntax, filled at its first query from its receiver's row and its own step, valid while its pass's stamp
+    stands. So it may be filled after the pass (the reports' folds, ReportDiagnostics); it is released at the freeze, and it is linear
+    per chain (the Front's B1, B1b and C1).
+  - **Findings fixed with it.** ContainedOrigin's bound rejected a valid 65-step `@uniq` through fixed arrays storing `uniq/` (class
+    3, the Front's fu-33) and, with IsRawRooted's, accepted a returned 64-deep raw borrow `during other` (class 2). OwnedPathRoot's let
+    a 65-step Take below `self` pass Binding, refused only by MIR's MovedPlace_Kd at `init` (class 4), and refused its `@uniq` twin
+    with a Language error (class 3). TakeJudgment's left a verified Take required; RootLocal's named the wrong Borrow.
+  - **Moves.** None below 64 steps (diagnostic and semantic snapshots unchanged); the rows' programs of 64 steps and more.
+  - **Rejected.** A single carried answer (overwritten by interleaved queries); saving and restoring it around nested binding (a
+    second fix of one symptom); a second carrier per fold prefix (fix (2)'s `PathPrefix.Borrowed`, a copy of the family's fact); a
+    located Resource record at 64 (no IMPL A.4 limit is reached); raising the bounds (a silent route change stays); raw-rootedness in
+    UseNeed (a path fact, not a need).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
