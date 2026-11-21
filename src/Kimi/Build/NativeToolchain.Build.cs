@@ -72,15 +72,20 @@ internal static partial class NativeToolchain
     }
 
     // SPEC 20.4: the linker receives a fixed snapshot named by its content hash, never the mutable
-    // original; a staged copy is reused only when its bytes still have that hash.
-    internal static string StageInput(string input, string stem, out string hash)
+    // original; a staged copy is reused only when its bytes still have that hash. The input is a stream (a program's file or the
+    // compiler's resource), which the caller disposes.
+    internal static string StageInput(Stream input, string stem, out string hash)
     {
         var directory = stem + ".native";
         Directory.CreateDirectory(directory);
         var temporary = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            File.Copy(input, temporary);
+            using (var copy = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                input.CopyTo(copy);
+            }
+
             hash = Hash(temporary);
             var staged = Path.Combine(directory, hash + ".lib");
             if (!File.Exists(staged) || Hash(staged) != hash)
@@ -321,7 +326,8 @@ internal static partial class NativeToolchain
 
             if (name != WindowsProfile.BackendLibrary)
             {
-                return StageInput(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory), this.paths.Stem, out stagedHash);
+                using var input = File.OpenRead(ResolvePath(LinkManifest.Text(item, "libraries.input"), this.outputDirectory));
+                return StageInput(input, this.paths.Stem, out stagedHash);
             }
 
             var backend = ToolchainResolver.ResolveBackend(item, toolchainRoot, this.outputDirectory);
@@ -334,7 +340,8 @@ internal static partial class NativeToolchain
 
             if (LinkManifest.OptionalText(item, "libraries.input") is not null)
             {
-                backend = StageInput(backend, this.paths.Stem, out stagedHash);
+                using var input = File.OpenRead(backend);
+                backend = StageInput(input, this.paths.Stem, out stagedHash);
                 if (stagedHash != ToolchainIdentity.BackendSha256)
                 {
                     throw new InvalidDataException("Explicit backend input SHA-256 mismatch.");
