@@ -45,7 +45,7 @@ public sealed class BlockClosureInferenceTest
 
     // SPEC 14.9.2, 23.1.2 (PLAN G274, R7-P1): a return whose operand fails to bind supplies no result Type, so the result comes from the
     // other returns and the failure is the program's one record; no later phase reports an Internal record at the other return. failsrc is
-    // the 2c-5 probe; failsrc-v its value twin.
+    // the 2c-5 probe; failsrc-v its value twin. Both hold on dev 43fc18f6c (G274's symptom no longer occurs): guard rows for R7-P8.
     [Theory]
     [InlineData("guard", "failsrc", "func inspect(value: ref/i32) => ()\nfunc k() -> ()\n    let n: i32 = 4\n    let c = func [n] (flag: bool)\n        if flag\n            return missing@ref\n        return n@ref\n    inspect(c(true))\n", "UnresolvedBinding_Kd: return missing@ref")]
     [InlineData("guard", "failsrc-v", "func inspect(value: i32) => ()\nfunc k() -> ()\n    let n: i32 = 4\n    let c = func [n] (flag: bool)\n        if flag\n            return missing\n        return n\n    inspect(c(true))\n", "UnresolvedBinding_Kd: return missing")]
