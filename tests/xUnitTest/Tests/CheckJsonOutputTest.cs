@@ -73,6 +73,54 @@ public sealed class CheckJsonOutputTest : IDisposable
         }
     }
 
+    // SPEC 23.2.3's publication (Tatara design A4 §2.2, C-427 B1 and r3): Publish holds the process's Ctrl+C action empty from the
+    // token's last check to the flush. A cancellation before it writes no JSON (OperationCanceledException: the command's 130); a press
+    // during the write calls the held action and changes nothing, the document whole; the action is restored after either. The row's
+    // own action stands for the default, which no in-process test calls (r2); the class runs alone, as it replaces Program.CancelKey.
+    [Collection<ConsoleIsolationCollection>]
+    public sealed class Publication
+    {
+        [Fact]
+        public void ThePublicationHoldsTheCtrlCAction()
+        {
+            var document = CheckJsonOutput.Create(new KimiOptions(), ["invalid\0.kimiproj"], TestContext.Current.CancellationToken);
+            var previous = Program.CancelKey;
+            var pressed = 0;
+            Action action = () => pressed++;
+            Program.CancelKey = action;
+            try
+            {
+                using var cancelled = new CancellationTokenSource();
+                cancelled.Cancel();
+                var none = new PressingWriter();
+                Assert.Throws<OperationCanceledException>(() => CheckJsonOutput.Publish(none, document, cancelled.Token));
+                Assert.Equal(string.Empty, none.ToString());
+                Assert.Same(action, Program.CancelKey);
+                var output = new PressingWriter();
+                CheckJsonOutput.Publish(output, document, TestContext.Current.CancellationToken);
+                Assert.Equal(JsonSerializer.Serialize(document, DiagnosticJsonContext.Default.CheckDocument) + Environment.NewLine, output.ToString());
+                Assert.Equal(0, pressed);
+                Assert.Same(action, Program.CancelKey);
+                Program.CancelKey();
+                Assert.Equal(1, pressed);
+            }
+            finally
+            {
+                Program.CancelKey = previous;
+            }
+        }
+
+        // Standard output whose line write presses Ctrl+C first.
+        private sealed class PressingWriter : StringWriter
+        {
+            public override void WriteLine(string? value)
+            {
+                Program.CancelKey();
+                base.WriteLine(value);
+            }
+        }
+    }
+
     private sealed class FailingDirectoryInput(Exception failure) : CheckInputSource
     {
         public override byte[] ReadAllBytes(string path) => throw new InvalidOperationException("No file should be read.");

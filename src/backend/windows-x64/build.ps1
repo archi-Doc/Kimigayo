@@ -134,19 +134,32 @@ else {
     New-Item -ItemType Directory -Force -Path $libraryDirectory | Out-Null
     $installed = Join-Path $libraryDirectory 'kimi_backend_windows_x64_v1.lib'
     $temporary = $installed + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+    # Only a file whose installed copy differs is written (Test-KimiSameFile).
+    $written = $false
     try {
-        Copy-Item -LiteralPath $archive -Destination $temporary
-        if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Backend changed during toolchain installation' }
-        [IO.File]::Move($temporary, $installed, $true)
+        if (-not (Test-KimiSameFile $archive $installed)) {
+            Copy-Item -LiteralPath $archive -Destination $temporary
+            if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Backend changed during toolchain installation' }
+            Move-KimiFile $temporary $installed
+            $written = $true
+        }
     }
     finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
     # Reuse the import library already generated and checked for this candidate's O0/O2 tests.
     $installedKernel = Join-Path $libraryDirectory 'kernel32.lib'
-    Copy-Item -LiteralPath $kernel.path -Destination $installedKernel -Force
-    Copy-Item -LiteralPath ([IO.Path]::ChangeExtension($kernel.path, '.def')) -Destination ([IO.Path]::ChangeExtension($installedKernel, '.def')) -Force
+    foreach ($extension in @('.lib', '.def')) {
+        $file = [IO.Path]::ChangeExtension($kernel.path, $extension)
+        $destination = [IO.Path]::ChangeExtension($installedKernel, $extension)
+        if (-not (Test-KimiSameFile $file $destination)) { Copy-Item -LiteralPath $file -Destination $destination -Force; $written = $true }
+    }
     if ((Get-FileHash -LiteralPath $installedKernel -Algorithm SHA256).Hash.ToLowerInvariant() -cne $kernel.sha256) { throw 'Kernel32 changed during installation' }
-    @{ generator = 'llvm-dlltool'; generatorSha256 = $toolIdentities['llvm-dlltool'].sha256; target = 'x86_64-pc-windows-msvc'
+    # The generation conditions are written beside the build's other files first, so that an equal record is not written either.
+    $metadata = Join-Path $workDir 'kernel32.json'
+    [ordered]@{ generator = 'llvm-dlltool'; generatorSha256 = $toolIdentities['llvm-dlltool'].sha256; target = 'x86_64-pc-windows-msvc'
         dll = $kernel.dll; definitionSha256 = $kernel.definitionSha256; sha256 = $kernel.sha256 } |
-        ConvertTo-Json | Set-Content -LiteralPath ([IO.Path]::ChangeExtension($installedKernel, '.json')) -Encoding utf8
-    Write-Output "Installed verified backend: $installed"
+        ConvertTo-Json | Set-Content -LiteralPath $metadata -Encoding utf8
+    $installedMetadata = [IO.Path]::ChangeExtension($installedKernel, '.json')
+    if (-not (Test-KimiSameFile $metadata $installedMetadata)) { Copy-Item -LiteralPath $metadata -Destination $installedMetadata -Force; $written = $true }
+    if ($written) { Write-Output "Installed verified backend: $installed" }
+    else { Write-Output "Verified backend unchanged: $installed" }
 }

@@ -3,11 +3,12 @@
 // The contract of Build (src/Kimi/Build, namespace Kimi.Build), P13, outside the compiler (the R7-R9 plan's §5.3, unit M2), stated
 // here, in its entry file, for all its types.
 // Owns: publication of a checked program's IR/manifest pair (EmissionArtifacts); the build record, the native build of a published
-// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs through NativeExecutor's four calls: ExternalToolExecutor (the
-// toolchain's tools, one process each, through ExecuteTool), which every command uses, or TataraExecutor (tatara.dll in process,
-// Tatara), which only tests select until unit A4; the built Application's run and the installed toolchain's verification
-// (NativeToolchain.Verification.cs); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
-// identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles).
+// pair (NativeToolchain.Build.cs), whose LLVM and LLD work runs in process through Tatara's four calls (the root's tatara.dll), so a
+// native build launches no tool; the built Application's run and the installed toolchain's verification
+// (NativeToolchain.Verification.cs, whose file-scoped ToolProcess is the only code here that launches an LLVM tool: the tools' version
+// banners and kernel32's inspection); the toolchain's identity and resolution (ToolchainIdentity, ToolchainResolver); kernel32's import
+// identity (Kernel32Imports); the artifact paths and files (ArtifactPaths, ArtifactFiles). toolchain verify loads the root's tatara.dll
+// (Tatara.Load, its start check) and compares its SHA-256 with the installation record's.
 // Input: an accepted compilation (publication); a published pair with its project's configuration, or a standalone manifest (the
 // native build); the installed toolchain.
 // Reads of the compiler, exactly these: the generation entry Compilation.Generate, with Compilation.Project and
@@ -44,12 +45,11 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
-using Kimi.Diagnostics;
 using static Kimi.Build.ArtifactFiles;
 
 namespace Kimi.Build;
 
-/// <summary>Owns build-record publication and native tool/executable execution. Consumes checked product metadata
+/// <summary>Owns build-record publication, the native build and the executable's run. Consumes checked product metadata
 /// or validated emission artifacts; publishes success atomically and never checks source semantics.</summary>
 internal static partial class NativeToolchain
 {
@@ -197,59 +197,9 @@ internal static partial class NativeToolchain
         }
     }
 
-    private static JsonObject CreateBuildRecord() => new()
-    {
-        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
-        ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
-    };
-
-    private static async Task<string> ExecuteTool(
-        string tool, string[] args, string directory, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken, bool showErrors = true)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var start = new ProcessStartInfo(tool)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = directory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        foreach (var argument in args)
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMinutes(5));
-        using var process = Process.Start(start) ?? throw new IOException("Cannot start tool: " + tool);
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        try
-        {
-            await Wait(process, timeout.Token);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new IOException("Tool timed out: " + tool);
-        }
-
-        var output = await stdout;
-        var errors = await stderr;
-        if (process.ExitCode != 0)
-        {
-            throw new IOException($"Tool failed: {tool}; exit={process.ExitCode}\n{output}{errors}");
-        }
-
-        if (showErrors && !string.IsNullOrWhiteSpace(errors))
-        {
-            report(DiagnosticSeverity.Warning, errors.Trim());
-        }
-
-        return showErrors ? output : output + errors;
-    }
-
-    private static async Task Wait(Process process, CancellationToken cancellationToken)
+    // Waits for a launched process; on cancellation kills its tree, waits for its exit and rethrows. RunExecutable's wait, and
+    // Verification's ToolProcess's (internal for that file-scoped type).
+    internal static async Task Wait(Process process, CancellationToken cancellationToken)
     {
         try
         {
@@ -266,6 +216,12 @@ internal static partial class NativeToolchain
             throw;
         }
     }
+
+    private static JsonObject CreateBuildRecord() => new()
+    {
+        ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = ToolchainIdentity.LlvmVersion,
+        ["toolchainVerification"] = "not-performed", ["reportedVersionsMatched"] = null, ["unverifiedToolchain"] = true,
+    };
 
     private static void WriteRecord(string path, JsonObject record)
     {

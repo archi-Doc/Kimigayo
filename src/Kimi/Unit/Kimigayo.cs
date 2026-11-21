@@ -2,8 +2,6 @@
 
 namespace Kimi;
 
-using System.Text.Json.Nodes;
-using Kimi.Build;
 using Kimi.Diagnostics;
 
 public class Kimigayo
@@ -15,10 +13,6 @@ public class Kimigayo
     /// <summary>Gets a value indicating whether finalized diagnostics are rendered to the console.</summary>
     /// <remarks>The language server disables rendering: its standard output carries only protocol frames.</remarks>
     internal bool RendersDiagnostics { get; }
-
-    /// <summary>Gets or sets the factory of the native build's executor; the default is the external tools'.</summary>
-    /// <remarks>Temporary (Tatara A3 to A4): unit A4 removes it when Tatara's executor becomes the build's.</remarks>
-    internal Func<NativeExecutorContext, JsonObject, NativeExecutor> NativeExecutor { get; set; } = NativeToolchain.ExternalToolExecutor.Create;
 
     public Kimigayo(IConsoleService consoleService)
         : this(consoleService, new(), true)

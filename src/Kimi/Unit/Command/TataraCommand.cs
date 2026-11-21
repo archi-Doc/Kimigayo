@@ -14,13 +14,14 @@ namespace Kimi.Command;
 // native build done by Tatara. Inputs: standard input, a terminal's (SimplePrompt; the only path that touches SimpleConsole) or a
 // redirected one (read one line at a time without read-ahead). Outputs: each line's command output, its exit code when it is not 0,
 // and the session's exit code (0 when every line succeeded; 1 when any failed, a cancelled line included, or when Tatara's refusal
-// ended the session). Invariants: a line is a command line, parsed and executed by CommandUnit.Product.Execute with a new DI scope's
+// ended the session; 130, CommandExecution's cancellation, when the root's termination ended it: a started console read observes no
+// cancellation, so the session checks its token when a read returns, before the line runs, and once more at its end). Invariants: a line is a command line, parsed and executed by CommandUnit.Product.Execute with a new DI scope's
 // provider and the line's own token, so nothing is reused between lines but the process's library per target, Tatara's loaded DLL
 // per path and its refusal, Kimigayo, the current directory and the runtime; the session owns Ctrl+C while it runs (Program.CancelKey)
-// and restores it at its end (a press while the redirected reader waits for input does nothing: such a session ends at its input's
-// end, at exit or at the window's close; at a terminal only exit and the window's close end it). Prohibitions: no build rule of its own; the loop catches nothing (CommandExecution classifies a
-// command's failures); a refusal is read from Tatara, never from a message's text. Temporary (Tatara A3 to A4): the session sets
-// Kimigayo.NativeExecutor to Tatara's factory; unit A4 makes Tatara's executor the build's.
+// and restores it at its end (a press with no read or line pending, the redirected reader waiting for input, calls the action the
+// session replaced: by default its first press requests the root's termination and its second ends the process with 130; Tatara
+// design A4 §2.2). Prohibitions: no build rule of its own; the loop catches nothing (CommandExecution
+// classifies a command's failures); a refusal is read from Tatara, never from a message's text.
 [SimpleCommand("tatara")]
 public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitContext, IServiceScopeFactory scopes) : ISimpleCommand
 {
@@ -52,25 +53,22 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
         }).ConfigureAwait(false);
     }
 
-    // Ends this process at once with 130 (a second Ctrl+C during a cancelled line): TerminateProcess, not Environment.Exit, which would
-    // run tatara.dll's detach, and that can wait on a lock the stuck thread holds.
-    internal static void EndProcess() => TerminateProcess(GetCurrentProcess(), 130);
-
     /// <summary>Runs a session over a redirected input, or over the terminal's prompt when the input is null.</summary>
     /// <param name="input">The redirected input, or null for the terminal.</param>
     /// <param name="cancellationToken">The root's token: its cancellation ends the session.</param>
     /// <returns>The session's exit code.</returns>
     internal async Task<int> Run(Stream? input, CancellationToken cancellationToken)
     {
-        kimigayo.NativeExecutor = NativeToolchain.TataraExecutor.Create;
         var previous = Program.CancelKey;
-        Program.CancelKey = this.CancelKey;
+        Program.CancelKey = () => this.CancelKey(previous);
         using var registration = cancellationToken.Register(() => Volatile.Read(ref this.pending)?.Source.Cancel());
         var failed = false;
         try
         {
             while (!cancellationToken.IsCancellationRequested && await this.ReadLine(input, cancellationToken).ConfigureAwait(false) is { } line)
             {
+                // A started console read observes no cancellation (F1): a line it returns after the root's termination does not run.
+                cancellationToken.ThrowIfCancellationRequested();
                 var words = line.Length > LineLimit ? null : SimpleParserHelper.SplitArguments(line, default); // The limit first, for every line.
                 if (words is [])
                 {
@@ -101,15 +99,9 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
             Program.CancelKey = previous;
         }
 
+        cancellationToken.ThrowIfCancellationRequested(); // The end of input or a cancelled line after the root's termination: 130.
         return failed ? 1 : 0;
     }
-
-    [LibraryImport("kernel32.dll")]
-    private static partial nint GetCurrentProcess();
-
-    [LibraryImport("kernel32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool TerminateProcess(nint process, uint exitCode);
 
     // The gate (§2.1), on SimpleCommandLine's own split of a nonempty line other than exit (null: a line above the limit, not split):
     // build and run (case-insensitive, as command names compare) are command lines; anything else is that line's error.
@@ -162,16 +154,17 @@ public sealed partial class TataraCommand(Kimigayo kimigayo, UnitContext unitCon
     }
 
     // A Ctrl+C in a session (§2.4): at the prompt it cancels the read (the prompt is written again); during a line it cancels the line's
-    // token; during a line already cancelled it ends the process at once with 130.
-    private void CancelKey()
+    // token; during a line already cancelled it ends the process at once with 130; with nothing pending it is the replaced action's.
+    private void CancelKey(Action previous)
     {
         if (Volatile.Read(ref this.pending) is not { } state)
         {
+            previous();
             return;
         }
         else if (state.IsLine && state.Source.IsCancellationRequested)
         {
-            EndProcess();
+            Program.EndProcess();
         }
 
         state.Source.Cancel();
