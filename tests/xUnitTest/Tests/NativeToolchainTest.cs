@@ -558,16 +558,16 @@ public sealed class NativeToolchainTest : IDisposable
     //   toolchain failure).
     // - CheckFaulted_Kd, the build's own result (Build's outer catch): "toolchain's message", the host's console throwing at the line that
     //   renders a toolchain failure, outside the toolchain's call (it escaped the build).
-    // - The toolchain's message and no code: a program's supply whose input does not exist (the native build's staging fails), a
-    //   configuration value the artifact paths read.
+    // - The toolchain's message and no code: a program's supply whose bytes do not match its Sha256 assertion (the native build's
+    //   supply check), a configuration value the artifact paths read.
     // The supply's two rows skip off Windows, where the native build's platform check comes first (PLAN G1174); Tatara's load failure is
     // test-cli.ps1's row (a test host holds its one instance). No production seam: the console is the host's, and the project file's
     // values are the caller's.
     [Theory]
     [InlineData("project checks", null, null)]
     [InlineData("report", "Generated LLVM inputs", null)]
-    [InlineData("toolchain's message", "Could not find file", null)]
-    [InlineData("toolchain", null, "Could not find file")]
+    [InlineData("toolchain's message", "Native library 'codec' does not match", null)]
+    [InlineData("toolchain", null, "Native library 'codec' does not match its NativeLibraries Kind or Sha256 assertion.")]
     [InlineData("configuration", null, "Optimization must be O0 or O2.")]
     public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
     {
@@ -586,7 +586,9 @@ public sealed class NativeToolchainTest : IDisposable
         else if (supply)
         {
             File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "group Native\n    #LibraryImport(\"codec\", \"f\")\n    public unsafe func f() -> i32\npublic func main()\n    var x: i32 = 0\n    unsafe => x = Native.f()\n");
-            project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/missing.lib" } };
+            Directory.CreateDirectory(Path.Combine(this.directory, "native"));
+            File.WriteAllText(Path.Combine(this.directory, "native", "codec.lib"), "not the asserted bytes");
+            project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('0', 64) } };
         }
 
         Assert.False(await project.Build(TestContext.Current.CancellationToken), this.console.Text);
