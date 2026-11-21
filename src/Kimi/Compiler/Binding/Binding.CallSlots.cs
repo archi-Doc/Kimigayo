@@ -24,7 +24,7 @@ namespace Kimi.Compiler;
 //   (SlotBinding; G1128), whose Origins the late solve values (SPEC 10.8 as revised); under `relateLater` or `evidence` an Origin never
 //   fails a structurally equal binding, and a function reference's met bindings stay its Origin conflict or limit: Infer meets
 //   Origins (CommonOriginType) only at a function reference's slot, which no late solve values (SPEC 10.5.3), until a reference's
-//   solve owns its bindings (PLAN's R1.3 (h) line). An open
+//   solve owns its bindings and values the met Type's readers (PLAN's R1.3 (h) line). An open
 //   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction (a structure's `.init` or a Case's
 //   qualifier with its own list omitted, SPEC 9.7) leaves one beside fixed slots; none fixed is no Types. An argument's adaptation is
 //   planned only at a FixedPattern made by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a
@@ -303,13 +303,11 @@ public sealed partial class Binding
                 {
                     // SPEC 10.8 (as revised; O-450 (a), O-451 (a)), 15.3.6: Origin evidence for a slot never makes the candidate
                     // inapplicable, and the bindings agree in structure and Semantics. The frame keeps the first binding's Type until the
-                    // late solve; each binding of a slot not fixed is recorded with its composed polarity, and its Origins bound the
-                    // slot's variables (SlotSolution.OpenSlotVariables), so Infer merges no Origins. A fixed slot keeps its Type.
-                    if (commonOrigins)
-                    {
-                        frame.AddBinding(slot, actual, polarity);
-                    }
-
+                    // late solve; every evidence binding is recorded with its composed polarity, this later one as the first below, by
+                    // whichever caller matched it (an argument, a header, a Callable signature; G147 ruling 59: no caller's flag decides
+                    // it), and its Origins bound the slot's variables, so Infer merges no Origins. Whether the slot is fixed is the slot
+                    // step's one test (SlotSolution.FixedSlot, read before the bindings): a fixed slot keeps its Type.
+                    frame.AddBinding(slot, actual, polarity);
                     frame.SetType(slot, previous);
                     return true;
                 }
@@ -324,12 +322,14 @@ public sealed partial class Binding
                     return true;
                 }
 
-                // G1128 (design R1.3 (h), R1.4; the code review's C1): Infer's one merge of Origins outside a call's solve. Its only
-                // readers are function references (InferReferenceSlots with commonOrigins; SPEC 10.5.3, no late solve; counted over the
-                // whole suite, every hit a reference): it meets their bindings that differ in covariant Origins and records each, so a
-                // slot that would need variables becomes the reference's located limit (VariableReferenceSlot). A call records its
-                // bindings above, and none reached it over the suite. It goes when a reference's solve owns its bindings (PLAN's R1.3 (h)
-                // line).
+                // G1128 (design R1.3 (h), R1.4; the code review's C1, G147 ruling 59): Infer's one merge of Origins outside a call's
+                // solve. It is reached only at function references (InferReferenceSlots with commonOrigins; SPEC 10.5.3, no late solve;
+                // counted over the whole suite, every hit a reference): it meets their bindings that differ in covariant Origins and
+                // records each. The met Type is read by the reference's Constraint proof (ReferenceArgumentProof), SPEC 10.6's per-call
+                // rule (PerCallReferenceSlot) and the limit's fixed-Origin test (VariableReferenceSlot's InputOrigins), and the recorded
+                // bindings make a slot that would need variables the located limit. A call records its bindings above, and none reached
+                // it over the suite. It goes when a reference's solve owns its bindings and gives those three readers its values (PLAN's
+                // R1.3 (h) line).
                 if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
                     if (reference)
@@ -420,7 +420,7 @@ public sealed partial class Binding
     // binding, an open slot as its own parameter (only an inferred construction, a structure's or a Case's, leaves one beside fixed ones),
     // and the lengths, null where none is fixed; no Types when no slot is fixed. The adaptation reads it through FixedPattern; whether a
     // pattern is complete under it is read from the frame before any evidence instead (the contract above). Own tells whether every own
-    // slot is fixed: evidence then keeps every binding (Infer's commonOrigins off); otherwise the open slots' covariant bindings meet. Its
+    // slot is fixed (Infer's commonOrigins off: no Origin merge, which only a function reference's slot reaches, C1). Its
     // spans live as long as the call's explicit Types, the declaring Type or the Case's scratch.
     private readonly ref struct FixedSlots(Koto owner, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, bool own)
     {

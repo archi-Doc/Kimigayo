@@ -276,6 +276,52 @@ public partial class CallableOriginForwardingTest
 
     private const string InnerBOutlivesA = "the 1st parameter requires b outlives a, which is not proven";
 
+    private const string TwoInputsHead = "func k(a: ref/i32, b: ref/i32) -> i32\n";
+
+    private const string MetHead = "func k(a: ref/i32, b: ref/i32) -> ref/i32 during (a and b)\n";
+
+    private const string AHead = "func k(a: ref/i32, b: ref/i32) -> ref/i32 during a\n";
+
+    private const string UniqPairHead = "func k(a: ref/i32, q: uniq/(ref/i32 during b)) -> i32\n";
+
+    private const string HeaderResultFirst = "func hr<T>(f: (ref/i32) -> T, s: T) -> i32 => 0\n";
+
+    private const string HeaderResultSecond = "func rh<T>(s: T, f: (ref/i32) -> T) -> i32 => 0\n";
+
+    private const string HeaderResultFirstT = "func hr<T>(f: (ref/i32) -> T, s: T) -> T => s@move\n";
+
+    private const string HeaderResultSecondT = "func rh<T>(s: T, f: (ref/i32) -> T) -> T => s@move\n";
+
+    private const string HeaderResult = "func [] (p: ref/i32) -> ref/i32 during a => $abort(\"no\")";
+
+    private const string DeepFirst = "func dn<T>(f: ((T) -> i32) -> i32, s: T) -> i32 => 0\n";
+
+    private const string DeepSecond = "func nd<T>(s: T, f: ((T) -> i32) -> i32) -> i32 => 0\n";
+
+    private const string DeepUniqFirst = "func dq<T>(f: ((T) -> i32) -> i32, s: uniq/T) -> i32 => 0\n";
+
+    private const string DeepUniqSecond = "func qd<T>(s: uniq/T, f: ((T) -> i32) -> i32) -> i32 => 0\n";
+
+    private const string DeepHeader = "func [] (g: (ref/i32 during a) -> i32) -> i32 => 0";
+
+    private const string DeepTyped = "    let c: ((ref/i32 during a) -> i32) -> i32 = " + DeepHeader + "\n";
+
+    private const string DeepAOutlivesB = "the 1st parameter's 1st parameter requires a outlives b, which is not proven";
+
+    private const string CallableFirst = "func cf<T, F>(f: F, s: T) -> i32\n    F is Callable<() -> T>\n    return 0\n";
+
+    private const string CallableSecond = "func fc<T, F>(s: T, f: F) -> i32\n    F is Callable<() -> T>\n    return 0\n";
+
+    private const string CallableFirstT = "func cfr<T, F>(f: F, s: T) -> T\n    F is Callable<() -> T>\n    return s@move\n";
+
+    private const string CallableSecondT = "func fcr<T, F>(s: T, f: F) -> T\n    F is Callable<() -> T>\n    return s@move\n";
+
+    private const string CallableHead = "func k(a: ref/i32, b: ref/i32, x: () -> ref/i32 during a) -> i32\n";
+
+    private const string CallableResult = "func [] () -> ref/i32 during a => $abort(\"no\")";
+
+    private const string RequiresBOutlivesA = "requires b outlives a, which is not proven";
+
     private const string CallableHolder = "struct H<F, T>\n    F is Callable<(T) -> i32>\n    public init() => ()\n";
 
     private const string InnerHolder = "    let o: Option<H<(ref/(ref/i32 during a)) -> i32, ref/(ref/i32 during b)>> = .None\n    return 0\n";
@@ -991,21 +1037,52 @@ public partial class CallableOriginForwardingTest
     public void AClosuresContractIsJudgedWithItsUsesPremises(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
-    // G1128 (SPEC 10.8 as revised, 15.3.5, 15.3.6; G147 ruling 52): an anonymous function's written parameter Type is a binding at the
-    // polarity of its position in the parameter Type that holds the slot, in `f: (T) -> i32` a Function Type's parameter (-1): the
-    // Closure's `a` is a lower bound of T's inner Origin and `w`'s `b` an upper bound, whichever argument comes first (run, run2). At
-    // both the variable is invariant, and without a proven equality it takes the covariant candidate `b`, checked against `a`. Without
-    // a clause that check is the one record, `b outlives a` (arg2_nn, arg2_nn-sw; with the header recorded as an upper bound it read
-    // `(b and a) outlives a` in one order). With `b outlives a` T is `ref/(ref/i32 during b) during w` (arg2_n, arg2_n-sw, valid by
-    // SPEC 15.3.7: the Closure's per-call input is bounded by its input's well-formedness), but the Closure's comparison judges that
-    // well-formedness, `a outlives w`, at its per-call input, a reader G1128 does not change (G147 ruling 52's D row; dev recorded it
-    // at the argument `w`'s fit): one record in both orders.
+    // G1128 (SPEC 10.8 as revised, 15.3.5, 15.3.6; G147 rulings 52, 59): an anonymous function's written parameter Type is a binding at
+    // the polarity of its position in the parameter Type that holds the slot, in `f: (T) -> i32` a Function Type's parameter (-1): the
+    // Closure's `a` is a lower bound of T's inner Origin and `w`'s `b` an upper bound. The header is T's first binding in arg2_n and
+    // arg2_nn and its second in arg2_n-sw and arg2_nn-sw (a second one is recorded since ruling 59; before, it was dropped, so the -sw
+    // rows held at any polarity). At both the variable is invariant, and without a proven equality it takes the covariant candidate
+    // `b`, checked against `a`. Without a clause that check is the one record, `b outlives a` (arg2_nn, arg2_nn-sw; with the header
+    // recorded as an upper bound it read `(b and a) outlives a`). With `b outlives a` T is `ref/(ref/i32 during b) during w` (arg2_n,
+    // arg2_n-sw, valid by SPEC 15.3.7: the Closure's per-call input is bounded by its input's well-formedness), but the Closure's
+    // comparison judges that well-formedness, `a outlives w`, at its per-call input, a reader G1128 does not change (PLAN G1192; dev
+    // recorded it at the argument `w`'s fit): one record in both orders.
     [Theory]
     [InlineData("arg2_n", ValueRun + InnerHead + BOutlivesA + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerWellFormed)]
     [InlineData("arg2_n-sw", ValueRunSwapped + InnerHead + BOutlivesA + "    return run2(w, " + InnerClosure + ")\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerWellFormed)]
     [InlineData("arg2_nn", ValueRun + InnerHead + "    return run(" + InnerClosure + ", w)\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerBOutlivesA)]
     [InlineData("arg2_nn-sw", ValueRunSwapped + InnerHead + "    return run2(w, " + InnerClosure + ")\n", "UnprovenOriginContract_Kd " + InnerClosure, InnerBOutlivesA)]
     public void AClosuresWrittenParameterBoundsTheSlotAtItsPolarity(string form, string body, string records, string label)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
+
+    // G1128 (SPEC 10.8 as revised: traversal order never chooses a solution; 10.5.4; G147 ruling 59): a known signature's binding of a
+    // slot, an anonymous function's written header (hr, dn, dq: its result, or a parameter of its parameter at +1) or the signature an
+    // `F` slot's Callable Constraint gives it (cf), bounds the slot whether it is the slot's first binding or a later one. T meets the
+    // header's `a` and s's `b`, `ref/i32 during (a and b)`, in both orders (before ruling 59 a later known-signature binding was dropped,
+    // so T was s's Type alone and the -sw forms were rejected: dev rejected them too, as NoApplicableOverload_Kd). dn and dn-t take the
+    // binding two reversals deep (ruling 52's composition: ba2365da9 rejected dn). The invalid twins return T `during a`, which needs
+    // `b outlives a` (hr-ret-n, cf-ret-n, each order); under `uniq/T` T's Origin is b's, checked against the header's `a` (dq, dq-sw), and
+    // `origin a outlives b` proves it (dq-c, dq-c-sw).
+    [Theory]
+    [InlineData("hr", HeaderResultFirst + TwoInputsHead + "    return hr(" + HeaderResult + ", b)\n", "", null)]
+    [InlineData("hr-sw", HeaderResultSecond + TwoInputsHead + "    return rh(b, " + HeaderResult + ")\n", "", null)]
+    [InlineData("hr-ret-f", HeaderResultFirstT + MetHead + "    return hr(" + HeaderResult + ", b)\n", "", null)]
+    [InlineData("hr-ret", HeaderResultSecondT + MetHead + "    return rh(b, " + HeaderResult + ")\n", "", null)]
+    [InlineData("hr-ret-n-f", HeaderResultFirstT + AHead + "    return hr(" + HeaderResult + ", b)\n", "UnprovenOriginRelation_Kd hr(" + HeaderResult + ", b)", RequiresBOutlivesA)]
+    [InlineData("hr-ret-n", HeaderResultSecondT + AHead + "    return rh(b, " + HeaderResult + ")\n", "UnprovenOriginRelation_Kd rh(b, " + HeaderResult + ")", RequiresBOutlivesA)]
+    [InlineData("dn", DeepFirst + TwoInputsHead + "    return dn(" + DeepHeader + ", b)\n", "", null)]
+    [InlineData("dn-sw", DeepSecond + TwoInputsHead + "    return nd(b, " + DeepHeader + ")\n", "", null)]
+    [InlineData("dn-t", DeepFirst + TwoInputsHead + DeepTyped + "    return dn(c@move, b)\n", "", null)]
+    [InlineData("dn-t-sw", DeepSecond + TwoInputsHead + DeepTyped + "    return nd(b, c@move)\n", "", null)]
+    [InlineData("dq", DeepUniqFirst + UniqPairHead + "    return dq(" + DeepHeader + ", q)\n", "UnprovenOriginContract_Kd " + DeepHeader, DeepAOutlivesB)]
+    [InlineData("dq-sw", DeepUniqSecond + UniqPairHead + "    return qd(q, " + DeepHeader + ")\n", "UnprovenOriginContract_Kd " + DeepHeader, DeepAOutlivesB)]
+    [InlineData("dq-c", DeepUniqFirst + UniqPairHead + "    origin a outlives b\n    return dq(" + DeepHeader + ", q)\n", "", null)]
+    [InlineData("dq-c-sw", DeepUniqSecond + UniqPairHead + "    origin a outlives b\n    return qd(q, " + DeepHeader + ")\n", "", null)]
+    [InlineData("cf-anon", CallableFirst + CallableHead + "    return cf(" + CallableResult + ", b)\n", "", null)]
+    [InlineData("cf-anon-sw", CallableSecond + CallableHead + "    return fc(b, " + CallableResult + ")\n", "", null)]
+    [InlineData("cf-ret-n", CallableFirstT + AHead + "    return cfr(" + CallableResult + ", b)\n", "UnprovenOriginRelation_Kd cfr(" + CallableResult + ", b)", RequiresBOutlivesA)]
+    [InlineData("cf-ret-n-sw", CallableSecondT + AHead + "    return fcr(b, " + CallableResult + ")\n", "UnprovenOriginRelation_Kd fcr(b, " + CallableResult + ")", RequiresBOutlivesA)]
+    public void AKnownSignaturesBindingBoundsTheSlotInEveryOrder(string form, string body, string records, string? label)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, label);
 
     // PLAN G404 (DECISIONS BU-93, R4-M162): a nested Function Type identical to the required one keeps its implementation's condition,

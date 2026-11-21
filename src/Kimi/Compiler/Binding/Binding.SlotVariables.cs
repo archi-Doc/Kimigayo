@@ -17,9 +17,9 @@ namespace Kimi.Compiler;
 // - Invariants: a variable's bounds are a function of its key (design R1.3 (b)'s theorem), so positions with one key share one
 //   variable exactly; a variable never leaves its call's solve: after SettleSlotVariables no bound, premise or variable of the
 //   inference names one and SlotVariableCount is 0. Each table is cleared when its walk ends (pooled, BU-55).
-// - Prohibitions: no Origin relation is judged here, and no binding's order chooses a variable or a value; opening a slot's
-//   variables and reading their values is the slot step's (SlotSolution.OpenSlotVariables, RestoreSlotValues), solving them the
-//   call's one solve's (OriginInference).
+// - Prohibitions: no Origin relation is judged here, and no binding's order chooses a variable or a value any check reads;
+//   opening a slot's variables and reading their values is the slot step's (SlotSolution.OpenSlotVariables, RestoreSlotValues),
+//   solving them the call's one solve's (OriginInference).
 public sealed partial class Binding
 {
     // G1128 (B2; BU-55): the per-query tables of a slot's skeleton walk (SkeletonOf: the bindings' sub-Type tuples and the skeleton per

@@ -370,7 +370,7 @@ public sealed partial class Binding
                 this.Frame,
                 inferOrigins: true,
                 lengths: true,
-                commonOrigins: !this.Fixed.Own, // SPEC 10.8: a fixed binding is kept; open slots' covariant bindings meet.
+                commonOrigins: !this.Fixed.Own, // Infer's merge, which no call reaches (C1); the bindings are recorded whatever it is.
                 structural: structural,
                 evidence: known,
                 relateLater: true);
