@@ -123,10 +123,10 @@ internal sealed partial class MirBuilder
             var completes = Completes(decl.Expression);
             if (!template.Recursive && (template.Body is null || template.Failed || limit || unsupported))
             {
-                this.roots.Clear();
+                this.uses.Clear();
                 for (var i = 0; i < decl.Index; i++)
                 {
-                    this.Root(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
+                    this.SiteUse(new(this.arguments[start + MirCallee.Position(function, i)].Place.Root));
                 }
 
                 if (unsupported)
@@ -135,7 +135,7 @@ internal sealed partial class MirBuilder
                 }
                 else
                 {
-                    this.Site(node, slot, completes);
+                    this.Derived(node, slot, completes);
                 }
             }
             else

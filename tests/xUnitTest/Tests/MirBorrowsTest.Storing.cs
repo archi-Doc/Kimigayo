@@ -37,6 +37,8 @@ public sealed partial class MirBorrowsTest
         ["localRoot"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    let v = t@follow@raw@raw/u8\n    let r = t@follow@follow@uniq\n    r@follow = v",
         ["loop"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    var n: i32 = 0\n    while n < 2\n        t@follow@follow = t@follow@raw@raw/u8\n" +
             "        n = n + 1",
+        ["readFirst"] = "func st(t: uniq/(uniq/(raw/u8) during a))\n    var m: raw/u8 = null\n    m = t@follow@follow\n" +
+            "    t@follow@follow = t@follow@raw@raw/u8",
         ["replaced"] = "func st(t: uniq/(uniq/(raw/u8) during a), u: uniq/(raw/u8))\n    var v: raw/u8 = u@follow@raw@raw/u8\n" +
             "    v = t@follow@raw@raw/u8\n    t@follow@follow = v",
         ["structField"] = "struct NR\n    public var a: raw/u8\n    public init() => self.a = null\n" +
@@ -130,6 +132,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("displaced", "st: t@follow@follow = v")]
     [InlineData("localRoot", "st: r@follow = v")]
     [InlineData("loop", "st: t@follow@follow = t@follow@raw@raw/u8")]
+    [InlineData("readFirst", "st: t@follow@follow = t@follow@raw@raw/u8")]
     [InlineData("replaced", "st: t@follow@follow = v")]
     [InlineData("structField", "st: t@follow@follow.a = t@follow@raw@raw/u8")]
     [InlineData("generic", "st: t@follow@follow = t@follow@raw@raw/T")]
@@ -191,5 +194,25 @@ public sealed partial class MirBorrowsTest
         Assert.All(
             Enumerable.Range(0, all.Length).Where(i => all[i].Code == DiagnosticCode.UnretainedRawStore_Kd),
             i => Assert.Equal(0, program.Problems.Facts(i).Length));
+    }
+
+    // Invalid and silent, a named limit (MirBorrows.Storing: an Opaque site rests on an error; DECISIONS Z17, rule W): the landing fact
+    // takes the least depth for every input of a body with an Opaque site, whatever the site names, since a part the replaced form reads
+    // reaches that form as a value, not as a use: a site naming a literal's temp, one whose right side is read at its own node (its
+    // resolved twin, readFirst above, has the record) and one naming nothing, a failed call taking no value (fail-before: the record).
+    [Theory]
+    [InlineData("    missing = 1\n")]
+    [InlineData("    missing = t@follow@follow\n")]
+    [InlineData("    missing()\n")]
+    public void ABodyWithAnOpaqueSiteStoresNoUnretainedPart(string statement)
+    {
+        var c = MirBuildTest.Compile(Prelude + "func st(t: uniq/(uniq/(raw/u8) during a))\n" + statement + "    t@follow@follow = t@follow@raw@raw/u8\n");
+        Assert.Equal([DiagnosticCode.UnresolvedBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        new Stratum(c.Types).Run(program);
+        Assert.DoesNotContain(
+            program.Problems.All.ToArray(),
+            static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.UnretainedRawStore_Kd or DiagnosticCode.InternalInvariant_Kd);
     }
 }

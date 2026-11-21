@@ -237,6 +237,21 @@ public class ConstraintBindingTest
         Assert.Equal((records == "clean", records), (output.Accepted, output.Diagnostics.Length == 0 ? "clean" : string.Join(" | ", actual)));
     }
 
+    // R7-E2 E2-5b (C5 (a), the Front's k4; SPEC 8.3, 6.3.6): a synthesized constructor's clause is its structure's, so `K<string>.init()`
+    // refutes it at the formation, whose record names no call, and the synthesized candidate is rejected by it: no clause record names the
+    // constructor as its called declaration (a called declaration's name is read from the declaration, whatever it is: BindingTest's D-850
+    // clause row). The formation's record is the same with `K<U>` in a generic function, where it is unproven.
+    [Theory]
+    [InlineData("func make() -> i32\n    let k = K<string>.init()\n", "UnsatisfiedConstraint_Kd", "K<string>")]
+    [InlineData("func make<U>() -> i32\n    let k = K<U>.init()\n", "UnprovenConstraint_Kd", "K<U>")]
+    public void ASynthesizedConstructorsClauseIsItsStructuresAtTheFormation(string function, string code, string formed)
+    {
+        var source = "struct K<T>\n    T is Copy\n    public let n: i32 = 0\n" + function + "    return 0\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Contains(records, x => x.Code == code && source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == formed && (x.Related ?? []).Length == 0);
+        Assert.DoesNotContain(records, static x => (x.Related ?? []).Any(static r => r.Role == "declaration"));
+    }
+
     // PLAN G375: a kept Proven is valid in its pass (Binding.DeclQuery), so an edit that fails the signature's Type is seen by the next pass's call.
     [Fact]
     public void NoKeptProvenCrossesAPass()

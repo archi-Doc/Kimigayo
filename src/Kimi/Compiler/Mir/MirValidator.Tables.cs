@@ -22,7 +22,8 @@ internal sealed partial class MirValidator
 {
     private partial struct Checker
     {
-        // A Place MirUses reports: a Place the body names (Names), then the rules of its access.
+        // A Place MirUses reports: a Place the body names (Names), then the rules of its access at the Place they judge, an Opaque site's
+        // undecided use's root (MirDescriptors.Judged, DECISIONS Z17).
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             if (!this.Names(place))
@@ -30,6 +31,7 @@ internal sealed partial class MirValidator
                 return;
             }
 
+            place = MirDescriptors.Judged(place, access);
             this.Accessed(place, access);
             if (place.Projection == 0 && (place.Root >= 0 ? body.Locals[place.Root].Type : body.Statics[~place.Root].Type) is null &&
                 !this.Bounded(place, access))
@@ -111,10 +113,10 @@ internal sealed partial class MirValidator
             var walkable = true;
             foreach (var site in body.OpaqueSites)
             {
-                var valid = InRange(site.Start, site.Count, body.OpaqueRoots.Length);
-                foreach (var root in valid ? body.OpaqueRoots.Slice(site.Start, site.Count) : default)
+                var valid = InRange(site.Start, site.Count, body.OpaqueUses.Length);
+                foreach (var use in valid ? body.OpaqueUses.Slice(site.Start, site.Count) : default)
                 {
-                    valid &= this.IsValid(new(root));
+                    valid &= this.IsValid(use);
                 }
 
                 if (!valid)
@@ -170,13 +172,13 @@ internal sealed partial class MirValidator
 
         // PLAN G1073 (SPEC 23.1.2, rule W): the accesses of a whole slot of no Type (Binding's failed slot, MirLocal) that judge nothing of
         // its Type: a write and its Kills (its storage's beginning or end, an EndBorrow), the Return's Move of _0, the delivery into _0 (a
-        // Result local's included, R4-M132), an Opaque site's root (MirDescriptors.IsOpaqueRoot) and a read of a temp the Unknown mask names
-        // by an rvalue that takes its Type from its operands (Propagates, the mask's rule); a read, borrow, drop or case-dependent access
-        // other than these, which a case reader would judge (MirCases.TypeOf), is not one. MirCases.KnownType names the case readers of each
-        // access admitted here.
+        // Result local's included, R4-M132), an Opaque site's undecided use (MirDescriptors.IsUndecided) and a read of a temp the Unknown
+        // mask names by an rvalue that takes its Type from its operands (Propagates, the mask's rule); a read, borrow, drop or case-dependent
+        // access other than these, which a case reader would judge (MirCases.TypeOf), is not one. MirCases.KnownType names the case readers
+        // of each access admitted here.
         private readonly bool Bounded(MirPlace place, MirAccess access)
             => (access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse | MirAccess.CaseDependent)) == 0 ||
-                MirDescriptors.IsOpaqueRoot(access) || (access == MirAccess.Moves && ((this.returning && place.Root == 0) || this.delivering)) ||
+                MirDescriptors.IsUndecided(access) || (access == MirAccess.Moves && ((this.returning && place.Root == 0) || this.delivering)) ||
                 (this.propagating && (access & ~(MirAccess.Reads | MirAccess.Moves)) == 0 && place.Root >= 0 && unknown[place.Root]);
 
         // The first Arg local a parameter is: past a receiver no signature slot names (a Closure's environment, a destructor's self), the

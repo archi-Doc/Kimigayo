@@ -278,7 +278,8 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // The Places a location uses, each listed by its needs (ListNeeds).
+    // The Places a location uses, each listed by its needs (ListNeeds); an Opaque site's undecided use at its root (MirDescriptors.Judged,
+    // DECISIONS Z17), which lists none: the collector runs at check over every body without a finding, Opaque sites included (SPEC 8.15.3).
     private readonly struct NeedReader(InstanceCollector owner, TemplateStore store, MirBody body, MirLocation at) : IMirUses
     {
         public void Operand(in MirOperand operand)
@@ -291,9 +292,9 @@ internal sealed partial class InstanceCollector
 
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
-            if (place.Projection != 0)
+            if (MirDescriptors.Judged(place, access) is { Projection: not 0 } judged)
             {
-                owner.ListNeeds(store, body, at, place);
+                owner.ListNeeds(store, body, at, judged);
             }
         }
     }

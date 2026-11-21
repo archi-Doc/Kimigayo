@@ -235,18 +235,19 @@ public sealed partial class MirBuildTest
         Assert.Contains(" = copy _ as u128 (Integer) proven", body, StringComparison.Ordinal);
     }
 
-    // SPEC 8.2.3, 23.1.2 (DECISIONS R5-M63, R5-M84; PLAN G168): a Field of a Place whose Type an identity premise makes a struct (`T is
-    // Pair`) is a located Unsupported_Kd whose Opaque site names only the receiver's root, built already, so a root the receiver's index
-    // moved is not used again there and A1 reports no MovedPlace_Kd at the member, while the independent ones stay: a later use of the
-    // moved root, a use of a moved receiver (fail-before: the site named the member's syntax roots, `_1 _2`, and A1 added MovedPlace_Kd at
-    // the member in c1 and c1Used). Each row: the parameters, the statements, the module-0 problems.
+    // SPEC 8.2.3, 23.1.2 (DECISIONS R5-M63, R5-M84, Z17; PLAN G168): a Field of a Place whose Type an identity premise makes a struct (`T is
+    // Pair`) is a located Unsupported_Kd whose Opaque site names only the receiver, built already, undecided at its Place (Z17: the step
+    // below reads an unknown part), so a root the receiver's index moved is not used again there and A1 reports no MovedPlace_Kd at the
+    // member, while the independent ones stay: a later use of the moved root, a use of a moved receiver (fail-before: the site named the
+    // member's syntax roots, `_1 _2`, and A1 added MovedPlace_Kd at the member in c1 and c1Used). Each row: the parameters, the
+    // statements, the module-0 problems and the site's use.
     [Theory]
-    [InlineData("xs: ref/Array<T>, t: string", "return xs[pos(t@move)].a", "")]
-    [InlineData("xs: ref/Array<T>, t: string", "let v = xs[pos(t@move)].a\n    use(t@move)\n    return v", "MovedPlace_Kd t")]
-    [InlineData("s: T", "let m = s@move\n    return s.a", "MovedPlace_Kd s.a")]
-    [InlineData("s: ref/T", "return s.a", "")]
-    [InlineData("s: T", "return s.a", "")]
-    public void AnUnsupportedFieldsSiteNamesItsReceiversRoot(string parameters, string statements, string problems)
+    [InlineData("xs: ref/Array<T>, t: string", "return xs[pos(t@move)].a", "", "(*_1)[_6]")]
+    [InlineData("xs: ref/Array<T>, t: string", "let v = xs[pos(t@move)].a\n    use(t@move)\n    return v", "MovedPlace_Kd t", "(*_1)[_7]")]
+    [InlineData("s: T", "let m = s@move\n    return s.a", "MovedPlace_Kd s.a", "_1")]
+    [InlineData("s: ref/T", "return s.a", "", "(*_1)")]
+    [InlineData("s: T", "return s.a", "", "_1")]
+    public void AnUnsupportedFieldsSiteNamesItsReceiver(string parameters, string statements, string problems, string use)
     {
         var c = Compile("struct Pair\n    public var a: i32 = 1\n    public var b: i32 = 2\n    public init() => ()\n" +
             $"func pos(y: string) -> isize => 0\nfunc use(y: string) => ()\nfunc f<T>({parameters}) -> i32\n    T is Pair\n    {statements}\n");
@@ -261,12 +262,13 @@ public sealed partial class MirBuildTest
         MirDump.Write(program, 0, text);
         var dump = text.ToString();
         var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
-        Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
+        Assert.Equal([use], sites.Select(static x => x.Groups[1].Value));
     }
 
     // SPEC 8.2.3 (DECISIONS BU-72; PLAN G168b): a selection Binding resolved through an identity premise whose subject is the Type
     // parameter of its receiver's Place (an Array, a fixed array or a Tuple, also through a chain, at a position, ^x, a key or a range) is one
-    // located Unsupported_Kd at the selection, its Opaque site naming only the receiver's root, decided before anything
+    // located Unsupported_Kd at the selection, its Opaque site naming only the receiver, the ref parameter's referent undecided at its Place
+    // (DECISIONS Z17), decided before anything
     // reads the receiver, with no projection or length the MIR validator rejects and no InternalInvariant_Kd (fail-before: a typeless
     // projection or Len, a validator finding and InternalInvariant_Kd beside Unsupported_Kd at the member, for ^x and a key at the
     // selection); a struct Field of such a Place stays Unsupported_Kd (chainTU). A ^x Binding applied directly (Op Range), a position or a
@@ -305,7 +307,7 @@ public sealed partial class MirBuildTest
         MirDump.Write(program, 0, text);
         var dump = text.ToString();
         var sites = Regex.Matches(dump[dump.IndexOf("fn f @", StringComparison.Ordinal)..], @"opaque \d+ @\d+: ([^\r\n]*)");
-        Assert.Equal(["_1"], sites.Select(static x => x.Groups[1].Value));
+        Assert.Equal(["(*_1)"], sites.Select(static x => x.Groups[1].Value));
     }
 
     // SPEC 8.2.3, 3.5.1, 13.5.6, 9.6.1 (DECISIONS R8-M9; PLAN G593): a Place whose own Type agrees with the Type Binding names for it only
@@ -618,14 +620,14 @@ public sealed partial class MirBuildTest
         Assert.DoesNotContain(nameof(DiagnosticCode.InternalInvariant_Kd), codes);
     }
 
-    // SPEC 23.1.2 (DECISIONS R5-M63, R5-M84): the Opaque site of a jump Binding rejects names the root of the Place its operand
-    // designates, built already, a parameter's or a static's, and none for a constant (fail-before: a static's root, ~index, was taken for
-    // none and dropped).
+    // SPEC 23.1.2 (DECISIONS R5-M63, R5-M84, Z17): a jump Binding rejects reads the Place its operand designates, located, a parameter's or
+    // a static's, at the operand's node where the operand's Adjust acquires it, and its Opaque site names none; a constant gives no read
+    // (fail-before: the site named the operand's root, and a static's root, ~index, was taken for none and dropped).
     [Theory]
-    [InlineData("x.b", "_1")]
-    [InlineData("G.s.b", "static0")]
+    [InlineData("x.b", "FakeRead(_1.0)")]
+    [InlineData("G.s.b", "FakeRead(static0.0)")]
     [InlineData("1", "")]
-    public void ARejectedJumpsSiteNamesItsOperandsRoot(string operand, string roots)
+    public void ARejectedJumpReadsItsOperand(string operand, string reads)
     {
         var program = Compile("struct S\n    public var b: i32 = 2\n    public init() => ()\ngroup G\n    public var s: S = S.init()\n" +
             $"func f(x: S)\n    if true\n        yield {operand}\n").BuildMir();
@@ -634,7 +636,8 @@ public sealed partial class MirBuildTest
         MirDump.Write(program, 0, text);
         var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
         var site = Assert.Single(Regex.Matches(dump.Split("\nfn ")[0], @"opaque \d+ @\d+:([^\r\n]*)"));
-        Assert.Equal(roots, site.Groups[1].Value.Trim());
+        Assert.Equal(string.Empty, site.Groups[1].Value.Trim());
+        Assert.Equal(reads, string.Join(" ", Regex.Matches(dump.Split("\nfn ")[0], @"FakeRead\([^)]*\)").Select(static x => x.Value)));
     }
 
     // SPEC 15.6.2: whether a Place is reached through a Deref of a shared reference or view, which grants Read only.
