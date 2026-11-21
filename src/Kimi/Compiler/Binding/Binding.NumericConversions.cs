@@ -179,7 +179,7 @@ public sealed partial class Binding
         source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
         if (!this.IsArithmeticInteger(source, scope) || !this.IsArithmeticInteger(target, scope))
         {
-            return this.Fail(conversion, BindingFailure.InvalidWrapConversion);
+            return this.Record(conversion, BindingFailure.InvalidWrapConversion, []);
         }
 
         conversion.ConversionBinding = ConversionBinding.Wrap;
@@ -219,7 +219,7 @@ public sealed partial class Binding
             else
             {
                 this.BindNode(conversion.Left, scope);
-                return this.Fail(conversion, target.ContainsParameter ? BindingFailure.GenericBitConversion : BindingFailure.InvalidBitConversion);
+                return this.Record(conversion, target.ContainsParameter ? BindingFailure.GenericBitConversion : BindingFailure.InvalidBitConversion, []);
             }
 
             Complete(conversion.Right, target);
@@ -241,14 +241,14 @@ public sealed partial class Binding
         source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
         if (source.ContainsParameter || target.ContainsParameter)
         {
-            return this.Fail(conversion, BindingFailure.GenericBitConversion);
+            return this.Record(conversion, BindingFailure.GenericBitConversion, []);
         }
 
         var sourceFloating = source.IsFloatingPoint;
         var targetFloating = target.IsFloatingPoint;
         if (sourceFloating == targetFloating || BitWidth(sourceFloating ? target : source) != (ReferenceEquals(sourceFloating ? source : target, BoundType.F32) ? 32 : 64))
         {
-            return this.Fail(conversion, BindingFailure.InvalidBitConversion);
+            return this.Record(conversion, BindingFailure.InvalidBitConversion, []);
         }
 
         conversion.ConversionBinding = ConversionBinding.Bits;

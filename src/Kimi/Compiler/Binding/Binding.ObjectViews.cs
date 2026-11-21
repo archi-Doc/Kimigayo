@@ -206,7 +206,7 @@ public sealed partial class Binding
 
             if (KotoHelper.UnwrapParentheses(conversion.Left).BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
             {
-                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Record(conversion, BindingFailure.InvalidAssignment, []);
             }
 
             if (this.IsBarePlace(conversion.Left) && this.ProveCopy(actual, this.ConstraintScope(conversion)) != ConstraintProof.Proven)
@@ -229,7 +229,7 @@ public sealed partial class Binding
                 if (!this.CheckTypeUse(result, target, conversion, out var failure))
                 {
                     return failure.IsCondition ? this.RecordMismatch(conversion, conversion, result, target, failure)
-                        : this.Fail(conversion, BindingFailure.InvalidAssignment);
+                        : this.Record(conversion, BindingFailure.InvalidAssignment, []);
                 }
 
                 result = target;
