@@ -86,11 +86,12 @@ public sealed partial class Binding
     internal IEnumerable<(Koto Node, DiagnosticCode Code)> LintErrorRecords
         => this.lints.Where(static x => IsError(x.Row)).Select(static x => (x.Node, LintTable[(int)x.Row].Code));
 
-    /// <summary>Gets the node completions the latest lint walk composed, which a scaling check reads: each node once per walk.</summary>
+    /// <summary>Gets the latest lint walk's completion work (StructuralCompletion.Work), which a scaling check reads: each node once per
+    /// walk.</summary>
     internal long LintCompletionWork => this.lintWalk?.CompletionWork ?? 0;
 
-    /// <summary>Gets the node completions the guess queries composed since the first, which a scaling check reads.</summary>
-    internal long GuessCompletionWork => this.guessedCompletion?.Composed ?? 0;
+    /// <summary>Gets the guess queries' completion work (StructuralCompletion.Work) since the first, which a scaling check reads.</summary>
+    internal long GuessCompletionWork => this.guessedCompletion?.Work ?? 0;
 
     /// <summary>Gets the nodes a completion check rests on when the syntax from a node up to a root completes normally only through
     /// nodes whose completion StructuralCompletion cannot know from what it reads: a body the parser supplied for a missing one
@@ -105,13 +106,16 @@ public sealed partial class Binding
     /// <returns>The nodes in walk order, or empty when the check does not rest on a guess.</returns>
     internal ReadOnlySpan<Koto> GuessedCompletionNodes(Koto node, Koto root)
     {
-        if (!node.CodeContext.HasRecoveries && this.Result.IsComplete)
+        // A check rests on no guess when the node's own pass is complete and its syntax recovered nothing: the running pass, or for a
+        // frozen library node the library's pass, which is complete and without recoveries. So no walk composes a frozen node
+        // (StructuralCompletion's invariant; KimiLibraryShapeTest.TheGuessRuleAnswersNoneAtAFrozenNode).
+        if (!node.CodeContext.HasRecoveries && (node.SyntaxOwner is { Frozen: true } || this.Result.IsComplete))
         {
             return default;
         }
 
         var structural = this.ResultStructure();
-        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess);
+        var guessed = this.guessedCompletion ??= new(this, this.ResultNeverEvidence, this.RecordGuess, static (ref NodeColumns columns) => ref columns.GuessedCompletions);
         var nodes = this.guessNodes ??= new();
         guessed.Clear();
         nodes.Clear();
@@ -617,20 +621,20 @@ public sealed partial class Binding
     {
         // Binding's structural completion with its Never evidence, cleared once per walk: the descents of discarded tails and the
         // end arrivals compose each node's completion once.
-        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence);
+        private readonly StructuralCompletion completion = new(binding, binding.ResultNeverEvidence, null, static (ref NodeColumns columns) => ref columns.LintCompletions);
 
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;
 
-        // The completions the structural completion composed before this walk.
-        private long composedBefore;
+        // The structural completion's work before this walk.
+        private long workBefore;
 
         // SPEC 14.3: whether an operation in the innermost Unsafe Block being walked used its permission, and whether one whose need
         // is unknown, such as an unresolved operation, may have.
         private bool unsafeUsed;
         private bool unsafeUncertain;
 
-        internal long CompletionWork => this.completion.Composed - this.composedBefore;
+        internal long CompletionWork => this.completion.Work - this.workBefore;
 
         public override void Visit(Koto node)
         {
@@ -667,7 +671,7 @@ public sealed partial class Binding
         internal void Begin()
         {
             this.completion.Clear();
-            this.composedBefore = this.completion.Composed;
+            this.workBefore = this.completion.Work;
         }
 
         // SPEC 5, 7.6, 14.3: an operation that needs an unsafe context outside one records row 7; inside one, it uses the innermost

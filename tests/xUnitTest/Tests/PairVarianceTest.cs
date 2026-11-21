@@ -37,7 +37,7 @@ public sealed class PairVarianceTest
     public void AnExclusiveAdmittingLayerRequiresEqualTargets(string premise)
     {
         var generic = Relations(DiagnosticCorpus.Check(Generic.Replace("{0}", premise, StringComparison.Ordinal)));
-        Assert.Contains(("==", "a", "b"), generic);
+        Assert.Contains(("outlives", "b", "a"), generic); // A5 names the failing direction of the `==` row (R7-O1 H; F-H-11's rule).
         Assert.Contains(("outlives", "longer", "b"), generic);
         Assert.Equal(Relations(DiagnosticCorpus.Check(Concrete)), generic);
     }

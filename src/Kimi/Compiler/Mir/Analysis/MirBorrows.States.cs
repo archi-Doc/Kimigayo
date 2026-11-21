@@ -7,17 +7,19 @@ namespace Kimi.Compiler.Mir;
 // entry), and Shared in its high 32 bits, what stores through a reference gave it (P10's refs^k targets and every W target); σ(h) is
 // Placed ∪ Shared. One store's value reaches every holder it writes as the same Shared id, so a walk reads each distinct Shared id once.
 // Input: the slots MirBorrows.Solve carries and MirBorrows.Flow commits. Output: a state's parts and σ(h) as one set (Set), its elements
-// in ascending order without forming it (ElementsOf), the per-walk mark by which a Chain closure or a part list reads each distinct
-// Shared id once and a W walk each distinct part, Placed or Shared (Step, Steps), and the part of a holder's state a gather pass reads
-// at a read's tier (Scanned).
+// in ascending order without forming it (ElementsOf), and the part of a holder's state a gather pass reads at a read's tier (Scanned).
+// Two marks by set id, each read and set by Steps at a level: the reads' (steppedBy, by Step's level), by which a Chain closure or a part
+// list reads each distinct Shared id once; and W's own (walkedBy, by walk), by which a W walk reads each distinct part, Placed or Shared,
+// once, so a read inside a W walk (MirBorrows.Reach's WriteTargets) moves no mark of the walk's.
 // Invariants: every reader depends only on σ(h), never on which part holds an element; a gather iterates σ(h) ascending, as one set's
 // elements; the transfers work per part (Commit, End, Join), so each part's operation is memoized by MirLoanSets; a part's id read once
 // by a walk is a no-op when read again there, because each reader's step is idempotent.
 // Must not number elements or keep a set in another form (MirLoanSets), or branch a reader's facts on the part an element is in.
 internal sealed partial class MirBorrows
 {
-    private long[] steppedBy = []; // By set: the walk level that read it (Steps).
-    private long stepping; // The walk's base level, even (level + 1: a set's indirect form; Steps); never reset, so a long (an int wraps at 2^30 walks).
+    private long[] steppedBy = []; // By set: the reads' level that read it (Steps; Content, Chain).
+    private long stepping; // The reads' base level, even (level + 1: a set's indirect form; Steps); never reset, so a long (an int wraps at 2^30 walks).
+    private long[] walkedBy = []; // By set: the W walk level that read it (Steps; MirBorrows.Reach's Read): 2 · walk, plus 1 at Through.
     private (int Instance, int Via, int Count)[] scannedBy = []; // By Shared set and read tier (Scanned): its pass instance, first via, vias.
     private int instance; // The gather's pass instances (Pass).
 
@@ -28,6 +30,25 @@ internal sealed partial class MirBorrows
 
     private static ulong State(int placed, int shared) => (uint)placed | ((ulong)(uint)shared << 32);
 
+    // Whether a reader reads a part's id at a level of its mark for the first time, marking it: the reads' steppedBy at Step's level plus
+    // 0 (as it is) or 1 (its indirect form, which covers 0), W's walkedBy at 2 · walk plus 0 (Named) or 1 (Through, which covers Named).
+    private static bool Steps(ref long[] marks, int part, long level)
+    {
+        if (part == 0)
+        {
+            return false;
+        }
+
+        MirDataflow.Grow(ref marks, part + 1);
+        if (marks[part] >= level)
+        {
+            return false;
+        }
+
+        marks[part] = level;
+        return true;
+    }
+
     // σ(h) as one set (memoized by MirLoanSets; Placed itself where Shared is empty).
     private int Set(ulong state) => this.sets.Union(Placed(state), Shared(state));
 
@@ -37,26 +58,8 @@ internal sealed partial class MirBorrows
     // σ(h)'s elements in ascending order, each once, without forming the union.
     private StateElements ElementsOf(ulong state) => new(this.sets.Elements(Placed(state)), this.sets.Elements(Shared(state)));
 
-    // Starts a walk that reads each distinct part's id once per level.
+    // Starts a read that reads each distinct part's id once per level (steppedBy).
     private void Step() => this.stepping += 2;
-
-    // Whether the walk reads a part's id at a level (0: as it is, 1: its indirect form, which covers level 0) for the first time, marking it.
-    private bool Steps(int shared, int level)
-    {
-        if (shared == 0)
-        {
-            return false;
-        }
-
-        MirDataflow.Grow(ref this.steppedBy, shared + 1);
-        if (this.steppedBy[shared] >= this.stepping + level)
-        {
-            return false;
-        }
-
-        this.steppedBy[shared] = this.stepping + level;
-        return true;
-    }
 
     // The part of a holder's state a gather pass instance reads under it (via) at the read's tier `at` (MirBorrows.Candidates' ReadTier):
     // σ(h), but Placed alone once two distinct vias that are not special read its Shared set in the instance at that tier. A special via,

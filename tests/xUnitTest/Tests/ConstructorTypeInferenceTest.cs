@@ -210,15 +210,16 @@ public class ConstructorTypeInferenceTest
     [InlineData("struct H {a}\n    public let n: i32\n    public init(x: ref/i32 during a) => self.n = 1\n    public init(x: ref/i64 during a) => self.n = 2\nfunc f() -> i32\n    let h = H.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.AmbiguousBinding_Kd) })]
     [InlineData("struct G<T> {a}\n    public let r: ref/T during a\n    public init(x: ref/T during a) => self.r = x\nfunc f() -> i32\n    let g = G.init($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.UnboundTypeArgument_Kd) })]
     [InlineData(Optional + "func f() -> bool\n    var v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    v = 2\n    return h.has()\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd) })]
-    [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    return H2.init(.Some(v@ref))\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    return H2.init(.Some(v@ref))\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     // SPEC 15.6.5's call clause (DECISIONS R4-M104): the retained argument `.Some(v@ref)` is an aggregate holding the borrow, not a Copy,
     // so the conflict at `let v` is independent (MirBorrowsTest's g526-agg-arg). The qualified `Option.Some` twin's return is rejected by
     // Binding and lowered Opaque, so it reports the relation only (until R7, R4-M122).
     [InlineData(Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
-    [InlineData(Optional + "func g(p: ref/i32) -> H2 during p\n    let v: i32 = 1\n    let h: H2 during p = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
+    [InlineData(Optional + "func g(p: ref/i32) -> H2 during p\n    let v: i32 = 1\n    let h: H2 during p = H2.init(.Some(v@ref))\n    return h@move\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     [InlineData(Invariant + "func g(p: ref/i32) -> U during p\n    let v: i32 = 1\n    var w = v@ref\n    return U.init(.Some(w@uniq))\n", new[] { nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) })]
     [InlineData("struct H {a}\n    public let r: ref/i32 during a\n    public init(x: ref/i32 during a, y: i32) => self.r = x\nfunc f() -> i32\n    let h = H.init($abort(\"x\"), true)\n    return 0\n", new[] { nameof(DiagnosticCode.NoApplicableOverload_Kd) })]
     [InlineData("enum E {a}\n    A(ref/i32 during a)\n    B\nfunc f() -> i32\n    let e = E.A($abort(\"x\"))\n    return 0\n", new[] { nameof(DiagnosticCode.MissingOriginBinding_Kd) })]
+    // R7-O1 H: the twins went; the Loan conflict at `let v` that the failed node hid is a counted dependent (Q13).
     public void TheTwinsOfAnUnfixedOwnOriginSlotKeepTheirRecords(string body, string[] codes)
         => Assert.Equal(codes, DiagnosticCorpus.Check(body + Main).Diagnostics.Select(static x => x.Code));
 

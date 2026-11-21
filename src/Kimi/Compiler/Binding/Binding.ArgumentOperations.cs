@@ -353,9 +353,9 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 7.3, 10.2: a receiver through a pair layer, or one shared reference to its target at a fixed ref/U; an
-        // exclusive borrow of an owned argument keeps its explicit spelling (SPEC 15.1.5).
-        if (!projected && (receiver || pattern.Semantics == SemanticsKind.Ref) && this.TryPairReceiver(source, pattern, actual, scope, out adapted, out kind, recordPair))
+        // SPEC 7.3, 9.6.1, 10.2: a receiver through a pair layer, projected to the base declaring its member as every receiver is, or one
+        // shared reference to its target at a fixed ref/U; an exclusive borrow of an owned argument keeps its explicit spelling (SPEC 15.1.5).
+        if ((receiver || pattern.Semantics == SemanticsKind.Ref) && this.TryPairReceiver(source, pattern, actual, scope, projected ? declaringType : null, out adapted, out kind, recordPair))
         {
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             return true;
@@ -366,7 +366,7 @@ public sealed partial class Binding
         if (receiver && pattern.Semantics == SemanticsKind.Ref && declaringType is not null &&
             this.ObjectCases(actual, scope, out var view) is var objects && objects != SemanticsMask.None && ReferenceEquals(pattern.Components[0], declaringType) &&
             (projected || ReferenceEquals(view, declaringType)) &&
-            ((objects & SemanticsMask.Object) == 0 || this.LendsHandle(source, scope, false, out _)))
+            ((objects & SemanticsMask.Object) == 0 || this.LendsHandle(source, this.LendFold(source, scope, false), out _)))
         {
             adapted = this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

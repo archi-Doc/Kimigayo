@@ -34,7 +34,7 @@ public sealed partial class Binding
         }
 
         // A receiver's implicit Borrow is lent as SPEC lends it (BorrowablePlace).
-        if ((objects & SemanticsMask.Object) != 0 && !this.LendsHandle(source, scope, exclusive, out _))
+        if ((objects & SemanticsMask.Object) != 0 && !this.LendsHandle(source, this.LendFold(source, scope, exclusive), out _))
         {
             return false;
         }
