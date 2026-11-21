@@ -160,6 +160,6 @@ public class SharedGuardTest
     {
         var c = MinimalEmissionTest.Analyze("func get(value: ref/(string, i32)) -> ref/string during value\n    match value\n        (let text, _) if (return text) => ()\n        (_, _) => ()\n    $abort(\"none\")");
         Assert.False(c.Generate(TextWriter.Null));
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 }

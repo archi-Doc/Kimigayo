@@ -40,11 +40,11 @@ public class UniqSliceTest(ITestOutputHelper output)
         Assert.Equal(child, check.Diagnostics.Any(static x => x.Severity == DiagnosticSeverity.Error));
         if (child)
         {
-            // A5's twin at the return beside Binding's record at the call: A5's records at Binding's twin rows stay until R7 (R6-check
-            // H0b §5.4, DECISIONS R4-M108; H3b T50, class 4). Each reaches the adapters with its label.
+            // A5's one record at the call (R7-O1 H; its twin at the return, H0b §5.4, R4-M108, H3b T50, went with Binding's record).
+            // It reaches the adapters with its label.
             const string Label = "requires the borrow parent outlives values, which is false";
             Assert.Equal(
-                [("UnsatisfiedOriginRelation_Kd", "return parent.sliceUniq()", Label), ("UnsatisfiedOriginRelation_Kd", "parent.sliceUniq()", Label)],
+                [("UnsatisfiedOriginRelation_Kd", "parent.sliceUniq()", Label)],
                 check.Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length), x.Label)));
             foreach (var error in check.Diagnostics)
             {

@@ -296,30 +296,18 @@ public sealed partial class Binding
         }
     }
 
-    // The local part (SPEC 15.3.6): a local's clause is judged as declared, and a relation is located at the initializer when the
-    // initializer supplies one of its ends, an Origin the local's Type omits, as the value that does not fit. An omitted contravariant
-    // slot with no principal lower bound is a local region (SolveLocalBounds), so its clause is a row, judged through the region's
-    // sources, never a record here (DECISIONS R4-M112).
+    // The local part (SPEC 15.3.6, 15.6.5; R7-O1): a local's clause in a body is a relation of the body, a row A5 judges, never Binding's
+    // record. The caller found it unproven by the premises, the proof a clause takes (SPEC 15.3.3: it assumes no new facts, so it bounds
+    // no open initializer as a fit's answer does, FormBodyRelation's step 2), so the row forms directly. Its record is at the clause, or
+    // at the initializer when that supplies one of its ends, an Origin the local's Type omits, as the value that does not fit (H11b D5).
+    // Its ends are the clause's as written, which the view resolves at the clause (its Supplier, R4-M133, is the written longer end).
     private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
     {
-        if (this.FailedDeclaredRelation(relation) is not { } failed)
-        {
-            return;
-        }
-
         var use = relation.Syntax;
         var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
-        var record = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? failed with { At = initializer } : failed;
-        this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, record);
-
-        // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, for A5, and
-        // the clause is a twin (R4-M111).
-        if (BodyChain(failed.Longer, failed.Shorter, failed.Equality, this.formingBody))
-        {
-            this.originTwins.Add(use);
-            var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, failed.Longer, failed.Shorter);
-            this.AddObligation(row with { Equality = failed.Equality, Clause = use });
-        }
+        var site = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : null;
+        var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Site: site);
+        this.AddObligation(row with { Equality = relation.Equality, Clause = use });
 
         // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
         OriginVariance? InferredEnd(BoundOrigin end)

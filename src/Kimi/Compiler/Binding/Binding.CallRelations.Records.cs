@@ -5,15 +5,15 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// Origin records beyond the first (SPEC 15.6.1: every failed chain; SPEC 23.1.2: independent problems). A call's relations in a body
-// are rows A5 judges (FormBodyRelation, R7-O1); Binding judges in the declaration frame (JudgeDeclarationPosition,
-// Binding.OriginClauses.cs) and, until R7-O1's H1 and H2, a body's other fits and its local clauses (Binding.OriginFits.cs,
-// Binding.OriginClauses.cs).
+// Origin records beyond the first (SPEC 15.6.1: every failed chain; SPEC 23.1.2: independent problems). A body's relations are rows A5
+// judges (FormBodyRelation, R7-O1: calls, fits, local clauses and pending relations); Binding judges in the declaration frame
+// (JudgeDeclarationPosition, Binding.OriginClauses.cs) and keeps SPEC 5.7's Unstated and holder-place rules.
 // - Responsibility: the Origin relation records the declaration judge collects (callRelationScratch: JudgeDeclarationPosition's, over
 //   JudgeDeclarationRows' rows and chains), each node failed with its first record or published with its contract record
-//   (FollowsContract; PublishCallRelations); and a node's records beyond its first, Origin relation and Origin contract records alike,
-//   each a problem of the node with its own condition, published after the node's first record (RecordFurtherOriginRecord, also for
-//   RecordOriginFitFailure's other chains; ReportOriginRecords, ReportFurtherOriginRecords).
+//   (FollowsContract; PublishCallRelations); a node's records beyond its first, Origin relation and Origin contract records alike, each
+//   a problem of the node with its own condition, published after the node's first record (RecordFurtherOriginRecord;
+//   ReportOriginRecords, ReportFurtherOriginRecords); and the relation problems that leave their node Resolved (SPEC 5.7's two rules,
+//   R7-O1 B4), published by their subject whatever its failure (ReportResolvedOriginRecords).
 // - Inputs: OriginRelationFact and OriginContractFact values with their nodes; the node's first record in originRelations or
 //   originContracts.
 // - Outputs: the OriginRelation failure of each collected node and every node's further records.
@@ -27,8 +27,7 @@ public sealed partial class Binding
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
 
     // SPEC 15.6.1, 23.1.2: whether a node's Origin relations are all records beyond its first: its own record is a comparison's
-    // contract (RecordComparisonFacts), and every relation judged at it is published with that record (RecordOriginChains,
-    // PublishCallRelations).
+    // contract (RecordComparisonFacts), and every relation judged at it is published with that record (PublishCallRelations).
     private static bool FollowsContract(Koto node) => node.BindingFailure == BindingFailure.OriginContract;
 
     // A node's first Origin relation or Origin contract record, then its records beyond the first; false when it has neither.
@@ -72,6 +71,45 @@ public sealed partial class Binding
                 ReportOriginContract(node, this.report.Origin(fact).Contract!.Value, requirement, problem.Code, problem.Condition);
             }
         }
+    }
+
+    // SPEC 23.1.2 (R7-O1 B4): the relation problems of nodes whose own record is no Origin record, a Resolved node's included, each by its
+    // subject; a node failed with an Origin record publishes them with it (ReportOriginRecords). A problem a retried attempt unlinked is
+    // not its subject's.
+    private void ReportResolvedOriginRecords()
+    {
+        for (var i = 0; i < this.report.Count; i++)
+        {
+            var problem = this.report.Problem(i);
+            if (this.FactOf(i, ProblemFactKind.OriginRecord) is not { } fact || !this.Linked(problem.Subject, i) ||
+                this.compilation.SyntaxOf(problem.Subject) is not { } node || this.RecordedFailure(node) is BindingFailure.OriginRelation or BindingFailure.OriginContract)
+            {
+                continue;
+            }
+
+            if (this.report.Origin(fact).Relation is { } relation)
+            {
+                this.ReportOriginRelation(node, relation, problem.Requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
+            }
+            else
+            {
+                ReportOriginContract(node, this.report.Origin(fact).Contract!.Value, problem.Requirement, problem.Code, problem.Condition);
+            }
+        }
+    }
+
+    // Whether a problem is in its subject's chain.
+    private bool Linked(SourceRef subject, int problem)
+    {
+        for (var i = this.report.First(subject); i >= 0; i = this.report.Next(i))
+        {
+            if (i == problem)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Fails each node with its first record and keeps the others for publication with it; beside a contract, each is a further record.

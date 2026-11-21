@@ -158,7 +158,8 @@ public sealed partial class MirBorrowsTest
     }
 
     // SPEC 13.7.1 step 1, 13.7.2 step 1, 23.1.2 (PLAN G1022): a write whose target Binding rejected (an unresolved name, its index or
-    // referent, a missing member, an update of a Property over an ill-formed holder Type) is derived from that failure after its right
+    // referent, a missing member, an update of a Property over an ill-formed holder Type), also through parentheses, whose Place is the
+    // operand's (SPEC 3.4; DECISIONS Z16: the fact is read at the Place the target designates), is derived from that failure after its right
     // side, which is evaluated first, so the right side's own failures stay: a second Move (A1) and a read under a live exclusive Loan (A5)
     // (fail-before: neither), also where locating a Place right side evaluates its index. The write's securing of the right side at the
     // destination Type (a Place's Copy or Reborrow) rests on the failure and adds nothing (before the rule, a Reborrow's InternalInvariant_Kd),
@@ -190,6 +191,13 @@ public sealed partial class MirBorrowsTest
     [InlineData("i32", "let q = m@uniq\n    missing = q", "", false)]
     [InlineData("i32", "let r = y@uniq\n    missing = y\n    r@follow = 2", "", false)]
     [InlineData("i32", "missing = xs[at(t@move)]\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)] // Z16: the Place a parenthesized target designates (SPEC 3.4).
+    [InlineData("i32", "((missing)) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing) += take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(missing)++", "", false)]
+    [InlineData("i32", "(p.nofield) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "var q = missing\n    (q) = take(t@move)\n    use(t@move)", "f: t MovedPlace_Kd", false)]
+    [InlineData("i32", "(m) = take(t@move)", "", true)]
     public void AWriteWhoseTargetBindingRejectedBuildsItsRightSide(string holder, string body, string expected, bool accepted)
     {
         var c = MirBuildTest.Compile(Prelude + Writes.Replace("HOLDER", holder, StringComparison.Ordinal) + "    " + body + "\n");

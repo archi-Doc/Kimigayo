@@ -6,11 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The pending relations (DECISIONS R4-M126 §2.5, D-2): each obligation formed naming a pending atom, once per binding, with the
-    // outermost unclassified Closure whose atoms it names, which judges it when it is classified, and its record's destination (the
-    // obligation's Type, a fit's whole destination Type, CheckTypeUse; DECISIONS R4-M133); reused across passes.
-    private readonly List<(FunctionKoto Owner, BindingObligation Obligation, BoundType? Destination)> pendingRelations = [];
-
     // The row sink of every reader of a comparison's region conjuncts (CallableInstance.Rows; LeavesBodyRows): one reused list (warm
     // 0 B), each reader's segment from the end it found when it built its query, formed or dropped and truncated when it returns.
     private readonly List<BindingObligation> comparisonRows = new();
@@ -26,12 +21,6 @@ public sealed partial class Binding
     // Set while a selected call's fits are collected (CollectFitBounds): the Origin part of a fit is then the pure answer, and the
     // bounds of Origins omitted in open initializers are recorded for that call (FitsOriginOutlives).
     private bool collectingFits;
-
-    // SPEC 15.6.1, 23.1: whether an Origin obligation is a fit, reported at the value with the source `fit` and its destination. Its
-    // producer states any other kind where it forms it: `Clause` for a declared relation (a Type's clause substituted at its occurrence,
-    // AddTypeClauseObligations, or a written clause), `WellFormed` for the well-formedness of a Type occurrence (RetainInnerOutlives), of a
-    // callee's result at its call (RequireResultPremises) or of an input's instantiated Type (RequireInputPremises).
-    internal static bool IsFitObligation(in BindingObligation obligation) => obligation.Clause is null && !obligation.WellFormed;
 
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
@@ -67,11 +56,6 @@ public sealed partial class Binding
         reversed = Severity(backward) > Severity(forward);
         return reversed ? backward : forward;
     }
-
-    // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
-    // fixed Origins, both in `body`. `condition` is the Semantics case the relation is required in (BindingObligation.Condition).
-    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
-        => this.JudgeOriginRelation(longer, shorter, use, body, condition) is OriginJudgment.Refuted or OriginJudgment.Unknown;
 
     // SPEC 15.6.5: local storage regions carry their source bounds to ownership; a finite-to-local-to-fixed chain is refuted
     // even in checking code. Fixed contracts still need established premises; finite relations carry their actual Loans
@@ -321,144 +305,6 @@ public sealed partial class Binding
             (ProjectionRole.Environment, false) => this.OriginAtom(closure, OriginKind.Projection, ClosureValueSlot),
             _ => origin,
         };
-    }
-
-    // DECISIONS R4-M126 §2.5 (b): an Origin relation formed naming a pending atom (PendingAtom), new or one obligationSet already holds,
-    // joins the list of the outermost unclassified Closure whose atoms it names: one append per formation (PLAN V16), so a relation
-    // formed twice is judged twice, the second finding its use failed or proving it again, with no second record. Its ends are read as
-    // the row reads them (SuppliedAtUse with the row: a `let` region of the use's own body as its value, which may name a pending atom,
-    // and a Compared row's as the slot; PLAN G492-a (ii)), the reading its route takes too.
-    private void AddPendingRelation(in BindingObligation obligation)
-    {
-        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } ||
-            PendingOwner(this.SuppliedAtUse(shorter, obligation), PendingOwner(this.SuppliedAtUse(longer, obligation), null)) is not { } owner)
-        {
-            return;
-        }
-
-        this.pendingRelations.Add((owner, obligation, obligation.Type));
-
-        // The outermost of `owner` and the Closures whose pending atoms `origin` names; the unclassified Closures are being bound, nested.
-        static FunctionKoto? PendingOwner(BoundOrigin origin, FunctionKoto? owner)
-        {
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                owner = PendingOwner(origin.Operands[i], owner);
-            }
-
-            return PendingAtom(origin) && origin.Binder is FunctionKoto closure && (owner is null || IsWithin(owner, closure)) ? closure : owner;
-        }
-    }
-
-    // DECISIONS R4-M126 §2.5 (d): a binding of `closure` starts, so the entries formed in its body or a body nested in it leave the lists
-    // (a consultation's binding or any rebinding leaves with them); the binding appends its own.
-    private void LeavePendingRelations(FunctionKoto closure)
-    {
-        var kept = 0;
-        for (var i = 0; i < this.pendingRelations.Count; i++)
-        {
-            var entry = this.pendingRelations[i];
-            if (!FormedWithin(entry.Obligation.Body, closure))
-            {
-                this.pendingRelations[kept++] = entry;
-            }
-        }
-
-        this.pendingRelations.RemoveRange(kept, this.pendingRelations.Count - kept);
-
-        static bool FormedWithin(ExecutableBody body, FunctionKoto closure)
-        {
-            for (; body.IsBody; body = EvaluatingBody(body))
-            {
-                if (ReferenceEquals(body.Definition?.Declaration, closure))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
-    // DECISIONS R4-M126 §2.5 (b), F2: `closure` is classified, so its entries are judged with the receiver resolution active, each once;
-    // an entry whose obligation was removed in place since (no longer in obligationSet) is skipped. Other Closures' entries stay.
-    private void JudgePendingRelations(FunctionKoto closure)
-    {
-        var kept = 0;
-        for (var i = 0; i < this.pendingRelations.Count; i++)
-        {
-            var entry = this.pendingRelations[i];
-            if (!ReferenceEquals(entry.Owner, closure))
-            {
-                this.pendingRelations[kept++] = entry;
-            }
-            else if (this.obligationSet.Contains(entry.Obligation))
-            {
-                this.RoutePendingRelation(entry.Obligation, entry.Destination);
-            }
-        }
-
-        this.pendingRelations.RemoveRange(kept, this.pendingRelations.Count - kept);
-    }
-
-    // DECISIONS R4-M126 F3 (R4-M133): a pending relation, its ends resolved, routed as a binding-time fit is: fixed-fixed or Refuted, its
-    // chains are found by the fit's position search in the body that formed it, passed explicitly, and recorded as a fit's are
-    // (RecordOriginChains: at RelationAt, a failed Origin environment's dependent, a body chain a twin); any other body chain stays a row
-    // for A5 and the old reporter, unjudged here. A relation Binding judges is no row (2a0-D D1): its obligation leaves, as one judged at
-    // binding time is never formed (AddObligation's callers route by BodyChain), unless a recorded chain is a body chain, whose obligation
-    // stays the twin's row (R4-M108, R4-M111). Each chain records as its Supplier the part of the obligation's longer end, as the row
-    // supplies it (SuppliedAtUse with the row), that holds the chain's end, and the entry's destination (DECISIONS R4-M133). The row's ends
-    // are read as the row reads them (OriginAtUse with the row): a stored row is never read again by value (the owner's O-385 (a)).
-    private void RoutePendingRelation(in BindingObligation obligation, BoundType? destination)
-    {
-        var (use, body) = (obligation.Use, obligation.Body);
-        var longer = this.OriginAtUse(obligation.Longer!, obligation);
-        var shorter = this.OriginAtUse(obligation.Shorter!, obligation);
-        var refuted = RefutesOriginRelation(longer, shorter, body) || (obligation.Equality && RefutesOriginRelation(shorter, longer, body));
-        if ((BodyChain(longer, shorter, obligation.Equality, body) && !refuted) || use.BindingFailure != BindingFailure.None)
-        {
-            return;
-        }
-
-        var all = this.relationScratch;
-        all.Clear();
-        var variance = obligation.Equality ? OriginVariance.Invariant : OriginVariance.Covariant;
-        if (new OriginFitSearch(this, use, body, OriginFitMode.Judged, all).FailedOriginPart(longer, shorter, variance, obligation.Condition) is { } first)
-        {
-            for (var i = 0; i < all.Count; i++)
-            {
-                var supplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, obligation), all[i].Longer, use);
-                all[i] = all[i] with { Supplier = supplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
-            }
-
-            var firstSupplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, obligation), first.Longer, use);
-            var recorded = first with { Supplier = firstSupplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
-            if (this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded, this.UnrefutedCause(use, recorded)))
-            {
-                return;
-            }
-        }
-
-        // Formed late in the list (the Closure is classified once its body is bound), so it is found from the end.
-        this.obligationSet.Remove(obligation);
-        this.obligations.RemoveAt(this.obligations.LastIndexOf(obligation));
-        this.originStateVersion++;
-    }
-
-    // The part of `supplied`, a relation's end as it supplies it at `use` (SuppliedAtUse, read once; its operands are held), that supplied
-    // `resolved`, a record's end there (DECISIONS R4-M133): the first operand of a meet whose receiver resolution holds it, otherwise the end
-    // itself.
-    private BoundOrigin SuppliedBy(BoundOrigin supplied, BoundOrigin resolved, Koto use)
-    {
-        for (var i = 0; i < supplied.Operands.Count; i++)
-        {
-            if (OriginIncludes(this.ReceiverAtUse(supplied.Operands[i], use), resolved))
-            {
-                return this.SuppliedBy(supplied.Operands[i], resolved, use);
-            }
-        }
-
-        return supplied;
     }
 
     // SPEC 15.3.6 (PLAN G74): a pure question: whether the premises visible at `use` entail `longer outlives shorter`

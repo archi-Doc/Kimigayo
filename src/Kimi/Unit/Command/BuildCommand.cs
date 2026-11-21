@@ -37,7 +37,7 @@ public class BuildCommand : ISimpleCommand<BuildCommand.Options>
 
                 return await CommandExecution.Toolchain(this.kimigayo, async () =>
                 {
-                    await Build.NativeToolchain.BuildManifest(manifest, options.ToolchainRoot, options.LlvmBin, this.kimigayo.WriteLine, cancellationToken);
+                    await Build.NativeToolchain.BuildManifest(manifest, options.ToolchainRoot, options.LlvmBin, this.kimigayo.NativeExecutor, this.kimigayo.WriteLine, cancellationToken);
                     return 0;
                 });
             }

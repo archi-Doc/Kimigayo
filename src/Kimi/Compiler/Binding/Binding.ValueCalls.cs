@@ -4,8 +4,9 @@
 // - Responsibility: the callee's acquisition by its receiver mode (AcquireValueCallee), each argument bound and adapted
 //   (AcquireValueCallPart): the evidence parts first (AcquireValueCallArguments), then, the per-call inputs solved from them, the waiting
 //   parts at their instantiated parameters (PLAN G494); the substitution, and the result (ValueCallResult). P9: a Closure's result
-//   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage) and its call result atom the call's Unbound atom,
-//   images of the Closure binder's reserved atoms built only where the result names them (CallAtomsOf, PerCallImages); a Closure value
+//   naming its call receiver ρ takes the receiver acquisition's Origin (ReceiverImage), the image of the Closure binder's reserved atom
+//   built only where the result names it (CallAtomsOf, PerCallImages); its call result atom, which names a Refuted relation A5 judges in
+//   the Closure's body (P8), is published as it is, never an Unbound atom resting on no Binding failure (R4-M118; R7-O1 H); a Closure value
 //   returned from its maker's call is called through its Type's signature (ClosureSignature, DECISIONS R4-M159), and declares its
 //   definition's (CallPlan.DeclaredSignature); a result still naming an atom of a Closure that does not enclose the call is F1's located
 //   Unsupported_Kd.
@@ -34,8 +35,7 @@ public sealed partial class Binding
     {
         None = 0,
         Receiver = 1,
-        Result = 2,
-        Foreign = 4,
+        Foreign = 2,
     }
 
     // The checked plan of a callable value's call (SetValue below) of the current pass (IsCurrent); null before selection and for a named
@@ -125,7 +125,6 @@ public sealed partial class Binding
         return node.Kind != OriginKind.Projection ? CallAtoms.None : node.Slot switch
         {
             ClosureValueSlot => CallAtoms.Receiver,
-            CallResultSlot => CallAtoms.Result,
             _ => CallAtoms.None,
         };
     }
@@ -142,7 +141,7 @@ public sealed partial class Binding
 
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
             (node is not (IdentifierNameKoto or MemberAccessKoto or IndexKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow }) &&
-                !(node is BinaryKoto element && ElementAccess.IsSyntax(this, element))))
+                !(node is BinaryKoto element && this.IsSyntax(element))))
         {
             return false;
         }
@@ -694,8 +693,8 @@ public sealed partial class Binding
     // SPEC 15.6.4, 15.8.2 (DECISIONS R4-M152): a value call's result. Fresh input Origins and fixed shared capture results retain their
     // complete call contracts; a result over the per-call inputs takes the arguments' Origins, as an ordinary call's does; one written
     // over a fixed Origin of the calling body stays as written. A Closure's result naming its call receiver ρ takes the receiver
-    // acquisition's Origin and its call result atom the call's Unbound atom, each image built only where the result names its atom;
-    // one naming another Closure's atom is F1's located limit.
+    // acquisition's Origin, the image built only where the result names it, and its call result atom stays as published (P8: its
+    // relation is A5's record in the Closure's body); one naming another Closure's atom is F1's located limit.
     private BoundType? ValueCallResult(
         InvocationKoto call,
         BoundType signature,
@@ -718,8 +717,7 @@ public sealed partial class Binding
         }
 
         var image = (atoms & CallAtoms.Receiver) != 0 ? this.ReceiverImage(call, acquisition) : null;
-        var unbound = (atoms & CallAtoms.Result) != 0 ? this.OriginAtom(call, OriginKind.Unbound, 0) : null;
-        var images = new PerCallImages(inputs, image, unbound);
+        var images = new PerCallImages(inputs, image, null);
         return this.LacksImage(result, ownBinder, origins, images)
             ? this.Fail(call, BindingFailure.Unsupported) : this.SubstituteStoredOrigins(result, ownBinder, origins, images);
     }
