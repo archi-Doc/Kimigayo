@@ -366,7 +366,7 @@ public sealed partial class Binding
         if (receiver && pattern.Semantics == SemanticsKind.Ref && declaringType is not null &&
             this.ObjectCases(actual, scope, out var view) is var objects && objects != SemanticsMask.None && ReferenceEquals(pattern.Components[0], declaringType) &&
             (projected || ReferenceEquals(view, declaringType)) &&
-            ((objects & SemanticsMask.Object) == 0 || this.LendsHandle(source, scope, false, out _)))
+            ((objects & SemanticsMask.Object) == 0 || this.LendsHandle(source, this.LendFold(source, scope, false), out _)))
         {
             adapted = this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

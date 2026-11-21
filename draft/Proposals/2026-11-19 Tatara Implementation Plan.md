@@ -40,6 +40,7 @@ tatara> exit
 | 14 | Unit A4 is judged on the `BuildChain` series run as an interleaved paired A/B (the base on the external tools against the candidate): on every row the candidate's p50 wall time is at most 1.03 times the base's, and its p95 peak committed memory is at most 64 MiB above the base's (the owner, 2026-11-20, board O-452, verbatim 「(b) と (m2)」). |
 | 15 | In stage A a `run` program inside `kimi tatara` shares the session's input: it gets no terminal input of its own (a STATUS limit and a PLAN open issue; the redirected reader reads without read-ahead) (the owner, 2026-11-20, board O-454, 「推奨どおり」 and 「質問1は (b)」). |
 | 16 | `Kimigayo.NativeExecutor`, the native executor's factory, is an approved temporary reader of Build until unit A4 (one `ArchitectureRulesTest.BuildReaders` row and one COMPILER_ARCHITECTURE sentence, both removed by A4) (the owner, 2026-11-20, board O-455, 「推奨どおり」 and 「質問2は (a)」). |
+| 17 | After unit A4 a second Ctrl+C ends any command at once with 130, except during a publication SPEC 23.2.3 protects (`check --Format json`) (the owner, 2026-11-21, board O-460, 「(a) as recommended」). |
 
 Assumed without a question: agents run Opus 5.5; branches are `claude/t-*`; the usage-stop rule and the heavy-run rules apply as to
 every lane.
@@ -186,13 +187,18 @@ An input that still differs is investigated; a difference that cannot be removed
 
 ### A4 The single-shot switch
 
-After A2's gate passes on the dev of that day, in a dedicated window.
+After A2's gate passes, in a dedicated window. The gate runs on the unit's head before its deleting commit (kept as a branch),
+merged with the window's dev.
 
 - `build`, `run` and `test` use Tatara.
-- The external executor, the seam and the tool-launching code are deleted.
+- The external executor, the seam and the build's tool launching are deleted (`toolchain verify` still runs the tools it checks).
 - `toolchain verify` checks `tatara.dll`.
-- Setup builds `tatara.dll`, the installation record holds its hash once, and CI builds it.
-- IMPL §20.3.2's Toolchain wording is revised.
+- Setup builds `tatara.dll` (`setup.ps1 -LlvmRoot <the archive>`, required; a file whose destination has the same SHA-256 is never
+  written; `tatara.dll` and the record are replaced by a retried move, a loaded DLL renamed aside), the installation record holds its
+  hash once (`tatara.sha256`, with `schemaVersion` 1 kept: older readers ignore the member), and CI builds it.
+- `LlvmBin` stays accepted and builds stop reading it; its removal is B6's question.
+- A second Ctrl+C ends the process at once with 130 (decision 17).
+- IMPL §20.3.2's Toolchain wording is revised, and §20.3 states the second Ctrl+C.
 - The setup tools and the native fixture runner do not change (§3, item 3).
 
 **Done when:** the Session passes; single-shot time and memory are within budget (decision 14), judged on A1's series run at A4 as an interleaved

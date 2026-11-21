@@ -67,20 +67,28 @@ public sealed class BindingReportTest
         Assert.Same(types[0], report.Value(Assert.Single(report.Facts(first).ToArray())));
     }
 
-    // An Origin record beyond the first takes the condition after its subject's, and a subject has a record once; a retried attempt starts over.
+    // A further problem at a subject (one rule, Condition; R7-E2 E2-3b): an equal problem keeps its condition and adds nothing; new facts take
+    // their check's condition, or the one after the subject's last when that is taken (an Origin record beyond the first comes at 1, its
+    // first being the slot's, as OriginCondition numbered it; a refining Contract's inherited conflicts from 0); a retried attempt starts over.
     [Fact]
-    public void AnOriginRecordIsNumberedOncePerSubject()
+    public void AFurtherProblemIsNumberedAfterItsSubjectsLast()
     {
         var report = new BindingReport();
         OriginRecord first = new(null, new(null!, "first", null!, null!, false));
         OriginRecord second = new(null, new(null!, "second", null!, null!, false));
-        Assert.Equal(1, report.OriginCondition(Subject, first));
-        report.Add(Problem(Subject, Mismatch, 1), [new(ProblemFactKind.OriginRecord, Subject, report.Keep(first))]);
-        Assert.Equal(0, report.OriginCondition(Subject, first));
-        Assert.Equal(2, report.OriginCondition(Subject, second));
-        Assert.Equal(1, report.OriginCondition(Other, first));
+        ProblemFact[] recorded = [new(ProblemFactKind.OriginRecord, Subject, report.Keep(first))];
+        ProblemFact[] again = [new(ProblemFactKind.OriginRecord, Subject, report.Keep(first))];
+        ProblemFact[] further = [new(ProblemFactKind.OriginRecord, Subject, report.Keep(second))];
+        Assert.Equal(1, report.Condition(Problem(Subject, Mismatch, 1), recorded));
+        var kept = report.Add(Problem(Subject, Mismatch, 1), recorded);
+        Assert.Equal(1, report.Condition(Problem(Subject, Mismatch, 1), again));
+        Assert.Equal(kept, report.Add(Problem(Subject, Mismatch, 1), again)); // The same record kept again is equal, not a defect.
+        Assert.Equal(2, report.Condition(Problem(Subject, Mismatch, 1), further));
+        Assert.Equal(2, report.Condition(Problem(Subject, Mismatch), further));
+        Assert.Equal(1, report.Condition(Problem(Other, Mismatch, 1), recorded));
+        Assert.Equal(0, report.Condition(Problem(Other, Mismatch), recorded));
         report.Unlink(Subject);
-        Assert.Equal(1, report.OriginCondition(Subject, first));
+        Assert.Equal(1, report.Condition(Problem(Subject, Mismatch, 1), recorded));
     }
 
     [Fact]

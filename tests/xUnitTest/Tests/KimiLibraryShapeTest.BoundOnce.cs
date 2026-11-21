@@ -281,8 +281,9 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(0, heads);
         Assert.Empty((System.Collections.ICollection)typeof(Binding).GetField("shapeContracts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
-        var conflicts = (System.Collections.IDictionary)typeof(Binding).GetField("parameterShapeConflicts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        Assert.DoesNotContain(conflicts.Keys.Cast<Koto>(), x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+        // R7-E2 E2-3b: a conflict is a problem in the pass's report (its stores are gone), so the bound library holds none.
+        var report = (BindingReport)typeof(Binding).GetField("report", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.DoesNotContain(Enumerable.Range(0, report.Count), i => report.Problem(i).Code == Kimi.DiagnosticCode.ParameterShapeMismatch_Kd);
     }
 
     // G949 D2b-d's d12 (N5-3): the library's explicit specializations (SPEC 8.13: tryResolve's, writer's and format's) are their
