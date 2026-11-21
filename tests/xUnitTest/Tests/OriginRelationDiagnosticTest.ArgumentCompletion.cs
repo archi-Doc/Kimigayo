@@ -141,11 +141,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.3", "lt1_n", "func h2(t: (Option<i32>, i32)) -> i32 => 0\n" + KHead + "    return h2((label l: if c => .None else => .Some(true), 1))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("U1.3", "l2_n", ValueG + "    return g(label l: if c => .None else => .Some(true))\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("U1.3", "b1v_n", ValueG + "    return g(" + LabeledDo + ".Some(true)\n    )\n", "TypeMismatch_Kd .Some(true)")]
-    [InlineData("U1.3", "o2", "func p(o: Option<i32>) -> i32 => 0\nfunc p(o: Option<bool>) -> i32 => 1\n" + RunHead + "    return p(if c => .None else => .Some(1))\n", "AmbiguousBinding_Kd p(if c => .None else => .Some(1))")]
     [InlineData("U1.2", "b6m", OptionH + RunHead + "    let a = h(match c\n        true => .None\n        false => .Some(true)\n    )\n    return a\n", "TypeMismatch_Kd .Some(true)")]
     [InlineData("U1.2", "b6y", "func h(o: Option<i32>, n: i32) -> i32 => 0\n" + RunHead + "    let a = h(if c => .None else => .Some(1), true)\n    return a\n", "NoApplicableOverload_Kd h(if c => .None else => .Some(1), true)")]
     [InlineData("U1.2", "b6x", RunK + "    let a = k(if c => func [] (x: i32) -> i32 => x else => func [] (x: i64) -> i32 => 0)\n    return a\n", "TypeMismatch_Kd func [] (x: i64) -> i32 => 0")]
-    [InlineData("U1.6g3b", "g050", Twice + Idg + "func f(x: Array<(i64) -> i64>) -> i32 => 0\nfunc f(x: Array<(bool) -> bool>) -> i32 => 1\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool) -> i32\n    return f(if c2 => [idg, func [] (v) => v] else if c3 => [gv1@move, func [] (v) => v] else => [twice, func [] (v) => v])\n", "AmbiguousBinding_Kd f(if c2 => [idg, func [] (v) => v] else if c3 => [gv1@move, func [] (v) => v] else => [twice, func [] (v) => v])")]
     public void AFailingArgumentKeepsItsIndependentLanguageErrors(string unit, string form, string body, string required)
         => AssertLanguageErrors($"{form} [{unit}]", body, required);
 
@@ -248,7 +246,8 @@ public partial class OriginRelationDiagnosticTest
     // (sg4b; wj_arr, which U1.5 held ambiguous), three (u6f_fix_three), one beside Never (sg4, b1_afix_W_fov) or none (sg4a, the
     // literal-only u6f_fix_lit), Tuple elements included (u6f_fix_tup); an `Array<T>` index holds the elements of the sources that have
     // it (u6f_dyn_len, u6f_g_len). A literal index that fits no candidate leaves none (g244, b1_afix_W_fb), as a source of another length
-    // does at `[N of T]` (u6f_fix_len, 4.3.1); with every index waiting no candidate is best (u6f_dyn_wait); at a bare slot the join's Type
+    // does at `[N of T]` (u6f_fix_len, 4.3.1); with every index waiting each is checked at each candidate's element Type (K's
+    // 10.5.1, ArgFlow ruling 121), so `f(Array<i64>)` is selected (u6f_dyn_wait, a class-3 fix); at a bare slot the join's Type
     // keeps one element position (14.9.2 step 2), so a waiting element leaves T unbound (u6f_g_wait).
     [Theory]
     [InlineData("U1.6f", "sg4b", IdentityT + FFixed + KD + "    return f(if c => [if d => identity(1) else => 2, 3] else => [4, 5])\n", "")]
@@ -264,40 +263,45 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6f", "g244", IdentityT + Stop + "func f(x: [2 of bool]) -> i32 => 1\n" + KHead + "    return f(if c => [identity(3), 4] else => [stop(), 3])\n", "NoApplicableOverload_Kd f(if c => [identity(3), 4] else => [stop(), 3])")]
     [InlineData("U1.6f", "b1_afix_W_fb", IdentityT + Stop + "func f(x: [2 of bool]) -> i32 => 1\n" + KD + "    return f(if c => [(if d => identity(1) else => 2), 3] else => stop())\n", "NoApplicableOverload_Kd f(if c => [(if d => identity(1) else => 2), 3] else => stop())")]
     [InlineData("U1.6f", "u6f_fix_len", IdentityT + FFixed + KHead + "    return f(if c => [identity(1), 2] else => [3, 4, 5])\n", "NoApplicableOverload_Kd f(if c => [identity(1), 2] else => [3, 4, 5])")]
-    [InlineData("U1.6f", "u6f_dyn_wait", IdentityT + FArrays + KHead + "    return f(if c => [identity(1)] else => [identity(2)])\n", "AmbiguousBinding_Kd f(if c => [identity(1)] else => [identity(2)])")]
+    [InlineData("U1.6f", "u6f_dyn_wait", IdentityT + FArrays + KHead + "    return f(if c => [identity(1)] else => [identity(2)])\n", "")]
     [InlineData("U1.6f", "u6f_g_wait", IdentityT + "func g<T>(x: T) -> i32 => 0\n" + KHead + "    return g(if c => [identity(1), 2] else => [3, 4])\n", "")]
     public void AJoinsArrayResultsAreClassifiedPerIndex(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
-    // B1 (R4's G1b B1 and U1.5 design review D1): a join its call classifies fits position by position (SPEC 10.5.1 last paragraph,
-    // 10.5.4, 14.9.2). A position with no typed part whose part awaits its call (`identity(1)` beside `2`) is checked by the selected
-    // candidate only, its literal taking no part in applicability, so with `f` overloaded no candidate is best (10.4): at the join's own
-    // position (wj_ov, pw8, its `match` pw16, pw17 in a `let`), as an element (wj_elem) and at a child position (wj_tup, its `match`
-    // wj_tup_m; wj_arr moved to U1.6f's rows). With one candidate the sources get their own records, as `g(identity(1))` and `g(2)` do (wj_one_n, wj_pick_n,
+    // B1 (R4's G1b B1 and U1.5 design review D1), as K's SPEC 10.5.1 revises it (PLAN G924 AF-3b; ArgFlow ruling 121): a join its call
+    // classifies fits position by position (SPEC 10.5.1 last paragraph, 10.5.4, 14.9.2), each source checked against the expected Type
+    // under each remaining candidate as that argument would be. A position with no typed part whose part awaits its call (`identity(1)`
+    // beside `2`) is checked at each candidate's Type, its literal too: at `bool` neither checks, so `f(i64)` is selected (class-3 fixes
+    // of the rows that pinned "checked by the selected candidate only"): at the join's own position (wj_ov, pw8, its `match` pw16, pw17
+    // in a `let`), as an element (wj_elem) and at a child position (wj_tup, its `match` wj_tup_m; wj_arr moved to U1.6f's rows); a
+    // contextual Case among the sources (o2: at `Option<bool>` `.Some(1)` does not check) and an array of function references and
+    // anonymous functions (g050: at `(bool) -> bool` the typed `gv1@move` and `twice` do not fit) likewise. With one candidate the sources get their own records, as `g(identity(1))` and `g(2)` do (wj_one_n, wj_pick_n,
     // wj_ctor_n, wj_tup_n, and wj_one_v at a value call). U1.6 (BU's U1.5 review B1): every part of a child position is formed alike
     // (AddResultPart), so a nested waiting join in the Tuple result of a join with one source beside Never is flattened as with two
-    // (sg1; sg1b), and its one candidate gives the sources' records (sg1n). BU's landing B2 rows: a slot only waiting parts sit at stays
+    // (sg1; sg1b, each selecting `f((i64, i32))`), and its one candidate gives the sources' records (sg1n). BU's landing B2 rows: a slot only waiting parts sit at stays
     // unbound, since a waiting argument is never evidence for an outer slot (SPEC 10.5.1): a deferred call beside Never (g125) or beside
     // another at a Tuple's child position (n2_flat).
     [Theory]
-    [InlineData("U1.5", "wj_ov", IdentityT + FPairs + KHead + "    return f(" + WJoin + ", 3)\n", "AmbiguousBinding_Kd f(" + WJoin + ", 3)")]
-    [InlineData("U1.5", "pw8", IdentityT + FScalars + KHead + "    return f(" + WJoin + ")\n", "AmbiguousBinding_Kd f(" + WJoin + ")")]
-    [InlineData("U1.5", "pw16", IdentityT + FScalars + KHead + "    return f(match c\n        true => identity(1)\n        false => 2\n    )\n", "AmbiguousBinding_Kd f(match c")]
-    [InlineData("U1.5", "pw17", IdentityT + FPairs + KHead + "    let a = f(" + WJoin + ", 0)\n    return a\n", "AmbiguousBinding_Kd f(" + WJoin + ", 0)")]
-    [InlineData("U1.5", "wj_elem", IdentityT + FTuples + KHead + "    return f((" + WJoin + ", 3))\n", "AmbiguousBinding_Kd f((" + WJoin + ", 3))")]
-    [InlineData("U1.5", "wj_tup", IdentityT + FTuples + KHead + "    return f(" + WTuples + ")\n", "AmbiguousBinding_Kd f(" + WTuples + ")")]
-    [InlineData("U1.5", "wj_tup_m", IdentityT + FTuples + KHead + "    return f(match c\n        true => (identity(1), 2)\n        false => (2, 3)\n    )\n", "AmbiguousBinding_Kd f(match c")]
+    [InlineData("U1.3", "o2", "func p(o: Option<i32>) -> i32 => 0\nfunc p(o: Option<bool>) -> i32 => 1\n" + RunHead + "    return p(if c => .None else => .Some(1))\n", "")]
+    [InlineData("U1.6g3b", "g050", Twice + Idg + "func f(x: Array<(i64) -> i64>) -> i32 => 0\nfunc f(x: Array<(bool) -> bool>) -> i32 => 1\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool) -> i32\n    return f(if c2 => [idg, func [] (v) => v] else if c3 => [gv1@move, func [] (v) => v] else => [twice, func [] (v) => v])\n", "")]
+    [InlineData("U1.5", "wj_ov", IdentityT + FPairs + KHead + "    return f(" + WJoin + ", 3)\n", "")]
+    [InlineData("U1.5", "pw8", IdentityT + FScalars + KHead + "    return f(" + WJoin + ")\n", "")]
+    [InlineData("U1.5", "pw16", IdentityT + FScalars + KHead + "    return f(match c\n        true => identity(1)\n        false => 2\n    )\n", "")]
+    [InlineData("U1.5", "pw17", IdentityT + FPairs + KHead + "    let a = f(" + WJoin + ", 0)\n    return a\n", "")]
+    [InlineData("U1.5", "wj_elem", IdentityT + FTuples + KHead + "    return f((" + WJoin + ", 3))\n", "")]
+    [InlineData("U1.5", "wj_tup", IdentityT + FTuples + KHead + "    return f(" + WTuples + ")\n", "")]
+    [InlineData("U1.5", "wj_tup_m", IdentityT + FTuples + KHead + "    return f(match c\n        true => (identity(1), 2)\n        false => (2, 3)\n    )\n", "")]
     [InlineData("U1.5", "wj_one_n", IdentityT + GBool + KHead + "    return g(" + WJoin + ")\n", WSources)]
     [InlineData("U1.5", "wj_one_v", IdentityT + GBool + KHead + "    let h = g\n    return h(" + WJoin + ")\n", WSources)]
     [InlineData("U1.5", "wj_pick_n", IdentityT + Pick + "func k(c: bool, v: bool) -> bool\n    return pick(" + WJoin + ", v)\n", WSources)]
     [InlineData("U1.5", "wj_ctor_n", IdentityT + BoxInit + KHead + "    let b: Box<bool> = Box.init(" + WJoin + ")\n    return 0\n", WSources)]
     [InlineData("U1.5", "wj_tup_n", IdentityT + "func f(x: (bool, i32)) -> i32 => 0\n" + KHead + "    return f(" + WTuples + ")\n", WSources)]
-    [InlineData("U1.6", "sg1", IdentityT + Stop + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => stop())\n", "AmbiguousBinding_Kd f(if c => (" + SgJoin + ", 3) else => stop())")]
-    [InlineData("U1.6", "sg1b", IdentityT + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => (" + SgJoin + ", 3))\n", "AmbiguousBinding_Kd f(if c => (" + SgJoin + ", 3) else => (" + SgJoin + ", 3))")]
+    [InlineData("U1.6", "sg1", IdentityT + Stop + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => stop())\n", "")]
+    [InlineData("U1.6", "sg1b", IdentityT + FTuples + KD + "    return f(if c => (" + SgJoin + ", 3) else => (" + SgJoin + ", 3))\n", "")]
     [InlineData("U1.6", "sg1n", IdentityT + Stop + "func g(x: (bool, i32)) -> i32 => 0\n" + KD + "    return g(if c => (" + SgJoin + ", 3) else => stop())\n", WSources)]
     [InlineData("U1.3", "g125", IdentityT + Stop + "func g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, c2: bool) -> i32\n    return g(label lp: if c2 => (if c1 => stop() else => identity(2)) else => stop())\n", "")]
     [InlineData("U1.3", "n2_flat", IdentityT + "func first<T>(value: (T, i64)) -> () => ()\nfunc k(c: bool, d: bool, e: bool, x: i64) -> ()\n    first(if c => (identity(5), x) else => (identity(4), x))\n", "")]
-    public void AWaitingJoinPositionTakesNoPartInApplicability(string unit, string form, string body, string records)
+    public void AWaitingJoinPositionIsCheckedAtEachCandidate(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);
 
     // B1's valid twins: the candidate that the other positions or arguments fix completes the waiting position (wj_pick, wj_ctor_exp at

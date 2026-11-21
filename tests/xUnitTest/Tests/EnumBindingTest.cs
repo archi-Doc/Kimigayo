@@ -205,16 +205,27 @@ public class EnumBindingTest
         }
     }
 
-    // SPEC 10.5.1, 10.1 (owner decision (1)): a contextual Case is never probed per candidate, so candidates that differ only in its payload
-    // Type are ambiguous even where only one payload Type would fit.
+    // SPEC 10.5.1, 6.5.2, 10.1 (K's G924 text; the owner's O-333 R3 (a), superseding BU-2's owner decision (1), "never probed per
+    // candidate"; PLAN G924 AF-3b, ArgFlow ruling 121): a contextual Case is checked against the expected Type under each remaining
+    // candidate, so a candidate whose payload Type takes no payload is inapplicable: `128` is no `i8` (12.3), so the `i32` candidate is
+    // selected (its result `i32` is the one `s` takes), in either declaration order and inside a Tuple payload; where both
+    // payload Types take it, step 2 of 10.4 finds no candidate best (the invalid twin).
     [Theory]
-    [InlineData("func f(x: Option<i8>) => ()\nfunc f(x: Option<i32>) => ()\nf(.Some(128))", "f(.Some(128))")]
-    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.Some(128))", "f(.Some(128))")]
-    [InlineData("func f(x: Option<(i8, i8)>) => ()\nfunc f(x: Option<(i32, i32)>) => ()\nf(.Some((128, 1)))", "f(.Some((128, 1)))")]
-    public void AContextualCaseIsNotProbedPerCandidate(string source, string at)
+    [InlineData("func f(x: Option<i8>) -> bool => true\nfunc f(x: Option<i32>) -> i32 => 1\nlet r = f(.Some(128))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<i32>) -> i32 => 1\nfunc f(x: Option<i8>) -> bool => true\nlet r = f(.Some(128))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<(i8, i8)>) -> bool => true\nfunc f(x: Option<(i32, i32)>) -> i32 => 1\nlet r = f(.Some((128, 1)))\nlet s: i32 = r", null)]
+    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i64>) => ()\nf(.Some(1))", "f(.Some(1))")]
+    public void AContextualCaseIsCheckedPerCandidate(string source, string? ambiguous)
     {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+        var check = DiagnosticCorpus.Check(source);
+        if (ambiguous is null)
+        {
+            Assert.True(check.Accepted, string.Join("; ", check.Diagnostics.Select(static x => x.Code)));
+            return;
+        }
+
+        var error = Assert.Single(check.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), ambiguous), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction takes the expected Type's slots first, then its payloads' evidence by kind,
