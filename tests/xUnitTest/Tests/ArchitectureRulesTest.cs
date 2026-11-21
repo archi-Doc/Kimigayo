@@ -340,8 +340,8 @@ public class ArchitectureRulesTest
     // the one read that applies the running pass's admission to a library identity (from S1-r1b's split its point-1 paths while the
     // conditional registrar has not run: OwningIterator's and BorrowingIterator's LendingIterator identity gains its Iterator ancestor's path
     // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. The one other
-    // match is an inference batch's Paths (Binding.AssociatedInference.cs), not an identity's.
-    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.AssociatedInference.cs=1;Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
+    // match is an inference batch's Paths (Binding.AssociatedInference.Demand.cs), not an identity's.
+    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.AssociatedInference.Demand.cs=1;Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
     // PLAN G949 Stage 2 (R8-L1 under O-381 (b)): a reader reaches its Binding's facts through its own Binding, never through a node's
     // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
     // by file: the route units lowered them to CodeContext's and the parser's, which R7 owns.
