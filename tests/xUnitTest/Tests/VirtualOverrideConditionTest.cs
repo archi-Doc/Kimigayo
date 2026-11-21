@@ -13,6 +13,7 @@ namespace XunitTest;
 public class VirtualOverrideConditionTest(ITestOutputHelper output)
 {
     private const string Helper = "group Operations\n    public func duplicate<V>(value: ref/V) -> V\n        V is Copy\n        return value@follow\n";
+    private const string First = "contract First\n    associate Element\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> T.(First).Element\n        T is First\n        $abort(\"unused\")\n";
 
     [Theory]
     [InlineData(false)]
@@ -67,30 +68,31 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     }
 
     // SPEC 6.4.3 (the owner's O-370): an override of a slot whose substituted condition is Refuted (`string is Copy`) is one declaration
-    // error at the override, not a contradictory premise of its body. R7-E2 E2-5a (the Front's C3, M1; probes s1, s3, labelled from SPEC
-    // first): its result Type (s1) or Origin binders (s3) breaking the slot's contract are compared from the two declarations alone, so
-    // each is its own record beside it (SPEC 6.4.4, 23.1.2; dev kept the first only).
+    // error at the override, not a contradictory premise of its body. R7-E2 E2-5a (the Front's B2, B's ruling (b); probe s4, labelled
+    // from SPEC first): a result the slot forms through that refuted premise (`Plain.(First).Element` under `Plain is First`) rests on it,
+    // so the result check adds no record beside it (the slot's first failure until R7-E5, D-924); s4t, where Plain conforms, is valid.
     [Theory]
-    [InlineData("read(self: objref/Self) -> i32", "1", "read(self: objref/Self) -> i32 => 2", "InvalidConstraint_Kd")]
-    [InlineData("read(self: objref/Self) -> i32", "1", "read(self: objref/Self) -> i64 => 2", "InvalidConstraint_Kd OverrideContractMismatch_Kd")]
-    [InlineData("choose(self: objref/Self, value: ref/i32 during source) -> ref/i32 during source", "value", "choose(self: objref/Self, value: ref/i32 during other) -> ref/i32 during other => value", "InvalidConstraint_Kd OverrideContractMismatch_Kd")]
-    public void AClosedInapplicableSlotsOverrideIsOneDeclarationError(string slot, string result, string implementation, string codes)
+    [InlineData("o370", "open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2", "InvalidConstraint_Kd")]
+    [InlineData("s4", First + "struct Plain\nstruct Derived : Base<Plain>\n    override func read(self: objref/Self, value: i32) -> i32 => 1", "InvalidConstraint_Kd")]
+    [InlineData("s4t", First + "struct Plain\n    Self is First\n    associate First.Element is i32\nstruct Derived : Base<Plain>\n    override func read(self: objref/Self, value: i32) -> i32 => 1", "")]
+    public void AClosedInapplicableSlotsOverrideIsOneDeclarationError(string form, string program, string codes)
     {
-        var c = MinimalEmissionTest.Analyze($"open struct Base<T>\n    public virtual func {slot}\n        T is Copy\n        return {result}\nstruct Derived : Base<string>\n    override func {implementation}\n()");
-        Assert.Equal(codes, string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Order(StringComparer.Ordinal)));
+        var c = MinimalEmissionTest.Analyze(program + "\n()");
+        Assert.True(codes == string.Join(" ", c.Binding.Issues.Select(static x => x.Code.ToString()).Order(StringComparer.Ordinal)), $"{form}: {MinimalEmissionTest.Describe(c)}");
     }
 
-    // R7-E2 E2-5a (B's O8, M1; labelled from SPEC first): an override of a slot whose substituted condition is Refuted (6.4.3) that also
-    // breaks the slot's contract (6.4.2's third step, an external name or the result Type) fails two independent requirements, so each is
-    // its own record at the override (SPEC 23.1.2; dev kept the first only, the contract's facts unread). Twins: the same contract break
-    // where the condition holds (`i32 is Copy`) gives its one record; the condition alone is the row above.
+    // R7-E2 E2-5a (B's O8 and C3, M1; labelled from SPEC first): an override of a slot whose substituted condition is Refuted (x1) or
+    // Error (s5n: `contract Bad: Missing`) also breaking the slot's external names (6.4.2's third step) fails two independent requirements:
+    // the names are the two declarations' own, so each is its own record at the override (SPEC 6.4.3, 23.1.2; dev kept the first only).
+    // A result mismatch beside such a premise keeps dev's one record (B2: the slot's result is formed through the premises). Twins: the
+    // same contract break where the condition holds (`i32 is Copy`) gives its one record; the condition alone is the row above.
     [Theory]
-    [InlineData("x1", "string", "renamed: i32) -> i32 => renamed", "InvalidConstraint_Kd: * | OverrideContractMismatch_Kd: *")]
-    [InlineData("x2", "string", "value: i32) -> i64 => 2", "InvalidConstraint_Kd: * | OverrideContractMismatch_Kd: *")]
-    [InlineData("x1t", "i32", "renamed: i32) -> i32 => renamed", "OverrideContractMismatch_Kd: *")]
-    [InlineData("x2t", "i32", "value: i32) -> i64 => 2", "OverrideContractMismatch_Kd: *")]
-    public void AnInapplicableSlotsOverrideThatBreaksItsContractKeepsBothRecords(string form, string argument, string tail, string records)
-        => CompilationTestHelper.AssertBindingRecordsAtLines(form, $"open struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> i32\n        T is Copy\n        return value\nstruct Derived : Base<{argument}>\n    override func read(self: objref/Self, {tail}\npublic func main() => ()", records);
+    [InlineData("x1", "", "Copy", "string", "renamed: i32) -> i32 => renamed", "InvalidConstraint_Kd: * | OverrideContractMismatch_Kd: *")]
+    [InlineData("x1t", "", "Copy", "i32", "renamed: i32) -> i32 => renamed", "OverrideContractMismatch_Kd: *")]
+    [InlineData("x2t", "", "Copy", "i32", "value: i32) -> i64 => 2", "OverrideContractMismatch_Kd: *")]
+    [InlineData("s5n", "contract Bad: Missing\nstruct Plain\n", "Bad", "Plain", "renamed: i32) -> i32 => renamed", "InvalidConstraint_Kd: contract Bad: Missing | InvalidConstraint_Kd: public virtual func read(self: objref/Self, value: i32) -> i32 | InvalidConstraint_Kd: override func read(self: objref/Self, renamed: i32) -> i32 => renamed | OverrideContractMismatch_Kd: override func read(self: objref/Self, renamed: i32) -> i32 => renamed")]
+    public void AnInapplicableSlotsOverrideThatBreaksItsContractKeepsBothRecords(string form, string prelude, string premise, string argument, string tail, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines(form, $"{prelude}open struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> i32\n        T is {premise}\n        return value\nstruct Derived : Base<{argument}>\n    override func read(self: objref/Self, {tail}\npublic func main() => ()", records);
 
     [Fact]
     public void EditingAnOriginalPremiseRevokesTheInheritedProof()

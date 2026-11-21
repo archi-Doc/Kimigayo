@@ -445,7 +445,7 @@ public sealed partial class Binding
 
             // A clause not ready is not bound here; the walk reaching a clause under binding is the cycle BindType reports (SPEC 9.5).
             var next = this.DirectBase(structure);
-            var baseType = syntax.BoundType ?? (next is not null ? this.knownBases?.GetValueOrDefault(structure) ?? this.BindType(syntax, scope) : this.resolvingTypes.Contains(syntax) ? this.BindType(syntax, scope) : null);
+            var baseType = syntax.BoundType ?? (next is not null ? this.knownBases.GetValueOrDefault(structure) ?? this.BindType(syntax, scope) : this.resolvingTypes.Contains(syntax) ? this.BindType(syntax, scope) : null);
             if (baseType is null || this.PartType(baseType, layer) is not { } substituted)
             {
                 if (syntax.BindingState != BindingState.Unvisited)

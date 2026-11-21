@@ -182,10 +182,7 @@ internal static class NativeConfiguration
             }
         }
 
-        if (name == WindowsProfile.Kernel32Library)
-        {
-            (failures ??= []).Add("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
-        }
+        CheckReserved(name, ref failures);
 
         // A self-targeted record expands into a requirement and a supply; overlapping explicit fields must agree.
         if (requirement is not null &&
@@ -219,17 +216,7 @@ internal static class NativeConfiguration
             }
         }
 
-        if (library.Name == WindowsProfile.Kernel32Library)
-        {
-            (failures ??= []).Add("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
-        }
-
-        // The reserved backend is one compiler-managed supply; only a project's own legacy override may name it.
-        if (library.Name == WindowsProfile.BackendLibrary)
-        {
-            (failures ??= []).Add("kimi_backend is supplied by the compiler toolchain and cannot be supplied for another package.");
-        }
-
+        CheckReserved(library.Name, ref failures);
         if (library.Kind is not null)
         {
             (failures ??= []).Add($"NativeLibraries record '{library.Name}' for package '{library.Package?.PackageId}' cannot declare Kind; " +
@@ -237,6 +224,16 @@ internal static class NativeConfiguration
         }
 
         return (failures?.Count ?? 0) == count;
+    }
+
+    // IMPL 20.4: kernel32 and kimi_backend, the reserved supplies, are the compiler's, so a supply record of either name, self-targeted
+    // or for a package, under any target, is an error.
+    private static void CheckReserved(string? name, ref List<string>? failures)
+    {
+        if (name is WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary)
+        {
+            (failures ??= []).Add($"{name} is supplied by the compiler. Remove the {name} entry from NativeLibraries.");
+        }
     }
 
     // Whether two packaged records supply one name of one package with assertions that cannot both hold.

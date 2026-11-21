@@ -148,8 +148,9 @@ internal static partial class NativeToolchain
         }
     }
 
-    // The installed kernel32 import library: its recorded generation conditions and hash, its definition, and the DLL, architecture and
-    // symbol set the tools read from it. The record keeps the installation's entry.
+    // The installed kernel32 import library: its recorded generation conditions and hash, the catalog's hash (the compiler's supply's
+    // bytes, which the root's copy stays until B6b), its definition, and the DLL, architecture and symbol set the tools read from it. The
+    // record keeps the installation's entry.
     private static async Task VerifyKernel32(
         string root, string bin, JsonObject record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
@@ -157,7 +158,13 @@ internal static partial class NativeToolchain
         var metadataFile = RequireInstalledFile(Path.ChangeExtension(kernel, ".json"));
         using var metadata = JsonDocument.Parse(await File.ReadAllBytesAsync(metadataFile, cancellationToken));
         var entry = metadata.RootElement;
-        Kernel32Imports.ValidateInstallation(entry, Hash(kernel));
+        var hash = Hash(kernel);
+        Kernel32Imports.ValidateInstallation(entry, hash);
+        if (hash != ToolchainIdentity.Kernel32Sha256)
+        {
+            throw new InvalidDataException("Adopted kernel32 SHA-256 mismatch: " + kernel);
+        }
+
         if (Hash(RequireInstalledFile(Path.ChangeExtension(kernel, ".def"))) != Kernel32Imports.DefinitionSha256)
         {
             throw new InvalidDataException("Installed kernel32 definition SHA-256 mismatch.");

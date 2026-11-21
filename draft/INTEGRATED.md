@@ -1659,3 +1659,12 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   (`-LlvmRoot`) and writes, the record's `tatara` member with `schemaVersion` 1, `LlvmBin` accepted and unread until B6, the
   second Ctrl+C, the gate's head, and "the tool-launching code" becomes "the build's tool launching". Stage A is complete with
   A4's window. Nothing frozen.
+- IMPL §20.4's reserved supplies and §20.3.2's Toolchain paragraph (2026-11-21, unit B6a, Q-617; T's D-1004): the B6 revision the
+  plan's entry above names, after its owner question (the owner's decision 20, O-469 (a), (a), (a)), an explicit contract revision
+  with an independent review. `kernel32` and `kimi_backend` are supplied by the compiler, and a `NativeLibraries` entry for either
+  is an error; the toolchain root's contents lose the backend library. The plan gives the decision (§7's B6, §11), not the text:
+  the wording is the unit's and its review's, so no plan text is frozen.
+- Revision 5 (2026-11-21, the Middle's design review of unit B6a, C-434 C3, and the owner's decision 20, O-469 (a), (a), (a); T's
+  D-1004): §6's last sentence: after B6a the compiler carries the link material, so an LLVM update also adopts the reproduced
+  `kernel32.lib`'s hash (`kernel32.sha256`) beside the backend's `artifactSha256` and commits both reproduced `.lib` files under
+  `src/backend/windows-x64/` ("the procedure does not change" goes). No decision of the owner changes. Nothing frozen.

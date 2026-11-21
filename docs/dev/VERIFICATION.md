@@ -9,7 +9,9 @@ integration, and extension unit/integration tests with the managed compiler. Nei
 
 The Windows job downloads the adopted LLVM archive only on a toolchain-cache miss, checks its pinned SHA-256, extracts it
 and calls the backend setup script with `-LlvmRoot <the extracted archive>`, which also builds `tatara.dll`; the cache key
-covers `profile.json`, `setup.ps1` and `src/Tatara`. Explicit toolchain verification checks cached installations too.
+covers `profile.json`, `setup.ps1`, the backend's sources and builders (`src/backend/windows-x64/src/**`, `build.ps1`,
+`kernel32.ps1`) and `src/Tatara`, so a change to any of them reruns setup, which must reproduce the committed libraries.
+Explicit toolchain verification checks cached installations too.
 Update the archive version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
 when a later step fails. A configured lane is not evidence of a successful hosted run; inspect that run's results.
 
