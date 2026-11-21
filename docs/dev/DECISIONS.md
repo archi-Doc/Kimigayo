@@ -27155,7 +27155,7 @@ R8-M* and R9-M* by the stage of the recording unit.
 ## Tatara (adopted 2026-11-19)
 
 Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
-holds the owner's decisions 1–16). Units of the Tatara lane record their entries here as T-M*.
+holds the owner's decisions 1–17). Units of the Tatara lane record their entries here as T-M*.
 
 - **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
   「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
@@ -27214,6 +27214,9 @@ holds the owner's decisions 1–16). Units of the Tatara lane record their entri
     `ToolOutputFile`), also after a fatal error or crash (a return of 2 closes the recorded descriptor and removes the file): Tatara
     installs no signal handler, console control handler or exception filter in the host process (C-424 R1, R2; regression
     `UnhandledExceptionFilterStaysTheHosts`).
+  - Removed by unit A4 (T-M6, 2026-11-21): the private toolchain root as a requirement (setup installs `tatara.dll` into every
+    root; a root of one's own stays the ordinary selection, `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT`) and `Explicit` on the tests
+    that load `tatara.dll`.
 - **T-M4 A2's temporary structures and the executor's four calls** (Tatara, 2026-11-20; the plan's unit A2, Q-574, D-928; Major;
   design review C-423; implementation review C-424, ACCEPT WITH CONDITIONS, its fix round re-checked).
   - `NativeBuild` runs its tool work through `NativeExecutor`: optimize, emit, inspect, link. The steps, the verdicts, the redaction
@@ -27236,6 +27239,9 @@ holds the owner's decisions 1–16). Units of the Tatara lane record their entri
   - Amended by T-M5 (unit A3, 2026-11-20): the `BuildManifest` overload goes; `NativeToolchain.Build` and `BuildManifest` have one
     signature each, taking the factory, which every caller passes (the product's callers pass `Kimigayo.NativeExecutor`), temporary
     until A4 as the seam.
+  - Removed by unit A4 (T-M6, 2026-11-21): (1) the seam (`NativeExecutor`, `NativeExecutorContext`, `ExternalToolExecutor`,
+    `TataraExecutor`, the factory and its parameters; `Tatara`'s calls take `TataraContext`, `ObjectSymbol` and `ObjectFacts` are in
+    `Tatara.cs`, and `PosixSymbols` is the tool control comparison's), (2) the executor comparison, (3) `Explicit`.
 - **T-M5 `kimi tatara`: the session's rules and A3's temporary reader** (Tatara, 2026-11-20; the plan's unit A3, Q-589, D-955;
   Major; design review C-425; implementation review C-426, ACCEPT WITH CONDITIONS, both rounds taken).
   - A line is a command line: `CommandUnit.Product.Execute(commandLine, serviceProvider, cancellationToken)`, extracted from
@@ -27258,3 +27264,42 @@ holds the owner's decisions 1–16). Units of the Tatara lane record their entri
     `ArchitectureRulesTest.BuildReaders` row for `Unit/Kimigayo.cs` (the owner's O-455 (a)); the factory arguments of
     `NativeToolchain.Build` and `BuildManifest`; `Explicit = true` on `TataraCommandNativeTest`. `Unit/Command/TataraCommand.cs`'s
     `BuildReaders` row is not temporary: it is a command, which COMPILER_ARCHITECTURE names among Build's readers.
+  - Removed by unit A4 (T-M6, 2026-11-21): `Kimigayo.NativeExecutor`, its `BuildReaders` row and the factory arguments; `Explicit`
+    on `TataraCommandNativeTest`. Amended by T-M6: `EndProcess` is `Program`'s, and a press with nothing pending in a session (the
+    redirected reader waiting) calls the action the session replaced, by default the root's termination and then the process's end.
+- **T-M6 The single-shot switch: the build calls Tatara** (Tatara, 2026-11-21; the plan's unit A4, Q-604, D-981; Major; design
+  review C-427; implementation reviews C-428, C-429, C-430; the owner's O-460 (a), the plan's decision 17)
+  - `NativeBuild` loads `Tatara` (`Tatara.Load`, the root's `tatara.dll`) after the pair's check and the record's first write,
+    writes `tools.tatara` and calls its four operations with `TataraContext` (the report, the token and the five target values,
+    nothing else); `Tatara.Call` checks the token again inside its lock. No build launches an LLVM tool: the tool runs are
+    `ToolProcess`, a `file`-scoped type of `NativeToolchain.Verification.cs`, used by `toolchain verify` only (the tools' version
+    banners, kernel32's inspection); `NativeToolchain.Wait`, `internal` for it, still serves `RunExecutable`.
+  - **Removed (the temporaries of T-M3, T-M4 and T-M5):** the private toolchain root as a requirement (a root of one's own stays the
+    ordinary root selection); the seam (`NativeExecutor`, `NativeExecutorContext`, `ExternalToolExecutor`, `TataraExecutor`, the
+    factory and the parameters of `Build` and `BuildManifest` that took it); the executor comparison; `Explicit` on the tests that
+    load `tatara.dll` (each skips off Windows; only a child-process row's child is Explicit); `Kimigayo.NativeExecutor` and its
+    `ArchitectureRulesTest.BuildReaders` row.
+  - **The installation:** `setup.ps1 -LlvmRoot` (required; the bin is `<LlvmRoot>/bin`: tools and libraries from one archive). A
+    destination with the same SHA-256 is never written (`Test-KimiSameFile`), so an unchanged rerun writes nothing a running process
+    holds; `tatara.dll`, the backend and `installation.json` are each replaced by one retried move (`Move-KimiFile`), a loaded
+    `tatara.dll` renamed aside (`tatara.dll.<time>.old`, deleted by a later run). `tatara.dll` is built outside the repository and
+    its build identity checked before the first write to the root. The record gains `tatara.sha256` and keeps `schemaVersion` 1:
+    the member is additive, older readers read members by name and ignore it, and the new reader requires it; schema 2 would fail
+    every older-base `toolchain verify` of the shared root. `supportingDlls` lists the archive bin's DLLs, no longer every DLL of
+    the root. Only a window reruns setup on the shared root, on an empty heavy-run registry (VERIFICATION).
+  - **`toolchain verify`** reads `tatara.sha256` in the record's shape check; after the tools it loads `tatara.dll` (`Tatara.Load`:
+    found, loaded and bound, its ABI and LLVM version) and then compares its hash; its `--Report` record gains `tatara`.
+  - **Ctrl+C (decision 17):** `Program` owns one flag, set by the default action's first call, which requests the root's
+    termination; a call with the flag set ends the process (`Program.EndProcess`: on Windows `TerminateProcess(130)`, not
+    `Environment.Exit`, which would run `tatara.dll`'s detach; off Windows libc's `_exit(130)`, since `Environment.Exit` would run
+    `AppCloseHandler`, subscribed to process exit, which waits up to two seconds; C-430 C1). `Main`'s and `AppCloseHandler`'s own
+    termination requests never set it. `check --Format json` holds an empty action from before its last token check through the
+    flush (`CheckJsonOutput.Publish`; SPEC 23.2.3). A `kimi tatara` session with nothing pending calls the action it replaced.
+  - **What a build loses, accepted:** the per-tool 5-minute timeout (rejected: a watchdog that ends the process; the second press
+    is the escape, and the harnesses keep their own timeouts; `ToolProcess` keeps it for verify); isolation after a fatal LLVM or
+    LLD error (every later native build in the process fails naming the first cause; reachable from source only through a compiler
+    or LLVM defect; STATUS).
+  - **`LlvmBin`:** builds stop reading the option, the project setting and the manifest member (emit still writes the member,
+    decision 1); `toolchain verify` reads its option. Removal is B6's, after its owner question (the plan's §11; PLAN G1173).
+  - Rejected: `schemaVersion` 2; the hash before the load in verify (`Tatara.Load` owns the not-found text; C-428 n1); an
+    `ArchitectureRulesTest` name rule for `ToolProcess` (the `file` scope enforces it).
