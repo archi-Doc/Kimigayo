@@ -303,6 +303,22 @@ public partial class LocalOriginClauseTest
         Assert.Equal(source.IndexOf("origin a outlives b", StringComparison.Ordinal), error.Related![0].Span!.Value.Start);
     }
 
+    // DECISIONS BU-175 (R7-C8 U-D3): the Type's own clause is proven at the annotation however deep the Type sits in it. The walk had a
+    // count of 64 and dropped a deeper part's obligations, so the unproven twin was accepted; a premise proving the clause keeps the
+    // valid twin free of records.
+    [Theory]
+    [InlineData(65)]
+    [InlineData(130)]
+    public void ATypesClauseIsProvenAtAnyDepthOfTheAnnotation(int depth)
+    {
+        var at = string.Concat(Enumerable.Repeat("Option<", depth)) + "S{w}" + new string('>', depth);
+        var body = "func f(p: ref/i32, q: ref/i32, r: ref/i32, s: " + at.Replace("S{w}", "S{u}", StringComparison.Ordinal) + ") -> i32\n" +
+            "    origin u.a == p\n    origin u.b == q\n    origin p outlives r\n@premise    let s2: " + at + " = s@move\n        origin w.a == r\n        origin w.b == q\n    return 0\n";
+        Assert.Empty(DiagnosticCorpus.Check(Ordered + body.Replace("@premise", "    origin r outlives q\n", StringComparison.Ordinal) + Main).Diagnostics);
+        var source = Ordered + body.Replace("@premise", string.Empty, StringComparison.Ordinal) + Main;
+        AssertDeclared(source, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at, "requires r outlives q, which is not proven", null, "origin a outlives b");
+    }
+
     // An `==` clause of the Type is judged at the occurrence; with its forward direction proven, A5's record is the failing direction's
     // `outlives` relation, relating the `==` clause (R6-check H5, DECISIONS R5-M185; H3b T47: it was `q == p`).
     [Fact]
