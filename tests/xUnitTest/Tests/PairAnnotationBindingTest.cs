@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -146,9 +147,9 @@ public class PairAnnotationBindingTest
     [InlineData("func nest<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [[x], [y]]\n    return items.length", null)]
     public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
     {
-        var c = Parse(source);
-        c.Bind();
-        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        // R7-O1 H: the published Errors (a body relation is A5's record; Binding judges none).
+        Assert.Equal(code is null ? [] : [code], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code));
     }
 
     // SPEC 8.1.2, 15.3.6, 10.8 (PLAN G758): an original and an annotated pair occurrence at one generic slot, or a `var` pair local's
@@ -190,6 +191,47 @@ public class PairAnnotationBindingTest
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+    }
+
+    // SPEC 8.1.2, 23.1.2 (R7-N5 B3-2, C1's F8): nested static occurrences of one Field are two formation causes, the outer and the inner
+    // one, each its own record; a read of the Field, a fit and an interpolated call, rests on the Field's formation and adds none.
+    [Fact]
+    public void NestedStaticOccurrencesAreBothTheFieldsFormationCauses()
+    {
+        var c = Parse("struct Holder<s/T> {a}\n    s is owner or uniq\n    public let item: s/Option<s/T during static> during static\n" +
+            "func read(h: ref/Holder<i32>) -> string => h.item\nfunc show(h: ref/Holder<i32>) => Console.writeLine(\"\\(h.item)\")\n");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(
+            [(DiagnosticCode.InvalidOriginBinding_Kd, "s/Option<s/T during static> during static"), (DiagnosticCode.InvalidOriginBinding_Kd, "s/T during static")],
+            c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.Collection(
+            c.Binding.DerivedIssues,
+            static x => Assert.Equal("h.item", x.Node.ToString()),
+            static x => Assert.EndsWith(", h.item)", Assert.IsAssignableFrom<InvocationKoto>(x.Node).ToString(), StringComparison.Ordinal)); // The interpolation's formatting call.
+    }
+
+    // SPEC 8.1.2, 23.1.2 (R7-N5 B3-2, B's ruling P3): a pair occurrence's formation causes are its Final check's. An edit of the semantics
+    // clause alone (`s is owner or uniq` -> `s is owner`, both occurrences kept) forms the Field, so its read keeps no earlier cause: the
+    // fit's own Type mismatch is published and no record rests on the old formation, as in a fresh compilation of the edited text.
+    [Fact]
+    public void AnEditThatFormsAFieldLeavesItsReadNoFormationCause()
+    {
+        const string Source = "struct Holder<s/T> {a}\n    s is owner or uniq\n    public let both: (s/T during static, s/T during static)\n" +
+            "func read(h: ref/Holder<i32>) -> string => h.both\n";
+        var edited = Source.Replace("s is owner or uniq", "s is owner", StringComparison.Ordinal);
+        var c = Parse(Source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd, DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+        var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single(static x => x.ToString() == "s is owner or uniq");
+        var replacement = KotoTree.Walk(ParseTestHelper.ParseSuccess(edited).RootKoto).OfType<IsKoto>().Single(static x => x.ToString() == "s is owner");
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        ParseTestHelper.Detach(replacement, new IsKoto(ref reader, default, new CodeBlockKoto(replacement.CodeContext), new CodeBlockKoto(replacement.CodeContext)));
+        Assert.True(KotoHelper.Replace(clause.Parent!, clause, replacement));
+        Assert.False(c.Bind().IsComplete);
+        var fresh = Parse(edited);
+        Assert.False(fresh.Bind().IsComplete);
+        Assert.Equal([(DiagnosticCode.TypeMismatch_Kd, "h.both")], fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.Equal(fresh.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())), c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
     }
 
     // SPEC 15.3.5, 15.2.3, 8.15.2 (DECISIONS BU-44): a slot only a conditional pair slot uses is `uniq` in its binder's `uniq` cases and

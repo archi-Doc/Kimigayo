@@ -659,10 +659,23 @@ public sealed partial class Binding
         visitor.Scope = previous;
     }
 
+    // The children of a form bound without its meaning (a recovery or an unsupported form), each on its own; a name the form declares (its
+    // symbol's declaration, such as a recovered loop's binding) is no operand, so it rests on the form, whose record explains it (SPEC
+    // 23.1.2, DIAGNOSTICS 4.3).
     private sealed class ChildBinder(Binding binding) : KotoVisitor
     {
         internal BindingScope Scope { get; set; } = null!;
 
-        public override void Visit(Koto node) => binding.BindNode(node, this.Scope);
+        public override void Visit(Koto node)
+        {
+            if (node is IdentifierNameKoto { BoundSymbol: { } declared } && ReferenceEquals(declared.Declaration, node) && node.Parent is { } form)
+            {
+                binding.CompleteDependent(node, form);
+            }
+            else
+            {
+                binding.BindNode(node, this.Scope);
+            }
+        }
     }
 }

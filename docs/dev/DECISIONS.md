@@ -2939,6 +2939,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the value and has no row.
   - Superseded for call positions by R7-M51 (R7-O1 b1): A5 alone judges a body's call positions and Binding forms their rows, so
     "Binding's until R7" no longer holds there.
+  - Superseded by R7-M66 (R7-O1 H, D-944) for every body relation: Binding judges none and keeps no twin; A5's record is the one
+    record.
 - **R4-M109 An Error node is each consumer's derived value** (2026-10-22; amends R4-M88's Rule 2 and Part 3, consistent with R5-M63;
   amended by R4-M149 and BU-103) SPEC 23.1.2, 13.7.2, 11.3.
   - Cause: the publisher kept a consumer's Adjust on an input it published Error (an Error has no Place, PlaceShape Value, and no value
@@ -3015,35 +3017,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Process (superseded by R4-M119): R4 runs at most one implementer and one reviewer at a time; reviewers of R4's Binding-touching
     units stay BU's (the handoff's 2 + 1 applies again only on the owner's word). Rejected: 2 + 1; 2 + 1 with non-BU reviewers for
     Binding-touching units.
-- **R4-M111 The ledger compares Binding's Origin relation records only where they are twins** (2026-10-22; under R4-M94's package)
-  - Rule (R4-M4 and R4-M17 as R4-M108 narrows A5's old records): Binding's `Binding.OriginRelation` records are A5's only where they are
-    twins, the records of a relation that is also a row A5 judges: at a non-call fit every record of a node any of whose recorded chains
-    is a body chain, at a local's clause its body-chain record. Binding records the twin nodes where it forms their rows
-    (`RecordOriginFitFailure`, `JudgeLocalClause`) in a per-pass set reset with the Origin relation records (`ResetOriginRecords`),
-    read through `Binding.IsTwinRecord` (Transitional R6: H11 deletes it with the twins; R4-M23's `IsEffectRecord` shape). The ledger's
-    compared set gains a subset column, `IsEffectRecord` for Binding's IncompatibleImplementation and Unsupported rows and `IsTwinRecord`
-    for its two OriginRelation rows (`effectOnly` deleted). Every other Binding Origin relation record passes through: an
-    all-fixed-fixed node's (Binding's until R7, D8) and the Closure result over call-local storage (Binding's until A5-F7's 2c-6, R4-M108
-    M2-(i); 2c-6 adds its fill site with its row). `VerifiedSpecExampleTest`'s MIR side (`common` and the MIR's, R4-M45) gains them.
-  - Supersedes 2a0-D §5.3's first two bullets and D11 (R4-M108: twins keep `Binding.OriginRelation`); `Same(Ownership(UnprovenOrigin),
-    UnprovenConstraint_Kd)` goes with 2a0-3b (§5.3's permitted order). R5's Q17 shape is unchanged.
-  - Input to 2a-1a (R4-M108's Site condition, not decided here): a twin's ledger subject is Binding's issue node, the failed node or the
-    clause, which is its rows' Site; Binding's diagnostic is at the record's `At`. Reporting at the row's Site pairs twins `both` with no
-    ledger change; reporting at Binding's diagnostic location gives `location` differences unless the old side reads the record's `At`;
-    a second A5 problem at one node is a `new` row unless the old side lists the node's other chains.
-  - An input to H11: the clause site adds its node even where `FailExplained` stores no record because the node had already failed,
-    which the reviewer's reading finds unreachable (an `OriginRelationKoto` is failed only by this judgment, once per pass) and which
-    the ledger ignores (it asks only about `Binding.OriginRelation` records). If H11 takes the set as its census, it reads it as "a
-    clause with a body-chain row" or gates the add on the stored record.
-  - Rejected: the twin set in the C1-F4 view (verdict data for Mir, which no MIR reader uses); `OriginRelationFact.Twin` (R4-M108's "no
-    Twin field"); `BodyChain` over published records (it marks the Closure result and re-runs the formation test); rows at the record's
-    node (a call argument's fixed-fixed record shares its node with that position's rows); the code (Closure results are Unsatisfied,
-    and a mixed twin is Unproven); one more `twinOnly` branch (a second special case where the canonical table takes a column).
-  - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): with the ledger gone, the twin subset is the test MIR side's
-    filter (`Binding.IsTwinRecord`), until H11.
-  - Superseded in part by R5-M192's amendment (H15, 2026-11-06; the owner, verbatim 「Cで決定します」): `Binding.IsTwinRecord`
-    (`[Transitional("R7")]`) and MirSide's filter stay until R7's Problem records unit deletes them with the twins.
-  - Superseded in part by BU-127 (PLAN G572): 'an all-fixed-fixed node's (Binding's until R7, D8)' no longer holds for a region chain, which is a body chain: its record is a twin (`RecordOriginFitFailure`) or A5's alone (`JudgeCallPosition`, `FailedDeclaredRelation`, whose gate returns before `JudgeLocalClause`, and `RoutePendingRelation`).
+- **R4-M111** (2026-10-22) The ledger compares Binding's Origin relation records only where they are twins: superseded by R7-M66
+  (2026-11-21; no twin remains: `Binding.IsTwinRecord` and the test MIR side's filter go); full text: c17bd1792.
 - **R4-M112 Every no-candidate body variable of a local is its local's region** (2026-10-22; under R4-M94's package, 2a0-D §5.2 and
   D10, OQ12 (a), OQ7 (a); redone after BU's review blocked round 1 (B1, B2), under redo rulings R1–R3; round 1 never landed, so this
   entry supersedes nothing on dev)
@@ -3148,6 +3123,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (`let m: ref/i32 during (p and x) = local@ref`) reaches it. PD31's facts are asserted on `bad`, j-region and a chain through
     containment edges; void: a Relation of -1, since no program was found whose chain ends at a containment edge (a Ref's own Origin is
     Binding's name for the borrow, and every probed chain ends at a fit row).
+  - Superseded in part by R7-M66 (D-944): "Must not judge a relation Binding judged directly" reads "Binding judges no body relation;
+    a relation the premises prove forms no row".
 - **R4-M114 MirOrigins: Unknown, the oracle's masks, `Work` and the arena's limit; the view's part of a MIR atom** (2026-10-23; unit
   2a-1b, under R4-M94's package §6.3's Unknown, §6.4, D17 and D20)
   - Rule (SPEC 15.6.5): a chain or edge between fixed Origins is Proven only when the body's premises derive it, else Unknown:
@@ -3367,6 +3344,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     this entry.
   - Unverified: path d and the `OriginAtUse` case above are closed only by (F); (F) itself is reached by no source program (a finding
     needs a Binding defect).
+  - Amended by R7-M66 (F-H1-4): the Dependent meet class covers only the operands resting on the failed input. A meet outlives a
+    region only when every operand does (SPEC 15.3), so an operand not resting on the failed input is a conjunct of its own and, when
+    unproven, A5's independent record (SPEC 23.1.2). With R4-M152's P9 image gone, Unbound has one source, `PendingOrigin`.
 - **R4-M119 R4's concurrency by lane, and heavy runs capped across sessions** (owner, 2026-10-24, verbatim 「先ほどの推奨の制約に変更してください。」,
   adopting the recommended rule; supersedes R4-M110's process bullet and the owner's 「1+1 のまま続けてください。」 of the same day;
   amended by Q11; superseded in part by R7-M2: the session names)
@@ -3676,6 +3656,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     GXS, not 2c-4.
   - Superseded in part by R4-M152 (2c-5): §2.7's F1 route through the closure context (the owner's 「2c-5 F1: (c')」: a located
     Unsupported_Kd at a returned Closure's call until F1's representation unit); D-13's receiver well-formedness premise is built (G270).
+  - Superseded in part by R7-M66 (D-944): §2.5's pending list (a pending relation is a row like any other) and 2c-3's "CallResult
+    becomes Unbound at a call" (a value call publishes its Closure's call result atom as it is).
 - **R4-M127 A default's copy is decided before it is written** (2026-10-25; PLAN G245's unit U1) SPEC 7.2.3, 23.1.1, 23.1.2.
   - Cause: `MirBuilder.Inline` wrote a copy before it knew whether the call's substitution instantiates it. A null `TyCtxt.Apply` or
     `Compose` kept the template's own Type or callee substitution (`applied ?? type`, `composed ?? Subst`), then a trailing
@@ -4192,6 +4174,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     depends on the bound's row (`Compared`), which the graph does not keep. Reasons that hold: the receiver resolution stays with the
     reader (a Closure is classified after its body's bounds are stored), and the stored parent is the atom before it, BorrowSource's
     supplier.
+  - Superseded in part by R7-M66 (D-944): `SuppliedBy` goes; the supplier is the row's column `OriginRow.Supplier`, the longer end
+    as formed, which `Binding.RowSupplier` resolves for the record.
 - **R4-M136 OldRule's ledger key and the MIR target side (2x-T5), refining R4-M50 and R4-M60** (2026-10-25; unit 2x-T5 under the A5
   step 2 plan's PD19 and its 2x-T5 row (R4-M74))
   - Rule: a test that asserts an old rule keeps its default-pipeline assertion under `[Trait("OldRule", …)]` with a comment naming the
@@ -4872,6 +4856,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: (a) for F1 (a Subst field with composition, erasure and identity-relation changes, R5-visible), (b) inside 2c-5 (a second
     shared representation in one unit, R4-M119); a fit of the raw sources (an enclosing region is fixed in the Closure, so arr1 and
     arr2 were falsely Unknown); a per-call gate.
+  - Superseded in part by R7-M66 (D-944): P9's "its call result atom the call's Unbound atom, R4-M118's second source". P9 images
+    only the call receiver ρ, and the G280 cascade at the argument (h1's and d3's Owned `UnprovenConstraint_Kd`) is gone.
 - **R4-M153 One past-bound answer, decided by the checks that rest on it: `OwnershipDepthLimit_Kd` and drop-liveness (PLAN G272)**
   (superseded in part by R4-M157: the holding walk's key, and R4-M57) (2026-10-28; G272's design-first candidate, design 2; the owner's
   「G272: (1)」 and 「G272 要件: (a)」) SPEC 23.1.1 makes an exceeded resource limit Resource, never Language, and IMPL 21.3.2 an analysis
@@ -5602,6 +5588,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
       only a body-local Projection or Anchor at the longer end (`RefutesOriginRelation`) and returns Unknown for the open initializer
       Origin. The cause lies beyond the construction (a call whose T held that Origin meets the same judge), so the rows pin
       Unproven until G392.
+  - Superseded in part by R7-M66 (D-944): the record of a call's fixed-fixed input; Binding records no body relation.
 - **R4-M165 R4's exit under the owner's 90% rule** (2026-11-03; the owner, R4's dialog, verbatim
   「根本的な解決は後回しにする。90%の状態で良いので、R4を完成させて下さい。」, then 「先ほどの手順通りでなくても良いので、現在までの成果を活用し、早期にR4を完成させて下さい。細かい不具合は、後で修正します。」, and 「「U2j
   まで待つ」の撤回と、O4（一般 SPEC 規則を R4 exit 時に Unsupported で残す）はオーナー承認事項です。」; the exit and its exceptions below, verbatim 「これでexit」) For R4's
@@ -7542,9 +7529,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     were this cause (the old value's erased destruction through a writeback reservation, `value += value` on an abstract T; through
     `indexUniq`'s reference, `owned[key] = value@move`) and run again (fixture UserArithmeticUpdateGeneric; the allocation audit
     DictionaryIndexGeneric); G416's other members stay.
-  - **Not covered.** `replace(r@follow@uniq, ...)`, whose record is Binding's `replace` row (PLAN G1147, D-933), and two exclusive
-    Derefs (`rr@follow@follow = v` and its call `rr@follow.flush()`: Retained's chain re-adds the input's own Loans from the
-    intermediate reference's holder, shared by calls and drops; PLAN G1151, D-935).
+  - **Not covered.** `replace(r@follow@uniq, ...)`, whose record is Binding's `replace` row (PLAN G1147, D-933). Two exclusive Derefs
+    (`rr@follow@follow = v` and its call `rr@follow.flush()`): superseded by R4-M229 (D-935).
   - **Rejected.** Excluding the reference's Loans from `Chain` in `Calls.Retained` (a second copy of rule A for one caller); forming an
     address of the destroyed Place past a Deref (a non-direct entry names no holder, so it reads nothing and only adds an entry).
   - **Cost.** One step walk per Drop past a Deref per pass; no allocation (`Issued` uses the walk buffer and the set pool).
@@ -7586,6 +7572,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a step's meaning). Names: `MirStepClass.Element` (`MirSteps.Element()` and the Backend's `LayoutNeed.Element` mean any sequence's
     element), `IndexCall` (Binding builds no index call for an Array's element), `Loan.Reach` (MirBorrows' reach on a state) and
     `Loan.Compared` (comparison members in MirBuilder and MirEffects): each would give a name in use a second meaning. Not temporary.
+- **R4-M228 W's read-once mark is W's own** (Middle, A5, 2026-11-21; D-914-2 part 1, Q-593 with D-914-1, the owner's O-457 (b); design
+  `middle\notes\d914-2-design.md` §2.2, accepted; D-914-1's code review N2 settled at its cause; behaviour unchanged).
+  - **Rule.** W reads each part of a reached holder's state once per walk by its own ordered mark: `MirBorrows.States`' `walkedBy`, by
+    set id, at level 2 · walk (plus 1 at Through, which covers Named), with a `long` walk counter never reset, as `stepping` is.
+    `steppedBy` and `stepping` are the reads' alone (`Content`, `Chain`). So a read inside a W walk (`WriteTargets` → `Prefix` →
+    `Content`, which D-914's Members branch will call) moves no mark of the walk's; `WriteTargets`' contract says it may be called there.
+  - **Representation.** `walkedBy` holds 8 B per set id W reads, the same length as `steppedBy`. An `int` counter would wrap after 2^31
+    walks in a Compilation's lifelong MirAnalysis and read every part as read.
+  - **D-914-1, landing with it (no entry of its own):** refs(S) (A3 5) has one enumeration, `MirBorrows.Reach.Refs` (holder, root,
+    mode), each reader filtering by the mode; the holders a write through a Place writes are one member, `WriteTargets`, read by
+    `Flow.Store` and the pun rule. `Content`'s second statement of refs(S) is PLAN G1177.
+  - **Rejected:** a `Step()` after a nested read (a repair after the fact that re-reads the walk's earlier parts); computing the covered
+    storage before the walk (the holders are found only by the walk); W's `Read` in `nodeParts` with reserved keys (a hash lookup on W's
+    hottest step); an `int` counter for an ordered level (it wraps).
+- **R4-M229 A retention kind without Value keeps none of the input's own value that only the borrow's route gives back (D-935, Q-597;
+  D-918's review C2; stream Z's F8, G396 (1); PLAN G1151; follows R4-M226 and replaces its "Not covered" two-Deref clause by a pointer
+  here)** (2026-11-21; Middle, A5; Major, design `middle\notes\d935-design.md` Revision 1 after its review's REJECT and the Middle's
+  rulings, the re-check ACCEPT WITH CONDITIONS, C1-C3 taken) SPEC 15.6.4 (the per-argument read; rule A's, the own-value sentence's and
+  the transfer rule's exclusion of the own value), 15.6.3 (parent Loans; `takeFirst`), 15.6 (Holders, reach).
+  `MirBorrows.Calls.Retained`, for a kind without Value, keeps what the kind's reads carry less the input's own Loans and addresses
+  that the read at the borrow's last Deref does not carry. That read is the **referent** of a borrow input,
+  `MirBorrows.Values.Referent`: the value its last borrow or raw Deref goes through (`PointerOf` over the one step walk), by a Place
+  operand's own steps (a Drop's destroyed Place) or by the Places the Loans of its local's referring stores lend (`Referring`,
+  `loanAt`, the Loans' steps); none where the input passes no Deref or a store into it is no borrow, and then nothing is removed. Calls
+  keeps it per position beside `argValues` (`argReferents`, formed at a Call's or Drop's first Value-less read). The last borrow or raw
+  Deref of a walk is one predicate, `MirBorrows.LastDeref` (Places), which `Through`, `Address`, `Formation` and `WriteTargets`
+  (Store's and the pun rule's, D-914-1) also read. Past one Deref the value's parent naming the intermediate reference's holder read
+  that holder's state, its own parents again (L_x through r): those go; what the referent's read carries stays, a dependency 15.6
+  Holders also makes a parent included (`h = (c@uniq, v)` with `c.v = v`: g keeps v's Loan). Calls, drops (over D-918's receiver, so a
+  drop equals its call at every depth) and destroying calls share it. Records: rejected -> accepted `rr@follow.flush()`,
+  `rr@follow@follow = v`, three Derefs, a Field between, a raw pointer over the reference, a stored Reborrow `c@follow.flush()`, a
+  Content result `rr@follow.get()`, `swap(x@uniq, rr@follow@follow@uniq)`; the invalid twins keep their Language records; the overlap
+  pins (adGm, adXm, adX2m, adG2m, adX2v) and the replaced-route pins (stXm, stGm, mvXm) keep theirs. **Not covered (open issue, PLAN
+  G1179):** a Reborrow formed through the route and stored, then used through one more Deref (`let c = rr@follow.0@follow@uniq` then
+  `c@follow.flush()` or `flushWith(c, 0)`): c's value is the referent and carries the route's parents, so x's storage end keeps a
+  record of no failure; a later cover must not read c's stored route on the call's state (stXm, stGm are the pins). Rejected:
+  subtracting the whole own value (Revision 0: unsound where an intermediate holder holds what the referent's read carries, adGm, adXm,
+  adX2m); the referents of every Loan in the value (a stored Reborrow's earlier child names the intermediate holder, rrcm; a Drop's
+  receiver has no Loan); a per-Loan referent table formed at the Loan's issue (a side table read across the fixed point); a second
+  reach walk inside Content or Chain; subtracting markers; a Binding change. Cost: one step walk per borrow input at its first
+  Value-less read, two memoized `Remove`s and a memoized `Range` per retention; warm 0 B. No vocabulary entry.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -10260,6 +10287,26 @@ resumed by R4-M86 (2026-10-20).
     local's Type before the name selects one (invalid names became `Unsupported_Kd`).
   - Extended by R8-M56 (PLAN G492-a (ii), the owner's O-394 (a), 2026-11-19): the interim also covers a written Origin naming an
     enclosing `let` local's written Type, as a `var` local's, until PLAN G230 (A).
+  - Amended by D-990 (Q-607; Front, 2026-11-21; a Q13 regression on dev since W-292; F's G147 ruling 46) SPEC 23.1.2, 15.3.4: a nested
+    function's result the header failed is the interim's located `Unsupported_Kd` where its second binding binds it (the unannotated
+    class; BU-234's failed-slot fact applied to it).
+    - Cause: BindDeclarations' header loop binds a named nested function's header before its enclosing body types an unannotated local
+      the header's written Origins name, so such a slot fails (its cause at its TypeSource). `BindFunction` binds the header again in
+      the body: each parameter takes its re-bound Type (BU-56's "an unannotated local's value keeps dev's binding"), but the result's
+      re-bind only re-resolved its TypeSource and never reached `symbol.Type`, so the result slot was neither typed nor stated and,
+      since D-834 published the parts (af8cdd2d3), `HirTables.Broken` / `MirBuilder.Build` gave `InternalInvariant_Kd`; its call got
+      `UnresolvedBinding_Kd` (before W-292 too) or the function `PrerequisiteUnavailable_Kd`.
+    - Rule: a result whose header binding failed and whose second binding binds records the located `Unsupported_Kd` at its written
+      result Type, with no Type there; the call rests on it. Parameters keep dev's binding; a non-borrow local keeps its
+      `InvalidOriginBinding_Kd` in either slot (SPEC 15.2.1); an annotated local keeps BU-56's record at the name.
+    - Removal condition: G230 (A)'s name link (BU-56's removal condition: a nested signature's name of an unannotated local's region
+      links to that local); then a result binds like a parameter and an invalid return (nfd) is rejected by its own relation check.
+    - Rejected: writing the re-bound result to the symbol like a parameter (option (a): invalid nfd,
+      `func pick(v: ref/i32 during p) -> ref/i32 during r => v`, would be accepted, Q13 scope 1, because the interim reads `during r`
+      as the Origin the body first gives r, p's, the D-862 class; BindFunctionParts does check the body after the second binding); a
+      located `Unsupported_Kd` at the name for every slot the header binds before the local is typed (option (c): `let w = 1` /
+      `during w` loses its `InvalidOriginBinding_Kd`, Q13 scope 3, since the header cannot tell a borrow local from another before the
+      body types it).
 
 - **BU-58 A stored part's written Type at inline positions is one TyCtxt view, `TyCtxt.WrittenAt`; the raw-Origin views and the walks
   over a written Type decide each distinct part once per call** (2026-10-30; R4's part R4-M157; PLAN G307's Binding part, unit bu72)
@@ -10819,6 +10866,8 @@ resumed by R4-M86 (2026-10-20).
     every Origin (an enclosing contract's clause cannot name a nested signature's own Origins).
   - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): the dependence query's reads of a failed contract's bound clauses
     (`RejectedRelations`), since they are premises already. Its repairs stay.
+  - Superseded in part by R7-M66 (D-944): the dependence query is deleted (no reader left); H11b-0 U3 rebuilds the dependence as a
+    view fact if it still needs it.
 
 - **BU-71 Binding publishes each interned Type's height, `BoundType.Height`, and each substitution's, `Subst.Height`** (2026-10-31;
   PLAN G332, unit bu91; the owner approved G332 and this entry together, verbatim 「まとめて承認します」) SPEC-neutral: a measure of the Type
@@ -11868,6 +11917,7 @@ resumed by R4-M86 (2026-10-20).
     Type (a constructor's construction Type included) has its declared relations over the call's region formed as rows of the call
     by step 3's clause judge (`VisitTypeClause`), as an input's are; a Type derived from it rests on that row. Every other class of
     a result Type's declared relation stays the formation proof's.
+  - Superseded in part by R7-M66 (D-944): the record of a call's fixed-fixed input; Binding records no body relation.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and
@@ -13146,6 +13196,7 @@ resumed by R4-M86 (2026-10-20).
     own members in `Binding.PlaceAuthority.Raw.cs` (the raw part of the Place classification, beside `PathOrigin`); `ElementAccess`
     keeps the element-access predicates. The rule is unchanged. R4-M194's, BU-146's and BU-193's mentions of
     `ElementAccess.IsRawPlace` and `IsRawRooted` are history this line covers.
+  - Amended by R7-M68 (D-941): `IsPointerPath` and its bound are gone; a path's raw step is the path fold's `Raw` (`PathPrefix`).
 - **BU-155 Every Contract reference written in source is formed by one path, `BindContractReference` (PLAN G705)** (2026-11-11;
   Front, Binding; Major; the owner's O-145 (a) and O-151 (a) with its conditions; design review 3 ACCEPT with conditions 1-10,
   implementation review ACCEPT) SPEC 8.4.3, 8.5.1, 8.5.2, 8.11.1, 9.7, 9.7.1.
@@ -14878,7 +14929,8 @@ resumed by R4-M86 (2026-10-20).
     (read by PairOrigin and SelectLayers) is unchanged. Amended by BU-213.
   - **One slot rule.** `FollowedSlot` is a pair layer's one case split (slot, restart, owner case), read by `MeetLayers` and
     `MeetStep`'s PairFollow arm. `PairSlot` keeps its own contract, read by `PairOrigin` and `SelectLayers`. One owner: `LayerBelow`
-    serves `LayersTerminal`, `SharedReferenceThroughLayers`, `IterationEntry` and `SubjectModeOf`.
+    serves `LayersTerminal`, `SharedReferenceThroughLayers`, `ReceiverThroughLayers` (PLAN G1122: member selection's recorded
+    read below several layers, in any order), `IterationEntry` and `SubjectModeOf`.
   - **Moves** (Q17 class 3): the row's forms through a qualifying pair layer below ref or uniq layers, a `ref/Self` receiver and a
     borrowing `for` through one, newly accepted; two Loan twins move from Binding's false rejection to A5's records.
   - **Rejected:** `MeetLayers`/`MeetStep` reading `PairSlot` (accepted an invalid program at a root pair layer: no outer layer
@@ -14886,7 +14938,8 @@ resumed by R4-M86 (2026-10-20).
   - **Temporary structure.** An Exclusive `for` whose layer walk crossed a pair layer below a stored layer is the loop's located
     `Unsupported_Kd` (`IterationEntry(..., out bool crossed)`, read by `BindUserIteration`), never a candidate failure. SPEC 7.3 and
     13.5.5: such an exclusive receiver has no adaptation yet (PLAN G162's remainder). Removal: once that receiver (G162) and the
-    Exclusive `for`'s entry call through stored layers (G179) adapt.
+    Exclusive `for`'s entry call through stored layers (G179) adapt. The receiver half adapts for struct and Tuple terminals since
+    PLAN G1122 (`ReceiverThroughLayers`, `TryPairReceiver`; other terminals are PLAN G1137); the `for` entry stays G179's.
   - Removes BU-181's temporary structure.
 - **BU-213 A reached-through Place is named by the one walk, whose facts the walk alone decides** (Front, 2026-11-13; PLAN G813;
   Major; design reviews 1 REVISE and 2 ACCEPT WITH NOTES, implementation review 1 ACCEPT; the Middle's RP17 consent C-291, round 2
@@ -15299,7 +15352,8 @@ resumed by R4-M86 (2026-10-20).
     - A dense array for every family: several times the keyed tables' bytes per compilation.
     - One row index per module with per-family arrays over its rows, or the plan row index as that index: holes in every family, or
       rows most library facts' nodes lack.
-    - A per-row stamp: a second read per access; every family's validity unit is the pass.
+    - A per-row stamp: a second read per access; every family's validity unit is the pass. Superseded in part by the R7-N5
+      B6b line (below): a working-state family whose validity unit is narrower than the pass carries its unit's number.
     - One table holding `Frozen` and program rows: Stage 2 would split every table again.
     - A Type-indexed column whose library prefix each compilation fills or copies: L1's option B, R8-M28's cause.
     - Library Type ids renumbered per compilation, or a library Type made lazily by a program pass: the prefix would not hold.
@@ -15453,7 +15507,9 @@ resumed by R4-M86 (2026-10-20).
     families, whose library rows a program pass reads; a working-state row is no fact, and freezing it would keep the library
     pass's working state for the process (`resultContexts`: the library pass's 204 pooled contexts, aliased to the freeze
     Binding's pool; `receiverOperations`: 125 rows, 65,944 B) with no reader. First families: `resultContexts`,
-    `receiverOperations` (ratchet 61 -> 59). Rejected: (b) the pool per pass part with the rows frozen (keeps working state as a
+    `receiverOperations` (ratchet 61 -> 59) and `requirementGroups` (R7-N5 B3-2, Q-595, D-963: a member access's lookup through
+    requirements; its library pass's 30 groups released at the freeze; a row of an earlier pass reads none, PLAN G1155's fix).
+    Rejected: (b) the pool per pass part with the rows frozen (keeps working state as a
     fact; a per-part store for one feature); (c) a kept column with a "begun in this pass" flag (a lifetime flag `StampedColumn`'s
     contract forbids); a counter or column type steering the freeze (a mode carried by a type, or a wrapper forwarding every
     operation); skipping the family in `NodeColumns.Freeze` (a skipped row keeps the library pass's run counter, 1, as its stamp,
@@ -15469,6 +15525,53 @@ resumed by R4-M86 (2026-10-20).
       its conversion) "none" is the library's own answer, and `EnsurePassNode` is the contract check that no program pass asks a
       library node. No N5 batch removes it; a family whose library rows a reader after the freeze reads is a fact family and keeps
       `Freeze`. The comment of `EnsurePassNode` and Binding.Pass.cs' header state it.
+  - **R7-N5 B6a** (the Back's batch, Q-599, D-970; design `b6-design.md` §3.1, B's rulings in §10; the Front's C1-C5 on C-403,
+    2026-11-21): a completion of `StructuralCompletion` is `Completion(bool Normal, int Outward)`: `Outward` is a chain of the
+    SyntaxIds of the targets its Exit and Yield transfers reach outward (SPEC 14.1, 14.9.3), cells `(Target, Next)` in the instance's
+    one list, which `Clear` empties; a chain grows only at its head and never changes once a completion holds it, so completions
+    share tails. It replaces the pooled jump sets: `transferPool`, `Transfers(...)`, `UnionTransfers` and their `HashSet<JumpKoto>`
+    values go (ratchet "Node-keyed table members in Binding" -2). `With` adds the target a transfer completes (`Completes`), `Join`
+    merges two chains, and `Without` (at a receiving target) re-adds the cells above the closed target, one `Add` each (ids are
+    unique in a chain), linear in its position. `StructuralCompletion.Work` (node completions composed and Outward cells read or
+    added) is the one scaling measure. A transfer's target stays `Binding.TransferTarget`'s (BU-101); no member outside the class
+    reads a completion's `Outward`.
+  - **R7-N5 B6b** (the Back's batch, Q-599, D-970; design `b6-design.md` §3.2, B's ruling 2; the Front's agreement on C-403,
+    2026-11-21 02:04, and its `Memo` conditions, 02:41): `StructuralCompletion`'s query memo becomes one working-state family per
+    instance (`ResultCompletions`, `GuessedCompletions`, `PublishedCompletions`, `LintCompletions`): a pass column,
+    `StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter>`, released at the freeze, whose row
+    carries the query that wrote it; `Clear` advances the instance's query by `Binding.NextQuery`, the one query-number step
+    (`TypeMemo.Begin` takes it too), which skips 0, an absent row's number. Each creator hands its instance its family as a `static`
+    lambda (`StructuralCompletion.Memo`); no reader tests which family an instance holds. It replaces `cache`, a Koto-keyed
+    `Dictionary` per instance cleared per query, body or walk, with no Hover reader or bound (`MakeRoom` and `ForgetRenderings` are
+    Lsp's own `HoverState`; R7-N5's census row 77 read otherwise). A working-state family whose validity unit is narrower than the
+    pass (a query, a body, a walk) carries its unit's number in its row and treats a row of another number as absent; a pass family
+    keeps one stamp per pass; no other per-row stamp. A family read by one class with several instances may be handed to each
+    instance as a static ref-returning accessor. Supersedes in part the rejection "a per-row stamp" (its reason, every family's
+    validity unit is the pass, does not hold for a memo cleared per query: its Never evidence changes inside a pass). Premises, both
+    tripwires: the library declares no parameter default (`TheLibraryDeclaresNoParameterDefault`), and `GuessedCompletionNodes`
+    answers none at a frozen node (`TheGuessRuleAnswersNoneAtAFrozenNode`: the complete-and-no-recovery rule read at the node's own
+    pass, the frozen library's being complete and without recoveries), so no program query composes a library node, which the frozen
+    library's columns refuse. Rejected: one pass stamp per family (an earlier query's Never evidence would answer); a counter per
+    instance (four new counters, and a stale column's first write empties its directory per query, quadratic over a module's
+    queries); a Binding-owned store keyed by `(module, SyntaxId)` (the B2a-2 line's rejection); the memo kept reference-keyed as an
+    owner exception (COMPILER_ARCHITECTURE migrates Binding's uses by R7's exit). Ratchet ("Node-keyed table members in Binding") -1;
+    its limit is the count, 52.
+  - **R7-N5 B2b-1** (the Back's batch, Q-591, D-958; design `b2b-design.md` §1-§5, B's rulings 1-8; the Front's C-403, C1 (a) and
+    C2-C6): `unboundSlots` (a failure fact, B4's form: `FailExplained`'s column form, stored by `SetRecordedFact`) and `uniqIndexing`
+    (a pass fact whose default reads as absent) become pass families of `NodeColumns` (`StampedColumn<T, Binding.PassCounter>`), one
+    accessor each, their Clears deleted; the library pass writes neither (`NotStamps`), and `HasExclusiveIndexer` keeps
+    `EnsurePassNode` for a never-written family, as B2a-2's line states. **A call's scratch keyed by node is no node family: the
+    call's own span answers it.** `shapeCallCandidates`, which mapped each accessible candidate's declaration (library functions
+    included) to its position in the call's candidate span, goes: `CandidateOf` scans the span for the last accessible candidate a
+    shape contract's left function declares. Rejected: a column (it would write the frozen library's rows at a program call), a
+    scratch keyed by the candidate's symbol (a renaming), a per-candidate index stored on the contract (the span's order is the
+    call's, not the declaration's). **`omittedBaseQueries` is deleted with its switch `CaptureOmittedBaseQueries`:** a test capture
+    steering a declaration step (G80-K2's differential instrument; its one reader was `ImplicitBaseCallTest`), whose one Clear was
+    its own step, off ResetPass's path, so it kept an earlier pass's rows. The test asserts the query after the pass and each row's
+    implicit twin instead: the declaration pass decides a synthesized constructor by the same query
+    (`CompleteImplicitConstructor`), and `RevalidateImplicitConstructors` judges it again after the bodies, failing closed at the
+    base clause. Rejected: converting it to a column (the test switch would move into the canonical table, its `NotStamps` reason
+    and the shared d10 theory). Ratchet ("Node-keyed table members in Binding") 52 -> 46, the count.
 - **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
   Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
   the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
@@ -23528,6 +23631,49 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Moves (Q13).** Text only on `InvalidNoInit_Kd`, `InvalidVirtualDeclaration_Kd` (its rule as a Reason and the Label) and
     `InvalidTypeFormation_Kd`'s arity (its counts as Reasons in `kimi.check/2`); `ProtectedPlacement_Kd` at a declaration failed
     earlier is its own record again; no acceptance move.
+  - **E2-3b (Q-587; B's E2 rulings 12, 15, 16).** The last family-1 explanation stores (SPEC 4.3.1, 7.4, 6.1, 8.11.1) become
+    typed facts, and `ProblemFactKind` appends a fourth Binding kind, `Key`.
+    - **Array annotations.** `ArrayAnnotationInference` records `Reason` (`ArrayInferenceProblem`), `Related` and, for a conflict,
+      its sides: `Actual`/`Expected` mean "a kept side, a Type or a length" (`BindingReport` keeps both in one list); a side that is
+      no kept value stays a `MismatchForm` (`FixedArray`).
+    - **Parameter shapes and `Key`.** `ParameterShapeMismatch` records one problem per conflicting parameter: one composite `Reason`
+      (its mode, the other mode and the matching key, a byte each), `Related` role 0 the conflicting parameter or use (the record's
+      own location) and roles 1-3 each overlapping earlier parameter by its ground (external name, bound position, unbound position;
+      the adapter reads name and position from the party's syntax), and `Key`: the conflicting parameter, its Value the kept Type at
+      which its matching key overlaps an earlier parameter's (`Value(T)`, `Object(T)`, either family over `T`), present when the key
+      has a Type. One meaning, Binding's only (a MIR record carrying it is a broken contract). The key is neither side of a mismatch,
+      so it is no `Expected`; this supersedes B's E2 ruling 7 Q3's "no fourth kind".
+    - **Conditions.** A further problem's condition is `BindingReport.Condition`'s one rule: an equal problem's condition, else the
+      problem's own (its check's ordinal) or the next after its subject's last recorded one (a refining Contract's conflicts from 0;
+      an Origin record beyond its node's first at 1, since that first, held in the slot outside the report, may be set after it).
+    - **Duplicates.** The pairwise checks fail both declarations and join their group; `RecordDuplicateGroups`, at the end of
+      `BindDeclarations` after `PrepareSpecializations` (the pass's last pairwise check), records each later declaration with
+      `Related` its group's first, and the first with `Cause` its earliest later (derived from that record). `IsDerived` gains one
+      row, `JudgedByDeclaredNames`: a requirement whose check compares only what declarations declare (Duplicate, at every site) is
+      derived neither by the node's own recovery nor by a recovery or limit it rests on. A name a form bound without its meaning
+      declares (a recovered or unsupported form's child that declares its own symbol, such as a recovered loop's binding) rests on
+      the form; a `for` loop's binding names are pass nodes (visited at Index).
+    - **Effect items.** An effect item's rejection is its problem (`RecordEffectRejection`: `Reason` the `EffectRejection`;
+      `Related` the bounded declaration, an earlier bound and the Contract the cause names; `Count`), and a misplaced item's
+      selector's own rejection is its second problem (conditions 0 and 1): the c6 move named under Temporary above is done.
+    - **Access parts.** A clause, base clause or enum case whose projection access fails records its own problem (`Record`); its
+      owner keeps its own failure beside it (no `RestOnPart` at an owner with a failure of its own).
+    - **Temporary** (both `[Transitional("R7")]`, removed by R7-E5's per-problem inputs; PLAN G1141): `JudgedByDeclaredNames`; the
+      access owners' own failures (`ValidateConstraintProjectionAccess`): resting an owner on its part would derive the owner's
+      other failure through `IsDerived`'s requirement-blind arms.
+    - **Deleted.** `arrayInferenceFailures`; `parameterShapeConflicts` and its two stores; `ReportDuplicateDeclarations` and
+      `ReportFailures`' skip; `ReportEffectBound` and the selector-keyed rejection row; the `ReportIssue` arms of
+      ArrayAnnotationInference, ParameterShapeMismatch and InvalidEffectBound.
+    - **Rejected.** A fourth kind for a length (one kept-side list); three `Reason` facts for one problem (one composite row);
+      `Expected` with a second meaning for the key; the adapter deriving the key from the parameter's Type (a check re-run at
+      publication); dropping pair records after the fact; `RestOnPart` for a group's first (a slot rewrite after the fact) and for
+      an access owner (it derives the owner's other failure); reading the slot for an Origin record's condition (the further chains
+      are recorded before the slot's first, `RecordOriginChains`); a `ForKoto` clause in the recovery arm; a later declaration that
+      is itself a parser recovery deriving its Duplicate (it would drop a record dev publishes, and the Signature comparison reads
+      none of the recovery's guess).
+    - **Moves (Q13).** On rejected programs only: `ParameterShapeMismatch_Kd` one record per conflicting parameter (+1) without its
+      conservative Note; `InvalidEffectBound_Kd` gains the related location `contract` in five kinds; no lost independent record, no
+      acceptance move.
 - **R7-M63 One premise consult and one Failed state per fact it reads; the whole-environment Invalid state goes** (Front, 2026-11-21;
   R7-C3 C3-1 + C3-1b, the plan's §5.0 C3, Q-584; Major, an acceptance mover; designs `...\front\notes\C3\design.md` §13 and
   `C3\design-c31b.md` Revisions 0-3; F's C2 rulings 240-316; the owner's O-296 (a), O-448 (a)) SPEC 8.2.3, 8.3.1-8.3.4, 8.6, 8.8,
@@ -23635,6 +23781,77 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Records (Q13): the kept parts' own checks run; A1's locations move to the kept part's site; no acceptance move.
   - Rejected: (α), a Cause on each problem; a `Keeps` row per form; recomputing the Copy proof at the use to find its clause (a second
     copy of the proof, and a check re-running a proof to explain a failure).
+- **R7-M66 A body's Origin relations are judged by A5 alone; Binding forms their rows** (Middle, 2026-11-21; R7-O1 H, H1 and H2 as
+  one unit, Q-588, D-944; Major, an acceptance mover by record class; R7-M51 extended from call positions to every body relation; the
+  owner's H11b §11 approval with R5-M192's amendment, R7 plan revision 99) SPEC 15.6.1, 15.6.4, 15.6.5, 23.1.2, 8.13.2.
+  - **Rule.** In an executable body Binding judges no Origin relation. Every relation it forms there goes through `FormBodyRelation`:
+    a fixed-fixed relation the fit's answer proves both ways forms nothing; every other one, a body chain and a relation with an
+    Unbound end included, is a row of the C1-F4 view, never fails a node and is never a Binding record. A5's Origin stratum is the one
+    judge. This covers calls (R7-M51), non-call fits (`AddOriginFit`, `FitsValueAt` and the joins), local clauses (the clause's own
+    pure proof, SPEC 15.3.3, then a row) and pending relations (a row like any other; the pending list and `RoutePendingRelation` go).
+  - **Published.** `FixedBy` (R7-M51). `BindingObligation.Site`, read as `OriginRow.Site = Site ?? Use` (H11b D5): a local
+    annotation's fit at its initializer, a local clause at the initializer that supplies one of its ends, and a join's fit at each
+    source's value, the value that supplies the fit's longer end (`DecideResult`). `OriginRow.Supplier`: the row's longer end as
+    formed; `Binding.RowSupplier` gives R4-M133's supplier to the record. A closure end's header relation is part of
+    `OriginRelationFacts`, read by both reporters (F-H-10). A5's records name the failing position's Type as a fit's destination
+    (F-H-7 (a)).
+  - **A body chain's meet stays one row (F-H-13).** `FormBodyRelation` splits a meet at the longer end into one row per operand only
+    when every operand is fixed (not a `BodyChain`); a meet with an operand not fixed stays one row, whose node and per-operand edges
+    A5's `MeetNode` forms (2a0-D D15), so the chains through it are not cut.
+  - **A verified specialization's contract** (SPEC 8.13.2): its view classes its original's binders as its own contract.
+  - **P9's call result image.** A value call publishes its Closure's call result atom as it is; P9 images only the call receiver ρ.
+    Why: the Refuted relation behind the call is A5's record, so Binding is complete there and an Unbound image would rest on no
+    Binding failure, which R4-M118 forbids (BU-102 threw at a use outside the call's subtree). R4-M118's Unbound then has one source,
+    `PendingOrigin`. In a calling body the atom is another body's root (the view's row 9): a row naming it is A5's located
+    `Unsupported_Kd`. P8's arm for an Unbound operand (the call result atom) stays.
+  - **Records** (Q13). MIR problems with typed facts; the partition Binding → Ownership; twins are one record (`Binding.IsTwinRecord`
+    goes, with the test MIR side's twin filter); independent records restored. An Unbound end is a row whose failure is the record
+    (PLAN G739's dependent record goes). An enclosing body's call region at a moved row is the nested-body limit. V6 Unstated and V7 holder place record a problem that leaves
+    the node Resolved; such a program has a complete Binding and is rejected by its published record, as A5's errors are: every
+    code-generation entry gates on the published diagnostics, not on `IsComplete` (F-H1-5). R6-check H5's location of a local
+    annotation's fit (the whole declaration) gives way to D5 (F-H-8). A Consuming Closure's two `MovedPlace_Kd` go as false records
+    (SPEC 7.7.2). Named moves: F-H1-1 (an aggregate's `ComparisonLoanConflict_Kd` that SPEC 15.6.5 derives from the Refuted relation
+    is shown, PLAN G1176) and F-H1-6 (a fixed-fixed fit only a failed clause's repair could prove is A5's `UnprovenOriginRelation_Kd`,
+    BU-159's counted dependent until H11b-0 U3). H11b's G1 programs and a write into a temporary's Field (`mkG(y@ref).r = y@ref`)
+    are newly accepted.
+  - **Supersedes:** H11b's design D3 (D1, D2 and D4-D8 carried); 2a0-D D1's fixed-fixed clause and A3 §7's "until R7"; R4-M108's
+    "Binding's until R7" and its twins; R4-M111; R4-M113's MirOrigins clause, restated; R4-M126 §2.5's pending list and 2c-3's
+    "CallResult becomes Unbound at a call"; R4-M133's `SuppliedBy`; R4-M152's P9 Unbound image; BU-104's and R4-M164's record of a
+    call's fixed-fixed input; BU-69 in part. Amends R4-M118 (F-H1-4). Each names its line. Stays: V5-V7 and OJ1-OJ7.
+  - **Rejected:** Binding judging fixed-fixed body relations with A5 judging chains (two judges of one SPEC rule; the lost Loans); a
+    row for every position, proven ones included (A5 work on valid programs for no record); `JudgeCallPosition` with a frame mode;
+    keeping `HasCallRelation`; Binding's record for an Unbound end where no cause is found (PLAN G739); Binding judging
+    enclosing-call-region ends; V6 failing its node (its Loans lost); BU-69's query routed to A5 now (no reader before H11b-0 U3). For
+    P9: restating the view contract (it weakens the check that caught an Unbound atom with no cause); a `FormBodyRelation` case for
+    `X outlives (X and ...)` (a symptom fix that leaves the hole).
+  - **Open:** P8's `BodyLocalIn` Anchor arm leaves out a raw Place's Borrow that SPEC 5.2.2 fits to its destination, so a use of such
+    a Closure (r01, valid) is A5's located `Unsupported_Kd` (the Front's).
+- **R7-M68 A Place's path is folded once from its root: `PathFold` and `LendFold`** (Back, 2026-11-21; D-941, Q-596, PLAN G1154,
+  and G1161 (D-950) with it; Major, behaviour-preserving below 64 steps; design `d941-design.md` revision 3 with B's rulings 1-4;
+  the Front's review on C-402 (B1) and its delta read; the Middle's RP17 consent on the 64+ outcomes) SPEC 3.4, 15.1.5, 15.6.2;
+  IMPL A.4. Amends BU-166 (`IsPointerPath`).
+  - **Cause.** Binding's Place authority re-decided the receiver prefixes of a path: `PathAuthority` and `Writable` re-entered each
+    other through `AcquirableByBinding`; `Writable`'s inline-part, Field and payload rules decided the owner prefix again;
+    `LendsPlace` asked each level's path again; an exclusive `AccessType` folded its receiver again (2^k raw, F(2k+2) owned, k^2/2
+    lending steps, 2^k through exclusive references stored in Array elements).
+  - **Rule.** A Place's path is folded once from its root: `PathFold` (each prefix's `PathPrefix`: its `PathGrant` (Authority,
+    Denied, Layers), Access, Raw, Writable) for writes and Moves, and `LendFold` (each prefix's `PathLend`: Path, Exclusive, Lends,
+    StaticRoot) for a borrow in a mode from a scope. Each prefix's grant, writability and lending is decided from its owner prefix's,
+    never by a new query on the path; a receiver outside the path (past a getter result or a view range) is its own fold. Every
+    write, Move and borrow query is k + 1 fold steps (`PathFoldWork`).
+  - **The exclusive reading.** `AccessType`'s former `bool exclusive` is gone: the exclusive reading of a receiver's access Type,
+    `ExclusiveAccessType(node, referent)`, takes the receiver's ReferentAuthority from the fold (the owner prefix's access through
+    the receiver's own layers; for a borrowed base, the node's own access), so no rule queries a path again (PLAN G1161 closes).
+  - **Removed.** `PathAuthority`'s own walk and its 64-step bound (the query reads the fold), `IsPointerPath` and its bound (the
+    fold's `Raw`), the re-entries (`AcquirableByBinding`, `WritableOwner` and `WritablePlace` take the fold) and `PairCapability`'s
+    null-scope branch.
+  - **Moves.** None below 64 steps (diagnostic and semantic HIR+MIR snapshots unchanged). At 64 steps and more a path is no longer
+    cut at its 64th step: Array writes and `@uniq` bind, and a 64-deep owned Array local reaches A5's reported
+    `OwnershipDepthLimit_Kd` (PLAN G1146).
+  - **Rejected.** A memo of `Writable` per node (a side table beside the walk); a demand flag (a steering parameter); lazy owner
+    folds (exponential on alternating paths); a re-fold of the receiver in the exclusive reading (exponential on exclusive
+    references stored in Array elements, the Front's B1); one recursion skeleton for both folds (it would take the reading as a
+    delegate or a mode parameter).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -27002,7 +27219,7 @@ R8-M* and R9-M* by the stage of the recording unit.
 ## Tatara (adopted 2026-11-19)
 
 Entries of the [Tatara Implementation Plan](../../draft/Proposals/2026-11-19%20Tatara%20Implementation%20Plan.md) (the plan; its §2
-holds the owner's decisions 1–16). Units of the Tatara lane record their entries here as T-M*.
+holds the owner's decisions 1–17). Units of the Tatara lane record their entries here as T-M*.
 
 - **T-M1 The Tatara plan is adopted** (owner, 2026-11-19, in T's dialog, relayed verbatim by T, board D-876: decisions 1–5
   「→推奨の内容でOKです。」, decisions 6–11 「すべて推奨どおり」, decisions 12–13 and the start 「推奨どおりで開始」, the plan
@@ -27061,6 +27278,9 @@ holds the owner's decisions 1–16). Units of the Tatara lane record their entri
     `ToolOutputFile`), also after a fatal error or crash (a return of 2 closes the recorded descriptor and removes the file): Tatara
     installs no signal handler, console control handler or exception filter in the host process (C-424 R1, R2; regression
     `UnhandledExceptionFilterStaysTheHosts`).
+  - Removed by unit A4 (T-M6, 2026-11-21): the private toolchain root as a requirement (setup installs `tatara.dll` into every
+    root; a root of one's own stays the ordinary selection, `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT`) and `Explicit` on the tests
+    that load `tatara.dll`.
 - **T-M4 A2's temporary structures and the executor's four calls** (Tatara, 2026-11-20; the plan's unit A2, Q-574, D-928; Major;
   design review C-423; implementation review C-424, ACCEPT WITH CONDITIONS, its fix round re-checked).
   - `NativeBuild` runs its tool work through `NativeExecutor`: optimize, emit, inspect, link. The steps, the verdicts, the redaction
@@ -27083,6 +27303,9 @@ holds the owner's decisions 1–16). Units of the Tatara lane record their entri
   - Amended by T-M5 (unit A3, 2026-11-20): the `BuildManifest` overload goes; `NativeToolchain.Build` and `BuildManifest` have one
     signature each, taking the factory, which every caller passes (the product's callers pass `Kimigayo.NativeExecutor`), temporary
     until A4 as the seam.
+  - Removed by unit A4 (T-M6, 2026-11-21): (1) the seam (`NativeExecutor`, `NativeExecutorContext`, `ExternalToolExecutor`,
+    `TataraExecutor`, the factory and its parameters; `Tatara`'s calls take `TataraContext`, `ObjectSymbol` and `ObjectFacts` are in
+    `Tatara.cs`, and `PosixSymbols` is the tool control comparison's), (2) the executor comparison, (3) `Explicit`.
 - **T-M5 `kimi tatara`: the session's rules and A3's temporary reader** (Tatara, 2026-11-20; the plan's unit A3, Q-589, D-955;
   Major; design review C-425; implementation review C-426, ACCEPT WITH CONDITIONS, both rounds taken).
   - A line is a command line: `CommandUnit.Product.Execute(commandLine, serviceProvider, cancellationToken)`, extracted from
@@ -27105,3 +27328,53 @@ holds the owner's decisions 1–16). Units of the Tatara lane record their entri
     `ArchitectureRulesTest.BuildReaders` row for `Unit/Kimigayo.cs` (the owner's O-455 (a)); the factory arguments of
     `NativeToolchain.Build` and `BuildManifest`; `Explicit = true` on `TataraCommandNativeTest`. `Unit/Command/TataraCommand.cs`'s
     `BuildReaders` row is not temporary: it is a command, which COMPILER_ARCHITECTURE names among Build's readers.
+  - Removed by unit A4 (T-M6, 2026-11-21): `Kimigayo.NativeExecutor`, its `BuildReaders` row and the factory arguments; `Explicit`
+    on `TataraCommandNativeTest`. Amended by T-M6: `EndProcess` is `Program`'s, and a press with nothing pending in a session (the
+    redirected reader waiting) calls the action the session replaced, by default the root's termination and then the process's end.
+  - SimplePrompt 0.30.0 (unit SP1, Q-605, D-988, 2026-11-21; the owner's release for A3's by-hand row 7): Kimi takes SimplePrompt
+    0.30.0 and the minimums it requires, Arc.Collections 2.2.0, Arc.Threading 0.56.0 and Arc.Unit 0.49.0, with Arc.CrossChannel 3.1.0
+    from Arc.Unit (the smallest move that takes the fix; nothing newer). `Kimigayo.RunEnded` is what the host does after a `run`
+    command's work, whose program output Kimi copied to the raw standard streams (it may run when no program ran): `RunCommand`'s
+    `finally` calls it inside `CommandExecution`'s action, before a cancellation is written; `kimi tatara`'s terminal session installs
+    SimplePrompt's `SynchronizeCursorPosition()` with a line end when the program left the cursor mid-line, and restores the previous
+    action at its end; the redirected path and single-shot commands keep the default. `RunExecutable` drains its two output copies
+    after the kill (they take no token); on the cancellation path it awaits them without observing their outcome and rethrows: after a
+    cancellation the outcome is the cancellation (130), never a copy's failure. Limit: a descendant that escaped the kill's walk (its
+    parent exited first) and holds the program's output keeps a cancelled run waiting until it exits or a second Ctrl+C ends the
+    process (PLAN G1188).
+- **T-M6 The single-shot switch: the build calls Tatara** (Tatara, 2026-11-21; the plan's unit A4, Q-604, D-981; Major; design
+  review C-427; implementation reviews C-428, C-429, C-430; the owner's O-460 (a), the plan's decision 17)
+  - `NativeBuild` loads `Tatara` (`Tatara.Load`, the root's `tatara.dll`) after the pair's check and the record's first write,
+    writes `tools.tatara` and calls its four operations with `TataraContext` (the report, the token and the five target values,
+    nothing else); `Tatara.Call` checks the token again inside its lock. No build launches an LLVM tool: the tool runs are
+    `ToolProcess`, a `file`-scoped type of `NativeToolchain.Verification.cs`, used by `toolchain verify` only (the tools' version
+    banners, kernel32's inspection); `NativeToolchain.Wait`, `internal` for it, still serves `RunExecutable`.
+  - **Removed (the temporaries of T-M3, T-M4 and T-M5):** the private toolchain root as a requirement (a root of one's own stays the
+    ordinary root selection); the seam (`NativeExecutor`, `NativeExecutorContext`, `ExternalToolExecutor`, `TataraExecutor`, the
+    factory and the parameters of `Build` and `BuildManifest` that took it); the executor comparison; `Explicit` on the tests that
+    load `tatara.dll` (each skips off Windows; only a child-process row's child is Explicit); `Kimigayo.NativeExecutor` and its
+    `ArchitectureRulesTest.BuildReaders` row.
+  - **The installation:** `setup.ps1 -LlvmRoot` (required; the bin is `<LlvmRoot>/bin`: tools and libraries from one archive). A
+    destination with the same SHA-256 is never written (`Test-KimiSameFile`), so an unchanged rerun writes nothing a running process
+    holds; `tatara.dll`, the backend and `installation.json` are each replaced by one retried move (`Move-KimiFile`), a loaded
+    `tatara.dll` renamed aside (`tatara.dll.<time>.old`, deleted by a later run). `tatara.dll` is built outside the repository and
+    its build identity checked before the first write to the root. The record gains `tatara.sha256` and keeps `schemaVersion` 1:
+    the member is additive, older readers read members by name and ignore it, and the new reader requires it; schema 2 would fail
+    every older-base `toolchain verify` of the shared root. `supportingDlls` lists the archive bin's DLLs, no longer every DLL of
+    the root. Only a window reruns setup on the shared root, on an empty heavy-run registry (VERIFICATION).
+  - **`toolchain verify`** reads `tatara.sha256` in the record's shape check; after the tools it loads `tatara.dll` (`Tatara.Load`:
+    found, loaded and bound, its ABI and LLVM version) and then compares its hash; its `--Report` record gains `tatara`.
+  - **Ctrl+C (decision 17):** `Program` owns one flag, set by the default action's first call, which requests the root's
+    termination; a call with the flag set ends the process (`Program.EndProcess`: on Windows `TerminateProcess(130)`, not
+    `Environment.Exit`, which would run `tatara.dll`'s detach; off Windows libc's `_exit(130)`, since `Environment.Exit` would run
+    `AppCloseHandler`, subscribed to process exit, which waits up to two seconds; C-430 C1). `Main`'s and `AppCloseHandler`'s own
+    termination requests never set it. `check --Format json` holds an empty action from before its last token check through the
+    flush (`CheckJsonOutput.Publish`; SPEC 23.2.3). A `kimi tatara` session with nothing pending calls the action it replaced.
+  - **What a build loses, accepted:** the per-tool 5-minute timeout (rejected: a watchdog that ends the process; the second press
+    is the escape, and the harnesses keep their own timeouts; `ToolProcess` keeps it for verify); isolation after a fatal LLVM or
+    LLD error (every later native build in the process fails naming the first cause; reachable from source only through a compiler
+    or LLVM defect; STATUS).
+  - **`LlvmBin`:** builds stop reading the option, the project setting and the manifest member (emit still writes the member,
+    decision 1); `toolchain verify` reads its option. Removal is B6's, after its owner question (the plan's §11; PLAN G1173).
+  - Rejected: `schemaVersion` 2; the hash before the load in verify (`Tatara.Load` owns the not-found text; C-428 n1); an
+    `ArchitectureRulesTest` name rule for `ToolProcess` (the `file` scope enforces it).

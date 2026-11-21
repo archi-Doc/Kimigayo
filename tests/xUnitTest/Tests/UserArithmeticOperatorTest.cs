@@ -387,10 +387,10 @@ public class UserArithmeticOperatorTest
     {
         const string Source = "struct View {a}\n    Self is Addable<()>\n    associate Output is ref/i32 during a\n    let value: i32 = 42\n    public func added(self: ref/Self, right: ref/()) -> ref/i32 during a => self.value@ref\n()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.False(c.Binding.Result.IsComplete);
-        var error = Assert.Single(c.Binding.Issues);
-        Assert.Equal(DiagnosticCode.UnprovenOriginRelation_Kd, error.Code);
-        Assert.Equal("self.value@ref", error.Node.ToString());
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
+        var error = Assert.Single(CompilationTestHelper.PublishedErrors(c));
+        Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Code);
+        Assert.Equal("self.value@ref", error.Text);
         Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.InternalInvariant_Kd);
     }
 

@@ -56,7 +56,7 @@ public sealed partial class Binding
     {
         if (mode == BindingMode.Final)
         {
-            this.formationCauses?.Clear();
+            this.formationCauses.Empty();
             this.JudgeObligations();
 
             this.SettleSpecificationLinks();

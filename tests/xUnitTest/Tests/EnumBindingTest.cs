@@ -120,8 +120,8 @@ public class EnumBindingTest
     [InlineData("enum E<T>\n    A(T)\n    public func f() => ()\nE.f()")]
     public void RejectsInvalidDeclarationsAndOriginContracts(string source)
     {
-        var c = CompilationTestHelper.ParseSuccess(source);
-        Assert.False(c.Bind().IsComplete);
+        var c = MinimalEmissionTest.Analyze(source, output: OutputKind.Library);
+        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
     }
 
     // SPEC 6.5.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload.
@@ -317,13 +317,14 @@ public class EnumBindingTest
     // temporary or a local, that does not outlive the Case's Origin is UnsatisfiedOriginRelation_Kd at the payload, twice: Binding's
     // record and A5's row of the same body chain, the twin pair of PLAN G430. R7's twin removal makes each row one record.
     [Theory]
-    [InlineData("    return Option<ref/i32 during a>.Some(1)\n", "1")]
-    [InlineData("    let n = 1\n    return Option<ref/i32 during a>.Some(n)\n", "n")]
-    public void ABorrowedPayloadThatDoesNotOutliveItsCaseIsTheTwinPair(string body, string at)
+    // R7-O1 H: one record (the twin went) and the Loan conflict at the borrowed Place's end that its node hid (counted, Q13).
+    [InlineData("    return Option<ref/i32 during a>.Some(1)\n", "1", "1")]
+    [InlineData("    let n = 1\n    return Option<ref/i32 during a>.Some(n)\n", "n", "let n = 1")]
+    public void ABorrowedPayloadThatDoesNotOutliveItsCaseIsTheTwinPair(string body, string at, string conflict)
     {
         var source = "func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n" + body + "public func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at)];
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), conflict), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at)];
         Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 

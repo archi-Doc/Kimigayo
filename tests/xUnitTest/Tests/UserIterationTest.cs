@@ -191,11 +191,11 @@ public partial class UserIterationTest
     public void TupleComponentRetainsEveryGrantingOrigin(string resultOrigin, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Drain + "func first(row: ref/(uniq/(i32, i32) during a) during b) -> ref/i32 during " + resultOrigin + "\n    for (value, _) in Batch<ref/(uniq/(i32, i32) during a) during b>.init(row) => return value\n    $abort(\"empty\")");
-        Assert.Equal(valid, c.Binding.Result.IsComplete);
+        Assert.Equal(valid, c.Binding.Result.IsComplete && c.Analysis.IsVerified); // R7-O1 H: the analysis rejects it (A5's record; Binding judges no body relation, F-H1-5).
         if (!valid)
         {
             // SPEC 15.6.1: a ∧ b outlives a only under a premise that b outlives a, which no input supplies.
-            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd);
+            Assert.Contains(CompilationTestHelper.PublishedErrors(c), static x => x.Code == nameof(DiagnosticCode.UnprovenOriginRelation_Kd));
         }
     }
 

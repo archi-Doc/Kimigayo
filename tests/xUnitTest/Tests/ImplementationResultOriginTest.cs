@@ -66,8 +66,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
     public void AnUnboundedResultBinderDoesNotAcceptAnInputLoan()
     {
         var c = MinimalEmissionTest.Analyze("func empty<T>(x: ref/T) -> Option<ref/T during fresh> => .None\nspecialize func empty<i32>(x: ref/i32) -> Option<ref/i32> => .Some(x)\n()");
-        c.Binding.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnprovenOriginRelation_Kd");
+        Assert.Contains(CompilationTestHelper.PublishedErrors(c), static x => x.Code == "UnprovenOriginRelation_Kd"); // R7-O1 H: A5's published record (Binding judges no body relation).
         Assert.False(c.Generate(TextWriter.Null));
     }
 

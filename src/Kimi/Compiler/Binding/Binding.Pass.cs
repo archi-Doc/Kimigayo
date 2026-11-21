@@ -67,7 +67,6 @@ public sealed partial class Binding
         this.ResetStartup();
         this.ResetSpecializations();
         this.ResetVirtualDeclarations();
-        this.arrayInferenceFailures?.Clear();
         this.ResetSyntheticCalls();
         foreach (var construction in this.enumConstructions.Values.In(this.pass))
         {
