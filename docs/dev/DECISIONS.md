@@ -15083,10 +15083,10 @@ resumed by R4-M86 (2026-10-20).
   - **Rejected:** `MeetLayers`/`MeetStep` reading `PairSlot` (accepted an invalid program at a root pair layer: no outer layer
     bounds the slot); a pair walk inside the row (a second copy); an optional scope steering the walk.
   - **Temporary structure.** An Exclusive `for` whose layer walk crossed a pair layer below a stored layer is the loop's located
-    `Unsupported_Kd` (`IterationEntry(..., out bool crossed)`, read by `BindUserIteration`), never a candidate failure. SPEC 7.3 and
-    13.5.5: such an exclusive receiver has no adaptation yet (PLAN G162's remainder). Removal: once that receiver (G162) and the
-    Exclusive `for`'s entry call through stored layers (G179) adapt. The receiver half adapts for struct and Tuple terminals since
-    PLAN G1122 (`ReceiverThroughLayers`, `TryPairReceiver`; other terminals are PLAN G1137); the `for` entry stays G179's.
+    `Unsupported_Kd` (`IterationEntry(..., out bool crossed)`, read by `BindUserIteration`), never a candidate failure. Removal: once
+    the Exclusive `for`'s entry call through stored layers (G179) adapts. The receiver half adapts for struct and Tuple terminals since
+    PLAN G1122 (`ReceiverThroughLayers`, `TryPairReceiver`) and below a concrete top layer for every terminal since R7-M72; PLAN G1137
+    keeps a pair top layer and the `objuniq` terminal; the `for` entry stays G179's.
   - Removes BU-181's temporary structure.
 - **BU-213 A reached-through Place is named by the one walk, whose facts the walk alone decides** (Front, 2026-11-13; PLAN G813;
   Major; design reviews 1 REVISE and 2 ACCEPT WITH NOTES, implementation review 1 ACCEPT; the Middle's RP17 consent C-291, round 2
@@ -24064,6 +24064,54 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** reading the call's stored plan or a candidate's parameters (a plan Binding did not commit; SPEC 10.1); a case per
     failure or per callee kind; "every kept operand is read" (D-986's rejected (c)); a second bit for this fact; marking the
     arguments outside the rule.
+- **R7-M72 The through-layers row has both modes** (Front, 2026-11-21; PLAN G147 (2) (c), R7 plan Z22, Q-615, an R7 exit row; Major, an
+  acceptance mover; design and code reviews ACCEPT WITH CONDITIONS, F's G147 rulings 56, 57 and 63; the Middle's RP17 consent) SPEC
+  7.3.3, 3.4.3, 10.2, 15.6.2, 15.1.5. Amends BU-212's temporary structure.
+  - **Rule.** AdaptInput's through-layers row (`Binding.ArgumentOperations.cs`) gives one reference to the parameter's referent through
+    the safe value-reference layers (BU-212's walk, `SharedReferenceThroughLayers`) with 10.2's dependency (`ReferentOrigin`): shared
+    at a fixed `ref/U` (unchanged); exclusive for a Receiver Expression whose path and layers grant it, below two or more layers under
+    a concrete top layer (`ExclusivelyAcquirable`, BU-13, the mode `ReceiverThroughLayers`' recorded read already takes), the operation
+    `ReferenceRead` in its target's mode (R7-M6). One stored `uniq` layer at `uniq/U` stays the Reborrow. Reading: `p` in 7.3.3's
+    `p@follow@uniq` is the innermost borrow value on the 3.4.3 path (the Place storing `uniq/Meter`), whose referent is the selected
+    Place.
+  - **Why.** An exclusive receiver below several layers had a fit only through member selection's prepared read
+    (`ReceiverThroughLayers`), which an element's read replaces (`ReceiverElement`) and which exists for struct, Tuple and `objref`
+    terminals alone; the shared mode had its own row. `values[0].bump()` over `uniq/Array<uniq/(uniq/Meter)>` was
+    `NoApplicableOverload_Kd` while a local and one layer bound.
+  - **Moves** (Q13, Q17 class 3; against dev 777a9c0ca): rejected to accepted, `NoApplicableOverload_Kd` gone: an exclusive receiver
+    below two or more exclusive layers, any Receiver Expression (an Array's, a user index's or a Dictionary's element through
+    `indexUniq`, a `var` root's element, a call result, a `let`-held reference, a Tuple element), three layers, two such calls in
+    sequence; a generic struct and an enum terminal (`values[0].append(1)` over `uniq/Array<uniq/(uniq/Array<i32>)>`, an enum's
+    `flip(self: uniq/Self)`); G1137's concrete-top Type-parameter forms (`uniq/(uniq/U)`, `uniq/(s/U)` with `s is uniq`, an element
+    storing `uniq/(uniq/U)`) and G162's Type-parameter form (`uniq/(s/U)` under `s is owner or uniq`, its owner and uniq instances
+    run); a setter and a compound update through an element's two layers, from `TypeMismatch_Kd`. Records moved (invalid, still
+    rejected), one class: an invalid program whose exclusive receiver below two or more layers failed the fit
+    (`NoApplicableOverload_Kd`) now gets its one-layer twin's record from the later check: `CallActivationConflict_Kd` (such a receiver
+    while a shared Loan of its root is live; `values[0].absorb(values[1])`, the argument reading the root the receiver's `indexUniq`
+    Reborrow holds; 15.6.2, 15.6.7), `UnprovenOriginRelation_Kd` (a result reached through the reference returned `during a` alone: two
+    records where the one-layer twin has one, the relations to `a` and `b`; 15.6.3) and `ComparisonLoanConflict_Kd` (a read through the
+    parent while the child reached through it is live; 15.6.3). HIR, MIR and generated code of accepted programs unchanged (semantic
+    HIR+MIR comparison: 0 differences).
+  - **Rejected:** ReceiverElement keeping the through-layers read for an element (changes the HIR and MIR of every accepted element
+    receiver below layers and reopens the column's one-writer rule); the fit reading `ReceiverThroughLayers` instead of the column (an
+    element's exclusive claim then forms a same-mode Reborrow of the element's own Type, which `MirBuilder.Reborrowed` rejects as a
+    broken contract, and every accepted shared element receiver's operation would change); G1137's own proposal,
+    `ReceiverThroughLayers` for every terminal (an element's read is `ReceiverElement`'s, so route 1 never reaches elements); a second
+    walk or an exclusive copy of `SharedReferenceThroughLayers`; a per-form arm for elements.
+  - **Left (C1).** `AcquireValueCallee` (`Binding.ValueCalls.cs`) acquires a function-value callee through every layer in both modes
+    with its own walk (`ComparisonReferent`), predicate (`ReferentAuthority`) and operation (`Reborrow`, also for two or more layers):
+    a second copy of the same SPEC 3.4.1 / 7.3.3 rule. Unifying it moves accepted function-value receivers' operation (Reborrow ->
+    ReferenceRead), so it is its own unit: PLAN G1219.
+  - **Left (C2).** A method receiver's exclusive acquisition through several layers is decided at three sites by input shape:
+    AdaptInput's prepared-receiver branch (`ReceiverThroughLayers`' read: struct, Tuple and `objref` terminals of a non-element
+    receiver), this row (any other terminal below a concrete top layer, every element) and `TryPairReceiver` (a pair top layer, its own
+    predicate `PairCapability` over `LendFold`). The pair-top exclusion is the row's `actual.SafeReferent` guard, not a SPEC row
+    (3.4.3: "in any order"). Removal stage PLAN G1137: the row reached through `LayerBelow(actual, scope)` for any top layer; then the
+    prepared branch's value-terminal use and `TryPairReceiver`'s walk below its first layer go.
+  - Amends BU-212's temporary structure ("such an exclusive receiver has no adaptation yet (PLAN G162's remainder)" and "The receiver
+    half adapts for struct and Tuple terminals since PLAN G1122 (`ReceiverThroughLayers`, `TryPairReceiver`; other terminals are PLAN
+    G1137)"): below a concrete top layer every terminal adapts; PLAN G1137 keeps a pair top layer and the `objuniq` terminal; the
+    removal waits for the `for` entry alone (G179).
 - **R7-M68 A Place's path is folded once from its root: `PathFold` and `LendFold`** (Back, 2026-11-21; D-941, Q-596, PLAN G1154,
   and G1161 (D-950) with it; Major, behaviour-preserving below 64 steps; design `d941-design.md` revision 3 with B's rulings 1-4;
   the Front's review on C-402 (B1) and its delta read; the Middle's RP17 consent on the 64+ outcomes) SPEC 3.4, 15.1.5, 15.6.2;
