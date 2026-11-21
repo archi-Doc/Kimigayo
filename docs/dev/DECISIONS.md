@@ -11886,6 +11886,10 @@ resumed by R4-M86 (2026-10-20).
       declaration is now bound once, by the library pass.
   - Amended by R8-M53 (R8-L1 U2b): each compilation's pass counter starts anew, so a stamp a frozen library object holds is the
     literal `Frozen`; no counter value of the freeze survives it. Change counters are not stamps.
+  - Amended by BU-237 (Q-594, R7-D2 d2's Error part): `DeclState.Error`, its one writer `FailQuery` and its one read `QueryRecord`;
+    the Signature row's cycle record is its re-entry rule's (`ReenterHeader` in `BindHeader`), so `BindReference`'s interim is
+    gone and `BindVariableCore`'s guard is the one read of a state outside the component. The record form its rows asserted for a
+    cycle's other members (`PrerequisiteUnavailable_Kd`) is superseded: they are derived.
 - **BU-120 A declared signature's Proven is a declaration query, `DeclQueryKind.SignatureVerdict`; any other answer is computed at each read**
   (2026-11-07; R7-V1, plan §5.1, PLAN G375; ruling 3, the owner's O-44 for contract matching) SPEC 8.1.3, 8.3.3, 15.3.7, 15.6.1, 23.1.2.
   Supersedes in part R4-M163: its "Stays: the per-use re-proof" holds now only for an answer other than Proven and for contract matching.
@@ -16430,6 +16434,62 @@ resumed by R4-M86 (2026-10-20).
     formation validator in `TyCtxt.Intern` (hot path, facts the formation sites already establish); a shared container-kind rule read
     by `KimiLibrary.Register` (no group reaches it: a mechanism with no need); moving the access check before role filtering
     (contradicts SPEC 9.5's order for every group).
+- **BU-237 A failed header query answers Error, which carries its record: `DeclState.Error` and the Signature row's re-entry rule in
+  `BindHeader`** (2026-11-21; Front, Binding; Major: a new query state, its writer moved into the kind's rule, record selection;
+  Q-594, G886-p3 with the header-error fix (R7-D2 d2's Error part), landed in one head with Q-598; G812 rulings 167-169 and 173; the
+  design review and the implementation review ACCEPT WITH CONDITIONS; the Middle's RP17 C-359; W-298) SPEC 11.6, 23.1.2, 23.2.2.
+  Amends BU-105: its interim "the cycle record stays at today's demanders (`BindReference`, `BindVariableCore`) until D2 d2 moves it
+  into the row with the Error state" is met for `BindReference`, and its rejection "an Error state before its writer (d2)" by the
+  writer. Supersedes the record form BU-105's rows asserted for a cycle's other members (below).
+  - `DeclState.Error` (`Binding.DeclQuery`): the query failed in this pass and its kind's rule recorded the failure at the
+    declaration. Final in the pass: `CompleteQuery` keeps it, so the computation a re-entry interrupted completes without clearing
+    it; `BeginQuery` answers it like Done. One writer, `FailQuery` (Running to Error); one read of the failed answer, `QueryRecord`
+    (the declaration when Error, else null). Two bits per kind as before; no field, table or allocation; a frozen library symbol is
+    never written Error (`SetQueryState` throws as for Done).
+  - Signature row: a demand of a Property's header while it is Running and its Type is not yet formed is `CyclicBinding_Kd`
+    (unresolved) at the declaration and Error, applied in `BindHeader` for every demander (`ReenterHeader`; the deleted interim's
+    condition, so no move); any other header's re-entry reads its output as far as formed and records nothing.
+  - Readers of the failed answer: a use of the Property whose Type is not formed (`BindReference`) consults `QueryRecord` before the
+    written Type and the initializer, so every binding of that use in the pass rests on the one record; a use that finds the Type
+    formed reads the Type (PLAN G1181). Not yet a reader: the conformance proof (`VerifyPropertyRequirement`) demands the header and
+    reads its Type without the record (PLAN G1164; G812 ruling 169, N1). `LibraryQueryFault` treats an Error library header as a
+    fault, unreachable while the library has no cycle.
+  - The declaration's own variable binding (G812 ruling 173, Q-598 stacked on Q-594; 688717848): `BindVariableCore` rests at the
+    declaration's record when its Signature query answers Error (`QueryRecord`) and records nothing more, even where the computation
+    the re-entry interrupted formed the Type through another path (SPEC 9.6's Type path beside a value path that needed the
+    Property's own Type: `group G` / `let T = T.b` beside `group T` / `public let b`, a cycle by SPEC 11.6). R7-N1 c-b's
+    `QueryValueType` is the one demand of a value's declaration for its two readers, the use (`BindReference`) and the member step's
+    declared value Type (`DeclaredValueType`, which reads the Type only); its interim "a running Signature query answers false" is
+    removed (rejected: a cycle condition outside the Signature kind's rule, ruling 167, which left the invalid `let T = T.b`
+    accepted; also rejected, the stack as merged without this read, which newly accepted `var T = T.b`).
+  - A header failing on its own (a failed written Type, an initializer with its own record) stays Done: its record is at the failed
+    part, which every binding reaches the same way.
+  - Reason: the variable binding binds every Property initializer again (R4-M101 E1, E4). A use that closed the cycle read Running in
+    the header's binding and "Done without a Type" in the variable binding's, which consulted the initializer and rebuilt the
+    record-less loop; under G886-p3's derivation rule (G812 ruling 163: a record is derived only from an input that reaches a reported
+    record) the cycle's other members then reported their own `UnresolvedBinding_Kd`.
+  - Records (supersedes the record form of BU-105's rows): every member and dependent of a Property cycle whose header the re-entry
+    leaves without a Type rests on its record, so finalization suppresses their derived records (DIAGNOSTICS 4.3). BU-105's rows
+    expected `PrerequisiteUnavailable_Kd` at the other members: that record was the cause-less fallback (SPEC 23.2.2) of the
+    record-less loop, shown only because its prerequisites reached no published record. With the located record reached, the members
+    are derived and not shown; SPEC 23.1.2 allows either form, and DIAGNOSTICS 4.3, Q13 and the rule BU-105's rows state ("each other
+    declaration on it, and a dependent beside it, rests on that record") give this one. The rows
+    (`BindingTest.APropertyCycleIsRecordedOnceAtItsFirstHeaderInEveryPass`) read the located record alone and assert the derived
+    declarations (`Binding.DerivedIssues`) in both passes, so the dependence is asserted in the fallback record's place (not a
+    weakened expectation). A cycle whose re-entry still lets the header form a Type (x1if:
+    `let a = if b == 0 => 1 else => 2` / `let b = a`, the `if` giving a's Type although its condition re-entered) reports its cycle
+    record at `let a` since ruling 173, but the uses of a read the formed Type, not the failed answer, so the fact-less
+    `UnprovenConstraint_Kd` at `let b` stays beside it (PLAN G1181).
+  - Not subsumed (one rule, each owner's representation, one dependence test `FailureReported`): G812 ruling 165's split-call mark (a
+    call's open parts rest on the call, node-level, never bound again); BU-73's `Refusal` (a Done header with its Type).
+  - Rejected: a mark at the re-entry (G812 ruling 166: the next binding rewrites it); a cycle condition in `BindReference` (a second
+    copy of the row's rule; ruling 167); Error for every Type-less header (the declaration's record is written later by the variable
+    binding, and the cause keys would name the derived declaration instead of the failed part); a per-Property record field (BU-105's
+    rejected per-kind fields); the state alone with the recording left at `BindReference` (two sites of one rule); keeping BU-105's
+    rows (only a cause-less derived record passes them: the record-less loop back, or an exception to DIAGNOSTICS 4.3's suppression
+    for cycles).
+  - Remaining interim: `BindVariableCore`'s guard reads Signature's Running state until D2 d4. ArchitectureRulesTest: writes
+    `DeclQuery.cs=4`; reads `DeclQuery.cs=9;Variables.cs=1`.
 - **BU-238 A member access's left is read by SPEC 9.6 before either reading publishes: `ReadLeft`, `PickReading` and one Type-path
   verdict, `TypePathFailure`; a projection qualifier's member is selected over its formed normal form (PLAN G488, G634, G724 (a)-(c))**
   (2026-11-21; Front, Binding; Major, an acceptance mover; R7-N1 c-b, Q-598, landed in one head with Q-594 (G812 ruling 173); design
