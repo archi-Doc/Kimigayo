@@ -315,7 +315,15 @@ public sealed partial class Binding
         private (BoundType Actual, BoundType Expected) Intake(BoundType actual, BoundType expected)
         {
             this.formed = true;
-            this.root = this.binding is { } judge && this.use is { } at ? (judge.ClassForm(actual, at), judge.ClassForm(expected, at)) : (actual, expected);
+            this.root = (actual, expected);
+            if (this.binding is { } judge && this.use is { } at && (actual.HasAbstractPart || expected.HasAbstractPart))
+            {
+                // The judge decides its domain (R7-C3, C-b: SPEC 8.2.3's abstract Types) before it reads the use's scope, once for the
+                // pair (F's C2 ruling 317 (4)).
+                var view = judge.ConstraintScope(at);
+                this.root = (judge.ClassForm(actual, view, out _), judge.ClassForm(expected, view, out _));
+            }
+
             if (this.facts is not null && this.owner.comparisonRoot.Actual is null)
             {
                 this.owner.comparisonRoot = this.root;

@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -160,14 +160,17 @@ public sealed partial class Binding
     //   at FixCallSlots, at a first binding or in a pattern; no reader outside the list (a missing comparison is found by its judgment,
     //   never added as a site); no second comparison after a failed one, no mode or bool parameter, no per-form clause, no first-premise
     //   or premise-order choice. ClassForm does not read MemberOf's unresolved-operand gate: a fit compares Types, not closed worlds (N1).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private BoundType ClassForm(BoundType type, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!type.HasAbstractPart || !HasTypeIdentity(scope))
-        {
-            return type;
-        }
+        return type.HasAbstractPart && HasTypeIdentity(scope) ? this.AbstractClassForm(type, scope, out completion) : type;
+    }
 
+    // ClassForm past its inlined domain test (F's C2 ruling 317 (3)): a Type with an abstract part in a view with an identity premise,
+    // in the view's classes.
+    private BoundType AbstractClassForm(BoundType type, BindingScope scope, out Completion completion)
+    {
         if (this.ClassesOf(scope, out completion) is not { } classes)
         {
             return type;
@@ -176,10 +179,6 @@ public sealed partial class Binding
         this.ReadIdentityPremiseError(scope, type); // R7-C3 (F's C2 ruling 276 (4)): a Type of an erroneous class is a failed input
         return this.ClassForm(type, classes);
     }
-
-    // J3's intake at a use (RelationWalk.Fits' root): the judge decides its domain (R7-C3, C-b: SPEC 8.2.3's abstract Types,
-    // HasAbstractPart) before it reads the use's scope.
-    private BoundType ClassForm(BoundType type, Koto use) => type.HasAbstractPart ? this.ClassForm(type, this.ConstraintScope(use), out _) : type;
 
     // Terminates on every table (design R4.1): from a Type of a class ClassForm descends only into its Member's components, each a class
     // graph edge the cycle marking marks, so a descent that met its class again would be a marked class, which has no Member; a class
