@@ -374,6 +374,11 @@ public sealed partial class Binding
     // input directly. The declaration's own checks (its frame) are the input's sites, never its readers; nothing else rests.
     private PremiseFailure? UnprovenInputRead(BoundType subject, BindingSymbol contract, BindingScope scope)
     {
+        if (this.premiseFailures == 0)
+        {
+            return null; // Nothing failed (the Failed state's census).
+        }
+
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { FailedPremise: { } failure, UnprovenInputs: { Count: > 0 } inputs } || this.ChecksOwnSite(current.Owner))

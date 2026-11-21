@@ -220,6 +220,77 @@ public class RawPlaceAccessTest
         Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 14.2.4, 5.2.3, IMPL A.4 (D-932): the raw walks have no bound of their own (the published tree's, SyntaxNesting), so a raw
+    // Place k Tuple elements below `*p` keeps the raw route at every k: its discard destroys in place (HirTables.DestroysInPlace),
+    // where a 64-step bound took the transfer route at k = 64. A generic body (no layout) and a 0-high leaf (k = 64 fits Layout's window).
+    [Theory]
+    [InlineData(63, "<T>", "T")]
+    [InlineData(64, "<T>", "T")]
+    [InlineData(65, "<T>", "T")]
+    [InlineData(64, "", "i32")]
+    public void ADeepRawPlaceIsDestroyedInPlace(int k, string parameters, string leaf)
+    {
+        var type = string.Concat(Enumerable.Repeat("(i32, ", k)) + leaf + new string(')', k);
+        var c = MinimalEmissionTest.Analyze($"func f{parameters}(p: raw/{type})\n    unsafe => _ = (*p){string.Concat(Enumerable.Repeat(".1", k))}@move\n" +
+            "public func main() => ()\n");
+        HirTables.Publish(c);
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(HirTables.DestroysInPlace(Assert.Single(HirColumnsTest.Reachable(c.Kotonoha).OfType<DiscardKoto>())));
+    }
+
+    // SPEC 5.4, IMPL A.4 (D-932): `P@raw` states the Origin of the raw pointer P is reached through at every depth (PathOrigin has no
+    // bound of its own), so the address fits `raw/T during anchor`; a 64-step bound gave UnsatisfiedOriginRelation_Kd at k = 64.
+    [Theory]
+    [InlineData(63, "<T>", "T")]
+    [InlineData(64, "<T>", "T")]
+    [InlineData(65, "<T>", "T")]
+    [InlineData(64, "", "i32")]
+    public void ADeepRawPlacesAddressStatesThePointersOrigin(int k, string parameters, string leaf)
+    {
+        var type = string.Concat(Enumerable.Repeat("(i32, ", k)) + leaf + new string(')', k);
+        var source = $"func addr{parameters}(anchor: ref/i32, p: raw/{type} during anchor) -> raw/{leaf} during anchor\n" +
+            $"    unsafe => return (*p){string.Concat(Enumerable.Repeat(".1", k))}@raw\npublic func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
+    // SPEC 5.2.2, 15.6.5, IMPL A.4 (D-932): a borrow of a raw Place k Tuple elements below `*p` is a fresh anchor within the pointer's
+    // Origin at every depth (IsRawRooted and ContainedOrigin have no bound of their own), so returning it `during other` needs `anchor
+    // outlives other`: one UnprovenOriginRelation_Kd at the operand; the 64-step bounds accepted it at k = 64 and 65 (class 2).
+    [Theory]
+    [InlineData(63)]
+    [InlineData(64)]
+    [InlineData(65)]
+    public void ADeepRawPlacesBorrowLiesWithinThePointersOrigin(int k)
+    {
+        var type = string.Concat(Enumerable.Repeat("(i32, ", k)) + "i32" + new string(')', k);
+        var source = $"func look<T>(anchor: ref/i32, other: ref/i32, p: raw/{type} during anchor) -> ref/i32 during other\n" +
+            $"    unsafe => return (*p){string.Concat(Enumerable.Repeat(".1", k))}@ref\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), source.IndexOf("(*p)", StringComparison.Ordinal)), (error.Code, error.Span!.Value.Start));
+    }
+
+    // SPEC 5.2.2, IMPL A.4 (D-932): the HIR publisher asks whether each selection's parent on a write's path is rooted at a raw Place
+    // (IsRawRooted, which has no bound of its own), so a write n stored Fields below `*p` or an exclusive reference, over struct-built
+    // Types that keep each Type's syntax shallow (S1 holds an i32 x, Sj an S(j-1) x; SPEC 18.2.1 has no Type alias), takes raw-walk
+    // steps linear in n.
+    [Theory]
+    [InlineData("raw", "unsafe => (*p)")]
+    [InlineData("uniq", "p")]
+    public void ADeepWriteTakesRawWalkWorkLinearInItsDepth(string layer, string root)
+    {
+        long[] work = [.. new[] { 250, 500, 1000 }.Select(RawWriteWork)];
+        Assert.True(work[0] < work[1] && MirBorrowsTest.Grows(work, 2), $"{layer}: work {string.Join(", ", work)}");
+
+        long RawWriteWork(int n)
+        {
+            var c = CompilationTestHelper.Parse("struct S1\n    internal var x: i32\n" + string.Concat(Enumerable.Range(2, n - 1).Select(static j => $"struct S{j}\n    internal var x: S{j - 1}\n")) +
+                $"func put(p: {layer}/S{n})\n    {root}{string.Concat(Enumerable.Repeat(".x", n))} = 9\npublic func main() => ()\n");
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            HirTables.Publish(c);
+            return c.Binding.RawWalkWork;
+        }
+    }
+
     [Fact]
     public void AnExplicitTakeMovesAndDestroys()
     {
