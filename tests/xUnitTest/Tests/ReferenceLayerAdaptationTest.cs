@@ -6,12 +6,19 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>SPEC 10.2: at a fixed expected ref/U, safe reference layers ending in U yield one shared reference; the
-/// innermost ref layer is Copied with its own Origin and uniq layers below it are shared-Reborrowed.</summary>
+/// innermost ref layer is Copied with its own Origin and uniq layers below it are shared-Reborrowed. The row's exclusive mode (SPEC
+/// 7.3.3): a Receiver Expression below several layers whose path and layers grant it is one exclusive reference through them.</summary>
 public class ReferenceLayerAdaptationTest
 {
     private const string Node = "struct Node\n    public var id: i32\n    public init(id: i32) => self.id = id\nfunc validate(node: ref/Node) -> i32 => node.id\n";
     private const string Meter = "struct Meter\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n";
     private const string Two = "struct Two<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    public var uniqCalls: i32 = 0\n    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self\n        self.uniqCalls += 1\n        return self.first@uniq\n";
+    private const string One = "struct One<T>\n    Self is Indexable<isize>\n    associate Element is T\n    var first: T\n    public init(first: T) => self.first = first@move\n    public func index(self, key: ref/isize) -> ref/T during self => self.first@ref\n";
+    private const string Gauge = "struct Gauge\n    public var hits: i32 = 0\n    public computed level: i32\n        get() -> i32 => self.hits\n        set(value: i32) -> () => self.hits = value\n    public init() => ()\n";
+    private const string Pot = "struct Pot\n    public var n: i32 = 0\n    public init() => ()\n    public func absorb(self: uniq/Self, other: ref/Pot) => self.n += other.n\n";
+    private const string Bumped = "contract Bump\n    func bump(self: uniq/Self)\nstruct Meter\n    Self is Bump\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\n";
+    private const string PairBump = Bumped + "func f<s/T, U>(g: uniq/(s/U during b), m: s/T) -> ()\n    s is owner or uniq\n    U is Bump\n    g.bump()\n";
+    private const string Bound = "func f(values: uniq/Array<uniq/(uniq/Meter during a) during b>)";
 
     [Theory]
     [InlineData("SharedThroughExclusive", Node + "var first = Node.init(1)\nvar second = Node.init(2)\nlet nodes: [2 of uniq/Node] = [first@uniq, second@uniq]\nvar total: i32 = 0\nfor node in nodes\n    total += validate(node)\nrequire total == 3 else => $abort(\"total\")\nConsole.writeLine(\"ok\")", "ok\n")]
@@ -26,27 +33,45 @@ public class ReferenceLayerAdaptationTest
 
     // SPEC 7.3.3, 3.4.3, 15.6.2 (PLAN G147 (2) (c)): a uniq/Self receiver below several safe value-reference layers is one exclusive
     // reference through them, the exclusive mode of 10.2's row, where its path and layers grant it: an Array's, a user index's and a
-    // Dictionary's element through indexUniq, a var root's element, a Type parameter's terminal; the bump reaches the referent.
+    // Dictionary's element through indexUniq, a var root's element, a Type parameter's terminal; the bump reaches the referent. Two
+    // calls in sequence each end their reservation (15.6.7); a setter and a compound update through the layers locate their receiver
+    // once (11.3.1, 13.7.2); a generic body's `uniq/(s/U)` under `s is owner or uniq` runs in its owner and its uniq instance (8.1.3).
     [Theory]
     [InlineData("Array", Meter + "func f(values: uniq/Array<uniq/(uniq/Meter during a) during b>) => values[0].bump()\nvar m = Meter.init()\nvar r = m@uniq\nvar rr = r@uniq\nvar vals = [rr@move]\nf(vals@uniq)\nrequire m.n == 1 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
     [InlineData("UserIndex", Meter + Two + "func f(values: uniq/Two<uniq/(uniq/Meter during a) during b>) => values[0].bump()\nvar m = Meter.init()\nvar r = m@uniq\nvar rr = r@uniq\nvar two = Two.init(rr@move)\nf(two@uniq)\nrequire two.uniqCalls == 1 else => $abort(\"no indexUniq\")\nrequire m.n == 1 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
     [InlineData("Dictionary", Meter + "func f(values: uniq/Dictionary<i32, uniq/(uniq/Meter during a) during b>) => values[1].bump()\nvar m = Meter.init()\nvar r = m@uniq\nvar rr = r@uniq\nvar d = [1: rr@move]\nf(d@uniq)\nrequire m.n == 1 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
     [InlineData("VarRoot", Meter + "var m = Meter.init()\nvar r = m@uniq\nvar rr = r@uniq\nvar vals = [rr@move]\nvals[0].bump()\nrequire m.n == 1 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
-    [InlineData("TypeParameter", "contract Bump\n    func bump(self: uniq/Self)\nstruct Meter\n    Self is Bump\n    public var n: i32 = 0\n    public init() => ()\n    public func bump(self: uniq/Self) => self.n += 1\nfunc f<U>(g: uniq/(uniq/U during b)) -> ()\n    U is Bump\n    g.bump()\nvar m = Meter.init()\nvar r = m@uniq\nf(r@uniq)\nrequire m.n == 1 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("TypeParameter", Bumped + "func f<U>(g: uniq/(uniq/U during b)) -> ()\n    U is Bump\n    g.bump()\nvar m = Meter.init()\nvar r = m@uniq\nf(r@uniq)\nrequire m.n == 1 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("TwoCalls", Meter + Bound + "\n    values[0].bump()\n    values[0].bump()\nvar m = Meter.init()\nvar r = m@uniq\nvar rr = r@uniq\nvar vals = [rr@move]\nf(vals@uniq)\nrequire m.n == 2 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("SetterCompound", Gauge + "func f(values: uniq/Array<uniq/(uniq/Gauge during a) during b>)\n    values[0].level = 5\n    values[0].level += 1\nvar g = Gauge.init()\nvar r = g@uniq\nvar rr = r@uniq\nvar vals = [rr@move]\nf(vals@uniq)\nrequire g.hits == 6 else => $abort(\"lost\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("PairOwnerInstance", PairBump + "var m1 = Meter.init()\nlet one: i32 = 1\nf<i32, Meter>(m1@uniq, one)\nrequire m1.n == 1 else => $abort(\"owner\")\nConsole.writeLine(\"ok\")")]
+    [InlineData("PairUniqInstance", PairBump + "func run(x: uniq/i32 during q) -> i32\n    var m2 = Meter.init()\n    var r2 = m2@uniq\n    f<uniq/i32 during q, Meter>(r2@uniq, x)\n    return m2.n\nvar n: i32 = 5\nrequire run(n@uniq) == 1 else => $abort(\"uniq\")\nConsole.writeLine(\"ok\")")]
     public void AnExclusiveReceiverIsOneReferenceThroughLayers(string name, string source)
         => ScalarEmissionTest.EmitFixture("ReferenceLayerExclusiveReceiver" + name, source, "ok\n");
 
-    // The invalid twins keep the record their one-layer forms have: a shared layer or path (SPEC 15.6.2), a let root (15.1.5), a live
-    // shared Loan of the receiver's root (15.6.2).
+    // The exclusive mode reaches every terminal and layer count below a concrete top layer (three layers, a generic struct, an enum;
+    // SPEC 3.4.3), and stays a Receiver Expression's: an argument and an unbound method's `self` are ordinary inputs (10.2, 7.3.4). The
+    // invalid twins keep the record their one-layer forms have: a shared layer or path (SPEC 15.6.2), a let root (15.1.5), a live shared
+    // Loan of the receiver's root or an argument reading it (15.6.2, 15.6.7), an index without indexUniq (4.7.1 step 3).
     [Theory]
+    [InlineData("func f(values: uniq/Array<uniq/(uniq/(uniq/Meter during a) during b) during c>) => values[0].bump()", null)]
+    [InlineData("func f(values: uniq/Array<uniq/(uniq/Array<i32> during a) during b>) => values[0].append(1)", null)]
+    [InlineData("enum Mode\n    A\n    B\n    public func flip(self: uniq/Self) => self@follow = Mode.B\nfunc f(values: uniq/Array<uniq/(uniq/Mode during a) during b>) => values[0].flip()", null)]
+    [InlineData("func take(m: uniq/Meter) => m.bump()\n" + Bound + " => take(values[0])", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData(Bound + " => Meter.bump(values[0])", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
     [InlineData("func f(values: uniq/Array<ref/(uniq/Meter during a) during b>) => values[0].bump()", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
     [InlineData("func f(values: ref/Array<uniq/(uniq/Meter during a) during b>) => values[0].bump()", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
     [InlineData("func f(values: uniq/Array<uniq/(ref/(uniq/Meter during a) during b) during c>) => values[0].bump()", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
     [InlineData("func f(values: ref/Dictionary<i32, uniq/(uniq/Meter during a) during b>) => values[1].bump()", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData(Gauge + "func f(values: ref/Array<uniq/(uniq/Gauge during a) during b>) => values[0].level = 5", nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd))]
     [InlineData("func g(rr: uniq/(uniq/Meter during a) during b)\n    let vals = [rr@move]\n    vals[0].bump()", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
-    [InlineData("func f(values: uniq/Array<uniq/(uniq/Meter during a) during b>)\n    let view: ref/(Array<uniq/(uniq/Meter during a) during b>) = values\n    values[0].bump()\n    _ = view", nameof(Kimi.DiagnosticCode.CallActivationConflict_Kd))]
-    public void AnExclusiveReceiverThroughASharedLayerIsRejected(string body, string code)
-        => Assert.Equal([code], DiagnosticCorpus.Check(Meter + body + "\npublic func main() => ()\n").Diagnostics.Select(static x => x.Code).Distinct());
+    [InlineData(Bound + "\n    let view: ref/(Array<uniq/(uniq/Meter during a) during b>) = values\n    values[0].bump()\n    _ = view", nameof(Kimi.DiagnosticCode.CallActivationConflict_Kd))]
+    [InlineData(Pot + "func f(values: uniq/Array<uniq/(uniq/Pot during a) during b>) => values[0].absorb(values[1])", nameof(Kimi.DiagnosticCode.CallActivationConflict_Kd))]
+    [InlineData(Pot + "func f(values: uniq/Array<uniq/Pot during a>) => values[0].absorb(values[1])", nameof(Kimi.DiagnosticCode.CallActivationConflict_Kd))]
+    [InlineData(One + "func f(values: uniq/One<uniq/(uniq/Meter during a) during b>) => values[0].bump()", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData(One + "func f(values: uniq/One<uniq/Meter during a>) => values[0].bump()", nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd))]
+    public void AnExclusiveReceiverThroughLayersHasItsOneLayerVerdict(string body, string? code)
+        => Assert.Equal(code is null ? Array.Empty<string>() : [code], DiagnosticCorpus.Check(Meter + body + "\npublic func main() => ()\n").Diagnostics.Select(static x => x.Code).Distinct());
 
     // SPEC 10.2, 15.6.4: a bare exclusive reference at an identical fixed expected uniq Type is Reborrowed, never moved out
     // of its Place, so the original reference stays usable afterwards, for a local as for a stored field.
