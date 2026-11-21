@@ -51,11 +51,12 @@ public sealed class BindingReportTest
     [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 1, 1)]
     [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 0, 0)]
     [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Actual, 0, 2)]
-    public void ADifferingReportOfAKeyIsABrokenContract(DiagnosticCode code, byte kind, int type, int count)
+    [InlineData(DiagnosticCode.TypeMismatch_Kd, (byte)ProblemFactKind.Instance, 1, 1, (byte)ProblemFactKind.Instance)] // R7-E2 E2-5b: an Instance fact, by its Type.
+    public void ADifferingReportOfAKeyIsABrokenContract(DiagnosticCode code, byte kind, int type, int count, byte kept = (byte)ProblemFactKind.Actual)
     {
         var report = new BindingReport();
         BoundType[] types = [BoundType.Boolean, BoundType.Unit];
-        var fact = new ProblemFact(ProblemFactKind.Actual, Other, report.Keep(types[0]));
+        var fact = new ProblemFact((ProblemFactKind)kept, Other, report.Keep(types[0]));
         var first = report.Add(Problem(Subject, Mismatch), [fact]);
         Assert.Equal(first, report.Add(Problem(Subject, Mismatch), [fact with { Value = report.Keep(types[0]) }]));
         Assert.Equal(1, report.Count);

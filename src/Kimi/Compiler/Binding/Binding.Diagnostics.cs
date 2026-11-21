@@ -646,7 +646,6 @@ public sealed partial class Binding
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.captureRepeatRows.Clear();
-        this.constructorAbsences?.Clear();
         this.pairCaseRows.Clear();
         this.rejectedCandidates?.Clear();
         this.rejectedRows.Clear();

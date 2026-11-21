@@ -635,12 +635,11 @@ public sealed partial class Binding
         return facts;
     }
 
-    // Its own record beside the function's other failures (SPEC 23.1.2); a further failure of one requirement takes the next condition.
+    // Its own record beside the function's other failures (SPEC 23.1.2), numbered by the one rule (RecordNumbered): a further failure of
+    // one requirement takes the next condition. The kept list empties for the next record.
     private void RecordOverride(FunctionKoto function, BindingFailure failure, List<ProblemFact> facts)
     {
-        var recorded = System.Runtime.InteropServices.CollectionsMarshal.AsSpan(facts);
-        var condition = this.report.Condition(new(this.CodeOf(function, failure), DiagnosticRequirement.Binding(failure), SourceRef.Of(function), 0), recorded);
-        this.Record(function, failure, recorded, condition);
+        this.RecordNumbered(function, failure, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(facts));
         facts.Clear();
     }
 

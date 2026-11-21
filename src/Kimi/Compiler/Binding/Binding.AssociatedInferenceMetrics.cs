@@ -7,8 +7,8 @@ internal readonly record struct AssociatedInferenceMetrics(int Batches, int Matc
 public sealed partial class Binding
 {
     // The inference's storage kept across passes, which a warm Bind reuses: the kept batches (InferenceBatches, a kept NodeColumns
-    // family) and the eager tables. A pass family's stamped column (InferenceFailures) is NodeColumns' storage, asserted by its own d10
-    // row, and is never counted here.
+    // family) and the eager tables. An inference hole's facts are its problem's, in the report's storage (InferenceFacts), never counted
+    // here.
     internal AssociatedInferenceMetrics AssociatedMetrics
     {
         get
