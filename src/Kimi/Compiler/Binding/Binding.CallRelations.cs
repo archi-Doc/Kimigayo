@@ -224,15 +224,21 @@ public sealed partial class Binding
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
     // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
     // and an implicit exclusive Borrow (a receiver's, SPEC 7.3) of a `during self` layer's Place or an enclosing one is the allowlist's
-    // Origin relation problem (HolderPlaceFailure; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
+    // Origin relation problem (JudgeHolderPlace; SPEC 5.7, DECISIONS R4-M110), which leaves the input Resolved and its fit judged.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
-        if (operation is { Source: { } source, ParameterType: { } mode } && (this.FailStaticBorrow(source, operation.Kind, mode.Semantics) ||
-            (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics) &&
-            this.HolderPlaceFailure(source, HolderAccess.ExclusiveBorrow, null, source))))
+        if (operation is { Source: { } source, ParameterType: { } mode })
         {
-            return;
+            if (this.FailStaticBorrow(source, operation.Kind, mode.Semantics))
+            {
+                return;
+            }
+
+            if (operation.Kind == ArgumentOperationKind.Borrow && IsExclusive(mode.Semantics))
+            {
+                this.JudgeHolderPlace(source, HolderAccess.ExclusiveBorrow, null, source);
+            }
         }
 
         if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } || ReferenceEquals(adapted, parameter) ||
