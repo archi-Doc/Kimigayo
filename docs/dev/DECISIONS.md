@@ -8701,7 +8701,8 @@ resumed by R4-M86 (2026-10-20).
     judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge (`IsDerived` owns
     derivation). Open: A's `IsDerived` widening for an associated specification's record.
 - **BU-24** (superseded in part by BU-30, BU-34, BU-39, BU-41, BU-46, BU-113 (G160-2b's rejected binder cap), BU-166
-  (`BorrowRawPlace`'s declared-result fit deleted; `RawAnchor`); amended by R5-M164)
+  (`BorrowRawPlace`'s declared-result fit deleted; `RawAnchor`), BU-242 (G212: a Move of an enclosing Place is a read;
+  `JudgeHolderAccess`); amended by R5-M164)
   (2026-10-22; designs A′ and B′, design-final
   §14 "B′+"; unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one
   slot whose role the Semantics decides (0 B; B′'s +8 B field is not taken). `Origin` never reads a raw layer's; `RawOrigin` only a raw
@@ -16614,6 +16615,22 @@ resumed by R4-M86 (2026-10-20).
     failed equality as a Binding failure of the call (it moves the owner of R7-O1 b1's record); a comparison failing with the solve's
     failed equality (ruling 43 (4): its Unit rejected 17 valid LocalOriginClauseTest rows, the solve's equality test lacking the use
     site's facts the walk reads).
+- **BU-242 A Move of a Tuple or fixed-array Place enclosing a `during self` layer is a read** (Front, 2026-11-21; PLAN G212's
+  Binding half, R7 plan Z5 (an R7 exit row), Q-622; Major; the Middle's RP17 consent) SPEC 5.7, 13.5.3, 15.1.2; DECISIONS R4-M117
+  item 6. Supersedes in part BU-24's G212 paragraph.
+  - **Rule.** A Move of a Tuple or fixed-array Place enclosing a `during self` layer is a read (SPEC 5.7, R4-M117 item 6), so
+    Binding's allowlist judges writes, updates and exclusive borrows only, and the Move takes the Place's read Type (`ReadHolder`),
+    element by element. A1 marks the whole Place Moved, the layer's element included (SPEC 13.5.3, 15.1.2; the design's reading R1,
+    not disputed by its review), so only a whole write restores it.
+  - **Structure.** With the Move arm gone no verdict of the allowlist fails its node (R7-O1 B4 left every other one Resolved), so
+    it records only: `HolderPlaceFailure` and `HolderWriteFailure` became the void `JudgeHolderPlace` and `JudgeHolderAccess`.
+  - **Supersedes in part** BU-24's G212 paragraph (unit bu26): "a Move of an enclosing Place (`b.pair@move`) stays the located
+    `Unsupported_Kd`, since SPEC does not say what it gives" and "One verdict table in `HolderWriteFailure`": its reason, SPEC's
+    silence, ended with R4-M117 item 6.
+  - **Open:** A5's half (PQ-10 at the Place; the review's C1, `HolderAccess`, and C2, the w4 variant with `b.pair@move`) is the
+    Middle's Z5-M1 (PLAN G212).
+  - **Rejected:** an admitting `HolderAccess.Move` (a mode that decides nothing); a Binding column of layer positions for A5 (a
+    second copy of `TyCtxt.StoredStep`'s walk); an element-wise HIR lowering of the Move (a new form for one feature).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
