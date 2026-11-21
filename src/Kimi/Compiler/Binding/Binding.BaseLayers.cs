@@ -125,8 +125,9 @@ public sealed partial class Binding
     private BaseChain BaseLayers(StructKoto structure) => new(this, structure.BoundSymbol!);
 
     // True when the declarations must run again, with every clause that names no struct known. The walk reads the running pass's early
-    // reads in d8's order and writes none: ReadAgain publishes nothing, and an early read's writers (NamePath, Lookup) publish. No later
-    // step reads them: this step runs once per run, and a rerun's run advances the pass counter.
+    // reads in d8's order and writes none (PagedColumn's Prohibitions: an enumeration is read to its end before a Ref that carves a
+    // page): ReadAgain publishes nothing, and an early read's writers (NamePath, Lookup) publish. No later step reads them: this step runs
+    // once per run, and a rerun's run advances the pass counter.
     private bool VerifyEarlyReads()
     {
         var again = false;
