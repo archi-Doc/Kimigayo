@@ -18,9 +18,9 @@ Run the setup script once from the Kimigayo repository root:
 
 It validates the extracted LLVM **22.1.8** release archive, copies the required executables and the DLLs of its `bin` into `toolchain/`, builds/tests the backend and installs the adopted archive into `toolchain/windows_x64/`, and builds and installs `tatara.dll` (which needs Visual Studio's C++ x64 tools, a Windows SDK and the DIA SDK). It does not download tools or change PATH. Later backend source changes can be rebuilt with `./src/backend/windows-x64/build.ps1`.
 
-`Hello.kimiproj` uses Tinyhand indentation syntax and needs no LLVM/backend paths. `OutputPath` defaults to `bin/<target>/Hello.ll`; `Optimization` accepts `O0` or `O2` and defaults to `O2`. Source builds find the checkout's toolchain; standalone compiler distributions use toolchain beside Kimi.exe/Kimi.dll. Use `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT` to select another root. A build loads the root's `tatara.dll` and libraries and runs no LLVM tool. `--LlvmBin` names only the tool directory `kimi toolchain verify` checks; a project's `LlvmBin` is accepted and not read. Explicit kimi_backend entries remain supported as overrides.
+`Hello.kimiproj` uses Tinyhand indentation syntax and needs no LLVM/backend paths. `OutputPath` defaults to `bin/<target>/Hello.ll`; `Optimization` accepts `O0` or `O2` and defaults to `O2`. A build reads no toolchain root: it loads the `tatara.dll` beside the compiler (building Kimi copies the checkout's `toolchain/tatara.dll` beside `Kimi.dll`, so build Kimi after setup), links the compiler's own `kernel32` and backend libraries, and runs no LLVM tool. `--ToolchainRoot` and `KIMI_TOOLCHAIN_ROOT` select only the root `kimi toolchain verify` checks; a build accepts them and does not read them. `--LlvmBin` names only the tool directory `kimi toolchain verify` checks; a project's `LlvmBin` is accepted and not read. A `kimi_backend` or `kernel32` entry is an error: both are supplied by the compiler.
 
-`kernel32.lib` is generated and validated during setup/update, then shared from `toolchain/windows_x64`. No Windows SDK is required. Ordinary builds skip tool identity checks; `kimi toolchain verify` explicitly checks LLVM versions, installed hashes, adopted backend and import generation conditions. See [§20.3.2](../../impl/20-compilation-configuration.md#2032-builds-and-artifacts).
+`kernel32.lib` is generated and validated during setup/update, and the compiler carries the adopted copy (`src/backend/windows-x64/kernel32.lib`). No Windows SDK is required. Ordinary builds skip tool identity checks; `kimi toolchain verify` explicitly checks LLVM versions, installed hashes, adopted backend and import generation conditions. See [§20.3.2](../../impl/20-compilation-configuration.md#2032-builds-and-artifacts).
 
 ## Build and run
 
@@ -32,7 +32,7 @@ dotnet src/Kimi/bin/Release/net10.0/Kimi.dll build docs/examples/Hello/Hello.kim
 dotnet src/Kimi/bin/Release/net10.0/Kimi.dll run docs/examples/Hello/Hello.kimiproj --no-build
 ```
 
-`build` publishes `Hello.ll` and schema 4 `Hello.link.json`, verifies IR and native build inputs, and invokes LLVM directly from C#. It links the installed backend/kernel32 libraries and publishes the executable after a successful link. `Hello.link.build.json` records compilation success separately from toolchain verification, which is not performed in ordinary builds.
+`build` publishes `Hello.ll` and schema 4 `Hello.link.json`, verifies IR and native build inputs, and invokes LLVM directly from C#. It stages and links the compiler's backend and kernel32 libraries (`Hello.O2.native/<sha256>.lib`) and publishes the executable after a successful link. `Hello.link.build.json` records compilation success separately from toolchain verification, which is not performed in ordinary builds.
 
 `run --no-build` executes an existing binary without source compilation or LLVM, requiring a successful build record and matching executable hash. Ordinary `run` builds current sources first and never runs an old binary after failure. `kimi run path/to/program.exe` directly executes the selected binary. Each form forwards stdout/stderr and exit status.
 

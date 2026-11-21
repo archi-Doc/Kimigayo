@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 // lookup, ranking and final call publication remain with their existing owners.
 public sealed partial class Binding
 {
-    // A candidate's environment judgments (DECISIONS BU-86) and invariant marks are its own frame's (SlotFrame.EnvironmentJudgment,
-    // IsInvariant), so a nested call bound while it is evaluated keeps its own. `unsolved` holds the required structural slots that no
+    // A candidate's environment judgments (DECISIONS BU-86) and slot bindings are its own frame's (SlotFrame.EnvironmentJudgment,
+    // Bindings), so a nested call bound while it is evaluated keeps its own. `unsolved` holds the required structural slots that no
     // evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such slots stays rankable, and its selection is the
     // inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
@@ -755,7 +755,7 @@ public sealed partial class Binding
             // Fitted literals can add Origin evidence after the first contextual pass.
             // Publish only the final substituted parameter Types, never preliminary binders.
             if (solution.OriginInference is not null &&
-                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, declaringType, select: true))
+                !this.SolveCallOriginInference(solution.OriginInference, origins, inputs, [], declaringType, select: true))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -950,6 +950,7 @@ public sealed partial class Binding
             return false;
         }
 
+        solution.OpenSlotVariables(); // G1128: before the rows read the slots.
         solution.Contribute(mapping);
         solution.FirstSolve = !solution.FixedConstruction && !solution.ChildSlice.IsEmpty && solution.ChildSlice[1] < 0; // Before the rows are composed.
         this.CollectPositionPremises(ref solution);
@@ -970,9 +971,29 @@ public sealed partial class Binding
                 }
             }
 
-            solution.OpenWaited(); // J2: after every premise of the solve, before the solve and the operations' Types.
-            return solution.OriginInference is not { } solved ||
-                this.SolveCallOriginInference(function, solved, solution.Origins, solution.Inputs, solution.DeclaringType, select: true);
+            solution.OpenWaited(); // J2: the Origin parameters' half, after every premise of the solve, before the solve.
+            // G1128 R1.3 (e) 2: the slot variables' values, a span of the width measured at the slot step, for this solve only (the
+            // common path rents nothing).
+            var slotCount = solution.OriginInference?.SlotVariableCount ?? 0;
+            var slotValues = this.originScratch.Rent(slotCount);
+            bool applicable;
+            try
+            {
+                applicable = solution.OriginInference is not { } solved ||
+                    this.SolveCallOriginInference(solved, solution.Origins, solution.Inputs, slotValues.AsSpan(0, slotCount), solution.DeclaringType, select: true);
+                // G1128: the solve's values replace the slot variables; the root rows read them, then J2 opens the waited slots over them.
+                if (solution.RestoreSlotValues(slotValues.AsSpan(0, slotCount)))
+                {
+                    solution.Contribute(mapping);
+                }
+            }
+            finally
+            {
+                this.originScratch.Return(slotValues, clearArray: true);
+            }
+
+            solution.OpenWaitedSlots(); // J2: the Type slots' half, before the operations' Types.
+            return applicable;
         }
         finally
         {

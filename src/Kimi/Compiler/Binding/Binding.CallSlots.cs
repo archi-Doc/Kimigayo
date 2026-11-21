@@ -19,9 +19,12 @@ namespace Kimi.Compiler;
 //   the solve's binder (SolveBinder: its declaration and slot owner) and one solution's slot and length arrays (a candidate's
 //   SlotSolution, a Case construction's, a function reference's or a Callable proof's), with the evidence flags.
 // - Outputs: the bindings in those arrays (null while unbound) and whether the actual matches the pattern structurally; a FixedSlots
-//   (owner, each slot's fixed binding, lengths, whether every own slot is fixed); a FixedPattern for AdaptInput.
-// - Invariants: a slot's earlier binding is kept unless the flags say how two bindings meet (SPEC 10.8): an invariant binding over
-//   covariant ones, covariant ones by their common Type; under `relateLater` an Origin never fails a structurally equal binding. An open
+//   (owner, each slot's fixed binding, lengths); a FixedPattern for AdaptInput.
+// - Invariants: a slot's frame keeps its first binding's Type, and each evidence binding is recorded with its composed polarity
+//   (SlotBinding; G1128), whose Origins the late solve values (SPEC 10.8 as revised); under `relateLater` or `evidence` an Origin never
+//   fails a structurally equal binding, and a function reference's met bindings stay its Origin conflict or limit: Infer meets
+//   Origins (CommonOriginType) only at a function reference's slot, which no late solve values (SPEC 10.5.3), until a reference's
+//   solve owns its bindings and values the met Type's readers (PLAN's R1.3 (h) line). An open
 //   slot in FixedSlots has one encoding, its own parameter, and only an inferred construction (a structure's `.init` or a Case's
 //   qualifier with its own list omitted, SPEC 9.7) leaves one beside fixed slots; none fixed is no Types. An argument's adaptation is
 //   planned only at a FixedPattern made by Of (a pattern under a solution's FixedSlots, an open slot staying a slot) or Open (a
@@ -61,17 +64,8 @@ public sealed partial class Binding
 
     // SPEC 10.8.1: the slots a constructor's declaring Type fixes: its components, an open own slot as its own parameter; also read before
     // its candidate's frame is seeded (ConstructorType).
-    private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType, bool inferred)
-    {
-        var owner = (DeclarationContainerKoto)CallSlotOwner(constructor);
-        var ownFixed = true;
-        for (var i = 0; i < owner.GenericParameterNodes.Count; i++)
-        {
-            ownFixed &= !OpenConstructionSlot(owner, declaringType, inferred, i);
-        }
-
-        return new(owner, (BoundType[])declaringType.Components, default, ownFixed);
-    }
+    private static FixedSlots ConstructionSlots(FunctionKoto constructor, BoundType declaringType)
+        => new(CallSlotOwner(constructor), (BoundType[])declaringType.Components, default);
 
     // An inferred construction (a structure's or an enum Case's, SPEC 9.7) leaves open each own slot that its constructed Type gives as its
     // own parameter; an outer slot is always a fixed binding, even when it is itself a parameter.
@@ -200,7 +194,7 @@ public sealed partial class Binding
                 }
             }
 
-            return new(function, explicitTypes, explicitLengths, !explicitTypes.IsEmpty);
+            return new(function, explicitTypes, explicitLengths);
         }
 
         if (declaringType is null)
@@ -218,7 +212,7 @@ public sealed partial class Binding
             }
         }
 
-        return ConstructionSlots(function, declaringType, inferred);
+        return ConstructionSlots(function, declaringType);
     }
 
     // Whether a constructor call infers its construction's Type (SPEC 10.8.1): its qualifier names the Type without its arguments.
@@ -459,10 +453,10 @@ public sealed partial class Binding
     // and the argument fits the substituted parameter after selection. An Origin the signature itself quantifies, such as a per-call
     // input, lies beyond the call and never solves an Origin in a slot: it becomes an open region that other evidence fills.
     // With `relateLater`, the actual is a value's Type whose Origin relations to the solution are judged after selection (SPEC 15.6.1),
-    // so Origin evidence never fails a structurally equal slot binding; `invariant` marks a position below an exclusive layer or an
-    // invariant schema slot. `binder` is the solve's binder (SolveBinder): its Declaration's Constraints decide a read Type, and its
-    // SlotOwner's slots are the ones bound.
-    private bool Infer(BoundType pattern, BoundType actual, SolveBinder binder, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
+    // so Origin evidence never fails a structurally equal slot binding; `polarity` is the position's (ComponentPolarity), 0 below an
+    // exclusive layer or an invariant schema slot. `binder` is the solve's binder (SolveBinder): its Declaration's Constraints decide a
+    // read Type, and its SlotOwner's slots are the ones bound.
+    private bool Infer(BoundType pattern, BoundType actual, SolveBinder binder, SlotFrame frame, bool inferOrigins = false, bool lengths = false, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, int polarity = 1)
     {
         // R7-C3 (design §3, J4 at the head; D-779): the evidence in its class's form in the solve's view (SlotFrame.View), once per
         // step (the table keeps each form), so every branch below, a decomposition and a first binding included, reads formed evidence.
@@ -527,8 +521,8 @@ public sealed partial class Binding
                     structural,
                     evidence,
                     relateLater,
-                    invariant || IsInvariantLayer(formed, this, null, default))
-                : this.Infer(formed, actual, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+                    this.ComponentPolarity(formed, 0, polarity, default))
+                : this.Infer(formed, actual, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, polarity);
             if (fits)
             {
                 this.splitCarried = handed;
@@ -541,7 +535,7 @@ public sealed partial class Binding
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+            return this.Infer(pattern.Components[0], actual.Underlying, binder, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, polarity);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(binder.SlotOwner, pattern.Symbol!) is var slot && slot >= 0)
@@ -585,6 +579,10 @@ public sealed partial class Binding
                 actual = this.OpenKnownOrigins(actual, signatureBinder, known.Source);
             }
 
+            // G1128 R1.3 (h): S's position at a function reference (structural, neither a value's Type nor a known signature) is a
+            // binding too: its first and every later one that differs in its Origins (the met branch below), so the reference's limit
+            // reads its distinct bindings (VariableReferenceSlot). A later one of the same normalized Type is that binding (SPEC 10.8).
+            var reference = structural && !relateLater && evidence is null;
             if (arguments[slot] is { } previous)
             {
                 // R7-C2c2 c2-4b (design R4.12c, J4): a slot's bindings agree (SPEC 10.8 Solving: an explicit Type argument is kept; the
@@ -600,27 +598,17 @@ public sealed partial class Binding
                     actual = this.FillOpenOrigins(actual, previous, true);
                 }
 
-                if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
-                    this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))
+                if (((relateLater && !structural) || evidence is not null) && (ReferenceEquals(previous, actual) ||
+                    (this.FitsStructuralPart(actual, previous) && this.FitsStructuralPart(previous, actual))))
                 {
-                    // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
-                    // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
-                    // kept over covariant ones and the first invariant one over later ones, whatever the argument order, and covariant
-                    // bindings meet.
-                    if (!commonOrigins || frame.IsInvariant(slot))
-                    {
-                        frame.SetType(slot, previous);
-                    }
-                    else if (invariant)
-                    {
-                        frame.SetType(slot, actual);
-                        frame.SetInvariant(slot);
-                    }
-                    else
-                    {
-                        frame.SetType(slot, this.IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual, out _) ?? previous);
-                    }
-
+                    // SPEC 10.8 (as revised; O-450 (a), O-451 (a)), 15.3.6: Origin evidence for a slot never makes the candidate
+                    // inapplicable, and the bindings agree in structure and Semantics. The frame keeps the first binding's Type until the
+                    // late solve; every evidence binding is recorded with its composed polarity, this later one as the first below, by
+                    // whichever caller matched it (an argument, a header, a Callable signature; G147 ruling 59: no caller's flag decides
+                    // it), and its Origins bound the slot's variables, so Infer merges no Origins. Whether the slot is fixed is the slot
+                    // step's one test (SlotSolution.FixedSlot, read before the bindings): a fixed slot keeps its Type.
+                    frame.AddBinding(slot, actual, polarity);
+                    frame.SetType(slot, previous);
                     return true;
                 }
 
@@ -634,8 +622,20 @@ public sealed partial class Binding
                     return true;
                 }
 
+                // G1128 (design R1.3 (h), R1.4; the code review's C1, G147 ruling 59): Infer's one merge of Origins outside a call's
+                // solve. Only function references pass `commonOrigins` (InferReferenceSlots and the result's solve; SPEC 10.5.3, no
+                // late solve; G147 ruling 62: a call passes none), so only they reach it: it meets their bindings that differ in covariant
+                // Origins and records each. The met Type is read by the reference's Constraint proof (ReferenceArgumentProof), SPEC 10.6's per-call
+                // rule (PerCallReferenceSlot) and the limit's fixed-Origin test (VariableReferenceSlot's InputOrigins), and the recorded
+                // bindings make a slot that would need variables the located limit. A call records its bindings above. It goes when a
+                // reference's solve owns its bindings and gives those three readers its values (PLAN's R1.3 (h) line).
                 if (commonOrigins && this.CommonOriginType(previous, actual, out _) is { } common)
                 {
+                    if (reference)
+                    {
+                        frame.AddBinding(slot, actual, polarity);
+                    }
+
                     frame.SetType(slot, common);
                     return true;
                 }
@@ -644,9 +644,9 @@ public sealed partial class Binding
             }
 
             frame.SetType(slot, actual);
-            if (relateLater && invariant)
+            if ((relateLater && !structural) || evidence is not null || reference)
             {
-                frame.SetInvariant(slot);
+                frame.AddBinding(slot, actual, polarity);
             }
 
             return true;
@@ -694,8 +694,6 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            var below = invariant || IsInvariantLayer(pattern, this, null, default) ||
-                (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
             if (!this.Infer(
                 pattern.Components[i],
                 actual.Components[i],
@@ -707,7 +705,7 @@ public sealed partial class Binding
                 structural,
                 evidence,
                 relateLater,
-                below))
+                this.ComponentPolarity(pattern, i, polarity, default)))
             {
                 return false;
             }
@@ -720,18 +718,15 @@ public sealed partial class Binding
     // owner's slots (FixCallSlots for a candidate, ConstructionSlots for a construction Type, a Case construction's seeding): each slot's
     // binding, an open slot as its own parameter (only an inferred construction, a structure's or a Case's, leaves one beside fixed ones),
     // and the lengths, null where none is fixed; no Types when no slot is fixed. The adaptation reads it through FixedPattern; whether a
-    // pattern is complete under it is read from the frame before any evidence instead (the contract above). Own tells whether every own
-    // slot is fixed: evidence then keeps every binding (Infer's commonOrigins off); otherwise the open slots' covariant bindings meet. Its
-    // spans live as long as the call's explicit Types, the declaring Type or the Case's scratch.
-    private readonly ref struct FixedSlots(Koto owner, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, bool own)
+    // pattern is complete under it is read from the frame before any evidence instead (the contract above). Its spans live as long as
+    // the call's explicit Types, the declaring Type or the Case's scratch.
+    private readonly ref struct FixedSlots(Koto owner, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
     {
         internal Koto? Owner { get; } = owner;
 
         internal ReadOnlySpan<BoundType?> Types { get; } = types;
 
         internal ReadOnlySpan<BoundLength?> Lengths { get; } = lengths;
-
-        internal bool Own { get; } = own;
     }
 
     // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: the only input of the adaptation entry (AdaptInput): a pattern under the slot bindings fixed

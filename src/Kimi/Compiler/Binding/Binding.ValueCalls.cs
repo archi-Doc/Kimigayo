@@ -553,22 +553,24 @@ public sealed partial class Binding
 
             // SPEC 15.6.1, 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds, also
             // where no input is per-call: a written input's well-formedness is its signature's premise, proven at each call (R4-M137).
+            // The value call's solve (SolveValueCallOrigins) is its own inference, not its solution's, so these checks read no solved
+            // Marked fact (G1128 R1.3 (i)'s residue, D-971): a check over a failed equality's variable does not rest here.
             for (var i = 0; i < count; i++)
             {
                 this.ChildGroup(solution, i, out var childStart, out var childEnd);
                 if (childStart != childEnd && operations[i] is { Source: { } whole, ParameterType: { } type })
                 {
-                    this.JudgePositionRows(whole, rows[i] with { Type = type }, solution); // R4: by its rows.
+                    this.JudgePositionRows(whole, rows[i] with { Type = type }, solution, solved: null); // R4: by its rows.
                 }
                 else if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter })
                 {
-                    this.RequireInputPremises(at, parameter, parameter, adapted, rows[i].Contribution);
+                    this.RequireInputPremises(at, parameter, parameter, adapted, rows[i].Contribution, solved: null);
                 }
             }
 
             if (conditioned is not null)
             {
-                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
+                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), origins, argumentOrigins, null, solved: null);
             }
 
             // A call with a part it did not take (failed, misfitting or not acquired) rests on that part's record and forms no result.

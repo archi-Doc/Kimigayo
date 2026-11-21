@@ -140,10 +140,11 @@ public sealed partial class Binding
     // declare (their names, normalized signatures, conformance targets or specialization arguments), never what the node's own binding
     // consulted, so neither the node's own recovery nor a recovery or limit it rests on derives it. Census (E2-3b), Duplicate alone, at every
     // site: FailDuplicate's six pairwise sites (Scopes, Aliases, Contracts.Registration twice, Signatures, Specializations;
-    // RecordDuplicateGroups records them), a Semantics parameter's name (Indexing), a nested container's name over an inherited member
-    // (MemberLookup), `Kimi` and a module's conflicting names (Modules), a capture list's repeat (CaptureDiagnostics), an Origin set's or
-    // annotation's repeat (OriginDeclarations, Origins.Annotations, AssociatedOrigins) and Origins.Schemas' three (a container fragment's
-    // incompatible header, an Origin name repeating an enclosing abstract Origin, a repeated Origin name).
+    // RecordDuplicateGroups records them), a Semantics parameter's name (Indexing), a nested container's name and a value member's name
+    // over an inherited member (MemberLookup), a repeated special receiver (Structs' IndexSpecialReceiver), `Kimi` and a module's
+    // conflicting names (Modules), a capture list's repeat (CaptureDiagnostics), an Origin set's or annotation's repeat (OriginDeclarations,
+    // Origins.Annotations, AssociatedOrigins) and Origins.Schemas' three (a container fragment's incompatible header, an Origin name
+    // repeating an enclosing abstract Origin, a repeated Origin name).
     [Transitional("R7", Reason = "The row stands for per-problem inputs (d4: a repeated let beside its initializer's syntax error; k2: a repeated Signature whose later header is a recovery), until R7-E5 states what each problem's check read.")]
     private static bool JudgedByDeclaredNames(BindingFailure failure) => failure == BindingFailure.Duplicate;
 

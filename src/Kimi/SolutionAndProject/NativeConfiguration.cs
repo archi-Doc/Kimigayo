@@ -37,6 +37,11 @@ internal static class NativeConfiguration
                     (failures ??= []).Add($"NativeRequirements entry '{name}' requires Kind \"static\" or \"import\"; " +
                         "ContractId must be nonempty and Sha256 must be 64 hexadecimal digits when present.");
                 }
+
+                if (requirement is not null && Reserved(name))
+                {
+                    (failures ??= []).Add($"{name} is supplied by the compiler. Remove the {name} entry from NativeRequirements.");
+                }
             }
         }
 
@@ -182,10 +187,7 @@ internal static class NativeConfiguration
             }
         }
 
-        if (name == WindowsProfile.Kernel32Library)
-        {
-            (failures ??= []).Add("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
-        }
+        CheckReserved(name, ref failures);
 
         // A self-targeted record expands into a requirement and a supply; overlapping explicit fields must agree.
         if (requirement is not null &&
@@ -219,17 +221,7 @@ internal static class NativeConfiguration
             }
         }
 
-        if (library.Name == WindowsProfile.Kernel32Library)
-        {
-            (failures ??= []).Add("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
-        }
-
-        // The reserved backend is one compiler-managed supply; only a project's own legacy override may name it.
-        if (library.Name == WindowsProfile.BackendLibrary)
-        {
-            (failures ??= []).Add("kimi_backend is supplied by the compiler toolchain and cannot be supplied for another package.");
-        }
-
+        CheckReserved(library.Name, ref failures);
         if (library.Kind is not null)
         {
             (failures ??= []).Add($"NativeLibraries record '{library.Name}' for package '{library.Package?.PackageId}' cannot declare Kind; " +
@@ -238,6 +230,19 @@ internal static class NativeConfiguration
 
         return (failures?.Count ?? 0) == count;
     }
+
+    // A supply record of a reserved name, self-targeted or for a package, under any target, is an error.
+    private static void CheckReserved(string? name, ref List<string>? failures)
+    {
+        if (Reserved(name))
+        {
+            (failures ??= []).Add($"{name} is supplied by the compiler. Remove the {name} entry from NativeLibraries.");
+        }
+    }
+
+    // IMPL 20.4: kernel32 and kimi_backend, the reserved supplies, are the compiler's, so a NativeRequirements or NativeLibraries
+    // entry of either name is an error, each record kind with its own note.
+    private static bool Reserved(string? name) => name is WindowsProfile.Kernel32Library or WindowsProfile.BackendLibrary;
 
     // Whether two packaged records supply one name of one package with assertions that cannot both hold.
     private static bool Conflicts(NativeLibraryInput record, NativeLibraryInput? other)

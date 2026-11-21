@@ -34,13 +34,20 @@ tatara> exit
 | 8 | This plan lands in `draft/Proposals` through the Coordinator. |
 | 9 | Stage A revises IMPL twice: a `tatara` row in §20.3 (unit A3) and §20.3.2's Toolchain wording (unit A4). |
 | 10 | The single-shot switch happens in a dedicated window once its gate passes. |
-| 11 | The session that wrote this plan is the T lane's planner. Seats 1+1. The prompt uses SimplePrompt. |
+| 11 | The session that wrote this plan is the T lane's planner. Seats 1+1 (one implementer, one designer or reviewer seat); raised to 2+1 by the owner on 2026-11-21 (「Tataraの席を 2+1に増やしてください。」, relayed by K, 19:1x): two implementers and one designer or reviewer; the one-implementer-per-toolchain-root rule stands. The prompt uses SimplePrompt. |
 | 12 | The T lane is added to AGENTS, WORKFLOW and COMPILER_ARCHITECTURE in the commit that adopts this plan. |
 | 13 | C++ is a thin layer only. Steps and verdicts stay in C# (P13). |
 | 14 | Unit A4 is judged on the `BuildChain` series run as an interleaved paired A/B (the base on the external tools against the candidate): on every row the candidate's p50 wall time is at most 1.03 times the base's, and its p95 peak committed memory is at most 64 MiB above the base's (the owner, 2026-11-20, board O-452, verbatim 「(b) と (m2)」). |
 | 15 | In stage A a `run` program inside `kimi tatara` shares the session's input: it gets no terminal input of its own (a STATUS limit and a PLAN open issue; the redirected reader reads without read-ahead) (the owner, 2026-11-20, board O-454, 「推奨どおり」 and 「質問1は (b)」). |
 | 16 | `Kimigayo.NativeExecutor`, the native executor's factory, is an approved temporary reader of Build until unit A4 (one `ArchitectureRulesTest.BuildReaders` row and one COMPILER_ARCHITECTURE sentence, both removed by A4) (the owner, 2026-11-20, board O-455, 「推奨どおり」 and 「質問2は (a)」). |
 | 17 | After unit A4 a second Ctrl+C ends any command at once with 130, except during a publication SPEC 23.2.3 protects (`check --Format json`) (the owner, 2026-11-21, board O-460, 「(a) as recommended」). |
+| 18 | Unit B5 keeps IMPL 20.3.2's "an Application publishes its executable only on success" and meets it: the build links to a private name, writes the success record naming the new hash, then moves the executable into place; a failed move invalidates the record again; a lock per build record (the owner, 2026-11-21, board O-467, 「O-467 a」). |
+| 19 | The windows that two file writes cannot close (the process ends between the success record and the move; a failed move whose record rewrite fails; a failed first invalidation) are stated in IMPL 20.3.2, not held off by a second Ctrl+C (the owner, 2026-11-21, board O-468, 「O-468 a」). |
+| 20 | One `kimi.exe` (NativeAOT, static UCRT) carries Tatara and the link libraries; `--ToolchainRoot` and `LlvmBin` are errors naming the removal, Kimi reads `KIMI_TOOLCHAIN_ROOT` nowhere, and `kimi toolchain verify` is a self-check (the owner, 2026-11-21, board O-469, 「O-469 a a a」). |
+| 21 | The Linux target (B7): musl 1.2.6 built once from a pinned source tarball with the pinned clang and embedded, **linked only when a program imports a C library**; Kimi's Linux runtime uses no C library (its own start, direct system calls, its own allocator over `mmap`); the minimum kernel is 5.10; `static` only on Linux; a reserved supply `c`; windows-x64 stays SPEC §22's validity basis; `Kimi.Windows` only under the `windows` Condition; `build` and `emit` work for Linux on Windows, `run` and `test` are errors (the owner, 2026-11-21, board O-473, 「O-473 Q1 a, Q2 b, Q3a a, Q3b a, Q4a a, Q4b a, Q5 a」, Q1 changed to (d) in T's dialog, 「O-473 の Q1 は (d) に変えます。」). |
+| 22 | A freestanding target (unit B9) follows B7, for the owner's goal of writing an OS in Kimigayo: `x86_64-unknown-none` (ELF, loaded by a bootloader); the program implements a platform contract (page allocation, output, abort, clock) as a Kimigayo Contract that the Kimi runtime and library run on; the target row's code generation for kernels (no red zone, no SSE with soft float, the kernel code model, no stack probes, an entry symbol and a linker script). The language features an OS needs beyond this (inline assembly or intrinsics, volatile access, interrupt functions, sections) are a later plan, not started (the owner, 2026-11-21, in T's dialog, 「推奨の組み合わせで結構です」 and 「今後の計画なので、今はまだ進めないでください」). |
+| 23 | Windows moves from the process heap (`HeapAlloc`) to `VirtualAlloc`: one Kimi allocator for every target over the platform layer's pages; it serves blocks up to about 256 KiB from its regions (VirtualAlloc's 64 KiB granularity), maps larger ones alone, and is checked on the O2 kernels' timing; its optimization is a later task (the owner, 2026-11-21, in T's dialog, 「Windowsで、HeapAllocからVirtualAllocに変更して」, option 「a」; 「ひとまず、最低限動く形で結構です。最適化は、将来の課題にしましょう。」). |
+| 24 | `memcpy`, `memmove`, `memset` and `memcmp` are written once in LLVM IR in Kimi's runtime for every target, with `"no-builtins"`; the backend archive's assembly versions go after measurement (the owner, 2026-11-21, in T's dialog, 「mem* は LLVM IR で書きましょう。」). |
 
 Assumed without a question: agents run Opus 5.5; branches are `claude/t-*`; the usage-stop rule and the heavy-run rules apply as to
 every lane.
@@ -231,7 +238,8 @@ A new LLVM version is one unit. The rules below hold from stage A.
 5. Run the native fixtures and a Session. Expectation changes from changed generated code follow the existing adoption procedure (the
    backend's `ADOPTION.md`, VERIFICATION).
 
-After B6 embeds the material, it still comes from the same catalog, so the procedure does not change.
+After B6a the compiler carries the link material: an update also adopts the reproduced `kernel32.lib`'s hash (`kernel32.sha256`)
+beside the backend's `artifactSha256` and commits both reproduced `.lib` files under `src/backend/windows-x64/`.
 
 ## 7. Stage B units (outline)
 
@@ -240,9 +248,10 @@ Each unit is designed, and the owner asked (with example code), before it starts
 | Unit | Content | Decided first |
 |---|---|---|
 | B5 | The record is the truth: IMPL §20.3.2's wording, a lock file per output for exclusion, failure tests. Closes PLAN G1045. | The IMPL wording |
-| B6 | Single file: Tatara linked statically into the NativeAOT Kimi, link material embedded; the old options (`--ToolchainRoot` and the others) and the reserved names' special case removed. | IMPL §20.3.2 and §20.4, what is embedded |
-| B7 | Linux target: `WindowsProfile` becomes a row of the target table (structure only), then the Linux row and the ELF checks. | musl version, minimum kernel, FFI, SPEC §22 |
+| B6 | Single file: Tatara linked statically into the NativeAOT Kimi, link material embedded; the old options (`--ToolchainRoot` and the others) and the reserved names' special case removed. Lands as B6a (the link libraries supplied by the compiler) and B6b1-B6b6 (Tatara in the process; the static `kimi.exe` stacked on verify's self-check; the command-line options; `LlvmBin` in projects and manifests; the root's `windows_x64` removed). | IMPL §20.3.2 and §20.4, what is embedded |
+| B7 | Linux target: `WindowsProfile` becomes a row of the target table (structure only), then the Linux row and the ELF checks. Lands as B7a1 (the reserved supplies stated once), B7a2 (`TargetProfile`'s first row) and B7b (the Linux row: musl's build and embedding, the libc-free platform layer, Tatara's ELF side, the native build's per-target steps, the commands). | musl version, minimum kernel, FFI, SPEC §22 |
 | B8 | Linux host: Kimi on Linux builds both targets. | The libc requirement of Kimi for Linux |
+| B9 | Freestanding target `x86_64-unknown-none` (decision 22): the target row, the platform contract the program implements, the kernel code-generation settings, an entry symbol and a linker script. | The platform contract's shape (an owner question with example code before its design) |
 
 ## 8. Later candidates
 
@@ -281,6 +290,7 @@ Measured first; each one adopted is a unit of its own.
 |---|---|
 | After A1 | Time and memory budgets (answered: decision 14) |
 | During A2 | Inputs that still differ, if any (answered: none; 12,602 fixture rows and 80 milestone pairs equal) |
-| Before B5 | The IMPL wording for "the record is the truth" |
-| Before B6 | What is embedded; removing the old options |
-| Before B7 | The scope of Linux support |
+| Before B5 | The IMPL wording for "the record is the truth" (answered: decisions 18 and 19) |
+| Before B6 | What is embedded; removing the old options (answered: decision 20) |
+| Before B7 | The scope of Linux support (answered: decision 21; decisions 23 and 24 for the runtime under it) |
+| Before B9 | The platform contract's shape |

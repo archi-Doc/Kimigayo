@@ -35,7 +35,7 @@ Native execution currently targets Windows x64. See [STATUS.md](docs/STATUS.md) 
 | `draft/` | Proposals. Integrated proposals remain frozen. |
 | `.github/` | CI and package publishing workflows. |
 | `.vscode/` | Shared VS Code tasks and extension debugging configuration. |
-| `toolchain/` | Locally installed LLVM tools, backend and shared kernel32 import library. |
+| `toolchain/` | Locally installed LLVM tools, `tatara.dll`, and the installed copy of the compiler's two libraries. |
 | `temp/` | Disposable scripts, shared fixtures and intermediate build or test files. |
 | `artifacts/` | Retained verification evidence, measurements and distribution packages. |
 
@@ -148,9 +148,10 @@ NativeLibraries=
     observer={ Kind="static" Input="native/observer.lib" }
 ```
 
-`kernel32` and `kimi_backend` are reserved and need no entry; a `kernel32` entry is an
-error, and an import of a reserved supply is limited to its catalog: the reviewed
-project-owned kernel32 definition or the backend's provided symbols.
+`kernel32` and `kimi_backend` are reserved supplies, supplied by the compiler; a
+NativeLibraries entry for either is an error, and an import of a reserved supply is
+limited to its catalog: the reviewed project-owned kernel32 definition or the backend's
+provided symbols.
 The old `NativeBindings` setting is rejected with migration guidance. Imports are
 checked for requirement names, declaration shape and the initial Windows C ABI Types.
 Declarations of one external symbol must also agree on their physical signature and on
@@ -189,7 +190,7 @@ NativeLibraries=
 ## Toolchain (Windows x64)
 
 Use LLVM **22.1.8**, as specified in [profile.json](src/backend/windows-x64/profile.json).
-Place `toolchain/` at the repository root, or beside `Kimi.exe` / `Kimi.dll` for a standalone installation.
+Place `toolchain/` at the repository root, or beside `Kimi.exe` / `Kimi.dll` for a standalone installation's `kimi toolchain verify`.
 
 For building Kimi applications (`kimi build`), include:
 
@@ -214,9 +215,12 @@ toolchain/
     kernel32.json
 ```
 
-Setup and explicit verification use the complete tool set above. A build needs only the root's `tatara.dll` and the installed
-libraries (`windows_x64/`) and runs no LLVM tool. No Windows SDK or extra Clang headers are required to build Kimi applications.
-The backend archive and `llvm-dlltool.exe` must match the hashes in `profile.json`.
+Setup and explicit verification use the complete tool set above. A build reads no toolchain root and runs no LLVM tool: it runs
+Tatara, which the compiler carries (a build of Kimi copies the repository's `toolchain/tatara.dll` beside `Kimi.dll`, so set up the
+toolchain first and build Kimi again after setup changes `tatara.dll`), and the compiler carries the adopted `kernel32.lib` and
+backend archive and stages them as it stages a program's library. `windows_x64/` is still installed for the native fixtures and `kimi toolchain verify`. No Windows SDK or extra Clang headers are
+required to build Kimi applications. The backend archive, the installed `kernel32.lib` and `llvm-dlltool.exe` must match the
+hashes in `profile.json`.
 
 From the repository root, with the LLVM 22.1.8 release archive (`clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz`) extracted,
 copy its tools and supporting DLLs, build, test, and install the backend library, and build and install `tatara.dll` with:
@@ -230,13 +234,14 @@ and the DIA SDK that Visual Studio installs ([src/Tatara](src/Tatara/README.md))
 the same SHA-256, so an unchanged rerun writes nothing.
 
 To rebuild the native library later, run `./src/backend/windows-x64/build.ps1`.
-Setup also installs `windows_x64/kernel32.lib` and its generation metadata. Ordinary builds reuse it without tool identity probes or regeneration; a missing library requires setup. To recheck an installation, run `kimi toolchain verify`.
+Setup also installs `windows_x64/kernel32.lib` and its generation metadata, and fails unless both libraries reproduce the committed ones (`src/backend/windows-x64/`, pinned by `profile.json`). Ordinary builds do not read them. To recheck an installation, run `kimi toolchain verify`.
 
-Building the C# compiler itself (`dotnet build`) does not require this LLVM toolchain.
+Building the C# compiler itself (`dotnet build`) does not require this LLVM toolchain; without `toolchain/tatara.dll` the compiler's
+native builds fail and name setup.
 
 ### Toolchain path resolution
 
-Kimigayo selects the toolchain root in this order:
+`kimi toolchain verify` selects the toolchain root it checks in this order:
 
 1. `--ToolchainRoot <path>`.
 2. The `KIMI_TOOLCHAIN_ROOT` environment variable.
@@ -249,12 +254,13 @@ Relative CLI/environment paths use the current working directory. Explicit roots
 do not fall back if missing. Automatic discovery does not search the user's project,
 working directory, or `PATH`; adding LLVM to `PATH` is only for direct tool use.
 
-A native build loads the selected root's `tatara.dll` (LLVM and LLD in one library) and
-checks its ABI and LLVM version before generating; it starts no LLVM executable.
-`--LlvmBin <path>` names the tool directory `kimi toolchain verify` checks; a project's
-`LlvmBin` setting and a link manifest's `toolchain.llvmBin` are accepted and not read.
-The default backend library is `<root>/windows_x64/kimi_backend_windows_x64_v1.lib`.
-Explicit backend inputs override that default and resolve relative to the link manifest.
+A native build selects no root: it loads the `tatara.dll` beside the compiler (LLVM and LLD in one
+library), never one on `PATH`, and checks its ABI and LLVM version before generating; it starts no
+LLVM executable. `--LlvmBin <path>` names the tool directory `kimi toolchain verify` checks; a build
+accepts `--ToolchainRoot`, `KIMI_TOOLCHAIN_ROOT`, `--LlvmBin`, a project's `LlvmBin` setting and a link
+manifest's `toolchain.llvmBin` and does not read them.
+The reserved libraries are the compiler's: a build stages them under `<output>.native/<sha256>.lib`
+and records their hashes; a link manifest whose backend entry names an input asks for a re-emit.
 
 ### Add toolchain to PATH
 
@@ -271,7 +277,8 @@ For a permanent setting, open Windows **Environment Variables**, edit your user
 
 To publish a Windows x64 NativeAOT Release build, run `./scripts/build-kimi.ps1`.
 It requires the .NET SDK and Windows NativeAOT build prerequisites, and writes to
-`artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled.
+`artifacts/packages/kimi/win-x64/` with debug symbols and XML documentation disabled; `kimi.exe` needs the
+`tatara.dll` the publish copies beside it.
 Both build scripts resolve paths from their own location and stop on command failures.
 
 Restore dependencies with `dotnet restore Kimigayo.slnx` after a fresh checkout or a project change. During edits, use an incremental test-project build and selected methods for feedback. Use the verification script at Unit completion; a direct `dotnet build` is not completion evidence. Unit builds Kimi + tests, while Session builds the whole solution. See [the verification workflow](docs/dev/VERIFICATION.md) for commands and the three test purposes.
@@ -315,14 +322,14 @@ The [kimi-ext](src/kimi-ext/) extension provides syntax highlighting, diagnostic
 
 ### QuickStart
 
-1. Install .NET 10, Node.js LTS and VS Code 1.138 or later (1.x). From the repository root, build the compiler and [prepare the toolchain](#toolchain-windows-x64) for native builds:
+1. Install .NET 10, Node.js LTS and VS Code 1.138 or later (1.x). From the repository root, [prepare the toolchain](#toolchain-windows-x64) for native builds and build the compiler (in this order: the build copies `toolchain/tatara.dll` beside `Kimi.dll`):
 
    ```powershell
-   dotnet build src/Kimi/Kimi.csproj -c Release
    ./src/backend/windows-x64/setup.ps1 -LlvmRoot 'C:/path/to/clang+llvm-22.1.8-x86_64-pc-windows-msvc'
+   dotnet build src/Kimi/Kimi.csproj -c Release
    ```
 
-   Use `src/Kimi/bin/Release/net10.0/Kimi.exe` with its accompanying files. Diagnostics and Check need no LLVM tools. Standalone installations keep `toolchain/` beside the executable, or set `KIMI_TOOLCHAIN_ROOT` before starting VS Code.
+   Use `src/Kimi/bin/Release/net10.0/Kimi.exe` with its accompanying files, `tatara.dll` among them. Diagnostics and Check need no LLVM tools.
 
 2. Package and install the extension from the repository root:
 

@@ -6,17 +6,17 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // InferCtxt (SPEC 10.8; DECISIONS R7-I2): the owner of every solve's slot frames, with an undo log and snapshots.
-// - Responsibility: the slot frames (a solve's Type slots, length slots, invariant marks and environment judgments: a call
+// - Responsibility: the slot frames (a solve's Type slots, length slots, slot bindings and environment judgments: a call
 //   candidate's, one per candidate, a Case construction's, a fixed construction's re-check, an implicit constructor's, a function
 //   reference's), held privately, with each pair slot's selector evidence (SPEC 8.1.2, 10.8: the first source's Type, whose outer
 //   Semantics every other source of the slot's binder must have; none for a slot fixed before any evidence) and the solve's node; their
-//   writes, each logged while a snapshot is open; Snapshot and Rollback. A frame lives as long as its solve, so its marks, judgments and
-//   selectors are that solve's alone.
+//   writes, each logged while a snapshot is open; Snapshot and Rollback. A frame lives as long as its solve, so its bindings, judgments
+//   and selectors are that solve's alone.
 // - Inputs: Rent, with the solve's node and the scope of the use the solve judges (no default: each Rent site gives its own), and
-//   Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, SetInvariant, SetEnvironmentJudgment,
+//   Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, AddBinding, SetEnvironmentJudgment,
 //   SetSelector, ClearTypes, ClearLengths, CopyTypes) from the unifier (Infer, InferLength, InferArrayLength), a solve's seeding and
 //   clearing, a trial's write-back and an open Origin's instantiation.
-// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.IsInvariant, SlotFrame.EnvironmentJudgment,
+// - Outputs: read-only views (SlotFrame.Types, SlotFrame.Lengths, SlotFrame.Bindings, SlotFrame.EnvironmentJudgment,
 //   SlotFrame.Selectors) and SlotFrame.Node, which SlotSolution and the other solves read; SlotFrame.View, the frame's scope as given,
 //   which only the unifier reads (R7-C2c2 c2-4b, design R4.12c: J4 forms a slot's bindings in that view).
 // - Invariants: no array or mutable span of a frame leaves this file, so the compiler admits no unlogged write but the environment
@@ -30,9 +30,22 @@ public sealed partial class Binding
 {
     private readonly InferCtxt infer = new();
 
-    private readonly record struct InferSnapshot(int Log, int Depth);
+    private readonly record struct InferSnapshot(int Log, int Depth, int Pool);
 
-    // One solve's slot frame: its Type slots, length slots, invariant marks, environment judgments and pair slots' selector evidence, and
+    // G1128: one binding of a slot, the Type its evidence gave and the composed polarity of its position (15.3.5: 1, -1,
+    // 0); pooled nodes reused across solves (warm 0 B), newest first, the head in the marks column (logged like the other columns).
+    private sealed class SlotBinding
+    {
+        internal BoundType Type { get; set; } = null!;
+
+        internal int Polarity { get; set; }
+
+        internal int Frame { get; set; }
+
+        internal SlotBinding? Next { get; set; }
+    }
+
+    // One solve's slot frame: its Type slots, length slots, slot bindings, environment judgments and pair slots' selector evidence, and
     // the solve's node, read through read-only views and written only through its operations (logged but the judgments', which are
     // written with no snapshot open).
     private readonly struct SlotFrame
@@ -64,8 +77,25 @@ public sealed partial class Binding
 
         internal int Id => this.id;
 
-        // SPEC 10.8, 15.3.6: whether the slot's binding in this solve comes from an invariant position.
-        internal bool IsInvariant(int slot) => this.store.IsInvariant(this.id, slot);
+        // SPEC 10.8, 15.3.6 (J2, G1128 R1.3 (f)): whether every binding of the slot in this solve is at a covariant position.
+        internal bool BindsCovariantly(int slot) => this.store.BindsCovariantly(this.id, slot);
+
+        // G1128 R1.3 (e), F's ruling 38: whether the slot holds two distinct bindings, so that slot variables would add something. The
+        // bindings are formed in the solve's view (Infer's head, R7-C3), where identical Types are one object (ClassForm's invariant
+        // (2)), so reference identity is the identity judge's verdict.
+        internal bool BindsDistinctTypes(int slot)
+        {
+            var head = this.Bindings(slot);
+            for (var node = head?.Next; node is not null; node = node.Next)
+            {
+                if (!ReferenceEquals(node.Type, head!.Type))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // DECISIONS BU-86: the slot's environment judgment in this solve: a known call signature's result over its closure's hidden
         // environment receiver gave it no evidence (Infer); read by the candidate's trial (EnvironmentJudgment).
@@ -73,7 +103,9 @@ public sealed partial class Binding
 
         internal void SetType(int slot, BoundType? value) => this.store.SetType(this.id, slot, value);
 
-        internal void SetInvariant(int slot) => this.store.SetInvariant(this.id, slot);
+        internal SlotBinding? Bindings(int slot) => this.store.Bindings(this.id, slot);
+
+        internal void AddBinding(int slot, BoundType type, int polarity) => this.store.AddBinding(this.id, slot, type, polarity);
 
         internal void SetEnvironmentJudgment(int slot, PendingJudgment value) => this.store.SetEnvironmentJudgment(this.id, slot, value);
 
@@ -90,8 +122,9 @@ public sealed partial class Binding
 
     private sealed class InferCtxt
     {
-        // An invariant mark: an element of the marks column, an object so that the log records its writes like the other columns'.
-        private static readonly object Invariant = new();
+        private SlotBinding?[] pool = new SlotBinding?[16];
+        private int poolCount;
+        private int rented;
         private BoundType?[][] types = new BoundType?[8][];
         private BoundLength?[][] lengths = new BoundLength?[8][];
         private BoundType?[][] selectors = new BoundType?[8][];
@@ -145,10 +178,12 @@ public sealed partial class Binding
             }
 
             this.nodes[id] = node;
+            this.rented++;
             return new(this, id, view);
         }
 
-        // Returns a frame, cleared; never under an open snapshot, whose Rollback would write it.
+        // Returns a frame, cleared; never under an open snapshot, whose Rollback would write it. The binding pool is reset when the
+        // outermost frame returns (candidate frames interleave their appends).
         internal void Return(SlotFrame frame)
         {
             Debug.Assert(this.depth == 0, "A frame is returned only with no snapshot open.");
@@ -159,6 +194,44 @@ public sealed partial class Binding
             Array.Clear(this.marks[frame.Id]);
             Array.Clear(this.environments[frame.Id]);
             this.free[this.freeCount++] = frame.Id;
+            if (--this.rented == 0)
+            {
+                for (var i = 0; i < this.poolCount; i++)
+                {
+                    this.pool[i]!.Type = null!;
+                    this.pool[i]!.Next = null;
+                }
+
+                this.poolCount = 0;
+            }
+        }
+
+        internal SlotBinding? Bindings(int id, int slot)
+        {
+            var head = this.marks[id][slot] as SlotBinding;
+            for (var node = head; node is not null; node = node.Next)
+            {
+                if (node.Frame != id)
+                {
+                    throw new InvalidOperationException("A frame's binding chain reaches only its own frame's nodes (InternalInvariant).");
+                }
+            }
+
+            return head;
+        }
+
+        internal void AddBinding(int id, int slot, BoundType type, int polarity)
+        {
+            if (this.poolCount == this.pool.Length)
+            {
+                Array.Resize(ref this.pool, this.poolCount * 2);
+            }
+
+            var node = this.pool[this.poolCount++] ??= new();
+            var frame = this.marks[id];
+            (node.Type, node.Polarity, node.Frame, node.Next) = (type, polarity, id, frame[slot] as SlotBinding);
+            this.Push(frame, slot);
+            frame[slot] = node;
         }
 
         internal ReadOnlySpan<BoundType?> Types(int id) => this.types[id];
@@ -169,7 +242,18 @@ public sealed partial class Binding
 
         internal Koto Node(int id) => this.nodes[id]!;
 
-        internal bool IsInvariant(int id, int slot) => this.marks[id][slot] is not null;
+        internal bool BindsCovariantly(int id, int slot)
+        {
+            for (var node = this.marks[id][slot] as SlotBinding; node is not null; node = node.Next)
+            {
+                if (node.Polarity != 1)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         internal PendingJudgment? EnvironmentJudgment(int id, int slot) => this.environments[id][slot];
 
@@ -177,13 +261,6 @@ public sealed partial class Binding
         {
             Debug.Assert(this.depth == 0, "An environment judgment is written only with no snapshot open.");
             this.environments[id][slot] = value;
-        }
-
-        internal void SetInvariant(int id, int slot)
-        {
-            var frame = this.marks[id];
-            this.Push(frame, slot);
-            frame[slot] = Invariant;
         }
 
         internal void SetType(int id, int slot, BoundType? value)
@@ -207,7 +284,8 @@ public sealed partial class Binding
             frame[slot] = value;
         }
 
-        // A solve's Type slots are cleared with their invariant marks and selector evidence: each describes the binding it clears.
+        // A solve's Type slots are cleared with their bindings (the marks column's heads) and selector evidence: each describes the slot
+        // it clears.
         internal void ClearTypes(int id, int count)
         {
             this.Clear(this.types[id], count);
@@ -229,7 +307,7 @@ public sealed partial class Binding
             source.CopyTo(frame);
         }
 
-        internal InferSnapshot Snapshot() => new(this.logCount, ++this.depth);
+        internal InferSnapshot Snapshot() => new(this.logCount, ++this.depth, this.poolCount);
 
         // Restores every write since `snapshot` in reverse order.
         internal void Rollback(InferSnapshot snapshot)
@@ -242,6 +320,7 @@ public sealed partial class Binding
                 undo = default;
             }
 
+            this.poolCount = snapshot.Pool; // The nodes appended since the snapshot are unreachable once the heads are restored.
             if (--this.depth == 0)
             {
                 this.logCount = 0;

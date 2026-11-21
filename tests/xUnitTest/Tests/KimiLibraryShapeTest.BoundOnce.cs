@@ -261,8 +261,8 @@ public partial class KimiLibraryShapeTest
     {
         var c = Bound(string.Empty);
         Assert.False((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
-        var known = (System.Collections.ICollection?)typeof(Binding).GetField("knownBases", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding);
-        Assert.True(known is null or { Count: 0 });
+        Assert.False(c.Library.Kotonoha.Syntax.Hir.Families.KnownBases.Enumerate().MoveNext()); // R7-N5 B5a: the kept family's rows.
+        Assert.False(c.Kotonoha.Syntax.Hir.Families.KnownBases.Enumerate().MoveNext());
     }
 
     // PLAN G949 S1-r1b (r1b plan section 1, step 0; s1r1-design 8.10's first branch): the library declares no shape contract and no

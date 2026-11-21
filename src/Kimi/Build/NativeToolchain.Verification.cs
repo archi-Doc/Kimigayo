@@ -106,18 +106,20 @@ internal static partial class NativeToolchain
                 }
             }
 
-            // tatara.dll after the tools: Tatara.Load's checks (found, loaded and bound, its ABI and LLVM version), then its hash.
-            var tatara = Tatara.Load(root);
-            var tataraHash = Hash(tatara.Path);
+            // After the tools: the compiler's Tatara (Tatara.Instance, its start check) with its identity, and the root's tatara.dll as a
+            // file, its hash against the record's (until B6b3's self-check).
+            var tatara = Tatara.Instance;
+            var tataraFile = RequireInstalledFile(Path.Combine(root, "tatara.dll"));
+            var tataraHash = Hash(tataraFile);
             record["tatara"] = new JsonObject
             {
-                ["path"] = Redact(tatara.Path, Directory.GetCurrentDirectory()), ["sha256"] = tataraHash, ["build"] = tatara.Build,
+                ["path"] = Redact(tataraFile, Directory.GetCurrentDirectory()), ["sha256"] = tataraHash, ["build"] = tatara.Build,
                 ["abi"] = tatara.Abi, ["llvmVersion"] = tatara.LlvmVersion, ["expectedSha256"] = tataraSha256,
                 ["hashMatched"] = tataraHash == tataraSha256,
             };
             if (tataraHash != tataraSha256)
             {
-                throw new InvalidDataException($"tatara.dll SHA-256 mismatch: {tatara.Path}. Run {SetupCommand} again.");
+                throw new InvalidDataException($"tatara.dll SHA-256 mismatch: {tataraFile}. Run {SetupCommand} again.");
             }
 
             var backend = RequireInstalledFile(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile));
@@ -148,8 +150,9 @@ internal static partial class NativeToolchain
         }
     }
 
-    // The installed kernel32 import library: its recorded generation conditions and hash, its definition, and the DLL, architecture and
-    // symbol set the tools read from it. The record keeps the installation's entry.
+    // The installed kernel32 import library: its recorded generation conditions and hash, the catalog's hash (the compiler's supply's
+    // bytes, which the root's copy stays until B6b), its definition, and the DLL, architecture and symbol set the tools read from it. The
+    // record keeps the installation's entry.
     private static async Task VerifyKernel32(
         string root, string bin, JsonObject record, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
@@ -157,7 +160,13 @@ internal static partial class NativeToolchain
         var metadataFile = RequireInstalledFile(Path.ChangeExtension(kernel, ".json"));
         using var metadata = JsonDocument.Parse(await File.ReadAllBytesAsync(metadataFile, cancellationToken));
         var entry = metadata.RootElement;
-        Kernel32Imports.ValidateInstallation(entry, Hash(kernel));
+        var hash = Hash(kernel);
+        Kernel32Imports.ValidateInstallation(entry, hash);
+        if (hash != ToolchainIdentity.Kernel32Sha256)
+        {
+            throw new InvalidDataException("Adopted kernel32 SHA-256 mismatch: " + kernel);
+        }
+
         if (Hash(RequireInstalledFile(Path.ChangeExtension(kernel, ".def"))) != Kernel32Imports.DefinitionSha256)
         {
             throw new InvalidDataException("Installed kernel32 definition SHA-256 mismatch.");

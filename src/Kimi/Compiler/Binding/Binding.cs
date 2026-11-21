@@ -97,7 +97,6 @@ public sealed partial class Binding
         this.implicitPairFollows = new(this);
         this.phantomRawOrigins = new(this);
         this.invalidStaticOriginSlots = new(this);
-        this.callablePremiseFailures = new(this);
         this.effectBoundRejections = new(this);
         this.receiverOperations = new(this);
         this.reachedThroughBorrow = new(this);
@@ -109,14 +108,14 @@ public sealed partial class Binding
         this.objectErasureFailures = new(this);
         this.resultContexts = new(this);
         this.arithmeticConformanceFailures = new(this);
-        this.associatedAmbiguities = new(this);
-        this.inferenceFailures = new(this);
         this.callableConstraints = new(this);
-        this.clauseConstraints = new(this);
         this.unboundSlots = new(this);
         this.uniqIndexing = new(this);
         this.requirementGroups = new(this);
         this.formationCauses = new(this);
+        this.knownBases = new(this);
+        this.earlyReads = new(this);
+        this.resolvedSlices = new(this);
         this.matchPlans = new(this);
         var (own, layer) = (this.programPart, this.Library.Layer.Part);
         this.nodesView = new(own.Nodes, layer.Nodes);
@@ -247,7 +246,7 @@ public sealed partial class Binding
         // module's edit columns stale, StampedColumn), local regions, item contexts with the atoms their plans hold at library binders
         // (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
         this.edit++;
-        this.knownBases?.Clear();
+        this.knownBases.Empty();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
         this.programAtoms.Empty();

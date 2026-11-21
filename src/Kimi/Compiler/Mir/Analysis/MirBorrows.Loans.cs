@@ -8,9 +8,10 @@ namespace Kimi.Compiler.Mir;
 // fresh anchor's, which no access reaches, R4-M156), in group order (MirBorrows.Groups); whether the view has an input of a Loan-stratum
 // producer (D5, R4-M98): a Loan, a guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable
 // static (R3) or a write rooted at a default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots,
-// the mutable statics its Loans are on, and each static's A4 Field number; whether the view has a raw Ref, whose address
-// MirBorrows.Addresses forms; and by local, whether a direct Loan or address names it (a flow holder), whether it is an exposed holder
-// (Exposed) and the stores that give its reference the Places it refers to (Referring: wherever it is read, Referred).
+// the mutable statics its Loans are on, each static's A4 Field number, whether the view drops a mutable static and, by block, the
+// statics its Direct Loans borrow (MirBorrows.Passes' entries); whether the view has a raw Ref, whose address MirBorrows.Addresses
+// forms; and by local, whether a direct Loan or address names it (a flow holder), whether it is an exposed holder (Exposed) and the
+// stores that give its reference the Places it refers to (Referring: wherever it is read, Referred).
 internal sealed partial class MirBorrows
 {
     private const byte NamedHolder = 1; // named: a direct Loan or address names the local, so it is a flow holder (MirBorrows.Holders).
@@ -32,6 +33,7 @@ internal sealed partial class MirBorrows
     private int loanStepCount;
     private bool producing; // Whether the view has an input of a Loan-stratum producer, which each producer's scan below sets (D5).
     private bool rawRefs; // Whether the view has a raw Ref, whose address MirBorrows.Addresses forms.
+    private bool dropsStatic; // Whether the view has a Drop of a mutable static (R3).
     private int[] fields = []; // By static: A4's number of its Field (MirEffects.Field), -1 for none.
 
     // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
@@ -78,18 +80,20 @@ internal sealed partial class MirBorrows
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
         Array.Fill(this.referFirst, -1, 0, locals);
-        foreach (var root in this.body.OpaqueRoots)
+        foreach (var use in this.body.OpaqueUses)
         {
-            if (root >= 0)
+            if (use.Root >= 0)
             {
-                this.named[root] |= ExposedHolder; // The replaced form may have written it (R4-M70).
+                this.named[use.Root] |= ExposedHolder; // The replaced form may have written it (R4-M70).
             }
         }
 
         MirDataflow.Grow(ref this.fields, this.body.Statics.Length);
+        MirDataflow.Grow(ref this.passBit, this.body.Statics.Length);
+        MirDataflow.Grow(ref this.passStarts, this.body.Blocks.Length + 1);
         for (var i = 0; i < this.body.Statics.Length; i++)
         {
-            this.fields[i] = effects.Field(this.body.Statics[i].Symbol);
+            (this.fields[i], this.passBit[i]) = (effects.Field(this.body.Statics[i].Symbol), -1);
         }
 
         this.producing = false;
@@ -100,10 +104,12 @@ internal sealed partial class MirBorrows
             this.producing |= this.MarkerOf(i) == Marker.Guard;
         }
 
-        (this.loanCount, this.loanStepCount, this.rawRefs, this.referCount) = (0, 0, false, 0);
+        (this.loanCount, this.loanStepCount, this.rawRefs, this.referCount, this.dropsStatic) = (0, 0, false, 0, false);
+        (this.passCount, this.passBitCount) = (0, 0);
         for (var block = 0; block < this.body.Blocks.Length; block++)
         {
             ref readonly var data = ref this.body.Blocks[block];
+            this.passStarts[block] = this.passBitCount;
             for (var i = 0; i < data.Count; i++)
             {
                 ref readonly var statement = ref this.body.Statements[data.Start + i];
@@ -147,11 +153,12 @@ internal sealed partial class MirBorrows
                 this.Refer(terminator.Place.Root, -1, false);
             }
 
-            this.producing |= this.DroppedStatic(terminator) >= 0 ||
-                (terminator.Kind == MirTerminatorKind.Call && MirSteps.Prepared(this.body, terminator.Place.Root));
+            this.dropsStatic |= this.DroppedStatic(terminator) >= 0;
+            this.producing |= terminator.Kind == MirTerminatorKind.Call && MirSteps.Prepared(this.body, terminator.Place.Root);
         }
 
-        this.producing |= this.loanCount > 0;
+        this.passStarts[this.body.Blocks.Length] = this.passBitCount;
+        this.producing |= this.loanCount > 0 || this.dropsStatic;
 
         this.Order(moves.Paths.Length + this.body.Statics.Length);
         this.Renumber(this.loanAt.AsSpan(0, locations));
@@ -203,6 +210,11 @@ internal sealed partial class MirBorrows
         }
 
         this.borrowed[key] = true;
+        if (place.IsStatic && direct)
+        {
+            this.PassBit(~place.Root); // A Borrow of the static's storage, a part of it or the payload it owns (MirBorrows.Passes).
+        }
+
         if (root >= 0)
         {
             this.named[root] |= (byte)(mode == MirRefKind.Shared ? NamedHolder : NamedHolder | ExposedHolder);

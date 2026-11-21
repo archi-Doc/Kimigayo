@@ -309,6 +309,27 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
     }
 
+    // DECISIONS Z17 (its census's rows 4 and 5): an Opaque site's undecided use at a projected Place, a failed call's kept part, departs an
+    // own-step entry and addresses its layers as its root does (MirDescriptors.Judged), so a kept part of an owner whose own step a live
+    // pointer was formed through, and a kept part through a raw pointer, give the problems the kept root gives.
+    [Theory]
+    [InlineData("    var b = Buf<i32>.init(4)\n    let p = b.data\n    missing(PART)\n    usep(p)\n", "b.data", "b")]
+    [InlineData("    unsafe\n        missing(PART)\n", "(*q).x", "q")]
+    public void AnUndecidedPartDepartsAndAddressesAsItsRoot(string body, string part, string root)
+    {
+        Assert.Equal(Of(root), Of(part));
+
+        string[] Of(string used)
+        {
+            var source = "func f(q: raw/Cell)\n" + body.Replace("PART", used, StringComparison.Ordinal);
+            var c = MirBuildTest.Compile(Prelude + RawShapes + OwnStepShapes + source);
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            new Stratum(c.Types).Run(program);
+            return [.. Problems(c, program, [.. LoanCodes, DiagnosticCode.OwnStepDeparture_Kd]).Select(x => x.Replace(used, "PART", StringComparison.Ordinal))];
+        }
+    }
+
     // The own-step Warnings of a program's own bodies, with the raw and own-step shapes.
     private string[] Warnings(string source)
     {

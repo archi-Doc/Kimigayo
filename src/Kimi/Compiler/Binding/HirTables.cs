@@ -139,6 +139,12 @@ internal struct HirTables
     /// <returns>Whether it destroys in place, transferring nothing.</returns>
     internal static bool DestroysInPlace(DiscardKoto discard) => PlanOf(discard).Flag;
 
+    /// <summary>Gets whether the form of the Error a kept operand belongs to reads the operand's whole Place (DECISIONS D-986;
+    /// <see cref="PlanRow.KeptRead"/>): read only at a kept operand, whose Adjust column is <c>(None, None)</c> under an Error.</summary>
+    /// <param name="kept">A kept operand of an Error.</param>
+    /// <returns>Whether the Error's form reads its whole Place.</returns>
+    internal static bool KeptRead(Koto kept) => PlanOf(kept).KeptRead;
+
     /// <summary>Publishes the Op, Completion, Adjust and PlaceShape columns of the source modules from the latest completed Binding pass,
     /// once per pass; the library module's are published by the library pass (<see cref="LibraryVersion"/>).</summary>
     /// <param name="compilation">The bound compilation.</param>
@@ -333,7 +339,6 @@ internal struct NodeColumns
     internal StampedColumn<SemanticsMask, Binding.PassCounter> ImplicitPairFollows; // Pass: the admitted set of a pair layer selection follows implicitly (Binding.PairLayers.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> PhantomRawOrigins; // Pass: a phantom raw Origin's slot, failing requirement and cases (Binding.RawOrigins.Written.cs).
     internal StampedColumn<(OriginParameter Slot, LoanRequirement Failing, (int Start, int Count) Cases), Binding.PassCounter> InvalidStaticOriginSlots; // Pass: an invalid static Origin slot, failing requirement and cases (Binding.TypeOrigins.cs).
-    internal StampedColumn<(IsKoto Clause, FunctionKoto Requirement), Binding.PassCounter> CallablePremiseFailures; // Pass: an implementation's bounded Callable clause its requirement's premises lack (Binding.CallableEffects.cs).
     internal StampedColumn<(bool Rejected, Binding.EffectBoundRejection Rejection), Binding.PassCounter> EffectBoundRejections; // Pass: an invalid effect item's rejection (Binding.EffectDeclarations.cs).
     internal StampedColumn<BoundArgumentOperation, Binding.PassCounter> ReceiverOperations; // Work: the receiver or storage operation selected for a call or member access, released at the freeze (Binding.ArgumentOperations.cs).
     internal StampedColumn<BoundLength?, Binding.PassCounter> InferredArrayLengths; // Pass: the length an initializer supplied for a written length hole (Binding.ArrayInference.cs).
@@ -344,10 +349,7 @@ internal struct NodeColumns
     internal StampedColumn<(BoundType Source, BoundType Target), Binding.PassCounter> ObjectErasureFailures; // Pass: the erasure an operation's Owned proof did not prove (Binding.ObjectViews.cs).
     internal StampedColumn<Binding.ResultContext?, Binding.PassCounter> ResultContexts; // Work: a result target's context, the running pass's working state, released at the freeze (Binding.ControlFlow.cs).
     internal StampedColumn<Binding.ArithmeticConformanceFailure, Binding.PassCounter> ArithmeticConformanceFailures; // Pass: the eligibility condition a declared arithmetic conformance fails (Binding.ArithmeticContracts.cs).
-    internal StampedColumn<(BoundRequirement First, BoundRequirement Second, int Count), Binding.PassCounter> AssociatedAmbiguities; // Pass: the two candidates an ambiguous associated Type use found (Binding.AssociatedTypes.cs).
-    internal StampedColumn<(BoundRequirement Identity, Binding.AssociatedBinding Binding), Binding.PassCounter> InferenceFailures; // Pass: the identity and binding a conformance's inference hole failed with (Binding.AssociatedInference.cs).
     internal StampedColumn<CallableConstraintFact, Binding.PassCounter> CallableConstraints; // Pass: a Callable Constraint Unknown only in its Origin part (Binding.CallableProofs.cs).
-    internal StampedColumn<Binding.ReferenceConstraintFailure, Binding.PassCounter> ClauseConstraints; // Pass: a node's clause record (Binding.ConstraintValidation.Records.cs).
     internal StampedColumn<UnboundSlotFact, Binding.PassCounter> UnboundSlots; // Pass: a selected call's slot no evidence binds (Binding.InferenceBoundaries.cs).
     internal StampedColumn<Binding.UniqIndexing, Binding.PassCounter> UniqIndexing; // Pass: a user or view index expression's UniqIndexable fact (Binding.Indexers.cs).
     internal StampedColumn<Binding.RequirementGroup?, Binding.PassCounter> RequirementGroups; // Work: a member access's lookup through requirements, the running pass's working state, released at the freeze (Binding.ContractCalls.cs).
@@ -356,6 +358,11 @@ internal struct NodeColumns
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> PublishedCompletions; // Work: the HIR publisher's (Binding.Hir.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<(uint Query, StructuralCompletion.Completion Completion), Binding.PassCounter> LintCompletions; // Work: the Final pass's lint walk's (Binding.Lints.cs) structural completion of a node in its query, a row of another query absent, released at the freeze (StructuralCompletion.cs).
     internal StampedColumn<bool?, Binding.PassCounter> ReachedThroughBorrow; // Work: whether a selection reaches its Place through a Slice or a borrow, a memo of a final fact of its syntax valid while its pass's stamp stands (the pass, then the queries after it, its reports included, until the next ResetPass), released at the freeze (Binding.ElementAccess.cs).
+    internal StampedColumn<uint, Binding.PassCounter> FormReads; // Work: the HIR publisher's (Binding.Hir.cs) publication in which its Error's form read a node's whole Place, a row of another publication absent, released at the freeze (Binding.Hir.Adjust.cs; DECISIONS D-986).
+    internal PagedColumn<Binding.Specialization?> SpecializationStorage; // Kept: a specialization's entry, its slot arrays reused by every pass (Binding.Specializations.cs).
+    internal StampedColumn<Binding.EarlyRead, Binding.PassCounter> EarlyReads; // Pass: a use's lookup that saw a base clause not ready, read again by VerifyEarlyReads (Binding.BaseLayers.cs).
+    internal PagedColumn<BoundType?> KnownBases; // Kept: a struct's base clause's final Type from a first run, emptied by a Bind not started from it, before each fill and by an edit (Binding.BaseLayers.cs).
+    internal StampedColumn<bool, Binding.PassCounter> ResolvedSlices; // Work: whether a selection applies one ResolvedRange value, the running pass's working state, released at the freeze (Binding.Ranges.cs).
 
     internal void Resize(int length)
     {
@@ -406,7 +413,6 @@ internal struct NodeColumns
         this.ImplicitPairFollows.Grow(length);
         this.PhantomRawOrigins.Grow(length);
         this.InvalidStaticOriginSlots.Grow(length);
-        this.CallablePremiseFailures.Grow(length);
         this.EffectBoundRejections.Grow(length);
         this.ReceiverOperations.Grow(length);
         this.InferredArrayLengths.Grow(length);
@@ -417,10 +423,7 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Grow(length);
         this.ResultContexts.Grow(length);
         this.ArithmeticConformanceFailures.Grow(length);
-        this.AssociatedAmbiguities.Grow(length);
-        this.InferenceFailures.Grow(length);
         this.CallableConstraints.Grow(length);
-        this.ClauseConstraints.Grow(length);
         this.UnboundSlots.Grow(length);
         this.UniqIndexing.Grow(length);
         this.RequirementGroups.Grow(length);
@@ -429,6 +432,11 @@ internal struct NodeColumns
         this.PublishedCompletions.Grow(length);
         this.LintCompletions.Grow(length);
         this.ReachedThroughBorrow.Grow(length);
+        this.FormReads.Grow(length);
+        this.SpecializationStorage.Grow(length);
+        this.KnownBases.Grow(length);
+        this.EarlyReads.Grow(length);
+        this.ResolvedSlices.Grow(length);
     }
 
     // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
@@ -456,7 +464,6 @@ internal struct NodeColumns
         this.ImplicitPairFollows.Freeze(binding);
         this.PhantomRawOrigins.Freeze(binding);
         this.InvalidStaticOriginSlots.Freeze(binding);
-        this.CallablePremiseFailures.Freeze(binding);
         this.EffectBoundRejections.Freeze(binding);
         this.ReceiverOperations.Release();
         this.InferredArrayLengths.Freeze(binding);
@@ -467,10 +474,7 @@ internal struct NodeColumns
         this.ObjectErasureFailures.Freeze(binding);
         this.ResultContexts.Release();
         this.ArithmeticConformanceFailures.Freeze(binding);
-        this.AssociatedAmbiguities.Freeze(binding);
-        this.InferenceFailures.Freeze(binding);
         this.CallableConstraints.Freeze(binding);
-        this.ClauseConstraints.Freeze(binding);
         this.UnboundSlots.Freeze(binding);
         this.UniqIndexing.Freeze(binding);
         this.RequirementGroups.Release();
@@ -479,6 +483,9 @@ internal struct NodeColumns
         this.PublishedCompletions.Release();
         this.LintCompletions.Release();
         this.ReachedThroughBorrow.Release();
+        this.FormReads.Release();
+        this.EarlyReads.Freeze(binding);
+        this.ResolvedSlices.Release();
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -534,7 +541,6 @@ internal struct NodeColumns
             ImplicitPairFollows = this.ImplicitPairFollows.Renumbered(length),
             PhantomRawOrigins = this.PhantomRawOrigins.Renumbered(length),
             InvalidStaticOriginSlots = this.InvalidStaticOriginSlots.Renumbered(length),
-            CallablePremiseFailures = this.CallablePremiseFailures.Renumbered(length),
             EffectBoundRejections = this.EffectBoundRejections.Renumbered(length),
             ReceiverOperations = this.ReceiverOperations.Renumbered(length),
             InferredArrayLengths = this.InferredArrayLengths.Renumbered(length),
@@ -545,10 +551,7 @@ internal struct NodeColumns
             ObjectErasureFailures = this.ObjectErasureFailures.Renumbered(length),
             ResultContexts = this.ResultContexts.Renumbered(length),
             ArithmeticConformanceFailures = this.ArithmeticConformanceFailures.Renumbered(length),
-            AssociatedAmbiguities = this.AssociatedAmbiguities.Renumbered(length),
-            InferenceFailures = this.InferenceFailures.Renumbered(length),
             CallableConstraints = this.CallableConstraints.Renumbered(length),
-            ClauseConstraints = this.ClauseConstraints.Renumbered(length),
             UnboundSlots = this.UnboundSlots.Renumbered(length),
             UniqIndexing = this.UniqIndexing.Renumbered(length),
             RequirementGroups = this.RequirementGroups.Renumbered(length),
@@ -557,6 +560,11 @@ internal struct NodeColumns
             PublishedCompletions = this.PublishedCompletions.Renumbered(length),
             LintCompletions = this.LintCompletions.Renumbered(length),
             ReachedThroughBorrow = this.ReachedThroughBorrow.Renumbered(length),
+            FormReads = this.FormReads.Renumbered(length),
+            SpecializationStorage = this.SpecializationStorage.Renumbered(length),
+            KnownBases = this.KnownBases.Renumbered(length),
+            EarlyReads = this.EarlyReads.Renumbered(length),
+            ResolvedSlices = this.ResolvedSlices.Renumbered(length),
         };
         return columns;
     }
@@ -593,6 +601,8 @@ internal struct NodeColumns
         this.MatchPlans.Retire();
         this.Refusals.Retire();
         this.FormationCauses.Retire();
+        this.SpecializationStorage.Retire();
+        this.KnownBases.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -626,6 +636,8 @@ internal struct NodeColumns
         this.MatchPlans.MoveTo(ref target.MatchPlans, from, to);
         this.Refusals.MoveTo(ref target.Refusals, from, to);
         this.FormationCauses.MoveTo(ref target.FormationCauses, from, to);
+        this.SpecializationStorage.MoveTo(ref target.SpecializationStorage, from, to);
+        this.KnownBases.MoveTo(ref target.KnownBases, from, to);
     }
 }
 
@@ -658,7 +670,19 @@ internal struct PlanRow
     /// and for a discarded Place Binding did not resolve, so a row never keeps an earlier pass's Type, also after an in-place edit.</summary>
     internal BoundType? DiscardedType;
 
-    // An Int128 would align the row to 16 bytes; two halves keep it at 56.
+    /// <summary>Whether the form of the Error a kept operand belongs to reads the operand's whole Place in a use not in place (DECISIONS
+    /// D-986; SPEC 13.4, 15.1.5, 15.1.6): the Adjust rule (<c>Binding.AdjustChildren</c>) for the Error's form (its <c>KindOp</c>) takes
+    /// it by an acquisition or a shared borrow (<see cref="HirAdjust.Reads"/>), as it takes a valid node's child of the same form, an
+    /// argument of an application Binding did not resolve by a stand-in, its evaluation as a value, which every candidate's operation
+    /// reads as (DECISIONS G1178; SPEC 7.4, 10.1, 10.2).
+    /// False for a kept operand the form uses in place (a projection's receiver or base, a follow's, borrow's, runtime test's or case
+    /// adaptation's operand, a group's operand), borrows exclusively, reads through a reference or whose acquisition failed, and for
+    /// every other node. Written at each kept operand
+    /// of each publish, whose column stays the kept mark <c>(None, None)</c> (DECISIONS R5-M63): a kept operand is evaluated as its Place
+    /// and never acquired, so no claim reads this (R7-M8). A publish clears every row's first.</summary>
+    internal bool KeptRead;
+
+    // An Int128 would align the row to 16 bytes; two halves keep it at 56, KeptRead beside the byte fields (Unsafe.SizeOf, D-986).
     private bool folded;
     private ulong foldedHigh;
     private ulong foldedLow;

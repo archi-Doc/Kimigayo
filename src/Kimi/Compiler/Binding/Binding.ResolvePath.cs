@@ -276,7 +276,7 @@ public sealed partial class Binding
 
         if (early)
         {
-            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, UseRow(use), arity, path.Symbol, null);
+            this.earlyReads[use] = new(scope, UseRow(use), arity, path.Symbol, null);
         }
 
         var symbol = this.PublishPath(path, mark);
@@ -294,7 +294,7 @@ public sealed partial class Binding
         var path = this.ResolveValue(name, scope, use);
         if (reads != this.notReadyReads)
         {
-            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, LookupRole.Value, 0, path.Symbol, name);
+            this.earlyReads[use] = new(scope, LookupRole.Value, 0, path.Symbol, name);
         }
 
         return this.PublishPath(path, mark);

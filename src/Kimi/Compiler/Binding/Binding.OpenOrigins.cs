@@ -17,6 +17,12 @@ public sealed partial class Binding
     // The top of the keys of a call's regions for its Type slots' Origins (SlotRegion), below UnsolvedKey / 2.
     private const int SlotRegionKey = (UnsolvedKey / 2) - 1;
 
+    // G1128: the top of the keys of a call's slot variables (SlotVariable), below SlotRegion's range.
+    private const int SlotVariableKey = SlotRegionKey - (1 << 28) - 1;
+
+    // G1128 (C1): the count of a call's slot variables its key range holds (IsSlotVariable); past it the call is the located limit.
+    private const int MaxSlotVariables = 1 << 26;
+
     // J2: the polarity of a position inside a Function Type (SlotComponentPolarity), beside 1, -1 and 0.
     private const int ContractPolarity = 2;
 
@@ -158,6 +164,17 @@ public sealed partial class Binding
     // SlotRegionKey): the region of a solved variable, never an open position that later evidence fills (FillOpenOrigins). A call's
     // unsolved region (CallRegion), keyed from UnsolvedKey below that range, is not one: later evidence fills it (DECISIONS BU-104).
     private static bool IsSlotRegion(BoundOrigin origin) => IsCallRegion(origin) && origin.Slot is <= SlotRegionKey and > SlotRegionKey - (1 << 28);
+
+    // G1128: whether an Origin is a call's slot variable, the `index`-th distinct (bindings' sub-Types, polarity) query.
+    private static bool IsSlotVariable(BoundOrigin origin) => IsCallRegion(origin) && origin.Slot is <= SlotVariableKey and > SlotVariableKey - MaxSlotVariables;
+
+    private static int SlotVariableIndex(BoundOrigin origin) => SlotVariableKey - origin.Slot;
+
+    // G1128 R1.3 (e) 1: a slot variable's index in its solve's span, whose width is the count measured at the slot step; an index past
+    // it is a broken contract (Release check).
+    private static int SlotVariableIndex(BoundOrigin origin, ReadOnlySpan<BoundOrigin> slotValues)
+        => SlotVariableIndex(origin) is var index && (uint)index < (uint)slotValues.Length ? index
+            : throw new InvalidOperationException("A slot variable is read only within its solve's span of SlotVariableCount values (InternalInvariant).");
 
     // DECISIONS BU-104 (twelfth amendment), SPEC 15.6.1: whether a declared Origin relation is a row of a call: an end is a call's
     // region, or a meet holding one. "Every relation of the call over [its region] is a body row: Binding neither judges nor drops
@@ -352,23 +369,14 @@ public sealed partial class Binding
     private BoundOrigin OpenSlotOrigin(BoundOrigin bound, BoundOrigin region, OriginInference opened) => this.Meet(opened.Open(region, bound), region);
 
     // J2: the polarity of component `index` of `type` at `polarity` (1 covariant, -1 contravariant, 0 invariant), as an Origin solve
-    // collects it (CollectOriginInference: an invariant layer 0, a Constructed Type's slot by its schema), except that inside a Function
-    // Type it is ContractPolarity: a fit compares its Origins as a contract (SPEC 15.3.7: the required Origins are rigid), never by
-    // 15.3.6's rows. Shared by the solution's walk (OpenSlotOrigins) and the positions' (CollectPositionNames).
+    // collects it (ComponentPolarity), except that inside a Function Type it is ContractPolarity: a fit compares its Origins as a
+    // contract (SPEC 15.3.7: the required Origins are rigid), never by 15.3.6's rows. Shared by the solution's walk (OpenSlotOrigins)
+    // and the positions' (CollectPositionNames).
     private int SlotComponentPolarity(BoundType type, int index, int polarity)
-    {
-        if (polarity == ContractPolarity || type.Kind == BoundTypeKind.Function)
-        {
-            return ContractPolarity;
-        }
+        => polarity == ContractPolarity || type.Kind == BoundTypeKind.Function ? ContractPolarity : this.ComponentPolarity(type, index, polarity, default);
 
-        if (IsInvariantLayer(type, this, null, default))
-        {
-            return 0;
-        }
-
-        return type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } schema ? ComposePolarity(polarity, schema.GenericSlots[index].OriginVariance) : polarity;
-    }
+    // G1128: the call's `index`-th slot variable (IsSlotVariable).
+    private BoundOrigin SlotVariable(Koto call, int index) => this.OpenOrigin(call, SlotVariableKey - index);
 
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)
     {
